@@ -9,6 +9,15 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntityTicker;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.Containers;
+import com.caszgamermd.golemsplus.trader.TraderWorkService;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -35,6 +44,24 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
         return new WorkerStationBlockEntity(pos, state);
     }
 
+    @Override public <T extends BlockEntity> @Nullable BlockEntityTicker<T> getTicker(
+            Level level,BlockState state,BlockEntityType<T> type){
+        if(level.isClientSide())return null;
+        return (l,p,s,be)->{
+            if(be instanceof WorkerStationBlockEntity station
+                    &&l instanceof ServerLevel server &&station.isTrader())
+                TraderWorkService.tick(server,station);
+        };
+    }
+    @Override protected InteractionResult useItemOn(ItemStack held,BlockState state,Level level,
+            BlockPos pos,Player player,InteractionHand hand,BlockHitResult hit){
+        return InteractionResult.PASS;
+    }
+    @Override public BlockState playerWillDestroy(Level level,BlockPos pos,BlockState state,Player player){
+        if(!level.isClientSide()&&level.getBlockEntity(pos) instanceof WorkerStationBlockEntity station)
+            Containers.dropContents(level,pos,station);
+        return super.playerWillDestroy(level,pos,state,player);
+    }
     @Override protected InteractionResult useWithoutItem(BlockState state, Level level,
             BlockPos pos, Player player, BlockHitResult hit) {
         if (level.isClientSide()) return InteractionResult.SUCCESS;
@@ -45,12 +72,13 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
             player.sendSystemMessage(Component.literal("Station belongs to another player."));
             return InteractionResult.SUCCESS;
         }
-        if (player.isShiftKeyDown())
-            station.setPhase(station.phase() == WorkerPhase.PAUSED
-                    ? WorkerPhase.IDLE : WorkerPhase.PAUSED);
-        player.sendSystemMessage(Component.literal(
-                specialty.name() + " station: " + station.phase().name()
-                        + " (worker automation not installed yet)"));
+        if (player.isShiftKeyDown()) {
+            station.setPhase(station.phase()==WorkerPhase.PAUSED
+                    ?WorkerPhase.IDLE:WorkerPhase.PAUSED);
+            player.sendSystemMessage(Component.literal("Station: "+station.phase()));
+        } else if(player instanceof ServerPlayer server) {
+            server.openMenu(station);
+        }
         return InteractionResult.SUCCESS;
     }
 }

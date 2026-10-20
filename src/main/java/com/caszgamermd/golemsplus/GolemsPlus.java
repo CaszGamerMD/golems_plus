@@ -14,5 +14,6 @@ public final class GolemsPlus implements ModInitializer {
 
     @Override public void onInitialize() {
         WorksiteContent.initialize();
+        com.caszgamermd.golemsplus.trader.TraderCommands.register();
     }
 }

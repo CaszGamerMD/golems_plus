@@ -4,6 +4,13 @@ import com.caszgamermd.golemsplus.GolemsPlus;
 import com.caszgamermd.golemsplus.worker.WorkerSpecialty;
 import net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
+import net.fabricmc.fabric.api.menu.v1.ExtendedMenuType;
+import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
+import net.minecraft.world.inventory.MenuType;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
+import com.caszgamermd.golemsplus.trader.TraderGolem;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -21,6 +28,8 @@ public final class WorksiteContent {
     public static WorkerStationBlock BUILDER_TABLE, FISHING_STATION, TRADER_COUNTER;
     public static Item BUILDER_TABLE_ITEM, FISHING_STATION_ITEM, TRADER_COUNTER_ITEM;
     public static BlockEntityType<WorkerStationBlockEntity> STATION_ENTITY;
+    public static MenuType<WorkerStationMenu> STATION_MENU;
+    public static EntityType<TraderGolem> TRADER_GOLEM;
     private static final ResourceKey<CreativeModeTab> TAB = ResourceKey.create(
             BuiltInRegistries.CREATIVE_MODE_TAB.key(), GolemsPlus.id("main"));
 
@@ -52,6 +61,17 @@ public final class WorksiteContent {
                 GolemsPlus.id("worker_station"),
                 FabricBlockEntityTypeBuilder.create(WorkerStationBlockEntity::new,
                         BUILDER_TABLE, FISHING_STATION, TRADER_COUNTER).build());
+        STATION_MENU=Registry.register(BuiltInRegistries.MENU,GolemsPlus.id("worker_station_menu"),
+                new ExtendedMenuType<>(
+                        (menuId,inv,pos)->new WorkerStationMenu(menuId,inv,pos),
+                        BlockPos.STREAM_CODEC));
+        ResourceKey<EntityType<?>> traderKey=ResourceKey.create(Registries.ENTITY_TYPE,
+                GolemsPlus.id("trader_golem"));
+        TRADER_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,traderKey,
+                EntityType.Builder.<TraderGolem>of(TraderGolem::new,MobCategory.MISC)
+                        .sized(1.4f,2.7f).build(traderKey));
+        FabricDefaultAttributeRegistry.register(TRADER_GOLEM,
+                net.minecraft.world.entity.animal.IronGolem.createAttributes());
         Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, TAB,
                 FabricCreativeModeTab.builder()
                         .title(Component.literal("Golems Plus"))
