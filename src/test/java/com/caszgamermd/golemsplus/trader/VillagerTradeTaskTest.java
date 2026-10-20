@@ -18,10 +18,10 @@ class VillagerTradeTaskTest {
         assertThrows(IllegalStateException.class, () -> task.confirmTrade(3, Map.of("minecraft:carrot", 60)));
         task.arrivedAtVillager();
         task.offerRevalidated();
-        task.confirmTrade(3);
+        task.confirmTrade(3, Map.of("minecraft:carrot", 60));
         assertEquals(0, task.delivered());
         assertEquals(3, task.inTransit());
-        assertThrows(IllegalStateException.class, () -> task.confirmTrade(3));
+        assertThrows(IllegalStateException.class, () -> task.confirmTrade(3, Map.of("minecraft:carrot", 60)));
         task.arrivedHome();
         task.deposited(2);
         assertEquals(2, task.delivered());
