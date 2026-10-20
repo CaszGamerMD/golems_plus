@@ -1,51 +1,54 @@
-# Golems Plus — development playtest (Minecraft 26.2 / Fabric)
+# Golems Plus — current development playtest
+
+The mod now has a physical Trader Golem in a temporary vanilla Iron Golem
+model, a 36-slot Trader Counter, and a Builder schematic import tool. All
+automation requires loaded areas; no force-loading or item generation.
 
 ## Trader Golem
 
-1. Place **Trader Counter** from the Golems Plus creative tab and right-click
-   empty-handed once to claim it, then again to open its 36-slot depot.
-2. Put actual payment items in its top 27 input slots; bottom 9 slots are
-   output only. No payment items are created automatically.
-3. Stand at your village and run `/golems trader village 32` while your
-   owned Trader Counter is within 8 blocks. This selects the center/radius.
-4. Run `/golems trader order minecraft:emerald 16` to set an output goal.
-5. Run `/golems trader budget minecraft:wheat 320` to authorize spending.
-   Repeat for other payment types if a trade uses two inputs.
-6. Check `/golems trader status`. The Iron-Golem-shaped Trader Golem spawns
-   at the counter, uses its navigation to reach loaded villagers and attempts
-   one actual trade per trip before returning with results.
-7. Watch actual villager offer availability, pathing, spending and output
-   inventory. A full output stops delivery; clear slots to allow return.
-   Breaking a counter drops its inventory. Canceling an order makes a
-   traveling worker return unused payment items.
+Place and claim a Trader Counter with empty-hand right click. Right click
+again for the inventory: first 27 slots hold payments, last 9 slots receive
+purchased goods. A crouch + empty-hand click pauses the worker.
 
-**Current limitations:** Temporary iron-golem appearance, no dedicated
-3D model, and command configuration rather than in-GUI order settings.
-Order settings require a claimed Trader Counter within command reach; the
-village center may also be set at the counter itself. A villager needs to
-remain loaded and reachable; there is no forced chunkloading or teleport.
-The worker refuses offers when payment costs change after departure.
-Keep the depot loaded while testing. Server restarts/unloaded entities
-may pause worker dispatch until the entity is loaded again rather than
-spawning a duplicate. Transaction recovery and rollback with concurrent
-players requires extended multiplayer testing.
+Stand near your owned counter to use:
+- `/golems trader village 32` — selects the player's position as village
+  center with a 32-block search radius.
+- `/golems trader order minecraft:emerald 16` — requests 16 emeralds.
+- `/golems trader budget minecraft:wheat 320` — authorizes spending up to
+  320 wheat on this order; repeat for other payment item types.
+- `/golems trader status` — shows progress, wait condition and output.
+- `/golems trader cancel` — cancels order; current courier trip returns.
 
-## Builder import (read-only)
+The visible worker navigates to a real nearby villager, withdraws actual
+payment items from the counter, uses one live merchant offer, and returns
+its output physically to the counter. Offer limits, effective prices and
+multi-item costs are checked again at the villager. Refunds are returned
+if the villager becomes unavailable. The worker holds real escrow items
+persistently while moving and cannot create free loot.
 
-1. Copy a `.litematic` file to the SERVER config folder:
-   `config/golems_plus/schematics/<name>.litematic`.
-2. Place and claim a Builder's Planning Table within 8 blocks.
-3. Run `/golembuilder inspect <name>.litematic`.
-4. Inspect block count, item estimates and unresolved block states in chat.
+The model and order interface remain preliminary. Dedicated multiplayer
+transaction/restart recovery and protection-claim integration need testing.
 
-The importer reads compressed NBT and supports multiple regions, palettes
-and signed region extents. It does not place blocks, import block entities,
-read schematics from other directories, or move supplies yet. Unsupported
-states are intentionally flagged instead of guessed, and no materials are
-ever created from schematic input. Use it to verify a build before future
-placement/warehouse integration.
+## Builder Golem — planning phase
 
-## Safety
+Copy a `.litematic` file to the SERVER:
+`config/golems_plus/schematics/<name>.litematic`.
+Place and claim the Builder's Planning Table, and run:
+- `/golembuilder inspect <name>.litematic` — imports and saves selection,
+  reports counts, estimated materials and unsupported states.
+- `/golembuilder rotate 90` — sets build orientation (0/90/180/270).
+- `/golembuilder warehouse` — associates a nearby loaded Caszual Additions
+  rack computer as the source warehouse (selection only; not stock permission).
+- `/golembuilder status` — inspect saved schematic name, counts, rotation
+  and warehouse link.
 
-Do not test initially with irreplaceable valuables. Test on a backed-up
-world while villagers, items and paths are actively changing.
+The importer is bounded, read-only, parses gzip NBT multi-regions, palette
+indices and signed dimensions. It never places blocks, copies block-entity
+contents, requests stock or creates any items. Safe physical construction and
+warehouse delivery are subsequent milestones.
+
+## Playtest precautions
+
+Use a backed-up world, especially around modded villagers and unloads.
+An automated passing CI build verifies compilation and unit tests, not
+end-to-end game behavior.

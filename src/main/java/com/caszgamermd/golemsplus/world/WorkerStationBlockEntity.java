@@ -44,6 +44,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final Map<String,Integer> budgets = new HashMap<>();
     private final Map<String,Integer> spent = new HashMap<>();
     private String problem = "";
+    private String builderFile = "";
+    private int builderBlocks, builderUnresolved;
+    private int builderRotation;
 
     public WorkerStationBlockEntity(BlockPos pos, BlockState state) {
         super(WorksiteContent.STATION_ENTITY, pos, state);
@@ -62,6 +65,21 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public int wantedCount() { return wantedCount; }
     public int deliveredCount() { return deliveredCount; }
     public String problem() { return problem; }
+    public String builderFile() { return builderFile; }
+    public int builderBlocks() { return builderBlocks; }
+    public int builderUnresolved() { return builderUnresolved; }
+    public int builderRotation() { return builderRotation; }
+    public boolean setBuilderFile(UUID actor,String filename,int blocks,int unresolved) {
+        if(!canConfigure(actor)||isTrader()||filename==null||filename.isBlank()
+                ||blocks<0||unresolved<0)return false;
+        builderFile=filename;builderBlocks=blocks;builderUnresolved=unresolved;
+        phase=WorkerPhase.PLANNING;sync();return true;
+    }
+    public boolean setBuilderRotation(UUID actor,int degrees) {
+        if(!canConfigure(actor)||isTrader()||(degrees!=0&&degrees!=90
+                &&degrees!=180&&degrees!=270))return false;
+        builderRotation=degrees;sync();return true;
+    }
     public Map<String,Integer> budgets() { return Map.copyOf(budgets); }
     public Map<String,Integer> spent() { return Map.copyOf(spent); }
     public int budgetRemaining(String item) {
@@ -240,6 +258,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putString("phase",phase.name());out.putString("trade_wanted",wantedItem);
         out.putInt("trade_count",wantedCount);out.putInt("trade_delivered",deliveredCount);
         out.putString("trade_problem",problem);
+        out.putString("builder_schematic",builderFile);
+        out.putInt("builder_blocks",builderBlocks);
+        out.putInt("builder_unresolved",builderUnresolved);
+        out.putInt("builder_rotation",builderRotation);
         out.putInt("budget_size",Math.min(64,budgets.size()));
         int i=0;
         for(var e:budgets.entrySet()){
@@ -275,6 +297,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
         wantedCount=Math.clamp(in.getIntOr("trade_count",0),0,4096);
         deliveredCount=Math.clamp(in.getIntOr("trade_delivered",0),0,wantedCount);
         problem=in.getStringOr("trade_problem","");
+        builderFile=in.getStringOr("builder_schematic","");
+        builderBlocks=Math.max(0,in.getIntOr("builder_blocks",0));
+        builderUnresolved=Math.max(0,in.getIntOr("builder_unresolved",0));
+        builderRotation=in.getIntOr("builder_rotation",0);
+        if(builderRotation!=0&&builderRotation!=90&&builderRotation!=180
+                &&builderRotation!=270)builderRotation=0;
         budgets.clear();spent.clear();
         int n=Math.clamp(in.getIntOr("budget_size",0),0,64);
         for(int i=0;i<n;i++){

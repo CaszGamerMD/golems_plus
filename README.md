@@ -5,32 +5,37 @@ Minecraft **26.2 Fabric**, Java **25** — Caszual Suite
 Specialist golems with real workstations and finite inventories. Development
 is directly on `main`.
 
-## Current implementation (v0.1.0-dev groundwork)
+## Current development status
 
-This is a **source-code foundation, not a gameplay release**. The three
-new Creative-tab prototype blocks are the Builder's Planning Table,
-Fishing Tackle Station and Trader's Counter. Empty-hand click shows status,
-and crouch + empty-hand click pauses/resumes. Ownership and selected warehouse
-metadata can be persisted, but no worker entities are currently spawned.
+**Trader Golem — in-game implementation (experimental):** A persistent,
+pathfinding Trader Golem uses actual vanilla villager offers and actual
+payment items withdrawn from the owned Trader Counter's 27 stock slots. It
+returns purchased items to nine output slots, refunds unspent payments,
+checks per-order spending limits, and waits when villagers are unavailable,
+offers change, or storage fills. The worker currently uses an Iron Golem
+model; the inventory and commands are usable but need live multiplayer
+testing and a dedicated model.
 
-- **Builder:** validated packed Litematica palette decoder, relative block
-  planner, material manifest, unresolved-state report, anchor/rotation/mirror,
-  plus a safe, interface-only Caszual warehouse supply boundary. Actual
-  `.litematic` file import, preview and construction are upcoming.
-- **Fishing:** event-driven cast/bite/reel/deposit task state machine. No
-  simulated free fish, no fishing-rod use or pathfinding yet.
-- **Trader (villager trading):** targets **villagers**, not player storefronts.
-  A golem will take the player's supplied goods from its Trader Counter, visit
-  an assigned village and perform available **vanilla villager offers** on the
-  player's behalf, then bring the traded items home. Trades may be
-  crops-for-emeralds or emeralds-for-items, including two-input offers.
-  Groundwork includes effective-price offer snapshots, an authorized village
-  search area, required goods, spending limits, stock/space checks,
-  and a navigation/trade/delivery task state machine. It cannot interact with
-  real villagers yet; that needs a safe Minecraft merchant adapter.
+Configure while near a claimed Trader Counter:
+`/golems trader village 32`, `/golems trader order minecraft:emerald 16`,
+`/golems trader budget minecraft:wheat 320`,
+`/golems trader status`, `/golems trader cancel`.
 
-Implementation details, safety constraints and remaining work are in
-[docs/FOUNDATIONS.md](docs/FOUNDATIONS.md).
+**Builder Golem — planning progress:** A safe bounded `.litematic` file reader
+supports gzip NBT, multi-region palettes, modded block-state properties and
+negative region dimensions. A Builder Planning Table can remember a selected
+schematic, estimated block count and unresolved states, rotation, and a
+Caszual Additions rack-computer warehouse link. Construction, material
+delivery and custom Builder mob AI are **not enabled yet**.
+
+Builder commands: `/golembuilder inspect <file>.litematic`,
+`/golembuilder rotate 90`, `/golembuilder warehouse`,
+`/golembuilder status`.
+
+**Fishing Golem:** event-driven state machine remains groundwork only.
+
+Read [development playtest instructions](docs/PLAYTEST.md) and
+[implementation foundations](docs/FOUNDATIONS.md) for details and limits.
 
 ## Planned golems
 
@@ -42,7 +47,7 @@ Implementation details, safety constraints and remaining work are in
   [issue #1](https://github.com/CaszGamerMD/golems_plus/issues/1).
 - **Fishing Golem** — Supply a rod, fish and deposit catches:
   [issue #2](https://github.com/CaszGamerMD/golems_plus/issues/2).
-- **Trader Golem** — Player-supplied inventory traded **to villagers**:
+- **Trader Golem** — Experimental autonomous villager courier, needs live QA:
   [issue #3](https://github.com/CaszGamerMD/golems_plus/issues/3).
 
 ## Development

@@ -33,6 +33,7 @@ public final class TraderGolem extends IronGolem {
     public TraderGolem(EntityType<? extends IronGolem> type, Level world){
         super(type,world);
         setPersistenceRequired();
+        setInvulnerable(true); // no free iron drops or accidental cargo loss
         setCustomName(Component.literal("Trader Golem"));
     }
     @Override protected void registerGoals() {
@@ -60,6 +61,9 @@ public final class TraderGolem extends IronGolem {
         if(!(server.getBlockEntity(home) instanceof WorkerStationBlockEntity depot)
                 || !depot.isTrader() || owner==null || !owner.equals(depot.owner())){
             dropEscrow(server);discard();return;
+        }
+        if(stage==1 && depot.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED){
+            getNavigation().stop();return;
         }
         if(stage==0){
             if(distanceToSqr(home.getX()+.5,home.getY()+.5,home.getZ()+.5)>9)
@@ -106,12 +110,17 @@ public final class TraderGolem extends IronGolem {
         // Result is held by THIS entity until a physical depot return.
         // MerchantOffer.take consumes actual escrowed stacks. notifyTrade
         // applies vanilla uses, XP and restock behavior exactly once.
+        ItemStack originalA=paymentA.copy(),originalB=paymentB.copy();
         if(!offer.take(paymentA,paymentB)){
             stage=2;depot.setProblem("Villager rejected payment");return;
         }
+        Map<String,Integer> actualCosts=TraderWorkService.totalCost(
+                originalA.copyWithCount(originalA.getCount()-paymentA.getCount()),
+                originalB.isEmpty()?ItemStack.EMPTY:originalB.copyWithCount(
+                        originalB.getCount()-paymentB.getCount()));
         returning=offer.assemble();
         hasTraded=true;
-        depot.recordTrade(costs);
+        depot.recordTrade(actualCosts);
         villager.notifyTrade(offer);
         depot.setProblem("");
         stage=2;
