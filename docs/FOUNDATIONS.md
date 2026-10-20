@@ -32,19 +32,52 @@ hook event should advance the cast; the core code **does not generate loot**.
 server-side hook entity/catch integration, durability and enchants,
 loot collection, navigation, rod retrieval, and unload/reload recovery.
 
-## Trader (#3)
+## Trader / villager assistant (#3)
 
-`TradeOffer`, `TradeInventory` and `TradeEngine` simulate both sides of
-each trade on copies, then commit only if all checks pass. Transaction IDs are
-rejected on reuse within the running engine. Tests cover no partial transfer
-on insufficient room, successful payment/goods swaps and duplicate requests.
+**Confirmed design:** the Trader Golem goes to **villagers to trade for the
+owner**. It is *not* a player-facing shop and does *not* manufacture emeralds.
 
-**Next:** persistent transaction journal that survives server crashes,
-atomic game inventory operations, item components/NBT matching, permissions,
-GUI offer configuration, stock and payments storage, villager/player endpoints
-and optional warehouse restocking. The sample in-memory ledger must **never**
-be connected directly to real item transfers: it does not protect against a
-crash between Minecraft inventory writes and durable journal writes.
+Future gameplay loop:
+1. Player supplies payment items and sets a wanted output and maximum spend
+   at their Trader Counter. Both purchasing and selling through normal villager
+   offers are supported (for example, sell wheat for emeralds; buy bread or
+   enchanted books using emeralds and any second required ingredient).
+2. Player selects an authorized village search area (dimension, center, radius);
+   optional whitelist of individual villagers.
+3. Golem reads nearby **loaded** villagers and their actual active offers,
+   including adjusted current prices, per-offer availability and both inputs.
+4. Golem physically walks to a villager and **revalidates** the real offer
+   before handing over anything. Out-of-stock villagers wait for normal restock.
+5. Only successfully completed merchant trades produce outputs; the golem
+   physically returns the real items to the owner's Trader Counter.
+
+**Implemented groundwork:**
+- `VillageSearchArea` and station NBT owner-controlled village target storage
+- `VillagerOfferSnapshot` with two inputs, output and remaining uses
+- `VillagerTradeRequest` with owner, order ID, output goal, villager allowlist
+  and **explicit maximum spend for every accepted payment item**
+- `VillagerTradePlanner` producing read-only quotes, preventing cost
+  overspending, rejecting missing supplies, full storage, mismatched items
+  and exhausted villager offers
+- `VillagerTradeTask` requiring actual trade confirmation before goods enter
+  a return journey and actual deposit before order progress increases
+- `VillagerTradingPort` interface defining the real game-side adapter boundary
+
+The previous `TradeEngine` and `TradeOffer` classes remain as **legacy,
+pure in-memory simulations** for tests; they do not implement villager trading,
+should not be plugged into Minecraft inventories, and are not a shop feature.
+Quotes are not reservations and are not actual payment or delivery.
+
+**Next:** station configuration UI, real golem mob/model/animation, player
+stock and output slots, live offer adapter based on Minecraft MerchantOffer,
+pathfinding, serializable orders, unloaded-village pause, safe resumption,
+dimension checks, accurate stack components/enchants, owner access policies,
+actual merchant side effects and durable transaction recovery. Never set
+villager offers, uses or experience through simulated calls: use the game's
+supported server-side merchant mechanics and respect trade locks, profession,
+pricing, restocking, reputation, discounts and claims. The in-memory planner
+must not be used to credit items. Duplicate transaction IDs require a durable
+journal before real-world trade operations can be enabled.
 
 ## Shared workstation prototype
 
@@ -55,14 +88,15 @@ Three placeable Creative-tab blocks:
 
 First empty-hand interaction claims ownership; subsequent interactions
 display the station's saved state; crouch + empty hand toggles PAUSED / IDLE.
-They persist owner, order identifier, phase, and optional warehouse anchor
-using Minecraft's ValueInput/ValueOutput serialization.
+They persist owner, order identifier, phase, optional warehouse anchor,
+and, for Trader Counters, an owner-selected village target using
+Minecraft's ValueInput/ValueOutput serialization.
 
 Station appearances are placeholder vanilla textures. These are safe
 worksite placeholders, **not working AI**, and are not final art.
 
 ## Build
 
-Java 25, Fabric 26.2, Loom 1.18.2. Run `gradle clean test build` with a
-compatible Gradle 9 installation. CI runs the same job and publishes a build
+Java 25, Fabric 26.2, Loom 1.18.2. Run `gradle clean test build` with
+Gradle 9.7+. CI runs the same job and publishes a build
 artifact only after it passes. No release JAR is committed to source control.

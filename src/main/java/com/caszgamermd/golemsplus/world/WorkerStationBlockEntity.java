@@ -1,6 +1,8 @@
 package com.caszgamermd.golemsplus.world;
 
+import com.caszgamermd.golemsplus.trader.VillageSearchArea;
 import com.caszgamermd.golemsplus.worker.WorkerPhase;
+import com.caszgamermd.golemsplus.worker.WorkerSpecialty;
 import com.caszgamermd.golemsplus.warehouse.WarehouseAssignment;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
@@ -22,6 +24,7 @@ public final class WorkerStationBlockEntity extends BlockEntity {
     private UUID activeOrder;
     private WorkerPhase phase = WorkerPhase.IDLE;
     private WarehouseAssignment warehouse;
+    private VillageSearchArea village;
 
     public WorkerStationBlockEntity(BlockPos pos, BlockState state) {
         super(WorksiteContent.STATION_ENTITY, pos, state);
@@ -31,6 +34,7 @@ public final class WorkerStationBlockEntity extends BlockEntity {
     public UUID activeOrder() { return activeOrder; }
     public WorkerPhase phase() { return phase; }
     public WarehouseAssignment warehouse() { return warehouse; }
+    public VillageSearchArea village() { return village; }
     public boolean canConfigure(UUID actor) { return actor != null && actor.equals(owner); }
     public boolean claimIfUnowned(UUID actor) {
         if (owner != null) return owner.equals(actor);
@@ -45,6 +49,17 @@ public final class WorkerStationBlockEntity extends BlockEntity {
         sync();
         return true;
     }
+    /** Trader destination can only be changed by this workstation's owner. */
+    public boolean setVillage(UUID actor, VillageSearchArea selection) {
+        if (!canConfigure(actor)
+                || !(getBlockState().getBlock() instanceof WorkerStationBlock station)
+                || station.specialty() != WorkerSpecialty.TRADER)
+            return false;
+        village = selection;
+        sync();
+        return true;
+    }
+
     public boolean beginOrder(UUID actor, UUID newOrder) {
         if (!canConfigure(actor) || newOrder == null || activeOrder != null
                 || phase == WorkerPhase.PAUSED) return false;
@@ -75,6 +90,13 @@ public final class WorkerStationBlockEntity extends BlockEntity {
         if (owner != null) out.putString("owner", owner.toString());
         if (activeOrder != null) out.putString("active_order", activeOrder.toString());
         out.putString("phase", phase.name());
+        if (village != null) {
+            out.putString("village_dimension", village.dimension());
+            out.putInt("village_x", village.x());
+            out.putInt("village_y", village.y());
+            out.putInt("village_z", village.z());
+            out.putInt("village_radius", village.radius());
+        }
         if (warehouse != null) {
             out.putString("warehouse_dimension", warehouse.dimension());
             out.putInt("warehouse_x", warehouse.x());
@@ -92,6 +114,17 @@ public final class WorkerStationBlockEntity extends BlockEntity {
         activeOrder = readUuid(in, "active_order");
         try { phase = WorkerPhase.valueOf(in.getStringOr("phase", "IDLE")); }
         catch (IllegalArgumentException exception) { phase = WorkerPhase.BLOCKED; }
+        String villageDimension = in.getStringOr("village_dimension", "");
+        village = null;
+        if (!villageDimension.isBlank()) {
+            try {
+                village = new VillageSearchArea(villageDimension,
+                        in.getIntOr("village_x", 0), in.getIntOr("village_y", 0),
+                        in.getIntOr("village_z", 0), in.getIntOr("village_radius", 32));
+            } catch (IllegalArgumentException ignored) {
+                // Corrupted or obsolete village data must never direct golems.
+            }
+        }
         String dimension = in.getStringOr("warehouse_dimension", "");
         warehouse = dimension.isBlank() ? null : new WarehouseAssignment(dimension,
                 in.getIntOr("warehouse_x", 0), in.getIntOr("warehouse_y", 0),

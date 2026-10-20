@@ -19,9 +19,15 @@ metadata can be persisted, but no worker entities are currently spawned.
   `.litematic` file import, preview and construction are upcoming.
 - **Fishing:** event-driven cast/bite/reel/deposit task state machine. No
   simulated free fish, no fishing-rod use or pathfinding yet.
-- **Trader:** in-memory atomic two-inventory trade model, validation, duplicate
-  transaction rejection and tests. Not connected to real Minecraft inventory
-  or multiplayer endpoints until persistent journaling is implemented.
+- **Trader (villager trading):** targets **villagers**, not player storefronts.
+  A golem will take the player's supplied goods from its Trader Counter, visit
+  an assigned village and perform available **vanilla villager offers** on the
+  player's behalf, then bring the traded items home. Trades may be
+  crops-for-emeralds or emeralds-for-items, including two-input offers.
+  Groundwork includes effective-price offer snapshots, an authorized village
+  search area, required goods, spending limits, stock/space checks,
+  and a navigation/trade/delivery task state machine. It cannot interact with
+  real villagers yet; that needs a safe Minecraft merchant adapter.
 
 Implementation details, safety constraints and remaining work are in
 [docs/FOUNDATIONS.md](docs/FOUNDATIONS.md).
@@ -36,11 +42,11 @@ Implementation details, safety constraints and remaining work are in
   [issue #1](https://github.com/CaszGamerMD/golems_plus/issues/1).
 - **Fishing Golem** — Supply a rod, fish and deposit catches:
   [issue #2](https://github.com/CaszGamerMD/golems_plus/issues/2).
-- **Trader Golem** — Inventory-backed, permissioned trading:
+- **Trader Golem** — Player-supplied inventory traded **to villagers**:
   [issue #3](https://github.com/CaszGamerMD/golems_plus/issues/3).
 
 ## Development
 
-Run `gradle clean test build` with Java 25 and a compatible Gradle 9
-installation. The GitHub Actions workflow checks `main`. No release JAR
-should be published until the build and tests succeed.
+Run `gradle clean test build` with Java 25 and Gradle 9.7 or later.
+The GitHub Actions workflow checks `main`. No release JAR should be
+published until the build and tests succeed.
