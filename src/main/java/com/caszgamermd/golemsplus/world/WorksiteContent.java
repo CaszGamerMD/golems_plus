@@ -71,7 +71,7 @@ public final class WorksiteContent {
                 EntityType.Builder.<TraderGolem>of(TraderGolem::new,MobCategory.MISC)
                         .sized(1.4f,2.7f).build(traderKey));
         FabricDefaultAttributeRegistry.register(TRADER_GOLEM,
-                net.minecraft.world.entity.animal.IronGolem.createAttributes());
+                net.minecraft.world.entity.animal.golem.IronGolem.createAttributes());
         Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, TAB,
                 FabricCreativeModeTab.builder()
                         .title(Component.literal("Golems Plus"))

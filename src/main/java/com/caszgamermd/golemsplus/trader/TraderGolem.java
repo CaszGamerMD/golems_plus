@@ -10,7 +10,7 @@ import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.Containers;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.animal.IronGolem;
+import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.trading.MerchantOffer;
@@ -58,7 +58,7 @@ public final class TraderGolem extends IronGolem {
         if(!(level() instanceof ServerLevel server)||tickCount%12!=0)return;
         if(!server.hasChunkAt(home))return;
         if(!(server.getBlockEntity(home) instanceof WorkerStationBlockEntity depot)
-                || !depot.isTrader() || !owner.equals(depot.owner())){
+                || !depot.isTrader() || owner==null || !owner.equals(depot.owner())){
             dropEscrow(server);discard();return;
         }
         if(stage==0){
