@@ -42,15 +42,15 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
             return InteractionResult.PASS;
         if (!station.claimIfUnowned(player.getUUID())
                 && !station.canConfigure(player.getUUID())) {
-            player.displayClientMessage(Component.literal("Station belongs to another player."), true);
+            player.sendSystemMessage(Component.literal("Station belongs to another player."));
             return InteractionResult.SUCCESS;
         }
         if (player.isShiftKeyDown())
             station.setPhase(station.phase() == WorkerPhase.PAUSED
                     ? WorkerPhase.IDLE : WorkerPhase.PAUSED);
-        player.displayClientMessage(Component.literal(
+        player.sendSystemMessage(Component.literal(
                 specialty.name() + " station: " + station.phase().name()
-                        + " (worker automation not installed yet)"), true);
+                        + " (worker automation not installed yet)"));
         return InteractionResult.SUCCESS;
     }
 }
