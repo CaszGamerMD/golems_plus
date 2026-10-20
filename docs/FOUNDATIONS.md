@@ -1,7 +1,8 @@
 # Specialist golem foundations — v0.1.0-dev
 
-The current code builds the shared mod environment and three **prototype workstations**.
-It does NOT spawn Builder, Fishing or Trader mobs or perform autonomous actions yet.
+The current code builds the shared mod environment and prototype workstations.
+The Trader Golem now has an experimental physical entity and villager-trading
+runtime. The Builder remains read-only planning/import; Fishing is groundwork.
 
 ## Builder / Litematica (#1)
 
@@ -11,10 +12,17 @@ with bounds checks, including indices that cross a 64-bit boundary. The pure
 unresolved/unsupported states. `BuildSite` transforms coordinates for a
 player-selected anchor, rotation and mirror.
 
-**Next:** implement a compressed NBT .litematic file importer on the appropriate
-side, multi-region offsets, signed dimensions, metadata validation, and a robust
-block-state-to-item mapping. Then implement in-world preview/confirmation and
-chunk/claim-safe physical placement. Build plans are deliberately read-only today.
+**Now implemented:** bounded compressed NBT .litematic importer, multiple
+palette regions, signed region extents, block-state property parsing and a
+material-estimate report. The Builder Planning Table saves selected filename,
+block counts, unresolved-state count, rotation and a selected Caszual Additions
+warehouse computer location. Commands support inspect, rotate, warehouse and
+status. All are read-only, no blocks are placed, and the warehouse link does
+not authorize materials or reserve stock.
+
+**Next:** validated player-approved world preview, accurate block-state rotation,
+durable work queue, real Builder Golem movement/placement and claim checks.
+Refine the block-to-item mapping before any item reservation or construction.
 
 Warehouse integration is an interface in `warehouse/WarehouseSupplyPort`.
 A future Caszual Additions adapter MUST authorize owner and warehouse link,
@@ -34,50 +42,34 @@ loot collection, navigation, rod retrieval, and unload/reload recovery.
 
 ## Trader / villager assistant (#3)
 
-**Confirmed design:** the Trader Golem goes to **villagers to trade for the
-owner**. It is *not* a player-facing shop and does *not* manufacture emeralds.
+The owned Trader Counter now has a persistent 36-slot inventory: 27 input
+and 9 output, using a server-backed menu. The experimental Trader Golem is
+an actual Iron-Golem-based entity with physical pathfinding and saved
+payment/result escrow. It is invulnerable while under development to avoid
+accidental cargo loss and farmable free iron drops; it does not attack mobs
+or randomly wander.
 
-Future gameplay loop:
-1. Player supplies payment items and sets a wanted output and maximum spend
-   at their Trader Counter. Both purchasing and selling through normal villager
-   offers are supported (for example, sell wheat for emeralds; buy bread or
-   enchanted books using emeralds and any second required ingredient).
-2. Player selects an authorized village search area (dimension, center, radius);
-   optional whitelist of individual villagers.
-3. Golem reads nearby **loaded** villagers and their actual active offers,
-   including adjusted current prices, per-offer availability and both inputs.
-4. Golem physically walks to a villager and **revalidates** the real offer
-   before handing over anything. Out-of-stock villagers wait for normal restock.
-5. Only successfully completed merchant trades produce outputs; the golem
-   physically returns the real items to the owner's Trader Counter.
+The owner selects a loaded village area with `/golems trader village <radius>`,
+an output goal with `/golems trader order <item> <count>`, and per-item spend
+caps with `/golems trader budget <item> <max>`. Status and cancel commands
+are supported. The golem searches loaded villagers for current merchant
+offers, validates stock, current costs and output space, withdraws real
+payment stacks and walks to the villager. On arrival it checks the live
+offer again, performs the actual `MerchantOffer.take()` and
+`Villager.notifyTrade()`, then returns with the acquired ItemStack.
+It returns unused escrow when the offer becomes unavailable; no synthetic
+trade output is generated.
 
-**Implemented groundwork:**
-- `VillageSearchArea` and station NBT owner-controlled village target storage
-- `VillagerOfferSnapshot` with two inputs, output and remaining uses
-- `VillagerTradeRequest` with owner, order ID, output goal, villager allowlist
-  and **explicit maximum spend for every accepted payment item**
-- `VillagerTradePlanner` producing read-only quotes, preventing cost
-  overspending, rejecting missing supplies, full storage, mismatched items
-  and exhausted villager offers
-- `VillagerTradeTask` requiring actual trade confirmation before goods enter
-  a return journey and actual deposit before order progress increases
-- `VillagerTradingPort` interface defining the real game-side adapter boundary
+The earlier pure `VillagerTradePlanner` / task classes remain tested
+and useful for later quote UI, but the current in-game worker executes
+via `TraderWorkService`. It only processes one trade per round trip.
+Per-order budgets are persisted at the station; cargo remains on the
+golem. The worker pauses rather than forcing unloaded chunks.
 
-The previous `TradeEngine` and `TradeOffer` classes remain as **legacy,
-pure in-memory simulations** for tests; they do not implement villager trading,
-should not be plugged into Minecraft inventories, and are not a shop feature.
-Quotes are not reservations and are not actual payment or delivery.
-
-**Next:** station configuration UI, real golem mob/model/animation, player
-stock and output slots, live offer adapter based on Minecraft MerchantOffer,
-pathfinding, serializable orders, unloaded-village pause, safe resumption,
-dimension checks, accurate stack components/enchants, owner access policies,
-actual merchant side effects and durable transaction recovery. Never set
-villager offers, uses or experience through simulated calls: use the game's
-supported server-side merchant mechanics and respect trade locks, profession,
-pricing, restocking, reputation, discounts and claims. The in-memory planner
-must not be used to credit items. Duplicate transaction IDs require a durable
-journal before real-world trade operations can be enabled.
+**Still needed:** end-to-end multiplayer playtesting, durable transaction
+journal/restart recovery across separate chunk saves, dedicated entity
+appearance/animations and proper visual configuration GUI. Long-distance
+pathing/worker-loss recovery and protected claims also need work.
 
 ## Shared workstation prototype
 
@@ -87,13 +79,12 @@ Three placeable Creative-tab blocks:
 - Trader's Counter
 
 First empty-hand interaction claims ownership; subsequent interactions
-display the station's saved state; crouch + empty hand toggles PAUSED / IDLE.
-They persist owner, order identifier, phase, optional warehouse anchor,
-and, for Trader Counters, an owner-selected village target using
-Minecraft's ValueInput/ValueOutput serialization.
+open the persistent workstation inventory. Crouch + empty hand toggles PAUSED.
+Stations persist ownership and task state with Minecraft's ValueInput/ValueOutput
+serialization. Builder plans and Trader Counter inventories survive saves.
 
-Station appearances are placeholder vanilla textures. These are safe
-worksite placeholders, **not working AI**, and are not final art.
+Station appearance remains placeholder vanilla textures. Trader AI is now
+executable, but its model is temporary and requires playtest validation.
 
 ## Build
 
