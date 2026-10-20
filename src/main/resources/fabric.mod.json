@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "golems_plus",
+  "version": "${version}",
+  "name": "Golems Plus",
+  "description": "Caszual Suite specialist-worker groundwork.",
+  "authors": ["CaszGamerMD"],
+  "contact": { "sources": "https://github.com/CaszGamerMD/golems_plus" },
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.caszgamermd.golemsplus.GolemsPlus"]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  },
+  "suggests": { "caszual_additions": "*" }
+}

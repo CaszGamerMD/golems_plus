@@ -1,26 +1,46 @@
 # Golems Plus
 
-Fabric 26.2 · Java 25 · Caszual Suite
+Minecraft **26.2 Fabric**, Java **25** — Caszual Suite
 
-Adds specialist golems with physical workplaces, tools, inventories, and meaningful world interactions.
+Specialist golems with real workstations and finite inventories. Development
+is directly on `main`.
 
-## Current workers
-- **Cooking Golem** — Ordering Kiosk takes customer orders for registered food recipes. Ingredients must exist; the worker travels to the appropriate workstation and processes the order. Support for different mod recipe types is staged rather than pretending all custom machines work automatically.
-- **Beekeeper Golem** — Beekeeper Toolbox provides shears, bottles, and flowers. The worker seeks ready beehives/bee nests, harvests honey/honeycomb, retrieves produce, and breeds adult bees with flowers. Tool durability, full storage, and cooldowns matter.
+## Current implementation (v0.1.0-dev groundwork)
 
-## Planned worker: Builder Golem (later release)
-- Import and read **Litematica `.litematic` schematics** (multi-region palettes and block-state data).
-- Preview/validate area, orientation, and rotation before constructing; require player approval to build.
-- Resolve a bill of materials, including modded blocks, from the schematic; indicate missing/unsupported blocks.
-- Assign a **Caszual Additions warehouse** as the material source; request inventory through its existing order/transport interfaces rather than duplicating items.
-- Physically navigate to placement positions; scaffold as needed; support pause/resume, chunk safety, protected-claim rules, missing-material waiting, and rollback-safe recovery.
-- Handle block entities and inventory content conservatively to prevent unexpected placement or duplication.
-- Separate milestone: schematic reader → materials planner → safe worker placement → warehouse link and resupply.
+This is a **source-code foundation, not a gameplay release**. The three
+new Creative-tab prototype blocks are the Builder's Planning Table,
+Fishing Tackle Station and Trader's Counter. Empty-hand click shows status,
+and crouch + empty-hand click pauses/resumes. Ownership and selected warehouse
+metadata can be persisted, but no worker entities are currently spawned.
 
-## Future specialists (later releases)
-- **Builder Golem:** imports Litematica schematics and obtains construction materials from an assigned Caszual Additions warehouse ([roadmap #1](https://github.com/CaszGamerMD/golems_plus/issues/1)).
-- **Fishing Golem:** fishes with supplied gear and deposits catches into storage ([roadmap #2](https://github.com/CaszGamerMD/golems_plus/issues/2)).
-- **Trader Golem:** automated, inventory-backed trading; scope to be determined ([roadmap #3](https://github.com/CaszGamerMD/golems_plus/issues/3)).
+- **Builder:** validated packed Litematica palette decoder, relative block
+  planner, material manifest, unresolved-state report, anchor/rotation/mirror,
+  plus a safe, interface-only Caszual warehouse supply boundary. Actual
+  `.litematic` file import, preview and construction are upcoming.
+- **Fishing:** event-driven cast/bite/reel/deposit task state machine. No
+  simulated free fish, no fishing-rod use or pathfinding yet.
+- **Trader:** in-memory atomic two-inventory trade model, validation, duplicate
+  transaction rejection and tests. Not connected to real Minecraft inventory
+  or multiplayer endpoints until persistent journaling is implemented.
+
+Implementation details, safety constraints and remaining work are in
+[docs/FOUNDATIONS.md](docs/FOUNDATIONS.md).
+
+## Planned golems
+
+- **Cooking Golem** — Ordering kiosk and registered recipe preparation;
+  progress tracked as future implementation.
+- **Beekeeper Golem** — Beekeeper toolbox, shears/bottles harvesting and
+  bee breeding; progress tracked as future implementation.
+- **Builder Golem** — Litematica plans and linked warehouse materials:
+  [issue #1](https://github.com/CaszGamerMD/golems_plus/issues/1).
+- **Fishing Golem** — Supply a rod, fish and deposit catches:
+  [issue #2](https://github.com/CaszGamerMD/golems_plus/issues/2).
+- **Trader Golem** — Inventory-backed, permissioned trading:
+  [issue #3](https://github.com/CaszGamerMD/golems_plus/issues/3).
 
 ## Development
-Work directly on `main` unless a different branch is requested. Do not commit a release JAR until the build and tests succeed.
+
+Run `gradle clean test build` with Java 25 and a compatible Gradle 9
+installation. The GitHub Actions workflow checks `main`. No release JAR
+should be published until the build and tests succeed.
