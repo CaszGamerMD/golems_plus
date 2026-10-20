@@ -17,5 +17,10 @@ Adds specialist golems with physical workplaces, tools, inventories, and meaning
 - Handle block entities and inventory content conservatively to prevent unexpected placement or duplication.
 - Separate milestone: schematic reader → materials planner → safe worker placement → warehouse link and resupply.
 
+## Future specialists (later releases)
+- **Builder Golem:** imports Litematica schematics and obtains construction materials from an assigned Caszual Additions warehouse ([roadmap #1](https://github.com/CaszGamerMD/golems_plus/issues/1)).
+- **Fishing Golem:** fishes with supplied gear and deposits catches into storage ([roadmap #2](https://github.com/CaszGamerMD/golems_plus/issues/2)).
+- **Trader Golem:** automated, inventory-backed trading; scope to be determined ([roadmap #3](https://github.com/CaszGamerMD/golems_plus/issues/3)).
+
 ## Development
 Work directly on `main` unless a different branch is requested. Do not commit a release JAR until the build and tests succeed.
