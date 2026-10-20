@@ -35,8 +35,17 @@ public final class VillagerTradePlanner {
      */
     public static Optional<Quote> choose(VillagerTradeRequest request,
             List<VillagerOfferSnapshot> nearbyOffers, TradeInventory carriedStock) {
-        if (request == null || nearbyOffers == null || carriedStock == null)
-            throw new IllegalArgumentException("Missing trade planning inputs");
+        return choose(request, nearbyOffers, carriedStock, Map.of());
+    }
+
+    /** Already spent values come from the same order's confirmed payments,
+     * not the current trip; budgets can never reset after returning home. */
+    public static Optional<Quote> choose(VillagerTradeRequest request,
+            List<VillagerOfferSnapshot> nearbyOffers, TradeInventory carriedStock,
+            Map<String, Integer> alreadySpent) {
+        if (request == null || nearbyOffers == null || carriedStock == null
+                || alreadySpent == null || alreadySpent.values().stream().anyMatch(v -> v == null || v < 0))
+            throw new IllegalArgumentException("Missing or invalid trade planning inputs");
         Quote best = null;
         for (VillagerOfferSnapshot offer : nearbyOffers) {
             if (offer == null || !request.permits(offer.villager())
@@ -54,10 +63,10 @@ public final class VillagerTradePlanner {
             for (int i = 0; i < maxExecutions; i++) {
                 TradeInventory next = trial.copy();
                 Map<String, Integer> nextSpend = new HashMap<>(spend);
-                if (!pay(next, nextSpend, request.totalSpendLimits(), offer.primary()))
+                if (!pay(next, nextSpend, request.totalSpendLimits(), alreadySpent, offer.primary()))
                     break;
                 if (offer.secondary() != null && !pay(next, nextSpend,
-                        request.totalSpendLimits(), offer.secondary()))
+                        request.totalSpendLimits(), alreadySpent, offer.secondary()))
                     break;
                 if (!next.change(offer.received().itemId(), offer.received().count()))
                     break; // cannot receive loot: do not spend either payment
@@ -81,10 +90,12 @@ public final class VillagerTradePlanner {
     }
 
     private static boolean pay(TradeInventory inventory, Map<String, Integer> spent,
-            Map<String, Integer> limits, VillagerOfferSnapshot.StackCost cost) {
+            Map<String, Integer> limits, Map<String, Integer> priorSpend,
+            VillagerOfferSnapshot.StackCost cost) {
         int max = limits.getOrDefault(cost.itemId(), 0);
         long newSpending = (long) spent.getOrDefault(cost.itemId(), 0) + cost.count();
-        if (newSpending > max || newSpending > Integer.MAX_VALUE) return false;
+        long cumulative = newSpending + priorSpend.getOrDefault(cost.itemId(), 0);
+        if (cumulative > max || newSpending > Integer.MAX_VALUE) return false;
         if (!inventory.change(cost.itemId(), -cost.count())) return false;
         spent.put(cost.itemId(), (int) newSpending);
         return true;

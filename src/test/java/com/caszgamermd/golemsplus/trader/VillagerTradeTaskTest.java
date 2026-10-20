@@ -15,7 +15,7 @@ class VillagerTradeTaskTest {
         var quote = new VillagerTradePlanner.Quote(request.orderId(),
                 villager, 1, 3, 3, Map.of("minecraft:carrot", 60));
         task.select(quote);
-        assertThrows(IllegalStateException.class, () -> task.confirmTrade(3));
+        assertThrows(IllegalStateException.class, () -> task.confirmTrade(3, Map.of("minecraft:carrot", 60)));
         task.arrivedAtVillager();
         task.offerRevalidated();
         task.confirmTrade(3);
@@ -48,6 +48,32 @@ class VillagerTradeTaskTest {
         assertEquals(VillagerTradeTask.Stage.PAUSED, task.stage());
         task.resume();
         assertEquals(VillagerTradeTask.Stage.SCANNING, task.stage());
+    }
+
+    @Test void realPaymentsAreValidatedAcrossMultipleTrips() {
+        UUID villager = UUID.randomUUID();
+        var request = new VillagerTradeRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "minecraft:emerald", 3, Set.of(), Map.of("minecraft:wheat", 40));
+        var task = new VillagerTradeTask(request);
+        task.select(new VillagerTradePlanner.Quote(request.orderId(), villager, 0,
+                2, 2, Map.of("minecraft:wheat", 40)));
+        task.arrivedAtVillager();
+        task.offerRevalidated();
+        assertThrows(IllegalArgumentException.class, () ->
+                task.confirmTrade(1, Map.of("minecraft:wheat", 25)));
+        task.confirmTrade(2, Map.of("minecraft:wheat", 40));
+        task.arrivedHome();
+        task.deposited(2);
+        assertEquals(40, task.paidAcrossTrips().get("minecraft:wheat"));
+        assertEquals(1, task.outstanding());
+        var stock = new TradeInventory(100);
+        stock.change("minecraft:wheat", 60);
+        var live = new VillagerOfferSnapshot(villager, 0,
+                new VillagerOfferSnapshot.StackCost("minecraft:wheat", 20),
+                null, new VillagerOfferSnapshot.StackCost("minecraft:emerald", 1),
+                0, 10, true);
+        assertTrue(VillagerTradePlanner.choose(request, java.util.List.of(live),
+                stock, task.paidAcrossTrips()).isEmpty());
     }
 
     @Test void villageAreaAndBudgetsRejectInvalidConfiguration() {

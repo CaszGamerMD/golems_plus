@@ -71,6 +71,23 @@ class VillagerTradePlannerTest {
                 .orElseThrow().goodsCount()); // offers yield bundles
     }
 
+    @Test void alreadySpentOnPreviousTripsCountsAgainstOriginalLimits() {
+        UUID villager = UUID.randomUUID();
+        var request = new VillagerTradeRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "minecraft:emerald", 5, Set.of(), Map.of("minecraft:wheat", 40));
+        var offer = new VillagerOfferSnapshot(villager, 0,
+                item("minecraft:wheat", 20), null, item("minecraft:emerald", 1),
+                0, 10, true);
+        var stock = new TradeInventory(100);
+        stock.change("minecraft:wheat", 100);
+        assertEquals(2, VillagerTradePlanner.choose(request, List.of(offer), stock,
+                Map.of()).orElseThrow().executions());
+        assertEquals(1, VillagerTradePlanner.choose(request, List.of(offer), stock,
+                Map.of("minecraft:wheat", 20)).orElseThrow().executions());
+        assertTrue(VillagerTradePlanner.choose(request, List.of(offer), stock,
+                Map.of("minecraft:wheat", 40)).isEmpty());
+    }
+
     @Test void bothCostsUsingSameCurrencyRespectAggregateBudget() {
         UUID v = UUID.randomUUID();
         var request = new VillagerTradeRequest(UUID.randomUUID(), UUID.randomUUID(),
