@@ -48,23 +48,27 @@ public final class TraderWorkService {
         return true;
     }
     public static boolean canReturnPayments(WorkerStationBlockEntity depot,ItemStack a,ItemStack b){
-        // Simulate total available input capacity; combined same-item costs
-        // must not count a single free slot twice.
-        Map<String,Integer> required=new HashMap<>();
-        for(ItemStack s:new ItemStack[]{a,b}){
-            if(s.isEmpty())continue;
-            required.merge(itemId(s),s.getCount(),Integer::sum);
-        }
-        for(var e:required.entrySet()){
-            ItemStack sample=itemId(a).equals(e.getKey())?a:b;
-            int room=0;
-            for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++){
-                ItemStack existing=depot.getItem(i);
-                if(existing.isEmpty())room+=sample.getMaxStackSize();
-                else if(ItemStack.isSameItemSameComponents(existing,sample))
-                    room+=existing.getMaxStackSize()-existing.getCount();
+        // Simulate exact stack-component compatibility before returning either
+        // payment. Two different enchanted/component-bearing stacks with the
+        // same item ID may NOT share capacity.
+        java.util.List<ItemStack> simulated=new java.util.ArrayList<>();
+        for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++)
+            simulated.add(depot.getItem(i).copy());
+        for(ItemStack refund:new ItemStack[]{a,b}){
+            if(refund.isEmpty())continue;
+            int left=refund.getCount();
+            for(int i=0;i<simulated.size()&&left>0;i++){
+                ItemStack previous=simulated.get(i);
+                if(!ItemStack.isSameItemSameComponents(previous,refund))continue;
+                int take=Math.min(left,previous.getMaxStackSize()-previous.getCount());
+                if(take>0){simulated.set(i,previous.copyWithCount(previous.getCount()+take));left-=take;}
             }
-            if(room<e.getValue())return false;
+            for(int i=0;i<simulated.size()&&left>0;i++){
+                if(!simulated.get(i).isEmpty())continue;
+                int take=Math.min(left,refund.getMaxStackSize());
+                simulated.set(i,refund.copyWithCount(take));left-=take;
+            }
+            if(left!=0)return false;
         }
         return true;
     }
