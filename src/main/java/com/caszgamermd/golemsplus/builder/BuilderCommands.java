@@ -14,6 +14,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 /** File import is read-only and restricted to server's schematic folder. */
 public final class BuilderCommands {
