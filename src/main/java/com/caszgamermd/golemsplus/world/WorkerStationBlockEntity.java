@@ -116,24 +116,19 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public int claimBuilderStep(UUID worker){
         if(!builderWorkerIds().contains(worker)||activeOrder==null)return -1;
         if(builderClaims.containsKey(worker))return builderClaims.get(worker);
-        int end=Math.min(builderBlocks,builderCursor+32);
-        for(int next=builderCursor;next<end;next++){
-            if(((completedAhead >>> (next-builderCursor))&1L)!=0
-                    ||builderClaims.containsValue(next))continue;
-            builderClaims.put(worker,next);sync();return next;
-        }
-        return -1;
+        int next=com.caszgamermd.golemsplus.builder.BuilderCrewSchedule.next(
+                builderCursor,builderBlocks,completedAhead,builderClaims.values());
+        if(next>=0){builderClaims.put(worker,next);sync();}
+        return next;
     }
     public boolean completeBuilderStep(UUID worker,int index){
-        if(!builderClaims.containsKey(worker)
-                ||builderClaims.get(worker)!=index
-                ||index<builderCursor||index>=builderBlocks
-                ||index-builderCursor>=32)return false;
+        if(!builderClaims.containsKey(worker)||builderClaims.get(worker)!=index)
+            return false;
+        var updated=com.caszgamermd.golemsplus.builder.BuilderCrewSchedule.finish(
+                builderCursor,builderBlocks,completedAhead,index);
         builderClaims.remove(worker);
-        completedAhead|=1L<<(index-builderCursor);
-        while((completedAhead&1L)!=0){
-            completedAhead>>>=1;builderCursor++;
-        }
+        builderCursor=updated.cursor();
+        completedAhead=updated.finishedAhead();
         if(builderCursor>=builderBlocks){
             phase=WorkerPhase.COMPLETE;activeOrder=null;builderClaims.clear();
         }
