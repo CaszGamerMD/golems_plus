@@ -47,6 +47,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private String builderFile = "";
     private int builderBlocks, builderUnresolved;
     private int builderRotation;
+    private int builderMirror;
+    private BlockPos builderOrigin=BlockPos.ZERO;
+    private String placedSchematicName="";
+    private int builderCursor;
+    private UUID builderWorkerId;
+    private boolean builderPlaced;
 
     public WorkerStationBlockEntity(BlockPos pos, BlockState state) {
         super(WorksiteContent.STATION_ENTITY, pos, state);
@@ -69,10 +75,53 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public int builderBlocks() { return builderBlocks; }
     public int builderUnresolved() { return builderUnresolved; }
     public int builderRotation() { return builderRotation; }
+    public int builderMirror(){return builderMirror;}
+    public BlockPos builderOrigin(){return builderOrigin;}
+    public String placedSchematicName(){return placedSchematicName;}
+    public int builderCursor(){return builderCursor;}
+    public UUID builderWorkerId(){return builderWorkerId;}
+    public boolean hasPlacedSchematic(){return builderPlaced&&!builderFile.isBlank();}
+    public boolean isBuilder(){
+        return getBlockState().getBlock() instanceof WorkerStationBlock block
+                &&block.specialty()==WorkerSpecialty.BUILDER;
+    }
+    public boolean setPlacedBuilderPlan(UUID actor,String filename,String display,
+            BlockPos origin,int rotation,int mirror,int blocks,int unresolved){
+        if(!canConfigure(actor)||!isBuilder()||activeOrder!=null
+                ||filename==null||!filename.startsWith("placed-")
+                ||!filename.endsWith(".litematic")
+                ||filename.contains("/")||filename.contains("..")||filename.contains("\\")
+                ||origin==null||rotation<0||rotation>3||mirror<0||mirror>2
+                ||blocks<1||blocks>100000||unresolved<0)return false;
+        builderFile=filename;placedSchematicName=display;builderOrigin=origin.immutable();
+        builderRotation=rotation*90;builderMirror=mirror;builderBlocks=blocks;
+        builderUnresolved=unresolved;builderCursor=0;builderPlaced=true;
+        phase=WorkerPhase.READY;sync();return true;
+    }
+    public boolean startPlacedBuilder(UUID actor){
+        if(!canConfigure(actor)||!isBuilder()||!hasPlacedSchematic()
+                ||builderUnresolved!=0||activeOrder!=null)return false;
+        activeOrder=UUID.randomUUID();builderCursor=0;
+        phase=WorkerPhase.WORKING;sync();return true;
+    }
+    public void advanceBuilder(){
+        if(builderCursor<builderBlocks){
+            builderCursor++;setChanged();
+            if(builderCursor>=builderBlocks){
+                phase=WorkerPhase.COMPLETE;activeOrder=null;sync();
+            }
+        }
+    }
+    public void setBuilderWorkerId(UUID id){builderWorkerId=id;sync();}
+    public boolean cancelBuilder(UUID actor){
+        if(!canConfigure(actor)||!isBuilder())return false;
+        activeOrder=null;phase=WorkerPhase.IDLE;sync();return true;
+    }
     public boolean setBuilderFile(UUID actor,String filename,int blocks,int unresolved) {
         if(!canConfigure(actor)||isTrader()||filename==null||filename.isBlank()
                 ||blocks<0||unresolved<0||activeOrder!=null)return false;
         builderFile=filename;builderBlocks=blocks;builderUnresolved=unresolved;
+        builderPlaced=false;placedSchematicName="";builderCursor=0;
         phase=WorkerPhase.PLANNING;sync();return true;
     }
     public boolean setBuilderRotation(UUID actor,int degrees) {
@@ -262,6 +311,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putInt("builder_blocks",builderBlocks);
         out.putInt("builder_unresolved",builderUnresolved);
         out.putInt("builder_rotation",builderRotation);
+        out.putInt("builder_mirror",builderMirror);
+        out.store("builder_origin",BlockPos.CODEC,builderOrigin);
+        out.putString("builder_placement_name",placedSchematicName);
+        out.putBoolean("builder_placed",builderPlaced);
+        out.putInt("builder_cursor",builderCursor);
+        if(builderWorkerId!=null)out.putString("builder_worker",builderWorkerId.toString());
         out.putInt("budget_size",Math.min(64,budgets.size()));
         int i=0;
         for(var e:budgets.entrySet()){
@@ -303,6 +358,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderRotation=in.getIntOr("builder_rotation",0);
         if(builderRotation!=0&&builderRotation!=90&&builderRotation!=180
                 &&builderRotation!=270)builderRotation=0;
+        builderMirror=Math.clamp(in.getIntOr("builder_mirror",0),0,2);
+        builderOrigin=in.read("builder_origin",BlockPos.CODEC).orElse(BlockPos.ZERO);
+        placedSchematicName=in.getStringOr("builder_placement_name","");
+        builderPlaced=in.getBooleanOr("builder_placed",false);
+        builderCursor=Math.clamp(in.getIntOr("builder_cursor",0),0,builderBlocks);
+        builderWorkerId=uuid(in,"builder_worker");
         budgets.clear();spent.clear();
         int n=Math.clamp(in.getIntOr("budget_size",0),0,64);
         for(int i=0;i<n;i++){
