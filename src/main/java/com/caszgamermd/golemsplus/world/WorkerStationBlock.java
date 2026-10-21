@@ -18,6 +18,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.Containers;
 import com.caszgamermd.golemsplus.trader.TraderWorkService;
 import com.caszgamermd.golemsplus.builder.BuilderBuildService;
+import com.caszgamermd.golemsplus.warehouse.BuilderScannerLink;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -57,7 +58,17 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
     }
     @Override protected InteractionResult useItemOn(ItemStack held,BlockState state,Level level,
             BlockPos pos,Player player,InteractionHand hand,BlockHitResult hit){
-        return InteractionResult.PASS;
+        // The warehouse scanner has its own useOn implementation. Consume
+        // this block interaction first so it cannot dispatch pallet crews,
+        // toggle modes or change its saved link when used on our table.
+        if(specialty != WorkerSpecialty.BUILDER
+                || !BuilderScannerLink.isWarehouseScanner(held))
+            return InteractionResult.PASS;
+        if(level.isClientSide())return InteractionResult.SUCCESS;
+        if(level instanceof ServerLevel server
+                &&level.getBlockEntity(pos) instanceof WorkerStationBlockEntity station)
+            BuilderScannerLink.link(server,pos,player,station,held);
+        return InteractionResult.SUCCESS;
     }
     @Override public BlockState playerWillDestroy(Level level,BlockPos pos,BlockState state,Player player){
         if(!level.isClientSide()&&level.getBlockEntity(pos) instanceof WorkerStationBlockEntity station)

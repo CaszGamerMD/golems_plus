@@ -31,6 +31,16 @@ scaffolding, automatic warehouse item delivery and multiplayer claim-system
 testing. The current code is experimental; successful CI is not an
 end-to-end gameplay test. See `docs/LITEMATICA_PLACEMENTS.md`.
 
+**Scanner-based warehouse selection:** Right-clicking the Builder's Planning
+Table with a linked Caszual Additions Warehouse Scanner reads the existing
+`minecraft:custom_data` fields `warehouse_dimension`, `warehouse_x`,
+`warehouse_y` and `warehouse_z`. The same-dimension link is copied into
+the owner's persistent Builder Table settings, replacing any prior warehouse.
+If its Rack Computer is currently loaded, the actual block is verified.
+Unloaded computers are not force-loaded, and unlinked/wrong-dimension/
+invalid loaded links are rejected without clearing a previous assignment.
+The scanner item is never modified. `/golembuilder status` shows the link.
+
 Warehouse integration is an interface in `warehouse/WarehouseSupplyPort`.
 A future Caszual Additions adapter MUST authorize owner and warehouse link,
 reserve existing material once per order, physically transfer supplies, and
