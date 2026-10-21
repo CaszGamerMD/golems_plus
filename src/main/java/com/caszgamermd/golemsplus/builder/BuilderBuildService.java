@@ -31,20 +31,19 @@ public final class BuilderBuildService {
         if(level.getGameTime()%20!=0 || !table.isBuilder()
                 ||table.activeOrder()==null||!table.hasPlacedSchematic()
                 ||table.phase()==WorkerPhase.PAUSED)return;
-        UUID workerId=table.builderWorkerId();
-        if(workerId!=null){
-            // A missing worker may be in an unloaded chunk: do not spawn a
-            // second worker with the same active order.
-            if(level.getEntity(workerId)==null){
-                table.setProblem("Builder worker chunk unloaded; return to its location");
-            }
+        var linked=table.builderWorkerIds();
+        // Never replace a registered but unloaded worker: its work, materials
+        // and provisional scaffold could be persisted in another chunk.
+        for(UUID id:linked)if(level.getEntity(id)==null){
+            table.setProblem("Builder crew member unloaded; load its chunk");
             return;
         }
+        if(linked.size()>=table.crewTarget())return;
         BlockPos p=table.getBlockPos();
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.assign(p,table.owner());
         worker.setPos(p.getX()+.5,p.getY()+1,p.getZ()+.5);
-        if(level.addFreshEntity(worker))table.setBuilderWorkerId(worker.getUUID());
+        if(level.addFreshEntity(worker))table.registerBuilderWorker(worker.getUUID());
     }
     public static void tick(ServerLevel level,BuilderGolem worker){
         BlockPos home=worker.home();
@@ -53,10 +52,15 @@ public final class BuilderBuildService {
                 ||!table.isBuilder()||!worker.owner().equals(table.owner())){
             worker.discard();return;
         }
-        if(table.builderWorkerId()!=null && !table.builderWorkerId().equals(worker.getUUID())){
-            worker.discard();return;
+        if(!table.builderWorkerIds().contains(worker.getUUID())){
+            // Never discard inventory-bearing entities: a misconfigured
+            // workstation must not silently destroy delivered shulker cargo.
+            table.setProblem("Unrecognized Builder Golem near workstation");
+            return;
         }
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
+            worker.setNoGravity(false);
+            BuilderScaffolding.retrieve(level,worker,table,false);
             // A completed/canceled plan may still own boxed warehouse stock.
             // Recover real cargo first rather than losing it on job end.
             if(worker.hasSupplyBox()||table.supplyRequest()!=null){
@@ -74,7 +78,16 @@ public final class BuilderBuildService {
             return;
         }
         if(table.phase()==WorkerPhase.PAUSED){
-            worker.getNavigation().stop();return;
+            worker.getNavigation().stop();
+            worker.setNoGravity(false);return;
+        }
+        int membership=table.builderWorkerIds().indexOf(worker.getUUID());
+        if(membership>=table.crewTarget()&&table.claimedStep(worker.getUUID())<0
+                &&!worker.hasSupplyBox()){
+            worker.setNoGravity(false);
+            BuilderScaffolding.retrieve(level,worker,table,false);
+            worker.getNavigation().moveTo(home.getX()+.5,home.getY()+1,home.getZ()+.5,.8);
+            return;
         }
         ServerPlayer owner=level.getServer().getPlayerList().getPlayer(worker.owner());
         if(owner==null||owner.level()!=level){
@@ -89,7 +102,9 @@ public final class BuilderBuildService {
             if(table.builderCursor()>=plan.steps().size()){
                 table.setPhase(WorkerPhase.COMPLETE);return;
             }
-            var step=plan.steps().get(table.builderCursor());
+            int index=table.claimBuilderStep(worker.getUUID());
+            if(index<0)return; // other workers own every slot in this window
+            var step=plan.steps().get(index);
             BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
             if(Math.abs((long)pos.getX()-home.getX())>256||
                     Math.abs((long)pos.getZ()-home.getZ())>256){
@@ -110,7 +125,9 @@ public final class BuilderBuildService {
             }
             BlockState existing=level.getBlockState(pos);
             if(existing.equals(state.state())){
-                table.advanceBuilder();table.setProblem("");return;
+                table.completeBuilderStep(worker.getUUID(),index);
+                BuilderScaffolding.retrieve(level,worker,table,false);
+                table.setProblem("");return;
             }
             if(!existing.isAir()){
                 table.setProblem("Occupied target "+pos+"; no destructive replacement");
@@ -118,6 +135,31 @@ public final class BuilderBuildService {
             }
             if(!state.state().canSurvive(level,pos)){
                 table.setProblem("Missing supporting blocks at "+pos);return;
+            }
+            double horizontal=Math.pow(worker.getX()-(pos.getX()+.5),2)
+                    +Math.pow(worker.getZ()-(pos.getZ()+.5),2);
+            if(pos.getY()-worker.getY()>2.5 && horizontal>=36){
+                // Reach the base of the tower on foot before laying any
+                // temporary blocks; never construct remotely.
+                worker.getNavigation().moveTo(pos.getX()+.5,
+                        worker.blockPosition().getY(),pos.getZ()+.5,.85);
+                return;
+            }
+            if(pos.getY()-worker.getY()>2.5 && horizontal<36){
+                var climbing=BuilderScaffolding.reach(level,worker,table,owner,pos,
+                        plan.steps());
+                if(climbing==BuilderScaffolding.Result.NEED_MATERIALS){
+                    table.setProblem("Needs scaffolding for height "+pos.getY()
+                            +" (minecraft:scaffolding)");
+                    if(BuilderWarehouseCoordinator.requestScaffolding(level,worker,
+                            table,owner,plan.steps()))return;
+                    return;
+                }
+                if(climbing==BuilderScaffolding.Result.NO_SAFE_TOWER){
+                    table.setProblem("No clear scaffold column beside "+pos);
+                    return;
+                }
+                if(climbing==BuilderScaffolding.Result.CLIMBING)return;
             }
             if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>14){
                 if(!worker.getNavigation().moveTo(pos.getX()+.5,pos.getY(),
@@ -140,7 +182,10 @@ public final class BuilderBuildService {
                 table.setProblem("World rejected placement at "+pos);
                 return;
             }
-            table.advanceBuilder();table.setProblem("");
+            table.completeBuilderStep(worker.getUUID(),index);
+            BuilderSupplyInventory.recycleEmptyShulkers(table);
+            BuilderScaffolding.retrieve(level,worker,table,false);
+            table.setProblem("");
         }catch(Exception exception){
             table.setProblem("Builder paused: "+exception.getMessage());
         }

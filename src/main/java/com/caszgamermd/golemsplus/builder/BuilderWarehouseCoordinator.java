@@ -54,6 +54,10 @@ public final class BuilderWarehouseCoordinator {
         UUID ticket=table.supplyRequest();
         var warehouse=table.warehouse();
         if(ticket==null)return false;
+        // Only one courier may take packed shulkers from a reservation.
+        // Every other Builder is free to continue building using supplies
+        // already inside the Planning Table.
+        if(!table.claimSupplyRunner(worker.getUUID()))return false;
         if(warehouse==null){
             table.setProblem("Linked warehouse removed while delivery pending");
             return true;
@@ -121,6 +125,27 @@ public final class BuilderWarehouseCoordinator {
         else if(!reply.accepted())
             table.setProblem("Warehouse: "+reply.state());
         return true;
+    }
+    /** Scaffold ladders are real construction supplies, never free world blocks. */
+    public static boolean requestScaffolding(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,ServerPlayer player,
+            List<BuilderConstructionPlan.Step> steps){
+        if(table.warehouse()==null){
+            table.setProblem("Place minecraft:scaffolding in the Planner to climb higher");
+            return false;
+        }
+        if(table.supplyRequest()==null){
+            if(!BuilderWarehousePort.available()){
+                table.setProblem("Warehouse adapter unavailable for scaffolding");
+                return true;
+            }
+            int existing=BuilderSupplyInventory.available(table)
+                    .getOrDefault("minecraft:scaffolding",0);
+            int amount=Math.max(1,48-existing);
+            table.prepareSupplyRequest(UUID.randomUUID(),
+                    Map.of("minecraft:scaffolding",amount));
+        }
+        return tick(level,worker,table,player,steps);
     }
     public static boolean request(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,

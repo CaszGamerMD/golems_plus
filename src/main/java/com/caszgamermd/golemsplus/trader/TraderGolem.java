@@ -26,7 +26,7 @@ import net.minecraft.world.level.storage.ValueOutput;
 public final class TraderGolem extends IronGolem {
     private BlockPos home = BlockPos.ZERO;
     private UUID owner, order, villagerId;
-    private int offerIndex=-1, stage=0, navigationFailures;
+    private int offerIndex=-1, stage=0, navigationFailures, quotedGoods;
     private ItemStack paymentA=ItemStack.EMPTY,paymentB=ItemStack.EMPTY,returning=ItemStack.EMPTY;
     private boolean hasTraded;
 
@@ -47,10 +47,20 @@ public final class TraderGolem extends IronGolem {
     public boolean idle(){return stage==0;}
     public boolean busy(){return stage!=0;}
     public boolean assignedTo(BlockPos p){return p.equals(home);}
-    public void begin(UUID order,UUID villager,int offer,ItemStack a,ItemStack b) {
+    public boolean worksOn(UUID active){return active!=null&&active.equals(order);}
+    public int expectedGoods(){
+        if(stage==1)return quotedGoods;
+        return stage==2?returning.getCount():0;
+    }
+    public Map<String,Integer> reservedPayments(){
+        return stage==1?TraderWorkService.totalCost(paymentA,paymentB):Map.of();
+    }
+    public void begin(UUID order,UUID villager,int offer,ItemStack a,ItemStack b,
+            int expectedGoods) {
         if(stage!=0 || this.order!=null)throw new IllegalStateException("Trader busy");
         if(order==null||villager==null||offer<0||a.isEmpty())throw new IllegalArgumentException();
         this.order=order;villagerId=villager;offerIndex=offer;
+        quotedGoods=expectedGoods;
         paymentA=a.copy();paymentB=b.copy();
         returning=ItemStack.EMPTY;hasTraded=false;stage=1;navigationFailures=0;
     }
@@ -148,7 +158,8 @@ public final class TraderGolem extends IronGolem {
         if(!paymentA.isEmpty())TraderWorkService.returnPayment(depot,paymentA);
         if(!paymentB.isEmpty())TraderWorkService.returnPayment(depot,paymentB);
         paymentA=ItemStack.EMPTY;paymentB=ItemStack.EMPTY;
-        order=null;villagerId=null;offerIndex=-1;hasTraded=false;stage=0;
+        order=null;villagerId=null;offerIndex=-1;quotedGoods=0;
+        hasTraded=false;stage=0;
     }
     private void dropEscrow(ServerLevel level) {
         for(ItemStack stack:new ItemStack[]{paymentA,paymentB,returning})
@@ -167,6 +178,7 @@ public final class TraderGolem extends IronGolem {
         if(order!=null)out.putString("trader_order",order.toString());
         if(villagerId!=null)out.putString("trader_villager",villagerId.toString());
         out.putInt("trader_offer",offerIndex);out.putInt("trader_stage",stage);
+        out.putInt("trader_quoted_goods",quotedGoods);
         out.putBoolean("trader_done",hasTraded);
         if(!paymentA.isEmpty())out.store("trader_cost_a",ItemStack.CODEC,paymentA);
         if(!paymentB.isEmpty())out.store("trader_cost_b",ItemStack.CODEC,paymentB);
@@ -183,6 +195,7 @@ public final class TraderGolem extends IronGolem {
         villagerId=parse(in.getStringOr("trader_villager",""));
         offerIndex=in.getIntOr("trader_offer",-1);
         stage=Math.clamp(in.getIntOr("trader_stage",0),0,2);
+        quotedGoods=Math.max(0,in.getIntOr("trader_quoted_goods",0));
         hasTraded=in.getBooleanOr("trader_done",false);
         paymentA=in.read("trader_cost_a",ItemStack.CODEC).orElse(ItemStack.EMPTY);
         paymentB=in.read("trader_cost_b",ItemStack.CODEC).orElse(ItemStack.EMPTY);

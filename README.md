@@ -61,6 +61,28 @@ entities, fluids, doors, etc.) are intentionally refused until safe
 placement rules are added. The previous server-side `inspect` command
 remains available for read-only planning.
 
+**Multi-Golem workstations and scaffolding (experimental):** Builder
+Planning Tables now support crews of **1–4** with
+`/golembuilder crew 4`. Multiple physical Builder Golems claim separate
+schematic steps from a single saved, shared progress ledger: finishing steps
+out of order never skips incomplete blocks. One of the crew acts as the
+warehouse pickup courier while others can keep building from existing stock.
+Trader Counters similarly support 1–4 workers using
+`/golems trader crew 4`, sharing the same goal and spending limits with
+in-flight escrows counted before additional trades depart.
+
+Builders require **real minecraft:scaffolding** for high, unreachable work.
+They create owned temporary scaffold towers, climb instead of teleporting,
+and reclaim their own scaffolding quickly when safely finished. They
+request more scaffolding from the linked warehouse if necessary. Never
+remove or refund untracked/player scaffolding.
+
+Supply shulker boxes are **kept at the Builder Planning Table** after
+contents run out: empty shulker containers move into the Table's nine output
+slots so the first 27 input slots remain available for future deliveries.
+They are not sent back to the warehouse automatically. If the output is
+full, an empty shulker stays in its original slot until room is available.
+
 **Fishing Golem:** event-driven state machine remains groundwork only.
 
 Read [placed Litematica build instructions](docs/LITEMATICA_PLACEMENTS.md),
