@@ -2,7 +2,7 @@
 
 The current code builds the shared mod environment and prototype workstations.
 The Trader Golem now has an experimental physical entity and villager-trading
-runtime. The Builder remains read-only planning/import; Fishing is groundwork.
+runtime. The Builder has an experimental client-placed Litematica bridge and\nitem-backed construction worker; Fishing remains groundwork.
 
 ## Builder / Litematica (#1)
 
@@ -12,17 +12,24 @@ with bounds checks, including indices that cross a 64-bit boundary. The pure
 unresolved/unsupported states. `BuildSite` transforms coordinates for a
 player-selected anchor, rotation and mirror.
 
-**Now implemented:** bounded compressed NBT .litematic importer, multiple
-palette regions, signed region extents, block-state property parsing and a
-material-estimate report. The Builder Planning Table saves selected filename,
-block counts, unresolved-state count, rotation and a selected Caszual Additions
-warehouse computer location. Commands support inspect, rotate, warehouse and
-status. All are read-only, no blocks are placed, and the warehouse link does
-not authorize materials or reserve stock.
+**Now implemented:** a defensive gzip NBT importer for multiple regions,
+signed extents and block-state properties; an optional client command that
+reflects the SELECTED Litematica placement (without server dependency) and
+uploads its file, origin, rotation and mirror in bounded packets. The server
+validates table ownership and distance, saves a snapshot, runs material and
+unsupported-state checks, and requires `/golembuilder start` before any world
+change. The Builder worker follows each planned coordinate, skips matching
+blocks and only fills air with actual items removed from the Builder Table.
+Each completed step advances a saved cursor. It refuses unsupported states,
+out-of-range targets, failed paths, unavailable players, unloaded chunks,
+missing support and occupied targets.
 
-**Next:** validated player-approved world preview, accurate block-state rotation,
-durable work queue, real Builder Golem movement/placement and claim checks.
-Refine the block-to-item mapping before any item reservation or construction.
+**Not yet complete:** interactive in-world hologram preview beyond the
+Litematica overlay, Litematica grids/repeated placements, individually
+modified subregions, block-entity/fluid/multiblock placement, worker
+scaffolding, automatic warehouse item delivery and multiplayer claim-system
+testing. The current code is experimental; successful CI is not an
+end-to-end gameplay test. See `docs/LITEMATICA_PLACEMENTS.md`.
 
 Warehouse integration is an interface in `warehouse/WarehouseSupplyPort`.
 A future Caszual Additions adapter MUST authorize owner and warehouse link,

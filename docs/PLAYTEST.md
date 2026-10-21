@@ -29,23 +29,28 @@ persistently while moving and cannot create free loot.
 The model and order interface remain preliminary. Dedicated multiplayer
 transaction/restart recovery and protection-claim integration need testing.
 
-## Builder Golem — planning phase
+## Builder Golem — building at a placed Litematica hologram
 
-Copy a `.litematic` file to the SERVER:
-`config/golems_plus/schematics/<name>.litematic`.
-Place and claim the Builder's Planning Table, and run:
-- `/golembuilder inspect <name>.litematic` — imports and saves selection,
-  reports counts, estimated materials and unsupported states.
-- `/golembuilder rotate 90` — sets build orientation (0/90/180/270).
-- `/golembuilder warehouse` — associates a nearby loaded Caszual Additions
-  rack computer as the source warehouse (selection only; not stock permission).
-- `/golembuilder status` — inspect saved schematic name, counts, rotation
-  and warehouse link.
+Use the full [placement-to-build walkthrough](LITEMATICA_PLACEMENTS.md).
+With Litematica and Golems Plus installed on the client and Golems Plus
+on the server:
 
-The importer is bounded, read-only, parses gzip NBT multi-regions, palette
-indices and signed dimensions. It never places blocks, copies block-entity
-contents, requests stock or creates any items. Safe physical construction and
-warehouse delivery are subsequent milestones.
+1. Load a `.litematic`, position and select its placement in Litematica.
+2. Claim a nearby Builder's Planning Table.
+3. Run `/golems_use_placement` client-side to send the file and its exact
+   origin, mirror and rotation; do not move the hologram after importing.
+4. Run `/golembuilder preview` then put actual resources in the Table.
+5. Run `/golembuilder start` to start the physical Builder worker.
+6. Use `/golembuilder status`, `pause`, `resume`, `cancel`.
+
+The Builder refuses occupied targets, unsupported or protected blocks,
+unloaded chunks and missing materials; it never mines or creates free items.
+Its current scope is safe, single-block placement, not automated warehouse
+resupply or complex block-entity construction.
+
+The previous `/golembuilder inspect <name>.litematic` still works as a
+read-only materials analysis; a confirmed *placed* import is required for
+the new construction mode.
 
 ## Playtest precautions
 

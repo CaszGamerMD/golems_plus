@@ -21,20 +21,34 @@ Configure while near a claimed Trader Counter:
 `/golems trader budget minecraft:wheat 320`,
 `/golems trader status`, `/golems trader cancel`.
 
-**Builder Golem — planning progress:** A safe bounded `.litematic` file reader
-supports gzip NBT, multi-region palettes, modded block-state properties and
-negative region dimensions. A Builder Planning Table can remember a selected
-schematic, estimated block count and unresolved states, rotation, and a
-Caszual Additions rack-computer warehouse link. Construction, material
-delivery and custom Builder mob AI are **not enabled yet**.
+**Builder Golem — placed Litematica construction (experimental):**
+Select a placed, enabled, file-backed schematic in the Litematica client
+and use `/golems_use_placement`. Golems Plus sends a bounded snapshot
+with the placement's origin, rotation and mirror to the server and saves it
+at your claimed Builder's Planning Table. Run `/golembuilder preview` and
+`/golembuilder start` to explicitly authorize the Builder to place blocks.
+A real Builder Golem moves to target positions, uses materials from the
+table's 27 input slots, saves a work cursor across reloads, skips existing
+matching blocks, and refuses to destroy occupied locations. Controls:
+`/golembuilder status`, `pause`, `resume`, `cancel`.
 
-Builder commands: `/golembuilder inspect <file>.litematic`,
-`/golembuilder rotate 90`, `/golembuilder warehouse`,
-`/golembuilder status`.
+Litematica is an **optional client-only integration**; it is not needed
+on dedicated servers. The bridge currently requires all subregions enabled
+and unmodified, files ≤2 MiB compressed and builds ≤100,000 blocks.
+Selected position/rotation are captured only when importing; moving the
+hologram later requires reimport. This is a development implementation and
+has not been playtested end-to-end in Minecraft yet.
+
+Warehouse linking via `/golembuilder warehouse` persists but automatic
+withdrawal and delivery are still not implemented. Some blocks (block
+entities, fluids, doors, etc.) are intentionally refused until safe
+placement rules are added. The previous server-side `inspect` command
+remains available for read-only planning.
 
 **Fishing Golem:** event-driven state machine remains groundwork only.
 
-Read [development playtest instructions](docs/PLAYTEST.md) and
+Read [placed Litematica build instructions](docs/LITEMATICA_PLACEMENTS.md),
+[development playtest instructions](docs/PLAYTEST.md) and
 [implementation foundations](docs/FOUNDATIONS.md) for details and limits.
 
 ## Planned golems
