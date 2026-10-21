@@ -59,6 +59,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private long completedAhead;
     private final java.util.Map<UUID,java.util.List<BlockPos>> trackedScaffolds=new java.util.LinkedHashMap<>();
     private boolean builderPlaced;
+    private BlockPos beeToolbox,beeOutput;
+    private int beeRadius=12,beeMode=0;
+    private final java.util.List<UUID> beekeeperIds=new java.util.ArrayList<>();
     private UUID supplyRequest;
     private UUID supplyRunner;
     private BlockPos supplyPtp=BlockPos.ZERO;
@@ -67,6 +70,36 @@ public final class WorkerStationBlockEntity extends BlockEntity
 
     public WorkerStationBlockEntity(BlockPos pos, BlockState state) {
         super(WorksiteContent.STATION_ENTITY, pos, state);
+    }
+    public boolean isBeekeeper(){
+        return getBlockState().getBlock() instanceof WorkerStationBlock station
+                &&station.specialty()==WorkerSpecialty.BEEKEEPER;
+    }
+    public BlockPos beeToolbox(){return beeToolbox;}
+    public BlockPos beeOutput(){return beeOutput;}
+    public int beeRadius(){return beeRadius;}
+    /** 0=both, 1=comb only, 2=honey bottles only */
+    public int beeMode(){return beeMode;}
+    public java.util.List<UUID> beekeeperWorkers(){return java.util.List.copyOf(beekeeperIds);}
+    public boolean registerBeekeeper(UUID id){
+        if(!isBeekeeper()||id==null||beekeeperIds.contains(id)
+                ||beekeeperIds.size()>=crewTarget)return false;
+        beekeeperIds.add(id);sync();return true;
+    }
+    public boolean setBeeRadius(UUID actor,int radius){
+        if(!isBeekeeper()||!canConfigure(actor)||radius<4||radius>24)return false;
+        beeRadius=radius;sync();return true;
+    }
+    public boolean setBeeMode(UUID actor,int mode){
+        if(!isBeekeeper()||!canConfigure(actor)||mode<0||mode>2)return false;
+        beeMode=mode;sync();return true;
+    }
+    public boolean setBeeLink(UUID actor,boolean tools,BlockPos at){
+        if(!isBeekeeper()||!canConfigure(actor)||at==null
+                ||worldPosition.distSqr(at)>64L*64L||at.equals(worldPosition))
+            return false;
+        if(tools)beeToolbox=at.immutable();else beeOutput=at.immutable();
+        sync();return true;
     }
     public boolean isTrader() {
         return getBlockState().getBlock() instanceof WorkerStationBlock station
@@ -93,7 +126,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public UUID builderWorkerId(){return builderWorkerId;}
     public int crewTarget(){return crewTarget;}
     public boolean setCrewTarget(UUID actor,int count){
-        if(!canConfigure(actor)||(!isBuilder()&&!isTrader())||count<1||count>4)return false;
+        if(!canConfigure(actor)||(!isBuilder()&&!isTrader()&&!isBeekeeper())||count<1||count>4)return false;
         crewTarget=count;sync();return true;
     }
     public java.util.List<UUID> traderWorkerIds(){
@@ -327,6 +360,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
 
     @Override public Component getDisplayName() {
         if(isTrader())return Component.literal("Trader Counter");
+        if(isBeekeeper())return Component.literal("Beekeeper Workstation");
         if(isBuilder())return Component.literal("Builder's Planning Table");
         if(getBlockState().getBlock() instanceof WorkerStationBlock block)
             return Component.literal(block.specialty().name()+" Workstation");
@@ -427,6 +461,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(activeOrder!=null)out.putString("active_order",activeOrder.toString());
         if(workerId!=null)out.putString("trader_worker",workerId.toString());
         out.putString("phase",phase.name());out.putString("trade_wanted",wantedItem);
+        if(beeToolbox!=null)out.store("beekeeper_toolbox",BlockPos.CODEC,beeToolbox);
+        if(beeOutput!=null)out.store("beekeeper_output",BlockPos.CODEC,beeOutput);
+        out.putInt("beekeeper_radius",beeRadius);
+        out.putInt("beekeeper_mode",beeMode);
+        out.putInt("beekeeper_workers",Math.min(4,beekeeperIds.size()));
+        for(int ix=0;ix<beekeeperIds.size()&&ix<4;ix++)
+            out.putString("beekeeper_worker_"+ix,beekeeperIds.get(ix).toString());
         out.putInt("trade_count",wantedCount);out.putInt("trade_delivered",deliveredCount);
         out.putString("trade_problem",problem);
         out.putString("builder_schematic",builderFile);
@@ -513,6 +554,16 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         try{phase=WorkerPhase.valueOf(in.getStringOr("phase","IDLE"));}
         catch(IllegalArgumentException ignored){phase=WorkerPhase.BLOCKED;}
+        beeToolbox=in.read("beekeeper_toolbox",BlockPos.CODEC).orElse(null);
+        beeOutput=in.read("beekeeper_output",BlockPos.CODEC).orElse(null);
+        beeRadius=Math.clamp(in.getIntOr("beekeeper_radius",12),4,24);
+        beeMode=Math.clamp(in.getIntOr("beekeeper_mode",0),0,2);
+        beekeeperIds.clear();
+        int beeCount=Math.clamp(in.getIntOr("beekeeper_workers",0),0,4);
+        for(int i=0;i<beeCount;i++){
+            UUID id=uuid(in,"beekeeper_worker_"+i);
+            if(id!=null&&!beekeeperIds.contains(id))beekeeperIds.add(id);
+        }
         wantedItem=in.getStringOr("trade_wanted","");
         wantedCount=Math.clamp(in.getIntOr("trade_count",0),0,4096);
         deliveredCount=Math.clamp(in.getIntOr("trade_delivered",0),0,wantedCount);

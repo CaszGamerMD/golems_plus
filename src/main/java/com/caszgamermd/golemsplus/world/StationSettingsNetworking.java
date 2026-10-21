@@ -2,6 +2,8 @@ package com.caszgamermd.golemsplus.world;
 
 import com.caszgamermd.golemsplus.GolemsPlus;
 import com.caszgamermd.golemsplus.builder.BuilderCommands;
+import com.caszgamermd.golemsplus.beekeeper.BeeToolboxBlockEntity;
+import net.minecraft.world.Container;
 import com.caszgamermd.golemsplus.trader.VillageSearchArea;
 import com.caszgamermd.golemsplus.worker.WorkerPhase;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -67,6 +69,46 @@ public final class StationSettingsNetworking {
         boolean done=false;
         String action=change.action;
         switch(action) {
+            case "bee_tools","bee_output" -> {
+                if(!table.isBeekeeper())break;
+                boolean tools=action.equals("bee_tools");
+                BlockPos closest=null;double best=Double.MAX_VALUE;
+                BlockPos center=table.getBlockPos();
+                for(int dx=-8;dx<=8;dx++)for(int dy=-5;dy<=5;dy++)
+                    for(int dz=-8;dz<=8;dz++){
+                        BlockPos pos=center.offset(dx,dy,dz);
+                        if(!player.level().hasChunkAt(pos)||!player.level().mayInteract(player,pos))
+                            continue;
+                        var target=player.level().getBlockEntity(pos);
+                        boolean good=tools?target instanceof BeeToolboxBlockEntity:
+                                target instanceof Container
+                                    &&!(target instanceof BeeToolboxBlockEntity)
+                                    &&!(target instanceof WorkerStationBlockEntity);
+                        if(!good)continue;
+                        double distance=pos.distSqr(center);
+                        if(distance<best){closest=pos;best=distance;}
+                    }
+                if(closest!=null){
+                    done=table.setBeeLink(player.getUUID(),tools,closest);
+                    if(done)reply(player,(tools?"Toolbox":"Output")+" linked at "+closest);
+                    return;
+                }
+                reply(player,tools?"Place a Beekeeper Toolbox within 8 blocks":
+                        "Place an output chest/barrel within 8 blocks");
+                return;
+            }
+            case "bee_mode" -> {
+                if(table.isBeekeeper())done=table.setBeeMode(player.getUUID(),change.amount);
+            }
+            case "bee_radius" -> {
+                if(table.isBeekeeper())done=table.setBeeRadius(player.getUUID(),change.amount);
+            }
+            case "bee_pause" -> {
+                if(table.isBeekeeper()){table.setPhase(WorkerPhase.PAUSED);done=true;}
+            }
+            case "bee_resume" -> {
+                if(table.isBeekeeper()){table.setPhase(WorkerPhase.WORKING);done=true;}
+            }
             case "crew" -> {
                 done=table.setCrewTarget(player.getUUID(),change.amount);
                 if(done)reply(player,"Assigned crew size: "+change.amount);

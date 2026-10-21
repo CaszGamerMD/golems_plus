@@ -2,5 +2,8 @@
   "block.golems_plus.builder_table": "Builder's Planning Table",
   "block.golems_plus.fishing_station": "Fishing Tackle Station",
   "block.golems_plus.trader_counter": "Trader's Counter",
+  "block.golems_plus.beekeeper_station": "Beekeeper Job Block",
+  "block.golems_plus.beekeeper_toolbox": "Beekeeper Toolbox",
+  "entity.golems_plus.beekeeper_golem": "Beekeeper Golem",
   "itemGroup.golems_plus.main": "Golems Plus"
 }

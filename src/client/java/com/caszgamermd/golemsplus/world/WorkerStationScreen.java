@@ -16,12 +16,13 @@ import net.minecraft.world.entity.player.Inventory;
  * entity state directly on the client or dispatches slash commands.
  */
 public final class WorkerStationScreen extends AbstractContainerScreen<WorkerStationMenu> {
-    private enum Page { BUILD, BUILDER_SETUP, TRADE_ORDER, TRADE_BUDGET, TRADE_VILLAGE }
+    private enum Page { BUILD, BUILDER_SETUP, TRADE_ORDER, TRADE_BUDGET, TRADE_VILLAGE, BEEKEEPER }
     private Page page=Page.BUILD;
     private EditBox first,second;
     private String requestedItem="minecraft:emerald", requestedAmount="16";
     private String budgetItem="minecraft:wheat", budgetMaximum="320";
     private String villagePosition="",villageRadius="32";
+    private int beeRadius=12,beeMode=0;
     private boolean loadedVillageDefaults,loadedOrderDefaults;
     private String feedback="";
     private int desiredCrew=1;
@@ -47,6 +48,14 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                 &&block.specialty()
                     ==com.caszgamermd.golemsplus.worker.WorkerSpecialty.TRADER;
     }
+    private boolean beekeeper(){
+        var be=station();
+        if(be!=null)return be.isBeekeeper();
+        return minecraft!=null&&minecraft.level!=null
+                &&minecraft.level.getBlockState(menu.stationPos()).getBlock()
+                    instanceof WorkerStationBlock block
+                &&block.specialty()==com.caszgamermd.golemsplus.worker.WorkerSpecialty.BEEKEEPER;
+    }
     private boolean builder(){
         var be=station();
         if(be!=null)return be.isBuilder();
@@ -58,10 +67,13 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     }
     @Override protected void init(){
         super.init();
-        page=trader()?Page.TRADE_ORDER:Page.BUILD;
+        page=trader()?Page.TRADE_ORDER:beekeeper()?Page.BEEKEEPER:Page.BUILD;
         readDefaults();
         var station=station();
-        if(station!=null)desiredCrew=station.crewTarget();
+        if(station!=null){
+            desiredCrew=station.crewTarget();
+            beeMode=station.beeMode();beeRadius=station.beeRadius();
+        }
         buildControls();
     }
     private void readDefaults(){
@@ -194,6 +206,25 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             button("Pause",PANE,178,90,()->send("trader_pause",0));
             button("Resume",PANE+92,178,90,()->send("trader_resume",0));
             crewControls();
+        }else if(beekeeper()){
+            button("Find TOOLBOX",PANE,36,182,()->send("bee_tools",0));
+            button("Find OUTPUT",PANE,61,182,()->send("bee_output",0));
+            button("Mode: "+(beeMode==0?"Both":beeMode==1?"Comb":"Honey"),
+                    PANE,91,182,()->{
+                        beeMode=(beeMode+1)%3;send("bee_mode",beeMode);
+                        openPage(Page.BEEKEEPER);
+                    });
+            button("Range −",PANE,120,89,()->{
+                beeRadius=Math.max(4,beeRadius-2);send("bee_radius",beeRadius);
+                openPage(Page.BEEKEEPER);
+            });
+            button("Range +",PANE+92,120,90,()->{
+                beeRadius=Math.min(24,beeRadius+2);send("bee_radius",beeRadius);
+                openPage(Page.BEEKEEPER);
+            });
+            button("Pause",PANE,154,89,()->send("bee_pause",0));
+            button("Resume",PANE+92,154,90,()->send("bee_resume",0));
+            crewControls();
         }else if(builder()){
             button("BUILD",PANE,28,89,()->openPage(Page.BUILD));
             button("SETUP",PANE+92,28,90,()->openPage(Page.BUILDER_SETUP));
@@ -252,7 +283,8 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         g.text(font,Component.literal("RETURNS"),8,87,LABEL_COLOR,false);
         g.text(font,Component.literal("INVENTORY"),8,109,LABEL_COLOR,false);
         g.text(font,Component.literal(trader()?"TRADER COUNTER":
-                builder()?"BUILDER PLANNER":"WORKSTATION"),
+                builder()?"BUILDER PLANNER":
+                beekeeper()?"BEEKEEPER STATION":"WORKSTATION"),
                 185,10,0xffffffff,false);
         var station=station();
         if(trader()){
@@ -270,6 +302,16 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                     g.text(font,"QUANTITY",185,105,LABEL_COLOR,false);
                 }
             }
+        }else if(beekeeper()){
+            g.text(font,"Scan radius: "+beeRadius,185,143,LABEL_COLOR,false);
+            if(station!=null){
+                String tools=station.beeToolbox()==null?"Not linked":
+                        station.beeToolbox().toShortString();
+                String output=station.beeOutput()==null?"Not linked":
+                        station.beeOutput().toShortString();
+                g.text(font,truncate("Tools: "+tools,32),185,184,LABEL_COLOR,false);
+                g.text(font,truncate("Output: "+output,32),185,195,LABEL_COLOR,false);
+            }
         }else if(builder()&&page==Page.BUILDER_SETUP){
             g.text(font,"Warehouse: use a linked",185,163,LABEL_COLOR,false);
             g.text(font,"scanner on this Planner.",185,175,LABEL_COLOR,false);
@@ -279,16 +321,18 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                         185,188,0xffb8eec7,false);
             }else g.text(font,"No warehouse linked",185,188,0xffffc480,false);
         }
-        if(trader()||builder()){
+        if(trader()||builder()||beekeeper()){
             int count=station==null?1:station.crewTarget();
             int linked=station==null?0:trader()?station.traderWorkerIds().size():
-                    station.builderWorkerIds().size();
+                    builder()?station.builderWorkerIds().size():
+                    station.beekeeperWorkers().size();
             g.text(font,"CREW: "+linked+"/"+count,224,212,0xffffffff,false);
         }
         if(station!=null){
             String status=station.phase().name()+" • "+
                     (trader()?station.deliveredCount()+"/"+station.wantedCount():
-                            station.builderCursor()+"/"+station.builderBlocks());
+                            builder()?station.builderCursor()+"/"+station.builderBlocks():
+                            "range "+station.beeRadius());
             g.text(font,truncate(status,34),185,232,LABEL_COLOR,false);
             if(!station.problem().isBlank())
                 g.text(font,truncate(station.problem(),36),185,244,0xffffc480,false);
