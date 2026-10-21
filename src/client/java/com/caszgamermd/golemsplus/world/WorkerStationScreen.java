@@ -46,9 +46,18 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                 &&block.specialty()
                     ==com.caszgamermd.golemsplus.worker.WorkerSpecialty.TRADER;
     }
+    private boolean builder(){
+        var be=station();
+        if(be!=null)return be.isBuilder();
+        return minecraft!=null&&minecraft.level!=null
+                &&minecraft.level.getBlockState(menu.stationPos()).getBlock()
+                instanceof WorkerStationBlock block
+                &&block.specialty()
+                    ==com.caszgamermd.golemsplus.worker.WorkerSpecialty.BUILDER;
+    }
     @Override protected void init(){
         super.init();
-        if(trader())page=Page.TRADE_ORDER;
+        page=trader()?Page.TRADE_ORDER:Page.BUILD;
         readDefaults();
         buildControls();
     }
@@ -182,7 +191,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             button("Pause",PANE,178,90,()->send("trader_pause",0));
             button("Resume",PANE+92,178,90,()->send("trader_resume",0));
             crewControls();
-        }else{
+        }else if(builder()){
             button("BUILD",PANE,28,89,()->openPage(Page.BUILD));
             button("SETUP",PANE+92,28,90,()->openPage(Page.BUILDER_SETUP));
             if(page==Page.BUILDER_SETUP){
@@ -198,7 +207,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             }else{
                 button("Import Litematica placement",PANE,59,182,()->safe(()->{
                     try{
-                        LitematicaPlacementClient.sendSelected();
+                        LitematicaPlacementClient.sendSelected(menu.stationPos());
                         feedback="Placement upload sent";
                     }catch(Exception ex){
                         throw new IllegalArgumentException(ex.getMessage());
@@ -211,6 +220,8 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                 button("Cancel job",PANE,151,182,()->send("builder_cancel",0));
             }
             crewControls();
+        }else{
+            feedback="Workstation controls coming soon";
         }
     }
     private static void slot(GuiGraphicsExtractor g,int x,int y,int color){
@@ -237,7 +248,8 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         g.text(font,Component.literal("STOCK / MATERIALS"),65,19,LABEL_COLOR,false);
         g.text(font,Component.literal("RETURNS"),8,87,LABEL_COLOR,false);
         g.text(font,Component.literal("INVENTORY"),8,109,LABEL_COLOR,false);
-        g.text(font,Component.literal(trader()?"TRADER COUNTER":"BUILDER PLANNER"),
+        g.text(font,Component.literal(trader()?"TRADER COUNTER":
+                builder()?"BUILDER PLANNER":"WORKSTATION"),
                 185,10,0xffffffff,false);
         var station=station();
         if(trader()){
@@ -255,15 +267,21 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                     g.text(font,"QUANTITY",185,105,LABEL_COLOR,false);
                 }
             }
-        }else if(page==Page.BUILDER_SETUP){
-            g.text(font,"Use linked warehouse scanner",185,166,LABEL_COLOR,false);
-            g.text(font,"on the placed Planner block.",185,177,LABEL_COLOR,false);
-            g.text(font,"Rotation locks after import.",185,188,LABEL_COLOR,false);
+        }else if(builder()&&page==Page.BUILDER_SETUP){
+            g.text(font,"Warehouse: use a linked",185,163,LABEL_COLOR,false);
+            g.text(font,"scanner on this Planner.",185,175,LABEL_COLOR,false);
+            if(station!=null&&station.warehouse()!=null){
+                var w=station.warehouse();
+                g.text(font,truncate(w.x()+", "+w.y()+", "+w.z(),34),
+                        185,188,0xffb8eec7,false);
+            }else g.text(font,"No warehouse linked",185,188,0xffffc480,false);
         }
-        int count=station==null?1:station.crewTarget();
-        int linked=station==null?0:trader()?station.traderWorkerIds().size():
-                station.builderWorkerIds().size();
-        g.text(font,"CREW: "+linked+"/"+count,224,212,0xffffffff,false);
+        if(trader()||builder()){
+            int count=station==null?1:station.crewTarget();
+            int linked=station==null?0:trader()?station.traderWorkerIds().size():
+                    station.builderWorkerIds().size();
+            g.text(font,"CREW: "+linked+"/"+count,224,212,0xffffffff,false);
+        }
         if(station!=null){
             String status=station.phase().name()+" • "+
                     (trader()?station.deliveredCount()+"/"+station.wantedCount():
