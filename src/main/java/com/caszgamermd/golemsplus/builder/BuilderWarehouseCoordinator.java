@@ -14,6 +14,29 @@ import net.minecraft.network.chat.Component;
 /** Owner-driven supply trips; neither racks nor shulkers are teleported. */
 public final class BuilderWarehouseCoordinator {
     private BuilderWarehouseCoordinator(){}
+    /** Table-side inbound notification, including while no golem is near. */
+    public static void pollTable(ServerLevel level,WorkerStationBlockEntity table){
+        if(table.supplyRequest()==null||table.warehouse()==null
+                ||table.supplyPtp().equals(BlockPos.ZERO)
+                ||level.getGameTime()%60!=0)return;
+        var w=table.warehouse();
+        var report=BuilderWarehousePort.inspect(level,
+                new BlockPos(w.x(),w.y(),w.z()),table.getBlockPos(),
+                table.owner(),table.supplyRequest(),table.supplyPtp());
+        String warning="";
+        if(!report.missing().isEmpty())warning="Warehouse missing: "+report.missing();
+        else if(report.state().equals("MISSING_EMPTY_SHULKERS"))
+            warning="Warehouse needs empty shulker boxes at its Shulker Station";
+        if(!warning.isEmpty()&&!warning.equals(table.supplyNotice())){
+            table.setSupplyNotice(warning);
+            table.setProblem(warning);
+            ServerPlayer player=level.getServer().getPlayerList().getPlayer(table.owner());
+            if(player!=null)
+                player.sendSystemMessage(Component.literal("[Builder warehouse] "+warning));
+        }else if(warning.isEmpty()&&!table.supplyNotice().isEmpty())
+            table.setSupplyNotice("");
+    }
+
     public static boolean tick(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,
             List<BuilderConstructionPlan.Step> steps){
