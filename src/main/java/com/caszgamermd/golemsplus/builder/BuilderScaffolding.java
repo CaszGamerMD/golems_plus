@@ -128,7 +128,7 @@ public final class BuilderScaffolding {
         if(positions.isEmpty())return;
         if(!force &&(!worker.onGround()||worker.getY()>positions.getFirst().getY()+2))
             return;
-        positions.sort(Comparator.comparingInt(BlockPos::getY).reversed());
+        positions.sort(Comparator.comparingInt((BlockPos block)->block.getY()).reversed());
         for(BlockPos pos:positions){
             if(!level.hasChunkAt(pos))continue;
             if(!level.getBlockState(pos).is(Blocks.SCAFFOLDING)){
