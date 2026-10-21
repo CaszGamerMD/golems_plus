@@ -104,6 +104,26 @@ slots so the first 27 input slots remain available for future deliveries.
 They are not sent back to the warehouse automatically. If the output is
 full, an empty shulker stays in its original slot until room is available.
 
+**Beekeeper Golem — first playable harvesting implementation:**
+A new **Beekeeper Job Block** works with a dedicated 27-slot
+**Beekeeper Toolbox** and a nearby chest/barrel or other container for
+collected materials. Both link directly from the job block's right-side
+settings panel: click **Find TOOLBOX** and **Find OUTPUT**. Use
+**Mode: Both / Comb / Honey**, **Range −/+**, **Pause / Resume** and
+**CREW −/+** to adjust 1–4 workers. The toolbox accepts shears and
+glass bottles; the golems physically borrow them and return used shears.
+A small suited golem (Storage Golem proportions) with a modeled hood,
+veil, jacket, gloves and boots visits full beehives and bee nests,
+producing exactly three honeycomb per shearing or one honey bottle per
+bottle. No harvesting occurs without loaded hives, actual tools or output
+space. The beekeeper preserves its tools and cargo across world saves,
+and waits if the assigned output is full.
+
+The first version uses a compact vanilla-shaped cabinet for the Toolbox
+and temporary block textures for the job block; texture/model finishing
+and in-game testing are ongoing. See
+[Beekeeper setup](docs/BEEKEEPER.md) for details.
+
 **Fishing Golem:** event-driven state machine remains groundwork only.
 
 Read [placed Litematica build instructions](docs/LITEMATICA_PLACEMENTS.md),
@@ -114,8 +134,8 @@ Read [placed Litematica build instructions](docs/LITEMATICA_PLACEMENTS.md),
 
 - **Cooking Golem** — Ordering kiosk and registered recipe preparation;
   progress tracked as future implementation.
-- **Beekeeper Golem** — Beekeeper toolbox, shears/bottles harvesting and
-  bee breeding; progress tracked as future implementation.
+- **Beekeeper Golem** — Experimental harvest worker with own toolbox and
+  output container. Bee breeding and expanded activities remain future work.
 - **Builder Golem** — Litematica plans and linked warehouse materials:
   [issue #1](https://github.com/CaszGamerMD/golems_plus/issues/1).
 - **Fishing Golem** — Supply a rod, fish and deposit catches:
