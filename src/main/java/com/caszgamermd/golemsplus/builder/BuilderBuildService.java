@@ -27,6 +27,7 @@ public final class BuilderBuildService {
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
     private BuilderBuildService(){}
     public static void dispatch(ServerLevel level,WorkerStationBlockEntity table){
+        BuilderWarehouseCoordinator.pollTable(level,table);
         if(level.getGameTime()%20!=0 || !table.isBuilder()
                 ||table.activeOrder()==null||!table.hasPlacedSchematic()
                 ||table.phase()==WorkerPhase.PAUSED)return;
