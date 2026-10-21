@@ -34,6 +34,43 @@ public final class BuilderSupplyInventory {
         }
         return stock;
     }
+    /**
+     * Used packing shulkers are not garbage. Return genuinely empty
+     * container boxes to the Planner's 9 output slots, preserving dye and
+     * all item components. If output is full, keep the box in inputs.
+     */
+    public static int recycleEmptyShulkers(WorkerStationBlockEntity table){
+        int returned=0;
+        for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++){
+            ItemStack stack=table.getItem(i);
+            if(stack.isEmpty()||!stack.is(ItemTags.SHULKER_BOXES)
+                    ||!stack.has(DataComponents.CONTAINER)
+                    ||stack.get(DataComponents.CONTAINER).nonEmptyItemCopyStream()
+                        .findAny().isPresent())continue;
+            if(!table.canReceive(stack))continue;
+            if(table.deposit(stack.copy())){
+                table.setItem(i,ItemStack.EMPTY);
+                returned++;
+            }
+        }
+        return returned;
+    }
+    /** Server-side exact stack merge; never deletes a real scaffold refund. */
+    public static boolean storeScaffolding(WorkerStationBlockEntity table,ItemStack sample){
+        for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++){
+            ItemStack slot=table.getItem(i);
+            if(!slot.isEmpty()&&ItemStack.isSameItemSameComponents(slot,sample)
+                    &&slot.getCount()<slot.getMaxStackSize()){
+                table.setItem(i,slot.copyWithCount(slot.getCount()+1));return true;
+            }
+        }
+        for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++){
+            if(table.getItem(i).isEmpty()){
+                table.setItem(i,sample.copyWithCount(1));return true;
+            }
+        }
+        return table.deposit(sample.copyWithCount(1));
+    }
     public static boolean hasRoomForBox(WorkerStationBlockEntity table){
         for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++)
             if(table.getItem(i).isEmpty())return true;
