@@ -122,7 +122,7 @@ public final class BuilderUploadNetworking {
                     p.origin().getZ(),rotation,mirror);
             var plan=BuilderConstructionPlan.create(schematic,site);
             // The uploaded snapshot is now immutable and remains server-side;
-            // only an explicit start command may begin placing blocks.
+            // only explicit confirmation from the Planning Table can begin work.
             if(!table.setPlacedBuilderPlan(uuid,saved.getFileName().toString(),
                     p.name(),p.origin(),p.rotation(),p.mirror(),
                     plan.steps().size(),plan.unsupported().size())){
@@ -132,7 +132,7 @@ public final class BuilderUploadNetworking {
             notify(player,"Imported placed '"+p.name()+"' at "+p.origin()+
                     " ("+plan.steps().size()+" blocks; "+
                     plan.unsupported().size()+" unsupported states).");
-            notify(player,"Run /golembuilder preview, then /golembuilder start to confirm.");
+            notify(player,"In the Planning Table, click Preview, then Start build to confirm.");
         }catch(Exception ex){
             if(saved!=null)try{Files.deleteIfExists(saved);}catch(Exception ignored){}
             notify(player,"Could not read selected placement: "+ex.getMessage());

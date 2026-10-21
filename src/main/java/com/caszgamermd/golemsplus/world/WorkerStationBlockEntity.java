@@ -134,6 +134,33 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public int builderCursor(){return builderCursor;}
     public UUID builderWorkerId(){return builderWorkerId;}
     public int crewTarget(){return crewTarget;}
+    /**
+     * A crafted worker claims one of up to four physical crew slots. Raising
+     * the target is only capacity bookkeeping, never permission to spawn a
+     * free golem. Previously registered workers are retained on world reload.
+     */
+    public boolean registerCraftedWorker(WorkerSpecialty specialty,UUID worker){
+        if(owner==null||worker==null||specialty==null)return false;
+        if(specialty==WorkerSpecialty.COOKING){
+            if(!isCooking()||chefWorkerId!=null)return false;
+            chefWorkerId=worker;sync();return true;
+        }
+        int count=switch(specialty){
+            case BUILDER -> isBuilder()?builderWorkerIds().size():4;
+            case TRADER -> isTrader()?traderWorkerIds().size():4;
+            case BEEKEEPER -> isBeekeeper()?beekeeperWorkers().size():4;
+            default -> 4;
+        };
+        if(count>=4)return false;
+        crewTarget=Math.max(crewTarget,count+1);
+        return switch(specialty) {
+            case BUILDER -> registerBuilderWorker(worker);
+            case TRADER -> registerTraderWorker(worker);
+            case BEEKEEPER -> registerBeekeeper(worker);
+            default -> false;
+        };
+    }
+
     public boolean setCrewTarget(UUID actor,int count){
         if(!canConfigure(actor)||(!isBuilder()&&!isTrader()&&!isBeekeeper())||count<1||count>4)return false;
         crewTarget=count;sync();return true;

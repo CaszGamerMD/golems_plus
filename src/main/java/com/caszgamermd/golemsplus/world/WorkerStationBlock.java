@@ -65,6 +65,10 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
         // The warehouse scanner has its own useOn implementation. Consume
         // this block interaction first so it cannot dispatch pallet crews,
         // toggle modes or change its saved link when used on our table.
+        // Let the crafted worker item place an entity instead of opening
+        // the workstation GUI when a player uses it directly on the block.
+        if(held.getItem() instanceof com.caszgamermd.golemsplus.worker.WorkerGolemItem)
+            return InteractionResult.PASS;
         if(specialty != WorkerSpecialty.BUILDER
                 || !BuilderScannerLink.isWarehouseScanner(held)) {
             // PASS skips useWithoutItem in modern Minecraft. Returning this

@@ -16,7 +16,7 @@ import net.minecraft.world.entity.player.Inventory;
  * entity state directly on the client or dispatches slash commands.
  */
 public final class WorkerStationScreen extends AbstractContainerScreen<WorkerStationMenu> {
-    private enum Page { BUILD, BUILDER_SETUP, TRADE_ORDER, TRADE_BUDGET, TRADE_VILLAGE, BEEKEEPER }
+    private enum Page { BUILD, BUILDER_SETUP, BUILDER_PLACEMENTS, TRADE_ORDER, TRADE_BUDGET, TRADE_VILLAGE, BEEKEEPER }
     private Page page=Page.BUILD;
     private EditBox first,second;
     private String requestedItem="minecraft:emerald", requestedAmount="16";
@@ -26,6 +26,8 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     private boolean loadedVillageDefaults,loadedOrderDefaults;
     private String feedback="";
     private int desiredCrew=1;
+    private java.util.List<LitematicaPlacementClient.PlacementChoice> choices=java.util.List.of();
+    private int placementPage;
     private static final int PANE=185, BG_WIDTH=375, BG_HEIGHT=254;
     private static final int PANEL_COLOR=0xff26383c;
     private static final int LABEL_COLOR=0xffcbe8d8;
@@ -110,6 +112,15 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         page=next;feedback="";
         clearWidgets();
         buildControls();
+    }
+    private void choosePlacementPage(){
+        safe(()->{
+            try{
+                choices=LitematicaPlacementClient.placements();
+                placementPage=0;
+                openPage(Page.BUILDER_PLACEMENTS);
+            }catch(Exception e){throw new IllegalArgumentException(e.getMessage());}
+        });
     }
     private void button(String text,int x,int y,int width,Runnable action){
         addRenderableWidget(Button.builder(Component.literal(text),b -> action.run())
@@ -228,7 +239,33 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         }else if(builder()){
             button("BUILD",PANE,28,89,()->openPage(Page.BUILD));
             button("SETUP",PANE+92,28,90,()->openPage(Page.BUILDER_SETUP));
-            if(page==Page.BUILDER_SETUP){
+            if(page==Page.BUILDER_PLACEMENTS){
+                int from=placementPage*3;
+                if(from>=choices.size()&&placementPage>0){placementPage=0;from=0;}
+                for(int ix=from;ix<Math.min(from+3,choices.size());ix++){
+                    var entry=choices.get(ix);
+                    int y=58+(ix-from)*29;
+                    String name=(entry.enabled()?"":"[OFF] ")+entry.name()+
+                            " @ "+entry.origin().toShortString();
+                    button(truncate(name,27),PANE,y,182,()->safe(()->{
+                        try{
+                            LitematicaPlacementClient.sendPlacement(entry,menu.stationPos());
+                            feedback="Placement upload sent; use Preview to verify";
+                            openPage(Page.BUILD);
+                            feedback="Placement upload sent; use Preview to verify";
+                        }catch(Exception e){throw new IllegalArgumentException(e.getMessage());}
+                    }));
+                }
+                button("Previous",PANE,152,89,()->{
+                    placementPage=Math.max(0,placementPage-1);openPage(Page.BUILDER_PLACEMENTS);
+                });
+                button("Next",PANE+92,152,90,()->{
+                    if((placementPage+1)*3<choices.size())placementPage++;
+                    openPage(Page.BUILDER_PLACEMENTS);
+                });
+                button("Refresh",PANE,180,89,this::choosePlacementPage);
+                button("Back",PANE+92,180,90,()->openPage(Page.BUILD));
+            }else if(page==Page.BUILDER_SETUP){
                 button("Rotate +90°",PANE,59,182,()->{
                     var station=station();
                     send("builder_rotate",station==null?90:
@@ -239,14 +276,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                 button("Pause",PANE,119,89,()->send("builder_pause",0));
                 button("Resume",PANE+92,119,90,()->send("builder_resume",0));
             }else{
-                button("Import Litematica placement",PANE,59,182,()->safe(()->{
-                    try{
-                        LitematicaPlacementClient.sendSelected(menu.stationPos());
-                        feedback="Placement upload sent";
-                    }catch(Exception ex){
-                        throw new IllegalArgumentException(ex.getMessage());
-                    }
-                }));
+                button("Choose Litematica placement",PANE,59,182,this::choosePlacementPage);
                 button("Preview",PANE,87,89,()->send("builder_preview",0));
                 button("Start build",PANE+92,87,90,()->send("builder_start",0));
                 button("Pause",PANE,119,89,()->send("builder_pause",0));
@@ -312,6 +342,12 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                 g.text(font,truncate("Tools: "+tools,32),185,184,LABEL_COLOR,false);
                 g.text(font,truncate("Output: "+output,32),185,195,LABEL_COLOR,false);
             }
+        }else if(builder()&&page==Page.BUILDER_PLACEMENTS){
+            g.text(font,"LITEMATICA PLACEMENTS  "+choices.size(),185,45,LABEL_COLOR,false);
+            if(choices.isEmpty())
+                g.text(font,"No placements loaded. Refresh.",185,103,0xffffc480,false);
+            g.text(font,"Page "+(placementPage+1)+"/"+Math.max(1,(choices.size()+2)/3),
+                    185,139,LABEL_COLOR,false);
         }else if(builder()&&page==Page.BUILDER_SETUP){
             g.text(font,"Warehouse: use a linked",185,163,LABEL_COLOR,false);
             g.text(font,"scanner on this Planner.",185,175,LABEL_COLOR,false);

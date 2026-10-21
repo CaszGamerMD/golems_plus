@@ -2,6 +2,7 @@ package com.caszgamermd.golemsplus.world;
 
 import com.caszgamermd.golemsplus.GolemsPlus;
 import com.caszgamermd.golemsplus.worker.WorkerSpecialty;
+import com.caszgamermd.golemsplus.worker.WorkerGolemItem;
 import net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 import net.fabricmc.fabric.api.menu.v1.ExtendedMenuType;
@@ -40,6 +41,7 @@ public final class WorksiteContent {
     public static EntityType<BuilderGolem> BUILDER_GOLEM;
     public static EntityType<BeekeeperGolem> BEEKEEPER_GOLEM;
     public static EntityType<ChefGolem> CHEF_GOLEM;
+    public static Item BUILDER_WORKER_ITEM, TRADER_WORKER_ITEM, BEEKEEPER_WORKER_ITEM, CHEF_WORKER_ITEM;
     private static final ResourceKey<CreativeModeTab> TAB = ResourceKey.create(
             BuiltInRegistries.CREATIVE_MODE_TAB.key(), GolemsPlus.id("main"));
 
@@ -58,6 +60,12 @@ public final class WorksiteContent {
         return Registry.register(BuiltInRegistries.ITEM, key,
                 new BlockItem(block, new Item.Properties()
                         .setId(key).useBlockDescriptionPrefix()));
+    }
+
+    private static Item golemItem(String name,WorkerSpecialty profession){
+        ResourceKey<Item> key=ResourceKey.create(Registries.ITEM,GolemsPlus.id(name));
+        return Registry.register(BuiltInRegistries.ITEM,key,
+                new WorkerGolemItem(profession,new Item.Properties().setId(key)));
     }
 
     public static void initialize() {
@@ -119,6 +127,10 @@ public final class WorksiteContent {
                 EntityType.Builder.<ChefGolem>of(ChefGolem::new,MobCategory.MISC)
                         .sized(.76f,1.85f).build(chefKey));
         FabricDefaultAttributeRegistry.register(CHEF_GOLEM,ChefGolem.attributes());
+        BUILDER_WORKER_ITEM=golemItem("builder_worker",WorkerSpecialty.BUILDER);
+        TRADER_WORKER_ITEM=golemItem("trader_worker",WorkerSpecialty.TRADER);
+        BEEKEEPER_WORKER_ITEM=golemItem("beekeeper_worker",WorkerSpecialty.BEEKEEPER);
+        CHEF_WORKER_ITEM=golemItem("chef_worker",WorkerSpecialty.COOKING);
         Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, TAB,
                 FabricCreativeModeTab.builder()
                         .title(Component.literal("Golems Plus"))
@@ -130,6 +142,10 @@ public final class WorksiteContent {
                             output.accept(BEEKEEPER_STATION_ITEM);
                             output.accept(BEE_TOOLBOX_ITEM);
                             output.accept(COOKING_STATION_ITEM);
+                            output.accept(BUILDER_WORKER_ITEM);
+                            output.accept(TRADER_WORKER_ITEM);
+                            output.accept(BEEKEEPER_WORKER_ITEM);
+                            output.accept(CHEF_WORKER_ITEM);
                         }).build());
     }
 }

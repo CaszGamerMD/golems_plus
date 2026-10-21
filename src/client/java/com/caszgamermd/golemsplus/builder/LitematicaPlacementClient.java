@@ -5,6 +5,9 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Collection;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -41,6 +44,39 @@ public final class LitematicaPlacementClient {
     private static Object invokeEither(Object source,String a,String b)throws Exception{
         try{return invoke(source,a);}catch(NoSuchMethodException ex){return invoke(source,b);}
     }
+    /** Client-side placement menu entries. Never send these objects across the network. */
+    public record PlacementChoice(Object placement,String name,BlockPos origin,boolean enabled){}
+
+    private static boolean optionalBoolean(Object object,String name,boolean fallback)
+            throws Exception {
+        try{return Boolean.TRUE.equals(invoke(object,name));}
+        catch(NoSuchMethodException ignored){return fallback;}
+    }
+    private static Object optional(Object object,String name)throws Exception{
+        try{return invoke(object,name);}
+        catch(NoSuchMethodException ignored){return null;}
+    }
+
+    /** Returns every placement managed by Litematica, not only the selected one. */
+    public static List<PlacementChoice> placements()throws Exception{
+        Object mgr=manager();
+        Object all=optional(mgr,"getAllSchematicPlacements");
+        if(all==null)all=optional(mgr,"getAllPlacements");
+        if(!(all instanceof Collection<?> collection))
+            throw new IllegalArgumentException(
+                    "This Litematica version cannot list placements");
+        List<PlacementChoice> found=new ArrayList<>();
+        for(Object p:collection){
+            if(p==null)continue;
+            Object origin=invokeEither(p,"getPosition","getOrigin");
+            if(!(origin instanceof BlockPos pos))continue;
+            Object label=optional(p,"getName");
+            String name=label==null?"Unnamed placement":label.toString();
+            found.add(new PlacementChoice(p,name,pos,
+                    optionalBoolean(p,"isEnabled",true)));
+        }
+        return List.copyOf(found);
+    }
     private static Object manager()throws Exception{
         for(String name:new String[]{
                 "fi.dy.masa.litematica.data.DataManager",
@@ -73,10 +109,22 @@ public final class LitematicaPlacementClient {
     public static void sendSelected(BlockPos selectedTable)throws Exception{
         Object placement=invoke(manager(),"getSelectedSchematicPlacement");
         if(placement==null)throw new IllegalArgumentException(
-                "Select a loaded placement in Litematica's Schematic Placements list");
-        if(!Boolean.TRUE.equals(invoke(placement,"isEnabled"))
-                ||!Boolean.TRUE.equals(invoke(placement,"isSchematicLoaded")))
-            throw new IllegalArgumentException("Selected Litematica placement must be enabled/loaded");
+                "Choose a placement from the Builder Planner's placement list");
+        sendPlacementObject(placement,selectedTable);
+    }
+    public static void sendPlacement(PlacementChoice choice,BlockPos table)throws Exception{
+        if(choice==null)throw new IllegalArgumentException("Choose a placement");
+        sendPlacementObject(choice.placement(),table);
+    }
+    private static void sendPlacementObject(Object placement,BlockPos selectedTable)
+            throws Exception{
+        if(!optionalBoolean(placement,"isEnabled",true))
+            throw new IllegalArgumentException("Enable this placement in Litematica first");
+        // Litematica versions expose getSchematic(), but not isSchematicLoaded().
+        // A null loaded schematic means the placement cannot be imported safely.
+        Object schematic=optional(placement,"getSchematic");
+        if(schematic==null)
+            throw new IllegalArgumentException("Load this schematic in Litematica first");
         if(Boolean.TRUE.equals(invoke(placement,"isRegionPlacementModified")))
             throw new IllegalArgumentException(
                     "Modified subregion positions/rotations are not yet supported");

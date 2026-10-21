@@ -19,12 +19,24 @@ newly placed Chef's Kitchen Station. Opening the menu (and spawning a
 Chef once claimed) verifies the workstation code is running. A visible
 block alone does not prove both sides are using the same JAR.
 
+## Crafting and placing Golems
+
+Craft a Worker Golem with `3 iron ingots + 1 carved pumpkin + 1 profession item`
+(Crafting Table for Builder, Emerald for Trader, Honeycomb for Beekeeper,
+Smoker for Chef). Right-click a floor or other block to place its physical
+worker in an empty two-block-high space within 10 blocks of a matching job block.
+The nearest eligible workstation is claimed/assigned to you if unowned.
+Workers idle-patrol within 10 blocks until given work. They require a real
+crafted item and never appear free when a job is created. Increase crew capacity
+using the station's CREW controls, then physically deploy workers (up to four,
+or one Chef). The Fishing job block still has no physical worker.
+
 ## Builder's Planning Table
 
 1. Empty-hand right-click the placed Table. The first click claims an
    unowned Table; the next click opens its inventory and control panel.
-2. In **BUILD**, click **Import Litematica placement** to use the placement
-   selected in the client's Litematica interface. The upload always targets
+2. In **BUILD**, click **Choose Litematica placement**, then select the
+   named placement from the paginated list of loaded client placements. The upload always targets
    **this opened Table** instead of a nearest-block search. Keep the
    Litematica schematic enabled, unmodified and file-backed.
 3. Click **Preview** to print the material requirements and unsupported
@@ -92,7 +104,7 @@ See [Beekeeper guide](BEEKEEPER.md).
 
 ## Chef's Kitchen Station
 
-Place/claim a **Chef's Kitchen Station** to create a small Chef Golem in
+Place/claim a **Chef's Kitchen Station** and deploy a crafted Chef Golem nearby in
 the new white uniform with a 3D chef's hat and apron. The chef remains near
 the job block as a preview of the future cooking worker. **It does not
 take ingredients, cook recipes or create food yet.** A saved worker identity
