@@ -28,7 +28,7 @@ public final class BuilderWarehousePort {
         catch(ClassNotFoundException ex){return false;}
     }
     @SuppressWarnings("unchecked")
-    private static Reply snapshot(Object raw)throws Exception{
+    private static Reply snapshot(Object raw)throws ReflectiveOperationException{
         Class<?> cls=raw.getClass();
         return new Reply((String)cls.getMethod("state").invoke(raw),
                 (BlockPos)cls.getMethod("ptp").invoke(raw),
