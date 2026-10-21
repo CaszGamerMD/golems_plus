@@ -99,14 +99,7 @@ public final class TraderWorkService {
                 return; // no duplicate workers during unloads
             }
         }
-        if(station.activeOrder()!=null&&crew.size()<station.crewTarget()){
-            BlockPos home=station.getBlockPos();
-            TraderGolem created=new TraderGolem(WorksiteContent.TRADER_GOLEM,level);
-            created.assign(home,station.owner());
-            created.setPos(home.getX()+.5,home.getY()+1,home.getZ()+.5);
-            if(level.addFreshEntity(created)&&station.registerTraderWorker(created.getUUID()))
-                crew.add(created);
-        }
+        // Orders dispatch only to crafted/registered golems, never free spawns.
         if(station.activeOrder()==null
                 ||station.phase()==WorkerPhase.PAUSED
                 ||station.phase()==WorkerPhase.COMPLETE)return;
