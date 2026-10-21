@@ -34,8 +34,8 @@ public final class WorkerGolemItem extends Item {
         BlockPos placed=context.getClickedPos().relative(context.getClickedFace());
         if(!level.getBlockState(placed).isAir()
                 ||!level.getBlockState(placed.above()).isAir()) {
-            player.displayClientMessage(Component.literal(
-                    "Need two blocks of empty space to place this Golem"),true);
+            player.sendSystemMessage(Component.literal(
+                    "Need two blocks of empty space to place this Golem"));
             return InteractionResult.FAIL;
         }
         WorkerStationBlockEntity station=null;
@@ -56,13 +56,13 @@ public final class WorkerGolemItem extends Item {
                 station=found;nearest=pos;best=distance;
             }
         if(station==null){
-            player.displayClientMessage(Component.literal(
-                    "Place near your matching job block (within 10 blocks)"),true);
+            player.sendSystemMessage(Component.literal(
+                    "Place near your matching job block (within 10 blocks)"));
             return InteractionResult.FAIL;
         }
         if(!station.claimIfUnowned(player.getUUID())){
-            player.displayClientMessage(Component.literal(
-                    "This job block belongs to another player"),true);
+            player.sendSystemMessage(Component.literal(
+                    "This job block belongs to another player"));
             return InteractionResult.FAIL;
         }
         int count=switch(profession) {
@@ -73,8 +73,8 @@ public final class WorkerGolemItem extends Item {
             case FISHING -> 4;
         };
         if(count>= (profession==WorkerSpecialty.COOKING?1:4)){
-            player.displayClientMessage(Component.literal(
-                    "This workstation already has its maximum crew"),true);
+            player.sendSystemMessage(Component.literal(
+                    "This workstation already has its maximum crew"));
             return InteractionResult.FAIL;
         }
         PathfinderMob worker=switch(profession) {
@@ -91,19 +91,19 @@ public final class WorkerGolemItem extends Item {
         else if(worker instanceof ChefGolem g)g.assign(nearest,player.getUUID());
         worker.setPos(placed.getX()+.5,placed.getY(),placed.getZ()+.5);
         if(!level.addFreshEntity(worker)){
-            player.displayClientMessage(Component.literal("Cannot place Golem here"),true);
+            player.sendSystemMessage(Component.literal("Cannot place Golem here"));
             return InteractionResult.FAIL;
         }
         if(!station.registerCraftedWorker(profession,worker.getUUID())){
             worker.discard();
-            player.displayClientMessage(Component.literal(
-                    "Could not register Golem with this workstation"),true);
+            player.sendSystemMessage(Component.literal(
+                    "Could not register Golem with this workstation"));
             return InteractionResult.FAIL;
         }
         if(!player.getAbilities().instabuild)
             context.getItemInHand().shrink(1);
-        player.displayClientMessage(Component.literal(
-                profession.name()+" Golem assigned to "+nearest.toShortString()),true);
+        player.sendSystemMessage(Component.literal(
+                profession.name()+" Golem assigned to "+nearest.toShortString()));
         return InteractionResult.SUCCESS;
     }
 }
