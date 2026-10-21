@@ -10,14 +10,11 @@ Place and claim a Trader Counter with empty-hand right click. Right click
 again for the inventory: first 27 slots hold payments, last 9 slots receive
 purchased goods. A crouch + empty-hand click pauses the worker.
 
-Stand near your owned counter to use:
-- `/golems trader village 32` — selects the player's position as village
-  center with a 32-block search radius.
-- `/golems trader order minecraft:emerald 16` — requests 16 emeralds.
-- `/golems trader budget minecraft:wheat 320` — authorizes spending up to
-  320 wheat on this order; repeat for other payment item types.
-- `/golems trader status` — shows progress, wait condition and output.
-- `/golems trader cancel` — cancels order; current courier trip returns.
+Open the Counter's inventory. Use **ORDER** to set the requested item and
+quantity, **BUDGET** to limit payments and **VILLAGE** to choose the village
+search center and radius. Pause, resume, cancel and crew-size settings are
+also buttons in the Counter. Server replies appear in chat; current status
+appears at the bottom of the panel. Slash commands are optional fallbacks.
 
 The visible worker navigates to a real nearby villager, withdraws actual
 payment items from the counter, uses one live merchant offer, and returns
@@ -40,13 +37,14 @@ on the server:
    Warehouse Scanner to a Rack Computer by sneak-right-clicking it, then
    **right-click the Builder Table with that linked scanner**. The Table
    should confirm the warehouse coordinates; no scanner settings are changed.
-3. Run `/golems_use_placement` client-side to send the file and its exact
+3. Open the Planner and click **Import Litematica placement** to send
+   the file and its exact
    origin, mirror and rotation; do not move the hologram after importing.
-4. Run `/golembuilder preview` then put actual resources in the Table.
-5. Optionally run `/golembuilder crew 4` for four simultaneous Builders.
+4. Click **Preview** and put actual resources in the Table.
+5. Optionally choose a crew of four with the Planner's **CREW +** button.
    Put scaffolding into the Table or stock it in the warehouse for taller
-   structures. Run `/golembuilder start` to begin shared construction.
-6. Use `/golembuilder status`, `pause`, `resume`, `cancel`.
+   structures. Click **Start build** to begin shared construction.
+6. Use the Planner's **Pause**, **Resume** and **Cancel job** buttons.
 
 The Builder refuses occupied targets, unsupported or protected blocks,
 unloaded chunks and missing materials; it never mines or creates free items.
@@ -72,7 +70,7 @@ end-to-end game behavior.
 
 ## Multiple Trader Golems
 
-Near a claimed Trader Counter, run `/golems trader crew 4` to assign up to
+Open a claimed Trader Counter and use its **CREW +** control to assign up to
 four workers. Orders, stock, and spending budgets are shared. Each courier
 carries its own genuine villager-trade payments; already-dispatched payments
 and incoming results count against the collective order before any additional

@@ -5,6 +5,28 @@ Minecraft **26.2 Fabric**, Java **25** — Caszual Suite
 Specialist golems with real workstations and finite inventories. Development
 is directly on `main`.
 
+## Job-block settings (new)
+
+**No slash commands needed for normal setup.** Empty-hand right-click an
+owned **Builder's Planning Table** or **Trader Counter** to open its inventory
+and integrated control panel.
+
+- **Builder controls:** import the currently selected Litematica placement,
+  preview required materials, start/pause/resume/cancel the build, set the
+  1–4 Golem crew size, rotate a not-yet-imported plan and check the selected
+  warehouse connection. The existing warehouse-scanner right-click remains
+  the preferred way to link a warehouse.
+- **Trader controls:** set desired items and quantity, authorize payment
+  budgets, enter village location/radius, pause/resume/cancel orders and
+  adjust the 1–4 Golem crew size.
+
+All changes are validated on the server for the exact open, player-owned
+workstation. Existing commands remain usable as fallback shortcuts. Other
+specialties retain prototype interfaces until their Golem AI is ready.
+
+Read [workstation settings and GUI instructions](docs/WORKSTATION_SETTINGS.md)
+for details.
+
 ## Current development status
 
 **Trader Golem — in-game implementation (experimental):** A persistent,
@@ -16,21 +38,20 @@ offers change, or storage fills. The worker currently uses an Iron Golem
 model; the inventory and commands are usable but need live multiplayer
 testing and a dedicated model.
 
-Configure while near a claimed Trader Counter:
-`/golems trader village 32`, `/golems trader order minecraft:emerald 16`,
-`/golems trader budget minecraft:wheat 320`,
-`/golems trader status`, `/golems trader cancel`.
+Configure from the **Trader Counter's Order, Budget and Village pages**.
+The old `/golems trader` commands are still available for compatibility.
 
 **Builder Golem — placed Litematica construction (experimental):**
 Select a placed, enabled, file-backed schematic in the Litematica client
-and use `/golems_use_placement`. Golems Plus sends a bounded snapshot
+and click **Import Litematica placement** inside the Planning Table.
+Golems Plus sends a bounded snapshot
 with the placement's origin, rotation and mirror to the server and saves it
-at your claimed Builder's Planning Table. Run `/golembuilder preview` and
-`/golembuilder start` to explicitly authorize the Builder to place blocks.
+at your claimed Builder's Planning Table. Click **Preview**, then **Start
+build** to explicitly authorize the Builder to place blocks.
 A real Builder Golem moves to target positions, uses materials from the
 table's 27 input slots, saves a work cursor across reloads, skips existing
-matching blocks, and refuses to destroy occupied locations. Controls:
-`/golembuilder status`, `pause`, `resume`, `cancel`.
+matching blocks, and refuses to destroy occupied locations. Status,
+pause/resume/cancel and crew size are managed from the Planner's GUI.
 
 Litematica is an **optional client-only integration**; it is not needed
 on dedicated servers. The bridge currently requires all subregions enabled
