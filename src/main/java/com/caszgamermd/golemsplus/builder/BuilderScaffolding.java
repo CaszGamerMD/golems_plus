@@ -134,17 +134,19 @@ public final class BuilderScaffolding {
             if(!level.getBlockState(pos).is(Blocks.SCAFFOLDING)){
                 table.untrackScaffold(worker.getUUID(),pos);continue;
             }
-            // Reclaim from the top of the column; keep inventory room first.
-            if(!BuilderSupplyInventory.storeScaffolding(table,new ItemStack(Items.SCAFFOLDING)))
-                break;
-            if(level.setBlock(pos,Blocks.AIR.defaultBlockState(),3))
-                table.untrackScaffold(worker.getUUID(),pos);
-            else {
-                // World declined removal. Refund would otherwise duplicate.
-                var receipt=BuilderSupplyInventory.consume(table,Items.SCAFFOLDING);
-                if(receipt!=null)table.setItem(receipt.slot(),receipt.previous());
-                break;
+            // Check storage before removal. The real block is removed once,
+            // then the exact scaffold item is returned to the Planner.
+            if(!BuilderSupplyInventory.canStoreScaffolding(table))break;
+            if(!level.setBlock(pos,Blocks.AIR.defaultBlockState(),3))break;
+            if(!BuilderSupplyInventory.storeScaffolding(table,
+                    new ItemStack(Items.SCAFFOLDING))){
+                // Unexpected insertion failure: return physical item as a
+                // drop instead of losing it or synthesizing a later refund.
+                net.minecraft.world.Containers.dropItemStack(level,
+                        pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5,
+                        new ItemStack(Items.SCAFFOLDING));
             }
+            table.untrackScaffold(worker.getUUID(),pos);
         }
     }
 }
