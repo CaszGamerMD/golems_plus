@@ -122,7 +122,7 @@ public final class BuilderUploadNetworking {
                     p.origin().getZ(),rotation,mirror);
             var plan=BuilderConstructionPlan.create(schematic,site);
             // The uploaded snapshot is now immutable and remains server-side;
-            // only an explicit start command may begin placing blocks.
+            // only explicit confirmation from the Planning Table can begin work.
             if(!table.setPlacedBuilderPlan(uuid,saved.getFileName().toString(),
                     p.name(),p.origin(),p.rotation(),p.mirror(),
                     plan.steps().size(),plan.unsupported().size())){
