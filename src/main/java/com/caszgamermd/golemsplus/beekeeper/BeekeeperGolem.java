@@ -7,6 +7,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Containers;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -73,6 +74,10 @@ public final class BeekeeperGolem extends PathfinderMob {
         if(!tool.isEmpty())Containers.dropItemStack(level,getX(),getY(),getZ(),tool);
         if(!harvest.isEmpty())Containers.dropItemStack(level,getX(),getY(),getZ(),harvest);
         tool=harvest=ItemStack.EMPTY;
+    }
+    @Override public void die(DamageSource damage){
+        if(level() instanceof ServerLevel server)dropCargo(server);
+        super.die(damage);
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
         super.addAdditionalSaveData(out);
