@@ -33,6 +33,12 @@ public final class BuilderCommands {
                 .then(Commands.literal("pause").executes(ctx->pause(ctx.getSource().getPlayerOrException())))
                 .then(Commands.literal("resume").executes(ctx->resume(ctx.getSource().getPlayerOrException())))
                 .then(Commands.literal("cancel").executes(ctx->cancel(ctx.getSource().getPlayerOrException())))
+                .then(Commands.literal("crew")
+                    .then(Commands.argument("count",
+                            com.mojang.brigadier.arguments.IntegerArgumentType.integer(1,4))
+                        .executes(ctx->setCrew(ctx.getSource().getPlayerOrException(),
+                                com.mojang.brigadier.arguments.IntegerArgumentType
+                                        .getInteger(ctx,"count")))))
                 .then(Commands.literal("warehouse").executes(ctx->warehouse(ctx.getSource().getPlayerOrException())))
                 .then(Commands.literal("rotate")
                     .then(Commands.argument("degrees",com.mojang.brigadier.arguments.IntegerArgumentType.integer(0,270))
@@ -68,7 +74,15 @@ public final class BuilderCommands {
                 " | "+table.builderCursor()+"/"+table.builderBlocks()+" steps"+
                 " | "+table.builderUnresolved()+" unresolved | origin "+table.builderOrigin()+
                 " | rotation "+table.builderRotation()+" | warehouse "+warehouse+
+                " | Crew "+table.builderWorkerIds().size()+"/"+table.crewTarget()+
                 " | "+table.phase()+" | "+table.problem()));
+        return 1;
+    }
+    private static int setCrew(ServerPlayer player,int count){
+        var table=nearest(player);
+        if(table==null||!table.setCrewTarget(player.getUUID(),count))return 0;
+        player.sendSystemMessage(Component.literal("[Builder] Crew target set to "+
+                count+" workers. Existing workers remain linked, including those carrying cargo."));
         return 1;
     }
     private static int preview(ServerPlayer player){
