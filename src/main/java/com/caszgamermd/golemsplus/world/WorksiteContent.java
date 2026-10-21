@@ -17,6 +17,7 @@ import com.caszgamermd.golemsplus.beekeeper.BeeToolboxBlock;
 import com.caszgamermd.golemsplus.beekeeper.BeeToolboxBlockEntity;
 import com.caszgamermd.golemsplus.beekeeper.BeekeeperGolem;
 import com.caszgamermd.golemsplus.cooking.ChefGolem;
+import com.caszgamermd.golemsplus.fishing.FisherGolem;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -41,7 +42,8 @@ public final class WorksiteContent {
     public static EntityType<BuilderGolem> BUILDER_GOLEM;
     public static EntityType<BeekeeperGolem> BEEKEEPER_GOLEM;
     public static EntityType<ChefGolem> CHEF_GOLEM;
-    public static Item BUILDER_WORKER_ITEM, TRADER_WORKER_ITEM, BEEKEEPER_WORKER_ITEM, CHEF_WORKER_ITEM;
+    public static EntityType<FisherGolem> FISHER_GOLEM;
+    public static Item BUILDER_WORKER_ITEM, TRADER_WORKER_ITEM, BEEKEEPER_WORKER_ITEM, CHEF_WORKER_ITEM, FISHER_WORKER_ITEM;
     private static final ResourceKey<CreativeModeTab> TAB = ResourceKey.create(
             BuiltInRegistries.CREATIVE_MODE_TAB.key(), GolemsPlus.id("main"));
 
@@ -127,6 +129,13 @@ public final class WorksiteContent {
                 EntityType.Builder.<ChefGolem>of(ChefGolem::new,MobCategory.MISC)
                         .sized(.76f,1.85f).build(chefKey));
         FabricDefaultAttributeRegistry.register(CHEF_GOLEM,ChefGolem.attributes());
+        ResourceKey<EntityType<?>> fisherKey=ResourceKey.create(Registries.ENTITY_TYPE,
+                GolemsPlus.id("fisher_golem"));
+        FISHER_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,fisherKey,
+                EntityType.Builder.<FisherGolem>of(FisherGolem::new,MobCategory.MISC)
+                        .sized(.70f,1.60f).build(fisherKey));
+        FabricDefaultAttributeRegistry.register(FISHER_GOLEM,FisherGolem.attributes());
+        FISHER_WORKER_ITEM=golemItem("fisher_worker",WorkerSpecialty.FISHING);
         BUILDER_WORKER_ITEM=golemItem("builder_worker",WorkerSpecialty.BUILDER);
         TRADER_WORKER_ITEM=golemItem("trader_worker",WorkerSpecialty.TRADER);
         BEEKEEPER_WORKER_ITEM=golemItem("beekeeper_worker",WorkerSpecialty.BEEKEEPER);
@@ -146,6 +155,7 @@ public final class WorksiteContent {
                             output.accept(TRADER_WORKER_ITEM);
                             output.accept(BEEKEEPER_WORKER_ITEM);
                             output.accept(CHEF_WORKER_ITEM);
+                            output.accept(FISHER_WORKER_ITEM);
                         }).build());
     }
 }
