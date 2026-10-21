@@ -43,7 +43,9 @@ on the server:
 3. Run `/golems_use_placement` client-side to send the file and its exact
    origin, mirror and rotation; do not move the hologram after importing.
 4. Run `/golembuilder preview` then put actual resources in the Table.
-5. Run `/golembuilder start` to start the physical Builder worker.
+5. Optionally run `/golembuilder crew 4` for four simultaneous Builders.
+   Put scaffolding into the Table or stock it in the warehouse for taller
+   structures. Run `/golembuilder start` to begin shared construction.
 6. Use `/golembuilder status`, `pause`, `resume`, `cancel`.
 
 The Builder refuses occupied targets, unsupported or protected blocks,
@@ -54,7 +56,9 @@ an empty OUTPUT PTP with pallet, a Shulker Station, empty packing boxes,
 connected racks and working Storage Golems. The Builder collects shulkers
 physically, saves them in its Planning Table and consumes their contents.
 Missing items and empty shulkers trigger a status/chat notification.
-Empty shulker shells should currently be returned by the player.
+Empty shulker shells remain at the Planning Table and move into its nine
+output slots when empty; the player may collect or return them manually.
+Builders reclaim tracked temporary scaffolding as soon as safe and reuse it.
 
 The previous `/golembuilder inspect <name>.litematic` still works as a
 read-only materials analysis; a confirmed *placed* import is required for
@@ -65,3 +69,11 @@ the new construction mode.
 Use a backed-up world, especially around modded villagers and unloads.
 An automated passing CI build verifies compilation and unit tests, not
 end-to-end game behavior.
+
+## Multiple Trader Golems
+
+Near a claimed Trader Counter, run `/golems trader crew 4` to assign up to
+four workers. Orders, stock, and spending budgets are shared. Each courier
+carries its own genuine villager-trade payments; already-dispatched payments
+and incoming results count against the collective order before any additional
+trade is sent. `/golems trader status` displays the live crew size.

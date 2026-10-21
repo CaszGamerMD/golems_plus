@@ -34,7 +34,8 @@ The dedicated server does not need Litematica or MaLiLib.
    Golem (temporary Iron Golem model) will move toward each planned block
    and place one at a time. The progress cursor is saved.
 7. Use **`/golembuilder status`**, **`pause`**, **`resume`**, and **`cancel`**
-   to control the job.
+   to control the job. Run **`/golembuilder crew 4`** for up to four
+   linked builders working separate blocks of the same schematic.
 
 The previous server-side command `/golembuilder inspect house.litematic`
 still works for planning, but a Builder can only **start** when a placed
@@ -46,6 +47,9 @@ Litematica snapshot has been imported and confirmed.
   mismatching blocks block the job. No automatic clearing.
 - **No free resources.** Each newly placed block uses an actual item from the
   Builder Table before changing the world. A failed change refunds the item.
+  High builds additionally require real scaffolding blocks, which are laid
+  temporarily and reclaimed for reuse without mining drops. The Builder
+  only removes scaffolding it placed and recorded itself.
 - **No forced chunkloading or teleporting.** The Builder waits if targets,
   the worker, or table are unloaded. The owner must be online nearby in the
   dimension. Inaccessible locations block physical navigation.
@@ -73,6 +77,9 @@ Litematica snapshot has been imported and confirmed.
   shulker boxes. The Builder physically retrieves those shulker boxes, stores
   them intact in the Planning Table, and builds using their real contents.
   PTP requests, Builder order metadata and carried boxes are persisted.
+  When a supply shulker becomes empty, the intact empty container moves
+  into the Planner's nine output slots (or stays in input if full).
+  It remains at the Planning Table for the player to collect.
 - **Missing-supply notices** appear in chat for the online owner and in the
   Planning Table's status, including rack shortages and missing empty shulkers.
   No material is synthesized to make an order succeed.
@@ -87,3 +94,21 @@ Litematica snapshot has been imported and confirmed.
 - A passing build/test suite does not guarantee correct in-game Litematica
   API compatibility, multiplayer access-control behavior, rendering or
   AI pathing. These require in-world playtests.
+
+## Work crews
+
+Run `/golembuilder crew 1` through `/golembuilder crew 4` near your
+claimed Builder Table. Each linked Builder claims a different blueprint
+block; the durable progress checkpoint advances only when preceding blocks
+are complete. The same warehouse request uses one supply courier per trip,
+so multiple Builders do not each collect the same shulker.
+
+For Trader Counters, `/golems trader crew 1` to `crew 4` sets the count of
+participating Trader Golems. Their order quantity and payment budgets account
+for already dispatched transactions. Reducing crew size stops assigning
+new tasks to the extra golems after their current jobs are done.
+
+Temporary scaffolding for elevated blocks requires real
+`minecraft:scaffolding` from the table or warehouse. Builders track every
+temporary block they add, never remove player-placed scaffolding, and reclaim
+scaffolds when they can safely descend and store the blocks.
