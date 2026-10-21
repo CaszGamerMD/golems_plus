@@ -81,6 +81,14 @@ public final class BuilderBuildService {
             worker.getNavigation().stop();
             worker.setNoGravity(false);return;
         }
+        int membership=table.builderWorkerIds().indexOf(worker.getUUID());
+        if(membership>=table.crewTarget()&&table.claimedStep(worker.getUUID())<0
+                &&!worker.hasSupplyBox()){
+            worker.setNoGravity(false);
+            BuilderScaffolding.retrieve(level,worker,table,false);
+            worker.getNavigation().moveTo(home.getX()+.5,home.getY()+1,home.getZ()+.5,.8);
+            return;
+        }
         ServerPlayer owner=level.getServer().getPlayerList().getPlayer(worker.owner());
         if(owner==null||owner.level()!=level){
             table.setProblem("Owner must be online in the same dimension");
@@ -130,6 +138,13 @@ public final class BuilderBuildService {
             }
             double horizontal=Math.pow(worker.getX()-(pos.getX()+.5),2)
                     +Math.pow(worker.getZ()-(pos.getZ()+.5),2);
+            if(pos.getY()-worker.getY()>2.5 && horizontal>=36){
+                // Reach the base of the tower on foot before laying any
+                // temporary blocks; never construct remotely.
+                worker.getNavigation().moveTo(pos.getX()+.5,
+                        worker.blockPosition().getY(),pos.getZ()+.5,.85);
+                return;
+            }
             if(pos.getY()-worker.getY()>2.5 && horizontal<36){
                 var climbing=BuilderScaffolding.reach(level,worker,table,owner,pos,
                         plan.steps());
