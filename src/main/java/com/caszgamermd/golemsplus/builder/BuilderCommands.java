@@ -28,6 +28,11 @@ public final class BuilderCommands {
                         .executes(ctx->inspect(ctx.getSource().getPlayerOrException(),
                                 StringArgumentType.getString(ctx,"filename")))))
                 .then(Commands.literal("status").executes(ctx->status(ctx.getSource().getPlayerOrException())))
+                .then(Commands.literal("preview").executes(ctx->preview(ctx.getSource().getPlayerOrException())))
+                .then(Commands.literal("start").executes(ctx->start(ctx.getSource().getPlayerOrException())))
+                .then(Commands.literal("pause").executes(ctx->pause(ctx.getSource().getPlayerOrException())))
+                .then(Commands.literal("resume").executes(ctx->resume(ctx.getSource().getPlayerOrException())))
+                .then(Commands.literal("cancel").executes(ctx->cancel(ctx.getSource().getPlayerOrException())))
                 .then(Commands.literal("warehouse").executes(ctx->warehouse(ctx.getSource().getPlayerOrException())))
                 .then(Commands.literal("rotate")
                     .then(Commands.argument("degrees",com.mojang.brigadier.arguments.IntegerArgumentType.integer(0,270))
@@ -58,9 +63,79 @@ public final class BuilderCommands {
         String warehouse=table.warehouse()==null?"none":
                 table.warehouse().dimension()+" "+table.warehouse().x()+","+
                 table.warehouse().y()+","+table.warehouse().z();
-        player.sendSystemMessage(Component.literal("Builder plan: "+table.builderFile()+
-                " | "+table.builderBlocks()+" blocks | "+table.builderUnresolved()+
-                " unresolved | rotation "+table.builderRotation()+" | warehouse "+warehouse));
+        player.sendSystemMessage(Component.literal("Builder plan: "+
+                (table.hasPlacedSchematic()?table.placedSchematicName():table.builderFile())+
+                " | "+table.builderCursor()+"/"+table.builderBlocks()+" steps"+
+                " | "+table.builderUnresolved()+" unresolved | origin "+table.builderOrigin()+
+                " | rotation "+table.builderRotation()+" | warehouse "+warehouse+
+                " | "+table.phase()+" | "+table.problem()));
+        return 1;
+    }
+    private static int preview(ServerPlayer player){
+        var table=nearest(player);
+        if(table==null||!table.hasPlacedSchematic()){
+            player.sendSystemMessage(Component.literal(
+                    "First select a Litematica placement and run /golems_use_placement (client command)."));
+            return 0;
+        }
+        try{
+            Path folder=FabricLoader.getInstance().getConfigDir()
+                    .resolve("golems_plus").resolve("schematics");
+            var schematic=LitematicFileReader.read(folder.resolve(table.builderFile()));
+            var origin=table.builderOrigin();
+            var site=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                    BuildSite.Rotation.values()[table.builderRotation()/90],
+                    BuildSite.Mirror.values()[table.builderMirror()]);
+            var plan=BuilderConstructionPlan.create(schematic,site);
+            player.sendSystemMessage(Component.literal("[Builder preview] "+
+                    plan.steps().size()+" blocks at "+origin+
+                    "; unsupported types: "+plan.unsupported().size()));
+            plan.required().entrySet().stream().sorted(Map.Entry.comparingByKey())
+                    .limit(20).forEach(e->player.sendSystemMessage(Component.literal(
+                            "  "+e.getValue()+" × "+e.getKey())));
+            if(!plan.unsupported().isEmpty())
+                player.sendSystemMessage(Component.literal(
+                        "Cannot build until unsupported states are resolved: "+
+                        plan.unsupported().stream().limit(8).toList()));
+            else
+                player.sendSystemMessage(Component.literal(
+                        "Ready. Supply the Builder Table input slots, then /golembuilder start"));
+            return 1;
+        }catch(Exception ex){
+            player.sendSystemMessage(Component.literal("Preview failed: "+ex.getMessage()));
+            return 0;
+        }
+    }
+    private static int start(ServerPlayer player){
+        var table=nearest(player);
+        if(table==null||!table.startPlacedBuilder(player.getUUID())){
+            player.sendSystemMessage(Component.literal(
+                    "Cannot start: select a placed schematic, ensure no unsupported states or active order."));
+            return 0;
+        }
+        player.sendSystemMessage(Component.literal(
+                "Builder started at exact imported Litematica location. Only air is filled, using table stock."));
+        return 1;
+    }
+    private static int pause(ServerPlayer player){
+        var table=nearest(player);
+        if(table==null||table.activeOrder()==null)return 0;
+        table.setPhase(com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED);
+        player.sendSystemMessage(Component.literal("Builder paused."));
+        return 1;
+    }
+    private static int resume(ServerPlayer player){
+        var table=nearest(player);
+        if(table==null||table.activeOrder()==null)return 0;
+        table.setPhase(com.caszgamermd.golemsplus.worker.WorkerPhase.WORKING);
+        player.sendSystemMessage(Component.literal("Builder resumed from "+table.builderCursor()+"."));
+        return 1;
+    }
+    private static int cancel(ServerPlayer player){
+        var table=nearest(player);
+        if(table==null||!table.cancelBuilder(player.getUUID()))return 0;
+        player.sendSystemMessage(Component.literal(
+                "Builder job stopped. Already placed blocks remain; stored schematic is unchanged."));
         return 1;
     }
     private static int rotate(ServerPlayer player,int degrees) {

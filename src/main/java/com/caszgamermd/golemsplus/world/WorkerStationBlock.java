@@ -17,6 +17,7 @@ import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.Containers;
 import com.caszgamermd.golemsplus.trader.TraderWorkService;
+import com.caszgamermd.golemsplus.builder.BuilderBuildService;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -48,9 +49,10 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
             Level level,BlockState state,BlockEntityType<T> type){
         if(level.isClientSide())return null;
         return (l,p,s,be)->{
-            if(be instanceof WorkerStationBlockEntity station
-                    &&l instanceof ServerLevel server &&station.isTrader())
-                TraderWorkService.tick(server,station);
+            if(be instanceof WorkerStationBlockEntity station && l instanceof ServerLevel server){
+                if(station.isTrader())TraderWorkService.tick(server,station);
+                else if(station.isBuilder())BuilderBuildService.dispatch(server,station);
+            }
         };
     }
     @Override protected InteractionResult useItemOn(ItemStack held,BlockState state,Level level,

@@ -11,6 +11,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import com.caszgamermd.golemsplus.trader.TraderGolem;
+import com.caszgamermd.golemsplus.builder.BuilderGolem;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -30,6 +31,7 @@ public final class WorksiteContent {
     public static BlockEntityType<WorkerStationBlockEntity> STATION_ENTITY;
     public static MenuType<WorkerStationMenu> STATION_MENU;
     public static EntityType<TraderGolem> TRADER_GOLEM;
+    public static EntityType<BuilderGolem> BUILDER_GOLEM;
     private static final ResourceKey<CreativeModeTab> TAB = ResourceKey.create(
             BuiltInRegistries.CREATIVE_MODE_TAB.key(), GolemsPlus.id("main"));
 
@@ -71,6 +73,13 @@ public final class WorksiteContent {
                 EntityType.Builder.<TraderGolem>of(TraderGolem::new,MobCategory.MISC)
                         .sized(1.4f,2.7f).build(traderKey));
         FabricDefaultAttributeRegistry.register(TRADER_GOLEM,
+                net.minecraft.world.entity.animal.golem.IronGolem.createAttributes());
+        ResourceKey<EntityType<?>> builderKey=ResourceKey.create(Registries.ENTITY_TYPE,
+                GolemsPlus.id("builder_golem"));
+        BUILDER_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,builderKey,
+                EntityType.Builder.<BuilderGolem>of(BuilderGolem::new,MobCategory.MISC)
+                        .sized(1.4f,2.7f).build(builderKey));
+        FabricDefaultAttributeRegistry.register(BUILDER_GOLEM,
                 net.minecraft.world.entity.animal.golem.IronGolem.createAttributes());
         Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, TAB,
                 FabricCreativeModeTab.builder()

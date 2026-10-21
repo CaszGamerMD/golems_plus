@@ -11,5 +11,7 @@ public final class GolemsPlusClient implements ClientModInitializer {
     @Override public void onInitializeClient() {
         MenuScreens.register(WorksiteContent.STATION_MENU,WorkerStationScreen::new);
         EntityRenderers.register(WorksiteContent.TRADER_GOLEM,IronGolemRenderer::new);
+        EntityRenderers.register(WorksiteContent.BUILDER_GOLEM,IronGolemRenderer::new);
+        com.caszgamermd.golemsplus.builder.LitematicaPlacementClient.register();
     }
 }

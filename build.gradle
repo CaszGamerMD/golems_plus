@@ -2,6 +2,15 @@ plugins {
     id 'net.fabricmc.fabric-loom' version "${loom_version}"
     id 'maven-publish'
 }
+loom {
+    splitEnvironmentSourceSets()
+    mods {
+        golems_plus {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
 group = project.maven_group
 version = project.mod_version
 base { archivesName = project.archives_base_name }

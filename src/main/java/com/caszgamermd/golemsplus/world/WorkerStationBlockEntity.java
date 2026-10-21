@@ -71,12 +71,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public int builderRotation() { return builderRotation; }
     public boolean setBuilderFile(UUID actor,String filename,int blocks,int unresolved) {
         if(!canConfigure(actor)||isTrader()||filename==null||filename.isBlank()
-                ||blocks<0||unresolved<0)return false;
+                ||blocks<0||unresolved<0||activeOrder!=null)return false;
         builderFile=filename;builderBlocks=blocks;builderUnresolved=unresolved;
         phase=WorkerPhase.PLANNING;sync();return true;
     }
     public boolean setBuilderRotation(UUID actor,int degrees) {
-        if(!canConfigure(actor)||isTrader()||(degrees!=0&&degrees!=90
+        if(!canConfigure(actor)||isTrader()||builderPlaced||(degrees!=0&&degrees!=90
                 &&degrees!=180&&degrees!=270))return false;
         builderRotation=degrees;sync();return true;
     }
