@@ -50,6 +50,13 @@ public final class BuilderWarehouseCoordinator {
                 player.sendSystemMessage(Component.literal("[Builder warehouse] "+missing));
             }
             table.setProblem(missing);
+        }else if(reply.state().equals("MISSING_EMPTY_SHULKERS")){
+            String message="Warehouse needs empty shulker boxes at its Shulker Station";
+            if(!message.equals(table.supplyNotice())){
+                table.setSupplyNotice(message);
+                player.sendSystemMessage(Component.literal("[Builder warehouse] "+message));
+            }
+            table.setProblem(message);
         }else if(!reply.state().equals("READY_FOR_PICKUP")
                 &&!reply.state().equals("DELIVERED")){
             table.setProblem("Warehouse: "+reply.state());
