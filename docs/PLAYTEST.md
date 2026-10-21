@@ -75,3 +75,21 @@ four workers. Orders, stock, and spending budgets are shared. Each courier
 carries its own genuine villager-trade payments; already-dispatched payments
 and incoming results count against the collective order before any additional
 trade is sent. `/golems trader status` displays the live crew size.
+
+## Beekeeper Golem
+
+Craft or use the creative tab to place a Beekeeper Job Block and a
+Beekeeper Toolbox. Place a separate output chest or barrel nearby.
+Claim/open the Job Block and press **Find TOOLBOX**, then **Find OUTPUT**.
+Put real shears and empty glass bottles in the Toolbox, and choose
+**Both**, **Comb**, or **Honey** collection mode. Set range and crew
+(1–4) from the Job Block. With accessible honey-level-five hives, the
+suited golems will travel to the toolbox, collect tools, harvest,
+place their materials in the output container and return shears.
+
+The golem has a small custom Storage-Golem-style body and protective
+beekeeper outfit. Harvested products persist in its inventory while
+moving. The current test build intentionally does not breed bees,
+craft more tools, force-load distant hives, or farm without a player
+online in the dimension. Use the job block status if tools or output
+are missing; further end-to-end game testing is needed.

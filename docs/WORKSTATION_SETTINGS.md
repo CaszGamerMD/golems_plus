@@ -53,6 +53,28 @@ for 1–4 assigned Traders. The Counter displays order progress, status,
 and current errors. The first 27 inventory slots hold payment supplies;
 the last nine receive purchased goods.
 
+## Beekeeper Job Block
+
+Place and claim the **Beekeeper Job Block**, then place a **Beekeeper
+Toolbox** and a separate chest or barrel (or another inventory container)
+within eight blocks of it. In the job block's GUI:
+
+- **Find TOOLBOX** links the nearest dedicated Beekeeper Toolbox.
+- **Find OUTPUT** links the nearest compatible output inventory; it will
+  not select the toolbox or another Golem workstation.
+- **Mode** cycles between **Both**, **Comb**, and **Honey**. In Both mode,
+  available shears/honeycomb are preferred before glass bottles.
+- **Range −/+** selects a 4–24 block horizontal search radius.
+- **Pause / Resume** and **CREW −/+** control 1–4 Beekeeper Golems.
+
+Place real shears and/or glass bottles in the toolbox. Workers walk to
+borrow tools, visit full hives, deliver honeycomb or honey bottles to
+the assigned output, and return used shears to the toolbox. No tools or
+harvests are conjured, and saved cargo stays on the entity. For safety
+the owner must be online in the same dimension while a worker harvests.
+
+See [Beekeeper guide](BEEKEEPER.md).
+
 ## Other job blocks
 
 Fishing, Cooking and Beekeeper workstations continue to use their
