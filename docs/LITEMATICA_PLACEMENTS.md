@@ -14,6 +14,12 @@ The dedicated server does not need Litematica or MaLiLib.
 3. Place and claim a **Builder's Planning Table** within eight blocks of you,
    and no farther than 256 horizontal blocks / 128 vertical blocks from
    the hologram's origin.
+   **To link a warehouse:** sneak-right-click a Caszual Additions Rack
+   Computer with your Warehouse Scanner to link it, then right-click
+   the Builder's Planning Table with that same linked scanner. Any scanner
+   mode works; it is not consumed or reconfigured. A valid scanner can
+   link the Table even if the computer is in an unloaded chunk. Use
+   `/golembuilder status` to confirm the saved warehouse.
 4. Type **`/golems_use_placement`** (client-side command). The selected file
    (up to 2 MiB compressed) and its **exact current origin, mirror and
    rotation** are transferred to the server in bounded chunks. This is an
@@ -50,9 +56,15 @@ Litematica snapshot has been imported and confirmed.
   from the Builder Table, world height checks. Use a backed-up test world.
 - Repositioning the hologram **after import** does not change the server's
   snapshot: re-run `/golems_use_placement` before starting.
+- A Caszual Additions Warehouse Scanner **right-clicking the Builder Table**
+  copies its saved Rack Computer link. The Table's owner can repeat the
+  action with a differently linked scanner to change warehouses. Unlinked,
+  wrong-dimension or invalid loaded-computer targets are rejected without
+  changing an existing link. A remote, unloaded computer is not force-loaded;
+  it must be checked again when material integration is implemented.
 - The warehouse-computer link remains metadata-only; the Builder currently
   uses the **Builder Table's actual input slots**, not automated warehouse
-  reservations/delivery.
+  reservations/delivery. A scanner link is not a warehouse permission grant.
 - A passing build/test suite does not guarantee correct in-game Litematica
   API compatibility, multiplayer access-control behavior, rendering or
   AI pathing. These require in-world playtests.

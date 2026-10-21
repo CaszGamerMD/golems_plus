@@ -39,8 +39,13 @@ Selected position/rotation are captured only when importing; moving the
 hologram later requires reimport. This is a development implementation and
 has not been playtested end-to-end in Minecraft yet.
 
-Warehouse linking via `/golembuilder warehouse` persists but automatic
-withdrawal and delivery are still not implemented. Some blocks (block
+To link a warehouse, **right-click the Builder's Planning Table with a
+Caszual Additions Warehouse Scanner already linked to a Rack Computer**.
+The Table copies and saves that warehouse assignment without changing the
+scanner. Right-click again with a differently linked scanner to change it.
+The older `/golembuilder warehouse` selection command remains available,
+but scanner interaction is now the preferred workflow. Automatic
+warehouse withdrawals and deliveries are still not implemented. Some blocks (block
 entities, fluids, doors, etc.) are intentionally refused until safe
 placement rules are added. The previous server-side `inspect` command
 remains available for read-only planning.

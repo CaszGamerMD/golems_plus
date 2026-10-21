@@ -36,7 +36,10 @@ With Litematica and Golems Plus installed on the client and Golems Plus
 on the server:
 
 1. Load a `.litematic`, position and select its placement in Litematica.
-2. Claim a nearby Builder's Planning Table.
+2. Claim a nearby Builder's Planning Table. Link a Caszual Additions
+   Warehouse Scanner to a Rack Computer by sneak-right-clicking it, then
+   **right-click the Builder Table with that linked scanner**. The Table
+   should confirm the warehouse coordinates; no scanner settings are changed.
 3. Run `/golems_use_placement` client-side to send the file and its exact
    origin, mirror and rotation; do not move the hologram after importing.
 4. Run `/golembuilder preview` then put actual resources in the Table.
