@@ -91,22 +91,37 @@ public final class TraderWorkService {
     public static void tick(ServerLevel level,WorkerStationBlockEntity station){
         if(level.getGameTime()%20!=0||!station.isTrader()
                 ||station.owner()==null)return;
-        UUID workerId=station.workerId();
-        TraderGolem worker=null;
-        if(workerId!=null){
-            if(level.getEntity(workerId) instanceof TraderGolem found)worker=found;
-            else return; // do NOT spawn duplicates when worker's chunk is unloaded
-        }else if(station.activeOrder()!=null) {
-            BlockPos p=station.getBlockPos();
-            worker=new TraderGolem(WorksiteContent.TRADER_GOLEM,level);
-            worker.assign(p,station.owner());
-            worker.setPos(p.getX()+.5,p.getY()+1,p.getZ()+.5);
-            if(!level.addFreshEntity(worker))return;
-            station.setWorkerId(worker.getUUID());
+        java.util.List<TraderGolem> crew=new java.util.ArrayList<>();
+        for(UUID id:station.traderWorkerIds()){
+            if(level.getEntity(id) instanceof TraderGolem trader)crew.add(trader);
+            else {
+                station.setProblem("Trader worker unloaded; load its chunk");
+                return; // no duplicate workers during unloads
+            }
         }
-        if(worker==null||!worker.idle()||station.activeOrder()==null
-                ||station.phase()==WorkerPhase.PAUSED||station.phase()==WorkerPhase.COMPLETE)
-            return;
+        if(station.activeOrder()!=null&&crew.size()<station.crewTarget()){
+            BlockPos home=station.getBlockPos();
+            TraderGolem created=new TraderGolem(WorksiteContent.TRADER_GOLEM,level);
+            created.assign(home,station.owner());
+            created.setPos(home.getX()+.5,home.getY()+1,home.getZ()+.5);
+            if(level.addFreshEntity(created)&&station.registerTraderWorker(created.getUUID()))
+                crew.add(created);
+        }
+        if(station.activeOrder()==null
+                ||station.phase()==WorkerPhase.PAUSED
+                ||station.phase()==WorkerPhase.COMPLETE)return;
+        TraderGolem worker=null;
+        int incoming=0;
+        java.util.Map<String,Integer> reserved=new java.util.HashMap<>();
+        for(TraderGolem trader:crew){
+            if(!trader.worksOn(station.activeOrder()))continue;
+            incoming+=trader.expectedGoods();
+            trader.reservedPayments().forEach(
+                    (key,amount)->reserved.merge(key,amount,Integer::sum));
+        }
+        if(station.deliveredCount()+incoming>=station.wantedCount())return;
+        for(TraderGolem trader:crew)if(trader.idle()){worker=trader;break;}
+        if(worker==null)return;
         if(station.village()==null){
             station.setProblem("Assign village with /golems trader village 32");
             station.setPhase(WorkerPhase.WAITING_FOR_LOCATION);return;
@@ -132,12 +147,16 @@ public final class TraderWorkService {
                 var offer=offers.get(i);
                 ItemStack result=offer.getResult(),a=offer.getCostA(),b=offer.getCostB();
                 if(offer.isOutOfStock()||result.isEmpty()||a.isEmpty()
+                        ||result.getCount()>station.wantedCount()
+                            -station.deliveredCount()-incoming
                         ||!itemId(result).equals(station.wantedItem())
                         ||!station.canReceive(result)||!canTakeBoth(station,a,b))
                     continue;
                 boolean funds=true;
                 for(var e:totalCost(a,b).entrySet())
-                    if(station.budgetRemaining(e.getKey())<e.getValue())funds=false;
+                    if(station.budgetRemaining(e.getKey())
+                            -reserved.getOrDefault(e.getKey(),0)<e.getValue())
+                        funds=false;
                 if(!funds)continue;
                 double dist=worker.distanceToSqr(villager);
                 if(dist<bestDistance){
@@ -152,7 +171,8 @@ public final class TraderWorkService {
         // Escrow real inputs from the station BEFORE dispatch.
         ItemStack payA=station.takePayment(trade.getCostA());
         ItemStack payB=station.takePayment(trade.getCostB());
-        worker.begin(station.activeOrder(),best.getUUID(),bestOffer,payA,payB);
+        worker.begin(station.activeOrder(),best.getUUID(),bestOffer,payA,payB,
+                trade.getResult().getCount());
         station.setProblem("");
         station.setPhase(WorkerPhase.WORKING);
     }
