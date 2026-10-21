@@ -49,10 +49,7 @@ public final class ChefGolem extends PathfinderMob {
                 ||!station.isCooking()||!owner.equals(station.owner())){
             discard();return;
         }
-        if(distanceToSqr(home.getX()+.5,home.getY()+1,home.getZ()+.5)>9)
-            getNavigation().moveTo(home.getX()+.5,home.getY()+1,
-                    home.getZ()+.5,.75);
-        else getNavigation().stop();
+        com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(server,this,home);
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
         super.addAdditionalSaveData(out);
