@@ -66,8 +66,11 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
         // this block interaction first so it cannot dispatch pallet crews,
         // toggle modes or change its saved link when used on our table.
         if(specialty != WorkerSpecialty.BUILDER
-                || !BuilderScannerLink.isWarehouseScanner(held))
-            return InteractionResult.PASS;
+                || !BuilderScannerLink.isWarehouseScanner(held)) {
+            // PASS skips useWithoutItem in modern Minecraft. Returning this
+            // sentinel forwards the click to the claim/inventory handler below.
+            return InteractionResult.TRY_WITH_EMPTY_HAND;
+        }
         if(level.isClientSide())return InteractionResult.SUCCESS;
         if(level instanceof ServerLevel server
                 &&level.getBlockEntity(pos) instanceof WorkerStationBlockEntity station)
