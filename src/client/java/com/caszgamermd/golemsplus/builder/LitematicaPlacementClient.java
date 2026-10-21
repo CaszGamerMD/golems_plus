@@ -68,6 +68,9 @@ public final class LitematicaPlacementClient {
         return null;
     }
     public static void sendSelected()throws Exception{
+        sendSelected(null);
+    }
+    public static void sendSelected(BlockPos selectedTable)throws Exception{
         Object placement=invoke(manager(),"getSelectedSchematicPlacement");
         if(placement==null)throw new IllegalArgumentException(
                 "Select a loaded placement in Litematica's Schematic Placements list");
@@ -105,7 +108,7 @@ public final class LitematicaPlacementClient {
             case "NONE"->0;case "FRONT_BACK"->1;case "LEFT_RIGHT"->2;
             default->throw new IllegalArgumentException("Unknown mirror "+mirror);
         };
-        BlockPos table=nearestTable();
+        BlockPos table=selectedTable==null?nearestTable():selectedTable;
         if(table==null)throw new IllegalArgumentException(
                 "Place and claim a Builder's Planning Table within eight blocks");
         if(!ClientPlayNetworking.canSend(BuilderUploadNetworking.Piece.TYPE))
