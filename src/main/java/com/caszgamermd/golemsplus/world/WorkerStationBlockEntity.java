@@ -60,6 +60,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.Map<UUID,java.util.List<BlockPos>> trackedScaffolds=new java.util.LinkedHashMap<>();
     private boolean builderPlaced;
     private BlockPos beeToolbox,beeOutput;
+    private UUID chefWorkerId;
     private int beeRadius=12,beeMode=0;
     private final java.util.List<UUID> beekeeperIds=new java.util.ArrayList<>();
     private UUID supplyRequest;
@@ -70,6 +71,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
 
     public WorkerStationBlockEntity(BlockPos pos, BlockState state) {
         super(WorksiteContent.STATION_ENTITY, pos, state);
+    }
+    public boolean isCooking(){
+        return getBlockState().getBlock() instanceof WorkerStationBlock station
+                &&station.specialty()==WorkerSpecialty.COOKING;
+    }
+    public UUID chefWorkerId(){return chefWorkerId;}
+    public void setChefWorkerId(UUID id){
+        if(isCooking()){chefWorkerId=id;sync();}
     }
     public boolean isBeekeeper(){
         return getBlockState().getBlock() instanceof WorkerStationBlock station
@@ -361,6 +370,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     @Override public Component getDisplayName() {
         if(isTrader())return Component.literal("Trader Counter");
         if(isBeekeeper())return Component.literal("Beekeeper Workstation");
+        if(isCooking())return Component.literal("Chef Workstation");
         if(isBuilder())return Component.literal("Builder's Planning Table");
         if(getBlockState().getBlock() instanceof WorkerStationBlock block)
             return Component.literal(block.specialty().name()+" Workstation");
@@ -461,6 +471,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(activeOrder!=null)out.putString("active_order",activeOrder.toString());
         if(workerId!=null)out.putString("trader_worker",workerId.toString());
         out.putString("phase",phase.name());out.putString("trade_wanted",wantedItem);
+        if(chefWorkerId!=null)out.putString("cooking_chef_worker",chefWorkerId.toString());
         if(beeToolbox!=null)out.store("beekeeper_toolbox",BlockPos.CODEC,beeToolbox);
         if(beeOutput!=null)out.store("beekeeper_output",BlockPos.CODEC,beeOutput);
         out.putInt("beekeeper_radius",beeRadius);
@@ -554,6 +565,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         try{phase=WorkerPhase.valueOf(in.getStringOr("phase","IDLE"));}
         catch(IllegalArgumentException ignored){phase=WorkerPhase.BLOCKED;}
+        chefWorkerId=uuid(in,"cooking_chef_worker");
         beeToolbox=in.read("beekeeper_toolbox",BlockPos.CODEC).orElse(null);
         beeOutput=in.read("beekeeper_output",BlockPos.CODEC).orElse(null);
         beeRadius=Math.clamp(in.getIntOr("beekeeper_radius",12),4,24);
