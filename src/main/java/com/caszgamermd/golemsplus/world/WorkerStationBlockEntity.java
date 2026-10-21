@@ -61,6 +61,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private boolean builderPlaced;
     private BlockPos beeToolbox,beeOutput;
     private UUID chefWorkerId;
+    private final java.util.List<UUID> fisherIds=new java.util.ArrayList<>();
     private int beeRadius=12,beeMode=0;
     private final java.util.List<UUID> beekeeperIds=new java.util.ArrayList<>();
     private UUID supplyRequest;
@@ -79,6 +80,18 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public UUID chefWorkerId(){return chefWorkerId;}
     public void setChefWorkerId(UUID id){
         if(isCooking()){chefWorkerId=id;sync();}
+    }
+    public boolean isFishing(){
+        return getBlockState().getBlock() instanceof WorkerStationBlock station
+                &&station.specialty()==WorkerSpecialty.FISHING;
+    }
+    public java.util.List<UUID> fisherWorkerIds(){
+        return java.util.List.copyOf(fisherIds);
+    }
+    public boolean registerFisher(UUID id){
+        if(!isFishing()||id==null||fisherIds.contains(id)||fisherIds.size()>=4)
+            return false;
+        fisherIds.add(id);sync();return true;
     }
     public boolean isBeekeeper(){
         return getBlockState().getBlock() instanceof WorkerStationBlock station
@@ -149,6 +162,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             case BUILDER -> isBuilder()?builderWorkerIds().size():4;
             case TRADER -> isTrader()?traderWorkerIds().size():4;
             case BEEKEEPER -> isBeekeeper()?beekeeperWorkers().size():4;
+            case FISHING -> isFishing()?fisherWorkerIds().size():4;
             default -> 4;
         };
         if(count>=4)return false;
@@ -157,12 +171,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
             case BUILDER -> registerBuilderWorker(worker);
             case TRADER -> registerTraderWorker(worker);
             case BEEKEEPER -> registerBeekeeper(worker);
+            case FISHING -> registerFisher(worker);
             default -> false;
         };
     }
 
     public boolean setCrewTarget(UUID actor,int count){
-        if(!canConfigure(actor)||(!isBuilder()&&!isTrader()&&!isBeekeeper())||count<1||count>4)return false;
+        if(!canConfigure(actor)||(!isBuilder()&&!isTrader()&&!isBeekeeper()&&!isFishing())||count<1||count>4)return false;
         crewTarget=count;sync();return true;
     }
     public java.util.List<UUID> traderWorkerIds(){
@@ -499,6 +514,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(workerId!=null)out.putString("trader_worker",workerId.toString());
         out.putString("phase",phase.name());out.putString("trade_wanted",wantedItem);
         if(chefWorkerId!=null)out.putString("cooking_chef_worker",chefWorkerId.toString());
+        out.putInt("fisher_workers",Math.min(4,fisherIds.size()));
+        for(int i=0;i<fisherIds.size()&&i<4;i++)
+            out.putString("fisher_worker_"+i,fisherIds.get(i).toString());
         if(beeToolbox!=null)out.store("beekeeper_toolbox",BlockPos.CODEC,beeToolbox);
         if(beeOutput!=null)out.store("beekeeper_output",BlockPos.CODEC,beeOutput);
         out.putInt("beekeeper_radius",beeRadius);
@@ -593,6 +611,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
         try{phase=WorkerPhase.valueOf(in.getStringOr("phase","IDLE"));}
         catch(IllegalArgumentException ignored){phase=WorkerPhase.BLOCKED;}
         chefWorkerId=uuid(in,"cooking_chef_worker");
+        fisherIds.clear();
+        int fisherCount=Math.clamp(in.getIntOr("fisher_workers",0),0,4);
+        for(int i=0;i<fisherCount;i++){
+            UUID id=uuid(in,"fisher_worker_"+i);
+            if(id!=null&&!fisherIds.contains(id))fisherIds.add(id);
+        }
         beeToolbox=in.read("beekeeper_toolbox",BlockPos.CODEC).orElse(null);
         beeOutput=in.read("beekeeper_output",BlockPos.CODEC).orElse(null);
         beeRadius=Math.clamp(in.getIntOr("beekeeper_radius",12),4,24);
