@@ -4,6 +4,7 @@ import com.caszgamermd.golemsplus.GolemsPlus;
 import com.caszgamermd.golemsplus.builder.BuilderGolem;
 import com.caszgamermd.golemsplus.trader.TraderGolem;
 import com.caszgamermd.golemsplus.cooking.ChefGolem;
+import com.caszgamermd.golemsplus.fishing.FisherGolem;
 import net.minecraft.client.model.geom.ModelLayerLocation;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.MobRenderer;
@@ -22,6 +23,8 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
             new ModelLayerLocation(GolemsPlus.id("trader_worker"),"main");
     public static final ModelLayerLocation CHEF_LAYER=
             new ModelLayerLocation(GolemsPlus.id("chef_worker"),"main");
+    public static final ModelLayerLocation FISHER_LAYER=
+            new ModelLayerLocation(GolemsPlus.id("fisher_worker"),"main");
     private final Identifier uniformTexture;
 
     public ProfessionGolemRenderer(EntityRendererProvider.Context context,
@@ -44,6 +47,9 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
                 || (entity instanceof TraderGolem trader&&trader.busy());
         state.working=entity instanceof BuilderGolem
                 &&!entity.getNavigation().isDone();
+        state.presenting=entity instanceof TraderGolem trader&&trader.presenting();
+        state.hasRod=entity instanceof FisherGolem fisher&&fisher.hasRod();
+        state.carryingFish=entity instanceof FisherGolem fisher&&fisher.hasCatch();
         // ChefGolem uses the same shared animation but has no recipe AI yet.
     }
 }
