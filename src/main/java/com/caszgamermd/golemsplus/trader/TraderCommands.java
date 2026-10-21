@@ -89,6 +89,17 @@ public final class TraderCommands {
                                     notice(player,"Payment budget set for "+id);
                                     return 1;
                                 }))))
+                    .then(Commands.literal("crew")
+                        .then(Commands.argument("count",IntegerArgumentType.integer(1,4))
+                            .executes(ctx->{
+                                ServerPlayer player=ctx.getSource().getPlayerOrException();
+                                var counter=nearest(player);
+                                if(counter==null||!counter.setCrewTarget(player.getUUID(),
+                                        IntegerArgumentType.getInteger(ctx,"count")))return 0;
+                                notice(player,"Trader crew target: "+counter.crewTarget()
+                                        +" golems (linked "+counter.traderWorkerIds().size()+")");
+                                return 1;
+                            })))
                     .then(Commands.literal("cancel").executes(ctx->{
                         ServerPlayer player=ctx.getSource().getPlayerOrException();
                         var depot=nearest(player);
@@ -101,7 +112,9 @@ public final class TraderCommands {
                         var depot=nearest(player);
                         if(depot==null){notice(player,"No owned counter nearby.");return 0;}
                         notice(player,"Trader: "+depot.phase()+" "+depot.deliveredCount()+"/"+
-                                depot.wantedCount()+" "+depot.wantedItem()+" | "+depot.problem());
+                                depot.wantedCount()+" "+depot.wantedItem()+" | crew "+
+                                depot.traderWorkerIds().size()+"/"+depot.crewTarget()
+                                +" | "+depot.problem());
                         return 1;
                     }))));
         });
