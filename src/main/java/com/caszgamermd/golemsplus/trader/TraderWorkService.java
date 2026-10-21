@@ -120,7 +120,8 @@ public final class TraderWorkService {
                     (key,amount)->reserved.merge(key,amount,Integer::sum));
         }
         if(station.deliveredCount()+incoming>=station.wantedCount())return;
-        for(TraderGolem trader:crew)if(trader.idle()){worker=trader;break;}
+        for(int i=0;i<crew.size()&&i<station.crewTarget();i++)
+            if(crew.get(i).idle()){worker=crew.get(i);break;}
         if(worker==null)return;
         if(station.village()==null){
             station.setProblem("Assign village with /golems trader village 32");
