@@ -48,8 +48,13 @@ on the server:
 
 The Builder refuses occupied targets, unsupported or protected blocks,
 unloaded chunks and missing materials; it never mines or creates free items.
-Its current scope is safe, single-block placement, not automated warehouse
-resupply or complex block-entity construction.
+Its current scope is safe, single-block placement with experimental warehouse
+resupply, not complex block-entity construction. A loaded warehouse requires
+an empty OUTPUT PTP with pallet, a Shulker Station, empty packing boxes,
+connected racks and working Storage Golems. The Builder collects shulkers
+physically, saves them in its Planning Table and consumes their contents.
+Missing items and empty shulkers trigger a status/chat notification.
+Empty shulker shells should currently be returned by the player.
 
 The previous `/golembuilder inspect <name>.litematic` still works as a
 read-only materials analysis; a confirmed *placed* import is required for

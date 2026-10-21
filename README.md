@@ -44,8 +44,19 @@ Caszual Additions Warehouse Scanner already linked to a Rack Computer**.
 The Table copies and saves that warehouse assignment without changing the
 scanner. Right-click again with a differently linked scanner to change it.
 The older `/golembuilder warehouse` selection command remains available,
-but scanner interaction is now the preferred workflow. Automatic
-warehouse withdrawals and deliveries are still not implemented. Some blocks (block
+but scanner interaction is now the preferred workflow. Warehouse fulfillment is now implemented experimentally: when a required
+block is missing from the Builder Table, the Builder submits a bounded
+materials manifest to its assigned Rack Computer. The warehouse reserves an
+empty pallet-equipped OUTPUT PTP with a connected Shulker Station, sends its
+own Storage Golems to collect real stock, packs it into shulker boxes, and
+deposits the boxes at that PTP. The Builder physically walks to collect each
+box and returns it to the Planning Table. Building consumes actual stacks
+inside delivered shulker boxes; all cargo and request state are persisted.
+Missing rack stock or empty shulker boxes generates an owner message and a
+Planning Table status. This requires the matching Caszual Additions update,
+loaded warehouse chunks, available warehouse golems, connected racks, and
+empty packing shulkers. Empty boxes stay in the Planning Table afterward
+and currently need to be returned to the warehouse manually. Some blocks (block
 entities, fluids, doors, etc.) are intentionally refused until safe
 placement rules are added. The previous server-side `inspect` command
 remains available for read-only planning.

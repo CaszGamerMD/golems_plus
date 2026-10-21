@@ -27,6 +27,7 @@ public final class BuilderBuildService {
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
     private BuilderBuildService(){}
     public static void dispatch(ServerLevel level,WorkerStationBlockEntity table){
+        BuilderWarehouseCoordinator.pollTable(level,table);
         if(level.getGameTime()%20!=0 || !table.isBuilder()
                 ||table.activeOrder()==null||!table.hasPlacedSchematic()
                 ||table.phase()==WorkerPhase.PAUSED)return;
@@ -56,6 +57,17 @@ public final class BuilderBuildService {
             worker.discard();return;
         }
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
+            // A completed/canceled plan may still own boxed warehouse stock.
+            // Recover real cargo first rather than losing it on job end.
+            if(worker.hasSupplyBox()||table.supplyRequest()!=null){
+                ServerPlayer recipient=level.getServer().getPlayerList()
+                        .getPlayer(worker.owner());
+                if(recipient!=null&&recipient.level()==level)try{
+                    Cache outstanding=cache(table,worker);
+                    if(BuilderWarehouseCoordinator.tick(level,worker,table,
+                            recipient,outstanding.steps()))return;
+                }catch(Exception ignored){}
+            }
             if(worker.distanceToSqr(home.getX()+.5,home.getY()+1,home.getZ()+.5)>9)
                 worker.getNavigation().moveTo(home.getX()+.5,home.getY()+1,
                         home.getZ()+.5,.85);
@@ -71,6 +83,9 @@ public final class BuilderBuildService {
         }
         try{
             Cache plan=cache(table,worker);
+            if((worker.hasSupplyBox()||table.supplyRequest()!=null)
+                    &&BuilderWarehouseCoordinator.tick(level,worker,table,
+                            owner,plan.steps()))return;
             if(table.builderCursor()>=plan.steps().size()){
                 table.setPhase(WorkerPhase.COMPLETE);return;
             }
@@ -110,25 +125,18 @@ public final class BuilderBuildService {
                     table.setProblem("Builder cannot path to "+pos);
                 return;
             }
-            int sourceSlot=-1;
-            for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++){
-                ItemStack item=table.getItem(i);
-                if(item.is(state.item())&&item.getCount()>0){sourceSlot=i;break;}
+            BuilderSupplyInventory.Receipt payment=
+                    BuilderSupplyInventory.consume(table,state.item());
+            if(payment==null){
+                if(BuilderWarehouseCoordinator.request(level,worker,table,
+                        owner,plan.steps()))return;
+                table.setProblem("Missing "+step.requiredItem()+" in Builder Table");
+                return;
             }
-            if(sourceSlot<0){
-                table.setProblem("Missing "+step.requiredItem()+" in Builder Table");return;
-            }
-            // Spend first, then attempt place. Any setBlock failure refunds
-            // immediately, never creates blocks without a corresponding cost.
-            ItemStack taken=table.removeItem(sourceSlot,1);
-            if(taken.isEmpty())return;
+            // The real consumed stack is debited from either a loose slot
+            // or its packed shulker box BEFORE the world changes.
             if(!level.setBlock(pos,state.state(),3)){
-                ItemStack remains=table.getItem(sourceSlot);
-                if(remains.isEmpty())table.setItem(sourceSlot,taken);
-                else if(ItemStack.isSameItemSameComponents(remains,taken))
-                    table.setItem(sourceSlot,remains.copyWithCount(remains.getCount()+1));
-                else net.minecraft.world.Containers.dropItemStack(
-                        level,home.getX()+.5,home.getY()+1,home.getZ()+.5,taken);
+                BuilderSupplyInventory.refund(table,payment);
                 table.setProblem("World rejected placement at "+pos);
                 return;
             }

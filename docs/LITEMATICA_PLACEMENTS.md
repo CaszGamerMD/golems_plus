@@ -25,7 +25,11 @@ The dedicated server does not need Litematica or MaLiLib.
    rotation** are transferred to the server in bounded chunks. This is an
    explicit upload initiated by the player, not an automatic file scan.
 5. Run **`/golembuilder preview`** to see the block count, unresolved states
-   and a material estimate. Put building items in the Table's first 27 slots.
+   and a material estimate. You may stock the Table's first 27 slots manually;
+   otherwise, the Builder can request materials from the warehouse linked with
+   the scanner. The warehouse must have a connected empty OUTPUT PTP
+   (with a pallet installed), Shulker Station and docked Storage Golems.
+   Its Shulker Station needs empty shulker boxes for packing.
 6. Run **`/golembuilder start`** to approve actual placement. A Builder
    Golem (temporary Iron Golem model) will move toward each planned block
    and place one at a time. The progress cursor is saved.
@@ -62,9 +66,24 @@ Litematica snapshot has been imported and confirmed.
   wrong-dimension or invalid loaded-computer targets are rejected without
   changing an existing link. A remote, unloaded computer is not force-loaded;
   it must be checked again when material integration is implemented.
-- The warehouse-computer link remains metadata-only; the Builder currently
-  uses the **Builder Table's actual input slots**, not automated warehouse
-  reservations/delivery. A scanner link is not a warehouse permission grant.
+- **Automatic warehouse fulfillment (experimental):** the Builder requests
+  batches from a linked warehouse when local materials are missing. An empty
+  OUTPUT PTP is exclusively assigned to the request. Warehouse Storage Golems
+  fetch from racks and a connected Shulker Station packs real supplies into
+  shulker boxes. The Builder physically retrieves those shulker boxes, stores
+  them intact in the Planning Table, and builds using their real contents.
+  PTP requests, Builder order metadata and carried boxes are persisted.
+- **Missing-supply notices** appear in chat for the online owner and in the
+  Planning Table's status, including rack shortages and missing empty shulkers.
+  No material is synthesized to make an order succeed.
+- **Operational constraints:** keep warehouse racks, golem shelves, Shulker
+  Station and chosen PTP chunks loaded; ensure empty packing boxes and
+  reachable paths between the Builder Table and warehouse. Warehouse supplies
+  are shipped one packed shulker at a time. Empty boxes remain in the Builder
+  Table for manual return to the warehouse at this stage. The Builder pauses
+  if its input slots are full or no suitable PTP is available.
+  A scanner link is not a general warehouse authorization grant; follow
+  your server's build and ownership permissions.
 - A passing build/test suite does not guarantee correct in-game Litematica
   API compatibility, multiplayer access-control behavior, rendering or
   AI pathing. These require in-world playtests.
