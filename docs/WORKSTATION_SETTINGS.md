@@ -4,6 +4,21 @@ Settings are now in the **workstation inventory** instead of requiring
 slash commands. Install the same Golems Plus build on client and server.
 Existing commands remain optional for compatibility and debugging.
 
+## Interaction troubleshooting
+
+A normal right-click (main hand, without sneaking) on any Golems Plus
+workstation must reach its ownership/inventory handler, even if the player
+holds an item. The Builder's Planning Table still reserves the linked
+Warehouse Scanner interaction for warehouse assignment. An empty-hand
+sneak-right-click toggles the workstation pause state.
+
+If a job block appears inert, confirm the running client and server both
+use a build containing the workstation right-click fix, restart Minecraft
+and the server after replacing the JAR, then test with an empty hand on a
+newly placed Chef's Kitchen Station. Opening the menu (and spawning a
+Chef once claimed) verifies the workstation code is running. A visible
+block alone does not prove both sides are using the same JAR.
+
 ## Builder's Planning Table
 
 1. Empty-hand right-click the placed Table. The first click claims an
