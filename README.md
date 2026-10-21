@@ -5,6 +5,34 @@ Minecraft **26.2 Fabric**, Java **25** — Caszual Suite
 Specialist golems with real workstations and finite inventories. Development
 is directly on `main`.
 
+## Craft and assign real workers
+
+Place a job block, then craft a **Builder, Trader, Beekeeper or Chef Golem**
+(three iron ingots, a carved pumpkin and that profession's item). Right-click
+an adjacent floor/block with the crafted worker within **10 blocks** of its
+matching job block. The nearest matching, unclaimed or player-owned workstation
+is assigned to that physical entity; deployment consumes the item unless the
+player is in creative mode. Existing station workers remain registered after
+reloading the world. Up to four workers serve Builder, Trader and Beekeeper
+stations; Chef supports one.
+
+**No workstation generates free Golems.** Workers walk around a bounded
+10-block area until given work, then normal task routing takes over. Increasing
+the crew target in a job block does not manufacture golems: place additional
+crafted workers to fill a crew. Fisher remains a prototype without a physical
+worker, so there is no Fisher craftable item yet.
+
+## Builder placement picker
+
+The Planning Table's **Choose Litematica placement** button now opens a
+paginated list of every placement currently managed by Litematica, with
+names and origins. Select one to upload its real file and world origin to that
+exact Planning Table; **Preview** and **Start build** still require confirmation.
+The picker does not depend on Litematica's preselected placement and no
+slash commands are necessary. The optional `/golems_use_placement` command
+remains available for legacy testing. The client bridge checks
+`getSchematic()` instead of a missing `isSchematicLoaded()` method.
+
 ## Job-block settings (new)
 
 **No slash commands needed for normal setup.** Empty-hand right-click an
@@ -136,8 +164,8 @@ and temporary block textures for the job block; texture/model finishing
 and in-game testing are ongoing. See
 [Beekeeper setup](docs/BEEKEEPER.md) for details.
 
-**Chef Golem (visual groundwork):** Craft or place a **Chef's Kitchen Station**
-to summon one permanent small Chef worker with a **tall white 3D toque,
+**Chef Golem (visual groundwork):** Place a crafted **Chef Golem** near an owned **Chef's Kitchen Station**
+to assign one permanent small Chef worker with a **tall white 3D toque,
 double-breasted chef coat, apron, rolled sleeves and non-slip shoes**. Its
 uniform is implemented and it idles at the claimed kitchen job block.
 Recipe execution, cooking inventories and food-order AI are **not**
