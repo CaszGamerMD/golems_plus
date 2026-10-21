@@ -54,6 +54,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private UUID builderWorkerId;
     private int crewTarget=1;
     private final java.util.List<UUID> additionalBuilderWorkers=new java.util.ArrayList<>();
+    private final java.util.List<UUID> additionalTraderWorkers=new java.util.ArrayList<>();
     private final java.util.Map<UUID,Integer> builderClaims=new java.util.LinkedHashMap<>();
     private long completedAhead;
     private final java.util.Map<UUID,java.util.List<BlockPos>> trackedScaffolds=new java.util.LinkedHashMap<>();
@@ -92,8 +93,21 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public UUID builderWorkerId(){return builderWorkerId;}
     public int crewTarget(){return crewTarget;}
     public boolean setCrewTarget(UUID actor,int count){
-        if(!canConfigure(actor)||!isBuilder()||count<1||count>4)return false;
+        if(!canConfigure(actor)||(!isBuilder()&&!isTrader())||count<1||count>4)return false;
         crewTarget=count;sync();return true;
+    }
+    public java.util.List<UUID> traderWorkerIds(){
+        java.util.List<UUID> ids=new java.util.ArrayList<>();
+        if(workerId!=null)ids.add(workerId);
+        ids.addAll(additionalTraderWorkers);
+        return java.util.List.copyOf(ids);
+    }
+    public boolean registerTraderWorker(UUID id){
+        if(!isTrader()||id==null||traderWorkerIds().contains(id)
+                ||traderWorkerIds().size()>=crewTarget)return false;
+        if(workerId==null)workerId=id;
+        else additionalTraderWorkers.add(id);
+        sync();return true;
     }
     public java.util.List<UUID> builderWorkerIds(){
         java.util.List<UUID> ids=new java.util.ArrayList<>();
@@ -421,6 +435,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putBoolean("builder_placed",builderPlaced);
         out.putInt("builder_cursor",builderCursor);
         if(builderWorkerId!=null)out.putString("builder_worker",builderWorkerId.toString());
+        out.putInt("trader_extra_workers",Math.min(3,additionalTraderWorkers.size()));
+        for(int n=0;n<additionalTraderWorkers.size()&&n<3;n++)
+            out.putString("trader_extra_worker_"+n,additionalTraderWorkers.get(n).toString());
         out.putInt("builder_crew_target",crewTarget);
         out.putInt("builder_extra_workers",Math.min(3,additionalBuilderWorkers.size()));
         for(int n=0;n<additionalBuilderWorkers.size()&&n<3;n++)
@@ -482,6 +499,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
         super.loadAdditional(in);
         owner=uuid(in,"owner");activeOrder=uuid(in,"active_order");
         workerId=uuid(in,"trader_worker");
+        additionalTraderWorkers.clear();
+        int traderExtra=Math.clamp(in.getIntOr("trader_extra_workers",0),0,3);
+        for(int j=0;j<traderExtra;j++){
+            UUID trader=uuid(in,"trader_extra_worker_"+j);
+            if(trader!=null&&!trader.equals(workerId)
+                    &&!additionalTraderWorkers.contains(trader))
+                additionalTraderWorkers.add(trader);
+        }
         try{phase=WorkerPhase.valueOf(in.getStringOr("phase","IDLE"));}
         catch(IllegalArgumentException ignored){phase=WorkerPhase.BLOCKED;}
         wantedItem=in.getStringOr("trade_wanted","");
