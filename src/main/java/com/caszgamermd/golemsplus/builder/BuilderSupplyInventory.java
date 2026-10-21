@@ -55,6 +55,15 @@ public final class BuilderSupplyInventory {
         }
         return returned;
     }
+    public static boolean canStoreScaffolding(WorkerStationBlockEntity table){
+        ItemStack sample=new ItemStack(net.minecraft.world.item.Items.SCAFFOLDING);
+        for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++){
+            ItemStack stack=table.getItem(i);
+            if(stack.isEmpty()||(ItemStack.isSameItemSameComponents(stack,sample)
+                    &&stack.getCount()<stack.getMaxStackSize()))return true;
+        }
+        return table.canReceive(sample);
+    }
     /** Server-side exact stack merge; never deletes a real scaffold refund. */
     public static boolean storeScaffolding(WorkerStationBlockEntity table,ItemStack sample){
         for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++){
