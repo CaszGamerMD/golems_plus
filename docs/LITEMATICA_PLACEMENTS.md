@@ -20,21 +20,23 @@ The dedicated server does not need Litematica or MaLiLib.
    mode works; it is not consumed or reconfigured. A valid scanner can
    link the Table even if the computer is in an unloaded chunk. Use
    `/golembuilder status` to confirm the saved warehouse.
-4. Type **`/golems_use_placement`** (client-side command). The selected file
+4. Open your Builder Planning Table and click **Import Litematica
+   placement** in the **BUILD** page (or use the legacy
+   `/golems_use_placement` command). The selected file
    (up to 2 MiB compressed) and its **exact current origin, mirror and
    rotation** are transferred to the server in bounded chunks. This is an
    explicit upload initiated by the player, not an automatic file scan.
-5. Run **`/golembuilder preview`** to see the block count, unresolved states
+5. Click **Preview** in the Planner GUI to see the block count, unresolved states
    and a material estimate. You may stock the Table's first 27 slots manually;
    otherwise, the Builder can request materials from the warehouse linked with
    the scanner. The warehouse must have a connected empty OUTPUT PTP
    (with a pallet installed), Shulker Station and docked Storage Golems.
    Its Shulker Station needs empty shulker boxes for packing.
-6. Run **`/golembuilder start`** to approve actual placement. A Builder
+6. Click **Start build** to approve actual placement. A Builder
    Golem (temporary Iron Golem model) will move toward each planned block
    and place one at a time. The progress cursor is saved.
-7. Use **`/golembuilder status`**, **`pause`**, **`resume`**, and **`cancel`**
-   to control the job. Run **`/golembuilder crew 4`** for up to four
+7. Use the GUI **Pause**, **Resume**, **Cancel job**, and **CREW −/+**
+   controls. Set the crew size as high as four
    linked builders working separate blocks of the same schematic.
 
 The previous server-side command `/golembuilder inspect house.litematic`
@@ -97,13 +99,13 @@ Litematica snapshot has been imported and confirmed.
 
 ## Work crews
 
-Run `/golembuilder crew 1` through `/golembuilder crew 4` near your
-claimed Builder Table. Each linked Builder claims a different blueprint
+Use the Planner's **CREW −/+** controls to assign 1–4 workers
+without commands. Each linked Builder claims a different blueprint
 block; the durable progress checkpoint advances only when preceding blocks
 are complete. The same warehouse request uses one supply courier per trip,
 so multiple Builders do not each collect the same shulker.
 
-For Trader Counters, `/golems trader crew 1` to `crew 4` sets the count of
+For Trader Counters, the **CREW −/+** controls set the count of
 participating Trader Golems. Their order quantity and payment budgets account
 for already dispatched transactions. Reducing crew size stops assigning
 new tasks to the extra golems after their current jobs are done.

@@ -86,8 +86,11 @@ public final class BuilderCommands {
         return 1;
     }
     private static int preview(ServerPlayer player){
-        var table=nearest(player);
-        if(table==null||!table.hasPlacedSchematic()){
+        return previewFromStation(player,nearest(player));
+    }
+    public static int previewFromStation(ServerPlayer player,WorkerStationBlockEntity table){
+        if(table==null||!table.canConfigure(player.getUUID())
+                ||!table.hasPlacedSchematic()){
             player.sendSystemMessage(Component.literal(
                     "First select a Litematica placement and run /golems_use_placement (client command)."));
             return 0;
