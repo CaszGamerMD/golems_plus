@@ -326,7 +326,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
 
     @Override public Component getDisplayName() {
-        return Component.literal(isTrader()?"Trader Counter":"Golem Workstation");
+        if(isTrader())return Component.literal("Trader Counter");
+        if(isBuilder())return Component.literal("Builder's Planning Table");
+        if(getBlockState().getBlock() instanceof WorkerStationBlock block)
+            return Component.literal(block.specialty().name()+" Workstation");
+        return Component.literal("Golem Workstation");
     }
     @Override public @Nullable AbstractContainerMenu createMenu(int id,Inventory inv,Player player) {
         return canConfigure(player.getUUID()) ? new WorkerStationMenu(id,inv,this) : null;
