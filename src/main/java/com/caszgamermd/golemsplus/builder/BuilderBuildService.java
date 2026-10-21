@@ -28,6 +28,8 @@ public final class BuilderBuildService {
     private BuilderBuildService(){}
     public static void dispatch(ServerLevel level,WorkerStationBlockEntity table){
         BuilderWarehouseCoordinator.pollTable(level,table);
+        // Existing crafted crew members execute the job; the station never
+        // materializes extra golems automatically.
         if(level.getGameTime()%20!=0 || !table.isBuilder()
                 ||table.activeOrder()==null||!table.hasPlacedSchematic()
                 ||table.phase()==WorkerPhase.PAUSED)return;
@@ -38,12 +40,7 @@ public final class BuilderBuildService {
             table.setProblem("Builder crew member unloaded; load its chunk");
             return;
         }
-        if(linked.size()>=table.crewTarget())return;
-        BlockPos p=table.getBlockPos();
-        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-        worker.assign(p,table.owner());
-        worker.setPos(p.getX()+.5,p.getY()+1,p.getZ()+.5);
-        if(level.addFreshEntity(worker))table.registerBuilderWorker(worker.getUUID());
+        // Wait for the player to craft and place builders beside the table.
     }
     public static void tick(ServerLevel level,BuilderGolem worker){
         BlockPos home=worker.home();
@@ -72,9 +69,8 @@ public final class BuilderBuildService {
                             recipient,outstanding.steps()))return;
                 }catch(Exception ignored){}
             }
-            if(worker.distanceToSqr(home.getX()+.5,home.getY()+1,home.getZ()+.5)>9)
-                worker.getNavigation().moveTo(home.getX()+.5,home.getY()+1,
-                        home.getZ()+.5,.85);
+            if(!worker.hasSupplyBox()&&table.supplyRequest()==null)
+                com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(level,worker,home);
             return;
         }
         if(table.phase()==WorkerPhase.PAUSED){
