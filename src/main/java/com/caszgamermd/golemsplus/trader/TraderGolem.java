@@ -84,8 +84,7 @@ public final class TraderGolem extends PathfinderMob {
             getNavigation().stop();return;
         }
         if(stage==0){
-            if(distanceToSqr(home.getX()+.5,home.getY()+.5,home.getZ()+.5)>9)
-                getNavigation().moveTo(home.getX()+.5,home.getY()+1,home.getZ()+.5,.8);
+            com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(server,this,home);
             return;
         }
         if(stage==1)visit(server,depot);
