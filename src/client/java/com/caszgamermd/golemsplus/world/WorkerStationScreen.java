@@ -58,6 +58,14 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                     instanceof WorkerStationBlock block
                 &&block.specialty()==com.caszgamermd.golemsplus.worker.WorkerSpecialty.BEEKEEPER;
     }
+    private boolean fisher(){
+        var st=station();
+        if(st!=null)return st.isFishing();
+        return minecraft!=null&&minecraft.level!=null
+                &&minecraft.level.getBlockState(menu.stationPos()).getBlock()
+                instanceof WorkerStationBlock block
+                &&block.specialty()==com.caszgamermd.golemsplus.worker.WorkerSpecialty.FISHING;
+    }
     private boolean builder(){
         var be=station();
         if(be!=null)return be.isBuilder();
@@ -236,6 +244,10 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             button("Pause",PANE,154,89,()->send("bee_pause",0));
             button("Resume",PANE+92,154,90,()->send("bee_resume",0));
             crewControls();
+        }else if(fisher()){
+            button("PAUSE",PANE,57,89,()->send("fish_pause",0));
+            button("RESUME",PANE+92,57,90,()->send("fish_resume",0));
+            crewControls();
         }else if(builder()){
             button("BUILD",PANE,28,89,()->openPage(Page.BUILD));
             button("SETUP",PANE+92,28,90,()->openPage(Page.BUILDER_SETUP));
@@ -314,7 +326,8 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         g.text(font,Component.literal("INVENTORY"),8,109,LABEL_COLOR,false);
         g.text(font,Component.literal(trader()?"TRADER COUNTER":
                 builder()?"BUILDER PLANNER":
-                beekeeper()?"BEEKEEPER STATION":"WORKSTATION"),
+                beekeeper()?"BEEKEEPER STATION":
+                fisher()?"FISHING STATION":"WORKSTATION"),
                 185,10,0xffffffff,false);
         var station=station();
         if(trader()){
@@ -342,6 +355,11 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                 g.text(font,truncate("Tools: "+tools,32),185,184,LABEL_COLOR,false);
                 g.text(font,truncate("Output: "+output,32),185,195,LABEL_COLOR,false);
             }
+        }else if(fisher()){
+            g.text(font,"SUPPLIES: FISHING RODS",185,94,LABEL_COLOR,false);
+            g.text(font,"FISH: OUTPUT INVENTORY",185,111,LABEL_COLOR,false);
+            g.text(font,"Right-click Fisher to equip",185,128,LABEL_COLOR,false);
+            g.text(font,"Rod over shoulder while idle",185,140,LABEL_COLOR,false);
         }else if(builder()&&page==Page.BUILDER_PLACEMENTS){
             g.text(font,"LITEMATICA PLACEMENTS  "+choices.size(),185,45,LABEL_COLOR,false);
             if(choices.isEmpty())
@@ -357,11 +375,12 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                         185,188,0xffb8eec7,false);
             }else g.text(font,"No warehouse linked",185,188,0xffffc480,false);
         }
-        if(trader()||builder()||beekeeper()){
+        if(trader()||builder()||beekeeper()||fisher()){
             int count=station==null?1:station.crewTarget();
             int linked=station==null?0:trader()?station.traderWorkerIds().size():
                     builder()?station.builderWorkerIds().size():
-                    station.beekeeperWorkers().size();
+                    beekeeper()?station.beekeeperWorkers().size():
+                    station.fisherWorkerIds().size();
             g.text(font,"CREW: "+linked+"/"+count,224,212,0xffffffff,false);
         }
         if(station!=null){
