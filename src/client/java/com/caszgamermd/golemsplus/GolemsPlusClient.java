@@ -20,6 +20,8 @@ public final class GolemsPlusClient implements ClientModInitializer {
                 ProfessionGolemRenderer.TRADER_LAYER,ProfessionGolemModel::traderLayer);
         ModelLayerRegistry.registerModelLayer(
                 ProfessionGolemRenderer.CHEF_LAYER,ProfessionGolemModel::chefLayer);
+        ModelLayerRegistry.registerModelLayer(
+                ProfessionGolemRenderer.FISHER_LAYER,ProfessionGolemModel::fisherLayer);
         EntityRenderers.register(WorksiteContent.BUILDER_GOLEM,
                 ctx->new ProfessionGolemRenderer<>(ctx,
                         ProfessionGolemRenderer.BUILDER_LAYER,
@@ -32,6 +34,10 @@ public final class GolemsPlusClient implements ClientModInitializer {
                 ctx->new ProfessionGolemRenderer<>(ctx,
                         ProfessionGolemRenderer.CHEF_LAYER,
                         ProfessionGolemModel.Profession.CHEF));
+        EntityRenderers.register(WorksiteContent.FISHER_GOLEM,
+                ctx->new ProfessionGolemRenderer<>(ctx,
+                        ProfessionGolemRenderer.FISHER_LAYER,
+                        ProfessionGolemModel.Profession.FISHER));
         ModelLayerRegistry.registerModelLayer(BeeRenderer.LAYER,BeeModel::layer);
         EntityRenderers.register(WorksiteContent.BEEKEEPER_GOLEM,BeeRenderer::new);
         com.caszgamermd.golemsplus.builder.LitematicaPlacementClient.register();
