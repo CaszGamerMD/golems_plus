@@ -39,14 +39,7 @@ public final class BeekeeperWorkService {
                 ||!(level.getBlockEntity(station.beeOutput()) instanceof Container)){
             station.setProblem("Missing toolbox or output container");return;
         }
-        if(crew.size()<station.crewTarget()){
-            BlockPos p=station.getBlockPos();
-            BeekeeperGolem worker=new BeekeeperGolem(WorksiteContent.BEEKEEPER_GOLEM,level);
-            worker.assign(p,station.owner());
-            worker.setPos(p.getX()+.5,p.getY()+1,p.getZ()+.5);
-            if(level.addFreshEntity(worker)&&station.registerBeekeeper(worker.getUUID()))
-                crew.add(worker);
-        }
+        // No worker creation here: place crafted Beekeepers near this block.
         if(station.phase()==WorkerPhase.PAUSED)return;
         Set<BlockPos> claimed=new HashSet<>();
         for(BeekeeperGolem bee:crew)if(bee.job()!=0)claimed.add(bee.hive());
@@ -99,6 +92,8 @@ public final class BeekeeperWorkService {
         }
         if(!job.beekeeperWorkers().contains(worker.getUUID()))return;
         if(job.phase()==WorkerPhase.PAUSED){worker.getNavigation().stop();return;}
+        if(worker.job()==0)
+            com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(level,worker,home);
         if(job.beeToolbox()==null||job.beeOutput()==null)return;
         ServerPlayer owner=level.getServer().getPlayerList().getPlayer(worker.owner());
         if(owner==null||owner.level()!=level)return; // no building in unprotected offline areas
@@ -109,7 +104,7 @@ public final class BeekeeperWorkService {
         }
         switch(worker.job()){
             case 0 -> {
-                worker.moveTo(home,.85);
+                // Idle roaming is handled even before tools are linked.
             }
             case 1 -> {
                 if(!worker.moveTo(job.beeToolbox(),.85))break;
