@@ -132,7 +132,7 @@ public final class BuilderUploadNetworking {
             notify(player,"Imported placed '"+p.name()+"' at "+p.origin()+
                     " ("+plan.steps().size()+" blocks; "+
                     plan.unsupported().size()+" unsupported states).");
-            notify(player,"Run /golembuilder preview, then /golembuilder start to confirm.");
+            notify(player,"In the Planning Table, click Preview, then Start build to confirm.");
         }catch(Exception ex){
             if(saved!=null)try{Files.deleteIfExists(saved);}catch(Exception ignored){}
             notify(player,"Could not read selected placement: "+ex.getMessage());
