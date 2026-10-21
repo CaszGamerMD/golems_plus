@@ -52,6 +52,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private String placedSchematicName="";
     private int builderCursor;
     private UUID builderWorkerId;
+    private int crewTarget=1;
+    private final java.util.List<UUID> additionalBuilderWorkers=new java.util.ArrayList<>();
+    private final java.util.Map<UUID,Integer> builderClaims=new java.util.LinkedHashMap<>();
+    private long completedAhead;
+    private final java.util.Map<UUID,java.util.List<BlockPos>> trackedScaffolds=new java.util.LinkedHashMap<>();
     private boolean builderPlaced;
     private UUID supplyRequest;
     private BlockPos supplyPtp=BlockPos.ZERO;
@@ -84,6 +89,75 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public String placedSchematicName(){return placedSchematicName;}
     public int builderCursor(){return builderCursor;}
     public UUID builderWorkerId(){return builderWorkerId;}
+    public int crewTarget(){return crewTarget;}
+    public boolean setCrewTarget(UUID actor,int count){
+        if(!canConfigure(actor)||!isBuilder()||count<1||count>4)return false;
+        crewTarget=count;sync();return true;
+    }
+    public java.util.List<UUID> builderWorkerIds(){
+        java.util.List<UUID> ids=new java.util.ArrayList<>();
+        if(builderWorkerId!=null)ids.add(builderWorkerId);
+        ids.addAll(additionalBuilderWorkers);
+        return java.util.List.copyOf(ids);
+    }
+    public boolean registerBuilderWorker(UUID id){
+        if(id==null||builderWorkerIds().contains(id)
+                ||builderWorkerIds().size()>=crewTarget)return false;
+        if(builderWorkerId==null)builderWorkerId=id;
+        else additionalBuilderWorkers.add(id);
+        sync();return true;
+    }
+    public int claimedStep(UUID worker){
+        return builderClaims.getOrDefault(worker,-1);
+    }
+    /** All callbacks execute on the Minecraft server thread. Every index
+     * has one owner; the head cursor only moves over confirmed completions. */
+    public int claimBuilderStep(UUID worker){
+        if(!builderWorkerIds().contains(worker)||activeOrder==null)return -1;
+        if(builderClaims.containsKey(worker))return builderClaims.get(worker);
+        int end=Math.min(builderBlocks,builderCursor+32);
+        for(int next=builderCursor;next<end;next++){
+            if(((completedAhead >>> (next-builderCursor))&1L)!=0
+                    ||builderClaims.containsValue(next))continue;
+            builderClaims.put(worker,next);sync();return next;
+        }
+        return -1;
+    }
+    public boolean completeBuilderStep(UUID worker,int index){
+        if(!builderClaims.containsKey(worker)
+                ||builderClaims.get(worker)!=index
+                ||index<builderCursor||index>=builderBlocks
+                ||index-builderCursor>=32)return false;
+        builderClaims.remove(worker);
+        completedAhead|=1L<<(index-builderCursor);
+        while((completedAhead&1L)!=0){
+            completedAhead>>>=1;builderCursor++;
+        }
+        if(builderCursor>=builderBlocks){
+            phase=WorkerPhase.COMPLETE;activeOrder=null;builderClaims.clear();
+        }
+        sync();return true;
+    }
+    public java.util.List<BlockPos> scaffoldPositions(UUID worker){
+        return java.util.List.copyOf(trackedScaffolds.getOrDefault(worker,java.util.List.of()));
+    }
+    public boolean isTrackedScaffold(BlockPos pos){
+        return trackedScaffolds.values().stream().anyMatch(list->list.contains(pos));
+    }
+    public boolean trackScaffold(UUID worker,BlockPos pos){
+        if(!builderWorkerIds().contains(worker)||isTrackedScaffold(pos)
+                ||trackedScaffolds.values().stream().mapToInt(java.util.List::size).sum()>=256)
+            return false;
+        trackedScaffolds.computeIfAbsent(worker,k->new java.util.ArrayList<>())
+                .add(pos.immutable());sync();return true;
+    }
+    public boolean untrackScaffold(UUID worker,BlockPos pos){
+        var owned=trackedScaffolds.get(worker);
+        if(owned==null||!owned.remove(pos))return false;
+        if(owned.isEmpty())trackedScaffolds.remove(worker);
+        sync();return true;
+    }
+
     public UUID supplyRequest(){return supplyRequest;}
     public BlockPos supplyPtp(){return supplyPtp;}
     public String supplyNotice(){return supplyNotice;}
@@ -120,14 +194,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||blocks<1||blocks>100000||unresolved<0)return false;
         builderFile=filename;placedSchematicName=display;builderOrigin=origin.immutable();
         builderRotation=rotation*90;builderMirror=mirror;builderBlocks=blocks;
-        builderUnresolved=unresolved;builderCursor=0;builderPlaced=true;
+        builderUnresolved=unresolved;builderCursor=0;completedAhead=0;
+        builderClaims.clear();builderPlaced=true;
         phase=WorkerPhase.READY;sync();return true;
     }
     public boolean startPlacedBuilder(UUID actor){
         if(!canConfigure(actor)||!isBuilder()||!hasPlacedSchematic()
                 ||supplyRequest!=null||builderUnresolved!=0||activeOrder!=null)return false;
-        activeOrder=UUID.randomUUID();builderCursor=0;
-        phase=WorkerPhase.WORKING;sync();return true;
+        activeOrder=UUID.randomUUID();builderCursor=0;completedAhead=0;
+        builderClaims.clear();phase=WorkerPhase.WORKING;sync();return true;
     }
     public void advanceBuilder(){
         if(builderCursor<builderBlocks){
@@ -140,13 +215,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public void setBuilderWorkerId(UUID id){builderWorkerId=id;sync();}
     public boolean cancelBuilder(UUID actor){
         if(!canConfigure(actor)||!isBuilder())return false;
-        activeOrder=null;phase=WorkerPhase.IDLE;sync();return true;
+        activeOrder=null;builderClaims.clear();completedAhead=0;
+        phase=WorkerPhase.IDLE;sync();return true;
     }
     public boolean setBuilderFile(UUID actor,String filename,int blocks,int unresolved) {
         if(!canConfigure(actor)||isTrader()||filename==null||filename.isBlank()
                 ||blocks<0||unresolved<0||activeOrder!=null)return false;
         builderFile=filename;builderBlocks=blocks;builderUnresolved=unresolved;
         builderPlaced=false;placedSchematicName="";builderCursor=0;
+        completedAhead=0;builderClaims.clear();
         phase=WorkerPhase.PLANNING;sync();return true;
     }
     public boolean setBuilderRotation(UUID actor,int degrees) {
@@ -342,6 +419,26 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putBoolean("builder_placed",builderPlaced);
         out.putInt("builder_cursor",builderCursor);
         if(builderWorkerId!=null)out.putString("builder_worker",builderWorkerId.toString());
+        out.putInt("builder_crew_target",crewTarget);
+        out.putInt("builder_extra_workers",Math.min(3,additionalBuilderWorkers.size()));
+        for(int n=0;n<additionalBuilderWorkers.size()&&n<3;n++)
+            out.putString("builder_extra_worker_"+n,additionalBuilderWorkers.get(n).toString());
+        out.putLong("builder_ahead_bits",completedAhead);
+        out.putInt("builder_claim_count",Math.min(4,builderClaims.size()));
+        int cix=0;
+        for(var entry:builderClaims.entrySet()){
+            if(cix>=4)break;
+            out.putString("builder_claim_worker_"+cix,entry.getKey().toString());
+            out.putInt("builder_claim_index_"+cix,entry.getValue());cix++;
+        }
+        int scix=0;
+        for(var entry:trackedScaffolds.entrySet())
+            for(BlockPos pos:entry.getValue()){
+                if(scix>=256)break;
+                out.putString("builder_scaffold_owner_"+scix,entry.getKey().toString());
+                out.store("builder_scaffold_pos_"+scix,BlockPos.CODEC,pos);scix++;
+            }
+        out.putInt("builder_scaffold_count",scix);
         if(supplyRequest!=null)out.putString("builder_supply_request",supplyRequest.toString());
         out.store("builder_supply_ptp",BlockPos.CODEC,supplyPtp);
         out.putString("builder_supply_notice",supplyNotice);
@@ -400,6 +497,33 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderPlaced=in.getBooleanOr("builder_placed",false);
         builderCursor=Math.clamp(in.getIntOr("builder_cursor",0),0,builderBlocks);
         builderWorkerId=uuid(in,"builder_worker");
+        crewTarget=Math.clamp(in.getIntOr("builder_crew_target",1),1,4);
+        additionalBuilderWorkers.clear();
+        int extra=Math.clamp(in.getIntOr("builder_extra_workers",0),0,3);
+        for(int j=0;j<extra;j++){
+            UUID id=uuid(in,"builder_extra_worker_"+j);
+            if(id!=null&&!additionalBuilderWorkers.contains(id)
+                    &&!id.equals(builderWorkerId))additionalBuilderWorkers.add(id);
+        }
+        completedAhead=in.getLongOr("builder_ahead_bits",0);
+        builderClaims.clear();
+        int claims=Math.clamp(in.getIntOr("builder_claim_count",0),0,4);
+        for(int j=0;j<claims;j++){
+            UUID id=uuid(in,"builder_claim_worker_"+j);
+            int index=in.getIntOr("builder_claim_index_"+j,-1);
+            if(id!=null&&index>=builderCursor&&index<builderBlocks
+                    &&index-builderCursor<32&&builderWorkerIds().contains(id))
+                builderClaims.put(id,index);
+        }
+        trackedScaffolds.clear();
+        int scaffoldCount=Math.clamp(in.getIntOr("builder_scaffold_count",0),0,256);
+        for(int j=0;j<scaffoldCount;j++){
+            UUID id=uuid(in,"builder_scaffold_owner_"+j);
+            var position=in.read("builder_scaffold_pos_"+j,BlockPos.CODEC);
+            if(id!=null&&position.isPresent())
+                trackedScaffolds.computeIfAbsent(id,k->new java.util.ArrayList<>())
+                        .add(position.get());
+        }
         supplyRequest=uuid(in,"builder_supply_request");
         supplyPtp=in.read("builder_supply_ptp",BlockPos.CODEC).orElse(BlockPos.ZERO);
         supplyNotice=in.getStringOr("builder_supply_notice","");
