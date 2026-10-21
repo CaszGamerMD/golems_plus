@@ -12,12 +12,18 @@ import net.minecraft.world.item.ItemStack;
 /** 27 payment slots and 9 result slots, with player inventory. */
 public final class WorkerStationMenu extends AbstractContainerMenu {
     private final Container depot;
+    private final BlockPos position;
     public WorkerStationMenu(int id,Inventory inventory,BlockPos position){
         this(id,inventory,inventory.player.level().getBlockEntity(position)
-                instanceof WorkerStationBlockEntity station?station:null);
+                instanceof WorkerStationBlockEntity station?station:null,position);
     }
     public WorkerStationMenu(int id,Inventory inventory,Container source){
+        this(id,inventory,source,source instanceof WorkerStationBlockEntity station
+                ?station.getBlockPos():BlockPos.ZERO);
+    }
+    private WorkerStationMenu(int id,Inventory inventory,Container source,BlockPos position){
         super(WorksiteContent.STATION_MENU,id);
+        this.position=position;
         depot=source==null?new SimpleContainer(WorkerStationBlockEntity.SLOTS):source;
         for(int i=0;i<WorkerStationBlockEntity.SLOTS;i++){
             final int slot=i;
@@ -29,6 +35,7 @@ public final class WorkerStationMenu extends AbstractContainerMenu {
         }
         addStandardInventorySlots(inventory,8,121);
     }
+    public BlockPos stationPos(){return position;}
     @Override public boolean stillValid(Player player){return depot.stillValid(player);}
     @Override public ItemStack quickMoveStack(Player player,int index){
         if(index<0||index>=slots.size())return ItemStack.EMPTY;

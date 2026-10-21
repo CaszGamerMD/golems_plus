@@ -67,7 +67,7 @@ public final class LitematicaPlacementClient {
                     }
         return null;
     }
-    private static void sendSelected()throws Exception{
+    public static void sendSelected()throws Exception{
         Object placement=invoke(manager(),"getSelectedSchematicPlacement");
         if(placement==null)throw new IllegalArgumentException(
                 "Select a loaded placement in Litematica's Schematic Placements list");
