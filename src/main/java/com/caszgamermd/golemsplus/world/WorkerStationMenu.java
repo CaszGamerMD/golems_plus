@@ -29,7 +29,7 @@ public final class WorkerStationMenu extends AbstractContainerMenu {
             final int slot=i;
             addSlot(new Slot(depot,i,8+(i%9)*18,29+(i/9)*18){
                 @Override public boolean mayPlace(ItemStack stack){
-                    return slot<WorkerStationBlockEntity.INPUT_SLOTS;
+                    return depot.canPlaceItem(slot,stack);
                 }
             });
         }

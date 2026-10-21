@@ -279,8 +279,8 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     }
     @Override protected void extractLabels(GuiGraphicsExtractor g,int mouseX,int mouseY){
         g.text(font,title,8,7,0xffe5f9ee,false);
-        g.text(font,Component.literal("STOCK / MATERIALS"),65,19,LABEL_COLOR,false);
-        g.text(font,Component.literal("RETURNS"),8,87,LABEL_COLOR,false);
+        g.text(font,Component.literal(beekeeper()?"LINK EXTERNAL TOOLBOX":"STOCK / MATERIALS"),35,19,LABEL_COLOR,false);
+        g.text(font,Component.literal(beekeeper()?"NO DIRECT STORAGE":"RETURNS"),8,87,LABEL_COLOR,false);
         g.text(font,Component.literal("INVENTORY"),8,109,LABEL_COLOR,false);
         g.text(font,Component.literal(trader()?"TRADER COUNTER":
                 builder()?"BUILDER PLANNER":

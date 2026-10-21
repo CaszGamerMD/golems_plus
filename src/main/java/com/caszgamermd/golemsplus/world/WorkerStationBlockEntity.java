@@ -393,7 +393,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         sync();
     }
     @Override public boolean canPlaceItem(int slot,ItemStack stack) {
-        return slot>=0&&slot<INPUT_SLOTS;
+        return !isBeekeeper()&&slot>=0&&slot<INPUT_SLOTS;
     }
     @Override public void clearContent() {
         items=NonNullList.withSize(SLOTS,ItemStack.EMPTY);sync();
