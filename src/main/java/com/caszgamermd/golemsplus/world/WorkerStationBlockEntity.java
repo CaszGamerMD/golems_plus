@@ -59,6 +59,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.Map<UUID,java.util.List<BlockPos>> trackedScaffolds=new java.util.LinkedHashMap<>();
     private boolean builderPlaced;
     private UUID supplyRequest;
+    private UUID supplyRunner;
     private BlockPos supplyPtp=BlockPos.ZERO;
     private String supplyNotice="";
     private final Map<String,Integer> supplyManifest=new java.util.LinkedHashMap<>();
@@ -159,6 +160,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
 
     public UUID supplyRequest(){return supplyRequest;}
+    public UUID supplyRunner(){return supplyRunner;}
+    public boolean claimSupplyRunner(UUID worker){
+        if(!builderWorkerIds().contains(worker)||supplyRequest==null)return false;
+        if(supplyRunner==null){supplyRunner=worker;sync();}
+        return supplyRunner.equals(worker);
+    }
     public BlockPos supplyPtp(){return supplyPtp;}
     public String supplyNotice(){return supplyNotice;}
     public Map<String,Integer> supplyManifest(){return Map.copyOf(supplyManifest);}
@@ -166,7 +173,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(!isBuilder()||activeOrder==null||supplyRequest!=null
                 ||ticket==null||manifest==null||manifest.isEmpty()
                 ||manifest.size()>16)throw new IllegalArgumentException("Invalid warehouse request");
-        supplyRequest=ticket;
+        supplyRequest=ticket;supplyRunner=null;
         supplyPtp=BlockPos.ZERO;
         supplyNotice="";
         supplyManifest.clear();supplyManifest.putAll(manifest);sync();
@@ -176,7 +183,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(!notice.equals(supplyNotice)){supplyNotice=notice;sync();}
     }
     public void clearSupplyRequest(){
-        supplyRequest=null;supplyPtp=BlockPos.ZERO;
+        supplyRequest=null;supplyRunner=null;supplyPtp=BlockPos.ZERO;
         supplyManifest.clear();supplyNotice="";sync();
     }
     public boolean hasPlacedSchematic(){return builderPlaced&&!builderFile.isBlank();}
@@ -440,6 +447,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             }
         out.putInt("builder_scaffold_count",scix);
         if(supplyRequest!=null)out.putString("builder_supply_request",supplyRequest.toString());
+        if(supplyRunner!=null)out.putString("builder_supply_runner",supplyRunner.toString());
         out.store("builder_supply_ptp",BlockPos.CODEC,supplyPtp);
         out.putString("builder_supply_notice",supplyNotice);
         out.putInt("builder_supply_types",Math.min(16,supplyManifest.size()));
@@ -525,6 +533,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                         .add(position.get());
         }
         supplyRequest=uuid(in,"builder_supply_request");
+        supplyRunner=uuid(in,"builder_supply_runner");
         supplyPtp=in.read("builder_supply_ptp",BlockPos.CODEC).orElse(BlockPos.ZERO);
         supplyNotice=in.getStringOr("builder_supply_notice","");
         supplyManifest.clear();
