@@ -75,7 +75,7 @@ public final class BeekeeperWorkService {
                                 &&BeeInventory.canFit(out,new ItemStack(Items.HONEYCOMB,3)));
                         boolean bottle=!comb&&station.beeMode()!=1
                                 &&has(box,Items.GLASS_BOTTLE)
-                                &&BeeInventory.canFit(out,new ItemStack(Items.HONEY_BOTTLE)));
+                                &&BeeInventory.canFit(out,new ItemStack(Items.HONEY_BOTTLE));
                         if(!comb&&!bottle)continue;
                         bee.start(hive,bottle);claimed.add(hive);assigned=true;
                     }
