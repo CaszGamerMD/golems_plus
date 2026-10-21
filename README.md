@@ -27,6 +27,15 @@ specialties retain prototype interfaces until their Golem AI is ready.
 Read [workstation settings and GUI instructions](docs/WORKSTATION_SETTINGS.md)
 for details.
 
+## Profession models (Minecraft-style)
+
+Builder, Trader and Chef now share a **small worker-golem skeleton**,
+professional texture UVs and smooth walk/arm/head animations. Their
+outfits are actual cuboid geometry, not painted-on flat hats or accessories;
+the Trader's briefcase is attached to its right arm and follows the arm's
+walk animation. No modded resources are needed to view the uniforms.
+See [profession models](docs/PROFESSION_MODELS.md).
+
 ## Current development status
 
 **Trader Golem — in-game implementation (experimental):** A persistent,
@@ -34,9 +43,10 @@ pathfinding Trader Golem uses actual vanilla villager offers and actual
 payment items withdrawn from the owned Trader Counter's 27 stock slots. It
 returns purchased items to nine output slots, refunds unspent payments,
 checks per-order spending limits, and waits when villagers are unavailable,
-offers change, or storage fills. The worker currently uses an Iron Golem
-model; the inventory and commands are usable but need live multiplayer
-testing and a dedicated model.
+offers change, or storage fills. The Trader now has its own **compact
+professional uniform model**: a tailored navy suit, white shirt, red tie,
+dress shoes and animated leather briefcase. Runtime trading still needs
+live multiplayer testing.
 
 Configure from the **Trader Counter's Order, Budget and Village pages**.
 The old `/golems trader` commands are still available for compatibility.
@@ -48,7 +58,9 @@ Golems Plus sends a bounded snapshot
 with the placement's origin, rotation and mirror to the server and saves it
 at your claimed Builder's Planning Table. Click **Preview**, then **Start
 build** to explicitly authorize the Builder to place blocks.
-A real Builder Golem moves to target positions, uses materials from the
+A compact Builder Golem with a **yellow 3D hard hat, orange hi-vis vest
+with raised reflective stripes, utility belt, gloves and work boots**
+moves to target positions, uses materials from the
 table's 27 input slots, saves a work cursor across reloads, skips existing
 matching blocks, and refuses to destroy occupied locations. Status,
 pause/resume/cancel and crew size are managed from the Planner's GUI.
@@ -124,6 +136,13 @@ and temporary block textures for the job block; texture/model finishing
 and in-game testing are ongoing. See
 [Beekeeper setup](docs/BEEKEEPER.md) for details.
 
+**Chef Golem (visual groundwork):** Craft or place a **Chef's Kitchen Station**
+to summon one permanent small Chef worker with a **tall white 3D toque,
+double-breasted chef coat, apron, rolled sleeves and non-slip shoes**. Its
+uniform is implemented and it idles at the claimed kitchen job block.
+Recipe execution, cooking inventories and food-order AI are **not**
+implemented yet. The chef cannot fabricate food.
+
 **Fishing Golem:** event-driven state machine remains groundwork only.
 
 Read [placed Litematica build instructions](docs/LITEMATICA_PLACEMENTS.md),
@@ -132,8 +151,8 @@ Read [placed Litematica build instructions](docs/LITEMATICA_PLACEMENTS.md),
 
 ## Planned golems
 
-- **Cooking Golem** — Ordering kiosk and registered recipe preparation;
-  progress tracked as future implementation.
+- **Cooking Golem** — Chef outfit/model and cooking job block implemented;
+  ordering kiosk and real recipe preparation remain future milestones.
 - **Beekeeper Golem** — Experimental harvest worker with own toolbox and
   output container. Bee breeding and expanded activities remain future work.
 - **Builder Golem** — Litematica plans and linked warehouse materials:

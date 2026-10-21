@@ -75,6 +75,15 @@ the owner must be online in the same dimension while a worker harvests.
 
 See [Beekeeper guide](BEEKEEPER.md).
 
+## Chef's Kitchen Station
+
+Place/claim a **Chef's Kitchen Station** to create a small Chef Golem in
+the new white uniform with a 3D chef's hat and apron. The chef remains near
+the job block as a preview of the future cooking worker. **It does not
+take ingredients, cook recipes or create food yet.** A saved worker identity
+prevents duplicate chefs across normal chunk unloads. Configuration will
+become available with the Cooking Golem's actual work queue.
+
 ## Other job blocks
 
 Fishing, Cooking and Beekeeper workstations continue to use their

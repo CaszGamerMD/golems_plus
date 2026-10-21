@@ -19,6 +19,7 @@ import net.minecraft.world.Containers;
 import com.caszgamermd.golemsplus.trader.TraderWorkService;
 import com.caszgamermd.golemsplus.builder.BuilderBuildService;
 import com.caszgamermd.golemsplus.beekeeper.BeekeeperWorkService;
+import com.caszgamermd.golemsplus.cooking.ChefWorkService;
 import com.caszgamermd.golemsplus.warehouse.BuilderScannerLink;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.block.EntityBlock;
@@ -55,6 +56,7 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
                 if(station.isTrader())TraderWorkService.tick(server,station);
                 else if(station.isBuilder())BuilderBuildService.dispatch(server,station);
                 else if(station.isBeekeeper())BeekeeperWorkService.dispatch(server,station);
+                else if(station.isCooking())ChefWorkService.tick(server,station);
             }
         };
     }

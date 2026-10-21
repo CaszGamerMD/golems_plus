@@ -10,7 +10,9 @@ import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.Containers;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.animal.golem.IronGolem;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.trading.MerchantOffer;
@@ -23,18 +25,24 @@ import net.minecraft.world.level.storage.ValueOutput;
  * workstation before departure. The worker persists them across saves
  * and retains them when villagers go out of stock.
  */
-public final class TraderGolem extends IronGolem {
+public final class TraderGolem extends PathfinderMob {
     private BlockPos home = BlockPos.ZERO;
     private UUID owner, order, villagerId;
     private int offerIndex=-1, stage=0, navigationFailures, quotedGoods;
     private ItemStack paymentA=ItemStack.EMPTY,paymentB=ItemStack.EMPTY,returning=ItemStack.EMPTY;
     private boolean hasTraded;
 
-    public TraderGolem(EntityType<? extends IronGolem> type, Level world){
+    public TraderGolem(EntityType<? extends PathfinderMob> type, Level world){
         super(type,world);
         setPersistenceRequired();
         setInvulnerable(true); // no free iron drops or accidental cargo loss
         setCustomName(Component.literal("Trader Golem"));
+    }
+    public static AttributeSupplier.Builder attributes(){
+        return PathfinderMob.createMobAttributes()
+                .add(Attributes.MAX_HEALTH,20)
+                .add(Attributes.MOVEMENT_SPEED,.30)
+                .add(Attributes.FOLLOW_RANGE,48);
     }
     @Override protected void registerGoals() {
         // All movement is through the explicit order controller, never an

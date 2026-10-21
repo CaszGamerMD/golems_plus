@@ -6,21 +6,29 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.animal.golem.IronGolem;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 
 /** Physical construction courier. Every placement is checked server-side. */
-public final class BuilderGolem extends IronGolem {
+public final class BuilderGolem extends PathfinderMob {
     private BlockPos home=BlockPos.ZERO;
     private UUID owner;
     private ItemStack carriedSupplyBox=ItemStack.EMPTY;
-    public BuilderGolem(EntityType<? extends IronGolem> type,Level world){
+    public BuilderGolem(EntityType<? extends PathfinderMob> type,Level world){
         super(type,world);
         setPersistenceRequired();
         setInvulnerable(true);
         setCustomName(Component.literal("Builder Golem"));
+    }
+    public static AttributeSupplier.Builder attributes(){
+        return PathfinderMob.createMobAttributes()
+                .add(Attributes.MAX_HEALTH,20)
+                .add(Attributes.MOVEMENT_SPEED,.30)
+                .add(Attributes.FOLLOW_RANGE,48);
     }
     @Override protected void registerGoals(){}
     public void assign(BlockPos table,UUID player){

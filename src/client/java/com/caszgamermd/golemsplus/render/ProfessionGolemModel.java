@@ -1,0 +1,229 @@
+package com.caszgamermd.golemsplus.render;
+
+import net.minecraft.client.model.EntityModel;
+import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.model.geom.PartPose;
+import net.minecraft.client.model.geom.builders.CubeListBuilder;
+import net.minecraft.client.model.geom.builders.LayerDefinition;
+import net.minecraft.client.model.geom.builders.MeshDefinition;
+import net.minecraft.client.model.geom.builders.PartDefinition;
+import net.minecraft.util.Mth;
+
+/**
+ * One compact 3D worker skeleton for all Caszual job uniforms. All safety
+ * gear, tailor details and accessories are actual cuboids, not flat overlays.
+ * Profession-specific parts occupy different atlas areas and never z-fight.
+ *
+ * UV resolution: 128x128. Model origin and limb pivots match the Beekeeper.
+ */
+public final class ProfessionGolemModel
+        extends EntityModel<ProfessionGolemRenderState> {
+    public enum Profession { BUILDER, TRADER, CHEF }
+
+    private final ModelPart head,leftArm,rightArm,leftLeg,rightLeg;
+    private final Profession profession;
+
+    public ProfessionGolemModel(ModelPart root,Profession profession){
+        super(root);
+        this.profession=profession;
+        head=root.getChild("head");
+        leftArm=root.getChild("left_arm");
+        rightArm=root.getChild("right_arm");
+        leftLeg=root.getChild("left_leg");
+        rightLeg=root.getChild("right_leg");
+    }
+
+    public static LayerDefinition builderLayer(){return layer(Profession.BUILDER);}
+    public static LayerDefinition traderLayer(){return layer(Profession.TRADER);}
+    public static LayerDefinition chefLayer(){return layer(Profession.CHEF);}
+
+    private static LayerDefinition layer(Profession type){
+        MeshDefinition mesh=new MeshDefinition();
+        PartDefinition root=mesh.getRoot();
+
+        PartDefinition torso=root.addOrReplaceChild("body",CubeListBuilder.create()
+                .texOffs(0,0).addBox(-5,-6,-3.5f,10,11,7),
+                PartPose.offset(0,13,0));
+        PartDefinition head=root.addOrReplaceChild("head",CubeListBuilder.create()
+                .texOffs(0,26).addBox(-4,-4,-3,8,7,6),
+                PartPose.offset(0,6,0));
+        PartDefinition left=root.addOrReplaceChild("left_arm",CubeListBuilder.create()
+                .texOffs(46,0).addBox(-2.5f,-1,-2.5f,5,10,5),
+                PartPose.offset(7,11,0));
+        PartDefinition right=root.addOrReplaceChild("right_arm",CubeListBuilder.create()
+                .texOffs(46,0).addBox(-2.5f,-1,-2.5f,5,10,5),
+                PartPose.offset(-7,11,0));
+        PartDefinition leftLeg=root.addOrReplaceChild("left_leg",CubeListBuilder.create()
+                .texOffs(71,0).addBox(-2,0,-2,4,8,4),
+                PartPose.offset(3,16,0));
+        PartDefinition rightLeg=root.addOrReplaceChild("right_leg",CubeListBuilder.create()
+                .texOffs(71,0).addBox(-2,0,-2,4,8,4),
+                PartPose.offset(-3,16,0));
+
+        switch(type){
+            case BUILDER -> {
+                // Raised hard-hat bowl, brow brim, rear flap and center rib.
+                head.addOrReplaceChild("helmet_crown",CubeListBuilder.create()
+                        .texOffs(75,24).addBox(-4.7f,-7.2f,-3.8f,9.4f,4,7.6f),
+                        PartPose.ZERO);
+                head.addOrReplaceChild("helmet_brim",CubeListBuilder.create()
+                        .texOffs(0,59).addBox(-6,-3.9f,-5,12,1.1f,10),
+                        PartPose.ZERO);
+                head.addOrReplaceChild("helmet_ridge",CubeListBuilder.create()
+                        .texOffs(53,76).addBox(-.7f,-7.7f,-4.2f,1.4f,1,8.4f),
+                        PartPose.ZERO);
+                torso.addOrReplaceChild("hi_vis_vest",CubeListBuilder.create()
+                        .texOffs(42,34).addBox(-5.45f,-6.25f,-3.95f,
+                                10.9f,10.7f,7.9f),PartPose.ZERO);
+                // Reflective bands sit outside the vest, not inside it.
+                torso.addOrReplaceChild("vest_strap_l",CubeListBuilder.create()
+                        .texOffs(86,52).addBox(-4.1f,-6.45f,-4.14f,
+                                1.6f,8.4f,.45f),PartPose.ZERO);
+                torso.addOrReplaceChild("vest_strap_r",CubeListBuilder.create()
+                        .texOffs(86,52).addBox(2.5f,-6.45f,-4.14f,
+                                1.6f,8.4f,.45f),PartPose.ZERO);
+                torso.addOrReplaceChild("vest_belt",CubeListBuilder.create()
+                        .texOffs(94,52).addBox(-5.6f,1.6f,-4.2f,
+                                11.2f,1.4f,.5f),PartPose.ZERO);
+                torso.addOrReplaceChild("utility_belt",CubeListBuilder.create()
+                        .texOffs(72,67).addBox(-5.4f,4.3f,-3.95f,
+                                10.8f,2.0f,7.9f),PartPose.ZERO);
+                torso.addOrReplaceChild("tool_pouch",CubeListBuilder.create()
+                        .texOffs(109,80).addBox(4.2f,3.0f,-4.3f,
+                                2.3f,3.7f,3.2f),PartPose.ZERO);
+                left.addOrReplaceChild("work_glove",CubeListBuilder.create()
+                        .texOffs(108,0).addBox(-2.6f,6.2f,-2.6f,
+                                5.2f,3.2f,5.2f),PartPose.ZERO);
+                right.addOrReplaceChild("work_glove",CubeListBuilder.create()
+                        .texOffs(108,0).addBox(-2.6f,6.2f,-2.6f,
+                                5.2f,3.2f,5.2f),PartPose.ZERO);
+                leftLeg.addOrReplaceChild("work_boot",CubeListBuilder.create()
+                        .texOffs(107,15).addBox(-2.2f,5.6f,-2.8f,
+                                4.4f,2.4f,5.6f),PartPose.ZERO);
+                rightLeg.addOrReplaceChild("work_boot",CubeListBuilder.create()
+                        .texOffs(107,15).addBox(-2.2f,5.6f,-2.8f,
+                                4.4f,2.4f,5.6f),PartPose.ZERO);
+            }
+            case TRADER -> {
+                // Tailored overcoat, lapels, crisp white shirt and red tie.
+                torso.addOrReplaceChild("suit_jacket",CubeListBuilder.create()
+                        .texOffs(42,34).addBox(-5.3f,-6.35f,-3.95f,
+                                10.6f,11,7.9f),PartPose.ZERO);
+                torso.addOrReplaceChild("shirt",CubeListBuilder.create()
+                        .texOffs(86,33).addBox(-1.75f,-6.35f,-4.16f,
+                                3.5f,7.8f,.48f),PartPose.ZERO);
+                torso.addOrReplaceChild("lapel_l",CubeListBuilder.create()
+                        .texOffs(93,33).addBox(-3.4f,-6.35f,-4.3f,
+                                1.75f,6.6f,.47f),PartPose.ZERO);
+                torso.addOrReplaceChild("lapel_r",CubeListBuilder.create()
+                        .texOffs(93,33).addBox(1.65f,-6.35f,-4.3f,
+                                1.75f,6.6f,.47f),PartPose.ZERO);
+                torso.addOrReplaceChild("tie",CubeListBuilder.create()
+                        .texOffs(100,33).addBox(-.65f,-5.7f,-4.46f,
+                                1.3f,6.1f,.44f),PartPose.ZERO);
+                torso.addOrReplaceChild("waistcoat",CubeListBuilder.create()
+                        .texOffs(107,34).addBox(-4.7f,2.5f,-4.2f,
+                                9.4f,2.0f,.44f),PartPose.ZERO);
+                head.addOrReplaceChild("styled_hair",CubeListBuilder.create()
+                        .texOffs(76,25).addBox(-4.2f,-4.9f,-3.3f,
+                                8.4f,1.4f,6.6f),PartPose.ZERO);
+                left.addOrReplaceChild("shirt_cuff",CubeListBuilder.create()
+                        .texOffs(108,0).addBox(-2.6f,7.2f,-2.6f,
+                                5.2f,1.3f,5.2f),PartPose.ZERO);
+                right.addOrReplaceChild("shirt_cuff",CubeListBuilder.create()
+                        .texOffs(108,0).addBox(-2.6f,7.2f,-2.6f,
+                                5.2f,1.3f,5.2f),PartPose.ZERO);
+                leftLeg.addOrReplaceChild("formal_shoe",CubeListBuilder.create()
+                        .texOffs(107,15).addBox(-2.15f,6.3f,-2.8f,
+                                4.3f,1.7f,5.5f),PartPose.ZERO);
+                rightLeg.addOrReplaceChild("formal_shoe",CubeListBuilder.create()
+                        .texOffs(107,15).addBox(-2.15f,6.3f,-2.8f,
+                                4.3f,1.7f,5.5f),PartPose.ZERO);
+                // Hinged 3D case is attached to the right arm so it moves
+                // naturally with that arm. Actual body is not part of the
+                // arm model, preventing clipping into the suit in idle.
+                right.addOrReplaceChild("briefcase",CubeListBuilder.create()
+                        .texOffs(0,79).addBox(-4,8.6f,-1.0f,
+                                8,5,3),PartPose.ZERO);
+                right.addOrReplaceChild("case_handle",CubeListBuilder.create()
+                        .texOffs(31,80).addBox(-1.7f,7.2f,-.1f,
+                                3.4f,1.7f,1.5f),PartPose.ZERO);
+                right.addOrReplaceChild("case_latch",CubeListBuilder.create()
+                        .texOffs(40,82).addBox(-.8f,10.2f,-1.33f,
+                                1.6f,1.2f,.4f),PartPose.ZERO);
+            }
+            case CHEF -> {
+                // Extra-tall soft toque with distinguishable crown pleats.
+                head.addOrReplaceChild("toque_band",CubeListBuilder.create()
+                        .texOffs(75,24).addBox(-4.65f,-5.2f,-3.75f,
+                                9.3f,3.0f,7.5f),PartPose.ZERO);
+                head.addOrReplaceChild("toque_crown",CubeListBuilder.create()
+                        .texOffs(38,87).addBox(-5.4f,-10.6f,-4.55f,
+                                10.8f,5.7f,9.1f),PartPose.ZERO);
+                head.addOrReplaceChild("toque_fold",CubeListBuilder.create()
+                        .texOffs(86,89).addBox(-5.15f,-6.1f,-4.55f,
+                                10.3f,1.2f,9.1f),PartPose.ZERO);
+                torso.addOrReplaceChild("chef_coat",CubeListBuilder.create()
+                        .texOffs(42,34).addBox(-5.35f,-6.25f,-3.95f,
+                                10.7f,10.9f,7.9f),PartPose.ZERO);
+                torso.addOrReplaceChild("front_apron",CubeListBuilder.create()
+                        .texOffs(86,33).addBox(-3.8f,-3.7f,-4.17f,
+                                7.6f,9.7f,.47f),PartPose.ZERO);
+                torso.addOrReplaceChild("apron_strap_l",CubeListBuilder.create()
+                        .texOffs(95,54).addBox(-4.0f,-6.3f,-4.27f,
+                                1.1f,4.0f,.5f),PartPose.ZERO);
+                torso.addOrReplaceChild("apron_strap_r",CubeListBuilder.create()
+                        .texOffs(95,54).addBox(2.9f,-6.3f,-4.27f,
+                                1.1f,4.0f,.5f),PartPose.ZERO);
+                torso.addOrReplaceChild("apron_tie",CubeListBuilder.create()
+                        .texOffs(112,57).addBox(-5.5f,2.8f,-4.15f,
+                                11,1.2f,.4f),PartPose.ZERO);
+                left.addOrReplaceChild("rolled_cuff",CubeListBuilder.create()
+                        .texOffs(108,0).addBox(-2.6f,6.2f,-2.6f,
+                                5.2f,2.4f,5.2f),PartPose.ZERO);
+                right.addOrReplaceChild("rolled_cuff",CubeListBuilder.create()
+                        .texOffs(108,0).addBox(-2.6f,6.2f,-2.6f,
+                                5.2f,2.4f,5.2f),PartPose.ZERO);
+                leftLeg.addOrReplaceChild("non_slip_shoe",CubeListBuilder.create()
+                        .texOffs(107,15).addBox(-2.15f,6.1f,-2.65f,
+                                4.3f,1.9f,5.3f),PartPose.ZERO);
+                rightLeg.addOrReplaceChild("non_slip_shoe",CubeListBuilder.create()
+                        .texOffs(107,15).addBox(-2.15f,6.1f,-2.65f,
+                                4.3f,1.9f,5.3f),PartPose.ZERO);
+            }
+        }
+        return LayerDefinition.create(mesh,256,128);
+    }
+
+    @Override public void setupAnim(ProfessionGolemRenderState state){
+        super.setupAnim(state);
+        head.xRot=state.xRot*Mth.DEG_TO_RAD;
+        head.yRot=state.yRot*Mth.DEG_TO_RAD;
+        float travel=state.walkAnimationPos*.58f;
+        float swing=Mth.clamp(state.walkAnimationSpeed,0,1);
+        if(swing<.035f)swing=0;
+        leftLeg.xRot=Mth.cos(travel)*1.02f*swing;
+        rightLeg.xRot=Mth.cos(travel+Mth.PI)*1.02f*swing;
+        leftArm.xRot=rightLeg.xRot*.52f;
+        rightArm.xRot=leftLeg.xRot*.52f;
+        leftArm.zRot=rightArm.zRot=0;
+        if(profession==Profession.BUILDER){
+            // A construction worker carries a shulker using both hands.
+            if(state.carrying){
+                leftArm.xRot=rightArm.xRot=-1.10f;
+                leftArm.zRot=-.10f;rightArm.zRot=.10f;
+            }else if(state.working&&swing==0){
+                rightArm.xRot=-.72f;
+            }
+        }else if(profession==Profession.TRADER){
+            // Keep the case below the right hand even when walking.
+            rightArm.xRot*=.35f;
+            rightArm.zRot=-.12f;
+            if(state.carrying)leftArm.xRot=-.58f;
+        }else if(profession==Profession.CHEF){
+            // Deliberately calm kitchen stance.
+            leftArm.xRot*=.38f;rightArm.xRot*=.38f;
+            leftArm.zRot=-.06f;rightArm.zRot=.06f;
+        }
+    }
+}

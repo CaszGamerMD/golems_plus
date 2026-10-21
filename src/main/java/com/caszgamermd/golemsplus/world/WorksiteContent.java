@@ -15,6 +15,7 @@ import com.caszgamermd.golemsplus.builder.BuilderGolem;
 import com.caszgamermd.golemsplus.beekeeper.BeeToolboxBlock;
 import com.caszgamermd.golemsplus.beekeeper.BeeToolboxBlockEntity;
 import com.caszgamermd.golemsplus.beekeeper.BeekeeperGolem;
+import com.caszgamermd.golemsplus.cooking.ChefGolem;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -29,15 +30,16 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 
 public final class WorksiteContent {
-    public static WorkerStationBlock BUILDER_TABLE, FISHING_STATION, TRADER_COUNTER, BEEKEEPER_STATION;
+    public static WorkerStationBlock BUILDER_TABLE, FISHING_STATION, TRADER_COUNTER, BEEKEEPER_STATION, COOKING_STATION;
     public static BeeToolboxBlock BEE_TOOLBOX;
-    public static Item BUILDER_TABLE_ITEM, FISHING_STATION_ITEM, TRADER_COUNTER_ITEM, BEEKEEPER_STATION_ITEM, BEE_TOOLBOX_ITEM;
+    public static Item BUILDER_TABLE_ITEM, FISHING_STATION_ITEM, TRADER_COUNTER_ITEM, BEEKEEPER_STATION_ITEM, BEE_TOOLBOX_ITEM, COOKING_STATION_ITEM;
     public static BlockEntityType<BeeToolboxBlockEntity> BEE_TOOLBOX_ENTITY;
     public static BlockEntityType<WorkerStationBlockEntity> STATION_ENTITY;
     public static MenuType<WorkerStationMenu> STATION_MENU;
     public static EntityType<TraderGolem> TRADER_GOLEM;
     public static EntityType<BuilderGolem> BUILDER_GOLEM;
     public static EntityType<BeekeeperGolem> BEEKEEPER_GOLEM;
+    public static EntityType<ChefGolem> CHEF_GOLEM;
     private static final ResourceKey<CreativeModeTab> TAB = ResourceKey.create(
             BuiltInRegistries.CREATIVE_MODE_TAB.key(), GolemsPlus.id("main"));
 
@@ -63,6 +65,7 @@ public final class WorksiteContent {
         FISHING_STATION = station("fishing_station", WorkerSpecialty.FISHING);
         TRADER_COUNTER = station("trader_counter", WorkerSpecialty.TRADER);
         BEEKEEPER_STATION=station("beekeeper_station",WorkerSpecialty.BEEKEEPER);
+        COOKING_STATION=station("cooking_station",WorkerSpecialty.COOKING);
         ResourceKey<net.minecraft.world.level.block.Block> toolboxKey=
                 ResourceKey.create(Registries.BLOCK,GolemsPlus.id("beekeeper_toolbox"));
         BEE_TOOLBOX=Registry.register(BuiltInRegistries.BLOCK,toolboxKey,
@@ -72,6 +75,7 @@ public final class WorksiteContent {
         FISHING_STATION_ITEM = blockItem("fishing_station", FISHING_STATION);
         TRADER_COUNTER_ITEM = blockItem("trader_counter", TRADER_COUNTER);
         BEEKEEPER_STATION_ITEM=blockItem("beekeeper_station",BEEKEEPER_STATION);
+        COOKING_STATION_ITEM=blockItem("cooking_station",COOKING_STATION);
         ResourceKey<Item> toolboxItemKey=ResourceKey.create(Registries.ITEM,
                 GolemsPlus.id("beekeeper_toolbox"));
         BEE_TOOLBOX_ITEM=Registry.register(BuiltInRegistries.ITEM,toolboxItemKey,
@@ -81,7 +85,7 @@ public final class WorksiteContent {
                 GolemsPlus.id("worker_station"),
                 FabricBlockEntityTypeBuilder.create(WorkerStationBlockEntity::new,
                         BUILDER_TABLE, FISHING_STATION, TRADER_COUNTER,
-                        BEEKEEPER_STATION).build());
+                        BEEKEEPER_STATION,COOKING_STATION).build());
         BEE_TOOLBOX_ENTITY=Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE,
                 GolemsPlus.id("beekeeper_toolbox_entity"),
                 FabricBlockEntityTypeBuilder.create(BeeToolboxBlockEntity::new,
@@ -94,16 +98,14 @@ public final class WorksiteContent {
                 GolemsPlus.id("trader_golem"));
         TRADER_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,traderKey,
                 EntityType.Builder.<TraderGolem>of(TraderGolem::new,MobCategory.MISC)
-                        .sized(1.4f,2.7f).build(traderKey));
-        FabricDefaultAttributeRegistry.register(TRADER_GOLEM,
-                net.minecraft.world.entity.animal.golem.IronGolem.createAttributes());
+                        .sized(.76f,1.62f).build(traderKey));
+        FabricDefaultAttributeRegistry.register(TRADER_GOLEM,TraderGolem.attributes());
         ResourceKey<EntityType<?>> builderKey=ResourceKey.create(Registries.ENTITY_TYPE,
                 GolemsPlus.id("builder_golem"));
         BUILDER_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,builderKey,
                 EntityType.Builder.<BuilderGolem>of(BuilderGolem::new,MobCategory.MISC)
-                        .sized(1.4f,2.7f).build(builderKey));
-        FabricDefaultAttributeRegistry.register(BUILDER_GOLEM,
-                net.minecraft.world.entity.animal.golem.IronGolem.createAttributes());
+                        .sized(.76f,1.62f).build(builderKey));
+        FabricDefaultAttributeRegistry.register(BUILDER_GOLEM,BuilderGolem.attributes());
         ResourceKey<EntityType<?>> beekeeperKey=ResourceKey.create(Registries.ENTITY_TYPE,
                 GolemsPlus.id("beekeeper_golem"));
         BEEKEEPER_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,beekeeperKey,
@@ -111,6 +113,12 @@ public final class WorksiteContent {
                         .sized(.70f,1.45f).build(beekeeperKey));
         FabricDefaultAttributeRegistry.register(BEEKEEPER_GOLEM,
                 BeekeeperGolem.attributes());
+        ResourceKey<EntityType<?>> chefKey=ResourceKey.create(Registries.ENTITY_TYPE,
+                GolemsPlus.id("chef_golem"));
+        CHEF_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,chefKey,
+                EntityType.Builder.<ChefGolem>of(ChefGolem::new,MobCategory.MISC)
+                        .sized(.76f,1.85f).build(chefKey));
+        FabricDefaultAttributeRegistry.register(CHEF_GOLEM,ChefGolem.attributes());
         Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, TAB,
                 FabricCreativeModeTab.builder()
                         .title(Component.literal("Golems Plus"))
@@ -121,6 +129,7 @@ public final class WorksiteContent {
                             output.accept(TRADER_COUNTER_ITEM);
                             output.accept(BEEKEEPER_STATION_ITEM);
                             output.accept(BEE_TOOLBOX_ITEM);
+                            output.accept(COOKING_STATION_ITEM);
                         }).build());
     }
 }
