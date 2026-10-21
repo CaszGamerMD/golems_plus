@@ -24,6 +24,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     private String villagePosition="",villageRadius="32";
     private boolean loadedVillageDefaults,loadedOrderDefaults;
     private String feedback="";
+    private int desiredCrew=1;
     private static final int PANE=185, BG_WIDTH=375, BG_HEIGHT=254;
     private static final int PANEL_COLOR=0xff26383c;
     private static final int LABEL_COLOR=0xffcbe8d8;
@@ -59,6 +60,8 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         super.init();
         page=trader()?Page.TRADE_ORDER:Page.BUILD;
         readDefaults();
+        var station=station();
+        if(station!=null)desiredCrew=station.crewTarget();
         buildControls();
     }
     private void readDefaults(){
@@ -115,7 +118,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         }
         ClientPlayNetworking.send(new StationSettingsNetworking.Change(
                 menu.stationPos(),action,item,count,x,y,z));
-        feedback="Sent: "+action.replace('_',' ');
+        feedback="Requested: "+action.replace('_',' ');
     }
     private void send(String action,int count){
         send(action,"",count,0,0,0);
@@ -135,12 +138,12 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     }
     private void crewControls(){
         button("−",PANE,206,32,()->{
-            var station=station();
-            send("crew",Math.max(1,(station==null?1:station.crewTarget())-1));
+            desiredCrew=Math.max(1,desiredCrew-1);
+            send("crew",desiredCrew);
         });
         button("+",PANE+148,206,34,()->{
-            var station=station();
-            send("crew",Math.min(4,(station==null?1:station.crewTarget())+1));
+            desiredCrew=Math.min(4,desiredCrew+1);
+            send("crew",desiredCrew);
         });
     }
     private void buildControls(){
