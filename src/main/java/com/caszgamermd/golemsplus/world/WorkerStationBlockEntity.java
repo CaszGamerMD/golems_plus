@@ -53,6 +53,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private int builderCursor;
     private UUID builderWorkerId;
     private boolean builderPlaced;
+    private UUID supplyRequest;
+    private BlockPos supplyPtp=BlockPos.ZERO;
+    private String supplyNotice="";
+    private final Map<String,Integer> supplyManifest=new java.util.LinkedHashMap<>();
 
     public WorkerStationBlockEntity(BlockPos pos, BlockState state) {
         super(WorksiteContent.STATION_ENTITY, pos, state);
@@ -80,6 +84,27 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public String placedSchematicName(){return placedSchematicName;}
     public int builderCursor(){return builderCursor;}
     public UUID builderWorkerId(){return builderWorkerId;}
+    public UUID supplyRequest(){return supplyRequest;}
+    public BlockPos supplyPtp(){return supplyPtp;}
+    public String supplyNotice(){return supplyNotice;}
+    public Map<String,Integer> supplyManifest(){return Map.copyOf(supplyManifest);}
+    public void prepareSupplyRequest(UUID ticket,Map<String,Integer> manifest){
+        if(!isBuilder()||activeOrder==null||supplyRequest!=null
+                ||ticket==null||manifest==null||manifest.isEmpty()
+                ||manifest.size()>16)throw new IllegalArgumentException("Invalid warehouse request");
+        supplyRequest=ticket;
+        supplyPtp=BlockPos.ZERO;
+        supplyNotice="";
+        supplyManifest.clear();supplyManifest.putAll(manifest);sync();
+    }
+    public void setSupplyPtp(BlockPos output){supplyPtp=output.immutable();sync();}
+    public void setSupplyNotice(String notice){
+        if(!notice.equals(supplyNotice)){supplyNotice=notice;sync();}
+    }
+    public void clearSupplyRequest(){
+        supplyRequest=null;supplyPtp=BlockPos.ZERO;
+        supplyManifest.clear();supplyNotice="";sync();
+    }
     public boolean hasPlacedSchematic(){return builderPlaced&&!builderFile.isBlank();}
     public boolean isBuilder(){
         return getBlockState().getBlock() instanceof WorkerStationBlock block
@@ -88,7 +113,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean setPlacedBuilderPlan(UUID actor,String filename,String display,
             BlockPos origin,int rotation,int mirror,int blocks,int unresolved){
         if(!canConfigure(actor)||!isBuilder()||activeOrder!=null
-                ||filename==null||!filename.startsWith("placed-")
+                ||supplyRequest!=null||filename==null||!filename.startsWith("placed-")
                 ||!filename.endsWith(".litematic")
                 ||filename.contains("/")||filename.contains("..")||filename.contains("\\")
                 ||origin==null||rotation<0||rotation>3||mirror<0||mirror>2
@@ -100,7 +125,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     public boolean startPlacedBuilder(UUID actor){
         if(!canConfigure(actor)||!isBuilder()||!hasPlacedSchematic()
-                ||builderUnresolved!=0||activeOrder!=null)return false;
+                ||supplyRequest!=null||builderUnresolved!=0||activeOrder!=null)return false;
         activeOrder=UUID.randomUUID();builderCursor=0;
         phase=WorkerPhase.WORKING;sync();return true;
     }
@@ -142,7 +167,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         owner = actor; sync(); return true;
     }
     public boolean setWarehouse(UUID actor, WarehouseAssignment selection) {
-        if (!canConfigure(actor)) return false;
+        if (!canConfigure(actor)||supplyRequest!=null) return false;
         warehouse = selection; sync(); return true;
     }
     public boolean setVillage(UUID actor, VillageSearchArea selection) {
@@ -317,6 +342,17 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putBoolean("builder_placed",builderPlaced);
         out.putInt("builder_cursor",builderCursor);
         if(builderWorkerId!=null)out.putString("builder_worker",builderWorkerId.toString());
+        if(supplyRequest!=null)out.putString("builder_supply_request",supplyRequest.toString());
+        out.store("builder_supply_ptp",BlockPos.CODEC,supplyPtp);
+        out.putString("builder_supply_notice",supplyNotice);
+        out.putInt("builder_supply_types",Math.min(16,supplyManifest.size()));
+        int supplyIndex=0;
+        for(var e:supplyManifest.entrySet()){
+            if(supplyIndex>=16)break;
+            out.putString("builder_supply_id_"+supplyIndex,e.getKey());
+            out.putInt("builder_supply_amount_"+supplyIndex,e.getValue());
+            supplyIndex++;
+        }
         out.putInt("budget_size",Math.min(64,budgets.size()));
         int i=0;
         for(var e:budgets.entrySet()){
@@ -364,6 +400,16 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderPlaced=in.getBooleanOr("builder_placed",false);
         builderCursor=Math.clamp(in.getIntOr("builder_cursor",0),0,builderBlocks);
         builderWorkerId=uuid(in,"builder_worker");
+        supplyRequest=uuid(in,"builder_supply_request");
+        supplyPtp=in.read("builder_supply_ptp",BlockPos.CODEC).orElse(BlockPos.ZERO);
+        supplyNotice=in.getStringOr("builder_supply_notice","");
+        supplyManifest.clear();
+        int supplies=Math.clamp(in.getIntOr("builder_supply_types",0),0,16);
+        for(int i=0;i<supplies;i++){
+            String id=in.getStringOr("builder_supply_id_"+i,"");
+            int qty=in.getIntOr("builder_supply_amount_"+i,0);
+            if(!id.isBlank()&&qty>0&&qty<=4096)supplyManifest.put(id,qty);
+        }
         budgets.clear();spent.clear();
         int n=Math.clamp(in.getIntOr("budget_size",0),0,64);
         for(int i=0;i<n;i++){
