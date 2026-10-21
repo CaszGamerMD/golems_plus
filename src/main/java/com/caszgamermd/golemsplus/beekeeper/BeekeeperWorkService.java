@@ -70,14 +70,13 @@ public final class BeekeeperWorkService {
                         if(!(tool instanceof Container box)||!(output instanceof Container out))
                             return;
                         // Favor comb only when mode allows it and shears exist.
-                        boolean comb=(station.beeMode()!=2
-                                &&has(box,Items.SHEARS)
-                                &&BeeInventory.canFit(out,new ItemStack(Items.HONEYCOMB,3)));
-                        boolean bottle=!comb&&station.beeMode()!=1
-                                &&has(box,Items.GLASS_BOTTLE)
-                                &&BeeInventory.canFit(out,new ItemStack(Items.HONEY_BOTTLE));
-                        if(!comb&&!bottle)continue;
-                        bee.start(hive,bottle);claimed.add(hive);assigned=true;
+                        var choice=BeeHarvestPolicy.choose(station.beeMode(),
+                                has(box,Items.SHEARS),has(box,Items.GLASS_BOTTLE),
+                                BeeInventory.canFit(out,new ItemStack(Items.HONEYCOMB,3)),
+                                BeeInventory.canFit(out,new ItemStack(Items.HONEY_BOTTLE)));
+                        if(choice==BeeHarvestPolicy.Choice.WAIT)continue;
+                        bee.start(hive,choice==BeeHarvestPolicy.Choice.BOTTLE);
+                        claimed.add(hive);assigned=true;
                     }
             if(assigned)station.setProblem("");
             else station.setProblem("Waiting for full beehives, tools or output capacity");
