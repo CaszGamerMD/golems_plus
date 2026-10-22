@@ -82,8 +82,24 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
         return InteractionResult.SUCCESS;
     }
     @Override public BlockState playerWillDestroy(Level level,BlockPos pos,BlockState state,Player player){
-        if(!level.isClientSide()&&level.getBlockEntity(pos) instanceof WorkerStationBlockEntity station)
+        if(!level.isClientSide()&&level.getBlockEntity(pos) instanceof WorkerStationBlockEntity station){
+            if(station.isCooking()&&station.chefBusy()){
+                for(var entry:station.clearChefOrder().entrySet()){
+                    var id=net.minecraft.resources.Identifier.tryParse(entry.getKey());
+                    if(id!=null&&net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(id)){
+                        var item=net.minecraft.core.registries.BuiltInRegistries.ITEM.getValue(id);
+                        int left=entry.getValue();
+                        while(left>0){
+                            int size=Math.min(left,item.getDefaultMaxStackSize());
+                            Containers.dropItemStack(level,pos.getX()+.5,pos.getY()+.5,
+                                    pos.getZ()+.5,new ItemStack(item,size));
+                            left-=size;
+                        }
+                    }
+                }
+            }
             Containers.dropContents(level,pos,station);
+        }
         return super.playerWillDestroy(level,pos,state,player);
     }
     @Override protected InteractionResult useWithoutItem(BlockState state, Level level,
