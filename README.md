@@ -366,3 +366,22 @@ Fishing currently produces weighted vanilla cod, salmon, tropical fish
 and pufferfish rather than the full vanilla fishing loot table. External
 modded loot tables remain a future integration. Models and marker state
 are saved, and previously held catches are migrated on load.
+
+## 0.3.10-dev — Croptopia Cheeseburger recipes and kiosk tooltips
+
+* Chef's recursive recipe planner now enumerates actual accepted item
+  holders from every tag ingredient. Items such as raw beef, salt, dairy,
+  seeds and modded crops no longer disappear just because they are not
+  already in the pantry or craftable through another recipe.
+* The planner uses the ShapelessRecipe result API directly, and ranks
+  kitchen-stocked ingredients first. Ingredient alternatives no longer
+  need to be in inventory to appear in recipe previews.
+* The top-level requested meal is **never** treated as a missing raw
+  ingredient when no valid crafting path was discovered. The kiosk
+  displays a recipe error instead of misleadingly listing RAW 1x
+  croptopia:cheeseburger. Complete meals can only be plated directly
+  when they exist in linked kitchen storage.
+* Tooltips now render in the GUI's tooltip pass, anchored to the actual
+  cursor rather than to coordinates translated for the screen's labels.
+* Ingredient search uses bounded alternatives and fewer full-recipe
+  scans to reduce stalls in large modpacks.
