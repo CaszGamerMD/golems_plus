@@ -60,7 +60,6 @@ public final class TraderGolem extends PathfinderMob {
         setCustomName(Component.literal("Trader Golem"));
         if(getNavigation() instanceof GroundPathNavigation path){
             path.setCanOpenDoors(true);
-            path.setCanPassDoors(true);
         }
     }
     public static AttributeSupplier.Builder attributes(){
