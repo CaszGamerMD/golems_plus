@@ -132,7 +132,6 @@ public final class FisherGolem extends PathfinderMob {
         if(station.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED){
             seat(false);getNavigation().stop();return;
         }
-        if(phase==0&&station.fishingSpot()!=null)phase=1;
         if(anyFish()&&(full()||bait<=0))phase=3;
         if((rod.isEmpty()||bait==0)&&phase!=3)phase=0;
         if(phase==0)restock(level,station);
