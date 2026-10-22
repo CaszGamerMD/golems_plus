@@ -3,6 +3,7 @@ package com.caszgamermd.golemsplus.worker;
 import com.caszgamermd.golemsplus.beekeeper.BeekeeperGolem;
 import com.caszgamermd.golemsplus.builder.BuilderGolem;
 import com.caszgamermd.golemsplus.cooking.ChefGolem;
+import com.caszgamermd.golemsplus.fishing.FisherGolem;
 import com.caszgamermd.golemsplus.trader.TraderGolem;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import com.caszgamermd.golemsplus.world.WorksiteContent;
@@ -17,8 +18,7 @@ import net.minecraft.world.item.context.UseOnContext;
 
 /**
  * Crafted worker: use on the ground near an owned matching job block.
- * An entity is not created for free by the workstation. No fishing item
- * until there is an actual fishing worker entity.
+ * An entity is not created for free by the workstation.
  */
 public final class WorkerGolemItem extends Item {
     private final WorkerSpecialty profession;
@@ -70,7 +70,7 @@ public final class WorkerGolemItem extends Item {
             case TRADER -> station.traderWorkerIds().size();
             case BEEKEEPER -> station.beekeeperWorkers().size();
             case COOKING -> station.chefWorkerId()==null?0:1;
-            case FISHING -> 4;
+            case FISHING -> station.fisherWorkerIds().size();
         };
         if(count>= (profession==WorkerSpecialty.COOKING?1:4)){
             player.sendSystemMessage(Component.literal(
@@ -82,13 +82,14 @@ public final class WorkerGolemItem extends Item {
             case TRADER -> new TraderGolem(WorksiteContent.TRADER_GOLEM,level);
             case BEEKEEPER -> new BeekeeperGolem(WorksiteContent.BEEKEEPER_GOLEM,level);
             case COOKING -> new ChefGolem(WorksiteContent.CHEF_GOLEM,level);
-            case FISHING -> null;
+            case FISHING -> new FisherGolem(WorksiteContent.FISHER_GOLEM,level);
         };
         if(worker==null)return InteractionResult.FAIL;
         if(worker instanceof BuilderGolem g)g.assign(nearest,player.getUUID());
         else if(worker instanceof TraderGolem g)g.assign(nearest,player.getUUID());
         else if(worker instanceof BeekeeperGolem g)g.assign(nearest,player.getUUID());
         else if(worker instanceof ChefGolem g)g.assign(nearest,player.getUUID());
+        else if(worker instanceof FisherGolem g)g.assign(nearest,player.getUUID());
         worker.setPos(placed.getX()+.5,placed.getY(),placed.getZ()+.5);
         if(!level.addFreshEntity(worker)){
             player.sendSystemMessage(Component.literal("Cannot place Golem here"));

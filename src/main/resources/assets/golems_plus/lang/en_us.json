@@ -13,5 +13,7 @@
   "item.golems_plus.builder_worker": "Builder Golem",
   "item.golems_plus.trader_worker": "Trader Golem",
   "item.golems_plus.beekeeper_worker": "Beekeeper Golem",
-  "item.golems_plus.chef_worker": "Chef Golem"
+  "item.golems_plus.chef_worker": "Chef Golem",
+  "item.golems_plus.fisher_worker": "Fisher Golem",
+  "entity.golems_plus.fisher_golem": "Fisher Golem"
 }

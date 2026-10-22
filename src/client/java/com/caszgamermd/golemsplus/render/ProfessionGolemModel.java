@@ -18,9 +18,10 @@ import net.minecraft.util.Mth;
  */
 public final class ProfessionGolemModel
         extends EntityModel<ProfessionGolemRenderState> {
-    public enum Profession { BUILDER, TRADER, CHEF }
+    public enum Profession { BUILDER, TRADER, CHEF, FISHER }
 
     private final ModelPart head,leftArm,rightArm,leftLeg,rightLeg;
+    private final ModelPart traderClosed,traderOpen,fisherRod,fisherFish;
     private final Profession profession;
 
     public ProfessionGolemModel(ModelPart root,Profession profession){
@@ -31,11 +32,17 @@ public final class ProfessionGolemModel
         rightArm=root.getChild("right_arm");
         leftLeg=root.getChild("left_leg");
         rightLeg=root.getChild("right_leg");
+        ModelPart torso=root.getChild("body");
+        traderClosed=profession==Profession.TRADER?torso.getChild("closed_case"):null;
+        traderOpen=profession==Profession.TRADER?torso.getChild("open_case"):null;
+        fisherRod=profession==Profession.FISHER?rightArm.getChild("fishing_rod"):null;
+        fisherFish=profession==Profession.FISHER?fisherRod.getChild("caught_fish"):null;
     }
 
     public static LayerDefinition builderLayer(){return layer(Profession.BUILDER);}
     public static LayerDefinition traderLayer(){return layer(Profession.TRADER);}
     public static LayerDefinition chefLayer(){return layer(Profession.CHEF);}
+    public static LayerDefinition fisherLayer(){return layer(Profession.FISHER);}
 
     private static LayerDefinition layer(Profession type){
         MeshDefinition mesh=new MeshDefinition();
@@ -139,18 +146,84 @@ public final class ProfessionGolemModel
                 rightLeg.addOrReplaceChild("formal_shoe",CubeListBuilder.create()
                         .texOffs(107,15).addBox(-2.15f,6.3f,-2.8f,
                                 4.3f,1.7f,5.5f),PartPose.ZERO);
-                // Hinged 3D case is attached to the right arm so it moves
-                // naturally with that arm. Actual body is not part of the
-                // arm model, preventing clipping into the suit in idle.
-                right.addOrReplaceChild("briefcase",CubeListBuilder.create()
-                        .texOffs(0,79).addBox(-4,8.6f,-1.0f,
-                                8,5,3),PartPose.ZERO);
-                right.addOrReplaceChild("case_handle",CubeListBuilder.create()
-                        .texOffs(31,80).addBox(-1.7f,7.2f,-.1f,
-                                3.4f,1.7f,1.5f),PartPose.ZERO);
-                right.addOrReplaceChild("case_latch",CubeListBuilder.create()
-                        .texOffs(40,82).addBox(-.8f,10.2f,-1.33f,
-                                1.6f,1.2f,.4f),PartPose.ZERO);
+                // Two-handed, front-facing closed leather briefcase.
+                // It is attached to the body to stay steady while walking.
+                PartDefinition closed=torso.addOrReplaceChild("closed_case",
+                        CubeListBuilder.create().texOffs(0,79)
+                        .addBox(-5.1f,-.6f,-8.0f,10.2f,7,3.5f),
+                        PartPose.ZERO);
+                closed.addOrReplaceChild("handle",CubeListBuilder.create()
+                        .texOffs(31,80).addBox(-1.7f,-2.5f,-7.3f,3.4f,2.2f,1.3f),
+                        PartPose.ZERO);
+                closed.addOrReplaceChild("locks",CubeListBuilder.create()
+                        .texOffs(40,82).addBox(-3.7f,1.2f,-8.35f,1.5f,1.3f,.4f)
+                        .texOffs(40,82).addBox(2.2f,1.2f,-8.35f,1.5f,1.3f,.4f),
+                        PartPose.ZERO);
+
+                // Open attache case: the tray faces up and the lid faces
+                // the customer, with raised business-card/pocket detailing.
+                PartDefinition open=torso.addOrReplaceChild("open_case",
+                        CubeListBuilder.create().texOffs(0,79)
+                        .addBox(-6.5f,-1.1f,-10.3f,13,2.3f,8.5f),
+                        PartPose.ZERO);
+                open.addOrReplaceChild("lid",CubeListBuilder.create()
+                        .texOffs(49,80).addBox(-6.5f,-10.4f,-2.6f,13,9.3f,1.6f),
+                        PartPose.ZERO);
+                open.addOrReplaceChild("lining",CubeListBuilder.create()
+                        .texOffs(79,78).addBox(-5.9f,-.98f,-9.7f,11.8f,.35f,7.3f),
+                        PartPose.ZERO);
+                open.addOrReplaceChild("pockets",CubeListBuilder.create()
+                        .texOffs(108,82).addBox(-5.4f,-8.2f,-3.08f,4.1f,4.5f,.5f)
+                        .texOffs(108,82).addBox(1.3f,-8.2f,-3.08f,4.1f,4.5f,.5f),
+                        PartPose.ZERO);
+            }
+            case FISHER -> {
+                // Broad soft fishing hat, woven band and raised brim.
+                head.addOrReplaceChild("hat_crown",CubeListBuilder.create()
+                        .texOffs(75,24).addBox(-4.5f,-7.4f,-3.5f,9,4.1f,7),
+                        PartPose.ZERO);
+                head.addOrReplaceChild("hat_brim",CubeListBuilder.create()
+                        .texOffs(0,59).addBox(-6.5f,-3.7f,-5.5f,13,1.0f,11),
+                        PartPose.ZERO);
+                head.addOrReplaceChild("hat_band",CubeListBuilder.create()
+                        .texOffs(53,76).addBox(-4.8f,-4.3f,-3.8f,9.6f,.9f,7.6f),
+                        PartPose.ZERO);
+                // Thick olive utility vest, pockets and tan fishing shorts.
+                torso.addOrReplaceChild("fishing_vest",CubeListBuilder.create()
+                        .texOffs(42,34).addBox(-5.4f,-6.25f,-3.95f,10.8f,8.8f,7.9f),
+                        PartPose.ZERO);
+                torso.addOrReplaceChild("vest_zip",CubeListBuilder.create()
+                        .texOffs(94,52).addBox(-.3f,-5.8f,-4.36f,.6f,7.5f,.5f),
+                        PartPose.ZERO);
+                torso.addOrReplaceChild("pocket_l",CubeListBuilder.create()
+                        .texOffs(72,67).addBox(-4.6f,-.2f,-4.7f,3.3f,3.4f,.9f),
+                        PartPose.ZERO);
+                torso.addOrReplaceChild("pocket_r",CubeListBuilder.create()
+                        .texOffs(72,67).addBox(1.3f,-.2f,-4.7f,3.3f,3.4f,.9f),
+                        PartPose.ZERO);
+                leftLeg.addOrReplaceChild("flip_flop_l",CubeListBuilder.create()
+                        .texOffs(107,15).addBox(-2.2f,7.2f,-3.5f,4.4f,.65f,6.8f)
+                        .texOffs(108,0).addBox(-.55f,6.45f,-3.0f,1.1f,.8f,3.1f),
+                        PartPose.ZERO);
+                rightLeg.addOrReplaceChild("flip_flop_r",CubeListBuilder.create()
+                        .texOffs(107,15).addBox(-2.2f,7.2f,-3.5f,4.4f,.65f,6.8f)
+                        .texOffs(108,0).addBox(-.55f,6.45f,-3.0f,1.1f,.8f,3.1f),
+                        PartPose.ZERO);
+                PartDefinition rod=right.addOrReplaceChild("fishing_rod",
+                        CubeListBuilder.create().texOffs(130,4)
+                        .addBox(-.45f,-17.5f,-1.0f,.9f,24,1.0f),
+                        PartPose.offsetAndRotation(0,6.5f,2.2f,-.40f,0,-.23f));
+                rod.addOrReplaceChild("reel",CubeListBuilder.create()
+                        .texOffs(145,5).addBox(-1.8f,3.5f,-1.5f,3.6f,2.6f,2.4f),
+                        PartPose.ZERO);
+                PartDefinition fish=rod.addOrReplaceChild("caught_fish",
+                        CubeListBuilder.create().texOffs(151,18)
+                        .addBox(-.20f,-17.25f,-1.0f,.35f,11.0f,.35f)
+                        .texOffs(160,4).addBox(-2.0f,-6.3f,-2.0f,4,3.6f,3),
+                        PartPose.ZERO);
+                fish.addOrReplaceChild("tail",CubeListBuilder.create()
+                        .texOffs(176,4).addBox(-.9f,-2.7f,-.8f,1.8f,2.2f,1.7f),
+                        PartPose.ZERO);
             }
             case CHEF -> {
                 // Extra-tall soft toque with distinguishable crown pleats.
@@ -216,10 +289,23 @@ public final class ProfessionGolemModel
                 rightArm.xRot=-.72f;
             }
         }else if(profession==Profession.TRADER){
-            // Keep the case below the right hand even when walking.
-            rightArm.xRot*=.35f;
-            rightArm.zRot=-.12f;
-            if(state.carrying)leftArm.xRot=-.58f;
+            traderClosed.visible=!state.presenting;
+            traderOpen.visible=state.presenting;
+            // Both hands support the case. During an offer they spread out
+            // to display its open document compartments.
+            leftArm.xRot=rightArm.xRot=state.presenting?-1.20f:-.90f;
+            leftArm.zRot=state.presenting?.48f:.65f;
+            rightArm.zRot=state.presenting?-.48f:-.65f;
+        }else if(profession==Profession.FISHER){
+            fisherRod.visible=state.hasRod;
+            fisherFish.visible=state.hasRod&&state.carryingFish;
+            // Rod lies back across the shoulder while strolling, leaving
+            // the fishing line and the caught fish visible on return.
+            if(state.hasRod){
+                rightArm.xRot=-.45f;
+                rightArm.zRot=-.20f;
+            }
+            leftArm.xRot*=.6f;
         }else if(profession==Profession.CHEF){
             // Deliberately calm kitchen stance.
             leftArm.xRot*=.38f;rightArm.xRot*=.38f;

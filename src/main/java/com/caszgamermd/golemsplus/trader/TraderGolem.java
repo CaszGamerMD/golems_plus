@@ -10,6 +10,9 @@ import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.Containers;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -26,6 +29,14 @@ import net.minecraft.world.level.storage.ValueOutput;
  * and retains them when villagers go out of stock.
  */
 public final class TraderGolem extends PathfinderMob {
+    private static final EntityDataAccessor<Boolean> CASE_OPEN =
+            SynchedEntityData.defineId(TraderGolem.class,EntityDataSerializers.BOOLEAN);
+    @Override protected void defineSynchedData(SynchedEntityData.Builder builder){
+        super.defineSynchedData(builder);
+        builder.define(CASE_OPEN,false);
+    }
+    public boolean presenting(){return getEntityData().get(CASE_OPEN);}
+    private void openCase(boolean show){getEntityData().set(CASE_OPEN,show);}
     private BlockPos home = BlockPos.ZERO;
     private UUID owner, order, villagerId;
     private int offerIndex=-1, stage=0, navigationFailures, quotedGoods;
@@ -68,6 +79,7 @@ public final class TraderGolem extends PathfinderMob {
         if(stage!=0 || this.order!=null)throw new IllegalStateException("Trader busy");
         if(order==null||villager==null||offer<0||a.isEmpty())throw new IllegalArgumentException();
         this.order=order;villagerId=villager;offerIndex=offer;
+        openCase(false);
         quotedGoods=expectedGoods;
         paymentA=a.copy();paymentB=b.copy();
         returning=ItemStack.EMPTY;hasTraded=false;stage=1;navigationFailures=0;
@@ -84,6 +96,7 @@ public final class TraderGolem extends PathfinderMob {
             getNavigation().stop();return;
         }
         if(stage==0){
+            openCase(false);
             com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(server,this,home);
             return;
         }
@@ -105,6 +118,7 @@ public final class TraderGolem extends PathfinderMob {
             return;
         }
         getNavigation().stop();
+        openCase(true);
         if(villager.isTrading())return; // do not interrupt players trading
         if(!order.equals(depot.activeOrder())){
             stage=2;return;
@@ -143,6 +157,7 @@ public final class TraderGolem extends PathfinderMob {
         stage=2;
     }
     private void comeHome(ServerLevel server,WorkerStationBlockEntity depot){
+        openCase(false);
         double distance=distanceToSqr(home.getX()+.5,home.getY()+.5,home.getZ()+.5);
         if(distance>9){
             getNavigation().moveTo(home.getX()+.5,home.getY()+1,home.getZ()+.5,.9);

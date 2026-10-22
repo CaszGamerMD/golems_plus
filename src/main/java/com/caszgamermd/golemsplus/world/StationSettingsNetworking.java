@@ -139,6 +139,12 @@ public final class StationSettingsNetworking {
                 if(table.isBuilder())done=table.setBuilderRotation(player.getUUID(),
                         change.amount);
             }
+            case "fish_pause" -> {
+                if(table.isFishing()){table.setPhase(WorkerPhase.PAUSED);done=true;}
+            }
+            case "fish_resume" -> {
+                if(table.isFishing()){table.setPhase(WorkerPhase.IDLE);done=true;}
+            }
             case "trader_order" -> {
                 if(table.isTrader()){
                     String item=validatedItem(change.item);

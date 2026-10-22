@@ -6,4 +6,7 @@ import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 public final class ProfessionGolemRenderState extends LivingEntityRenderState {
     public boolean carrying;
     public boolean working;
+    public boolean presenting;
+    public boolean hasRod;
+    public boolean carryingFish;
 }
