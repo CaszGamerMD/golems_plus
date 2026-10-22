@@ -6,6 +6,10 @@ import java.util.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.Item;
@@ -24,6 +28,12 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 public final class KitchenSupplies {
     private static final int LINK_RADIUS=16;
     private static final int SCAN_RADIUS=24;
+    private static final TagKey<Block> KITCHEN_ITEM_PROVIDERS=TagKey.create(
+            Registries.BLOCK,Identifier.fromNamespaceAndPath(
+                    "cookingforblockheads","kitchen_item_providers"));
+    private static final TagKey<Block> KITCHEN_CONNECTORS=TagKey.create(
+            Registries.BLOCK,Identifier.fromNamespaceAndPath(
+                    "cookingforblockheads","kitchen_connectors"));
     private final List<Container> containers;
     private final KitchenMilkSupply milkSupply;
     private final BlockPos workPoint;
@@ -33,12 +43,16 @@ public final class KitchenSupplies {
         this.milkSupply=new KitchenMilkSupply(milkJars);
     }
     public BlockPos workPoint(){return workPoint;}
-    public boolean connected(){return !containers.isEmpty();}
+    public boolean connected(){return !containers.isEmpty()||milkSupply.hasJar();}
+    public int milkPortions(){return milkSupply.availableUnits();}
 
     private static boolean kitchenBlock(ServerLevel level,BlockPos at){
-        return level.hasChunkAt(at)
-                &&BuiltInRegistries.BLOCK.getKey(level.getBlockState(at).getBlock())
-                    .getNamespace().equals("cookingforblockheads");
+        if(!level.hasChunkAt(at))return false;
+        var state=level.getBlockState(at);
+        return BuiltInRegistries.BLOCK.getKey(state.getBlock())
+                    .getNamespace().equals("cookingforblockheads")
+                ||state.is(KITCHEN_ITEM_PROVIDERS)
+                ||state.is(KITCHEN_CONNECTORS);
     }
 
     /**
@@ -101,6 +115,10 @@ public final class KitchenSupplies {
                 BlockPos neighbor=pos.relative(dir);
                 if(!visited.contains(neighbor))queue.addLast(neighbor);
             }
+            // CFB's own multiblock scanner also considers two blocks
+            // above each kitchen appliance for jar/sink attachments.
+            BlockPos raised=pos.above(2);
+            if(!visited.contains(raised))queue.addLast(raised);
         }
         return new KitchenSupplies(supplies,appliance,milkJars);
     }
