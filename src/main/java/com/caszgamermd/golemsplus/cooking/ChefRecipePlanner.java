@@ -32,9 +32,8 @@ public final class ChefRecipePlanner {
                                  Map<Item,Integer> stock,boolean inspection){
         if(amount<1||amount>16)return null;
         if(stock.getOrDefault(desired,0)>=amount){
-            Mutable ready=new Mutable(stock,Map.of(),inspection);
-            ready.resolve(desired,amount,new HashSet<>(),0);
-            return ready;
+            Mutable ready=new Mutable(stock,inspection);
+            return new Search(Map.of()).resolve(ready,desired,amount,new HashSet<>(),0);
         }
         Map<Item,List<Entry>> byResult=new HashMap<>();
         try{
@@ -69,93 +68,133 @@ public final class ChefRecipePlanner {
                 }
             }
         }catch(ReflectiveOperationException | RuntimeException ex){return null;}
-        Mutable m=new Mutable(stock,byResult,inspection);
-        if(!m.resolve(desired,amount,new HashSet<>(),0))return null;
-        return m;
-    }
+        // One search tree produces exactly ONE selected recipe per product.
+        // We score viable alternatives against actual stock rather than
+        
     private static final class Mutable{
-        final Map<Item,Integer> remaining,used=new HashMap<>(),crafted=new HashMap<>(),
-                missing=new HashMap<>();
-        final Map<Item,List<Entry>> recipes;
-        final List<String> steps=new ArrayList<>();
+        final Map<Item,Integer> remaining,used,crafted,missing;
+        final List<String> steps;
         final boolean inspection;
-        Mutable(Map<Item,Integer> stock,Map<Item,List<Entry>> recipes,boolean inspection){
-            remaining=new HashMap<>(stock);this.recipes=recipes;this.inspection=inspection;
+        int operations;
+        Mutable(Map<Item,Integer> stock,boolean inspection){
+            remaining=new HashMap<>(stock);used=new HashMap<>();
+            crafted=new HashMap<>();missing=new HashMap<>();
+            steps=new ArrayList<>();this.inspection=inspection;
         }
-        boolean resolve(Item item,int count,Set<Item> visiting,int depth){
-            if(count<=0)return true;
-            if(depth>12||steps.size()>160||visiting.contains(item))return false;
-            // Prefer previously crafted surplus before taking a single item
-            // from actual kitchen storage. Crafted intermediates are not
-            // charged against the pantry reservation a second time.
-            int fromCrafted=Math.min(count,crafted.getOrDefault(item,0));
-            if(fromCrafted>0)crafted.put(item,crafted.get(item)-fromCrafted);
-            count-=fromCrafted;
-            int fromStorage=Math.min(count,remaining.getOrDefault(item,0));
-            remaining.put(item,remaining.getOrDefault(item,0)-fromStorage);
-            if(fromStorage>0)used.merge(item,fromStorage,Integer::sum);
-            int shortfall=count-fromStorage;
-            if(shortfall==0)return true;
-            // A saved snapshot is required because alternative recipes can
-            // consume different supplies before being rejected.
-            var savedRemaining=new HashMap<>(remaining);
-            var savedUsed=new HashMap<>(used);
-            var savedCrafted=new HashMap<>(crafted);
-            var savedMissing=new HashMap<>(missing);
-            int stepSize=steps.size();
-            visiting.add(item);
-            for(Entry recipe:recipes.getOrDefault(item,List.of())){
-                int crafts=(shortfall+recipe.count-1)/recipe.count;
-                if(crafts>64)continue;
-                boolean ok=true;
-                for(Ingredient ingredient:recipe.ingredients){
-                    // First consider a stocked option, then every recipe
-                    // output. Prevent cycles for tagged alternatives.
-                    Set<Item> options=new LinkedHashSet<>();
-                    for(Item candidate:crafted.keySet()){
-                        if(crafted.get(candidate)>0&&ingredient.test(new ItemStack(candidate)))options.add(candidate);
-                    }
-                    for(Item candidate:remaining.keySet()){
-                        if(ingredient.test(new ItemStack(candidate)))options.add(candidate);
-                    }
-                    for(Item candidate:recipes.keySet()){
-                        if(ingredient.test(new ItemStack(candidate)))options.add(candidate);
-                    }
-                    if(options.isEmpty()){ok=false;break;}
-                    boolean ingredientFound=false;
-                    var preRemaining=new HashMap<>(remaining);
-                    var preUsed=new HashMap<>(used);
-                    var preCrafted=new HashMap<>(crafted);
-                    var preMissing=new HashMap<>(missing);
-                    int preSteps=steps.size();
-                    for(Item candidate:options){
-                        if(resolve(candidate,crafts,visiting,depth+1)){
-                            ingredientFound=true;break;
-                        }
-                        remaining.clear();remaining.putAll(preRemaining);
-                        used.clear();used.putAll(preUsed);
-                        crafted.clear();crafted.putAll(preCrafted);
-                        missing.clear();missing.putAll(preMissing);
-                        while(steps.size()>preSteps)steps.removeLast();
-                    }
-                    if(!ingredientFound){ok=false;break;}
-                }
-                if(ok){
-                    steps.add(recipe.method+" "+crafts+" × "+BuiltInRegistries.ITEM.getKey(item));
-                    int surplus=crafts*recipe.count-shortfall;
-                    if(surplus>0)crafted.merge(item,surplus,Integer::sum);
-                    visiting.remove(item);
-                    return true;
-                }
-                remaining.clear();remaining.putAll(savedRemaining);
-                used.clear();used.putAll(savedUsed);
-                crafted.clear();crafted.putAll(savedCrafted);
-                missing.clear();missing.putAll(savedMissing);
-                while(steps.size()>stepSize)steps.removeLast();
+        Mutable(Mutable other){
+            remaining=new HashMap<>(other.remaining);
+            used=new HashMap<>(other.used);
+            crafted=new HashMap<>(other.crafted);
+            missing=new HashMap<>(other.missing);
+            steps=new ArrayList<>(other.steps);
+            inspection=other.inspection;operations=other.operations;
+        }
+        long score(){
+            // Missing raw goods are hugely worse than a few additional
+            // assembly steps. Within equally stocked choices, minimize
+            // machine operations and materials taken from the pantry.
+            long raw=missing.values().stream().mapToLong(Integer::longValue).sum();
+            long drawn=used.values().stream().mapToLong(Integer::longValue).sum();
+            return raw*1_000_000L+(long)operations*100+drawn*3+steps.size();
+        }
+    }
+
+    private static final class Search{
+        private static final int MAX_DEPTH=10, MAX_BRANCHES=14, MAX_CHOICES=20;
+        private final Map<Item,List<Entry>> recipes;
+        private int attempts;
+        Search(Map<Item,List<Entry>> recipes){this.recipes=recipes;}
+
+        Mutable resolve(Mutable before,Item desired,int quantity,
+                        Set<Item> visiting,int depth){
+            if(quantity<=0)return before;
+            if(depth>MAX_DEPTH||before.steps.size()>140||attempts++>3500
+                    ||visiting.contains(desired))return null;
+            Mutable start=new Mutable(before);
+            int made=Math.min(quantity,start.crafted.getOrDefault(desired,0));
+            if(made>0)start.crafted.merge(desired,-made,Integer::sum);
+            int unmet=quantity-made;
+            int stocked=Math.min(unmet,start.remaining.getOrDefault(desired,0));
+            if(stocked>0){
+                start.remaining.merge(desired,-stocked,Integer::sum);
+                start.used.merge(desired,stocked,Integer::sum);
             }
-            visiting.remove(item);
-            if(inspection){
-                missing.merge(item,shortfall,Integer::sum);
+            unmet-=stocked;
+            if(unmet==0)return start;
+            if(depth==MAX_DEPTH){
+                if(!start.inspection)return null;
+                start.missing.merge(desired,unmet,Integer::sum);
+                start.steps.add("RAW "+unmet+" x "+BuiltInRegistries.ITEM.getKey(desired));
+                return start;
+            }
+
+            HashSet<Item> occupied=new HashSet<>(visiting);
+            occupied.add(desired);
+            Mutable best=null;
+            // Deterministic ordering. There may be dozens of recipes for
+            // common modded food; score the alternatives but don't execute
+            // or consume all of them.
+            List<Entry> alternatives=recipes.getOrDefault(desired,List.of());
+            for(int ri=0;ri<Math.min(alternatives.size(),MAX_BRANCHES);ri++){
+                Entry recipe=alternatives.get(ri);
+                int times=(unmet+recipe.count-1)/recipe.count;
+                if(times<1||times>64||recipe.ingredients.size()>40)continue;
+                Mutable trial=new Mutable(start);
+                boolean possible=true;
+                for(Ingredient ingredient:recipe.ingredients){
+                    List<Item> options=new ArrayList<>();
+                    Set<Item> all=new HashSet<>(recipes.keySet());
+                    all.addAll(trial.remaining.keySet());
+                    all.addAll(trial.crafted.keySet());
+                    for(Item item:all)
+                        if(ingredient.test(new ItemStack(item)))options.add(item);
+                    // Stocked options first; the remaining options are still
+                    // scored against their recursive crafting requirements.
+                    options.sort(Comparator
+                            .<Item>comparingInt(item->trial.remaining.getOrDefault(item,0)
+                                    +trial.crafted.getOrDefault(item,0)>0?0:1)
+                            .thenComparing(item->BuiltInRegistries.ITEM.getKey(item).toString()));
+                    Mutable selected=null;
+                    int tried=0;
+                    for(Item option:options){
+                        if(tried++>=MAX_CHOICES)break;
+                        Mutable variant=resolve(trial,option,times,occupied,depth+1);
+                        if(variant!=null&&(selected==null||variant.score()<selected.score()))
+                            selected=variant;
+                        // A stocked ingredient is optimal for this
+                        // ingredient if its use incurs no new recipe steps.
+                        if(selected!=null && selected.steps.size()==trial.steps.size()
+                                &&selected.missing.equals(trial.missing))break;
+                    }
+                    if(selected==null){
+                        possible=false;break;
+                    }
+                    trial=selected;
+                }
+                if(!possible)continue;
+                trial.steps.add(recipe.method+" "+times+" x "+
+                        BuiltInRegistries.ITEM.getKey(desired));
+                trial.operations+=times;
+                int extra=times*recipe.count-unmet;
+                if(extra>0)trial.crafted.merge(desired,extra,Integer::sum);
+                if(best==null||trial.score()<best.score()
+                        ||trial.score()==best.score()&&
+                        trial.steps.toString().compareTo(best.steps.toString())<0)
+                    best=trial;
+            }
+            // For the preview, show missing raw ingredients when no known
+            // recipe can satisfy the shortage. Do not ever use this path
+            // for an actual order.
+            if(best==null&&before.inspection){
+                Mutable missing=new Mutable(start);
+                missing.missing.merge(desired,unmet,Integer::sum);
+                missing.steps.add("RAW "+unmet+" x "+BuiltInRegistries.ITEM.getKey(desired));
+                return missing;
+            }
+            return best;
+        }
+    }
+         missing.merge(item,shortfall,Integer::sum);
                 steps.add("RAW "+shortfall+" x "+BuiltInRegistries.ITEM.getKey(item));
                 return true;
             }
