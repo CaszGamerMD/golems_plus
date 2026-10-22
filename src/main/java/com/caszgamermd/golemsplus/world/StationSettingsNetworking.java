@@ -149,6 +149,15 @@ public final class StationSettingsNetworking {
                     return;
                 }
             }
+            case "chef_preview" -> {
+                if(table.isCooking()){
+                    String item=validatedItem(change.item);
+                    if(item!=null&&change.amount>0&&change.amount<=16)
+                        com.caszgamermd.golemsplus.cooking.ChefWorkService
+                                .preview(player,table,item,change.amount);
+                    return;
+                }
+            }
             case "chef_order" -> {
                 if(table.isCooking()){
                     String item=validatedItem(change.item);
