@@ -79,7 +79,7 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
         return (l,p,s,be)->{
             if(be instanceof WorkerStationBlockEntity station && l instanceof ServerLevel server){
                 if(station.isBeekeeper()&&server.getGameTime()%22==0
-                        &&server.random.nextInt(15)==0){
+                        &&server.getRandom().nextInt(15)==0){
                     server.sendParticles(net.minecraft.core.particles.ParticleTypes.SMOKE,
                             p.getX()+.89,p.getY()+1.02,p.getZ()+.48,
                             3,.06,.13,.08,.012);
