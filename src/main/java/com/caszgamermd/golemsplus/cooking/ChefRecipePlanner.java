@@ -161,7 +161,21 @@ public final class ChefRecipePlanner {
     private static final class Search{
         private static final int MAX_DEPTH=14, MAX_BRANCHES=18, MAX_CHOICES=40;
         private final Map<Item,List<Entry>> recipes;
+        private final Map<Ingredient,List<Item>> knownAlternatives=new IdentityHashMap<>();
         private int attempts;
+        private List<Item> optionsFor(Ingredient ingredient){
+            // The 26.2 Ingredient API has no public getValues() on Fabric.
+            // Expand tag and exact-item entries from the authoritative
+            // registry once per Ingredient, then memoize them for this
+            // request. Unlike the old recipes.keySet() shortcut this
+            // includes Croptopia raw beef, grains, and other leaf inputs.
+            return knownAlternatives.computeIfAbsent(ingredient,key->
+                    BuiltInRegistries.ITEM.stream()
+                            .filter(item->key.test(new ItemStack(item)))
+                            .sorted(Comparator.comparing(
+                                    item->BuiltInRegistries.ITEM.getKey(item).toString()))
+                            .toList());
+        }
         Search(Map<Item,List<Entry>> recipes){this.recipes=recipes;}
 
         Mutable resolve(Mutable before,Item desired,int quantity,
@@ -210,11 +224,8 @@ public final class ChefRecipePlanner {
                     // invisible, rejected an otherwise valid cheeseburger
                     // recipe, and misleadingly displayed the ENTIRE burger
                     // as a missing RAW ingredient.
-                    for(var value:ingredient.getValues()){
-                        Item item=value.value();
-                        if(ingredient.test(new ItemStack(item))&&!options.contains(item))
-                            options.add(item);
-                    }
+                    for(Item item:optionsFor(ingredient))
+                        if(!options.contains(item))options.add(item);
                     // Some custom modded ingredients accept items outside
                     // their advertised vanilla holder set.
                     for(Item item:trial.remaining.keySet())
@@ -281,10 +292,6 @@ public final class ChefRecipePlanner {
         }
     }
     private static ItemStack output(Object recipe)throws ReflectiveOperationException{
-        if(recipe instanceof ShapelessRecipe shapeless){
-            var result=shapeless.result();
-            return result==null?ItemStack.EMPTY:result.create();
-        }
         Class<?> cls=recipe.getClass();
         while(cls!=null){
             try{
