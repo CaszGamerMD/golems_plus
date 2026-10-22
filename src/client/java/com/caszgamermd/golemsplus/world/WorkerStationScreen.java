@@ -52,7 +52,8 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     private static final int LABEL_COLOR=0xffcbe8d8;
 
     public WorkerStationScreen(WorkerStationMenu menu,Inventory inventory,Component title){
-        super(menu,inventory,title,BG_WIDTH,BG_HEIGHT);
+        super(menu,inventory,title,menu.isKitchenKiosk()?560:BG_WIDTH,
+                menu.isKitchenKiosk()?340:BG_HEIGHT);
         titleLabelX=8;titleLabelY=7;inventoryLabelX=8;inventoryLabelY=109;
     }
     private WorkerStationBlockEntity station(){
@@ -103,10 +104,6 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                     ==com.caszgamermd.golemsplus.worker.WorkerSpecialty.BUILDER;
     }
     @Override protected void init(){
-        if(menu.isKitchenKiosk()){
-            imageWidth=Math.min(590,Math.max(375,width-12));
-            imageHeight=Math.min(370,Math.max(254,height-12));
-        }
         super.init();
         page=trader()?Page.TRADE_ORDER:beekeeper()?Page.BEEKEEPER:cooking()?Page.CHEF_MENU:Page.BUILD;
         readDefaults();
