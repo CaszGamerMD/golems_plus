@@ -474,6 +474,24 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                 i<27?0xffd5dbd2:0xffc1dcc8);
         for(int i=0;i<36;i++)slot(g,x+8+(i%9)*18,y+121+(i/9)*18,0xffd5dbd2);
     }
+    @Override protected void extractTooltip(GuiGraphicsExtractor g,
+            int mouseX,int mouseY){
+        super.extractTooltip(g,mouseX,mouseY);
+        if(!menu.isKitchenKiosk()||page!=Page.CHEF_MENU)return;
+        int columns=menuColumns();
+        int start=chefPage*menuPageSize();
+        for(int i=start;i<Math.min(start+menuPageSize(),visibleMeals.size());i++){
+            int n=i-start;
+            int x=leftPos+30+(n%columns)*35;
+            int y=topPos+103+(n/columns)*35;
+            if(mouseX>=x&&mouseX<x+24&&mouseY>=y&&mouseY<y+24){
+                g.setTooltipForNextFrame(font,new ItemStack(visibleMeals.get(i)),
+                        mouseX,mouseY);
+                return;
+            }
+        }
+    }
+
     private String truncate(String value,int max){
         return value.length()>max?value.substring(0,max-1)+"…":value;
     }
@@ -489,14 +507,9 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                     int n=i-start;
                     int px=30+(n%columns)*35,py=103+(n/columns)*35;
                     g.item(new ItemStack(item),px,py);
-                    if(mouseX>=leftPos+px&&mouseX<leftPos+px+23
-                            &&mouseY>=topPos+py&&mouseY<topPos+py+24)
-                        g.tooltip(font,java.util.List.of(
-                                net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent
-                                .create(new ItemStack(item).getHoverName().getVisualOrderText())),
-                                mouseX,mouseY,
-                                net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner.INSTANCE,
-                                null);
+                    // Tooltip is scheduled from extractTooltip(), NOT
+                    // extractLabels(), which draws under the GUI's local
+                    // translation and displaced it from the mouse cursor.
                 }
                 g.text(font,"QUANTITY "+chefAmount,98,imageHeight-45,LABEL_COLOR,false);
                 g.text(font,"PAGE "+(chefPage+1)+"/"+
