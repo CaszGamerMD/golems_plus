@@ -80,6 +80,8 @@ public final class ChefRecipePlanner {
     private static Mutable solve(ServerLevel level,Item desired,int amount,
                                  Map<Item,Integer> stock,boolean inspection,boolean hasOven){
         if(amount<1||amount>16)return null;
+        // A completed meal may be served directly ONLY when it physically
+        // exists in the linked kitchen's inventory snapshot.
         if(stock.getOrDefault(desired,0)>=amount){
             Mutable ready=new Mutable(stock,inspection);
             return new Search(Map.of()).resolve(ready,desired,amount,new HashSet<>(),0);
@@ -157,15 +159,29 @@ public final class ChefRecipePlanner {
     }
 
     private static final class Search{
-        private static final int MAX_DEPTH=10, MAX_BRANCHES=14, MAX_CHOICES=20;
+        private static final int MAX_DEPTH=14, MAX_BRANCHES=18, MAX_CHOICES=40;
         private final Map<Item,List<Entry>> recipes;
+        private final Map<Ingredient,List<Item>> knownAlternatives=new IdentityHashMap<>();
         private int attempts;
+        private List<Item> optionsFor(Ingredient ingredient){
+            // The 26.2 Ingredient API has no public getValues() on Fabric.
+            // Expand tag and exact-item entries from the authoritative
+            // registry once per Ingredient, then memoize them for this
+            // request. Unlike the old recipes.keySet() shortcut this
+            // includes Croptopia raw beef, grains, and other leaf inputs.
+            return knownAlternatives.computeIfAbsent(ingredient,key->
+                    BuiltInRegistries.ITEM.stream()
+                            .filter(item->key.test(new ItemStack(item)))
+                            .sorted(Comparator.comparing(
+                                    item->BuiltInRegistries.ITEM.getKey(item).toString()))
+                            .toList());
+        }
         Search(Map<Item,List<Entry>> recipes){this.recipes=recipes;}
 
         Mutable resolve(Mutable before,Item desired,int quantity,
                         Set<Item> visiting,int depth){
             if(quantity<=0)return before;
-            if(depth>MAX_DEPTH||before.steps.size()>140||attempts++>3500
+            if(depth>MAX_DEPTH||before.steps.size()>140||attempts++>30000
                     ||visiting.contains(desired))return null;
             Mutable start=new Mutable(before);
             int made=Math.min(quantity,start.crafted.getOrDefault(desired,0));
@@ -201,17 +217,33 @@ public final class ChefRecipePlanner {
                 boolean possible=true;
                 for(Ingredient ingredient:recipe.ingredients){
                     List<Item> options=new ArrayList<>();
-                    Set<Item> all=new HashSet<>(recipes.keySet());
-                    all.addAll(trial.remaining.keySet());
-                    all.addAll(trial.crafted.keySet());
-                    for(Item item:all)
-                        if(ingredient.test(new ItemStack(item)))options.add(item);
+                    // Tag ingredients often contain raw items that have no
+                    // recipe and are not yet in the kitchen. The old resolver
+                    // only enumerated stocked/craftable items. For Croptopia's
+                    // cheeseburger that made e.g. beef, salt, and crops
+                    // invisible, rejected an otherwise valid cheeseburger
+                    // recipe, and misleadingly displayed the ENTIRE burger
+                    // as a missing RAW ingredient.
+                    for(Item item:optionsFor(ingredient))
+                        if(!options.contains(item))options.add(item);
+                    // Some custom modded ingredients accept items outside
+                    // their advertised vanilla holder set.
+                    for(Item item:trial.remaining.keySet())
+                        if(ingredient.test(new ItemStack(item))&&!options.contains(item))
+                            options.add(item);
+                    if(options.isEmpty())for(Item item:recipes.keySet())
+                        if(ingredient.test(new ItemStack(item))&&!options.contains(item))
+                            options.add(item);
                     // Stocked options first; the remaining options are still
                     // scored against their recursive crafting requirements.
                     final Mutable optionStock=trial;
                     options.sort(Comparator
                             .<Item>comparingInt(item->optionStock.remaining.getOrDefault(item,0)
                                     +optionStock.crafted.getOrDefault(item,0)>0?0:1)
+                            // Favor a known craftable intermediary over an
+                            // unavailable raw tag variant. Real stock still
+                            // always comes first.
+                            .thenComparingInt(item->recipes.containsKey(item)?0:1)
                             .thenComparing(item->BuiltInRegistries.ITEM.getKey(item).toString()));
                     Mutable selected=null;
                     Item selectedItem=null;
@@ -250,7 +282,7 @@ public final class ChefRecipePlanner {
             // For the preview, show missing raw ingredients when no known
             // recipe can satisfy the shortage. Do not ever use this path
             // for an actual order.
-            if(best==null&&before.inspection){
+            if(best==null&&before.inspection&&depth>0){
                 Mutable missing=new Mutable(start);
                 missing.missing.merge(desired,unmet,Integer::sum);
                 missing.steps.add("RAW "+unmet+" x "+BuiltInRegistries.ITEM.getKey(desired));
