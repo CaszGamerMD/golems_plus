@@ -88,22 +88,28 @@
       ],
       "faces": {
         "north": {
-          "texture": "#screen"
+          "texture": "#screen",
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ]
         },
         "south": {
-          "texture": "#screen"
+          "texture": "#frame"
         },
         "east": {
-          "texture": "#screen"
+          "texture": "#frame"
         },
         "west": {
-          "texture": "#screen"
+          "texture": "#frame"
         },
         "up": {
-          "texture": "#screen"
+          "texture": "#frame"
         },
         "down": {
-          "texture": "#screen"
+          "texture": "#frame"
         }
       }
     },
