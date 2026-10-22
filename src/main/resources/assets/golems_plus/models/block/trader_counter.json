@@ -8,7 +8,10 @@
     "iron": "minecraft:block/iron_block",
     "paper": "minecraft:block/white_concrete",
     "light": "minecraft:block/ochre_froglight",
-    "green": "minecraft:block/green_concrete"
+    "green": "minecraft:block/green_concrete",
+    "lampMetal": "minecraft:block/gold_block",
+    "lampBulb": "minecraft:block/sea_lantern",
+    "lampGlass": "minecraft:block/lime_stained_glass"
   },
   "elements": [
     {
@@ -845,27 +848,27 @@
       ],
       "to": [
         15.4,
-        14.75,
+        14.77,
         11
       ],
       "faces": {
         "north": {
-          "texture": "#light"
+          "texture": "#lampBulb"
         },
         "south": {
-          "texture": "#light"
+          "texture": "#lampBulb"
         },
         "east": {
-          "texture": "#light"
+          "texture": "#lampBulb"
         },
         "west": {
-          "texture": "#light"
+          "texture": "#lampBulb"
         },
         "up": {
-          "texture": "#light"
+          "texture": "#lampBulb"
         },
         "down": {
-          "texture": "#light"
+          "texture": "#lampBulb"
         }
       }
     },
@@ -932,6 +935,369 @@
         },
         "down": {
           "texture": "#green"
+        }
+      }
+    },
+    {
+      "name": "rear left desk foot",
+      "from": [
+        0.5,
+        0,
+        12
+      ],
+      "to": [
+        4,
+        2.1,
+        15.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#dark"
+        },
+        "south": {
+          "texture": "#dark"
+        },
+        "east": {
+          "texture": "#dark"
+        },
+        "west": {
+          "texture": "#dark"
+        },
+        "up": {
+          "texture": "#dark"
+        },
+        "down": {
+          "texture": "#dark"
+        }
+      }
+    },
+    {
+      "name": "rear right desk foot",
+      "from": [
+        12,
+        0,
+        12
+      ],
+      "to": [
+        15.5,
+        2.1,
+        15.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#dark"
+        },
+        "south": {
+          "texture": "#dark"
+        },
+        "east": {
+          "texture": "#dark"
+        },
+        "west": {
+          "texture": "#dark"
+        },
+        "up": {
+          "texture": "#dark"
+        },
+        "down": {
+          "texture": "#dark"
+        }
+      }
+    },
+    {
+      "name": "lamp foot lower brass rim",
+      "from": [
+        10.9,
+        11,
+        6.65
+      ],
+      "to": [
+        15.6,
+        11.25,
+        11.15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#lampMetal"
+        },
+        "south": {
+          "texture": "#lampMetal"
+        },
+        "east": {
+          "texture": "#lampMetal"
+        },
+        "west": {
+          "texture": "#lampMetal"
+        },
+        "up": {
+          "texture": "#lampMetal"
+        },
+        "down": {
+          "texture": "#lampMetal"
+        }
+      }
+    },
+    {
+      "name": "lamp foot stepped base",
+      "from": [
+        11.5,
+        11.24,
+        7.2
+      ],
+      "to": [
+        15,
+        11.8,
+        10.7
+      ],
+      "faces": {
+        "north": {
+          "texture": "#lampMetal"
+        },
+        "south": {
+          "texture": "#lampMetal"
+        },
+        "east": {
+          "texture": "#lampMetal"
+        },
+        "west": {
+          "texture": "#lampMetal"
+        },
+        "up": {
+          "texture": "#lampMetal"
+        },
+        "down": {
+          "texture": "#lampMetal"
+        }
+      }
+    },
+    {
+      "name": "lamp stem lower socket",
+      "from": [
+        12.65,
+        11.78,
+        8.15
+      ],
+      "to": [
+        13.95,
+        12.3,
+        9.35
+      ],
+      "faces": {
+        "north": {
+          "texture": "#lampMetal"
+        },
+        "south": {
+          "texture": "#lampMetal"
+        },
+        "east": {
+          "texture": "#lampMetal"
+        },
+        "west": {
+          "texture": "#lampMetal"
+        },
+        "up": {
+          "texture": "#lampMetal"
+        },
+        "down": {
+          "texture": "#lampMetal"
+        }
+      }
+    },
+    {
+      "name": "lamp stem collar",
+      "from": [
+        12.55,
+        13.9,
+        8
+      ],
+      "to": [
+        14.05,
+        14.3,
+        9.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#lampMetal"
+        },
+        "south": {
+          "texture": "#lampMetal"
+        },
+        "east": {
+          "texture": "#lampMetal"
+        },
+        "west": {
+          "texture": "#lampMetal"
+        },
+        "up": {
+          "texture": "#lampMetal"
+        },
+        "down": {
+          "texture": "#lampMetal"
+        }
+      }
+    },
+    {
+      "name": "lamp glass bulb",
+      "from": [
+        12.3,
+        14.45,
+        7.8
+      ],
+      "to": [
+        14.3,
+        14.9,
+        9.9
+      ],
+      "faces": {
+        "north": {
+          "texture": "#lampBulb"
+        },
+        "south": {
+          "texture": "#lampBulb"
+        },
+        "east": {
+          "texture": "#lampBulb"
+        },
+        "west": {
+          "texture": "#lampBulb"
+        },
+        "up": {
+          "texture": "#lampBulb"
+        },
+        "down": {
+          "texture": "#lampBulb"
+        }
+      }
+    },
+    {
+      "name": "lamp brass shade lip north",
+      "from": [
+        10.5,
+        14.7,
+        5.85
+      ],
+      "to": [
+        15.8,
+        15.05,
+        6.1
+      ],
+      "faces": {
+        "north": {
+          "texture": "#lampMetal"
+        },
+        "south": {
+          "texture": "#lampMetal"
+        },
+        "east": {
+          "texture": "#lampMetal"
+        },
+        "west": {
+          "texture": "#lampMetal"
+        },
+        "up": {
+          "texture": "#lampMetal"
+        },
+        "down": {
+          "texture": "#lampMetal"
+        }
+      }
+    },
+    {
+      "name": "lamp brass shade lip south",
+      "from": [
+        10.5,
+        14.7,
+        11.15
+      ],
+      "to": [
+        15.8,
+        15.05,
+        11.4
+      ],
+      "faces": {
+        "north": {
+          "texture": "#lampMetal"
+        },
+        "south": {
+          "texture": "#lampMetal"
+        },
+        "east": {
+          "texture": "#lampMetal"
+        },
+        "west": {
+          "texture": "#lampMetal"
+        },
+        "up": {
+          "texture": "#lampMetal"
+        },
+        "down": {
+          "texture": "#lampMetal"
+        }
+      }
+    },
+    {
+      "name": "lamp brass shade lip left",
+      "from": [
+        10.4,
+        14.7,
+        6.1
+      ],
+      "to": [
+        10.65,
+        15.05,
+        11.15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#lampMetal"
+        },
+        "south": {
+          "texture": "#lampMetal"
+        },
+        "east": {
+          "texture": "#lampMetal"
+        },
+        "west": {
+          "texture": "#lampMetal"
+        },
+        "up": {
+          "texture": "#lampMetal"
+        },
+        "down": {
+          "texture": "#lampMetal"
+        }
+      }
+    },
+    {
+      "name": "lamp brass shade lip right",
+      "from": [
+        15.65,
+        14.7,
+        6.1
+      ],
+      "to": [
+        15.9,
+        15.05,
+        11.15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#lampMetal"
+        },
+        "south": {
+          "texture": "#lampMetal"
+        },
+        "east": {
+          "texture": "#lampMetal"
+        },
+        "west": {
+          "texture": "#lampMetal"
+        },
+        "up": {
+          "texture": "#lampMetal"
+        },
+        "down": {
+          "texture": "#lampMetal"
         }
       }
     }
