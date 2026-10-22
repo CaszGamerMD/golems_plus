@@ -38,7 +38,7 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
     public ProfessionGolemRenderer(EntityRendererProvider.Context context,
             ModelLayerLocation layer,ProfessionGolemModel.Profession kind){
         super(context,new ProfessionGolemModel(context.bakeLayer(layer),kind),.35f);
-        itemModelResolver=context.itemModelResolver();
+        itemModelResolver=context.getItemModelResolver();
         uniformTexture=GolemsPlus.id("textures/entity/"+
                 kind.name().toLowerCase(java.util.Locale.ROOT)+"_golem.png");
     }
