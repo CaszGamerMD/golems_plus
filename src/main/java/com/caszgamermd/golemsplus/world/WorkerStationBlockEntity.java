@@ -60,6 +60,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.Map<UUID,java.util.List<BlockPos>> trackedScaffolds=new java.util.LinkedHashMap<>();
     private boolean builderPlaced;
     private BlockPos beeToolbox,beeOutput;
+    private BlockPos fisherOutput,fishingSpot;
+    private boolean fishingBuoy;
     private UUID chefWorkerId;
     private final java.util.List<UUID> chefExtras=new java.util.ArrayList<>();
     // Saved kitchen work order and ingredient reservation.
@@ -225,6 +227,19 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return getBlockState().getBlock() instanceof WorkerStationBlock station
                 &&station.specialty()==WorkerSpecialty.FISHING;
     }
+    public BlockPos fisherOutput(){return fisherOutput;}
+    public BlockPos fishingSpot(){return fishingSpot;}
+    public boolean fishingBuoy(){return fishingBuoy;}
+    public boolean setFisherOutput(UUID actor,BlockPos output){
+        if(!isFishing()||!canConfigure(actor)||output==null
+                ||worldPosition.distSqr(output)>64L*64L)return false;
+        fisherOutput=output.immutable();sync();return true;
+    }
+    public boolean setFishingSpot(UUID actor,BlockPos location,boolean buoy){
+        if(!isFishing()||!canConfigure(actor)||location==null
+                ||worldPosition.distSqr(location)>128L*128L)return false;
+        fishingSpot=location.immutable();fishingBuoy=buoy;sync();return true;
+    }
     public java.util.List<UUID> fisherWorkerIds(){
         return java.util.List.copyOf(fisherIds);
     }
@@ -260,7 +275,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(!isBeekeeper()||!canConfigure(actor)||at==null
                 ||worldPosition.distSqr(at)>64L*64L||at.equals(worldPosition))
             return false;
-        if(tools)beeToolbox=at.immutable();else beeOutput=at.immutable();
+        if(tools)return false; // bag inventory replaces the removed toolbox link
+        beeOutput=at.immutable();
         sync();return true;
     }
     public boolean isTrader() {
@@ -586,7 +602,19 @@ public final class WorkerStationBlockEntity extends BlockEntity
         sync();
     }
     @Override public boolean canPlaceItem(int slot,ItemStack stack) {
-        return !isBeekeeper()&&!isCooking()&&slot>=0&&slot<INPUT_SLOTS;
+        if(isBeekeeper())return slot>=0&&slot<INPUT_SLOTS
+                &&(stack.is(net.minecraft.world.item.Items.SHEARS)
+                    ||stack.is(net.minecraft.world.item.Items.GLASS_BOTTLE)
+                    ||stack.is(net.minecraft.tags.TagKey.create(
+                            net.minecraft.core.registries.Registries.ITEM,
+                            net.minecraft.resources.Identifier.parse("minecraft:bee_food"))));
+        if(isFishing())return slot>=0&&slot<INPUT_SLOTS
+                &&(stack.is(net.minecraft.world.item.Items.FISHING_ROD)
+                    ||stack.is(net.minecraft.world.item.Items.COD)
+                    ||stack.is(net.minecraft.world.item.Items.SALMON)
+                    ||stack.is(net.minecraft.world.item.Items.TROPICAL_FISH)
+                    ||stack.is(net.minecraft.world.item.Items.PUFFERFISH));
+        return !isCooking()&&slot>=0&&slot<INPUT_SLOTS;
     }
     @Override public void clearContent() {
         items=NonNullList.withSize(SLOTS,ItemStack.EMPTY);sync();
@@ -693,6 +721,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             out.putString("chef_stock_id_"+sc,e.getKey());
             out.putInt("chef_stock_qty_"+sc,e.getValue());sc++;
         }
+        if(fisherOutput!=null)out.store("fisher_output",BlockPos.CODEC,fisherOutput);
+        if(fishingSpot!=null)out.store("fisher_spot",BlockPos.CODEC,fishingSpot);
+        out.putBoolean("fisher_buoy",fishingBuoy);
         out.putInt("fisher_workers",Math.min(4,fisherIds.size()));
         for(int i=0;i<fisherIds.size()&&i<4;i++)
             out.putString("fisher_worker_"+i,fisherIds.get(i).toString());
@@ -827,6 +858,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             int qty=in.getIntOr("chef_stock_qty_"+i,0);
             if(!id.isBlank()&&qty>0)chefStock.put(id,qty);
         }
+        fisherOutput=in.read("fisher_output",BlockPos.CODEC).orElse(null);
+        fishingSpot=in.read("fisher_spot",BlockPos.CODEC).orElse(null);
+        fishingBuoy=in.getBooleanOr("fisher_buoy",false);
         fisherIds.clear();
         int fisherCount=Math.clamp(in.getIntOr("fisher_workers",0),0,4);
         for(int i=0;i<fisherCount;i++){
