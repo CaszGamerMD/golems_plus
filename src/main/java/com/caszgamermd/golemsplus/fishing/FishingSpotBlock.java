@@ -35,12 +35,5 @@ public final class FishingSpotBlock extends Block implements SimpleWaterloggedBl
     @Override protected FluidState getFluidState(BlockState state){
         return state.getValue(WATERLOGGED)?Fluids.WATER.getSource(false):super.getFluidState(state);
     }
-    @Override protected BlockState updateShape(BlockState state,LevelAccessor world,
-            net.minecraft.world.level.redstone.Orientation orientation,
-            Direction face,BlockPos near,BlockState other,
-            net.minecraft.util.RandomSource random){
-        if(state.getValue(WATERLOGGED))
-            world.scheduleTick(near,Fluids.WATER,Fluids.WATER.getTickDelay(world));
-        return super.updateShape(state,world,orientation,face,near,other,random);
-    }
+
 }
