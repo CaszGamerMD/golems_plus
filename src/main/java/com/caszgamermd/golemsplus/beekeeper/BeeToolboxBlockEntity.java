@@ -51,7 +51,8 @@ public final class BeeToolboxBlockEntity extends BlockEntity implements Containe
     }
     @Override public boolean canPlaceItem(int slot,ItemStack stack){
         return stack.is(Items.SHEARS)||stack.is(Items.GLASS_BOTTLE)
-                ||stack.is(ItemTags.FLOWERS);
+                ||stack.is(net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.ITEM,
+                        net.minecraft.resources.Identifier.tryParse("minecraft:bee_food")));
     }
     @Override public void clearContent(){
         for(int i=0;i<items.size();i++)items.set(i,ItemStack.EMPTY);
