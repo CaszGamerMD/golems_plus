@@ -443,7 +443,11 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                     if(mouseX>=leftPos+95&&mouseX<leftPos+115
                             &&mouseY>=topPos+103+dy*22
                             &&mouseY<topPos+122+dy*22)
-                        g.tooltip(font,new ItemStack(item).getHoverName(),mouseX,mouseY);
+                        g.tooltip(font,java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent
+                                .create(new ItemStack(item).getHoverName().getVisualOrderText())),
+                                mouseX,mouseY,
+                                net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner.INSTANCE,
+                                null);
                 }
                 g.text(font,"Qty "+chefAmount+"  Page "+(chefPage+1)+"/"+
                         Math.max(1,(visibleMeals.size()+2)/3),95,198,LABEL_COLOR,false);
