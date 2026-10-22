@@ -67,6 +67,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private int chefQuantity,chefStepIndex,chefStepTicks;
     private final java.util.List<String> chefSteps=new java.util.ArrayList<>();
     private final java.util.Map<String,Integer> chefEscrow=new java.util.LinkedHashMap<>();
+    private final java.util.Map<String,Integer> chefSurplus=new java.util.LinkedHashMap<>();
     private final java.util.Map<String,Integer> chefStock=new java.util.LinkedHashMap<>();
     private final java.util.List<UUID> fisherIds=new java.util.ArrayList<>();
     private int beeRadius=12,beeMode=0;
@@ -99,6 +100,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public String chefCurrentStep(){return chefStepIndex<chefSteps.size()?
             chefSteps.get(chefStepIndex):"Serving";}
     public java.util.Map<String,Integer> chefStock(){return java.util.Map.copyOf(chefStock);}
+    public java.util.Map<String,Integer> chefSurplus(){return java.util.Map.copyOf(chefSurplus);}
     public void updateChefStock(java.util.Map<String,Integer> next){
         if(chefStock.equals(next))return;
         chefStock.clear();
@@ -107,12 +109,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
         sync();
     }
     public boolean startChefOrder(java.util.UUID actor,String food,int quantity,
-            java.util.List<String> steps,java.util.Map<String,Integer> escrow){
+            java.util.List<String> steps,java.util.Map<String,Integer> escrow,
+            java.util.Map<String,Integer> leftovers){
         if(!isCooking()||!canConfigure(actor)||chefBusy()||quantity<1||quantity>16
                 ||steps.isEmpty()||steps.size()>160)return false;
         chefFood=food;chefQuantity=quantity;chefStepIndex=chefStepTicks=0;
         chefSteps.clear();chefSteps.addAll(steps);
         chefEscrow.clear();chefEscrow.putAll(escrow);
+        chefSurplus.clear();chefSurplus.putAll(leftovers);
         setProblem("");sync();return true;
     }
     public void tickChefStep(){
@@ -127,7 +131,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public java.util.Map<String,Integer> clearChefOrder(){
         java.util.Map<String,Integer> refund=java.util.Map.copyOf(chefEscrow);
         chefFood="";chefQuantity=chefStepIndex=chefStepTicks=0;
-        chefSteps.clear();chefEscrow.clear();sync();
+        chefSteps.clear();chefEscrow.clear();chefSurplus.clear();sync();
         return refund;
     }
     public void setChefWorkerId(UUID id){
@@ -584,6 +588,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
             out.putString("chef_escrow_id_"+ec,e.getKey());
             out.putInt("chef_escrow_qty_"+ec,e.getValue());ec++;
         }
+        out.putInt("chef_surplus_count",Math.min(64,chefSurplus.size()));
+        int bc=0;
+        for(var e:chefSurplus.entrySet()){
+            if(bc>=64)break;
+            out.putString("chef_surplus_id_"+bc,e.getKey());
+            out.putInt("chef_surplus_qty_"+bc,e.getValue());bc++;
+        }
         out.putInt("chef_stock_count",Math.min(80,chefStock.size()));
         int sc=0;
         for(var e:chefStock.entrySet()){
@@ -706,6 +717,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
             String id=in.getStringOr("chef_escrow_id_"+i,"");
             int qty=in.getIntOr("chef_escrow_qty_"+i,0);
             if(!id.isBlank()&&qty>0)chefEscrow.put(id,qty);
+        }
+        chefSurplus.clear();
+        for(int i=0,n=Math.clamp(in.getIntOr("chef_surplus_count",0),0,64);i<n;i++){
+            String id=in.getStringOr("chef_surplus_id_"+i,"");
+            int qty=in.getIntOr("chef_surplus_qty_"+i,0);
+            if(!id.isBlank()&&qty>0)chefSurplus.put(id,qty);
         }
         chefStock.clear();
         for(int i=0,n=Math.clamp(in.getIntOr("chef_stock_count",0),0,80);i<n;i++){
