@@ -68,6 +68,7 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
                 ItemDisplayContext.FIXED,entity.level(),null,entity.getId());
         state.hasRod=entity instanceof FisherGolem fisher&&fisher.hasRod();
         state.carryingFish=entity instanceof FisherGolem fisher&&fisher.hasCatch();
+        state.seated=entity instanceof FisherGolem fisher&&fisher.seated();
         // Chef ingredient matches the chosen job step, not synthetic food.
     }
     @Override public void submit(ProfessionGolemRenderState state,PoseStack pose,

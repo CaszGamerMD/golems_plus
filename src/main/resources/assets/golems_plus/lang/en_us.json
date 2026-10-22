@@ -1,8 +1,8 @@
 {
   "block.golems_plus.builder_table": "Builder's Planning Table",
-  "block.golems_plus.fishing_station": "Fishing Tackle Station",
+  "block.golems_plus.fishing_station": "Fisherman's Coolers",
   "block.golems_plus.trader_counter": "Trader's Counter",
-  "block.golems_plus.beekeeper_station": "Beekeeper Job Block",
+  "block.golems_plus.beekeeper_station": "Beekeeper Tool Bag & Smoker",
   "block.golems_plus.beekeeper_toolbox": "Beekeeper Toolbox",
   "entity.golems_plus.beekeeper_golem": "Beekeeper Golem",
   "itemGroup.golems_plus.main": "Golems Plus",
@@ -16,5 +16,8 @@
   "item.golems_plus.chef_worker": "Chef Golem",
   "item.golems_plus.fisher_worker": "Fisher Golem",
   "entity.golems_plus.fisher_golem": "Fisher Golem",
-  "block.golems_plus.meal_counter": "Meal Pickup Counter"
+  "block.golems_plus.meal_counter": "Meal Pickup Counter",
+  "block.golems_plus.fishing_spot": "Fishing Waypoint Flag / Buoy",
+  "item.golems_plus.fishing_spot_marker": "Fishing Spot Marker",
+  "item.golems_plus.fishing_bait": "Fisherman's Bait"
 }

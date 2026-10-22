@@ -1,0 +1,109 @@
+{
+  "textures": {
+    "particle": "minecraft:block/red_wool",
+    "pole": "minecraft:block/oak_planks",
+    "flag": "minecraft:block/red_wool",
+    "base": "minecraft:block/brown_terracotta"
+  },
+  "elements": [
+    {
+      "name": "small soil flag base",
+      "from": [
+        5,
+        0,
+        5
+      ],
+      "to": [
+        11,
+        1.5,
+        11
+      ],
+      "faces": {
+        "north": {
+          "texture": "#base"
+        },
+        "south": {
+          "texture": "#base"
+        },
+        "east": {
+          "texture": "#base"
+        },
+        "west": {
+          "texture": "#base"
+        },
+        "up": {
+          "texture": "#base"
+        },
+        "down": {
+          "texture": "#base"
+        }
+      }
+    },
+    {
+      "name": "flag pole",
+      "from": [
+        7.3,
+        1.3,
+        7.3
+      ],
+      "to": [
+        8.7,
+        15.3,
+        8.7
+      ],
+      "faces": {
+        "north": {
+          "texture": "#pole"
+        },
+        "south": {
+          "texture": "#pole"
+        },
+        "east": {
+          "texture": "#pole"
+        },
+        "west": {
+          "texture": "#pole"
+        },
+        "up": {
+          "texture": "#pole"
+        },
+        "down": {
+          "texture": "#pole"
+        }
+      }
+    },
+    {
+      "name": "bright flag pennant",
+      "from": [
+        8.7,
+        10,
+        6.6
+      ],
+      "to": [
+        15,
+        14.7,
+        9.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#flag"
+        },
+        "south": {
+          "texture": "#flag"
+        },
+        "east": {
+          "texture": "#flag"
+        },
+        "west": {
+          "texture": "#flag"
+        },
+        "up": {
+          "texture": "#flag"
+        },
+        "down": {
+          "texture": "#flag"
+        }
+      }
+    }
+  ]
+}

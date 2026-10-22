@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "minecraft:wheat_seeds",
+    "minecraft:string"
+  ],
+  "result": {
+    "id": "golems_plus:fishing_bait",
+    "count": 8
+  }
+}

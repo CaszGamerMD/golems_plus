@@ -10,6 +10,8 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import com.caszgamermd.golemsplus.cooking.CookingKioskTopBlock;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -39,11 +41,16 @@ import org.jspecify.annotations.Nullable;
  */
 public final class WorkerStationBlock extends Block implements EntityBlock {
     private final MapCodec<WorkerStationBlock> codec = MapCodec.unit(this);
+    public static final BooleanProperty WINK=BooleanProperty.create("wink");
     private final WorkerSpecialty specialty;
+    @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){
+        super.createBlockStateDefinition(builder);builder.add(WINK);
+    }
 
     public WorkerStationBlock(WorkerSpecialty specialty, BlockBehaviour.Properties properties) {
         super(properties);
         this.specialty = specialty;
+        registerDefaultState(defaultBlockState().setValue(WINK,false));
     }
     public WorkerSpecialty specialty() { return specialty; }
     @Override public @Nullable BlockState getStateForPlacement(BlockPlaceContext ctx){
@@ -71,6 +78,21 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
         if(level.isClientSide())return null;
         return (l,p,s,be)->{
             if(be instanceof WorkerStationBlockEntity station && l instanceof ServerLevel server){
+                if(station.isBeekeeper()&&server.getGameTime()%22==0
+                        &&server.getRandom().nextInt(15)==0){
+                    server.sendParticles(net.minecraft.core.particles.ParticleTypes.SMOKE,
+                            p.getX()+.89,p.getY()+1.02,p.getZ()+.48,
+                            3,.06,.13,.08,.012);
+                }
+                if(station.isFishing()){
+                    // Each cooler fish winks for only a few ticks roughly
+                    // once per minute, with per-position desynchronization.
+                    long time=Math.floorMod(server.getGameTime()+
+                            (long)p.getX()*37+(long)p.getZ()*23,1600);
+                    boolean wink=time<7;
+                    if(s.getValue(WINK)!=wink)
+                        server.setBlock(p,s.setValue(WINK,wink),2);
+                }
                 if(station.isTrader())TraderWorkService.tick(server,station);
                 else if(station.isBuilder())BuilderBuildService.dispatch(server,station);
                 else if(station.isBeekeeper())BeekeeperWorkService.dispatch(server,station);

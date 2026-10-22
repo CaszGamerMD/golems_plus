@@ -332,3 +332,37 @@ intermediates and unused inputs return to the connected pantry.
 
 Preexisting 0.3.7 jobs resume via the legacy reserved-item path; create
 a new order to test the structured physical crafting stages.
+
+## Golems Plus 0.3.9-dev — Beekeepers & Fishermen
+
+**Beekeeper Tool Bag:** The existing Beekeeper Station block keeps its ID
+but now looks like a cloth equipment bag with a copper smoker. The smoker
+emits occasional smoke particles. Open the workstation to store shears,
+empty glass bottles and flowers directly in its input slots. The separate
+Beekeeper Toolbox block is retained for old worlds but no longer used by
+workers or added to the creative tab. Use **LINK OUTPUT CHEST** in the
+Beekeeper work menu to select where honey bottles and comb go.
+
+**Fisher Cooler Station:** The existing Fisher Station block keeps its ID
+but now looks like two ice coolers, drinks on one side, fish head on the
+other. The fish head occasionally winks. Stock its built-in inventory with
+fishing rods and craftable bait (wheat seeds + string yields eight bait).
+Use **LINK OUTPUT CHEST** for harvested fish.
+
+Set the saved fishing coordinate with **SAVE WAYPOINT / FLAG** in the
+Fisher job menu, or right-click your own Fisher cooler with the reusable
+Fishing Spot Marker to bind it, then go to a safe shoreline or source-water
+surface and shift-right-click. The marker remembers the chosen cooler during
+the session; the actual fishing location persists in the station. The marker places a visible flag
+on land and a floating buoy in water. The Golem finds reachable solid
+footing near the waypoint and sits in a folding campchair while idle or
+fishing. It waits for variable fishing intervals, uses one bait and rod
+durability per catch, carries its own nine-slot fish inventory, returns
+when its pockets fill or bait runs out, unloads into the linked output
+chest and returns to the job station to restock. A blocked route, missing
+shore platform or full chest stops delivery instead of deleting fish.
+
+Fishing currently produces weighted vanilla cod, salmon, tropical fish
+and pufferfish rather than the full vanilla fishing loot table. External
+modded loot tables remain a future integration. Models and marker state
+are saved, and previously held catches are migrated on load.

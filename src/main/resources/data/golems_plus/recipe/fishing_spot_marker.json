@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " R",
+    "S "
+  ],
+  "key": {
+    "R": "minecraft:red_wool",
+    "S": "minecraft:stick"
+  },
+  "result": {
+    "id": "golems_plus:fishing_spot_marker",
+    "count": 1
+  }
+}

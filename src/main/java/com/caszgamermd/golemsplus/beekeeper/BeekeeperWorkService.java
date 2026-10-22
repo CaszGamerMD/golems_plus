@@ -32,16 +32,15 @@ public final class BeekeeperWorkService {
             if(level.getEntity(id) instanceof BeekeeperGolem golem)crew.add(golem);
             else {station.setProblem("Beekeeper unloaded; load its chunk");return;}
         }
-        if(station.beeToolbox()==null||station.beeOutput()==null){
-            station.setProblem("Link a Beekeeper Toolbox and output container in the job block");
+        if(station.beeOutput()==null){
+            station.setProblem("Link an output chest from the tool bag's job menu");
             return;
         }
-        if(!level.hasChunkAt(station.beeToolbox())||!level.hasChunkAt(station.beeOutput())){
-            station.setProblem("Toolbox or output container chunk unloaded");return;
+        if(!level.hasChunkAt(station.beeOutput())){
+            station.setProblem("Output container chunk unloaded");return;
         }
-        if(!(level.getBlockEntity(station.beeToolbox()) instanceof BeeToolboxBlockEntity)
-                ||!(level.getBlockEntity(station.beeOutput()) instanceof Container)){
-            station.setProblem("Missing toolbox or output container");return;
+        if(!(level.getBlockEntity(station.beeOutput()) instanceof Container)){
+            station.setProblem("Output container missing or invalid");return;
         }
         // No worker creation here: place crafted Beekeepers near this block.
         if(station.phase()==WorkerPhase.PAUSED)return;
@@ -62,7 +61,7 @@ public final class BeekeeperWorkService {
                         BlockState block=level.getBlockState(hive);
                         if(!(block.getBlock() instanceof BeehiveBlock)
                                 ||block.getValue(BeehiveBlock.HONEY_LEVEL)<5)continue;
-                        var tool=level.getBlockEntity(station.beeToolbox());
+                        var tool=station;
                         var output=level.getBlockEntity(station.beeOutput());
                         if(!(tool instanceof Container box)||!(output instanceof Container out))
                             return;
@@ -78,7 +77,7 @@ public final class BeekeeperWorkService {
             if(assigned){station.setProblem("");continue;}
             // A quiet hive is an opportunity for husbandry. Breed only
             // when there is no harvest job and two adult bees are ready.
-            Container toolbox=container(level,station.beeToolbox());
+            Container toolbox=station;
             if(toolbox!=null&&hasFlowerPair(toolbox)&&station.owner()!=null){
                 Set<UUID> reserved=new HashSet<>();
                 for(BeekeeperGolem working:crew)if(working.job()>=5){
@@ -156,20 +155,20 @@ public final class BeekeeperWorkService {
         if(job.phase()==WorkerPhase.PAUSED){worker.getNavigation().stop();return;}
         if(worker.job()==0)
             com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(level,worker,home);
-        if(job.beeToolbox()==null||job.beeOutput()==null)return;
+        if(job.beeOutput()==null)return;
         ServerPlayer owner=level.getServer().getPlayerList().getPlayer(worker.owner());
         if(owner==null||owner.level()!=level)return; // no building in unprotected offline areas
-        Container toolbox=container(level,job.beeToolbox());
+        Container toolbox=job;
         Container output=container(level,job.beeOutput());
-        if(!(toolbox instanceof BeeToolboxBlockEntity)||output==null){
-            job.setProblem("Beekeeper containers missing/unloaded");return;
+        if(output==null){
+            job.setProblem("Beekeeper output chest missing/unloaded");return;
         }
         switch(worker.job()){
             case 0 -> {
                 // Idle roaming is handled even before tools are linked.
             }
             case 1 -> {
-                if(!worker.moveTo(job.beeToolbox(),.85))break;
+                if(!worker.moveTo(job.getBlockPos(),.85))break;
                 ItemStack taken=BeeInventory.takeOne(toolbox,
                         worker.bottles()?Items.GLASS_BOTTLE:Items.SHEARS);
                 if(taken.isEmpty()){worker.stage(0);break;}
@@ -225,7 +224,7 @@ public final class BeekeeperWorkService {
                 }else job.setProblem("Output container full; keep cargo on golem");
             }
             case 5 -> {
-                if(!worker.moveTo(job.beeToolbox(),.85))break;
+                if(!worker.moveTo(job.getBlockPos(),.85))break;
                 if(!worker.breedFlowers().isEmpty()){worker.stage(6);break;}
                 ItemStack flowers=takeFlowerPair(toolbox);
                 if(flowers.isEmpty()){worker.finishBreeding();break;}
@@ -258,7 +257,7 @@ public final class BeekeeperWorkService {
             }
             case 7 -> {
                 if(!worker.breedFlowers().isEmpty()){
-                    if(!worker.moveTo(job.beeToolbox(),.85))break;
+                    if(!worker.moveTo(job.getBlockPos(),.85))break;
                     if(!BeeInventory.insert(toolbox,worker.breedFlowers())){
                         job.setProblem("Toolbox full; Beekeeper keeping unused flowers");
                         break;
@@ -269,7 +268,7 @@ public final class BeekeeperWorkService {
             }
             case 4 -> {
                 if(!worker.tool().isEmpty()){
-                    if(!worker.moveTo(job.beeToolbox(),.85))break;
+                    if(!worker.moveTo(job.getBlockPos(),.85))break;
                     if(!BeeInventory.insert(toolbox,worker.tool())){
                         job.setProblem("Toolbox full; holding shears safely");break;
                     }

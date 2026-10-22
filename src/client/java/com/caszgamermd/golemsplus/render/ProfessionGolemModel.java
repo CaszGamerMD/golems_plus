@@ -21,7 +21,7 @@ public final class ProfessionGolemModel
     public enum Profession { BUILDER, TRADER, CHEF, FISHER }
 
     private final ModelPart head,leftArm,rightArm,leftLeg,rightLeg;
-    private final ModelPart traderClosed,traderOpen,fisherRod,fisherFish;
+    private final ModelPart traderClosed,traderOpen,fisherRod,fisherFish,foldingChair;
     private final Profession profession;
 
     public ProfessionGolemModel(ModelPart root,Profession profession){
@@ -37,6 +37,7 @@ public final class ProfessionGolemModel
         traderOpen=profession==Profession.TRADER?torso.getChild("open_case"):null;
         fisherRod=profession==Profession.FISHER?rightArm.getChild("fishing_rod"):null;
         fisherFish=profession==Profession.FISHER?fisherRod.getChild("caught_fish"):null;
+        foldingChair=profession==Profession.FISHER?root.getChild("folding_chair"):null;
     }
 
     public static LayerDefinition builderLayer(){return layer(Profession.BUILDER);}
@@ -178,6 +179,18 @@ public final class ProfessionGolemModel
                         PartPose.ZERO);
             }
             case FISHER -> {
+                // A folding fabric camping chair appears under a seated Fisher.
+                // In walking mode it is hidden rather than carried around.
+                root.addOrReplaceChild("folding_chair",CubeListBuilder.create()
+                        .texOffs(190,1).addBox(-8,13,0,16,2,13)
+                        .texOffs(191,18).addBox(-8,4,11,16,10,2)
+                        .texOffs(190,30).addBox(-8,13,0,1.5f,11,1.5f)
+                        .texOffs(190,30).addBox(6.5f,13,0,1.5f,11,1.5f)
+                        .texOffs(190,30).addBox(-8,13,11,1.5f,11,1.5f)
+                        .texOffs(190,30).addBox(6.5f,13,11,1.5f,11,1.5f)
+                        .texOffs(206,29).addBox(-10,13,2,2.5f,1.5f,9)
+                        .texOffs(206,29).addBox(7.5f,13,2,2.5f,1.5f,9),
+                        PartPose.ZERO);
                 // Broad soft fishing hat, woven band and raised brim.
                 head.addOrReplaceChild("hat_crown",CubeListBuilder.create()
                         .texOffs(75,24).addBox(-4.5f,-7.4f,-3.5f,9,4.1f,7),
@@ -297,12 +310,18 @@ public final class ProfessionGolemModel
             leftArm.zRot=state.presenting?.48f:.65f;
             rightArm.zRot=state.presenting?-.48f:-.65f;
         }else if(profession==Profession.FISHER){
+            foldingChair.visible=state.seated;
+            if(state.seated){
+                leftLeg.xRot=rightLeg.xRot=-1.25f;
+                leftArm.xRot=-.60f;rightArm.xRot=-1.0f;
+                leftArm.zRot=-.20f;rightArm.zRot=.15f;
+            }
             fisherRod.visible=state.hasRod;
             fisherFish.visible=state.hasRod&&state.carryingFish;
             // Rod lies back across the shoulder while strolling, leaving
             // the fishing line and the caught fish visible on return.
             if(state.hasRod){
-                rightArm.xRot=-.45f;
+                rightArm.xRot=state.seated?-1.25f:-.45f;
                 rightArm.zRot=-.20f;
             }
             leftArm.xRot*=.6f;

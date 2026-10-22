@@ -176,6 +176,56 @@ public final class StationSettingsNetworking {
             case "chef_resume" -> {
                 if(table.isCooking()){table.setPhase(WorkerPhase.IDLE);done=true;}
             }
+            case "fish_output" -> {
+                if(!table.isFishing())return;
+                BlockPos nearest=null;double best=Double.MAX_VALUE;
+                BlockPos origin=table.getBlockPos();
+                for(int x=-12;x<=12;x++)for(int y=-6;y<=6;y++)
+                    for(int z=-12;z<=12;z++){
+                        BlockPos location=origin.offset(x,y,z);
+                        double distance=origin.distSqr(location);
+                        if(distance>=best||distance>16*16
+                                ||!player.level().hasChunkAt(location))continue;
+                        if(player.level().getBlockEntity(location) instanceof Container box
+                                &&box!=table){
+                            nearest=location;best=distance;
+                        }
+                    }
+                if(nearest==null){
+                    reply(player,"No output chest found within 16 blocks");return;
+                }
+                if(table.setFisherOutput(player.getUUID(),nearest))
+                    reply(player,"Fisher catch chest linked: "+nearest.toShortString());
+                return;
+            }
+            case "fish_spot" -> {
+                if(!table.isFishing())return;
+                BlockPos location=new BlockPos(change.x,change.y,change.z);
+                if(table.getBlockPos().distSqr(location)>128L*128L
+                        ||!player.level().hasChunkAt(location)
+                        ||!player.level().mayInteract(player,location)){
+                    reply(player,"Fishing spot must be in reach (128 blocks)");return;
+                }
+                boolean water=player.level().getFluidState(location)
+                        .is(net.minecraft.world.level.material.Fluids.WATER);
+                if(!water&&!player.level().getBlockState(location).canBeReplaced()){
+                    reply(player,"Place the marker in free space or on water");return;
+                }
+                if(water&&!player.level().getFluidState(location).isSource()){
+                    reply(player,"Use a source water surface for buoy");return;
+                }
+                BlockPos previous=table.fishingSpot();
+                if(!table.setFishingSpot(player.getUUID(),location,water))return;
+                if(previous!=null&&!previous.equals(location)
+                        &&player.level().getBlockState(previous)
+                            .is(WorksiteContent.FISHING_SPOT))
+                    player.level().destroyBlock(previous,false);
+                player.level().setBlockAndUpdate(location,
+                        WorksiteContent.FISHING_SPOT.defaultBlockState().setValue(
+                                com.caszgamermd.golemsplus.fishing.FishingSpotBlock.WATERLOGGED,water));
+                reply(player,"Fishing spot marked: "+location.toShortString());
+                return;
+            }
             case "fish_pause" -> {
                 if(table.isFishing()){table.setPhase(WorkerPhase.PAUSED);done=true;}
             }

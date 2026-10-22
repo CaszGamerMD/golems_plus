@@ -1,0 +1,176 @@
+{
+  "textures": {
+    "particle": "minecraft:block/red_concrete",
+    "buoy": "minecraft:block/orange_concrete",
+    "stripe": "minecraft:block/white_concrete",
+    "pole": "minecraft:block/iron_block",
+    "flag": "minecraft:block/red_wool"
+  },
+  "elements": [
+    {
+      "name": "floating ring lower",
+      "from": [
+        4,
+        3,
+        4
+      ],
+      "to": [
+        12,
+        5,
+        12
+      ],
+      "faces": {
+        "north": {
+          "texture": "#stripe"
+        },
+        "south": {
+          "texture": "#stripe"
+        },
+        "east": {
+          "texture": "#stripe"
+        },
+        "west": {
+          "texture": "#stripe"
+        },
+        "up": {
+          "texture": "#stripe"
+        },
+        "down": {
+          "texture": "#stripe"
+        }
+      }
+    },
+    {
+      "name": "buoy float",
+      "from": [
+        4.8,
+        4.5,
+        4.8
+      ],
+      "to": [
+        11.2,
+        10.5,
+        11.2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#buoy"
+        },
+        "south": {
+          "texture": "#buoy"
+        },
+        "east": {
+          "texture": "#buoy"
+        },
+        "west": {
+          "texture": "#buoy"
+        },
+        "up": {
+          "texture": "#buoy"
+        },
+        "down": {
+          "texture": "#buoy"
+        }
+      }
+    },
+    {
+      "name": "buoy center collar",
+      "from": [
+        4.5,
+        6,
+        4.5
+      ],
+      "to": [
+        11.5,
+        7.3,
+        11.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#stripe"
+        },
+        "south": {
+          "texture": "#stripe"
+        },
+        "east": {
+          "texture": "#stripe"
+        },
+        "west": {
+          "texture": "#stripe"
+        },
+        "up": {
+          "texture": "#stripe"
+        },
+        "down": {
+          "texture": "#stripe"
+        }
+      }
+    },
+    {
+      "name": "buoy mast",
+      "from": [
+        7.4,
+        10,
+        7.4
+      ],
+      "to": [
+        8.6,
+        16,
+        8.6
+      ],
+      "faces": {
+        "north": {
+          "texture": "#pole"
+        },
+        "south": {
+          "texture": "#pole"
+        },
+        "east": {
+          "texture": "#pole"
+        },
+        "west": {
+          "texture": "#pole"
+        },
+        "up": {
+          "texture": "#pole"
+        },
+        "down": {
+          "texture": "#pole"
+        }
+      }
+    },
+    {
+      "name": "buoy flag",
+      "from": [
+        8.5,
+        12,
+        7
+      ],
+      "to": [
+        14,
+        15.5,
+        9
+      ],
+      "faces": {
+        "north": {
+          "texture": "#flag"
+        },
+        "south": {
+          "texture": "#flag"
+        },
+        "east": {
+          "texture": "#flag"
+        },
+        "west": {
+          "texture": "#flag"
+        },
+        "up": {
+          "texture": "#flag"
+        },
+        "down": {
+          "texture": "#flag"
+        }
+      }
+    }
+  ]
+}
