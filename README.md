@@ -350,8 +350,10 @@ fishing rods and craftable bait (wheat seeds + string yields eight bait).
 Use **LINK OUTPUT CHEST** for harvested fish.
 
 Set the saved fishing coordinate with **SAVE WAYPOINT / FLAG** in the
-Fisher job menu, or shift-use a reusable Fishing Spot Marker at a safe
-shoreline or on a source-water surface. The marker places a visible flag
+Fisher job menu, or right-click your own Fisher cooler with the reusable
+Fishing Spot Marker to bind it, then go to a safe shoreline or source-water
+surface and shift-right-click. The marker remembers the chosen cooler during
+the session; the actual fishing location persists in the station. The marker places a visible flag
 on land and a floating buoy in water. The Golem finds reachable solid
 footing near the waypoint and sits in a folding campchair while idle or
 fishing. It waits for variable fishing intervals, uses one bait and rod
