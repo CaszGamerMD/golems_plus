@@ -24,7 +24,9 @@ public final class ChefRecipePlanner {
             RecipeMap recipes=(RecipeMap)field.get(manager);
             for(var type:List.of(RecipeType.CRAFTING,RecipeType.SMELTING,
                     RecipeType.SMOKING,RecipeType.CAMPFIRE_COOKING,RecipeType.BLASTING)){
-                for(var holder:recipes.byType(type)){
+                @SuppressWarnings({"rawtypes","unchecked"})
+                Collection<RecipeHolder<?>> candidates=(Collection)recipes.byType((RecipeType)type);
+                for(RecipeHolder<?> holder:candidates){
                     Object recipe=holder.value();
                     ItemStack output=output(recipe);
                     if(output.isEmpty())continue;
