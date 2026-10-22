@@ -1,6 +1,7 @@
 package com.caszgamermd.golemsplus.cooking;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Field;
 import java.util.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -24,9 +25,12 @@ public final class KitchenSupplies {
     private static final int LINK_RADIUS=16;
     private static final int SCAN_RADIUS=24;
     private final List<Container> containers;
+    private final KitchenMilkSupply milkSupply;
     private final BlockPos workPoint;
-    private KitchenSupplies(List<Container> containers,BlockPos workPoint){
+    private KitchenSupplies(List<Container> containers,BlockPos workPoint,
+                            List<BlockEntity> milkJars){
         this.containers=containers;this.workPoint=workPoint;
+        this.milkSupply=new KitchenMilkSupply(milkJars);
     }
     public BlockPos workPoint(){return workPoint;}
     public boolean connected(){return !containers.isEmpty();}
@@ -67,12 +71,13 @@ public final class KitchenSupplies {
     public static KitchenSupplies around(ServerLevel level,BlockPos kiosk,BlockPos anchor){
         if(anchor==null||kiosk.distSqr(anchor)>LINK_RADIUS*LINK_RADIUS
                 ||!kitchenBlock(level,anchor))
-            return new KitchenSupplies(List.of(),null);
+            return new KitchenSupplies(List.of(),null,List.of());
 
         Set<BlockPos> visited=new HashSet<>();
         ArrayDeque<BlockPos> queue=new ArrayDeque<>();
         queue.add(anchor);
         List<Container> supplies=new ArrayList<>();
+        List<BlockEntity> milkJars=new ArrayList<>();
         BlockPos appliance=anchor;
         boolean selectedOven=false;
 
@@ -86,6 +91,8 @@ public final class KitchenSupplies {
             }
             BlockEntity be=level.getBlockEntity(pos);
             if(be!=null){
+                if(key.getPath().equals("cow_jar")||key.getPath().equals("milk_jar"))
+                    milkJars.add(be);
                 Container inventory=container(be);
                 if(inventory!=null&&!supplies.contains(inventory))
                     supplies.add(inventory);
@@ -95,11 +102,29 @@ public final class KitchenSupplies {
                 if(!visited.contains(neighbor))queue.addLast(neighbor);
             }
         }
-        return new KitchenSupplies(supplies,appliance);
+        return new KitchenSupplies(supplies,appliance,milkJars);
     }
 
     private static Container container(BlockEntity be){
         if(be instanceof Container c)return c;
+        // CFB multi-block fridges and cabinets expose combined wrappers
+        // from getContainer(). Scanning both halves through those wrappers
+        // counts the SAME jars twice. Read the underlying container field
+        // on each real block instead, exactly once.
+        if(BuiltInRegistries.BLOCK.getKey(be.getBlockState().getBlock())
+                .getNamespace().equals("cookingforblockheads")){
+            for(Class<?> type=be.getClass();type!=null;type=type.getSuperclass()){
+                try{
+                    Field field=type.getDeclaredField("container");
+                    field.setAccessible(true);
+                    Object value=field.get(be);
+                    if(value instanceof Container c)return c;
+                }catch(NoSuchFieldException ignored){}
+                catch(ReflectiveOperationException|LinkageError|SecurityException ignored){
+                    break;
+                }
+            }
+        }
         try{
             Method getter=be.getClass().getMethod("getContainer");
             Object result=getter.invoke(be);
@@ -108,12 +133,20 @@ public final class KitchenSupplies {
         return null;
     }
 
-    public Map<Item,Integer> snapshot(){
+    private Map<Item,Integer> physicalSnapshot(){
         Map<Item,Integer> result=new HashMap<>();
         for(Container c:containers)for(int slot=0;slot<c.getContainerSize();slot++){
             ItemStack stack=c.getItem(slot);
             if(!stack.isEmpty())result.merge(stack.getItem(),stack.getCount(),Integer::sum);
         }
+        return result;
+    }
+    public Map<Item,Integer> snapshot(){
+        Map<Item,Integer> result=physicalSnapshot();
+        // Cooking for Blockheads' cow/milk jars provide tagged milk as
+        // virtual items; unlike regular storage they need the provider token
+        // to drain 1000 mB when a real order consumes one.
+        milkSupply.addTo(result);
         return result;
     }
 
@@ -183,12 +216,32 @@ public final class KitchenSupplies {
         return true;
     }
 
-    /** Recheck every count before consuming real items on the server thread. */
+    /**
+     * Reserve real pantry items first, then any remainder from CFB milk jars.
+     * Milk variants share ONE physical tank capacity; aliases in the item
+     * tag must never create or consume the same milk multiple times.
+     */
     public boolean consume(Map<Item,Integer> needed){
-        Map<Item,Integer> available=snapshot();
-        for(var entry:needed.entrySet())
-            if(available.getOrDefault(entry.getKey(),0)<entry.getValue())return false;
+        Map<Item,Integer> physical=physicalSnapshot();
+        Map<Item,Integer> physicalToTake=new HashMap<>();
+        Map<Item,Integer> fromJars=new HashMap<>();
         for(var entry:needed.entrySet()){
+            if(entry.getValue()<=0)continue;
+            int inChest=Math.min(entry.getValue(),
+                    physical.getOrDefault(entry.getKey(),0));
+            if(inChest>0)physicalToTake.put(entry.getKey(),inChest);
+            int virtual=entry.getValue()-inChest;
+            if(virtual>0){
+                if(!milkSupply.isMilk(entry.getKey()))return false;
+                fromJars.put(entry.getKey(),virtual);
+            }
+        }
+        if(!milkSupply.canSupply(fromJars.values().stream()
+                .mapToInt(Integer::intValue).sum()))return false;
+        // Fluid-backed milk is drained through CFB's real provider.
+        // If it isn't available, no physical ingredients are removed.
+        if(!milkSupply.consume(fromJars))return false;
+        for(var entry:physicalToTake.entrySet()){
             int left=entry.getValue();
             for(Container c:containers){
                 for(int i=0;i<c.getContainerSize()&&left>0;i++){
@@ -202,6 +255,7 @@ public final class KitchenSupplies {
                 }
                 if(left==0)break;
             }
+            if(left>0)return false;
         }
         return true;
     }
