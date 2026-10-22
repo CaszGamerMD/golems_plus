@@ -51,6 +51,7 @@ public final class TraderGolem extends PathfinderMob {
     private int offerIndex=-1, stage=0, navigationFailures, quotedGoods;
     private ItemStack paymentA=ItemStack.EMPTY,paymentB=ItemStack.EMPTY,returning=ItemStack.EMPTY;
     private boolean hasTraded;
+    private int presentationTicks;
     private BlockPos openedDoor;
 
     public TraderGolem(EntityType<? extends PathfinderMob> type, Level world){
@@ -93,6 +94,7 @@ public final class TraderGolem extends PathfinderMob {
         if(order==null||villager==null||offer<0||a.isEmpty())throw new IllegalArgumentException();
         this.order=order;villagerId=villager;offerIndex=offer;
         openCase(false);displayedOffer(ItemStack.EMPTY);
+        presentationTicks=0;
         quotedGoods=expectedGoods;
         paymentA=a.copy();paymentB=b.copy();
         returning=ItemStack.EMPTY;hasTraded=false;stage=1;navigationFailures=0;
@@ -130,6 +132,7 @@ public final class TraderGolem extends PathfinderMob {
         manageApproachDoor(server,villager);
         closeDoorAfterPassing(server);
         if(distanceToSqr(villager)>8||!hasLineOfSight(villager)){
+            presentationTicks=0;
             openCase(false);
             displayedOffer(ItemStack.EMPTY);
             getLookControl().setLookAt(villager,30f,30f);
@@ -163,6 +166,9 @@ public final class TraderGolem extends PathfinderMob {
         for(var e:costs.entrySet())if(depot.budgetRemaining(e.getKey())<e.getValue()){
             stage=2;depot.setProblem("Spending limit reached");return;
         }
+        // Hold the case open long enough for clients to clearly see the
+        // offer inside it, rather than flashing for a single server tick.
+        if(++presentationTicks<4)return;
         // Result is held by THIS entity until a physical depot return.
         // MerchantOffer.take consumes actual escrowed stacks. notifyTrade
         // applies vanilla uses, XP and restock behavior exactly once.
@@ -183,6 +189,7 @@ public final class TraderGolem extends PathfinderMob {
     }
     private void comeHome(ServerLevel server,WorkerStationBlockEntity depot){
         openCase(false);displayedOffer(ItemStack.EMPTY);
+        presentationTicks=0;
         closeDoorAfterPassing(server);
         double distance=distanceToSqr(home.getX()+.5,home.getY()+.5,home.getZ()+.5);
         if(distance>9){
