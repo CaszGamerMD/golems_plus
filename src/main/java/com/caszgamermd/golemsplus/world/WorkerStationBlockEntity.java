@@ -65,6 +65,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     // Saved kitchen work order and ingredient reservation.
     private BlockPos kitchenLink;
     private String chefFood="";
+    private boolean chefOvenLoaded;
     private String chefPreviewFood="";
     private final java.util.List<String> chefPreviewLines=new java.util.ArrayList<>();
     private int chefQuantity,chefStepIndex,chefStepTicks;
@@ -118,7 +119,45 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public int chefStepIndex(){return chefStepIndex;}
     public int chefStepCount(){return chefSteps.size();}
     public String chefCurrentStep(){return chefStepIndex<chefSteps.size()?
-            chefSteps.get(chefStepIndex):"Serving";}
+            chefSteps.get(chefStepIndex).split("\\|",2)[0]:"Serving";}
+    public String chefStepData(){return chefStepIndex<chefSteps.size()?
+            chefSteps.get(chefStepIndex):"";}
+    public int chefWorkTicks(){return chefStepTicks;}
+    public java.util.Map<String,Integer> chefReserved(){return java.util.Map.copyOf(chefEscrow);}
+    public void progressChef(){
+        if(!chefBusy()||chefStepIndex>=chefSteps.size())return;
+        if(++chefStepTicks%10==0)sync();
+        else setChanged();
+    }
+    /**
+     * A completed step atomically consumes its reserved ingredient stacks
+     * and moves the real recipe output into the job's sealed work buffer.
+     * Job state is persisted, and never reads a player's inventory.
+     */
+    public boolean completeChefWork(com.caszgamermd.golemsplus.cooking.ChefRecipePlanner.WorkStep step){
+        if(!chefBusy()||chefStepIndex>=chefSteps.size())return false;
+        for(var e:step.inputs().entrySet()){
+            String id=net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(e.getKey()).toString();
+            if(chefEscrow.getOrDefault(id,0)<e.getValue())return false;
+        }
+        for(var e:step.inputs().entrySet()){
+            String id=net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(e.getKey()).toString();
+            int remains=chefEscrow.get(id)-e.getValue();
+            if(remains==0)chefEscrow.remove(id);else chefEscrow.put(id,remains);
+        }
+        String out=net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(step.result()).toString();
+        chefEscrow.merge(out,step.resultCount(),Integer::sum);
+        chefStepIndex++;chefStepTicks=0;sync();return true;
+    }
+    public boolean finishChefNonRecipe(){
+        if(!chefBusy()||chefStepIndex>=chefSteps.size())return false;
+        chefStepIndex++;chefStepTicks=0;sync();return true;
+    }
+    public boolean chefOvenLoaded(){return chefOvenLoaded;}
+    public void setChefOvenLoaded(boolean loaded){
+        if(chefOvenLoaded==loaded)return;
+        chefOvenLoaded=loaded;sync();
+    }
     public java.util.Map<String,Integer> chefStock(){return java.util.Map.copyOf(chefStock);}
     public java.util.Map<String,Integer> chefSurplus(){return java.util.Map.copyOf(chefSurplus);}
     public void updateChefStock(java.util.Map<String,Integer> next){
@@ -134,6 +173,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(!isCooking()||!canConfigure(actor)||chefBusy()||quantity<1||quantity>16
                 ||steps.isEmpty()||steps.size()>160)return false;
         chefFood=food;chefQuantity=quantity;chefStepIndex=chefStepTicks=0;
+        chefOvenLoaded=false;
         chefSteps.clear();chefSteps.addAll(steps);
         chefEscrow.clear();chefEscrow.putAll(escrow);
         chefSurplus.clear();chefSurplus.putAll(leftovers);
@@ -151,6 +191,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public java.util.Map<String,Integer> clearChefOrder(){
         java.util.Map<String,Integer> refund=java.util.Map.copyOf(chefEscrow);
         chefFood="";chefQuantity=chefStepIndex=chefStepTicks=0;
+        chefOvenLoaded=false;
         chefSteps.clear();chefEscrow.clear();chefSurplus.clear();sync();
         return refund;
     }
@@ -604,6 +645,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putInt("chef_quantity",chefQuantity);
         out.putInt("chef_step_index",chefStepIndex);
         out.putInt("chef_step_ticks",chefStepTicks);
+        out.putBoolean("chef_oven_loaded",chefOvenLoaded);
         out.putInt("chef_step_total",Math.min(160,chefSteps.size()));
         for(int i=0;i<chefSteps.size()&&i<160;i++)
             out.putString("chef_step_"+i,chefSteps.get(i));
@@ -738,7 +780,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         chefFood=in.getStringOr("chef_food","");
         chefQuantity=Math.clamp(in.getIntOr("chef_quantity",0),0,16);
         chefStepIndex=Math.clamp(in.getIntOr("chef_step_index",0),0,160);
-        chefStepTicks=Math.clamp(in.getIntOr("chef_step_ticks",0),0,49);
+        chefStepTicks=Math.clamp(in.getIntOr("chef_step_ticks",0),0,24000);
+        chefOvenLoaded=in.getBooleanOr("chef_oven_loaded",false);
         chefSteps.clear();
         for(int i=0,n=Math.clamp(in.getIntOr("chef_step_total",0),0,160);i<n;i++)
             chefSteps.add(in.getStringOr("chef_step_"+i,"Prepare"));
