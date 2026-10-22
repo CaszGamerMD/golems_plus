@@ -63,6 +63,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private UUID chefWorkerId;
     private final java.util.List<UUID> chefExtras=new java.util.ArrayList<>();
     // Saved kitchen work order and ingredient reservation.
+    private BlockPos kitchenLink;
     private String chefFood="";
     private int chefQuantity,chefStepIndex,chefStepTicks;
     private final java.util.List<String> chefSteps=new java.util.ArrayList<>();
@@ -93,6 +94,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return java.util.List.copyOf(result);
     }
     public boolean chefBusy(){return !chefFood.isBlank();}
+    public BlockPos kitchenLink(){return kitchenLink;}
+    public boolean setKitchenLink(UUID actor,BlockPos link){
+        if(!isCooking()||!canConfigure(actor)||link==null
+                ||worldPosition.distSqr(link)>16L*16L)return false;
+        kitchenLink=link.immutable();sync();return true;
+    }
     public String chefFood(){return chefFood;}
     public int chefQuantity(){return chefQuantity;}
     public int chefStepIndex(){return chefStepIndex;}
@@ -574,6 +581,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putInt("chef_extras",Math.min(3,chefExtras.size()));
         for(int i=0;i<chefExtras.size()&&i<3;i++)
             out.putString("chef_extra_"+i,chefExtras.get(i).toString());
+        if(kitchenLink!=null)
+            out.store("chef_kitchen_link",BlockPos.CODEC,kitchenLink);
         out.putString("chef_food",chefFood);
         out.putInt("chef_quantity",chefQuantity);
         out.putInt("chef_step_index",chefStepIndex);
@@ -704,6 +713,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             UUID id=uuid(in,"chef_extra_"+i);
             if(id!=null&&!id.equals(chefWorkerId))chefExtras.add(id);
         }
+        kitchenLink=in.read("chef_kitchen_link",BlockPos.CODEC).orElse(null);
         chefFood=in.getStringOr("chef_food","");
         chefQuantity=Math.clamp(in.getIntOr("chef_quantity",0),0,16);
         chefStepIndex=Math.clamp(in.getIntOr("chef_step_index",0),0,160);

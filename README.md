@@ -202,7 +202,13 @@ The old Chef's Kitchen Station is now a touchscreen food-order kiosk. A
 **Meal Pickup Counter** is the counter where finished meals appear on a white
 plate. Right-click to claim the actual food; the visible plate does not drop.
 
-Install **Cooking for Blockheads** and **Balm** on Fabric 26.2. Connect the
+Install **Cooking for Blockheads** and **Balm** on Fabric 26.2. Place a
+Chef's Ordering Kiosk within 16 blocks of a Cooking for Blockheads fridge or
+cabinet. Open the kiosk and press **LINK** to bind it to the nearest kitchen
+storage. The pantry tab reports contents from that linked kitchen. The kiosk
+no longer needs to touch the kitchen blocks directly.
+
+Connect the
 kiosk directly to Cooking for Blockheads kitchen blocks (counters, fridge,
 cabinets, etc.). The kiosk scans the connected kitchen as a unit and shows
 the quantities of stocked ingredients on its **PANTRY** tab. Ordinary chests

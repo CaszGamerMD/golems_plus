@@ -23,7 +23,7 @@ public final class ChefWorkService{
     private static MealCounterBlockEntity counter(ServerLevel level,BlockPos station){
         MealCounterBlockEntity best=null;
         double distance=Double.MAX_VALUE;
-        for(int x=-8;x<=8;x++)for(int y=-3;y<=3;y++)for(int z=-8;z<=8;z++){
+        for(int x=-10;x<=10;x++)for(int y=-8;y<=8;y++)for(int z=-10;z<=10;z++){
             BlockPos p=station.offset(x,y,z);
             if(station.distSqr(p)>100||!level.hasChunkAt(p))continue;
             if(level.getBlockEntity(p) instanceof MealCounterBlockEntity found){
@@ -33,6 +33,31 @@ public final class ChefWorkService{
         }
         return best;
     }
+    /** Rebind to the nearest Cooking for Blockheads storage block. */
+    public static boolean linkKitchen(ServerPlayer player,WorkerStationBlockEntity station){
+        if(!station.isCooking()||!station.canConfigure(player.getUUID()))return false;
+        if(!FabricLoader.getInstance().isModLoaded("cookingforblockheads")){
+            station.setProblem("Cooking for Blockheads is not installed");
+            return false;
+        }
+        BlockPos target=KitchenSupplies.findAnchor(
+                (ServerLevel)player.level(),station.getBlockPos());
+        if(target==null){
+            station.setProblem("No Cooking for Blockheads storage within 16 blocks");
+            return false;
+        }
+        if(!station.setKitchenLink(player.getUUID(),target))return false;
+        station.setProblem("");
+        return true;
+    }
+
+    private static KitchenSupplies kitchen(ServerLevel level,WorkerStationBlockEntity station){
+        BlockPos anchor=station.kitchenLink();
+        return anchor!=null
+                ?KitchenSupplies.around(level,station.getBlockPos(),anchor)
+                :KitchenSupplies.around(level,station.getBlockPos());
+    }
+
     public static boolean order(ServerPlayer player,WorkerStationBlockEntity station,
                                 String id,int amount){
         if(!station.isCooking()||!station.canConfigure(player.getUUID())
@@ -55,9 +80,11 @@ public final class ChefWorkService{
         if(!FabricLoader.getInstance().isModLoaded("cookingforblockheads")){
             station.setProblem("Install Cooking for Blockheads and Balm");return false;
         }
-        KitchenSupplies kitchen=KitchenSupplies.around((ServerLevel)player.level(),station.getBlockPos());
+        if(station.kitchenLink()==null&&!linkKitchen(player,station))return false;
+        KitchenSupplies kitchen=kitchen((ServerLevel)player.level(),station);
         if(!kitchen.connected()){
-            station.setProblem("Connect the kiosk to a Cooking for Blockheads kitchen");return false;
+            station.setProblem("Kitchen link is disconnected. Press LINK KITCHEN to reconnect");
+            return false;
         }
         var available=kitchen.snapshot();
         var plan=ChefRecipePlanner.plan((ServerLevel)player.level(),item,amount,available);
@@ -88,7 +115,7 @@ public final class ChefWorkService{
         if(!station.isCooking())return;
         if(level.getGameTime()%100==0){
             var counts=new LinkedHashMap<String,Integer>();
-            KitchenSupplies.around(level,station.getBlockPos()).snapshot()
+            kitchen(level,station).snapshot()
                     .forEach((item,count)->counts.put(
                             BuiltInRegistries.ITEM.getKey(item).toString(),count));
             station.updateChefStock(counts);
@@ -97,9 +124,9 @@ public final class ChefWorkService{
                 ||station.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED)
             return;
         if(level.getGameTime()%40==0){
-            KitchenSupplies connected=KitchenSupplies.around(level,station.getBlockPos());
+            KitchenSupplies connected=kitchen(level,station);
             if(!connected.connected()){
-                station.setProblem("Shared kitchen disconnected; reconnect the counters");
+                station.setProblem("Kitchen disconnected; press LINK KITCHEN");
                 return;
             }
             BlockPos target=connected.workPoint()==null?
