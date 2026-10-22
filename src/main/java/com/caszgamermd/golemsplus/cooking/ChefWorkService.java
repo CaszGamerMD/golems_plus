@@ -40,6 +40,9 @@ public final class ChefWorkService{
         Identifier key=Identifier.tryParse(id);
         if(key==null||!BuiltInRegistries.ITEM.containsKey(key))return false;
         Item item=BuiltInRegistries.ITEM.getValue(key);
+        if(amount>new ItemStack(item).getMaxStackSize()){
+            station.setProblem("Requested quantity exceeds one plate; order fewer");return false;
+        }
         if(new ItemStack(item).get(DataComponents.FOOD)==null){
             station.setProblem("That item is not edible");return false;
         }
