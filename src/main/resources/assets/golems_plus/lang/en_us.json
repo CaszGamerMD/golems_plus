@@ -6,7 +6,7 @@
   "block.golems_plus.beekeeper_toolbox": "Beekeeper Toolbox",
   "entity.golems_plus.beekeeper_golem": "Beekeeper Golem",
   "itemGroup.golems_plus.main": "Golems Plus",
-  "block.golems_plus.cooking_station": "Chef's Kitchen Station",
+  "block.golems_plus.cooking_station": "Caszual Kitchen Ordering Kiosk",
   "entity.golems_plus.builder_golem": "Builder Golem",
   "entity.golems_plus.trader_golem": "Trader Golem",
   "entity.golems_plus.chef_golem": "Chef Golem",
@@ -15,5 +15,6 @@
   "item.golems_plus.beekeeper_worker": "Beekeeper Golem",
   "item.golems_plus.chef_worker": "Chef Golem",
   "item.golems_plus.fisher_worker": "Fisher Golem",
-  "entity.golems_plus.fisher_golem": "Fisher Golem"
+  "entity.golems_plus.fisher_golem": "Fisher Golem",
+  "block.golems_plus.meal_counter": "Meal Pickup Counter"
 }
