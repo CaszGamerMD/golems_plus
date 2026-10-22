@@ -69,7 +69,7 @@ public final class ChefGolem extends PathfinderMob {
                 ||!station.isCooking()||!owner.equals(station.owner())){
             discard();return;
         }
-        if(!station.chefBusy(){
+        if(!station.chefBusy()){
             setJobAppearance(false,net.minecraft.world.item.ItemStack.EMPTY);
         }
         if(!station.chefBusy() && station.phase()!=com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED)
