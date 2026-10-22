@@ -10,6 +10,7 @@ import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.renderer.entity.EntityRenderers;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
 import com.caszgamermd.golemsplus.cooking.MealCounterRenderer;
+import com.caszgamermd.golemsplus.cooking.CookingKioskRenderer;
 import com.caszgamermd.golemsplus.render.ProfessionGolemModel;
 import com.caszgamermd.golemsplus.render.ProfessionGolemRenderer;
 
@@ -17,6 +18,7 @@ public final class GolemsPlusClient implements ClientModInitializer {
     @Override public void onInitializeClient() {
         MenuScreens.register(WorksiteContent.STATION_MENU,WorkerStationScreen::new);
         BlockEntityRenderers.register(WorksiteContent.MEAL_COUNTER_ENTITY,MealCounterRenderer::new);
+        BlockEntityRenderers.register(WorksiteContent.STATION_ENTITY,CookingKioskRenderer::new);
         ModelLayerRegistry.registerModelLayer(
                 ProfessionGolemRenderer.BUILDER_LAYER,ProfessionGolemModel::builderLayer);
         ModelLayerRegistry.registerModelLayer(
