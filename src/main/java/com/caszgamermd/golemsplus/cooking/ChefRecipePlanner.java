@@ -16,6 +16,9 @@ public final class ChefRecipePlanner {
     private record Entry(Item result,int count,List<Ingredient> ingredients,String method){}
     private ChefRecipePlanner(){}
     public static Plan plan(ServerLevel level,Item desired,int amount,Map<Item,Integer> stock){
+        // An already finished dish may be served without requiring a recipe.
+        if(stock.getOrDefault(desired,0)>=amount)
+            return new Plan(Map.of(desired,amount),List.of(),Map.of());
         Map<Item,List<Entry>> byResult=new HashMap<>();
         try{
             Object manager=level.getServer().getRecipeManager();
@@ -28,10 +31,18 @@ public final class ChefRecipePlanner {
                 Collection<RecipeHolder<?>> candidates=(Collection)recipes.byType((RecipeType)type);
                 for(RecipeHolder<?> holder:candidates){
                     Object recipe=holder.value();
-                    ItemStack output=output(recipe);
-                    if(output.isEmpty())continue;
-                    List<Ingredient> ingredients=ingredients(recipe);
-                    if(ingredients.isEmpty())continue;
+                    ItemStack output;
+                    List<Ingredient> ingredients;
+                    try{
+                        output=output(recipe);
+                        if(output.isEmpty())continue;
+                        ingredients=ingredients(recipe);
+                        if(ingredients.isEmpty())continue;
+                    }catch(ReflectiveOperationException|RuntimeException ignored){
+                        // A modded recipe can have custom internals; leave it
+                        // unsupported without hiding all other food recipes.
+                        continue;
+                    }
                     String method=type==RecipeType.CRAFTING?"Assemble":
                             type==RecipeType.SMOKING?"Smoke":
                             type==RecipeType.CAMPFIRE_COOKING?"Campfire":
