@@ -195,3 +195,29 @@ Read [placed Litematica build instructions](docs/LITEMATICA_PLACEMENTS.md),
 Run `gradle clean test build` with Java 25 and Gradle 9.7 or later.
 The GitHub Actions workflow checks `main`. No release JAR should be
 published until the build and tests succeed.
+
+## Chef Kiosk / Cooking for Blockheads shared kitchen
+
+The old Chef's Kitchen Station is now a touchscreen food-order kiosk. A
+**Meal Pickup Counter** is the counter where finished meals appear on a white
+plate. Right-click to claim the actual food; the visible plate does not drop.
+
+Install **Cooking for Blockheads** and **Balm** on Fabric 26.2. Connect the
+kiosk directly to Cooking for Blockheads kitchen blocks (counters, fridge,
+cabinets, etc.). The kiosk scans the connected kitchen as a unit and shows
+the quantities of stocked ingredients on its **PANTRY** tab. Ordinary chests
+outside that kitchen are never accessed.
+
+In the **ORDER** tab, search across registered edible items. Ordering uses a
+bounded, server-authoritative recipe graph for Minecraft shaped/shapeless
+crafting and cooking/smoking/campfire/blasting recipes. Intermediate recipes
+run before their parents. If a resource or compatible recipe cannot be found,
+the order is rejected with an explanation, not fulfilled for free.
+
+Place one or more crafted Chef Golems nearby (maximum four). The kiosk
+reserves leaf ingredients from connected kitchen storage before starting the
+order. Chefs perform the ordered steps and deliver a saved meal to the nearest
+unoccupied Meal Pickup Counter within ten blocks. Inventory quantities,
+orders, recipe steps and prepared meals survive reloads. Collect the previous
+order before preparing another. Some modded cooking recipes with custom
+machines or virtual inputs are intentionally unsupported for safety.
