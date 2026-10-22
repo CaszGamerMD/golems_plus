@@ -68,9 +68,12 @@ public final class ChefRecipePlanner {
                 }
             }
         }catch(ReflectiveOperationException | RuntimeException ex){return null;}
-        // One search tree produces exactly ONE selected recipe per product.
-        // We score viable alternatives against actual stock rather than
-        
+        // Compare available alternatives and keep one selected recipe path.
+        Search search=new Search(byResult);
+        return search.resolve(new Mutable(stock,inspection),desired,amount,
+                new HashSet<>(),0);
+    }
+
     private static final class Mutable{
         final Map<Item,Integer> remaining,used,crafted,missing;
         final List<String> steps;
@@ -193,13 +196,6 @@ public final class ChefRecipePlanner {
                 return missing;
             }
             return best;
-        }
-    }
-         missing.merge(item,shortfall,Integer::sum);
-                steps.add("RAW "+shortfall+" x "+BuiltInRegistries.ITEM.getKey(item));
-                return true;
-            }
-            return false;
         }
     }
     private static ItemStack output(Object recipe)throws ReflectiveOperationException{
