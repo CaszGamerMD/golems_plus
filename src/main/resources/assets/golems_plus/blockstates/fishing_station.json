@@ -1,1 +1,10 @@
-{ "variants": { "": { "model": "golems_plus:block/fishing_station" } } }
+{
+  "variants": {
+    "wink=false": {
+      "model": "golems_plus:block/fishing_station"
+    },
+    "wink=true": {
+      "model": "golems_plus:block/fishing_station_wink"
+    }
+  }
+}
