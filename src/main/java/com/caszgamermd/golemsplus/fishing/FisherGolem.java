@@ -188,8 +188,22 @@ public final class FisherGolem extends PathfinderMob {
             }
         return closest;
     }
+    private static boolean fishableWater(ServerLevel level,BlockPos near){
+        for(int dx=-7;dx<=7;dx++)for(int dz=-7;dz<=7;dz++)
+            for(int dy=-2;dy<=2;dy++){
+                BlockPos pos=near.offset(dx,dy,dz);
+                if(level.hasChunkAt(pos)
+                        &&level.getFluidState(pos).is(net.minecraft.world.level.material.Fluids.WATER))
+                    return true;
+            }
+        return false;
+    }
     private void travel(ServerLevel level,WorkerStationBlockEntity station){
         if(station.fishingSpot()==null){phase=0;return;}
+        if(!fishableWater(level,station.fishingSpot())){
+            station.setProblem("Fishing flag needs accessible water nearby");
+            seat(false);return;
+        }
         if(chairSpot==null||tickCount%200==0)
             chairSpot=landing(level,station.fishingSpot());
         if(chairSpot==null){
