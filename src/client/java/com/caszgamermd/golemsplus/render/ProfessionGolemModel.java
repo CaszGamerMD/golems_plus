@@ -218,11 +218,11 @@ public final class ProfessionGolemModel
                         PartPose.ZERO);
                 PartDefinition fish=rod.addOrReplaceChild("caught_fish",
                         CubeListBuilder.create().texOffs(151,18)
-                        .addBox(-.20f,-24.4f,-1.0f,.35f,7.1f,.35f)
-                        .texOffs(160,4).addBox(-2.0f,-28.5f,-2.0f,4,3.6f,3),
+                        .addBox(-.20f,-17.25f,-1.0f,.35f,11.0f,.35f)
+                        .texOffs(160,4).addBox(-2.0f,-6.3f,-2.0f,4,3.6f,3),
                         PartPose.ZERO);
                 fish.addOrReplaceChild("tail",CubeListBuilder.create()
-                        .texOffs(176,4).addBox(-.9f,-30.7f,-.8f,1.8f,2.2f,1.7f),
+                        .texOffs(176,4).addBox(-.9f,-2.7f,-.8f,1.8f,2.2f,1.7f),
                         PartPose.ZERO);
             }
             case CHEF -> {
