@@ -133,8 +133,7 @@ public final class ChefWorkService{
                     station.getBlockPos():connected.workPoint();
             for(UUID id:station.chefWorkerIds()){
                 if(level.getEntity(id) instanceof ChefGolem chef)
-                    chef.getNavigation().moveTo(target.getX()+.5,
-                            target.getY()+1,target.getZ()+.5,.78);
+                    ChefFloorNavigation.work(level,chef,target);
             }
         }
         int present=0;
