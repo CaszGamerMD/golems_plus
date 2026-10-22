@@ -141,32 +141,32 @@ public final class WorksiteContent {
                 GolemsPlus.id("trader_golem"));
         TRADER_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,traderKey,
                 EntityType.Builder.<TraderGolem>of(TraderGolem::new,MobCategory.MISC)
-                        .sized(.76f,1.62f).build(traderKey));
+                        .sized(.85f,1.62f).build(traderKey));
         FabricDefaultAttributeRegistry.register(TRADER_GOLEM,TraderGolem.attributes());
         ResourceKey<EntityType<?>> builderKey=ResourceKey.create(Registries.ENTITY_TYPE,
                 GolemsPlus.id("builder_golem"));
         BUILDER_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,builderKey,
                 EntityType.Builder.<BuilderGolem>of(BuilderGolem::new,MobCategory.MISC)
-                        .sized(.76f,1.62f).build(builderKey));
+                        .sized(.85f,1.62f).build(builderKey));
         FabricDefaultAttributeRegistry.register(BUILDER_GOLEM,BuilderGolem.attributes());
         ResourceKey<EntityType<?>> beekeeperKey=ResourceKey.create(Registries.ENTITY_TYPE,
                 GolemsPlus.id("beekeeper_golem"));
         BEEKEEPER_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,beekeeperKey,
                 EntityType.Builder.<BeekeeperGolem>of(BeekeeperGolem::new,MobCategory.MISC)
-                        .sized(.70f,1.45f).build(beekeeperKey));
+                        .sized(.85f,1.45f).build(beekeeperKey));
         FabricDefaultAttributeRegistry.register(BEEKEEPER_GOLEM,
                 BeekeeperGolem.attributes());
         ResourceKey<EntityType<?>> chefKey=ResourceKey.create(Registries.ENTITY_TYPE,
                 GolemsPlus.id("chef_golem"));
         CHEF_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,chefKey,
                 EntityType.Builder.<ChefGolem>of(ChefGolem::new,MobCategory.MISC)
-                        .sized(.76f,1.85f).build(chefKey));
+                        .sized(.85f,1.85f).build(chefKey));
         FabricDefaultAttributeRegistry.register(CHEF_GOLEM,ChefGolem.attributes());
         ResourceKey<EntityType<?>> fisherKey=ResourceKey.create(Registries.ENTITY_TYPE,
                 GolemsPlus.id("fisher_golem"));
         FISHER_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,fisherKey,
                 EntityType.Builder.<FisherGolem>of(FisherGolem::new,MobCategory.MISC)
-                        .sized(.70f,1.60f).build(fisherKey));
+                        .sized(.85f,1.60f).build(fisherKey));
         FabricDefaultAttributeRegistry.register(FISHER_GOLEM,FisherGolem.attributes());
         FISHER_WORKER_ITEM=golemItem("fisher_worker",WorkerSpecialty.FISHING);
         BUILDER_WORKER_ITEM=golemItem("builder_worker",WorkerSpecialty.BUILDER);
