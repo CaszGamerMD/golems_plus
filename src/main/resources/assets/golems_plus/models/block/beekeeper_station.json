@@ -1,1 +1,611 @@
-{"parent":"minecraft:block/cube_bottom_top","textures":{"side":"minecraft:block/beehive_side","top":"minecraft:block/beehive_top","bottom":"minecraft:block/spruce_planks"}}
+{
+  "textures": {
+    "particle": "minecraft:block/brown_wool",
+    "canvas": "minecraft:block/brown_wool",
+    "seam": "minecraft:block/dark_oak_planks",
+    "trim": "minecraft:block/brown_concrete",
+    "strap": "minecraft:block/leather",
+    "metal": "minecraft:block/iron_block",
+    "brass": "minecraft:block/gold_block",
+    "smoker": "minecraft:block/copper_block",
+    "coal": "minecraft:block/coal_block",
+    "smoke": "minecraft:block/light_gray_wool",
+    "honey": "minecraft:block/honey_block"
+  },
+  "elements": [
+    {
+      "name": "leather bottom bag",
+      "from": [
+        1,
+        0,
+        2
+      ],
+      "to": [
+        12.5,
+        2,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#trim"
+        },
+        "south": {
+          "texture": "#trim"
+        },
+        "east": {
+          "texture": "#trim"
+        },
+        "west": {
+          "texture": "#trim"
+        },
+        "up": {
+          "texture": "#trim"
+        },
+        "down": {
+          "texture": "#trim"
+        }
+      }
+    },
+    {
+      "name": "toolbag main fabric",
+      "from": [
+        1.4,
+        2,
+        2.3
+      ],
+      "to": [
+        12,
+        11,
+        13.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#canvas"
+        },
+        "south": {
+          "texture": "#canvas"
+        },
+        "east": {
+          "texture": "#canvas"
+        },
+        "west": {
+          "texture": "#canvas"
+        },
+        "up": {
+          "texture": "#canvas"
+        },
+        "down": {
+          "texture": "#canvas"
+        }
+      }
+    },
+    {
+      "name": "bag forward pocket",
+      "from": [
+        2,
+        3,
+        1.6
+      ],
+      "to": [
+        11.2,
+        7.5,
+        2.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#seam"
+        },
+        "south": {
+          "texture": "#seam"
+        },
+        "east": {
+          "texture": "#seam"
+        },
+        "west": {
+          "texture": "#seam"
+        },
+        "up": {
+          "texture": "#seam"
+        },
+        "down": {
+          "texture": "#seam"
+        }
+      }
+    },
+    {
+      "name": "front stitching left",
+      "from": [
+        3,
+        3,
+        1.48
+      ],
+      "to": [
+        3.35,
+        7.5,
+        1.75
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brass"
+        },
+        "south": {
+          "texture": "#brass"
+        },
+        "east": {
+          "texture": "#brass"
+        },
+        "west": {
+          "texture": "#brass"
+        },
+        "up": {
+          "texture": "#brass"
+        },
+        "down": {
+          "texture": "#brass"
+        }
+      }
+    },
+    {
+      "name": "front stitching right",
+      "from": [
+        10,
+        3,
+        1.48
+      ],
+      "to": [
+        10.35,
+        7.5,
+        1.75
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brass"
+        },
+        "south": {
+          "texture": "#brass"
+        },
+        "east": {
+          "texture": "#brass"
+        },
+        "west": {
+          "texture": "#brass"
+        },
+        "up": {
+          "texture": "#brass"
+        },
+        "down": {
+          "texture": "#brass"
+        }
+      }
+    },
+    {
+      "name": "bag canvas rim",
+      "from": [
+        1,
+        10.3,
+        2
+      ],
+      "to": [
+        12.4,
+        11.4,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#seam"
+        },
+        "south": {
+          "texture": "#seam"
+        },
+        "east": {
+          "texture": "#seam"
+        },
+        "west": {
+          "texture": "#seam"
+        },
+        "up": {
+          "texture": "#seam"
+        },
+        "down": {
+          "texture": "#seam"
+        }
+      }
+    },
+    {
+      "name": "left opening strap",
+      "from": [
+        2,
+        11,
+        4
+      ],
+      "to": [
+        4,
+        13.8,
+        5.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#strap"
+        },
+        "south": {
+          "texture": "#strap"
+        },
+        "east": {
+          "texture": "#strap"
+        },
+        "west": {
+          "texture": "#strap"
+        },
+        "up": {
+          "texture": "#strap"
+        },
+        "down": {
+          "texture": "#strap"
+        }
+      }
+    },
+    {
+      "name": "right opening strap",
+      "from": [
+        9,
+        11,
+        4
+      ],
+      "to": [
+        11,
+        13.8,
+        5.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#strap"
+        },
+        "south": {
+          "texture": "#strap"
+        },
+        "east": {
+          "texture": "#strap"
+        },
+        "west": {
+          "texture": "#strap"
+        },
+        "up": {
+          "texture": "#strap"
+        },
+        "down": {
+          "texture": "#strap"
+        }
+      }
+    },
+    {
+      "name": "bag top handle",
+      "from": [
+        4,
+        13.1,
+        6
+      ],
+      "to": [
+        9,
+        14,
+        10
+      ],
+      "faces": {
+        "north": {
+          "texture": "#trim"
+        },
+        "south": {
+          "texture": "#trim"
+        },
+        "east": {
+          "texture": "#trim"
+        },
+        "west": {
+          "texture": "#trim"
+        },
+        "up": {
+          "texture": "#trim"
+        },
+        "down": {
+          "texture": "#trim"
+        }
+      }
+    },
+    {
+      "name": "bag handle hole",
+      "from": [
+        5,
+        13.8,
+        6.5
+      ],
+      "to": [
+        8,
+        14.1,
+        9
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "toolbag latch",
+      "from": [
+        5.7,
+        6.5,
+        1.4
+      ],
+      "to": [
+        7.2,
+        9.4,
+        2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brass"
+        },
+        "south": {
+          "texture": "#brass"
+        },
+        "east": {
+          "texture": "#brass"
+        },
+        "west": {
+          "texture": "#brass"
+        },
+        "up": {
+          "texture": "#brass"
+        },
+        "down": {
+          "texture": "#brass"
+        }
+      }
+    },
+    {
+      "name": "smoker bottom rim",
+      "from": [
+        12.4,
+        0.25,
+        5
+      ],
+      "to": [
+        15.2,
+        2.2,
+        10
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brass"
+        },
+        "south": {
+          "texture": "#brass"
+        },
+        "east": {
+          "texture": "#brass"
+        },
+        "west": {
+          "texture": "#brass"
+        },
+        "up": {
+          "texture": "#brass"
+        },
+        "down": {
+          "texture": "#brass"
+        }
+      }
+    },
+    {
+      "name": "smoker can copper barrel",
+      "from": [
+        12.65,
+        1.6,
+        5.2
+      ],
+      "to": [
+        15,
+        10.5,
+        9.8
+      ],
+      "faces": {
+        "north": {
+          "texture": "#smoker"
+        },
+        "south": {
+          "texture": "#smoker"
+        },
+        "east": {
+          "texture": "#smoker"
+        },
+        "west": {
+          "texture": "#smoker"
+        },
+        "up": {
+          "texture": "#smoker"
+        },
+        "down": {
+          "texture": "#smoker"
+        }
+      }
+    },
+    {
+      "name": "smoker lid",
+      "from": [
+        12.25,
+        10.5,
+        4.7
+      ],
+      "to": [
+        15.45,
+        11.4,
+        10.2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "smoker open chimney",
+      "from": [
+        13,
+        11.4,
+        6
+      ],
+      "to": [
+        14.7,
+        15.3,
+        8.8
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "smoker dark hole",
+      "from": [
+        13.25,
+        15.1,
+        6.25
+      ],
+      "to": [
+        14.45,
+        15.45,
+        8.55
+      ],
+      "faces": {
+        "north": {
+          "texture": "#coal"
+        },
+        "south": {
+          "texture": "#coal"
+        },
+        "east": {
+          "texture": "#coal"
+        },
+        "west": {
+          "texture": "#coal"
+        },
+        "up": {
+          "texture": "#coal"
+        },
+        "down": {
+          "texture": "#coal"
+        }
+      }
+    },
+    {
+      "name": "smoker pump handle",
+      "from": [
+        11.5,
+        5.3,
+        7
+      ],
+      "to": [
+        13,
+        6.2,
+        8.2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brass"
+        },
+        "south": {
+          "texture": "#brass"
+        },
+        "east": {
+          "texture": "#brass"
+        },
+        "west": {
+          "texture": "#brass"
+        },
+        "up": {
+          "texture": "#brass"
+        },
+        "down": {
+          "texture": "#brass"
+        }
+      }
+    },
+    {
+      "name": "smoker side bracket",
+      "from": [
+        12,
+        4.2,
+        6
+      ],
+      "to": [
+        12.7,
+        8.4,
+        9
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    }
+  ]
+}
