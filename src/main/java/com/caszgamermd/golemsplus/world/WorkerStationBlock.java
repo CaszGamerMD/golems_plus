@@ -90,7 +90,7 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
                         var item=net.minecraft.core.registries.BuiltInRegistries.ITEM.getValue(id);
                         int left=entry.getValue();
                         while(left>0){
-                            int size=Math.min(left,item.getDefaultMaxStackSize());
+                            int size=Math.min(left,new ItemStack(item).getMaxStackSize());
                             Containers.dropItemStack(level,pos.getX()+.5,pos.getY()+.5,
                                     pos.getZ()+.5,new ItemStack(item,size));
                             left-=size;
