@@ -56,7 +56,11 @@ public final class ChefRecipePlanner {
     /** Explains the work tree and which terminal ingredients the kitchen lacks. */
     public record Preview(Map<Item,Integer> available,Map<Item,Integer> missing,List<String> steps){}
     public static Preview preview(ServerLevel level,Item target,int count,Map<Item,Integer> available){
-        var result=solve(level,target,count,available,true);
+        return preview(level,target,count,available,true);
+    }
+    public static Preview preview(ServerLevel level,Item target,int count,
+                                  Map<Item,Integer> available,boolean hasOven){
+        var result=solve(level,target,count,available,true,hasOven);
         if(result==null)return null;
         return new Preview(Map.copyOf(result.used),Map.copyOf(result.missing),
                 List.copyOf(result.steps));
@@ -64,13 +68,17 @@ public final class ChefRecipePlanner {
     private record Entry(Item result,int count,List<Ingredient> ingredients,String method){}
     private ChefRecipePlanner(){}
     public static Plan plan(ServerLevel level,Item desired,int amount,Map<Item,Integer> stock){
-        Mutable m=solve(level,desired,amount,stock,false);
+        return plan(level,desired,amount,stock,true);
+    }
+    public static Plan plan(ServerLevel level,Item desired,int amount,
+                            Map<Item,Integer> stock,boolean hasOven){
+        Mutable m=solve(level,desired,amount,stock,false,hasOven);
         if(m==null)return null;
         return new Plan(Map.copyOf(m.used),List.copyOf(m.steps),
                 Map.copyOf(m.crafted),List.copyOf(m.work));
     }
     private static Mutable solve(ServerLevel level,Item desired,int amount,
-                                 Map<Item,Integer> stock,boolean inspection){
+                                 Map<Item,Integer> stock,boolean inspection,boolean hasOven){
         if(amount<1||amount>16)return null;
         if(stock.getOrDefault(desired,0)>=amount){
             Mutable ready=new Mutable(stock,inspection);
@@ -82,8 +90,12 @@ public final class ChefRecipePlanner {
             Field field=manager.getClass().getDeclaredField("recipes");
             field.setAccessible(true);
             RecipeMap recipes=(RecipeMap)field.get(manager);
+            // The linked CFB oven supports normal smelting, smoking and
+            // campfire recipes, but NOT the blast-furnace recipe category.
+            // Do not rank recipe paths requiring absent equipment.
             for(var type:List.of(RecipeType.CRAFTING,RecipeType.SMELTING,
-                    RecipeType.SMOKING,RecipeType.CAMPFIRE_COOKING,RecipeType.BLASTING)){
+                    RecipeType.SMOKING,RecipeType.CAMPFIRE_COOKING)){
+                if(type!=RecipeType.CRAFTING&&!hasOven)continue;
                 @SuppressWarnings({"rawtypes","unchecked"})
                 Collection<RecipeHolder<?>> candidates=(Collection)recipes.byType((RecipeType)type);
                 for(RecipeHolder<?> holder:candidates){
