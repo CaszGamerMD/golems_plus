@@ -21,6 +21,8 @@ import com.caszgamermd.golemsplus.beekeeper.BeeToolboxBlockEntity;
 import com.caszgamermd.golemsplus.beekeeper.BeekeeperGolem;
 import com.caszgamermd.golemsplus.cooking.ChefGolem;
 import com.caszgamermd.golemsplus.fishing.FisherGolem;
+import com.caszgamermd.golemsplus.fishing.FishingSpotBlock;
+import com.caszgamermd.golemsplus.fishing.FishingSpotMarkerItem;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -50,6 +52,8 @@ public final class WorksiteContent {
     public static EntityType<BeekeeperGolem> BEEKEEPER_GOLEM;
     public static EntityType<ChefGolem> CHEF_GOLEM;
     public static EntityType<FisherGolem> FISHER_GOLEM;
+    public static Item FISHING_BAIT,FISHING_MARKER_ITEM;
+    public static FishingSpotBlock FISHING_SPOT;
     public static Item BUILDER_WORKER_ITEM, TRADER_WORKER_ITEM, BEEKEEPER_WORKER_ITEM, CHEF_WORKER_ITEM, FISHER_WORKER_ITEM;
     private static final ResourceKey<CreativeModeTab> TAB = ResourceKey.create(
             BuiltInRegistries.CREATIVE_MODE_TAB.key(), GolemsPlus.id("main"));
@@ -88,6 +92,11 @@ public final class WorksiteContent {
         FISHING_STATION = station("fishing_station", WorkerSpecialty.FISHING);
         TRADER_COUNTER = station("trader_counter", WorkerSpecialty.TRADER);
         BEEKEEPER_STATION=station("beekeeper_station",WorkerSpecialty.BEEKEEPER);
+        ResourceKey<net.minecraft.world.level.block.Block> flagKey=
+                ResourceKey.create(Registries.BLOCK,GolemsPlus.id("fishing_spot"));
+        FISHING_SPOT=Registry.register(BuiltInRegistries.BLOCK,flagKey,
+                new FishingSpotBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.OAK_FENCE)
+                        .noCollision().noOcclusion().strength(.4f).setId(flagKey)));
         COOKING_STATION=station("cooking_station",WorkerSpecialty.COOKING);
         ResourceKey<net.minecraft.world.level.block.Block> upperKioskKey=
                 ResourceKey.create(Registries.BLOCK,GolemsPlus.id("cooking_kiosk_top"));
@@ -107,6 +116,14 @@ public final class WorksiteContent {
                         .ofFullCopy(Blocks.BARREL).strength(2.5f).noOcclusion().setId(toolboxKey)));
         BUILDER_TABLE_ITEM = blockItem("builder_table", BUILDER_TABLE);
         FISHING_STATION_ITEM = blockItem("fishing_station", FISHING_STATION);
+        ResourceKey<Item> baitKey=ResourceKey.create(Registries.ITEM,GolemsPlus.id("fishing_bait"));
+        FISHING_BAIT=Registry.register(BuiltInRegistries.ITEM,baitKey,
+                new Item(new Item.Properties().setId(baitKey)));
+        ResourceKey<Item> markerKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("fishing_spot_marker"));
+        FISHING_MARKER_ITEM=Registry.register(BuiltInRegistries.ITEM,markerKey,
+                new FishingSpotMarkerItem(new Item.Properties()
+                        .stacksTo(1).setId(markerKey)));
         TRADER_COUNTER_ITEM = blockItem("trader_counter", TRADER_COUNTER);
         BEEKEEPER_STATION_ITEM=blockItem("beekeeper_station",BEEKEEPER_STATION);
         COOKING_STATION_ITEM=blockItem("cooking_station",COOKING_STATION);
@@ -182,7 +199,10 @@ public final class WorksiteContent {
                             output.accept(FISHING_STATION_ITEM);
                             output.accept(TRADER_COUNTER_ITEM);
                             output.accept(BEEKEEPER_STATION_ITEM);
-                            output.accept(BEE_TOOLBOX_ITEM);
+                            // Legacy toolbox is kept registered for existing worlds,
+                            // but the bag workstation replaces it in new kitchens.
+                            output.accept(FISHING_MARKER_ITEM);
+                            output.accept(FISHING_BAIT);
                             output.accept(COOKING_STATION_ITEM);
                             output.accept(MEAL_COUNTER_ITEM);
                             output.accept(BUILDER_WORKER_ITEM);
