@@ -61,6 +61,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private boolean builderPlaced;
     private BlockPos beeToolbox,beeOutput;
     private UUID chefWorkerId;
+    private final java.util.List<UUID> chefExtras=new java.util.ArrayList<>();
     // Saved kitchen work order and ingredient reservation.
     private String chefFood="";
     private int chefQuantity,chefStepIndex,chefStepTicks;
@@ -84,6 +85,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 &&station.specialty()==WorkerSpecialty.COOKING;
     }
     public UUID chefWorkerId(){return chefWorkerId;}
+    public java.util.List<UUID> chefWorkerIds(){
+        var result=new java.util.ArrayList<UUID>();
+        if(chefWorkerId!=null)result.add(chefWorkerId);
+        result.addAll(chefExtras);
+        return java.util.List.copyOf(result);
+    }
     public boolean chefBusy(){return !chefFood.isBlank();}
     public String chefFood(){return chefFood;}
     public int chefQuantity(){return chefQuantity;}
@@ -200,8 +207,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean registerCraftedWorker(WorkerSpecialty specialty,UUID worker){
         if(owner==null||worker==null||specialty==null)return false;
         if(specialty==WorkerSpecialty.COOKING){
-            if(!isCooking()||chefWorkerId!=null)return false;
-            chefWorkerId=worker;sync();return true;
+            if(!isCooking()||chefWorkerIds().size()>=4)return false;
+            if(chefWorkerId==null)chefWorkerId=worker;else chefExtras.add(worker);
+            crewTarget=Math.max(crewTarget,chefWorkerIds().size());sync();return true;
         }
         int count=switch(specialty){
             case BUILDER -> isBuilder()?builderWorkerIds().size():4;
@@ -222,7 +230,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
 
     public boolean setCrewTarget(UUID actor,int count){
-        if(!canConfigure(actor)||(!isBuilder()&&!isTrader()&&!isBeekeeper()&&!isFishing())||count<1||count>4)return false;
+        if(!canConfigure(actor)||(!isBuilder()&&!isTrader()&&!isBeekeeper()&&!isFishing()&&!isCooking())||count<1||count>4)return false;
         crewTarget=count;sync();return true;
     }
     public java.util.List<UUID> traderWorkerIds(){
@@ -559,6 +567,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(workerId!=null)out.putString("trader_worker",workerId.toString());
         out.putString("phase",phase.name());out.putString("trade_wanted",wantedItem);
         if(chefWorkerId!=null)out.putString("cooking_chef_worker",chefWorkerId.toString());
+        out.putInt("chef_extras",Math.min(3,chefExtras.size()));
+        for(int i=0;i<chefExtras.size()&&i<3;i++)
+            out.putString("chef_extra_"+i,chefExtras.get(i).toString());
         out.putString("chef_food",chefFood);
         out.putInt("chef_quantity",chefQuantity);
         out.putInt("chef_step_index",chefStepIndex);
@@ -677,6 +688,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
         try{phase=WorkerPhase.valueOf(in.getStringOr("phase","IDLE"));}
         catch(IllegalArgumentException ignored){phase=WorkerPhase.BLOCKED;}
         chefWorkerId=uuid(in,"cooking_chef_worker");
+        chefExtras.clear();
+        for(int i=0,n=Math.clamp(in.getIntOr("chef_extras",0),0,3);i<n;i++){
+            UUID id=uuid(in,"chef_extra_"+i);
+            if(id!=null&&!id.equals(chefWorkerId))chefExtras.add(id);
+        }
         chefFood=in.getStringOr("chef_food","");
         chefQuantity=Math.clamp(in.getIntOr("chef_quantity",0),0,16);
         chefStepIndex=Math.clamp(in.getIntOr("chef_step_index",0),0,160);
