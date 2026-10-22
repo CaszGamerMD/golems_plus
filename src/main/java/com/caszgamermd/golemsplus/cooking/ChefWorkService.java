@@ -96,16 +96,26 @@ public final class ChefWorkService{
         if(!station.chefBusy()
                 ||station.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED)
             return;
+        if(level.getGameTime()%40==0){
+            KitchenSupplies connected=KitchenSupplies.around(level,station.getBlockPos());
+            if(!connected.connected()){
+                station.setProblem("Shared kitchen disconnected; reconnect the counters");
+                return;
+            }
+            BlockPos target=connected.workPoint()==null?
+                    station.getBlockPos():connected.workPoint();
+            for(UUID id:station.chefWorkerIds()){
+                if(level.getEntity(id) instanceof ChefGolem chef)
+                    chef.getNavigation().moveTo(target.getX()+.5,
+                            target.getY()+1,target.getZ()+.5,.78);
+            }
+        }
         int present=0;
         for(UUID id:station.chefWorkerIds()){
             if(level.getEntity(id) instanceof ChefGolem chef){
                 present++;
-                if(chef.distanceToSqr(station.getBlockPos().getX()+.5,
-                        station.getBlockPos().getY()+1,
-                        station.getBlockPos().getZ()+.5)>12)
-                    chef.getNavigation().moveTo(station.getBlockPos().getX()+.5,
-                            station.getBlockPos().getY()+1,
-                            station.getBlockPos().getZ()+.5,.85);
+                // Keep route planning on a 40-tick interval; don't overwrite
+                // the workstation navigation with an idle-home command.
             }
         }
         if(present==0){
