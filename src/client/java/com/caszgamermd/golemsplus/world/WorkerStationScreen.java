@@ -20,7 +20,7 @@ import net.minecraft.world.entity.player.Inventory;
  * entity state directly on the client or dispatches slash commands.
  */
 public final class WorkerStationScreen extends AbstractContainerScreen<WorkerStationMenu> {
-    private enum Page { BUILD, BUILDER_SETUP, BUILDER_PLACEMENTS, TRADE_ORDER, TRADE_BUDGET, TRADE_VILLAGE, BEEKEEPER, CHEF_MENU, CHEF_SUPPLIES }
+    private enum Page { BUILD, BUILDER_SETUP, BUILDER_PLACEMENTS, TRADE_ORDER, TRADE_BUDGET, TRADE_VILLAGE, BEEKEEPER, CHEF_MENU, CHEF_SUPPLIES, CHEF_DETAILS }
     private Page page=Page.BUILD;
     private EditBox first,second;
     private String requestedItem="minecraft:emerald", requestedAmount="16";
@@ -31,7 +31,8 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     private String feedback="";
     private int desiredCrew=1;
     private String chefSearch="";
-    private int chefPage,chefStockPage,chefAmount=1;
+    private int chefPage,chefStockPage,chefAmount=1,chefDetailPage;
+    private Item selectedChefFood;
     private java.util.List<Item> visibleMeals=java.util.List.of();
     private java.util.List<LitematicaPlacementClient.PlacementChoice> choices=java.util.List.of();
     private int placementPage;
@@ -235,6 +236,17 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                     if((chefStockPage+1)*4<rows.size())chefStockPage++;
                     openPage(Page.CHEF_SUPPLIES);
                 });
+            }else if(page==Page.CHEF_DETAILS){
+                if(selectedChefFood!=null){
+                    button("PLACE ORDER x"+chefAmount,PANE,164,182,()->{
+                        send("chef_order",BuiltInRegistries.ITEM.getKey(selectedChefFood)
+                                .toString(),chefAmount,0,0,0);
+                    });
+                }
+                button("Back to menu",PANE,189,89,()->openPage(Page.CHEF_MENU));
+                button("More details",PANE+92,189,90,()->{
+                    chefDetailPage++;openPage(Page.CHEF_DETAILS);
+                });
             }else{
                 editor(54,"Search all food",chefSearch,true);
                 button("Search",PANE+127,78,55,()->{
@@ -246,9 +258,12 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                 for(int ix=from;ix<Math.min(from+3,visibleMeals.size());ix++){
                     Item item=visibleMeals.get(ix);
                     String name=new ItemStack(item).getHoverName().getString();
-                    button(truncate(name,26),PANE,101+(ix-from)*22,182,()->{
-                        send("chef_order",BuiltInRegistries.ITEM.getKey(item).toString(),
+                    button("    "+truncate(name,21),PANE,101+(ix-from)*22,182,()->{
+                        selectedChefFood=item;
+                        chefDetailPage=0;
+                        send("chef_preview",BuiltInRegistries.ITEM.getKey(item).toString(),
                                 chefAmount,0,0,0);
+                        openPage(Page.CHEF_DETAILS);
                     });
                 }
                 button("−",PANE,169,28,()->{
@@ -420,9 +435,35 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             g.text(font,"CASZUAL KITCHEN  •  ORDER HERE",20,16,0xff17242b,false);
             var kitchen=station();
             if(page==Page.CHEF_MENU){
-                g.text(font,"Search meals",95,87,LABEL_COLOR,false);
+                g.text(font,"SEARCH / MENU",95,87,LABEL_COLOR,false);
+                for(int ix=chefPage*3;ix<Math.min(chefPage*3+3,visibleMeals.size());ix++){
+                    Item item=visibleMeals.get(ix);
+                    int dy=ix-chefPage*3;
+                    g.item(new ItemStack(item),95,103+dy*22);
+                    if(mouseX>=leftPos+95&&mouseX<leftPos+115
+                            &&mouseY>=topPos+103+dy*22
+                            &&mouseY<topPos+122+dy*22)
+                        g.tooltip(font,new ItemStack(item).getHoverName(),mouseX,mouseY);
+                }
                 g.text(font,"Qty "+chefAmount+"  Page "+(chefPage+1)+"/"+
                         Math.max(1,(visibleMeals.size()+2)/3),95,198,LABEL_COLOR,false);
+            }else if(page==Page.CHEF_DETAILS){
+                var entries=kitchen==null?java.util.List.<String>of()
+                        :kitchen.chefPreviewLines();
+                int from=Math.min(chefDetailPage*5,Math.max(0,entries.size()-1));
+                g.text(font,"FOOD: "+(selectedChefFood==null?"None":
+                        truncate(new ItemStack(selectedChefFood).getHoverName().getString(),21)),
+                        95,57,0xffffedb2,false);
+                for(int ix=from;ix<Math.min(from+5,entries.size());ix++){
+                    String entry=entries.get(ix);
+                    int color=entry.startsWith("MISSING")?0xffff7586:
+                            entry.startsWith("OK")?0xff7fe49c:
+                            entry.startsWith("RAW")?0xfff2bd79:LABEL_COLOR;
+                    g.text(font,truncate(entry,37),95,75+(ix-from)*16,color,false);
+                }
+                if(entries.isEmpty())g.text(font,"Analyzing kitchen recipes...",95,96,LABEL_COLOR,false);
+                g.text(font,"Page "+(chefDetailPage+1)+"/"+Math.max(1,(entries.size()+4)/5),
+                        95,155,LABEL_COLOR,false);
             }else{
                 g.text(font,"PANTRY  •  LINKED KITCHEN STOCK",95,197,LABEL_COLOR,false);
             }
