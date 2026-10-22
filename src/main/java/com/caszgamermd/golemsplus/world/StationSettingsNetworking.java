@@ -139,6 +139,16 @@ public final class StationSettingsNetworking {
                 if(table.isBuilder())done=table.setBuilderRotation(player.getUUID(),
                         change.amount);
             }
+            case "chef_link" -> {
+                if(table.isCooking()){
+                    done=com.caszgamermd.golemsplus.cooking.ChefWorkService
+                            .linkKitchen(player,table);
+                    if(done)reply(player,"Kitchen linked at "+table.kitchenLink());
+                    else reply(player,table.problem().isBlank()?
+                            "No compatible kitchen found":table.problem());
+                    return;
+                }
+            }
             case "chef_order" -> {
                 if(table.isCooking()){
                     String item=validatedItem(change.item);
