@@ -75,6 +75,8 @@ public final class ChefWorkService{
             return false;
         }
         List<String> lines=new ArrayList<>();
+        if(linked.milkPortions()>0)
+            lines.add("COW / MILK JAR: "+linked.milkPortions()+" milk portions available");
         lines.add("INGREDIENTS / PANTRY");
         plan.available().entrySet().stream()
                 .sorted(java.util.Comparator.comparing(e->BuiltInRegistries.ITEM.getKey(e.getKey()).toString()))
