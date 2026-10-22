@@ -37,12 +37,32 @@ public final class KitchenSupplies {
     private final List<Container> containers;
     private final KitchenMilkSupply milkSupply;
     private final BlockPos workPoint;
+    private final List<BlockPos> appliances;
     private KitchenSupplies(List<Container> containers,BlockPos workPoint,
-                            List<BlockEntity> milkJars){
+                            List<BlockEntity> milkJars,List<BlockPos> appliances){
         this.containers=containers;this.workPoint=workPoint;
+        this.appliances=List.copyOf(appliances);
         this.milkSupply=new KitchenMilkSupply(milkJars);
     }
     public BlockPos workPoint(){return workPoint;}
+    public BlockPos stationFor(ServerLevel world,String task){
+        boolean heated=!task.equals("Assemble")&&!task.equals("Plate");
+        BlockPos chosen=null;
+        for(BlockPos pos:appliances){
+            var id=BuiltInRegistries.BLOCK.getKey(world.getBlockState(pos).getBlock());
+            String block=id.getPath();
+            if(heated){
+                if(!block.contains("oven"))continue;
+                return pos;
+            }
+            if(block.contains("cooking_table"))return pos;
+            if(block.contains("counter")||block.contains("cabinet"))chosen=pos;
+        }
+        return heated?null:(chosen==null?workPoint:chosen);
+    }
+    public boolean hasCooker(ServerLevel world){
+        return stationFor(world,"Cook")!=null;
+    }
     public boolean connected(){return !containers.isEmpty()||milkSupply.hasJar();}
     public int milkPortions(){return milkSupply.availableUnits();}
 
@@ -85,13 +105,14 @@ public final class KitchenSupplies {
     public static KitchenSupplies around(ServerLevel level,BlockPos kiosk,BlockPos anchor){
         if(anchor==null||kiosk.distSqr(anchor)>LINK_RADIUS*LINK_RADIUS
                 ||!kitchenBlock(level,anchor))
-            return new KitchenSupplies(List.of(),null,List.of());
+            return new KitchenSupplies(List.of(),null,List.of(),List.of());
 
         Set<BlockPos> visited=new HashSet<>();
         ArrayDeque<BlockPos> queue=new ArrayDeque<>();
         queue.add(anchor);
         List<Container> supplies=new ArrayList<>();
         List<BlockEntity> milkJars=new ArrayList<>();
+        List<BlockPos> appliances=new ArrayList<>();
         BlockPos appliance=anchor;
         boolean selectedOven=false;
 
@@ -105,6 +126,7 @@ public final class KitchenSupplies {
             }
             BlockEntity be=level.getBlockEntity(pos);
             if(be!=null){
+                appliances.add(pos.immutable());
                 if(key.getPath().equals("cow_jar")||key.getPath().equals("milk_jar"))
                     milkJars.add(be);
                 Container inventory=container(be);
@@ -120,10 +142,11 @@ public final class KitchenSupplies {
             BlockPos raised=pos.above(2);
             if(!visited.contains(raised))queue.addLast(raised);
         }
-        return new KitchenSupplies(supplies,appliance,milkJars);
+        return new KitchenSupplies(supplies,appliance,milkJars,appliances);
     }
 
     private static Container container(BlockEntity be){
+        if(be instanceof net.minecraft.world.entity.player.Inventory)return null;
         if(be instanceof Container c)return c;
         // CFB multi-block fridges and cabinets expose combined wrappers
         // from getContainer(). Scanning both halves through those wrappers
