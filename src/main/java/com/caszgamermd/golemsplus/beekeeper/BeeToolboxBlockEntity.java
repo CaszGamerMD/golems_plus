@@ -12,13 +12,14 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.MenuProvider;
 
-/** Server-owned real tools. Hoppers may insert shears and empty bottles only. */
+/** Real tools and flowers. Beekeepers consume flowers only to breed ready bees. */
 public final class BeeToolboxBlockEntity extends BlockEntity implements Container,MenuProvider {
     private final NonNullList<ItemStack> items=NonNullList.withSize(27,ItemStack.EMPTY);
     public BeeToolboxBlockEntity(BlockPos pos,BlockState state){
@@ -49,7 +50,8 @@ public final class BeeToolboxBlockEntity extends BlockEntity implements Containe
         items.set(slot,stack.copy());setChanged();
     }
     @Override public boolean canPlaceItem(int slot,ItemStack stack){
-        return stack.is(Items.SHEARS)||stack.is(Items.GLASS_BOTTLE);
+        return stack.is(Items.SHEARS)||stack.is(Items.GLASS_BOTTLE)
+                ||stack.is(ItemTags.FLOWERS);
     }
     @Override public void clearContent(){
         for(int i=0;i<items.size();i++)items.set(i,ItemStack.EMPTY);
