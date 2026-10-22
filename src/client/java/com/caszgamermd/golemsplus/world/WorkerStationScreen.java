@@ -7,6 +7,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -31,17 +32,28 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     private String feedback="";
     private int desiredCrew=1;
     private String chefSearch="";
-    private int chefPage,chefStockPage,chefAmount=1,chefDetailPage;
+    private int chefPage,chefStockPage,chefAmount=1,chefDetailScroll;
     private Item selectedChefFood;
     private java.util.List<Item> visibleMeals=java.util.List.of();
     private java.util.List<LitematicaPlacementClient.PlacementChoice> choices=java.util.List.of();
     private int placementPage;
     private static final int PANE=185, BG_WIDTH=375, BG_HEIGHT=254;
+    private int menuColumns(){return Math.max(5,Math.min(14,(imageWidth-60)/35));}
+    private int menuRows(){return Math.max(3,(imageHeight-151)/35);}
+    private int menuPageSize(){return menuColumns()*menuRows();}
+    private int detailVisible(){return Math.max(6,(imageHeight-185)/14);}
+    private int detailMax(){
+        var st=station();
+        return Math.max(0,(st==null?0:st.chefPreviewLines().size())-detailVisible());
+    }
+    private void scrollDetails(int delta){chefDetailScroll=Math.clamp(
+            chefDetailScroll+delta,0,detailMax());}
     private static final int PANEL_COLOR=0xff26383c;
     private static final int LABEL_COLOR=0xffcbe8d8;
 
     public WorkerStationScreen(WorkerStationMenu menu,Inventory inventory,Component title){
-        super(menu,inventory,title,BG_WIDTH,BG_HEIGHT);
+        super(menu,inventory,title,menu.isKitchenKiosk()?560:BG_WIDTH,
+                menu.isKitchenKiosk()?340:BG_HEIGHT);
         titleLabelX=8;titleLabelY=7;inventoryLabelX=8;inventoryLabelY=109;
     }
     private WorkerStationBlockEntity station(){
@@ -102,6 +114,32 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         }
         buildControls();
     }
+    // Job-block screens own their keyboard events; don't forward world,
+    // mod or hotbar shortcuts through the container GUI. Text fields
+    // continue to receive typing and Escape still closes the screen.
+    @Override public boolean keyPressed(KeyEvent key){
+        if(key.isEscape()){onClose();return true;}
+        if(getFocused() instanceof EditBox box&&box.keyPressed(key))return true;
+        if(key.isCycleFocus())return super.keyPressed(key);
+        return true;
+    }
+    @Override public boolean mouseScrolled(double x,double y,double sx,double sy){
+        if(menu.isKitchenKiosk()){
+            if(page==Page.CHEF_DETAILS)scrollDetails(sy>0?-1:1);
+            else if(page==Page.CHEF_SUPPLIES){
+                int entries=station()==null?0:station().chefStock().size();
+                chefStockPage=Math.clamp(chefStockPage+(sy>0?-1:1),
+                        0,Math.max(0,entries-detailVisible()));
+            }else if(page==Page.CHEF_MENU){
+                chefPage=Math.clamp(chefPage+(sy>0?-1:1),0,
+                        Math.max(0,(visibleMeals.size()-1)/menuPageSize()));
+                openPage(Page.CHEF_MENU);
+            }
+            return true;
+        }
+        return super.mouseScrolled(x,y,sx,sy);
+    }
+
     private void readDefaults(){
         var station=station();
         if(station==null)return;
@@ -148,7 +186,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         });
     }
     private int controlX(int x){
-        return menu.isKitchenKiosk()?x-90:x;
+        return menu.isKitchenKiosk()?x-PANE+26:x;
     }
     private void button(String text,int x,int y,int width,Runnable action){
         addRenderableWidget(Button.builder(Component.literal(text),b -> action.run())
@@ -213,74 +251,66 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         first=second=null;
         boolean trade=trader();
         if(cooking()){
-            button("ORDER",PANE,28,59,()->openPage(Page.CHEF_MENU));
-            button("PANTRY",PANE+61,28,59,()->openPage(Page.CHEF_SUPPLIES));
-            button("LINK",PANE+122,28,60,()->send("chef_link",0));
+            button("FOOD MENU",PANE,34,93,()->openPage(Page.CHEF_MENU));
+            button("PANTRY",PANE+96,34,84,()->openPage(Page.CHEF_SUPPLIES));
+            button("LINK KITCHEN",PANE+184,34,120,()->send("chef_link",0));
             if(page==Page.CHEF_SUPPLIES){
                 var stock=station()==null?java.util.Map.<String,Integer>of():station().chefStock();
                 var rows=stock.entrySet().stream().sorted(java.util.Map.Entry.comparingByKey()).toList();
-                int start=Math.min(chefStockPage*4,Math.max(0,rows.size()-1));
-                for(int ix=start;ix<Math.min(start+4,rows.size());ix++){
-                    var entry=rows.get(ix);
-                    String name=entry.getKey();
-                    var id=net.minecraft.resources.Identifier.tryParse(name);
-                    if(id!=null&&BuiltInRegistries.ITEM.containsKey(id))
-                        name=new ItemStack(BuiltInRegistries.ITEM.getValue(id)).getHoverName().getString();
-                    final String display=truncate(name,21)+" ×"+entry.getValue();
-                    button(display,PANE,57+(ix-start)*25,182,()->{});
-                }
-                button("Previous",PANE,164,89,()->{
-                    chefStockPage=Math.max(0,chefStockPage-1);openPage(Page.CHEF_SUPPLIES);
-                });
-                button("Next",PANE+92,164,90,()->{
-                    if((chefStockPage+1)*4<rows.size())chefStockPage++;
-                    openPage(Page.CHEF_SUPPLIES);
-                });
+                int count=detailVisible();
+                chefStockPage=Math.clamp(chefStockPage,0,Math.max(0,rows.size()-count));
+                button("▲",PANE+imageWidth-94,imageHeight-80,30,()->
+                        {chefStockPage=Math.max(0,chefStockPage-1);openPage(Page.CHEF_SUPPLIES);});
+                button("▼",PANE+imageWidth-60,imageHeight-80,30,()->
+                        {chefStockPage=Math.min(Math.max(0,rows.size()-count),
+                                chefStockPage+1);openPage(Page.CHEF_SUPPLIES);});
             }else if(page==Page.CHEF_DETAILS){
-                if(selectedChefFood!=null){
-                    button("PLACE ORDER x"+chefAmount,PANE,164,182,()->{
-                        send("chef_order",BuiltInRegistries.ITEM.getKey(selectedChefFood)
-                                .toString(),chefAmount,0,0,0);
-                    });
-                }
-                button("Back to menu",PANE,189,89,()->openPage(Page.CHEF_MENU));
-                button("More details",PANE+92,189,90,()->{
-                    chefDetailPage++;openPage(Page.CHEF_DETAILS);
-                });
+                if(selectedChefFood!=null)
+                    button("CONFIRM ORDER ×"+chefAmount,PANE,imageHeight-63,175,()->
+                            send("chef_order",BuiltInRegistries.ITEM.getKey(selectedChefFood)
+                                    .toString(),chefAmount,0,0,0));
+                button("BACK",PANE+179,imageHeight-63,72,()->
+                        openPage(Page.CHEF_MENU));
+                button("▲",PANE+imageWidth-95,imageHeight-63,30,()->
+                        scrollDetails(-1));
+                button("▼",PANE+imageWidth-61,imageHeight-63,30,()->
+                        scrollDetails(1));
             }else{
-                editor(54,"Search all food",chefSearch,true);
-                button("Search",PANE+127,78,55,()->{
+                editor(66,"Search all foods",chefSearch,true);
+                button("SEARCH",PANE+190,65,82,()->{
                     chefSearch=first.getValue();refreshChefMeals();openPage(Page.CHEF_MENU);
                 });
                 if(visibleMeals.isEmpty())refreshChefMeals();
-                int from=chefPage*3;
+                int from=chefPage*menuPageSize();
                 if(from>=visibleMeals.size()){chefPage=0;from=0;}
-                for(int ix=from;ix<Math.min(from+3,visibleMeals.size());ix++){
+                int columns=menuColumns();
+                for(int ix=from;ix<Math.min(from+menuPageSize(),visibleMeals.size());ix++){
                     Item item=visibleMeals.get(ix);
-                    String name=new ItemStack(item).getHoverName().getString();
-                    button("    "+truncate(name,21),PANE,101+(ix-from)*22,182,()->{
+                    int pos=ix-from;
+                    button(" ",PANE+(pos%columns)*35,97+(pos/columns)*35,32,()->{
                         selectedChefFood=item;
-                        chefDetailPage=0;
+                        chefDetailScroll=0;
                         send("chef_preview",BuiltInRegistries.ITEM.getKey(item).toString(),
                                 chefAmount,0,0,0);
                         openPage(Page.CHEF_DETAILS);
                     });
                 }
-                button("−",PANE,169,28,()->{
+                button("−",PANE,imageHeight-52,31,()->{
                     chefAmount=Math.max(1,chefAmount-1);openPage(Page.CHEF_MENU);
                 });
-                button("+",PANE+33,169,28,()->{
+                button("+",PANE+35,imageHeight-52,31,()->{
                     chefAmount=Math.min(16,chefAmount+1);openPage(Page.CHEF_MENU);
                 });
-                button("Previous",PANE+67,169,55,()->{
+                button("◀",PANE+imageWidth-123,imageHeight-52,45,()->{
                     chefPage=Math.max(0,chefPage-1);openPage(Page.CHEF_MENU);
                 });
-                button("Next",PANE+125,169,57,()->{
-                    if((chefPage+1)*3<visibleMeals.size())chefPage++;
+                button("▶",PANE+imageWidth-73,imageHeight-52,45,()->{
+                    if((chefPage+1)*menuPageSize()<visibleMeals.size())chefPage++;
                     openPage(Page.CHEF_MENU);
                 });
             }
-            crewControls();
+            // Kiosk is entirely for ordering; crew capacity stays in station settings.
+
         }else if(trade){
             button("ORDER",PANE,28,59,()->openPage(Page.TRADE_ORDER));
             button("BUDGET",PANE+61,28,59,()->openPage(Page.TRADE_BUDGET));
@@ -409,13 +439,11 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             int mouseY,float partialTick){
         int x=leftPos,y=topPos;
         if(menu.isKitchenKiosk()){
-            // Full-screen fast-food ordering terminal; no workstation or
-            // player inventory is presented or independently accessible.
-            g.fill(x,y,x+BG_WIDTH,y+BG_HEIGHT,0xff101d22);
-            g.fill(x+7,y+7,x+BG_WIDTH-7,y+BG_HEIGHT-7,0xff1e393f);
-            g.fill(x+12,y+12,x+BG_WIDTH-12,y+27,0xffef9d3b);
-            g.fill(x+82,y+34,x+BG_WIDTH-82,y+BG_HEIGHT-13,0xff26363b);
-            g.fill(x+89,y+39,x+BG_WIDTH-89,y+BG_HEIGHT-19,0xff20333a);
+            g.fill(x,y,x+imageWidth,y+imageHeight,0xff101b22);
+            g.fill(x+5,y+5,x+imageWidth-5,y+imageHeight-5,0xff33444c);
+            g.fill(x+10,y+10,x+imageWidth-10,y+29,0xffdf8737);
+            g.fill(x+15,y+31,x+imageWidth-15,y+imageHeight-12,0xff172b34);
+            g.fill(x+20,y+62,x+imageWidth-20,y+imageHeight-74,0xff233b43);
             return;
         }
         g.fill(x,y,x+BG_WIDTH,y+BG_HEIGHT,0xff1b2529);
@@ -432,59 +460,78 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     }
     @Override protected void extractLabels(GuiGraphicsExtractor g,int mouseX,int mouseY){
         if(menu.isKitchenKiosk()){
-            g.text(font,"CASZUAL KITCHEN  •  ORDER HERE",20,16,0xff17242b,false);
+            g.text(font,"CASZUAL KITCHEN  |  ORDER TERMINAL",22,16,0xff17242b,false);
             var kitchen=station();
             if(page==Page.CHEF_MENU){
-                g.text(font,"SEARCH / MENU",95,87,LABEL_COLOR,false);
-                for(int ix=chefPage*3;ix<Math.min(chefPage*3+3,visibleMeals.size());ix++){
-                    Item item=visibleMeals.get(ix);
-                    int dy=ix-chefPage*3;
-                    g.item(new ItemStack(item),95,103+dy*22);
-                    if(mouseX>=leftPos+95&&mouseX<leftPos+115
-                            &&mouseY>=topPos+103+dy*22
-                            &&mouseY<topPos+122+dy*22)
-                        g.tooltip(font,java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent
+                int columns=menuColumns();
+                int start=chefPage*menuPageSize();
+                for(int i=start;i<Math.min(start+menuPageSize(),visibleMeals.size());i++){
+                    Item item=visibleMeals.get(i);
+                    int n=i-start;
+                    int px=30+(n%columns)*35,py=103+(n/columns)*35;
+                    g.item(new ItemStack(item),px,py);
+                    if(mouseX>=leftPos+px&&mouseX<leftPos+px+23
+                            &&mouseY>=topPos+py&&mouseY<topPos+py+24)
+                        g.tooltip(font,java.util.List.of(
+                                net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent
                                 .create(new ItemStack(item).getHoverName().getVisualOrderText())),
                                 mouseX,mouseY,
                                 net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner.INSTANCE,
                                 null);
                 }
-                g.text(font,"Qty "+chefAmount+"  Page "+(chefPage+1)+"/"+
-                        Math.max(1,(visibleMeals.size()+2)/3),95,198,LABEL_COLOR,false);
+                g.text(font,"QUANTITY "+chefAmount,98,imageHeight-45,LABEL_COLOR,false);
+                g.text(font,"PAGE "+(chefPage+1)+"/"+
+                        Math.max(1,(visibleMeals.size()+menuPageSize()-1)/menuPageSize()),
+                        imageWidth-212,imageHeight-45,LABEL_COLOR,false);
             }else if(page==Page.CHEF_DETAILS){
-                var entries=kitchen==null?java.util.List.<String>of()
-                        :kitchen.chefPreviewLines();
-                int from=Math.min(chefDetailPage*5,Math.max(0,entries.size()-1));
-                g.text(font,"FOOD: "+(selectedChefFood==null?"None":
-                        truncate(new ItemStack(selectedChefFood).getHoverName().getString(),21)),
-                        95,57,0xffffedb2,false);
-                for(int ix=from;ix<Math.min(from+5,entries.size());ix++){
-                    String entry=entries.get(ix);
-                    int color=entry.startsWith("MISSING")?0xffff7586:
-                            entry.startsWith("OK")?0xff7fe49c:
-                            entry.startsWith("RAW")?0xfff2bd79:LABEL_COLOR;
-                    g.text(font,truncate(entry,37),95,75+(ix-from)*16,color,false);
+                var details=kitchen==null?java.util.List.<String>of():kitchen.chefPreviewLines();
+                chefDetailScroll=Math.min(chefDetailScroll,detailMax());
+                String name=selectedChefFood==null?"None":
+                        new ItemStack(selectedChefFood).getHoverName().getString();
+                g.text(font,"SELECTED MEAL: "+truncate(name,48),30,79,0xffffedb2,false);
+                int count=detailVisible();
+                for(int i=chefDetailScroll;i<Math.min(chefDetailScroll+count,details.size());i++){
+                    String line=details.get(i);
+                    int color=line.startsWith("MISSING")?0xffff697f:
+                            line.startsWith("RAW")?0xffffba79:
+                            line.startsWith("OK")?0xff9bec9f:
+                            line.contains("RECIPE")?0xffffdd96:LABEL_COLOR;
+                    g.text(font,truncate(line,Math.max(35,(imageWidth-85)/6)),
+                            30,99+(i-chefDetailScroll)*14,color,false);
                 }
-                if(entries.isEmpty())g.text(font,"Analyzing kitchen recipes...",95,96,LABEL_COLOR,false);
-                g.text(font,"Page "+(chefDetailPage+1)+"/"+Math.max(1,(entries.size()+4)/5),
-                        95,155,LABEL_COLOR,false);
+                g.text(font,"INGREDIENTS / STEPS  "+
+                        (details.isEmpty()?"Analyzing...":
+                                (chefDetailScroll+1)+"-"+Math.min(details.size(),
+                                        chefDetailScroll+count)+"/"+details.size()),
+                        30,imageHeight-77,LABEL_COLOR,false);
             }else{
-                g.text(font,"PANTRY  •  LINKED KITCHEN STOCK",95,197,LABEL_COLOR,false);
+                var rows=kitchen==null?java.util.List.<java.util.Map.Entry<String,Integer>>of()
+                        :kitchen.chefStock().entrySet().stream()
+                                .sorted(java.util.Map.Entry.comparingByKey()).toList();
+                chefStockPage=Math.min(chefStockPage,Math.max(0,rows.size()-detailVisible()));
+                for(int i=chefStockPage;i<Math.min(chefStockPage+detailVisible(),rows.size());i++){
+                    var entry=rows.get(i);
+                    String value=entry.getKey();
+                    var id=net.minecraft.resources.Identifier.tryParse(value);
+                    if(id!=null&&BuiltInRegistries.ITEM.containsKey(id))
+                        value=new ItemStack(BuiltInRegistries.ITEM.getValue(id))
+                                .getHoverName().getString();
+                    g.text(font,truncate(value,51)+" ×"+entry.getValue(),
+                            30,88+(i-chefStockPage)*14,LABEL_COLOR,false);
+                }
+                g.text(font,"PANTRY ITEMS "+rows.size(),30,imageHeight-77,LABEL_COLOR,false);
             }
             if(kitchen!=null){
-                g.text(font,"CHEFS: "+kitchen.chefWorkerIds().size()+"/"+kitchen.crewTarget(),
-                        131,213,0xffe6f3ec,false);
                 String status=kitchen.chefBusy()
-                        ?kitchen.chefCurrentStep()+" ("+kitchen.chefStepIndex()+
-                            "/"+kitchen.chefStepCount()+")"
-                        :kitchen.kitchenLink()==null?"No kitchen linked":"Ready to order";
-                g.text(font,truncate(status,34),95,228,LABEL_COLOR,false);
-                String feedbackText=kitchen.problem().isBlank()?feedback:kitchen.problem();
-                if(!feedbackText.isBlank())
-                    g.text(font,truncate(feedbackText,40),52,246,0xffffc480,false);
-            }else if(!feedback.isBlank()){
-                g.text(font,truncate(feedback,40),52,246,0xffffc480,false);
-            }
+                        ?kitchen.chefCurrentStep()+" "+kitchen.chefStepIndex()+
+                                "/"+kitchen.chefStepCount()
+                        :kitchen.kitchenLink()==null?"No kitchen linked":"Kitchen ready";
+                g.text(font,truncate(status,56),30,imageHeight-26,LABEL_COLOR,false);
+                if(!kitchen.problem().isBlank())
+                    g.text(font,truncate(kitchen.problem(),65),30,imageHeight-14,
+                            0xffffba79,false);
+            }else if(!feedback.isBlank())
+                g.text(font,truncate(feedback,56),30,imageHeight-26,LABEL_COLOR,false);
             return;
         }
         g.text(font,title,8,7,0xffe5f9ee,false);

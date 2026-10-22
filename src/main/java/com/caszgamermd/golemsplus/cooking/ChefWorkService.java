@@ -78,15 +78,15 @@ public final class ChefWorkService{
         lines.add("INGREDIENTS / PANTRY");
         plan.available().entrySet().stream()
                 .sorted(java.util.Comparator.comparing(e->BuiltInRegistries.ITEM.getKey(e.getKey()).toString()))
-                .limit(20).forEach(e->lines.add("OK "+e.getValue()+" x "+
+                .limit(75).forEach(e->lines.add("OK "+e.getValue()+" x "+
                         BuiltInRegistries.ITEM.getKey(e.getKey())));
         plan.missing().entrySet().stream()
                 .sorted(java.util.Comparator.comparing(e->BuiltInRegistries.ITEM.getKey(e.getKey()).toString()))
-                .limit(20).forEach(e->lines.add("MISSING "+e.getValue()+" x "+
+                .limit(75).forEach(e->lines.add("MISSING "+e.getValue()+" x "+
                         BuiltInRegistries.ITEM.getKey(e.getKey())));
-        lines.add("RECIPE STEPS (BOTTOM TO TOP)");
+        lines.add("SELECTED RECIPE (ONE PATH ONLY)");
         for(String step:plan.steps()){
-            if(lines.size()>=49)break;
+            if(lines.size()>=179)break;
             lines.add(step);
         }
         station.setChefPreview(player.getUUID(),itemId,lines);

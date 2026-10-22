@@ -39,6 +39,7 @@ public final class ChefGolem extends PathfinderMob {
         return PathfinderMob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH,16)
                 .add(Attributes.MOVEMENT_SPEED,.28)
+                .add(Attributes.STEP_HEIGHT,.6)
                 .add(Attributes.FOLLOW_RANGE,24);
     }
     @Override protected void registerGoals(){
