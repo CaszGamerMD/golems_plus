@@ -220,7 +220,7 @@ public final class ChefRecipePlanner {
                     for(Item item:trial.remaining.keySet())
                         if(ingredient.test(new ItemStack(item))&&!options.contains(item))
                             options.add(item);
-                    for(Item item:recipes.keySet())
+                    if(options.isEmpty())for(Item item:recipes.keySet())
                         if(ingredient.test(new ItemStack(item))&&!options.contains(item))
                             options.add(item);
                     // Stocked options first; the remaining options are still
@@ -281,6 +281,10 @@ public final class ChefRecipePlanner {
         }
     }
     private static ItemStack output(Object recipe)throws ReflectiveOperationException{
+        if(recipe instanceof ShapelessRecipe shapeless){
+            var result=shapeless.result();
+            return result==null?ItemStack.EMPTY:result.create();
+        }
         Class<?> cls=recipe.getClass();
         while(cls!=null){
             try{
