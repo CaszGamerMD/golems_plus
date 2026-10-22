@@ -99,7 +99,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public String chefPreviewFood(){return chefPreviewFood;}
     public java.util.List<String> chefPreviewLines(){return java.util.List.copyOf(chefPreviewLines);}
     public void setChefPreview(UUID actor,String food,java.util.List<String> lines){
-        if(!isCooking()||!canConfigure(actor)||lines.size()>50)return;
+        if(!isCooking()||!canConfigure(actor)||lines.size()>180)return;
         chefPreviewFood=food;chefPreviewLines.clear();
         for(String line:lines){
             if(line.length()>150)line=line.substring(0,150);
@@ -597,8 +597,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(kitchenLink!=null)
             out.store("chef_kitchen_link",BlockPos.CODEC,kitchenLink);
         out.putString("chef_preview_food",chefPreviewFood);
-        out.putInt("chef_preview_size",Math.min(50,chefPreviewLines.size()));
-        for(int i=0;i<chefPreviewLines.size()&&i<50;i++)
+        out.putInt("chef_preview_size",Math.min(180,chefPreviewLines.size()));
+        for(int i=0;i<chefPreviewLines.size()&&i<180;i++)
             out.putString("chef_preview_"+i,chefPreviewLines.get(i));
         out.putString("chef_food",chefFood);
         out.putInt("chef_quantity",chefQuantity);
@@ -733,7 +733,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         kitchenLink=in.read("chef_kitchen_link",BlockPos.CODEC).orElse(null);
         chefPreviewFood=in.getStringOr("chef_preview_food","");
         chefPreviewLines.clear();
-        for(int i=0,n=Math.clamp(in.getIntOr("chef_preview_size",0),0,50);i<n;i++)
+        for(int i=0,n=Math.clamp(in.getIntOr("chef_preview_size",0),0,180);i<n;i++)
             chefPreviewLines.add(in.getStringOr("chef_preview_"+i,""));
         chefFood=in.getStringOr("chef_food","");
         chefQuantity=Math.clamp(in.getIntOr("chef_quantity",0),0,16);
