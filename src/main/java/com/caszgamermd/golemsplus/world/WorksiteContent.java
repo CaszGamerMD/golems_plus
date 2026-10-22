@@ -59,9 +59,15 @@ public final class WorksiteContent {
     private static WorkerStationBlock station(String name, WorkerSpecialty specialty) {
         ResourceKey<net.minecraft.world.level.block.Block> key =
                 ResourceKey.create(Registries.BLOCK, GolemsPlus.id(name));
-        return Registry.register(BuiltInRegistries.BLOCK, key,
-                new WorkerStationBlock(specialty, BlockBehaviour.Properties
-                        .ofFullCopy(Blocks.CRAFTING_TABLE).strength(2.5F).noOcclusion().setId(key)));
+        BlockBehaviour.Properties properties=BlockBehaviour.Properties
+                .ofFullCopy(Blocks.CRAFTING_TABLE).strength(2.5F)
+                .noOcclusion().setId(key);
+        // The banker lamp on the trading desk is a real constant light
+        // source; other workstations remain unlit.
+        if(specialty==WorkerSpecialty.TRADER)
+            properties.lightLevel(state->12);
+        return Registry.register(BuiltInRegistries.BLOCK,key,
+                new WorkerStationBlock(specialty,properties));
     }
 
     private static Item blockItem(String name, WorkerStationBlock block) {
