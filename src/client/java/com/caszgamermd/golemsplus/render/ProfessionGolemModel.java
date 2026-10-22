@@ -165,7 +165,7 @@ public final class ProfessionGolemModel
                 PartDefinition open=torso.addOrReplaceChild("open_case",
                         CubeListBuilder.create().texOffs(0,79)
                         .addBox(-6.5f,-1.1f,-10.3f,13,2.3f,8.5f),
-                        PartPose.ZERO);
+                        PartPose.offset(0,0,-3.2f));
                 open.addOrReplaceChild("lid",CubeListBuilder.create()
                         .texOffs(49,80).addBox(-6.5f,-10.4f,-2.6f,13,9.3f,1.6f),
                         PartPose.ZERO);
