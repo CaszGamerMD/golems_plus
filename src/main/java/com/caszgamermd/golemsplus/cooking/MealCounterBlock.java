@@ -6,6 +6,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
@@ -23,6 +24,11 @@ public final class MealCounterBlock extends Block implements EntityBlock{
     @Override protected MapCodec<? extends Block> codec(){return codec;}
     @Override public @Nullable BlockEntity newBlockEntity(BlockPos pos,BlockState state){
         return new MealCounterBlockEntity(pos,state);
+    }
+    @Override protected InteractionResult useItemOn(ItemStack held,BlockState state,Level level,
+            BlockPos pos,Player player,InteractionHand hand,BlockHitResult hit){
+        // Pickups are available even if the customer is holding an item.
+        return InteractionResult.TRY_WITH_EMPTY_HAND;
     }
     @Override protected InteractionResult useWithoutItem(BlockState state,Level level,BlockPos pos,
                                                            Player player,BlockHitResult hit){
