@@ -1,0 +1,1 @@
+{"type":"minecraft:crafting_shaped","pattern":[" F ","IPI"," I "],"key":{"F":"minecraft:fishing_rod","I":"minecraft:iron_ingot","P":"minecraft:carved_pumpkin"},"result":{"id":"golems_plus:fisher_worker","count":1}}
