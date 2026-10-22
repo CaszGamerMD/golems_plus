@@ -86,16 +86,17 @@ public final class LitematicaPlacementClient {
     /** Returns every placement managed by Litematica, not only the selected one. */
     public static List<PlacementChoice> placements()throws Exception{
         Object mgr=manager();
-        Object all=firstAvailable(mgr,"getAllSchematicPlacements",
-                "getAllPlacements","getVisibleSchematicPlacements");
+        Object all=firstAvailable(mgr,"getAllSchematicsPlacements",
+                "getAllSchematicPlacements","getAllPlacements",
+                "getVisibleSchematicPlacements");
         if(!(all instanceof Collection<?> collection))
             throw new IllegalArgumentException(
-                    "Litematica manager does not expose its placements list");
+                    "Litematica placement manager did not expose getAllSchematicsPlacements()");
         List<PlacementChoice> found=new ArrayList<>();
         for(Object p:collection){
             if(p==null)continue;
             try{
-                BlockPos pos=asPos(firstAvailable(p,"getPosition","getOrigin"));
+                BlockPos pos=asPos(firstAvailable(p,"getOrigin","getPosition"));
                 if(pos==null)continue;
                 Object label=optional(p,"getName");
                 String name=label==null?"Unnamed placement":label.toString();
@@ -111,7 +112,7 @@ public final class LitematicaPlacementClient {
         if(found.isEmpty()){
             Object selected=optional(mgr,"getSelectedSchematicPlacement");
             if(selected!=null){
-                BlockPos pos=asPos(firstAvailable(selected,"getPosition","getOrigin"));
+                BlockPos pos=asPos(firstAvailable(selected,"getOrigin","getPosition"));
                 if(pos!=null)found.add(new PlacementChoice(selected,
                         String.valueOf(firstAvailable(selected,"getName")),
                         pos,optionalBoolean(selected,"isEnabled",true)));
@@ -185,7 +186,7 @@ public final class LitematicaPlacementClient {
         long fileSize=Files.size(path);
         if(fileSize<1||fileSize>BuilderUploadNetworking.MAX_BYTES)
             throw new IllegalArgumentException("This placement exceeds the 2 MiB upload limit");
-        BlockPos origin=asPos(firstAvailable(placement,"getPosition","getOrigin"));
+        BlockPos origin=asPos(firstAvailable(placement,"getOrigin","getPosition"));
         if(origin==null)
             throw new IllegalArgumentException("Could not read Litematica origin");
         String rotation=invoke(placement,"getRotation").toString().toUpperCase();
