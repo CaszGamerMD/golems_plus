@@ -61,7 +61,7 @@ public final class WorksiteContent {
                 ResourceKey.create(Registries.BLOCK, GolemsPlus.id(name));
         return Registry.register(BuiltInRegistries.BLOCK, key,
                 new WorkerStationBlock(specialty, BlockBehaviour.Properties
-                        .ofFullCopy(Blocks.CRAFTING_TABLE).strength(2.5F).setId(key)));
+                        .ofFullCopy(Blocks.CRAFTING_TABLE).strength(2.5F).noOcclusion().setId(key)));
     }
 
     private static Item blockItem(String name, WorkerStationBlock block) {
@@ -87,18 +87,18 @@ public final class WorksiteContent {
                 ResourceKey.create(Registries.BLOCK,GolemsPlus.id("cooking_kiosk_top"));
         COOKING_KIOSK_TOP=Registry.register(BuiltInRegistries.BLOCK,upperKioskKey,
                 new CookingKioskTopBlock(BlockBehaviour.Properties
-                        .ofFullCopy(Blocks.IRON_BLOCK).strength(2.5f)
+                        .ofFullCopy(Blocks.IRON_BLOCK).strength(2.5f).noOcclusion()
                         .setId(upperKioskKey)));
         ResourceKey<net.minecraft.world.level.block.Block> plateKey=
                 ResourceKey.create(Registries.BLOCK,GolemsPlus.id("meal_counter"));
         MEAL_COUNTER=Registry.register(BuiltInRegistries.BLOCK,plateKey,
                 new MealCounterBlock(BlockBehaviour.Properties
-                        .ofFullCopy(Blocks.QUARTZ_BLOCK).strength(2.0f).setId(plateKey)));
+                        .ofFullCopy(Blocks.QUARTZ_BLOCK).strength(2.0f).noOcclusion().setId(plateKey)));
         ResourceKey<net.minecraft.world.level.block.Block> toolboxKey=
                 ResourceKey.create(Registries.BLOCK,GolemsPlus.id("beekeeper_toolbox"));
         BEE_TOOLBOX=Registry.register(BuiltInRegistries.BLOCK,toolboxKey,
                 new BeeToolboxBlock(BlockBehaviour.Properties
-                        .ofFullCopy(Blocks.BARREL).strength(2.5f).setId(toolboxKey)));
+                        .ofFullCopy(Blocks.BARREL).strength(2.5f).noOcclusion().setId(toolboxKey)));
         BUILDER_TABLE_ITEM = blockItem("builder_table", BUILDER_TABLE);
         FISHING_STATION_ITEM = blockItem("fishing_station", FISHING_STATION);
         TRADER_COUNTER_ITEM = blockItem("trader_counter", TRADER_COUNTER);
