@@ -449,13 +449,6 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             g.fill(x+20,y+62,x+imageWidth-20,y+imageHeight-74,0xff233b43);
             return;
         }
-        g.fill(x,y,x+BG_WIDTH,y+BG_HEIGHT,0xff101d22);
-            g.fill(x+7,y+7,x+BG_WIDTH-7,y+BG_HEIGHT-7,0xff1e393f);
-            g.fill(x+12,y+12,x+BG_WIDTH-12,y+27,0xffef9d3b);
-            g.fill(x+82,y+34,x+BG_WIDTH-82,y+BG_HEIGHT-13,0xff26363b);
-            g.fill(x+89,y+39,x+BG_WIDTH-89,y+BG_HEIGHT-19,0xff20333a);
-            return;
-        }
         g.fill(x,y,x+BG_WIDTH,y+BG_HEIGHT,0xff1b2529);
         g.fill(x+4,y+4,x+BG_WIDTH-4,y+BG_HEIGHT-4,0xff586a70);
         g.fill(x+6,y+23,x+170,y+105,0xff384a50);
