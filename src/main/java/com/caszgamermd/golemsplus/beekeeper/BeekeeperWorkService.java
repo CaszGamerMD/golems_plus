@@ -6,6 +6,10 @@ import com.caszgamermd.golemsplus.worker.WorkerPhase;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.UUID;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.world.entity.animal.Bee;
+import net.minecraft.world.phys.AABB;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -42,7 +46,7 @@ public final class BeekeeperWorkService {
         // No worker creation here: place crafted Beekeepers near this block.
         if(station.phase()==WorkerPhase.PAUSED)return;
         Set<BlockPos> claimed=new HashSet<>();
-        for(BeekeeperGolem bee:crew)if(bee.job()!=0)claimed.add(bee.hive());
+        for(BeekeeperGolem bee:crew)if(bee.job()>=1&&bee.job()<=4)claimed.add(bee.hive());
         for(int i=0;i<crew.size()&&i<station.crewTarget();i++){
             BeekeeperGolem bee=crew.get(i);
             if(bee.job()!=0)continue;
@@ -71,9 +75,65 @@ public final class BeekeeperWorkService {
                         bee.start(hive,choice==BeeHarvestPolicy.Choice.BOTTLE);
                         claimed.add(hive);assigned=true;
                     }
-            if(assigned)station.setProblem("");
-            else station.setProblem("Waiting for full beehives, tools or output capacity");
+            if(assigned){station.setProblem("");continue;}
+            // A quiet hive is an opportunity for husbandry. Breed only
+            // when there is no harvest job and two adult bees are ready.
+            Container toolbox=container(level,station.beeToolbox());
+            if(toolbox!=null&&hasFlowerPair(toolbox)&&station.owner()!=null){
+                Set<UUID> reserved=new HashSet<>();
+                for(BeekeeperGolem working:crew)if(working.job()>=5){
+                    if(working.mateA()!=null)reserved.add(working.mateA());
+                    if(working.mateB()!=null)reserved.add(working.mateB());
+                }
+                BlockPos center=station.getBlockPos();
+                var bees=level.getEntitiesOfClass(Bee.class,
+                        new AABB(center).inflate(station.beeRadius(),6,station.beeRadius()),
+                        b->b.isAlive()&&b.getAge()==0&&b.canFallInLove()
+                                &&!b.isInLove()&&!reserved.contains(b.getUUID()));
+                if(bees.size()>=2){
+                    // Prefer bees already near one another for successful
+                    // natural vanilla mating after the flowers are fed.
+                    Bee first=null,second=null;double best=Double.MAX_VALUE;
+                    for(int u=0;u<bees.size();u++)
+                        for(int v=u+1;v<bees.size();v++){
+                            double dist=bees.get(u).distanceToSqr(bees.get(v));
+                            if(dist<best){
+                                first=bees.get(u);second=bees.get(v);best=dist;
+                            }
+                        }
+                    if(first!=null&&second!=null){
+                        bee.startBreeding(first.getUUID(),second.getUUID());
+                        station.setProblem("");
+                        continue;
+                    }
+                }
+            }
+            station.setProblem("Waiting for ready hives, or two breedable bees and flowers");
         }
+    }
+    private static boolean hasFlowerPair(Container inventory){
+        // Both flowers must come from one stack so we can return exactly
+        // the same item if either bee becomes ineligible before breeding.
+        for(int i=0;i<inventory.getContainerSize();i++){
+            ItemStack stack=inventory.getItem(i);
+            if(stack.is(ItemTags.FLOWERS)&&stack.getCount()>=2)return true;
+        }
+        return false;
+    }
+    private static ItemStack takeFlowerPair(Container inventory){
+        for(int i=0;i<inventory.getContainerSize();i++){
+            ItemStack stack=inventory.getItem(i);
+            if(stack.is(ItemTags.FLOWERS)&&stack.getCount()>=2){
+                ItemStack moved=inventory.removeItem(i,2);
+                inventory.setChanged();
+                return moved;
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+    private static boolean canBreed(Bee bee){
+        return bee!=null&&bee.isAlive()&&bee.getAge()==0
+                &&bee.canFallInLove()&&!bee.isInLove();
     }
     private static boolean has(Container inventory,net.minecraft.world.item.Item item){
         for(int i=0;i<inventory.getContainerSize();i++)
@@ -161,6 +221,49 @@ public final class BeekeeperWorkService {
                     worker.stage(4);
                     job.setProblem("");
                 }else job.setProblem("Output container full; keep cargo on golem");
+            }
+            case 5 -> {
+                if(!worker.moveTo(job.beeToolbox(),.85))break;
+                if(!worker.breedFlowers().isEmpty()){worker.stage(6);break;}
+                ItemStack flowers=takeFlowerPair(toolbox);
+                if(flowers.isEmpty()){worker.finishBreeding();break;}
+                worker.setBreedFlowers(flowers);worker.stage(6);
+            }
+            case 6 -> {
+                var a=worker.mateA()==null?null:level.getEntity(worker.mateA());
+                var b=worker.mateB()==null?null:level.getEntity(worker.mateB());
+                Bee first=a instanceof Bee bee?bee:null;
+                Bee second=b instanceof Bee bee?bee:null;
+                if(!canBreed(first)||!canBreed(second)){
+                    worker.stage(7);break;
+                }
+                BlockPos near=first.blockPosition();
+                if(!worker.moveTo(near,.83)){
+                    if(worker.stuck())worker.stage(7);
+                    break;
+                }
+                // A mating pair needs to be physically near each other.
+                if(first.distanceToSqr(second)>49){
+                    if(worker.stuck())worker.stage(7);
+                    break;
+                }
+                if(worker.breedFlowers().getCount()<2){worker.stage(7);break;}
+                first.setInLove(owner);
+                second.setInLove(owner);
+                worker.setBreedFlowers(ItemStack.EMPTY);
+                worker.finishBreeding();
+                job.setProblem("");
+            }
+            case 7 -> {
+                if(!worker.breedFlowers().isEmpty()){
+                    if(!worker.moveTo(job.beeToolbox(),.85))break;
+                    if(!BeeInventory.insert(toolbox,worker.breedFlowers())){
+                        job.setProblem("Toolbox full; Beekeeper keeping unused flowers");
+                        break;
+                    }
+                    worker.setBreedFlowers(ItemStack.EMPTY);
+                }
+                worker.finishBreeding();
             }
             case 4 -> {
                 if(!worker.tool().isEmpty()){
