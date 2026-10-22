@@ -74,7 +74,11 @@ public final class ChefWorkService{
             station.setProblem("Kitchen stock changed; check supplies and order again");
             return false;
         }
-        if(!station.startChefOrder(player.getUUID(),key.toString(),amount,steps,escrow)){
+        var surplus=new LinkedHashMap<String,Integer>();
+        plan.leftovers().forEach((k,v)->{
+            if(v>0)surplus.put(BuiltInRegistries.ITEM.getKey(k).toString(),v);
+        });
+        if(!station.startChefOrder(player.getUUID(),key.toString(),amount,steps,escrow,surplus)){
             station.setProblem("Could not reserve order");return false;
         }
         station.setProblem("");
@@ -122,7 +126,46 @@ public final class ChefWorkService{
         if(id==null||!BuiltInRegistries.ITEM.containsKey(id)){
             station.setProblem("Ordered item is no longer registered");return;
         }
+        // A single output inventory must accommodate every extra batch result.
+        // Simulate insertion together first so partial deposits cannot create
+        // items again on a retry (e.g. cookies craft eight per recipe).
+        var simulated=new ArrayList<ItemStack>();
+        for(int i=WorkerStationBlockEntity.INPUT_SLOTS;
+                i<WorkerStationBlockEntity.SLOTS;i++)simulated.add(station.getItem(i).copy());
+        var extras=new ArrayList<ItemStack>();
+        for(var e:station.chefSurplus().entrySet()){
+            Identifier leftover=Identifier.tryParse(e.getKey());
+            if(leftover==null||!BuiltInRegistries.ITEM.containsKey(leftover))continue;
+            var item=BuiltInRegistries.ITEM.getValue(leftover);
+            int left=e.getValue();
+            while(left>0){
+                int n=Math.min(left,new ItemStack(item).getMaxStackSize());
+                extras.add(new ItemStack(item,n));left-=n;
+            }
+        }
+        for(ItemStack extra:extras){
+            int left=extra.getCount();
+            for(ItemStack inSlot:simulated){
+                if(left==0)break;
+                if(!inSlot.isEmpty()&&ItemStack.isSameItemSameComponents(inSlot,extra)){
+                    int space=inSlot.getMaxStackSize()-inSlot.getCount();
+                    int added=Math.min(left,Math.max(0,space));
+                    inSlot.grow(added);left-=added;
+                }
+            }
+            for(int i=0;i<simulated.size()&&left>0;i++){
+                if(simulated.get(i).isEmpty()){
+                    int added=Math.min(left,extra.getMaxStackSize());
+                    simulated.set(i,extra.copyWithCount(added));left-=added;
+                }
+            }
+            if(left>0){
+                station.setProblem("Return inventory full; clear space for recipe leftovers");
+                return;
+            }
+        }
         ItemStack meal=new ItemStack(BuiltInRegistries.ITEM.getValue(id),station.chefQuantity());
+        for(ItemStack extra:extras)station.deposit(extra);
         if(pickup.serve(meal)){
             station.clearChefOrder();
             station.setProblem("");
