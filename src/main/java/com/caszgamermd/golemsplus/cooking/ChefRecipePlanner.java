@@ -150,9 +150,10 @@ public final class ChefRecipePlanner {
                         if(ingredient.test(new ItemStack(item)))options.add(item);
                     // Stocked options first; the remaining options are still
                     // scored against their recursive crafting requirements.
+                    final Mutable optionStock=trial;
                     options.sort(Comparator
-                            .<Item>comparingInt(item->trial.remaining.getOrDefault(item,0)
-                                    +trial.crafted.getOrDefault(item,0)>0?0:1)
+                            .<Item>comparingInt(item->optionStock.remaining.getOrDefault(item,0)
+                                    +optionStock.crafted.getOrDefault(item,0)>0?0:1)
                             .thenComparing(item->BuiltInRegistries.ITEM.getKey(item).toString()));
                     Mutable selected=null;
                     int tried=0;
