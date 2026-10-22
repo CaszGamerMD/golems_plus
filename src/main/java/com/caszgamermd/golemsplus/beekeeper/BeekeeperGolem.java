@@ -19,7 +19,8 @@ import net.minecraft.world.level.storage.ValueOutput;
 /** Small, fully suited, peaceful worker. Actual shears and harvest persist on the mob. */
 public final class BeekeeperGolem extends PathfinderMob {
     private BlockPos home=BlockPos.ZERO, targetHive=BlockPos.ZERO;
-    private UUID owner;
+    private UUID owner,mateA,mateB;
+    private ItemStack breedFlowers=ItemStack.EMPTY;
     private ItemStack tool=ItemStack.EMPTY, harvest=ItemStack.EMPTY;
     // 0=search, 1=pick tool, 2=harvest, 3=deposit, 4=return shears
     private int job;
@@ -48,6 +49,15 @@ public final class BeekeeperGolem extends PathfinderMob {
     public boolean bottles(){return bottles;}
     public ItemStack tool(){return tool;}
     public ItemStack harvest(){return harvest;}
+    public UUID mateA(){return mateA;}
+    public UUID mateB(){return mateB;}
+    public ItemStack breedFlowers(){return breedFlowers;}
+    public void setBreedFlowers(ItemStack value){breedFlowers=value.copy();}
+    public void startBreeding(UUID a,UUID b){
+        if(job!=0||a==null||b==null||a.equals(b))return;
+        mateA=a;mateB=b;routeMisses=0;job=5;
+    }
+    public void finishBreeding(){mateA=null;mateB=null;job=0;routeMisses=0;}
     public void setTool(ItemStack stack){tool=stack.copy();}
     public void setHarvest(ItemStack stack){harvest=stack.copy();}
     public void start(BlockPos target,boolean bottle){
@@ -73,7 +83,8 @@ public final class BeekeeperGolem extends PathfinderMob {
     public void dropCargo(ServerLevel level){
         if(!tool.isEmpty())Containers.dropItemStack(level,getX(),getY(),getZ(),tool);
         if(!harvest.isEmpty())Containers.dropItemStack(level,getX(),getY(),getZ(),harvest);
-        tool=harvest=ItemStack.EMPTY;
+        if(!breedFlowers.isEmpty())Containers.dropItemStack(level,getX(),getY(),getZ(),breedFlowers);
+        tool=harvest=breedFlowers=ItemStack.EMPTY;
     }
     @Override public void die(DamageSource damage){
         if(level() instanceof ServerLevel server)dropCargo(server);
@@ -85,6 +96,9 @@ public final class BeekeeperGolem extends PathfinderMob {
         out.store("beekeeper_hive",BlockPos.CODEC,targetHive);
         if(owner!=null)out.putString("beekeeper_owner",owner.toString());
         out.putInt("beekeeper_job",job);out.putBoolean("beekeeper_bottle",bottles);
+        if(mateA!=null)out.putString("beekeeper_mate_a",mateA.toString());
+        if(mateB!=null)out.putString("beekeeper_mate_b",mateB.toString());
+        if(!breedFlowers.isEmpty())out.store("beekeeper_breed_flowers",ItemStack.CODEC,breedFlowers);
         if(!tool.isEmpty())out.store("beekeeper_tool",ItemStack.CODEC,tool);
         if(!harvest.isEmpty())out.store("beekeeper_harvest",ItemStack.CODEC,harvest);
     }
@@ -94,7 +108,12 @@ public final class BeekeeperGolem extends PathfinderMob {
         targetHive=in.read("beekeeper_hive",BlockPos.CODEC).orElse(BlockPos.ZERO);
         try{owner=UUID.fromString(in.getStringOr("beekeeper_owner",""));}
         catch(IllegalArgumentException ex){owner=null;}
-        job=Math.clamp(in.getIntOr("beekeeper_job",0),0,4);
+        job=Math.clamp(in.getIntOr("beekeeper_job",0),0,7);
+        try{mateA=UUID.fromString(in.getStringOr("beekeeper_mate_a",""));}
+        catch(IllegalArgumentException ex){mateA=null;}
+        try{mateB=UUID.fromString(in.getStringOr("beekeeper_mate_b",""));}
+        catch(IllegalArgumentException ex){mateB=null;}
+        breedFlowers=in.read("beekeeper_breed_flowers",ItemStack.CODEC).orElse(ItemStack.EMPTY);
         bottles=in.getBooleanOr("beekeeper_bottle",false);
         tool=in.read("beekeeper_tool",ItemStack.CODEC).orElse(ItemStack.EMPTY);
         harvest=in.read("beekeeper_harvest",ItemStack.CODEC).orElse(ItemStack.EMPTY);
