@@ -69,7 +69,8 @@ public final class ChefWorkService{
         if(new ItemStack(item).get(DataComponents.FOOD)==null)return false;
         KitchenSupplies linked=kitchen((ServerLevel)player.level(),station);
         Map<Item,Integer> stocked=linked.snapshot();
-        var plan=ChefRecipePlanner.preview((ServerLevel)player.level(),item,count,stocked);
+        var plan=ChefRecipePlanner.preview((ServerLevel)player.level(),item,count,stocked,
+                linked.hasCooker((ServerLevel)player.level()));
         if(plan==null){
             station.setChefPreview(player.getUUID(),itemId,List.of("No supported recipe for this food"));
             return false;
@@ -124,7 +125,8 @@ public final class ChefWorkService{
             return false;
         }
         var available=kitchen.snapshot();
-        var plan=ChefRecipePlanner.plan((ServerLevel)player.level(),item,amount,available);
+        var plan=ChefRecipePlanner.plan((ServerLevel)player.level(),item,amount,available,
+                kitchen.hasCooker((ServerLevel)player.level()));
         if(plan==null){
             station.setProblem("Missing ingredients or a supported crafting/cooking recipe");
             return false;
