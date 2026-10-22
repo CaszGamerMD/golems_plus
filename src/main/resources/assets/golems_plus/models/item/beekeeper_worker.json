@@ -1,1 +1,366 @@
-{"parent":"minecraft:item/generated","textures":{"layer0":"minecraft:item/honeycomb"}}
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "minecraft:block/yellow_concrete",
+    "yellow": "minecraft:block/yellow_concrete",
+    "gold": "minecraft:block/gold_block",
+    "dark": "minecraft:block/black_concrete",
+    "orange": "minecraft:block/orange_concrete",
+    "grey": "minecraft:block/light_gray_concrete",
+    "green": "minecraft:block/green_terracotta",
+    "olive": "minecraft:block/green_concrete",
+    "brown": "minecraft:block/brown_terracotta",
+    "leather": "minecraft:block/brown_concrete",
+    "white": "minecraft:block/white_wool",
+    "light": "minecraft:block/white_concrete",
+    "mesh": "minecraft:block/iron_bars",
+    "blue": "minecraft:block/light_blue_stained_glass",
+    "teal": "minecraft:block/cyan_terracotta",
+    "silver": "minecraft:block/iron_block",
+    "cream": "minecraft:block/birch_planks"
+  },
+  "display": {
+    "gui": {
+      "rotation": [
+        22,
+        145,
+        0
+      ],
+      "translation": [
+        0,
+        -0.15,
+        0
+      ],
+      "scale": [
+        0.92,
+        0.92,
+        0.92
+      ]
+    },
+    "thirdperson_righthand": {
+      "rotation": [
+        65,
+        45,
+        0
+      ],
+      "translation": [
+        0,
+        1.5,
+        0
+      ],
+      "scale": [
+        0.6,
+        0.6,
+        0.6
+      ]
+    },
+    "firstperson_righthand": {
+      "rotation": [
+        0,
+        75,
+        0
+      ],
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.7,
+        0.7,
+        0.7
+      ]
+    },
+    "ground": {
+      "translation": [
+        0,
+        2,
+        0
+      ],
+      "scale": [
+        0.55,
+        0.55,
+        0.55
+      ]
+    },
+    "fixed": {
+      "rotation": [
+        0,
+        180,
+        0
+      ],
+      "scale": [
+        0.85,
+        0.85,
+        0.85
+      ]
+    }
+  },
+  "elements": [
+    {
+      "name": "white veil crown",
+      "from": [
+        3,
+        11,
+        3
+      ],
+      "to": [
+        13,
+        14.5,
+        13
+      ],
+      "faces": {
+        "north": {
+          "texture": "#white"
+        },
+        "south": {
+          "texture": "#white"
+        },
+        "east": {
+          "texture": "#white"
+        },
+        "west": {
+          "texture": "#white"
+        },
+        "up": {
+          "texture": "#white"
+        },
+        "down": {
+          "texture": "#white"
+        }
+      }
+    },
+    {
+      "name": "stiff wide hat brim",
+      "from": [
+        1.3,
+        10,
+        1.3
+      ],
+      "to": [
+        14.7,
+        11.2,
+        14.7
+      ],
+      "faces": {
+        "north": {
+          "texture": "#cream"
+        },
+        "south": {
+          "texture": "#cream"
+        },
+        "east": {
+          "texture": "#cream"
+        },
+        "west": {
+          "texture": "#cream"
+        },
+        "up": {
+          "texture": "#cream"
+        },
+        "down": {
+          "texture": "#cream"
+        }
+      }
+    },
+    {
+      "name": "mesh visor frame",
+      "from": [
+        3.2,
+        2.9,
+        2.1
+      ],
+      "to": [
+        12.8,
+        10.2,
+        3
+      ],
+      "faces": {
+        "north": {
+          "texture": "#dark"
+        },
+        "south": {
+          "texture": "#dark"
+        },
+        "east": {
+          "texture": "#dark"
+        },
+        "west": {
+          "texture": "#dark"
+        },
+        "up": {
+          "texture": "#dark"
+        },
+        "down": {
+          "texture": "#dark"
+        }
+      }
+    },
+    {
+      "name": "fine protective veil",
+      "from": [
+        3.7,
+        3.4,
+        2
+      ],
+      "to": [
+        12.3,
+        9.8,
+        2.2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#mesh"
+        },
+        "south": {
+          "texture": "#mesh"
+        },
+        "east": {
+          "texture": "#mesh"
+        },
+        "west": {
+          "texture": "#mesh"
+        },
+        "up": {
+          "texture": "#mesh"
+        },
+        "down": {
+          "texture": "#mesh"
+        }
+      }
+    },
+    {
+      "name": "side white net left",
+      "from": [
+        2.5,
+        3,
+        3
+      ],
+      "to": [
+        3.3,
+        10,
+        12
+      ],
+      "faces": {
+        "north": {
+          "texture": "#grey"
+        },
+        "south": {
+          "texture": "#grey"
+        },
+        "east": {
+          "texture": "#grey"
+        },
+        "west": {
+          "texture": "#grey"
+        },
+        "up": {
+          "texture": "#grey"
+        },
+        "down": {
+          "texture": "#grey"
+        }
+      }
+    },
+    {
+      "name": "side white net right",
+      "from": [
+        12.7,
+        3,
+        3
+      ],
+      "to": [
+        13.5,
+        10,
+        12
+      ],
+      "faces": {
+        "north": {
+          "texture": "#grey"
+        },
+        "south": {
+          "texture": "#grey"
+        },
+        "east": {
+          "texture": "#grey"
+        },
+        "west": {
+          "texture": "#grey"
+        },
+        "up": {
+          "texture": "#grey"
+        },
+        "down": {
+          "texture": "#grey"
+        }
+      }
+    },
+    {
+      "name": "net lower white collar",
+      "from": [
+        2.4,
+        2,
+        2
+      ],
+      "to": [
+        13.6,
+        3.5,
+        13.3
+      ],
+      "faces": {
+        "north": {
+          "texture": "#white"
+        },
+        "south": {
+          "texture": "#white"
+        },
+        "east": {
+          "texture": "#white"
+        },
+        "west": {
+          "texture": "#white"
+        },
+        "up": {
+          "texture": "#white"
+        },
+        "down": {
+          "texture": "#white"
+        }
+      }
+    },
+    {
+      "name": "goggle reflection",
+      "from": [
+        4.2,
+        5.8,
+        1.93
+      ],
+      "to": [
+        11.8,
+        7.5,
+        2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#blue"
+        },
+        "south": {
+          "texture": "#blue"
+        },
+        "east": {
+          "texture": "#blue"
+        },
+        "west": {
+          "texture": "#blue"
+        },
+        "up": {
+          "texture": "#blue"
+        },
+        "down": {
+          "texture": "#blue"
+        }
+      }
+    }
+  ]
+}

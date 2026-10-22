@@ -8,6 +8,8 @@ import java.util.UUID;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Optional;
+import java.lang.reflect.InvocationTargetException;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -39,7 +41,31 @@ public final class LitematicaPlacementClient {
                         })));
     }
     private static Object invoke(Object source,String method)throws Exception{
-        return source.getClass().getMethod(method).invoke(source);
+        try{return source.getClass().getMethod(method).invoke(source);}
+        catch(InvocationTargetException e){
+            Throwable cause=e.getCause();
+            throw new IllegalArgumentException(method+": "+
+                    (cause==null?e.getMessage():cause.getMessage()),cause);
+        }
+    }
+    private static Object firstAvailable(Object o,String... names)throws Exception{
+        for(String name:names){
+            try{
+                Object v=invoke(o,name);
+                if(v!=null)return v;
+            }catch(NoSuchMethodException ignored){}
+        }
+        return null;
+    }
+    private static BlockPos asPos(Object object)throws Exception{
+        if(object instanceof BlockPos p)return p;
+        if(object==null)return null;
+        try{
+            int x=((Number)invoke(object,"getX")).intValue();
+            int y=((Number)invoke(object,"getY")).intValue();
+            int z=((Number)invoke(object,"getZ")).intValue();
+            return new BlockPos(x,y,z);
+        }catch(NoSuchMethodException ignored){return null;}
     }
     private static Object invokeEither(Object source,String a,String b)throws Exception{
         try{return invoke(source,a);}catch(NoSuchMethodException ex){return invoke(source,b);}
@@ -60,20 +86,36 @@ public final class LitematicaPlacementClient {
     /** Returns every placement managed by Litematica, not only the selected one. */
     public static List<PlacementChoice> placements()throws Exception{
         Object mgr=manager();
-        Object all=optional(mgr,"getAllSchematicPlacements");
-        if(all==null)all=optional(mgr,"getAllPlacements");
+        Object all=firstAvailable(mgr,"getAllSchematicPlacements",
+                "getAllPlacements","getVisibleSchematicPlacements");
         if(!(all instanceof Collection<?> collection))
             throw new IllegalArgumentException(
-                    "This Litematica version cannot list placements");
+                    "Litematica manager does not expose its placements list");
         List<PlacementChoice> found=new ArrayList<>();
         for(Object p:collection){
             if(p==null)continue;
-            Object origin=invokeEither(p,"getPosition","getOrigin");
-            if(!(origin instanceof BlockPos pos))continue;
-            Object label=optional(p,"getName");
-            String name=label==null?"Unnamed placement":label.toString();
-            found.add(new PlacementChoice(p,name,pos,
-                    optionalBoolean(p,"isEnabled",true)));
+            try{
+                BlockPos pos=asPos(firstAvailable(p,"getPosition","getOrigin"));
+                if(pos==null)continue;
+                Object label=optional(p,"getName");
+                String name=label==null?"Unnamed placement":label.toString();
+                found.add(new PlacementChoice(p,name,pos,
+                        optionalBoolean(p,"isEnabled",true)));
+            }catch(Exception ignored){
+                // One broken placement cannot hide all other loaded ones.
+            }
+        }
+        if(found.isEmpty()&&!collection.isEmpty())
+            throw new IllegalArgumentException(
+                    "Litematica has placements, but could not decode their positions");
+        if(found.isEmpty()){
+            Object selected=optional(mgr,"getSelectedSchematicPlacement");
+            if(selected!=null){
+                BlockPos pos=asPos(firstAvailable(selected,"getPosition","getOrigin"));
+                if(pos!=null)found.add(new PlacementChoice(selected,
+                        String.valueOf(firstAvailable(selected,"getName")),
+                        pos,optionalBoolean(selected,"isEnabled",true)));
+            }
         }
         return List.copyOf(found);
     }
@@ -133,7 +175,8 @@ public final class LitematicaPlacementClient {
         if(all instanceof java.util.Collection<?> a && enabled instanceof java.util.Collection<?> e
                 && a.size()!=e.size())
             throw new IllegalArgumentException("Enable every subregion before importing");
-        Object pathObj=invoke(placement,"getSchematicFile");
+        Object pathObj=firstAvailable(placement,"getSchematicFile","getFile");
+        if(pathObj instanceof Optional<?> opt)pathObj=opt.orElse(null);
         if(pathObj==null)throw new IllegalArgumentException(
                 "Save this in-memory schematic as a .litematic file first");
         Path path=pathObj instanceof Path p?p:Path.of(pathObj.toString());
@@ -142,8 +185,8 @@ public final class LitematicaPlacementClient {
         long fileSize=Files.size(path);
         if(fileSize<1||fileSize>BuilderUploadNetworking.MAX_BYTES)
             throw new IllegalArgumentException("This placement exceeds the 2 MiB upload limit");
-        Object posObj=invokeEither(placement,"getPosition","getOrigin");
-        if(!(posObj instanceof BlockPos origin))
+        BlockPos origin=asPos(firstAvailable(placement,"getPosition","getOrigin"));
+        if(origin==null)
             throw new IllegalArgumentException("Could not read Litematica origin");
         String rotation=invoke(placement,"getRotation").toString().toUpperCase();
         String mirror=invoke(placement,"getMirror").toString().toUpperCase();

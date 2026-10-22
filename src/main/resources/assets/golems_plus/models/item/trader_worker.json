@@ -1,1 +1,399 @@
-{"parent":"minecraft:item/generated","textures":{"layer0":"minecraft:item/emerald"}}
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "minecraft:block/yellow_concrete",
+    "yellow": "minecraft:block/yellow_concrete",
+    "gold": "minecraft:block/gold_block",
+    "dark": "minecraft:block/black_concrete",
+    "orange": "minecraft:block/orange_concrete",
+    "grey": "minecraft:block/light_gray_concrete",
+    "green": "minecraft:block/green_terracotta",
+    "olive": "minecraft:block/green_concrete",
+    "brown": "minecraft:block/brown_terracotta",
+    "leather": "minecraft:block/brown_concrete",
+    "white": "minecraft:block/white_wool",
+    "light": "minecraft:block/white_concrete",
+    "mesh": "minecraft:block/iron_bars",
+    "blue": "minecraft:block/light_blue_stained_glass",
+    "teal": "minecraft:block/cyan_terracotta",
+    "silver": "minecraft:block/iron_block",
+    "cream": "minecraft:block/birch_planks"
+  },
+  "display": {
+    "gui": {
+      "rotation": [
+        22,
+        145,
+        0
+      ],
+      "translation": [
+        0,
+        -0.15,
+        0
+      ],
+      "scale": [
+        0.92,
+        0.92,
+        0.92
+      ]
+    },
+    "thirdperson_righthand": {
+      "rotation": [
+        65,
+        45,
+        0
+      ],
+      "translation": [
+        0,
+        1.5,
+        0
+      ],
+      "scale": [
+        0.6,
+        0.6,
+        0.6
+      ]
+    },
+    "firstperson_righthand": {
+      "rotation": [
+        0,
+        75,
+        0
+      ],
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.7,
+        0.7,
+        0.7
+      ]
+    },
+    "ground": {
+      "translation": [
+        0,
+        2,
+        0
+      ],
+      "scale": [
+        0.55,
+        0.55,
+        0.55
+      ]
+    },
+    "fixed": {
+      "rotation": [
+        0,
+        180,
+        0
+      ],
+      "scale": [
+        0.85,
+        0.85,
+        0.85
+      ]
+    }
+  },
+  "elements": [
+    {
+      "name": "closed brown leather bag",
+      "from": [
+        2.2,
+        3.8,
+        4.5
+      ],
+      "to": [
+        13.8,
+        10.5,
+        11.8
+      ],
+      "faces": {
+        "north": {
+          "texture": "#leather"
+        },
+        "south": {
+          "texture": "#leather"
+        },
+        "east": {
+          "texture": "#leather"
+        },
+        "west": {
+          "texture": "#leather"
+        },
+        "up": {
+          "texture": "#leather"
+        },
+        "down": {
+          "texture": "#leather"
+        }
+      }
+    },
+    {
+      "name": "front leather trim",
+      "from": [
+        2,
+        3.8,
+        4.2
+      ],
+      "to": [
+        14,
+        4.8,
+        12
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brown"
+        },
+        "south": {
+          "texture": "#brown"
+        },
+        "east": {
+          "texture": "#brown"
+        },
+        "west": {
+          "texture": "#brown"
+        },
+        "up": {
+          "texture": "#brown"
+        },
+        "down": {
+          "texture": "#brown"
+        }
+      }
+    },
+    {
+      "name": "rear side leather corner",
+      "from": [
+        2.2,
+        9.7,
+        4.2
+      ],
+      "to": [
+        13.8,
+        10.5,
+        11.8
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brown"
+        },
+        "south": {
+          "texture": "#brown"
+        },
+        "east": {
+          "texture": "#brown"
+        },
+        "west": {
+          "texture": "#brown"
+        },
+        "up": {
+          "texture": "#brown"
+        },
+        "down": {
+          "texture": "#brown"
+        }
+      }
+    },
+    {
+      "name": "briefcase handle vertical left",
+      "from": [
+        6,
+        10,
+        6
+      ],
+      "to": [
+        6.8,
+        13,
+        6.8
+      ],
+      "faces": {
+        "north": {
+          "texture": "#dark"
+        },
+        "south": {
+          "texture": "#dark"
+        },
+        "east": {
+          "texture": "#dark"
+        },
+        "west": {
+          "texture": "#dark"
+        },
+        "up": {
+          "texture": "#dark"
+        },
+        "down": {
+          "texture": "#dark"
+        }
+      }
+    },
+    {
+      "name": "briefcase handle vertical right",
+      "from": [
+        9.2,
+        10,
+        6
+      ],
+      "to": [
+        10,
+        13,
+        6.8
+      ],
+      "faces": {
+        "north": {
+          "texture": "#dark"
+        },
+        "south": {
+          "texture": "#dark"
+        },
+        "east": {
+          "texture": "#dark"
+        },
+        "west": {
+          "texture": "#dark"
+        },
+        "up": {
+          "texture": "#dark"
+        },
+        "down": {
+          "texture": "#dark"
+        }
+      }
+    },
+    {
+      "name": "briefcase handle horizontal",
+      "from": [
+        6,
+        12.3,
+        5.8
+      ],
+      "to": [
+        10,
+        13,
+        7
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brown"
+        },
+        "south": {
+          "texture": "#brown"
+        },
+        "east": {
+          "texture": "#brown"
+        },
+        "west": {
+          "texture": "#brown"
+        },
+        "up": {
+          "texture": "#brown"
+        },
+        "down": {
+          "texture": "#brown"
+        }
+      }
+    },
+    {
+      "name": "brass clip left",
+      "from": [
+        4,
+        7,
+        3.9
+      ],
+      "to": [
+        5.8,
+        8.7,
+        4.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#gold"
+        },
+        "south": {
+          "texture": "#gold"
+        },
+        "east": {
+          "texture": "#gold"
+        },
+        "west": {
+          "texture": "#gold"
+        },
+        "up": {
+          "texture": "#gold"
+        },
+        "down": {
+          "texture": "#gold"
+        }
+      }
+    },
+    {
+      "name": "brass clip right",
+      "from": [
+        10.2,
+        7,
+        3.9
+      ],
+      "to": [
+        12,
+        8.7,
+        4.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#gold"
+        },
+        "south": {
+          "texture": "#gold"
+        },
+        "east": {
+          "texture": "#gold"
+        },
+        "west": {
+          "texture": "#gold"
+        },
+        "up": {
+          "texture": "#gold"
+        },
+        "down": {
+          "texture": "#gold"
+        }
+      }
+    },
+    {
+      "name": "front nameplate",
+      "from": [
+        6.5,
+        6.5,
+        3.95
+      ],
+      "to": [
+        9.5,
+        8.6,
+        4.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#gold"
+        },
+        "south": {
+          "texture": "#gold"
+        },
+        "east": {
+          "texture": "#gold"
+        },
+        "west": {
+          "texture": "#gold"
+        },
+        "up": {
+          "texture": "#gold"
+        },
+        "down": {
+          "texture": "#gold"
+        }
+      }
+    }
+  ]
+}

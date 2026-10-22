@@ -238,3 +238,18 @@ unoccupied Meal Pickup Counter within ten blocks. Inventory quantities,
 orders, recipe steps and prepared meals survive reloads. Collect the previous
 order before preparing another. Some modded cooking recipes with custom
 machines or virtual inputs are intentionally unsupported for safety.
+
+## Golems Plus 0.3.4-dev maintenance
+
+* Beekeepers can now use real flowers placed in their Toolbox (at least two
+  matching flowers together in a stack) when no full-hive harvest is ready,
+  and two unpaired adult bees are ready. One worker visits the toolbox, takes
+  two flowers, approaches the pair, and enables normal vanilla bee mating.
+  Flowers are refunded when a pair becomes ineligible.
+* Builder Planner placement discovery supports both modern and legacy
+  Litematica manager methods, skips invalid placements without hiding valid
+  ones and supports optional file paths when importing.
+* All deliberately non-cube workstation models now have non-occluding block
+  properties, preventing them from hiding neighboring solid block faces.
+* Crafted worker item icons are individual 3D models: hard hat, briefcase,
+  beekeeper veil, chef's hat and fishing vest.

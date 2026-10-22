@@ -1,1 +1,333 @@
-{"parent":"minecraft:item/generated","textures":{"layer0":"minecraft:item/bread"}}
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "minecraft:block/yellow_concrete",
+    "yellow": "minecraft:block/yellow_concrete",
+    "gold": "minecraft:block/gold_block",
+    "dark": "minecraft:block/black_concrete",
+    "orange": "minecraft:block/orange_concrete",
+    "grey": "minecraft:block/light_gray_concrete",
+    "green": "minecraft:block/green_terracotta",
+    "olive": "minecraft:block/green_concrete",
+    "brown": "minecraft:block/brown_terracotta",
+    "leather": "minecraft:block/brown_concrete",
+    "white": "minecraft:block/white_wool",
+    "light": "minecraft:block/white_concrete",
+    "mesh": "minecraft:block/iron_bars",
+    "blue": "minecraft:block/light_blue_stained_glass",
+    "teal": "minecraft:block/cyan_terracotta",
+    "silver": "minecraft:block/iron_block",
+    "cream": "minecraft:block/birch_planks"
+  },
+  "display": {
+    "gui": {
+      "rotation": [
+        22,
+        145,
+        0
+      ],
+      "translation": [
+        0,
+        -0.15,
+        0
+      ],
+      "scale": [
+        0.92,
+        0.92,
+        0.92
+      ]
+    },
+    "thirdperson_righthand": {
+      "rotation": [
+        65,
+        45,
+        0
+      ],
+      "translation": [
+        0,
+        1.5,
+        0
+      ],
+      "scale": [
+        0.6,
+        0.6,
+        0.6
+      ]
+    },
+    "firstperson_righthand": {
+      "rotation": [
+        0,
+        75,
+        0
+      ],
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.7,
+        0.7,
+        0.7
+      ]
+    },
+    "ground": {
+      "translation": [
+        0,
+        2,
+        0
+      ],
+      "scale": [
+        0.55,
+        0.55,
+        0.55
+      ]
+    },
+    "fixed": {
+      "rotation": [
+        0,
+        180,
+        0
+      ],
+      "scale": [
+        0.85,
+        0.85,
+        0.85
+      ]
+    }
+  },
+  "elements": [
+    {
+      "name": "toque lower band",
+      "from": [
+        3.9,
+        2.7,
+        4
+      ],
+      "to": [
+        12.1,
+        6,
+        12
+      ],
+      "faces": {
+        "north": {
+          "texture": "#light"
+        },
+        "south": {
+          "texture": "#light"
+        },
+        "east": {
+          "texture": "#light"
+        },
+        "west": {
+          "texture": "#light"
+        },
+        "up": {
+          "texture": "#light"
+        },
+        "down": {
+          "texture": "#light"
+        }
+      }
+    },
+    {
+      "name": "toque brim",
+      "from": [
+        3.3,
+        5.2,
+        3.3
+      ],
+      "to": [
+        12.7,
+        6,
+        12.7
+      ],
+      "faces": {
+        "north": {
+          "texture": "#white"
+        },
+        "south": {
+          "texture": "#white"
+        },
+        "east": {
+          "texture": "#white"
+        },
+        "west": {
+          "texture": "#white"
+        },
+        "up": {
+          "texture": "#white"
+        },
+        "down": {
+          "texture": "#white"
+        }
+      }
+    },
+    {
+      "name": "puffy cap base",
+      "from": [
+        3.3,
+        6,
+        3.3
+      ],
+      "to": [
+        12.7,
+        11.7,
+        12.7
+      ],
+      "faces": {
+        "north": {
+          "texture": "#white"
+        },
+        "south": {
+          "texture": "#white"
+        },
+        "east": {
+          "texture": "#white"
+        },
+        "west": {
+          "texture": "#white"
+        },
+        "up": {
+          "texture": "#white"
+        },
+        "down": {
+          "texture": "#white"
+        }
+      }
+    },
+    {
+      "name": "pleat on left",
+      "from": [
+        2.8,
+        7.4,
+        5
+      ],
+      "to": [
+        4.2,
+        12,
+        11
+      ],
+      "faces": {
+        "north": {
+          "texture": "#light"
+        },
+        "south": {
+          "texture": "#light"
+        },
+        "east": {
+          "texture": "#light"
+        },
+        "west": {
+          "texture": "#light"
+        },
+        "up": {
+          "texture": "#light"
+        },
+        "down": {
+          "texture": "#light"
+        }
+      }
+    },
+    {
+      "name": "pleat on right",
+      "from": [
+        11.8,
+        7.4,
+        5
+      ],
+      "to": [
+        13.2,
+        12,
+        11
+      ],
+      "faces": {
+        "north": {
+          "texture": "#light"
+        },
+        "south": {
+          "texture": "#light"
+        },
+        "east": {
+          "texture": "#light"
+        },
+        "west": {
+          "texture": "#light"
+        },
+        "up": {
+          "texture": "#light"
+        },
+        "down": {
+          "texture": "#light"
+        }
+      }
+    },
+    {
+      "name": "higher centre pleat",
+      "from": [
+        6.2,
+        10.5,
+        3.9
+      ],
+      "to": [
+        9.8,
+        14.4,
+        12.1
+      ],
+      "faces": {
+        "north": {
+          "texture": "#white"
+        },
+        "south": {
+          "texture": "#white"
+        },
+        "east": {
+          "texture": "#white"
+        },
+        "west": {
+          "texture": "#white"
+        },
+        "up": {
+          "texture": "#white"
+        },
+        "down": {
+          "texture": "#white"
+        }
+      }
+    },
+    {
+      "name": "pleat highlight",
+      "from": [
+        7.2,
+        6.5,
+        2.9
+      ],
+      "to": [
+        8.8,
+        11.3,
+        3.4
+      ],
+      "faces": {
+        "north": {
+          "texture": "#grey"
+        },
+        "south": {
+          "texture": "#grey"
+        },
+        "east": {
+          "texture": "#grey"
+        },
+        "west": {
+          "texture": "#grey"
+        },
+        "up": {
+          "texture": "#grey"
+        },
+        "down": {
+          "texture": "#grey"
+        }
+      }
+    }
+  ]
+}
