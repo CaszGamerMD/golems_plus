@@ -146,6 +146,10 @@ public final class KitchenSupplies {
     }
 
     private static Container container(BlockEntity be){
+        // Oven internal inventory also holds fuel, half-cooked food and
+        // ingredient staging slots. These are NOT free pantry ingredients.
+        if(BuiltInRegistries.BLOCK.getKey(be.getBlockState().getBlock())
+                .getPath().contains("oven"))return null;
         if(be instanceof Container c)return c;
         // CFB multi-block fridges and cabinets expose combined wrappers
         // from getContainer(). Scanning both halves through those wrappers
