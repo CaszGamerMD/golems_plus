@@ -8,7 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import net.minecraft.tags.ItemTags;
-import net.minecraft.world.entity.animal.Bee;
+import net.minecraft.world.entity.animal.bee.Bee;
 import net.minecraft.world.phys.AABB;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
@@ -116,14 +116,16 @@ public final class BeekeeperWorkService {
         // the same item if either bee becomes ineligible before breeding.
         for(int i=0;i<inventory.getContainerSize();i++){
             ItemStack stack=inventory.getItem(i);
-            if(stack.is(ItemTags.FLOWERS)&&stack.getCount()>=2)return true;
+            if(stack.is(net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.ITEM,
+                        net.minecraft.resources.Identifier.tryParse("minecraft:bee_food")))&&stack.getCount()>=2)return true;
         }
         return false;
     }
     private static ItemStack takeFlowerPair(Container inventory){
         for(int i=0;i<inventory.getContainerSize();i++){
             ItemStack stack=inventory.getItem(i);
-            if(stack.is(ItemTags.FLOWERS)&&stack.getCount()>=2){
+            if(stack.is(net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.ITEM,
+                        net.minecraft.resources.Identifier.tryParse("minecraft:bee_food")))&&stack.getCount()>=2){
                 ItemStack moved=inventory.removeItem(i,2);
                 inventory.setChanged();
                 return moved;
