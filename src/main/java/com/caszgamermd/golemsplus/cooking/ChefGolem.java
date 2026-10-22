@@ -20,13 +20,22 @@ import net.minecraft.world.level.storage.ValueOutput;
  * system. Recipe planning and food processing are NOT enabled yet.
  */
 public final class ChefGolem extends PathfinderMob {
+    private static final EntityDataAccessor<net.minecraft.world.item.ItemStack> CARRYING=
+            SynchedEntityData.defineId(ChefGolem.class,EntityDataSerializers.ITEM_STACK);
     private static final EntityDataAccessor<Boolean> PREPARING=
             SynchedEntityData.defineId(ChefGolem.class,EntityDataSerializers.BOOLEAN);
     @Override protected void defineSynchedData(SynchedEntityData.Builder b){
         super.defineSynchedData(b);
         b.define(PREPARING,false);
+        b.define(CARRYING,net.minecraft.world.item.ItemStack.EMPTY);
     }
     public boolean preparing(){return getEntityData().get(PREPARING);}
+    public net.minecraft.world.item.ItemStack carrying(){return getEntityData().get(CARRYING);}
+    public void setJobAppearance(boolean working,net.minecraft.world.item.ItemStack item){
+        if(getEntityData().get(PREPARING)!=working)getEntityData().set(PREPARING,working);
+        if(!net.minecraft.world.item.ItemStack.matches(getEntityData().get(CARRYING),item))
+            getEntityData().set(CARRYING,item.copy());
+    }
     private BlockPos home=BlockPos.ZERO;
     private UUID owner;
 
@@ -60,7 +69,9 @@ public final class ChefGolem extends PathfinderMob {
                 ||!station.isCooking()||!owner.equals(station.owner())){
             discard();return;
         }
-        getEntityData().set(PREPARING,station.chefBusy());
+        if(!station.chefBusy()){
+            setJobAppearance(false,net.minecraft.world.item.ItemStack.EMPTY);
+        }
         if(!station.chefBusy() && station.phase()!=com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED)
             ChefFloorNavigation.idle(server,this,home);
     }

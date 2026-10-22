@@ -306,3 +306,29 @@ pathing onto the desktop.
   so unexpected supply or recipe choices are easy to diagnose.
 * Jars only count as milk suppliers when physically linked to the kitchen
   and holding enough milk. No free ingredients are generated.
+
+## Chef execution and Litematica placements (0.3.8-dev)
+
+The Builder's Planning Table reads the actual Litematica 26.2
+`getAllSchematicsPlacements()` manager method, selecting the true
+`getOrigin()` for each player placement. Optional Litematica reflection
+is retained so Golems Plus still starts without Litematica.
+
+Chef orders select exactly one recipe path and reserve its **leaf**
+ingredients from connected Cooking for Blockheads storage. The player
+inventory is explicitly excluded. Every plan step records its selected
+input items and batch output; these are persisted with the active order.
+
+Chef workers approach the linked pantry and show the actual planned
+ingredient in their hands. They go to the kitchen table for assembly and
+move the reserved inputs into the actual intermediate output only as each
+step finishes. Cooking, smoking, and campfire recipes require a connected
+Cooking for Blockheads oven: the Chef loads its real input slots and waits
+for its *actual* cooking output, including a usable fuel supply. If the
+oven is busy, out of fuel or not connected the job waits with a
+diagnostic rather than inventing food. Only completed items in the job's
+reserved work buffer may be plated. After an order completes, remaining
+intermediates and unused inputs return to the connected pantry.
+
+Preexisting 0.3.7 jobs resume via the legacy reserved-item path; create
+a new order to test the structured physical crafting stages.

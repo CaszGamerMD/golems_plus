@@ -62,13 +62,25 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
                 entity instanceof TraderGolem trader&&trader.presenting()
                         ?trader.displayedOffer():net.minecraft.world.item.ItemStack.EMPTY,
                 ItemDisplayContext.FIXED,entity.level(),null,entity.getId());
+        itemModelResolver.updateForTopItem(state.chefIngredient,
+                entity instanceof ChefGolem chef?chef.carrying():
+                    net.minecraft.world.item.ItemStack.EMPTY,
+                ItemDisplayContext.FIXED,entity.level(),null,entity.getId());
         state.hasRod=entity instanceof FisherGolem fisher&&fisher.hasRod();
         state.carryingFish=entity instanceof FisherGolem fisher&&fisher.hasCatch();
-        // ChefGolem uses the same shared animation but has no recipe AI yet.
+        // Chef ingredient matches the chosen job step, not synthetic food.
     }
     @Override public void submit(ProfessionGolemRenderState state,PoseStack pose,
             SubmitNodeCollector collector,CameraRenderState camera){
         super.submit(state,pose,collector,camera);
+        if(!state.chefIngredient.isEmpty()){
+            pose.pushPose();
+            pose.mulPose(Axis.YP.rotationDegrees(180f-state.bodyRot));
+            pose.translate(-.24,1.10,-.35);
+            pose.scale(.34f,.34f,.34f);
+            state.chefIngredient.submit(pose,collector,state.lightCoords,OverlayTexture.NO_OVERLAY,0);
+            pose.popPose();
+        }
         if(!state.presenting||state.tradeItem.isEmpty())return;
         pose.pushPose();
         // Align the displayed goods with the model's forward-facing tray.
