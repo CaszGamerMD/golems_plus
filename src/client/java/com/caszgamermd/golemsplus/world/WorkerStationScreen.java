@@ -209,8 +209,9 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         first=second=null;
         boolean trade=trader();
         if(cooking()){
-            button("ORDER",PANE,28,88,()->openPage(Page.CHEF_MENU));
-            button("PANTRY",PANE+92,28,90,()->openPage(Page.CHEF_SUPPLIES));
+            button("ORDER",PANE,28,59,()->openPage(Page.CHEF_MENU));
+            button("PANTRY",PANE+61,28,59,()->openPage(Page.CHEF_SUPPLIES));
+            button("LINK",PANE+122,28,60,()->send("chef_link",0));
             if(page==Page.CHEF_SUPPLIES){
                 var stock=station()==null?java.util.Map.<String,Integer>of():station().chefStock();
                 var rows=stock.entrySet().stream().sorted(java.util.Map.Entry.comparingByKey()).toList();
@@ -419,7 +420,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                 g.text(font,"Qty "+chefAmount+"  Page "+(chefPage+1)+"/"+
                         Math.max(1,(visibleMeals.size()+2)/3),185,195,LABEL_COLOR,false);
             }else{
-                g.text(font,"CFB KITCHEN SUPPLY TRACKER",185,197,LABEL_COLOR,false);
+                g.text(font,"STOCK FROM LINKED KITCHEN",185,197,LABEL_COLOR,false);
             }
             if(station!=null){
                 String status=station.chefBusy()
@@ -486,6 +487,8 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             String status=station.phase().name()+" • "+
                     (trader()?station.deliveredCount()+"/"+station.wantedCount():
                             builder()?station.builderCursor()+"/"+station.builderBlocks():
+                            cooking()?(station.kitchenLink()==null?"Kitchen unlinked":
+                                    "Kitchen "+station.kitchenLink().toShortString()):
                             "range "+station.beeRadius());
             g.text(font,truncate(status,34),185,232,LABEL_COLOR,false);
             if(!station.problem().isBlank())
