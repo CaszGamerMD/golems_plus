@@ -1,0 +1,774 @@
+{
+  "textures": {
+    "particle": "minecraft:block/light_blue_concrete",
+    "cool1": "minecraft:block/light_blue_concrete",
+    "cool2": "minecraft:block/blue_concrete",
+    "rim": "minecraft:block/white_concrete",
+    "metal": "minecraft:block/iron_block",
+    "white": "minecraft:block/snow_block",
+    "drink": "minecraft:block/lime_concrete",
+    "juice": "minecraft:block/orange_concrete",
+    "straw": "minecraft:block/red_concrete",
+    "fish": "minecraft:block/cyan_terracotta",
+    "fishDark": "minecraft:block/blue_terracotta",
+    "fishEye": "minecraft:block/black_concrete",
+    "fishWhite": "minecraft:block/white_concrete",
+    "hinge": "minecraft:block/stone_bricks",
+    "mouth": "minecraft:block/pink_terracotta",
+    "lid": "minecraft:block/light_gray_concrete"
+  },
+  "elements": [
+    {
+      "name": "left cooler base",
+      "from": [
+        0,
+        0,
+        1
+      ],
+      "to": [
+        7.75,
+        9.6,
+        15.2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#cool1"
+        },
+        "south": {
+          "texture": "#cool1"
+        },
+        "east": {
+          "texture": "#cool1"
+        },
+        "west": {
+          "texture": "#cool1"
+        },
+        "up": {
+          "texture": "#cool1"
+        },
+        "down": {
+          "texture": "#cool1"
+        }
+      }
+    },
+    {
+      "name": "left cooler top rim",
+      "from": [
+        -0.15,
+        9.5,
+        0.8
+      ],
+      "to": [
+        7.9,
+        11,
+        15.4
+      ],
+      "faces": {
+        "north": {
+          "texture": "#rim"
+        },
+        "south": {
+          "texture": "#rim"
+        },
+        "east": {
+          "texture": "#rim"
+        },
+        "west": {
+          "texture": "#rim"
+        },
+        "up": {
+          "texture": "#rim"
+        },
+        "down": {
+          "texture": "#rim"
+        }
+      }
+    },
+    {
+      "name": "left cooler raised open lid",
+      "from": [
+        0.4,
+        11,
+        3
+      ],
+      "to": [
+        7.5,
+        12.1,
+        14.7
+      ],
+      "faces": {
+        "north": {
+          "texture": "#lid"
+        },
+        "south": {
+          "texture": "#lid"
+        },
+        "east": {
+          "texture": "#lid"
+        },
+        "west": {
+          "texture": "#lid"
+        },
+        "up": {
+          "texture": "#lid"
+        },
+        "down": {
+          "texture": "#lid"
+        }
+      }
+    },
+    {
+      "name": "left cooler hinge",
+      "from": [
+        0.3,
+        10,
+        13.4
+      ],
+      "to": [
+        7.6,
+        11.7,
+        14.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "left cooler side handle",
+      "from": [
+        -0.9,
+        3,
+        6.2
+      ],
+      "to": [
+        0.25,
+        7.3,
+        10.4
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "left cooler latch",
+      "from": [
+        2.8,
+        7,
+        0.3
+      ],
+      "to": [
+        5.2,
+        9.7,
+        1.2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#white"
+        },
+        "south": {
+          "texture": "#white"
+        },
+        "east": {
+          "texture": "#white"
+        },
+        "west": {
+          "texture": "#white"
+        },
+        "up": {
+          "texture": "#white"
+        },
+        "down": {
+          "texture": "#white"
+        }
+      }
+    },
+    {
+      "name": "right cooler box",
+      "from": [
+        8.25,
+        0,
+        1
+      ],
+      "to": [
+        16,
+        10.5,
+        15.2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#cool2"
+        },
+        "south": {
+          "texture": "#cool2"
+        },
+        "east": {
+          "texture": "#cool2"
+        },
+        "west": {
+          "texture": "#cool2"
+        },
+        "up": {
+          "texture": "#cool2"
+        },
+        "down": {
+          "texture": "#cool2"
+        }
+      }
+    },
+    {
+      "name": "right cooler rim",
+      "from": [
+        8.05,
+        10.3,
+        0.8
+      ],
+      "to": [
+        16,
+        11.6,
+        15.4
+      ],
+      "faces": {
+        "north": {
+          "texture": "#rim"
+        },
+        "south": {
+          "texture": "#rim"
+        },
+        "east": {
+          "texture": "#rim"
+        },
+        "west": {
+          "texture": "#rim"
+        },
+        "up": {
+          "texture": "#rim"
+        },
+        "down": {
+          "texture": "#rim"
+        }
+      }
+    },
+    {
+      "name": "right cooler lid",
+      "from": [
+        8.4,
+        11.6,
+        2
+      ],
+      "to": [
+        15.9,
+        12.4,
+        15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#white"
+        },
+        "south": {
+          "texture": "#white"
+        },
+        "east": {
+          "texture": "#white"
+        },
+        "west": {
+          "texture": "#white"
+        },
+        "up": {
+          "texture": "#white"
+        },
+        "down": {
+          "texture": "#white"
+        }
+      }
+    },
+    {
+      "name": "right cooler front clasp",
+      "from": [
+        11,
+        7,
+        0.4
+      ],
+      "to": [
+        13.2,
+        10,
+        1.3
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "drink 1 can",
+      "from": [
+        1.4,
+        10.6,
+        4.2
+      ],
+      "to": [
+        3.4,
+        14.7,
+        6.2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#drink"
+        },
+        "south": {
+          "texture": "#drink"
+        },
+        "east": {
+          "texture": "#drink"
+        },
+        "west": {
+          "texture": "#drink"
+        },
+        "up": {
+          "texture": "#drink"
+        },
+        "down": {
+          "texture": "#drink"
+        }
+      }
+    },
+    {
+      "name": "drink 1 ring",
+      "from": [
+        1.4,
+        14.6,
+        4.2
+      ],
+      "to": [
+        3.4,
+        15,
+        6.2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "drink 2 can",
+      "from": [
+        4.5,
+        10.6,
+        8
+      ],
+      "to": [
+        6.6,
+        14.4,
+        10.2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#juice"
+        },
+        "south": {
+          "texture": "#juice"
+        },
+        "east": {
+          "texture": "#juice"
+        },
+        "west": {
+          "texture": "#juice"
+        },
+        "up": {
+          "texture": "#juice"
+        },
+        "down": {
+          "texture": "#juice"
+        }
+      }
+    },
+    {
+      "name": "drink 2 ring",
+      "from": [
+        4.5,
+        14.2,
+        8
+      ],
+      "to": [
+        6.6,
+        14.65,
+        10.2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "red straw",
+      "from": [
+        2.1,
+        14.8,
+        5.1
+      ],
+      "to": [
+        2.6,
+        16.8,
+        5.6
+      ],
+      "faces": {
+        "north": {
+          "texture": "#straw"
+        },
+        "south": {
+          "texture": "#straw"
+        },
+        "east": {
+          "texture": "#straw"
+        },
+        "west": {
+          "texture": "#straw"
+        },
+        "up": {
+          "texture": "#straw"
+        },
+        "down": {
+          "texture": "#straw"
+        }
+      }
+    },
+    {
+      "name": "fish neck",
+      "from": [
+        10.5,
+        11.8,
+        5.6
+      ],
+      "to": [
+        13.5,
+        13.3,
+        10.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#fishDark"
+        },
+        "south": {
+          "texture": "#fishDark"
+        },
+        "east": {
+          "texture": "#fishDark"
+        },
+        "west": {
+          "texture": "#fishDark"
+        },
+        "up": {
+          "texture": "#fishDark"
+        },
+        "down": {
+          "texture": "#fishDark"
+        }
+      }
+    },
+    {
+      "name": "fish head",
+      "from": [
+        9.65,
+        12,
+        3
+      ],
+      "to": [
+        15,
+        16,
+        10
+      ],
+      "faces": {
+        "north": {
+          "texture": "#fish"
+        },
+        "south": {
+          "texture": "#fish"
+        },
+        "east": {
+          "texture": "#fish"
+        },
+        "west": {
+          "texture": "#fish"
+        },
+        "up": {
+          "texture": "#fish"
+        },
+        "down": {
+          "texture": "#fish"
+        }
+      }
+    },
+    {
+      "name": "fish snout",
+      "from": [
+        11.1,
+        12.5,
+        1.7
+      ],
+      "to": [
+        14.4,
+        14.3,
+        3.6
+      ],
+      "faces": {
+        "north": {
+          "texture": "#fish"
+        },
+        "south": {
+          "texture": "#fish"
+        },
+        "east": {
+          "texture": "#fish"
+        },
+        "west": {
+          "texture": "#fish"
+        },
+        "up": {
+          "texture": "#fish"
+        },
+        "down": {
+          "texture": "#fish"
+        }
+      }
+    },
+    {
+      "name": "fish tail fin",
+      "from": [
+        10.6,
+        12,
+        9.5
+      ],
+      "to": [
+        14,
+        16.1,
+        11
+      ],
+      "faces": {
+        "north": {
+          "texture": "#fishDark"
+        },
+        "south": {
+          "texture": "#fishDark"
+        },
+        "east": {
+          "texture": "#fishDark"
+        },
+        "west": {
+          "texture": "#fishDark"
+        },
+        "up": {
+          "texture": "#fishDark"
+        },
+        "down": {
+          "texture": "#fishDark"
+        }
+      }
+    },
+    {
+      "name": "fish eye white",
+      "from": [
+        10.5,
+        14.3,
+        2.9
+      ],
+      "to": [
+        12.5,
+        15.55,
+        3.1
+      ],
+      "faces": {
+        "north": {
+          "texture": "#fishWhite"
+        },
+        "south": {
+          "texture": "#fishWhite"
+        },
+        "east": {
+          "texture": "#fishWhite"
+        },
+        "west": {
+          "texture": "#fishWhite"
+        },
+        "up": {
+          "texture": "#fishWhite"
+        },
+        "down": {
+          "texture": "#fishWhite"
+        }
+      }
+    },
+    {
+      "name": "rare wink closed",
+      "from": [
+        11,
+        14.6,
+        2.65
+      ],
+      "to": [
+        12.25,
+        14.93,
+        2.93
+      ],
+      "faces": {
+        "north": {
+          "texture": "#fishEye"
+        },
+        "south": {
+          "texture": "#fishEye"
+        },
+        "east": {
+          "texture": "#fishEye"
+        },
+        "west": {
+          "texture": "#fishEye"
+        },
+        "up": {
+          "texture": "#fishEye"
+        },
+        "down": {
+          "texture": "#fishEye"
+        }
+      }
+    },
+    {
+      "name": "fish smiling mouth",
+      "from": [
+        11.8,
+        12.7,
+        1.44
+      ],
+      "to": [
+        14,
+        13.1,
+        1.8
+      ],
+      "faces": {
+        "north": {
+          "texture": "#mouth"
+        },
+        "south": {
+          "texture": "#mouth"
+        },
+        "east": {
+          "texture": "#mouth"
+        },
+        "west": {
+          "texture": "#mouth"
+        },
+        "up": {
+          "texture": "#mouth"
+        },
+        "down": {
+          "texture": "#mouth"
+        }
+      }
+    }
+  ],
+  "display": {
+    "gui": {
+      "rotation": [
+        26,
+        136,
+        0
+      ],
+      "scale": [
+        0.67,
+        0.67,
+        0.67
+      ]
+    },
+    "thirdperson_righthand": {
+      "rotation": [
+        30,
+        70,
+        0
+      ],
+      "scale": [
+        0.55,
+        0.55,
+        0.55
+      ]
+    }
+  }
+}
