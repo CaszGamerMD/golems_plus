@@ -287,3 +287,22 @@ pathing onto the desktop.
   highlight unmet raw ingredients.
 * Kiosk block models now explicitly texture every face and underside,
   with a new custom casing texture and the existing animated menu art.
+
+## Kitchen ingredient source fixes (0.3.7-dev)
+
+* The Chef kiosk now sees real stored fluid in connected Cooking for
+  Blockheads Cow in a Jar and Milk Jar blocks. Each 1000 mB provides one
+  milk ingredient, including Croptopia's milk bottle through CFB's official
+  `cookingforblockheads:milk` item tag. Orders withdraw milk using CFB's
+  ingredient provider rather than silently generating soy milk or new jars.
+* A kitchen ingredient already in a fridge, cabinet, or counter is supplied
+  directly before any crafting alternative is considered. Combined
+  cabinets/fridges are counted once per real inventory, preventing phantom
+  stock or double-withdrawals.
+* Kitchen discovery includes tagged third-party kitchen item providers and
+  jar attachments two blocks above kitchen equipment, matching CFB's
+  multiblock scanning conventions.
+* The ingredient preview reports milk portions supplied by Cow/Milk Jars
+  so unexpected supply or recipe choices are easy to diagnose.
+* Jars only count as milk suppliers when physically linked to the kitchen
+  and holding enough milk. No free ingredients are generated.
