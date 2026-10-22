@@ -146,7 +146,6 @@ public final class KitchenSupplies {
     }
 
     private static Container container(BlockEntity be){
-        if(be instanceof net.minecraft.world.entity.player.Inventory)return null;
         if(be instanceof Container c)return c;
         // CFB multi-block fridges and cabinets expose combined wrappers
         // from getContainer(). Scanning both halves through those wrappers
@@ -159,7 +158,7 @@ public final class KitchenSupplies {
                     Field field=type.getDeclaredField("container");
                     field.setAccessible(true);
                     Object value=field.get(be);
-                    if(value instanceof Container c)return c;
+                    if(value instanceof Container c && !(c instanceof net.minecraft.world.entity.player.Inventory))return c;
                 }catch(NoSuchFieldException ignored){}
                 catch(ReflectiveOperationException|LinkageError|SecurityException ignored){
                     break;
@@ -169,7 +168,7 @@ public final class KitchenSupplies {
         try{
             Method getter=be.getClass().getMethod("getContainer");
             Object result=getter.invoke(be);
-            if(result instanceof Container c)return c;
+            if(result instanceof Container c && !(c instanceof net.minecraft.world.entity.player.Inventory))return c;
         }catch(ReflectiveOperationException|LinkageError|SecurityException ignored){}
         return null;
     }
