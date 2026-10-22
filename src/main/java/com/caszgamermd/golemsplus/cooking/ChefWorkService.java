@@ -131,107 +131,168 @@ public final class ChefWorkService{
         }
         // If the finished item is already in kitchen storage, the chef still
         // performs a plating step instead of conjuring new items.
-        List<String> steps=plan.steps().isEmpty()?List.of("Plate ready food"):plan.steps();
+        List<String> steps=plan.work().isEmpty()?List.of("Plate ready food"):
+                plan.work().stream().map(ChefRecipePlanner.WorkStep::encode).toList();
         var escrow=new LinkedHashMap<String,Integer>();
         plan.ingredients().forEach((k,v)->escrow.put(BuiltInRegistries.ITEM.getKey(k).toString(),v));
         if(!kitchen.consume(plan.ingredients())){
             station.setProblem("Kitchen stock changed; check supplies and order again");
             return false;
         }
+        // Any spare batch results are created only when the corresponding
+        // recipe actually runs, and are tracked in the reserved buffer.
         var surplus=new LinkedHashMap<String,Integer>();
-        plan.leftovers().forEach((k,v)->{
-            if(v>0)surplus.put(BuiltInRegistries.ITEM.getKey(k).toString(),v);
-        });
         if(!station.startChefOrder(player.getUUID(),key.toString(),amount,steps,escrow,surplus)){
             station.setProblem("Could not reserve order");return false;
         }
         station.setProblem("");
         return true;
     }
+    /**
+     * Real work: chef walks to pantry to collect reserved components, carries
+     * the actual ingredient, approaches a worktop or CFB oven, and executes
+     * exactly one selected recipe. Cooking waits for the oven's real output.
+     * Player inventory is never read, searched, or used as a source.
+     */
     public static void tick(ServerLevel level,WorkerStationBlockEntity station){
         if(!station.isCooking())return;
         if(level.getGameTime()%100==0){
-            var counts=new LinkedHashMap<String,Integer>();
-            kitchen(level,station).snapshot()
-                    .forEach((item,count)->counts.put(
-                            BuiltInRegistries.ITEM.getKey(item).toString(),count));
-            station.updateChefStock(counts);
+            var stock=new LinkedHashMap<String,Integer>();
+            kitchen(level,station).snapshot().forEach((item,count)->
+                    stock.put(BuiltInRegistries.ITEM.getKey(item).toString(),count));
+            station.updateChefStock(stock);
         }
+        List<ChefGolem> chefs=new ArrayList<>();
+        for(UUID id:station.chefWorkerIds())
+            if(level.getEntity(id) instanceof ChefGolem chef)chefs.add(chef);
         if(!station.chefBusy()
-                ||station.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED)
-            return;
-        if(level.getGameTime()%40==0){
-            KitchenSupplies connected=kitchen(level,station);
-            if(!connected.connected()){
-                station.setProblem("Kitchen disconnected; press LINK KITCHEN");
-                return;
-            }
-            BlockPos target=connected.workPoint()==null?
-                    station.getBlockPos():connected.workPoint();
-            for(UUID id:station.chefWorkerIds()){
-                if(level.getEntity(id) instanceof ChefGolem chef)
-                    ChefFloorNavigation.work(level,chef,target);
-            }
-        }
-        int present=0;
-        for(UUID id:station.chefWorkerIds()){
-            if(level.getEntity(id) instanceof ChefGolem chef){
-                present++;
-                // Keep route planning on a 40-tick interval; don't overwrite
-                // the workstation navigation with an idle-home command.
-            }
-        }
-        if(present==0){
-            station.setProblem("Chef workers are not loaded");return;
-        }
-        if(!station.chefStepsFinished()){
-            // A team of chefs finishes preparation faster, never skipping
-            // prerequisite order.
-            for(int i=0;i<present;i++)station.tickChefStep();
+                ||station.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED){
+            for(ChefGolem chef:chefs)chef.setJobAppearance(false,ItemStack.EMPTY);
             return;
         }
-        MealCounterBlockEntity pickup=counter(level,station.getBlockPos());
-        if(pickup==null){station.setProblem("Meal Pickup Counter missing");return;}
-        if(!pickup.food().isEmpty()){
-            station.setProblem("Pickup plate occupied; collect the previous meal");return;
-        }
-        Identifier id=Identifier.tryParse(station.chefFood());
-        if(id==null||!BuiltInRegistries.ITEM.containsKey(id)){
-            station.setProblem("Ordered item is no longer registered");return;
-        }
-        // Leftovers belong to the connected Cooking for Blockheads pantry,
-        // never a separate inventory in the order kiosk.
-        List<ItemStack> extras=new ArrayList<>();
-        for(var entry:station.chefSurplus().entrySet()){
-            Identifier leftId=Identifier.tryParse(entry.getKey());
-            if(leftId==null||!BuiltInRegistries.ITEM.containsKey(leftId))continue;
-            var item=BuiltInRegistries.ITEM.getValue(leftId);
-            int count=entry.getValue();
-            while(count>0){
-                int amount=Math.min(count,new ItemStack(item).getMaxStackSize());
-                extras.add(new ItemStack(item,amount));count-=amount;
-            }
+        if(chefs.isEmpty()){
+            station.setProblem("No Chef Golems loaded to fulfill this order");
+            return;
         }
         KitchenSupplies pantry=kitchen(level,station);
         if(!pantry.connected()){
-            station.setProblem("Kitchen disconnected; press LINK to restore the pantry");
+            station.setProblem("Linked Cooking for Blockheads kitchen disconnected");
             return;
         }
-        if(!pantry.canInsertAll(extras)){
-            station.setProblem("Kitchen storage full; make space for extra recipe outputs");
+        if(!station.chefStepsFinished()){
+            String raw=station.chefStepData();
+            ChefRecipePlanner.WorkStep step;
+            try{step=ChefRecipePlanner.WorkStep.decode(raw);}
+            catch(IllegalArgumentException ex){
+                // Compatible with orders already active in worlds saved by
+                // older versions. Their ingredients were already reserved.
+                BlockPos point=pantry.stationFor(level,"Assemble");
+                if(!approachChefs(level,chefs,point,ItemStack.EMPTY,true))return;
+                station.progressChef();
+                if(station.chefWorkTicks()>=65)station.finishChefNonRecipe();
+                return;
+            }
+            int ticks=station.chefWorkTicks();
+            boolean heated=!step.method().equals("Assemble");
+            BlockPos workplace=pantry.stationFor(level,step.method());
+            if(workplace==null){
+                station.setProblem("No connected oven for "+step.method()+" step");
+                return;
+            }
+            BlockPos source=pantry.workPoint()==null?workplace:pantry.workPoint();
+            BlockPos target=ticks<25?source:workplace;
+            ItemStack carried=step.inputs().isEmpty()?ItemStack.EMPTY:
+                    new ItemStack(step.inputs().keySet().iterator().next());
+            if(!approachChefs(level,chefs,target,carried,ticks>=25)){
+                if(level.getGameTime()%80==0)
+                    station.setProblem("Chefs need a walkable kitchen floor near "+step.method());
+                return;
+            }
+            station.setProblem("");
+            if(ticks<25){
+                // Travel to pantry and visibly pick up the planned item.
+                station.progressChef();
+                return;
+            }
+            if(heated){
+                String problem=ChefOvenWork.progress(level,workplace,station,step);
+                if(problem!=null){
+                    if(level.getGameTime()%60==0)station.setProblem(problem);
+                }else station.setProblem("");
+                return;
+            }
+            // Recipe assembly occurs at a real kitchen work surface. Each
+            // intermediate is materialized in the sealed job buffer and is
+            // then used by later steps instead of being generated at pickup.
+            station.progressChef();
+            if(station.chefWorkTicks()>=75){
+                if(!station.completeChefWork(step))
+                    station.setProblem("Planned ingredient unavailable in reserved job buffer");
+            }
             return;
         }
-        ItemStack meal=new ItemStack(BuiltInRegistries.ITEM.getValue(id),
-                station.chefQuantity());
-        // On the server thread, neither inventory changes between the
-        // capacity check and committing it.
-        if(!pantry.insertAll(extras)){
-            station.setProblem("Kitchen storage changed; retrying meal");
+
+        for(ChefGolem chef:chefs)chef.setJobAppearance(false,ItemStack.EMPTY);
+        MealCounterBlockEntity pickup=counter(level,station.getBlockPos());
+        if(pickup==null){station.setProblem("Meal Pickup Counter missing");return;}
+        if(!pickup.food().isEmpty()){
+            station.setProblem("Pickup counter occupied. Collect the previous meal");
             return;
         }
-        if(pickup.serve(meal)){
+        Identifier id=Identifier.tryParse(station.chefFood());
+        if(id==null||!BuiltInRegistries.ITEM.containsKey(id)){
+            station.setProblem("Ordered food is no longer registered");return;
+        }
+        var reserved=new LinkedHashMap<>(station.chefReserved());
+        int available=reserved.getOrDefault(id.toString(),0);
+        if(available<station.chefQuantity()){
+            station.setProblem("Prepared meal missing from job buffer; refusing free output");
+            return;
+        }
+        int remain=available-station.chefQuantity();
+        if(remain==0)reserved.remove(id.toString());
+        else reserved.put(id.toString(),remain);
+        List<ItemStack> leftovers=new ArrayList<>();
+        for(var entry:reserved.entrySet()){
+            Identifier itemId=Identifier.tryParse(entry.getKey());
+            if(itemId==null||!BuiltInRegistries.ITEM.containsKey(itemId))continue;
+            Item item=BuiltInRegistries.ITEM.getValue(itemId);
+            int count=entry.getValue();
+            if(count<0)continue;
+            while(count>0){
+                int n=Math.min(count,new ItemStack(item).getMaxStackSize());
+                leftovers.add(new ItemStack(item,n));
+                count-=n;
+            }
+        }
+        if(!pantry.canInsertAll(leftovers)){
+            station.setProblem("Kitchen storage is full: cannot return unused recipe items");
+            return;
+        }
+        // Both inventories are server-thread-owned. No inventory reads from
+        // any player or synthetic generated prepared meal are involved.
+        if(!pantry.insertAll(leftovers)){
+            station.setProblem("Kitchen changed during item return; retrying");return;
+        }
+        if(pickup.serve(new ItemStack(BuiltInRegistries.ITEM.getValue(id),
+                                    station.chefQuantity()))){
             station.clearChefOrder();
             station.setProblem("");
         }
+    }
+
+    private static boolean approachChefs(ServerLevel level,List<ChefGolem> chefs,
+                                         BlockPos target,ItemStack carrying,boolean preparing){
+        if(target==null)return false;
+        boolean ready=false;
+        for(ChefGolem chef:chefs){
+            double dist=chef.distanceToSqr(target.getX()+.5,target.getY()+.5,target.getZ()+.5);
+            boolean nearby=dist<=13;
+            chef.setJobAppearance(nearby&&preparing,carrying);
+            if(nearby)ready=true;
+            else if(level.getGameTime()%30==0||chef.getNavigation().isDone())
+                ChefFloorNavigation.work(level,chef,target);
+        }
+        return ready;
     }
 }
