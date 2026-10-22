@@ -253,3 +253,17 @@ machines or virtual inputs are intentionally unsupported for safety.
   properties, preventing them from hiding neighboring solid block faces.
 * Crafted worker item icons are individual 3D models: hard hat, briefcase,
   beekeeper veil, chef's hat and fishing vest.
+
+## Trader counter and movement maintenance (0.3.5-dev)
+
+The trader's business desk now has four feet, an extended brass lamp base,
+a correctly textured lamp bulb / shade underside, and emits block light
+(level 12). The previous placed block item and station contents are retained
+when upgrading.
+
+All five Golem entities use a collision width of exactly 0.85 blocks;
+their model and rendered size are unchanged. Trader paths are reused rather
+than restarted every twelve ticks, doors are opened ahead and closed after
+the trader has cleared them, nearby traders yield by deterministic priority,
+and traders seek walkable cells next to the desk on their return instead of
+pathing onto the desktop.
