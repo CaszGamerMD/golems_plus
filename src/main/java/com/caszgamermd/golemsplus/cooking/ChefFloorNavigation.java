@@ -36,11 +36,26 @@ public final class ChefFloorNavigation {
                         .getCollisionShape(level,feet.below()).isEmpty()
                 &&!level.getBlockState(feet.below()).is(net.minecraft.world.level.block.Blocks.MAGMA_BLOCK);
     }
+    private static final double MAX_CLIMB=.6001;
+    private static double floorHeight(ServerLevel level,BlockPos feet){
+        BlockPos below=feet.below();
+        var shape=level.getBlockState(below).getCollisionShape(level,below);
+        return below.getY()+(shape.isEmpty()?0:shape.max(net.minecraft.core.Direction.Axis.Y));
+    }
     private static boolean clearPath(ServerLevel level,Path path){
         if(path==null||!path.canReach())return false;
-        for(int i=1;i<path.getNodeCount();i++){
-            Node p=path.getNode(i);
-            if(appliance(level,new BlockPos(p.x,p.y-1,p.z)))return false;
+        double previous=Double.NaN;
+        for(int i=0;i<path.getNodeCount();i++){
+            Node node=path.getNode(i);
+            BlockPos feet=new BlockPos(node.x,node.y,node.z);
+            if(!level.hasChunkAt(feet)||!level.hasChunkAt(feet.below())
+                    ||appliance(level,feet.below()))return false;
+            double elevation=floorHeight(level,feet);
+            // Never accept a route that forces a jump onto a one-block
+            // counter or any ledge taller than a slab. Small changes
+            // such as carpets and half-slabs remain navigable.
+            if(!Double.isNaN(previous)&&elevation-previous>MAX_CLIMB)return false;
+            previous=elevation;
         }
         return true;
     }
