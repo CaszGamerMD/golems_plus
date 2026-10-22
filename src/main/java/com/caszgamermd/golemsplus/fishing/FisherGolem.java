@@ -134,7 +134,7 @@ public final class FisherGolem extends PathfinderMob {
         }
         if(phase==0&&station.fishingSpot()!=null)phase=1;
         if(anyFish()&&(full()||bait<=0))phase=3;
-        if(rod.isEmpty()||bait==0&&phase!=3)phase=0;
+        if((rod.isEmpty()||bait==0)&&phase!=3)phase=0;
         if(phase==0)restock(level,station);
         else if(phase==1)travel(level,station);
         else if(phase==2)fish(level,station);
