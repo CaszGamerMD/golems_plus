@@ -126,6 +126,8 @@ public final class ChefRecipePlanner {
     @SuppressWarnings("unchecked")
     private static List<Ingredient> ingredients(Object recipe)throws ReflectiveOperationException{
         if(recipe instanceof AbstractCookingRecipe cooking)return List.of(cooking.input());
+        if(recipe instanceof ShapedRecipe shaped)
+            return shaped.getIngredients().stream().flatMap(java.util.Optional::stream).toList();
         Object value=null;Class<?> cls=recipe.getClass();
         while(cls!=null&&value==null){
             try{
