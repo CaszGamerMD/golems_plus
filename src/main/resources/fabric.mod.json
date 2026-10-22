@@ -18,5 +18,5 @@
     "java": ">=25",
     "fabric-api": "*"
   },
-  "suggests": { "caszual_additions": "*" }
+  "suggests": { "caszual_additions": "*", "cookingforblockheads": "*", "balm": "*" }
 }
