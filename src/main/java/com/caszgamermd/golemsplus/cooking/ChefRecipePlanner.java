@@ -12,7 +12,47 @@ import net.minecraft.world.item.crafting.*;
 /** Bottom-up recipes: consumes real leaf ingredients and records each step.
  * Unresolvable recipes are rejected, never synthesized from nothing. */
 public final class ChefRecipePlanner {
-    public record Plan(Map<Item,Integer> ingredients,List<String> steps,Map<Item,Integer> leftovers){}
+    public record WorkStep(String method,Item result,int resultCount,Map<Item,Integer> inputs){
+        public String encode(){
+            StringBuilder s=new StringBuilder(method).append('|')
+                    .append(BuiltInRegistries.ITEM.getKey(result))
+                    .append('|').append(resultCount).append('|');
+            inputs.entrySet().stream()
+                    .sorted(Comparator.comparing(e->BuiltInRegistries.ITEM.getKey(e.getKey()).toString()))
+                    .forEach(e->s.append(BuiltInRegistries.ITEM.getKey(e.getKey()))
+                            .append('*').append(e.getValue()).append(','));
+            return s.toString();
+        }
+        public static WorkStep decode(String serialized){
+            String[] fields=serialized.split("\\|",4);
+            if(fields.length!=4)throw new IllegalArgumentException("Invalid Chef work step");
+            int count=Integer.parseInt(fields[2]);
+            if(count<1||count>1024)throw new IllegalArgumentException("Invalid batch size");
+            Item result=item(fields[1]);
+            Map<Item,Integer> in=new LinkedHashMap<>();
+            if(!fields[3].isBlank())
+                for(String part:fields[3].split(",")){
+                    if(part.isBlank())continue;
+                    String[] entry=part.split("\\*",2);
+                    if(entry.length!=2)throw new IllegalArgumentException("Invalid ingredient entry");
+                    int qty=Integer.parseInt(entry[1]);
+                    if(qty<1||qty>1024)throw new IllegalArgumentException("Invalid quantity");
+                    in.merge(item(entry[0]),qty,Integer::sum);
+                }
+            return new WorkStep(fields[0],result,count,Map.copyOf(in));
+        }
+        private static Item item(String id){
+            net.minecraft.resources.Identifier name=net.minecraft.resources.Identifier.tryParse(id);
+            if(name==null||!BuiltInRegistries.ITEM.containsKey(name))
+                throw new IllegalArgumentException("Unknown ingredient "+id);
+            return BuiltInRegistries.ITEM.getValue(name);
+        }
+        public String label(){
+            return method+" "+resultCount+" x "+BuiltInRegistries.ITEM.getKey(result);
+        }
+    }
+    public record Plan(Map<Item,Integer> ingredients,List<String> steps,
+                       Map<Item,Integer> leftovers,List<WorkStep> work){}
     /** Explains the work tree and which terminal ingredients the kitchen lacks. */
     public record Preview(Map<Item,Integer> available,Map<Item,Integer> missing,List<String> steps){}
     public static Preview preview(ServerLevel level,Item target,int count,Map<Item,Integer> available){
@@ -26,7 +66,8 @@ public final class ChefRecipePlanner {
     public static Plan plan(ServerLevel level,Item desired,int amount,Map<Item,Integer> stock){
         Mutable m=solve(level,desired,amount,stock,false);
         if(m==null)return null;
-        return new Plan(Map.copyOf(m.used),List.copyOf(m.steps),Map.copyOf(m.crafted));
+        return new Plan(Map.copyOf(m.used),List.copyOf(m.steps),
+                Map.copyOf(m.crafted),List.copyOf(m.work));
     }
     private static Mutable solve(ServerLevel level,Item desired,int amount,
                                  Map<Item,Integer> stock,boolean inspection){
@@ -77,19 +118,20 @@ public final class ChefRecipePlanner {
     private static final class Mutable{
         final Map<Item,Integer> remaining,used,crafted,missing;
         final List<String> steps;
+        final List<WorkStep> work;
         final boolean inspection;
         int operations;
         Mutable(Map<Item,Integer> stock,boolean inspection){
             remaining=new HashMap<>(stock);used=new HashMap<>();
             crafted=new HashMap<>();missing=new HashMap<>();
-            steps=new ArrayList<>();this.inspection=inspection;
+            steps=new ArrayList<>();work=new ArrayList<>();this.inspection=inspection;
         }
         Mutable(Mutable other){
             remaining=new HashMap<>(other.remaining);
             used=new HashMap<>(other.used);
             crafted=new HashMap<>(other.crafted);
             missing=new HashMap<>(other.missing);
-            steps=new ArrayList<>(other.steps);
+            steps=new ArrayList<>(other.steps);work=new ArrayList<>(other.work);
             inspection=other.inspection;operations=other.operations;
         }
         long score(){
@@ -143,6 +185,7 @@ public final class ChefRecipePlanner {
                 int times=(unmet+recipe.count-1)/recipe.count;
                 if(times<1||times>64||recipe.ingredients.size()>40)continue;
                 Mutable trial=new Mutable(start);
+                Map<Item,Integer> chosenIngredients=new LinkedHashMap<>();
                 boolean possible=true;
                 for(Ingredient ingredient:recipe.ingredients){
                     List<Item> options=new ArrayList<>();
@@ -159,12 +202,15 @@ public final class ChefRecipePlanner {
                                     +optionStock.crafted.getOrDefault(item,0)>0?0:1)
                             .thenComparing(item->BuiltInRegistries.ITEM.getKey(item).toString()));
                     Mutable selected=null;
+                    Item selectedItem=null;
                     int tried=0;
                     for(Item option:options){
                         if(tried++>=MAX_CHOICES)break;
                         Mutable variant=resolve(trial,option,times,occupied,depth+1);
-                        if(variant!=null&&(selected==null||variant.score()<selected.score()))
+                        if(variant!=null&&(selected==null||variant.score()<selected.score())){
                             selected=variant;
+                            selectedItem=option;
+                        }
                         // A stocked ingredient is optimal for this
                         // ingredient if its use incurs no new recipe steps.
                         if(selected!=null && selected.steps.size()==trial.steps.size()
@@ -174,10 +220,13 @@ public final class ChefRecipePlanner {
                         possible=false;break;
                     }
                     trial=selected;
+                    chosenIngredients.merge(selectedItem,times,Integer::sum);
                 }
                 if(!possible)continue;
                 trial.steps.add(recipe.method+" "+times+" x "+
                         BuiltInRegistries.ITEM.getKey(desired));
+                trial.work.add(new WorkStep(recipe.method,desired,
+                        times*recipe.count,Map.copyOf(chosenIngredients)));
                 trial.operations+=times;
                 int extra=times*recipe.count-unmet;
                 if(extra>0)trial.crafted.merge(desired,extra,Integer::sum);
