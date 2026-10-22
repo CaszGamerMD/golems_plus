@@ -61,7 +61,7 @@ public final class ChefGolem extends PathfinderMob {
         }
         getEntityData().set(PREPARING,station.chefBusy());
         if(!station.chefBusy() && station.phase()!=com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED)
-            com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(server,this,home);
+            ChefFloorNavigation.idle(server,this,home);
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
         super.addAdditionalSaveData(out);

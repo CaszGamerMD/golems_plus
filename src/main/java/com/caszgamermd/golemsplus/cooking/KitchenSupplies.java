@@ -117,6 +117,72 @@ public final class KitchenSupplies {
         return result;
     }
 
+    /**
+     * Put batch leftovers back into the real linked kitchen. We validate
+     * every slot and every item before changing *any* kitchen inventory.
+     * No workstation storage is used, and leftovers are never voided.
+     */
+    private static final class SlotState{
+        final Container container;
+        final int slot;
+        final ItemStack before;
+        ItemStack after;
+        SlotState(Container container,int slot,ItemStack original){
+            this.container=container;this.slot=slot;
+            this.before=original.copy();this.after=original.copy();
+        }
+    }
+    public boolean canInsertAll(List<ItemStack> items){
+        return simulateInsertion(items,false);
+    }
+    public boolean insertAll(List<ItemStack> items){
+        return simulateInsertion(items,true);
+    }
+    private boolean simulateInsertion(List<ItemStack> additions,boolean commit){
+        List<SlotState> slots=new ArrayList<>();
+        for(Container c:containers){
+            for(int n=0;n<c.getContainerSize();n++){
+                ItemStack before=c.getItem(n);
+                slots.add(new SlotState(c,n,before));
+            }
+        }
+        for(ItemStack incoming:additions){
+            if(incoming.isEmpty())continue;
+            int left=incoming.getCount();
+            for(SlotState slot:slots){
+                ItemStack staged=slot.after;
+                if(left==0)break;
+                if(!staged.isEmpty()&&ItemStack.isSameItemSameComponents(staged,incoming)
+                        &&slot.container.canPlaceItem(slot.slot,incoming)){
+                    int capacity=Math.min(staged.getMaxStackSize(),64)-staged.getCount();
+                    int accepted=Math.min(left,Math.max(0,capacity));
+                    staged.grow(accepted);
+                    left-=accepted;
+                }
+            }
+            for(SlotState slot:slots){
+                if(left==0)break;
+                if(slot.after.isEmpty()
+                        &&slot.container.canPlaceItem(slot.slot,incoming)){
+                    int accepted=Math.min(left,Math.min(incoming.getMaxStackSize(),64));
+                    slot.after=incoming.copyWithCount(accepted);
+                    left-=accepted;
+                }
+            }
+            if(left>0)return false;
+        }
+        if(!commit)return true;
+        // Write only changed slots. Slot after-state has already been
+        // validated, so every item is accounted for.
+        for(SlotState slot:slots){
+            if(!ItemStack.matches(slot.before,slot.after)){
+                slot.container.setItem(slot.slot,slot.after.copy());
+                slot.container.setChanged();
+            }
+        }
+        return true;
+    }
+
     /** Recheck every count before consuming real items on the server thread. */
     public boolean consume(Map<Item,Integer> needed){
         Map<Item,Integer> available=snapshot();

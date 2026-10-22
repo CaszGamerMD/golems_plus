@@ -198,7 +198,18 @@ published until the build and tests succeed.
 
 ## Chef Kiosk / Cooking for Blockheads shared kitchen
 
-The old Chef's Kitchen Station is now a touchscreen food-order kiosk. A
+The old Chef's Kitchen Station is now a touchscreen food-order kiosk.
+**The kiosk has no item slots or player-inventory view.** Food ingredients,
+inventory counts, and all extra recipe products use the linked Cooking for
+Blockheads kitchen storage. The Meal Pickup Counter is the only destination
+for completed plated orders. Any items left in an older kiosk inventory
+remain saved and are returned when that old kiosk block is broken.
+
+Chefs favor colored Cooking for Blockheads kitchen floor tiles for both
+idle walking and recipe preparation. Pathfinding rejects routes across
+kitchen appliances and counter tops; on kitchens without those tiles, chefs
+fall back to safe ordinary flooring. Keep a walking aisle clear between
+the kitchen and work stations. A
 **Meal Pickup Counter** is the counter where finished meals appear on a white
 plate. Right-click to claim the actual food; the visible plate does not drop.
 
