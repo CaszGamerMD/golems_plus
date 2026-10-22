@@ -146,12 +146,15 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             }catch(Exception e){throw new IllegalArgumentException(e.getMessage());}
         });
     }
+    private int controlX(int x){
+        return menu.isKitchenKiosk()?x-90:x;
+    }
     private void button(String text,int x,int y,int width,Runnable action){
         addRenderableWidget(Button.builder(Component.literal(text),b -> action.run())
-                .bounds(leftPos+x,topPos+y,width,20).build());
+                .bounds(leftPos+controlX(x),topPos+y,width,20).build());
     }
     private void editor(int y,String label,String value,boolean isFirst){
-        EditBox box=new EditBox(font,leftPos+PANE,topPos+y,182,18,
+        EditBox box=new EditBox(font,leftPos+controlX(PANE),topPos+y,182,18,
                 Component.literal(label));
         box.setMaxLength(120);
         box.setValue(value);
@@ -390,6 +393,16 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     @Override public void extractBackground(GuiGraphicsExtractor g,int mouseX,
             int mouseY,float partialTick){
         int x=leftPos,y=topPos;
+        if(menu.isKitchenKiosk()){
+            // Full-screen fast-food ordering terminal; no workstation or
+            // player inventory is presented or independently accessible.
+            g.fill(x,y,x+BG_WIDTH,y+BG_HEIGHT,0xff101d22);
+            g.fill(x+7,y+7,x+BG_WIDTH-7,y+BG_HEIGHT-7,0xff1e393f);
+            g.fill(x+12,y+12,x+BG_WIDTH-12,y+27,0xffef9d3b);
+            g.fill(x+82,y+34,x+BG_WIDTH-82,y+BG_HEIGHT-13,0xff26363b);
+            g.fill(x+89,y+39,x+BG_WIDTH-89,y+BG_HEIGHT-19,0xff20333a);
+            return;
+        }
         g.fill(x,y,x+BG_WIDTH,y+BG_HEIGHT,0xff1b2529);
         g.fill(x+4,y+4,x+BG_WIDTH-4,y+BG_HEIGHT-4,0xff586a70);
         g.fill(x+6,y+23,x+170,y+105,0xff384a50);
@@ -403,6 +416,32 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         return value.length()>max?value.substring(0,max-1)+"…":value;
     }
     @Override protected void extractLabels(GuiGraphicsExtractor g,int mouseX,int mouseY){
+        if(menu.isKitchenKiosk()){
+            g.text(font,"CASZUAL KITCHEN  •  ORDER HERE",20,16,0xff17242b,false);
+            var kitchen=station();
+            if(page==Page.CHEF_MENU){
+                g.text(font,"Search meals",95,87,LABEL_COLOR,false);
+                g.text(font,"Qty "+chefAmount+"  Page "+(chefPage+1)+"/"+
+                        Math.max(1,(visibleMeals.size()+2)/3),95,198,LABEL_COLOR,false);
+            }else{
+                g.text(font,"PANTRY  •  LINKED KITCHEN STOCK",95,197,LABEL_COLOR,false);
+            }
+            if(kitchen!=null){
+                g.text(font,"CHEFS: "+kitchen.chefWorkerIds().size()+"/"+kitchen.crewTarget(),
+                        131,213,0xffe6f3ec,false);
+                String status=kitchen.chefBusy()
+                        ?kitchen.chefCurrentStep()+" ("+kitchen.chefStepIndex()+
+                            "/"+kitchen.chefStepCount()+")"
+                        :kitchen.kitchenLink()==null?"No kitchen linked":"Ready to order";
+                g.text(font,truncate(status,34),95,228,LABEL_COLOR,false);
+                String feedbackText=kitchen.problem().isBlank()?feedback:kitchen.problem();
+                if(!feedbackText.isBlank())
+                    g.text(font,truncate(feedbackText,40),52,246,0xffffc480,false);
+            }else if(!feedback.isBlank()){
+                g.text(font,truncate(feedback,40),52,246,0xffffc480,false);
+            }
+            return;
+        }
         g.text(font,title,8,7,0xffe5f9ee,false);
         g.text(font,Component.literal(beekeeper()?"LINK EXTERNAL TOOLBOX":"STOCK / MATERIALS"),35,19,LABEL_COLOR,false);
         g.text(font,Component.literal(beekeeper()?"NO DIRECT STORAGE":"RETURNS"),8,87,LABEL_COLOR,false);
