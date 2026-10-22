@@ -6,6 +6,13 @@ import com.caszgamermd.golemsplus.trader.TraderGolem;
 import com.caszgamermd.golemsplus.cooking.ChefGolem;
 import com.caszgamermd.golemsplus.fishing.FisherGolem;
 import net.minecraft.client.model.geom.ModelLayerLocation;
+import net.minecraft.client.renderer.item.ItemModelResolver;
+import net.minecraft.world.item.ItemDisplayContext;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.MobRenderer;
 import net.minecraft.resources.Identifier;
@@ -26,10 +33,12 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
     public static final ModelLayerLocation FISHER_LAYER=
             new ModelLayerLocation(GolemsPlus.id("fisher_worker"),"main");
     private final Identifier uniformTexture;
+    private final ItemModelResolver itemModelResolver;
 
     public ProfessionGolemRenderer(EntityRendererProvider.Context context,
             ModelLayerLocation layer,ProfessionGolemModel.Profession kind){
         super(context,new ProfessionGolemModel(context.bakeLayer(layer),kind),.35f);
+        itemModelResolver=context.itemModelResolver();
         uniformTexture=GolemsPlus.id("textures/entity/"+
                 kind.name().toLowerCase(java.util.Locale.ROOT)+"_golem.png");
     }
@@ -49,8 +58,24 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
                 &&!entity.getNavigation().isDone())
                 ||(entity instanceof ChefGolem chef&&chef.preparing());
         state.presenting=entity instanceof TraderGolem trader&&trader.presenting();
+        itemModelResolver.updateForTopItem(state.tradeItem,
+                entity instanceof TraderGolem trader&&trader.presenting()
+                        ?trader.displayedOffer():net.minecraft.world.item.ItemStack.EMPTY,
+                ItemDisplayContext.FIXED,entity.level(),null,entity.getId());
         state.hasRod=entity instanceof FisherGolem fisher&&fisher.hasRod();
         state.carryingFish=entity instanceof FisherGolem fisher&&fisher.hasCatch();
         // ChefGolem uses the same shared animation but has no recipe AI yet.
+    }
+    @Override public void submit(ProfessionGolemRenderState state,PoseStack pose,
+            SubmitNodeCollector collector,CameraRenderState camera){
+        super.submit(state,pose,collector,camera);
+        if(!state.presenting||state.tradeItem.isEmpty())return;
+        pose.pushPose();
+        // Align the displayed goods with the model's forward-facing tray.
+        pose.mulPose(Axis.YP.rotationDegrees(180f-state.bodyRot));
+        pose.translate(0,1.22,-.74);
+        pose.scale(.32f,.32f,.32f);
+        state.tradeItem.submit(pose,collector,state.lightCoords,OverlayTexture.NO_OVERLAY,0);
+        pose.popPose();
     }
 }
