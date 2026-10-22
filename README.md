@@ -267,3 +267,23 @@ than restarted every twelve ticks, doors are opened ahead and closed after
 the trader has cleared them, nearby traders yield by deterministic priority,
 and traders seek walkable cells next to the desk on their return instead of
 pathing onto the desktop.
+
+## Kitchen order reliability (0.3.6-dev)
+
+* Chef Golems have a 0.6-block step height. Their path planner refuses
+  any route with a rise above 0.6 blocks, even if Minecraft's normal mob
+  pathfinder would jump onto a full-height counter. Slabs and lower steps
+  remain valid.
+* Cooking kiosks now have a wide, adaptive menu featuring a searchable
+  icon grid with hover tooltips. The ingredient list supports mouse-wheel
+  scrolling and on-screen arrows. Missing raw materials show in red.
+* While any Golems Plus job-block screen is open, world/hotbar shortcuts
+  are consumed instead of being forwarded to vanilla container hotkeys.
+  Text entry, Tab focus, and Escape continue to work.
+* The Chef planner picks a single recipe option per item. It scores
+  alternatives by missing kitchen supplies first, then number of operations
+  and real pantry material usage. It does not attempt every candidate
+  recipe or ingredient variant. Ordering rejects missing stock; previews
+  highlight unmet raw ingredients.
+* Kiosk block models now explicitly texture every face and underside,
+  with a new custom casing texture and the existing animated menu art.
