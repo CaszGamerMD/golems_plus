@@ -41,7 +41,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     private int menuColumns(){return Math.max(5,Math.min(14,(imageWidth-60)/35));}
     private int menuRows(){return Math.max(3,(imageHeight-151)/35);}
     private int menuPageSize(){return menuColumns()*menuRows();}
-    private int detailVisible(){return Math.max(6,(imageHeight-142)/14);}
+    private int detailVisible(){return Math.max(6,(imageHeight-185)/14);}
     private int detailMax(){
         var st=station();
         return Math.max(0,(st==null?0:st.chefPreviewLines().size())-detailVisible());
