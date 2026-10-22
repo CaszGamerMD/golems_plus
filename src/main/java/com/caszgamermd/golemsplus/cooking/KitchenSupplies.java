@@ -16,13 +16,18 @@ import net.minecraft.world.level.block.entity.BlockEntity;
  * No hard dependency: kitchen providers are queried only when installed. */
 public final class KitchenSupplies {
     private final List<Container> containers;
-    private KitchenSupplies(List<Container> containers){this.containers=containers;}
+    private final BlockPos workPoint;
+    private KitchenSupplies(List<Container> containers,BlockPos workPoint){
+        this.containers=containers;this.workPoint=workPoint;
+    }
+    public BlockPos workPoint(){return workPoint;}
     public boolean connected(){return !containers.isEmpty();}
     public static KitchenSupplies around(ServerLevel level,BlockPos kiosk) {
         Set<BlockPos> seen=new HashSet<>();
         ArrayDeque<BlockPos> open=new ArrayDeque<>();
         for(Direction d:Direction.values())open.add(kiosk.relative(d));
         List<Container> supplies=new ArrayList<>();
+        BlockPos workPoint=null;
         int budget=0;
         while(!open.isEmpty()&&budget++<512){
             BlockPos pos=open.removeFirst();
@@ -31,13 +36,15 @@ public final class KitchenSupplies {
             if(!BuiltInRegistries.BLOCK.getKey(state.getBlock())
                     .getNamespace().equals("cookingforblockheads"))continue;
             BlockEntity be=level.getBlockEntity(pos);
+            if(workPoint==null||BuiltInRegistries.BLOCK.getKey(state.getBlock())
+                    .getPath().contains("oven"))workPoint=pos;
             if(be!=null){
                 Container c=container(be);
                 if(c!=null&&!supplies.contains(c))supplies.add(c);
             }
             for(Direction d:Direction.values())open.add(pos.relative(d));
         }
-        return new KitchenSupplies(supplies);
+        return new KitchenSupplies(supplies,workPoint);
     }
     private static Container container(BlockEntity be){
         if(be instanceof Container c)return c;
