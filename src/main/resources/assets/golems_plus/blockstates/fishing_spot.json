@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "waterlogged=false": {
+      "model": "golems_plus:block/fishing_spot_shore"
+    },
+    "waterlogged=true": {
+      "model": "golems_plus:block/fishing_spot_buoy"
+    }
+  }
+}
