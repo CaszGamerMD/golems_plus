@@ -26,7 +26,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     private EditBox first,second;
     private String requestedItem="minecraft:emerald", requestedAmount="16";
     private String budgetItem="minecraft:wheat", budgetMaximum="320";
-    private String villagePosition="",villageRadius="32";
+    private String villagePosition="",villageRadius="32",fishingPosition="";
     private int beeRadius=12,beeMode=0;
     private boolean loadedVillageDefaults,loadedOrderDefaults;
     private String feedback="";
@@ -357,8 +357,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             button("Resume",PANE+92,178,90,()->send("trader_resume",0));
             crewControls();
         }else if(beekeeper()){
-            button("Find TOOLBOX",PANE,36,182,()->send("bee_tools",0));
-            button("Find OUTPUT",PANE,61,182,()->send("bee_output",0));
+            button("LINK OUTPUT CHEST",PANE,36,182,()->send("bee_output",0));
             button("Mode: "+(beeMode==0?"Both":beeMode==1?"Comb":"Honey"),
                     PANE,91,182,()->{
                         beeMode=(beeMode+1)%3;send("bee_mode",beeMode);
@@ -376,8 +375,28 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             button("Resume",PANE+92,154,90,()->send("bee_resume",0));
             crewControls();
         }else if(fisher()){
-            button("PAUSE",PANE,57,89,()->send("fish_pause",0));
-            button("RESUME",PANE+92,57,90,()->send("fish_resume",0));
+            var worker=station();
+            if(worker!=null&&worker.fishingSpot()!=null)
+                fishingPosition=worker.fishingSpot().getX()+" "+
+                        worker.fishingSpot().getY()+" "+worker.fishingSpot().getZ();
+            button("LINK OUTPUT CHEST",PANE,36,182,()->send("fish_output",0));
+            editor(87,"Fishing waypoint X Y Z",fishingPosition,true);
+            button("USE PLAYER POSITION",PANE,119,182,()->{
+                if(minecraft.player!=null){
+                    BlockPos pos=minecraft.player.blockPosition();
+                    first.setValue(pos.getX()+" "+pos.getY()+" "+pos.getZ());
+                }
+            });
+            button("SAVE WAYPOINT / FLAG",PANE,146,182,()->safe(()->{
+                String[] xyz=first.getValue().trim().split("[,\\s]+");
+                if(xyz.length!=3)throw new IllegalArgumentException("Enter X Y Z");
+                int x=Integer.parseInt(xyz[0]),y=Integer.parseInt(xyz[1]),
+                        z=Integer.parseInt(xyz[2]);
+                fishingPosition=first.getValue();
+                send("fish_spot","",0,x,y,z);
+            }));
+            button("PAUSE",PANE,176,89,()->send("fish_pause",0));
+            button("RESUME",PANE+92,176,90,()->send("fish_resume",0));
             crewControls();
         }else if(builder()){
             button("BUILD",PANE,28,89,()->openPage(Page.BUILD));
@@ -535,8 +554,10 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             return;
         }
         g.text(font,title,8,7,0xffe5f9ee,false);
-        g.text(font,Component.literal(beekeeper()?"LINK EXTERNAL TOOLBOX":"STOCK / MATERIALS"),35,19,LABEL_COLOR,false);
-        g.text(font,Component.literal(beekeeper()?"NO DIRECT STORAGE":"RETURNS"),8,87,LABEL_COLOR,false);
+        g.text(font,Component.literal(beekeeper()?"BAG: TOOLS / FLOWERS":
+                fisher()?"COOLERS: RODS / BAIT":"STOCK / MATERIALS"),35,19,LABEL_COLOR,false);
+        g.text(font,Component.literal(beekeeper()?"BAG OVERFLOW":
+                fisher()?"COOLER SPARE SLOTS":"RETURNS"),8,87,LABEL_COLOR,false);
         g.text(font,Component.literal("INVENTORY"),8,109,LABEL_COLOR,false);
         g.text(font,Component.literal(trader()?"TRADER COUNTER":
                 builder()?"BUILDER PLANNER":
@@ -578,18 +599,23 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         }else if(beekeeper()){
             g.text(font,"Scan radius: "+beeRadius,185,143,LABEL_COLOR,false);
             if(station!=null){
-                String tools=station.beeToolbox()==null?"Not linked":
-                        station.beeToolbox().toShortString();
+                String tools="This bag's inventory";
                 String output=station.beeOutput()==null?"Not linked":
                         station.beeOutput().toShortString();
-                g.text(font,truncate("Tools: "+tools,32),185,184,LABEL_COLOR,false);
+                g.text(font,truncate("Supplies: "+tools,32),185,184,LABEL_COLOR,false);
                 g.text(font,truncate("Output: "+output,32),185,195,LABEL_COLOR,false);
             }
         }else if(fisher()){
-            g.text(font,"SUPPLIES: FISHING RODS",185,94,LABEL_COLOR,false);
-            g.text(font,"FISH: OUTPUT INVENTORY",185,111,LABEL_COLOR,false);
-            g.text(font,"Right-click Fisher to equip",185,128,LABEL_COLOR,false);
-            g.text(font,"Rod over shoulder while idle",185,140,LABEL_COLOR,false);
+            g.text(font,"SET FISHING POINT (X Y Z)",185,70,LABEL_COLOR,false);
+            if(station!=null){
+                String output=station.fisherOutput()==null?"Not linked":
+                        station.fisherOutput().toShortString();
+                String pos=station.fishingSpot()==null?"Not marked":
+                        station.fishingSpot().toShortString()+
+                        (station.fishingBuoy()?" / BUOY":" / FLAG");
+                g.text(font,truncate("Chest: "+output,32),185,201,LABEL_COLOR,false);
+                g.text(font,truncate("Spot: "+pos,32),185,212,LABEL_COLOR,false);
+            }
         }else if(builder()&&page==Page.BUILDER_PLACEMENTS){
             g.text(font,"LITEMATICA PLACEMENTS  "+choices.size(),185,45,LABEL_COLOR,false);
             if(choices.isEmpty())
