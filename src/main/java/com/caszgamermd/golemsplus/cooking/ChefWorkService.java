@@ -165,8 +165,8 @@ public final class ChefWorkService{
             }
         }
         ItemStack meal=new ItemStack(BuiltInRegistries.ITEM.getValue(id),station.chefQuantity());
-        for(ItemStack extra:extras)station.deposit(extra);
         if(pickup.serve(meal)){
+            for(ItemStack extra:extras)station.deposit(extra);
             station.clearChefOrder();
             station.setProblem("");
         }
