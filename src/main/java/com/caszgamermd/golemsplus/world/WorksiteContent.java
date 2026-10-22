@@ -3,6 +3,8 @@ package com.caszgamermd.golemsplus.world;
 import com.caszgamermd.golemsplus.GolemsPlus;
 import com.caszgamermd.golemsplus.worker.WorkerSpecialty;
 import com.caszgamermd.golemsplus.worker.WorkerGolemItem;
+import com.caszgamermd.golemsplus.cooking.MealCounterBlock;
+import com.caszgamermd.golemsplus.cooking.MealCounterBlockEntity;
 import net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 import net.fabricmc.fabric.api.menu.v1.ExtendedMenuType;
@@ -34,6 +36,9 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 public final class WorksiteContent {
     public static WorkerStationBlock BUILDER_TABLE, FISHING_STATION, TRADER_COUNTER, BEEKEEPER_STATION, COOKING_STATION;
     public static BeeToolboxBlock BEE_TOOLBOX;
+    public static MealCounterBlock MEAL_COUNTER;
+    public static Item MEAL_COUNTER_ITEM;
+    public static BlockEntityType<MealCounterBlockEntity> MEAL_COUNTER_ENTITY;
     public static Item BUILDER_TABLE_ITEM, FISHING_STATION_ITEM, TRADER_COUNTER_ITEM, BEEKEEPER_STATION_ITEM, BEE_TOOLBOX_ITEM, COOKING_STATION_ITEM;
     public static BlockEntityType<BeeToolboxBlockEntity> BEE_TOOLBOX_ENTITY;
     public static BlockEntityType<WorkerStationBlockEntity> STATION_ENTITY;
@@ -76,6 +81,11 @@ public final class WorksiteContent {
         TRADER_COUNTER = station("trader_counter", WorkerSpecialty.TRADER);
         BEEKEEPER_STATION=station("beekeeper_station",WorkerSpecialty.BEEKEEPER);
         COOKING_STATION=station("cooking_station",WorkerSpecialty.COOKING);
+        ResourceKey<net.minecraft.world.level.block.Block> plateKey=
+                ResourceKey.create(Registries.BLOCK,GolemsPlus.id("meal_counter"));
+        MEAL_COUNTER=Registry.register(BuiltInRegistries.BLOCK,plateKey,
+                new MealCounterBlock(BlockBehaviour.Properties
+                        .ofFullCopy(Blocks.QUARTZ_BLOCK).strength(2.0f).setId(plateKey)));
         ResourceKey<net.minecraft.world.level.block.Block> toolboxKey=
                 ResourceKey.create(Registries.BLOCK,GolemsPlus.id("beekeeper_toolbox"));
         BEE_TOOLBOX=Registry.register(BuiltInRegistries.BLOCK,toolboxKey,
@@ -86,6 +96,11 @@ public final class WorksiteContent {
         TRADER_COUNTER_ITEM = blockItem("trader_counter", TRADER_COUNTER);
         BEEKEEPER_STATION_ITEM=blockItem("beekeeper_station",BEEKEEPER_STATION);
         COOKING_STATION_ITEM=blockItem("cooking_station",COOKING_STATION);
+        ResourceKey<Item> counterItemKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("meal_counter"));
+        MEAL_COUNTER_ITEM=Registry.register(BuiltInRegistries.ITEM,counterItemKey,
+                new BlockItem(MEAL_COUNTER,new Item.Properties()
+                        .setId(counterItemKey).useBlockDescriptionPrefix()));
         ResourceKey<Item> toolboxItemKey=ResourceKey.create(Registries.ITEM,
                 GolemsPlus.id("beekeeper_toolbox"));
         BEE_TOOLBOX_ITEM=Registry.register(BuiltInRegistries.ITEM,toolboxItemKey,
@@ -96,6 +111,10 @@ public final class WorksiteContent {
                 FabricBlockEntityTypeBuilder.create(WorkerStationBlockEntity::new,
                         BUILDER_TABLE, FISHING_STATION, TRADER_COUNTER,
                         BEEKEEPER_STATION,COOKING_STATION).build());
+        MEAL_COUNTER_ENTITY=Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE,
+                GolemsPlus.id("meal_counter_entity"),
+                FabricBlockEntityTypeBuilder.create(MealCounterBlockEntity::new,
+                        MEAL_COUNTER).build());
         BEE_TOOLBOX_ENTITY=Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE,
                 GolemsPlus.id("beekeeper_toolbox_entity"),
                 FabricBlockEntityTypeBuilder.create(BeeToolboxBlockEntity::new,
@@ -151,6 +170,7 @@ public final class WorksiteContent {
                             output.accept(BEEKEEPER_STATION_ITEM);
                             output.accept(BEE_TOOLBOX_ITEM);
                             output.accept(COOKING_STATION_ITEM);
+                            output.accept(MEAL_COUNTER_ITEM);
                             output.accept(BUILDER_WORKER_ITEM);
                             output.accept(TRADER_WORKER_ITEM);
                             output.accept(BEEKEEPER_WORKER_ITEM);

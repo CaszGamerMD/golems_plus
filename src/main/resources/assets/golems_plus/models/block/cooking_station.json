@@ -1,1 +1,298 @@
-{"parent":"minecraft:block/cube_bottom_top","textures":{"side":"minecraft:block/smoker_side","top":"minecraft:block/smoker_top","bottom":"minecraft:block/oak_planks"}}
+{
+  "textures": {
+    "particle": "minecraft:block/smooth_quartz",
+    "white": "minecraft:block/smooth_quartz",
+    "black": "minecraft:block/black_concrete",
+    "screen": "minecraft:block/cyan_concrete",
+    "accent": "minecraft:block/orange_concrete",
+    "metal": "minecraft:block/iron_block",
+    "light": "minecraft:block/sea_lantern"
+  },
+  "elements": [
+    {
+      "name": "base",
+      "from": [
+        2,
+        0,
+        2
+      ],
+      "to": [
+        14,
+        2,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#black"
+        },
+        "south": {
+          "texture": "#black"
+        },
+        "east": {
+          "texture": "#black"
+        },
+        "west": {
+          "texture": "#black"
+        },
+        "up": {
+          "texture": "#black"
+        },
+        "down": {
+          "texture": "#black"
+        }
+      }
+    },
+    {
+      "name": "stand",
+      "from": [
+        6,
+        2,
+        6
+      ],
+      "to": [
+        10,
+        6,
+        10
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "white housing",
+      "from": [
+        2,
+        6,
+        3
+      ],
+      "to": [
+        14,
+        16,
+        13
+      ],
+      "faces": {
+        "north": {
+          "texture": "#white"
+        },
+        "south": {
+          "texture": "#white"
+        },
+        "east": {
+          "texture": "#white"
+        },
+        "west": {
+          "texture": "#white"
+        },
+        "up": {
+          "texture": "#white"
+        },
+        "down": {
+          "texture": "#white"
+        }
+      }
+    },
+    {
+      "name": "dark touchscreen",
+      "from": [
+        2.25,
+        8,
+        2.78
+      ],
+      "to": [
+        13.75,
+        14.8,
+        3.1
+      ],
+      "faces": {
+        "north": {
+          "texture": "#black"
+        },
+        "south": {
+          "texture": "#black"
+        },
+        "east": {
+          "texture": "#black"
+        },
+        "west": {
+          "texture": "#black"
+        },
+        "up": {
+          "texture": "#black"
+        },
+        "down": {
+          "texture": "#black"
+        }
+      }
+    },
+    {
+      "name": "screen panel",
+      "from": [
+        2.9,
+        8.7,
+        2.7
+      ],
+      "to": [
+        13.1,
+        13.2,
+        2.8
+      ],
+      "faces": {
+        "north": {
+          "texture": "#screen"
+        },
+        "south": {
+          "texture": "#screen"
+        },
+        "east": {
+          "texture": "#screen"
+        },
+        "west": {
+          "texture": "#screen"
+        },
+        "up": {
+          "texture": "#screen"
+        },
+        "down": {
+          "texture": "#screen"
+        }
+      }
+    },
+    {
+      "name": "brand header",
+      "from": [
+        2,
+        14.8,
+        2.7
+      ],
+      "to": [
+        14,
+        16,
+        3.3
+      ],
+      "faces": {
+        "north": {
+          "texture": "#accent"
+        },
+        "south": {
+          "texture": "#accent"
+        },
+        "east": {
+          "texture": "#accent"
+        },
+        "west": {
+          "texture": "#accent"
+        },
+        "up": {
+          "texture": "#accent"
+        },
+        "down": {
+          "texture": "#accent"
+        }
+      }
+    },
+    {
+      "name": "place order button",
+      "from": [
+        6,
+        7.3,
+        2.55
+      ],
+      "to": [
+        10,
+        8.2,
+        3.1
+      ],
+      "faces": {
+        "north": {
+          "texture": "#light"
+        },
+        "south": {
+          "texture": "#light"
+        },
+        "east": {
+          "texture": "#light"
+        },
+        "west": {
+          "texture": "#light"
+        },
+        "up": {
+          "texture": "#light"
+        },
+        "down": {
+          "texture": "#light"
+        }
+      }
+    },
+    {
+      "name": "side vent",
+      "from": [
+        13.9,
+        9,
+        5
+      ],
+      "to": [
+        14.2,
+        12,
+        11
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    }
+  ],
+  "display": {
+    "gui": {
+      "rotation": [
+        30,
+        145,
+        0
+      ],
+      "scale": [
+        0.76,
+        0.76,
+        0.76
+      ]
+    },
+    "ground": {
+      "scale": [
+        0.66,
+        0.66,
+        0.66
+      ]
+    }
+  }
+}

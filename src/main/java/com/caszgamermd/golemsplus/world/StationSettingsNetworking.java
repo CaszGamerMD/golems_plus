@@ -139,6 +139,24 @@ public final class StationSettingsNetworking {
                 if(table.isBuilder())done=table.setBuilderRotation(player.getUUID(),
                         change.amount);
             }
+            case "chef_order" -> {
+                if(table.isCooking()){
+                    String item=validatedItem(change.item);
+                    if(item!=null){
+                        done=com.caszgamermd.golemsplus.cooking.ChefWorkService.order(
+                                player,table,item,change.amount);
+                    }
+                    if(done)reply(player,"Order accepted: "+change.amount+" x "+change.item);
+                    else reply(player,table.problem().isBlank()?"Unable to start kitchen order":table.problem());
+                    return;
+                }
+            }
+            case "chef_pause" -> {
+                if(table.isCooking()){table.setPhase(WorkerPhase.PAUSED);done=true;}
+            }
+            case "chef_resume" -> {
+                if(table.isCooking()){table.setPhase(WorkerPhase.IDLE);done=true;}
+            }
             case "fish_pause" -> {
                 if(table.isFishing()){table.setPhase(WorkerPhase.PAUSED);done=true;}
             }

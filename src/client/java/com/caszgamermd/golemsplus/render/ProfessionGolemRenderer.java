@@ -45,8 +45,9 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
         super.extractRenderState(entity,state,partialTick);
         state.carrying=(entity instanceof BuilderGolem builder&&builder.hasSupplyBox())
                 || (entity instanceof TraderGolem trader&&trader.busy());
-        state.working=entity instanceof BuilderGolem
-                &&!entity.getNavigation().isDone();
+        state.working=(entity instanceof BuilderGolem
+                &&!entity.getNavigation().isDone())
+                ||(entity instanceof ChefGolem chef&&chef.preparing());
         state.presenting=entity instanceof TraderGolem trader&&trader.presenting();
         state.hasRod=entity instanceof FisherGolem fisher&&fisher.hasRod();
         state.carryingFish=entity instanceof FisherGolem fisher&&fisher.hasCatch();

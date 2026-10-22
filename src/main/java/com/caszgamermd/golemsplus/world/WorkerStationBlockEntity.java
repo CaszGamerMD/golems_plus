@@ -61,6 +61,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private boolean builderPlaced;
     private BlockPos beeToolbox,beeOutput;
     private UUID chefWorkerId;
+    private final java.util.List<UUID> chefExtras=new java.util.ArrayList<>();
+    // Saved kitchen work order and ingredient reservation.
+    private String chefFood="";
+    private int chefQuantity,chefStepIndex,chefStepTicks;
+    private final java.util.List<String> chefSteps=new java.util.ArrayList<>();
+    private final java.util.Map<String,Integer> chefEscrow=new java.util.LinkedHashMap<>();
+    private final java.util.Map<String,Integer> chefSurplus=new java.util.LinkedHashMap<>();
+    private final java.util.Map<String,Integer> chefStock=new java.util.LinkedHashMap<>();
     private final java.util.List<UUID> fisherIds=new java.util.ArrayList<>();
     private int beeRadius=12,beeMode=0;
     private final java.util.List<UUID> beekeeperIds=new java.util.ArrayList<>();
@@ -78,6 +86,54 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 &&station.specialty()==WorkerSpecialty.COOKING;
     }
     public UUID chefWorkerId(){return chefWorkerId;}
+    public java.util.List<UUID> chefWorkerIds(){
+        var result=new java.util.ArrayList<UUID>();
+        if(chefWorkerId!=null)result.add(chefWorkerId);
+        result.addAll(chefExtras);
+        return java.util.List.copyOf(result);
+    }
+    public boolean chefBusy(){return !chefFood.isBlank();}
+    public String chefFood(){return chefFood;}
+    public int chefQuantity(){return chefQuantity;}
+    public int chefStepIndex(){return chefStepIndex;}
+    public int chefStepCount(){return chefSteps.size();}
+    public String chefCurrentStep(){return chefStepIndex<chefSteps.size()?
+            chefSteps.get(chefStepIndex):"Serving";}
+    public java.util.Map<String,Integer> chefStock(){return java.util.Map.copyOf(chefStock);}
+    public java.util.Map<String,Integer> chefSurplus(){return java.util.Map.copyOf(chefSurplus);}
+    public void updateChefStock(java.util.Map<String,Integer> next){
+        if(chefStock.equals(next))return;
+        chefStock.clear();
+        next.entrySet().stream().sorted(java.util.Map.Entry.comparingByKey())
+                .limit(80).forEach(e->chefStock.put(e.getKey(),e.getValue()));
+        sync();
+    }
+    public boolean startChefOrder(java.util.UUID actor,String food,int quantity,
+            java.util.List<String> steps,java.util.Map<String,Integer> escrow,
+            java.util.Map<String,Integer> leftovers){
+        if(!isCooking()||!canConfigure(actor)||chefBusy()||quantity<1||quantity>16
+                ||steps.isEmpty()||steps.size()>160)return false;
+        chefFood=food;chefQuantity=quantity;chefStepIndex=chefStepTicks=0;
+        chefSteps.clear();chefSteps.addAll(steps);
+        chefEscrow.clear();chefEscrow.putAll(escrow);
+        chefSurplus.clear();chefSurplus.putAll(leftovers);
+        setProblem("");sync();return true;
+    }
+    public void tickChefStep(){
+        if(!chefBusy())return;
+        if(++chefStepTicks>=50){
+            chefStepTicks=0;
+            chefStepIndex=Math.min(chefStepIndex+1,chefSteps.size());
+            sync();
+        }else if(chefStepTicks%10==0)setChanged();
+    }
+    public boolean chefStepsFinished(){return chefBusy()&&chefStepIndex>=chefSteps.size();}
+    public java.util.Map<String,Integer> clearChefOrder(){
+        java.util.Map<String,Integer> refund=java.util.Map.copyOf(chefEscrow);
+        chefFood="";chefQuantity=chefStepIndex=chefStepTicks=0;
+        chefSteps.clear();chefEscrow.clear();chefSurplus.clear();sync();
+        return refund;
+    }
     public void setChefWorkerId(UUID id){
         if(isCooking()){chefWorkerId=id;sync();}
     }
@@ -155,8 +211,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean registerCraftedWorker(WorkerSpecialty specialty,UUID worker){
         if(owner==null||worker==null||specialty==null)return false;
         if(specialty==WorkerSpecialty.COOKING){
-            if(!isCooking()||chefWorkerId!=null)return false;
-            chefWorkerId=worker;sync();return true;
+            if(!isCooking()||chefWorkerIds().size()>=4)return false;
+            if(chefWorkerId==null)chefWorkerId=worker;else chefExtras.add(worker);
+            crewTarget=Math.max(crewTarget,chefWorkerIds().size());sync();return true;
         }
         int count=switch(specialty){
             case BUILDER -> isBuilder()?builderWorkerIds().size():4;
@@ -177,7 +234,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
 
     public boolean setCrewTarget(UUID actor,int count){
-        if(!canConfigure(actor)||(!isBuilder()&&!isTrader()&&!isBeekeeper()&&!isFishing())||count<1||count>4)return false;
+        if(!canConfigure(actor)||(!isBuilder()&&!isTrader()&&!isBeekeeper()&&!isFishing()&&!isCooking())||count<1||count>4)return false;
         crewTarget=count;sync();return true;
     }
     public java.util.List<UUID> traderWorkerIds(){
@@ -412,7 +469,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     @Override public Component getDisplayName() {
         if(isTrader())return Component.literal("Trader Counter");
         if(isBeekeeper())return Component.literal("Beekeeper Workstation");
-        if(isCooking())return Component.literal("Chef Workstation");
+        if(isCooking())return Component.literal("Caszual Kitchen Ordering Kiosk");
         if(isBuilder())return Component.literal("Builder's Planning Table");
         if(getBlockState().getBlock() instanceof WorkerStationBlock block)
             return Component.literal(block.specialty().name()+" Workstation");
@@ -514,6 +571,37 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(workerId!=null)out.putString("trader_worker",workerId.toString());
         out.putString("phase",phase.name());out.putString("trade_wanted",wantedItem);
         if(chefWorkerId!=null)out.putString("cooking_chef_worker",chefWorkerId.toString());
+        out.putInt("chef_extras",Math.min(3,chefExtras.size()));
+        for(int i=0;i<chefExtras.size()&&i<3;i++)
+            out.putString("chef_extra_"+i,chefExtras.get(i).toString());
+        out.putString("chef_food",chefFood);
+        out.putInt("chef_quantity",chefQuantity);
+        out.putInt("chef_step_index",chefStepIndex);
+        out.putInt("chef_step_ticks",chefStepTicks);
+        out.putInt("chef_step_total",Math.min(160,chefSteps.size()));
+        for(int i=0;i<chefSteps.size()&&i<160;i++)
+            out.putString("chef_step_"+i,chefSteps.get(i));
+        out.putInt("chef_escrow_count",Math.min(80,chefEscrow.size()));
+        int ec=0;
+        for(var e:chefEscrow.entrySet()){
+            if(ec>=80)break;
+            out.putString("chef_escrow_id_"+ec,e.getKey());
+            out.putInt("chef_escrow_qty_"+ec,e.getValue());ec++;
+        }
+        out.putInt("chef_surplus_count",Math.min(64,chefSurplus.size()));
+        int bc=0;
+        for(var e:chefSurplus.entrySet()){
+            if(bc>=64)break;
+            out.putString("chef_surplus_id_"+bc,e.getKey());
+            out.putInt("chef_surplus_qty_"+bc,e.getValue());bc++;
+        }
+        out.putInt("chef_stock_count",Math.min(80,chefStock.size()));
+        int sc=0;
+        for(var e:chefStock.entrySet()){
+            if(sc>=80)break;
+            out.putString("chef_stock_id_"+sc,e.getKey());
+            out.putInt("chef_stock_qty_"+sc,e.getValue());sc++;
+        }
         out.putInt("fisher_workers",Math.min(4,fisherIds.size()));
         for(int i=0;i<fisherIds.size()&&i<4;i++)
             out.putString("fisher_worker_"+i,fisherIds.get(i).toString());
@@ -611,6 +699,37 @@ public final class WorkerStationBlockEntity extends BlockEntity
         try{phase=WorkerPhase.valueOf(in.getStringOr("phase","IDLE"));}
         catch(IllegalArgumentException ignored){phase=WorkerPhase.BLOCKED;}
         chefWorkerId=uuid(in,"cooking_chef_worker");
+        chefExtras.clear();
+        for(int i=0,n=Math.clamp(in.getIntOr("chef_extras",0),0,3);i<n;i++){
+            UUID id=uuid(in,"chef_extra_"+i);
+            if(id!=null&&!id.equals(chefWorkerId))chefExtras.add(id);
+        }
+        chefFood=in.getStringOr("chef_food","");
+        chefQuantity=Math.clamp(in.getIntOr("chef_quantity",0),0,16);
+        chefStepIndex=Math.clamp(in.getIntOr("chef_step_index",0),0,160);
+        chefStepTicks=Math.clamp(in.getIntOr("chef_step_ticks",0),0,49);
+        chefSteps.clear();
+        for(int i=0,n=Math.clamp(in.getIntOr("chef_step_total",0),0,160);i<n;i++)
+            chefSteps.add(in.getStringOr("chef_step_"+i,"Prepare"));
+        chefStepIndex=Math.min(chefStepIndex,chefSteps.size());
+        chefEscrow.clear();
+        for(int i=0,n=Math.clamp(in.getIntOr("chef_escrow_count",0),0,80);i<n;i++){
+            String id=in.getStringOr("chef_escrow_id_"+i,"");
+            int qty=in.getIntOr("chef_escrow_qty_"+i,0);
+            if(!id.isBlank()&&qty>0)chefEscrow.put(id,qty);
+        }
+        chefSurplus.clear();
+        for(int i=0,n=Math.clamp(in.getIntOr("chef_surplus_count",0),0,64);i<n;i++){
+            String id=in.getStringOr("chef_surplus_id_"+i,"");
+            int qty=in.getIntOr("chef_surplus_qty_"+i,0);
+            if(!id.isBlank()&&qty>0)chefSurplus.put(id,qty);
+        }
+        chefStock.clear();
+        for(int i=0,n=Math.clamp(in.getIntOr("chef_stock_count",0),0,80);i<n;i++){
+            String id=in.getStringOr("chef_stock_id_"+i,"");
+            int qty=in.getIntOr("chef_stock_qty_"+i,0);
+            if(!id.isBlank()&&qty>0)chefStock.put(id,qty);
+        }
         fisherIds.clear();
         int fisherCount=Math.clamp(in.getIntOr("fisher_workers",0),0,4);
         for(int i=0;i<fisherCount;i++){

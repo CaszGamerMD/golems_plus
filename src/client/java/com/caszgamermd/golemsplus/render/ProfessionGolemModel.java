@@ -310,6 +310,11 @@ public final class ProfessionGolemModel
             // Deliberately calm kitchen stance.
             leftArm.xRot*=.38f;rightArm.xRot*=.38f;
             leftArm.zRot=-.06f;rightArm.zRot=.06f;
+            if(state.working){
+                float stir=Mth.sin(state.ageInTicks*.18f);
+                rightArm.xRot=-.95f+.25f*stir;
+                leftArm.xRot=-.55f-.12f*stir;
+            }
         }
     }
 }

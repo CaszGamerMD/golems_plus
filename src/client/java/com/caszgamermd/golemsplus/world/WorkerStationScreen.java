@@ -1,6 +1,10 @@
 package com.caszgamermd.golemsplus.world;
 
 import com.caszgamermd.golemsplus.builder.LitematicaPlacementClient;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -16,7 +20,7 @@ import net.minecraft.world.entity.player.Inventory;
  * entity state directly on the client or dispatches slash commands.
  */
 public final class WorkerStationScreen extends AbstractContainerScreen<WorkerStationMenu> {
-    private enum Page { BUILD, BUILDER_SETUP, BUILDER_PLACEMENTS, TRADE_ORDER, TRADE_BUDGET, TRADE_VILLAGE, BEEKEEPER }
+    private enum Page { BUILD, BUILDER_SETUP, BUILDER_PLACEMENTS, TRADE_ORDER, TRADE_BUDGET, TRADE_VILLAGE, BEEKEEPER, CHEF_MENU, CHEF_SUPPLIES }
     private Page page=Page.BUILD;
     private EditBox first,second;
     private String requestedItem="minecraft:emerald", requestedAmount="16";
@@ -26,6 +30,9 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     private boolean loadedVillageDefaults,loadedOrderDefaults;
     private String feedback="";
     private int desiredCrew=1;
+    private String chefSearch="";
+    private int chefPage,chefStockPage,chefAmount=1;
+    private java.util.List<Item> visibleMeals=java.util.List.of();
     private java.util.List<LitematicaPlacementClient.PlacementChoice> choices=java.util.List.of();
     private int placementPage;
     private static final int PANE=185, BG_WIDTH=375, BG_HEIGHT=254;
@@ -66,6 +73,14 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                 instanceof WorkerStationBlock block
                 &&block.specialty()==com.caszgamermd.golemsplus.worker.WorkerSpecialty.FISHING;
     }
+    private boolean cooking(){
+        var st=station();
+        if(st!=null)return st.isCooking();
+        return minecraft!=null&&minecraft.level!=null
+                &&minecraft.level.getBlockState(menu.stationPos()).getBlock()
+                instanceof WorkerStationBlock block
+                &&block.specialty()==com.caszgamermd.golemsplus.worker.WorkerSpecialty.COOKING;
+    }
     private boolean builder(){
         var be=station();
         if(be!=null)return be.isBuilder();
@@ -77,7 +92,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     }
     @Override protected void init(){
         super.init();
-        page=trader()?Page.TRADE_ORDER:beekeeper()?Page.BEEKEEPER:Page.BUILD;
+        page=trader()?Page.TRADE_ORDER:beekeeper()?Page.BEEKEEPER:cooking()?Page.CHEF_MENU:Page.BUILD;
         readDefaults();
         var station=station();
         if(station!=null){
@@ -112,6 +127,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             case TRADE_ORDER -> {requestedItem=first.getValue();requestedAmount=second.getValue();}
             case TRADE_BUDGET -> {budgetItem=first.getValue();budgetMaximum=second.getValue();}
             case TRADE_VILLAGE -> {villagePosition=first.getValue();villageRadius=second.getValue();}
+            case CHEF_MENU -> {chefSearch=first.getValue();}
             default -> {}
         }
     }
@@ -167,6 +183,18 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         catch(IllegalArgumentException ex){feedback=ex.getMessage();}
         catch(Exception ex){feedback="Could not apply this setting";}
     }
+    private void refreshChefMeals(){
+        String needle=chefSearch.trim().toLowerCase(java.util.Locale.ROOT);
+        visibleMeals=BuiltInRegistries.ITEM.stream()
+                .filter(item->new ItemStack(item).get(DataComponents.FOOD)!=null)
+                .filter(item->needle.isBlank()||
+                        new ItemStack(item).getHoverName().getString()
+                            .toLowerCase(java.util.Locale.ROOT).contains(needle)
+                        ||BuiltInRegistries.ITEM.getKey(item).toString().contains(needle))
+                .sorted(java.util.Comparator.comparing(item->new ItemStack(item)
+                        .getHoverName().getString())).toList();
+        chefPage=0;
+    }
     private void crewControls(){
         button("−",PANE,206,32,()->{
             desiredCrew=Math.max(1,desiredCrew-1);
@@ -180,7 +208,61 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
     private void buildControls(){
         first=second=null;
         boolean trade=trader();
-        if(trade){
+        if(cooking()){
+            button("ORDER",PANE,28,88,()->openPage(Page.CHEF_MENU));
+            button("PANTRY",PANE+92,28,90,()->openPage(Page.CHEF_SUPPLIES));
+            if(page==Page.CHEF_SUPPLIES){
+                var stock=station()==null?java.util.Map.<String,Integer>of():station().chefStock();
+                var rows=stock.entrySet().stream().sorted(java.util.Map.Entry.comparingByKey()).toList();
+                int start=Math.min(chefStockPage*4,Math.max(0,rows.size()-1));
+                for(int ix=start;ix<Math.min(start+4,rows.size());ix++){
+                    var entry=rows.get(ix);
+                    String name=entry.getKey();
+                    var id=net.minecraft.resources.Identifier.tryParse(name);
+                    if(id!=null&&BuiltInRegistries.ITEM.containsKey(id))
+                        name=new ItemStack(BuiltInRegistries.ITEM.getValue(id)).getHoverName().getString();
+                    final String display=truncate(name,21)+" ×"+entry.getValue();
+                    button(display,PANE,57+(ix-start)*25,182,()->{});
+                }
+                button("Previous",PANE,164,89,()->{
+                    chefStockPage=Math.max(0,chefStockPage-1);openPage(Page.CHEF_SUPPLIES);
+                });
+                button("Next",PANE+92,164,90,()->{
+                    if((chefStockPage+1)*4<rows.size())chefStockPage++;
+                    openPage(Page.CHEF_SUPPLIES);
+                });
+            }else{
+                editor(54,"Search all food",chefSearch,true);
+                button("Search",PANE+127,78,55,()->{
+                    chefSearch=first.getValue();refreshChefMeals();openPage(Page.CHEF_MENU);
+                });
+                if(visibleMeals.isEmpty())refreshChefMeals();
+                int from=chefPage*3;
+                if(from>=visibleMeals.size()){chefPage=0;from=0;}
+                for(int ix=from;ix<Math.min(from+3,visibleMeals.size());ix++){
+                    Item item=visibleMeals.get(ix);
+                    String name=new ItemStack(item).getHoverName().getString();
+                    button(truncate(name,26),PANE,101+(ix-from)*22,182,()->{
+                        send("chef_order",BuiltInRegistries.ITEM.getKey(item).toString(),
+                                chefAmount,0,0,0);
+                    });
+                }
+                button("−",PANE,169,28,()->{
+                    chefAmount=Math.max(1,chefAmount-1);openPage(Page.CHEF_MENU);
+                });
+                button("+",PANE+33,169,28,()->{
+                    chefAmount=Math.min(16,chefAmount+1);openPage(Page.CHEF_MENU);
+                });
+                button("Previous",PANE+67,169,55,()->{
+                    chefPage=Math.max(0,chefPage-1);openPage(Page.CHEF_MENU);
+                });
+                button("Next",PANE+125,169,57,()->{
+                    if((chefPage+1)*3<visibleMeals.size())chefPage++;
+                    openPage(Page.CHEF_MENU);
+                });
+            }
+            crewControls();
+        }else if(trade){
             button("ORDER",PANE,28,59,()->openPage(Page.TRADE_ORDER));
             button("BUDGET",PANE+61,28,59,()->openPage(Page.TRADE_BUDGET));
             button("VILLAGE",PANE+122,28,60,()->openPage(Page.TRADE_VILLAGE));
@@ -327,10 +409,26 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
         g.text(font,Component.literal(trader()?"TRADER COUNTER":
                 builder()?"BUILDER PLANNER":
                 beekeeper()?"BEEKEEPER STATION":
-                fisher()?"FISHING STATION":"WORKSTATION"),
+                fisher()?"FISHING STATION":
+                cooking()?"ORDER KIOSK":"WORKSTATION"),
                 185,10,0xffffffff,false);
         var station=station();
-        if(trader()){
+        if(cooking()){
+            if(page==Page.CHEF_MENU){
+                g.text(font,"SEARCH / ALL FOODS",185,87,LABEL_COLOR,false);
+                g.text(font,"Qty "+chefAmount+"  Page "+(chefPage+1)+"/"+
+                        Math.max(1,(visibleMeals.size()+2)/3),185,195,LABEL_COLOR,false);
+            }else{
+                g.text(font,"CFB KITCHEN SUPPLY TRACKER",185,197,LABEL_COLOR,false);
+            }
+            if(station!=null){
+                String status=station.chefBusy()
+                        ?station.chefCurrentStep()+" "+station.chefStepIndex()+
+                                "/"+station.chefStepCount()
+                        :"Kitchen idle";
+                g.text(font,truncate(status,32),185,224,LABEL_COLOR,false);
+            }
+        }else if(trader()){
             switch(page){
                 case TRADE_BUDGET -> {
                     g.text(font,"PAYMENT ITEM ID",185,61,LABEL_COLOR,false);
@@ -375,12 +473,13 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                         185,188,0xffb8eec7,false);
             }else g.text(font,"No warehouse linked",185,188,0xffffc480,false);
         }
-        if(trader()||builder()||beekeeper()||fisher()){
+        if(trader()||builder()||beekeeper()||fisher()||cooking()){
             int count=station==null?1:station.crewTarget();
             int linked=station==null?0:trader()?station.traderWorkerIds().size():
                     builder()?station.builderWorkerIds().size():
                     beekeeper()?station.beekeeperWorkers().size():
-                    station.fisherWorkerIds().size();
+                    fisher()?station.fisherWorkerIds().size():
+                    station.chefWorkerIds().size();
             g.text(font,"CREW: "+linked+"/"+count,224,212,0xffffffff,false);
         }
         if(station!=null){

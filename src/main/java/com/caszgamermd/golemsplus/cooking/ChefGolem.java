@@ -3,6 +3,9 @@ package com.caszgamermd.golemsplus.cooking;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
@@ -17,6 +20,13 @@ import net.minecraft.world.level.storage.ValueOutput;
  * system. Recipe planning and food processing are NOT enabled yet.
  */
 public final class ChefGolem extends PathfinderMob {
+    private static final EntityDataAccessor<Boolean> PREPARING=
+            SynchedEntityData.defineId(ChefGolem.class,EntityDataSerializers.BOOLEAN);
+    @Override protected void defineSynchedData(SynchedEntityData.Builder b){
+        super.defineSynchedData(b);
+        b.define(PREPARING,false);
+    }
+    public boolean preparing(){return getEntityData().get(PREPARING);}
     private BlockPos home=BlockPos.ZERO;
     private UUID owner;
 
@@ -49,7 +59,9 @@ public final class ChefGolem extends PathfinderMob {
                 ||!station.isCooking()||!owner.equals(station.owner())){
             discard();return;
         }
-        com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(server,this,home);
+        getEntityData().set(PREPARING,station.chefBusy());
+        if(!station.chefBusy() && station.phase()!=com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED)
+            com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(server,this,home);
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
         super.addAdditionalSaveData(out);

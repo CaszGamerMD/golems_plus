@@ -69,10 +69,10 @@ public final class WorkerGolemItem extends Item {
             case BUILDER -> station.builderWorkerIds().size();
             case TRADER -> station.traderWorkerIds().size();
             case BEEKEEPER -> station.beekeeperWorkers().size();
-            case COOKING -> station.chefWorkerId()==null?0:1;
+            case COOKING -> station.chefWorkerIds().size();
             case FISHING -> station.fisherWorkerIds().size();
         };
-        if(count>= (profession==WorkerSpecialty.COOKING?1:4)){
+        if(count>=4){
             player.sendSystemMessage(Component.literal(
                     "This workstation already has its maximum crew"));
             return InteractionResult.FAIL;
