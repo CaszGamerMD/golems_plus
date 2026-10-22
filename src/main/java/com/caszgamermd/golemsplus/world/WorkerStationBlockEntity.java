@@ -153,6 +153,29 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(!chefBusy()||chefStepIndex>=chefSteps.size())return false;
         chefStepIndex++;chefStepTicks=0;sync();return true;
     }
+    /** Record transfer of reserved raw food into a real oven. */
+    public boolean loadChefOven(com.caszgamermd.golemsplus.cooking.ChefRecipePlanner.WorkStep step){
+        if(!chefBusy()||chefOvenLoaded||chefStepIndex>=chefSteps.size())return false;
+        for(var e:step.inputs().entrySet()){
+            String id=net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(e.getKey()).toString();
+            if(chefEscrow.getOrDefault(id,0)<e.getValue())return false;
+        }
+        for(var e:step.inputs().entrySet()){
+            String id=net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(e.getKey()).toString();
+            int remaining=chefEscrow.get(id)-e.getValue();
+            if(remaining==0)chefEscrow.remove(id);
+            else chefEscrow.put(id,remaining);
+        }
+        chefOvenLoaded=true;sync();return true;
+    }
+    /** The output is retrieved from the oven, not fabricated by a timer. */
+    public boolean collectChefOven(com.caszgamermd.golemsplus.cooking.ChefRecipePlanner.WorkStep step){
+        if(!chefBusy()||!chefOvenLoaded||chefStepIndex>=chefSteps.size())return false;
+        chefEscrow.merge(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(step.result()).toString(),
+                step.resultCount(),Integer::sum);
+        chefOvenLoaded=false;
+        chefStepIndex++;chefStepTicks=0;sync();return true;
+    }
     public boolean chefOvenLoaded(){return chefOvenLoaded;}
     public void setChefOvenLoaded(boolean loaded){
         if(chefOvenLoaded==loaded)return;
