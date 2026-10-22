@@ -1,9 +1,9 @@
 {
   "textures": {
-    "particle": "minecraft:block/smooth_quartz",
+    "particle": "golems_plus:block/meal_counter",
     "white": "minecraft:block/smooth_quartz",
-    "counter": "minecraft:block/polished_andesite",
-    "dark": "minecraft:block/gray_concrete",
+    "counter": "golems_plus:block/meal_counter",
+    "dark": "minecraft:block/polished_blackstone",
     "plate": "minecraft:block/white_concrete",
     "rim": "minecraft:block/light_gray_concrete",
     "metal": "minecraft:block/iron_block"
@@ -204,6 +204,171 @@
         },
         "down": {
           "texture": "#plate"
+        }
+      }
+    },
+    {
+      "name": "front order pickup label",
+      "from": [
+        4.5,
+        6,
+        0.76
+      ],
+      "to": [
+        11.5,
+        8.5,
+        0.86
+      ],
+      "faces": {
+        "north": {
+          "texture": "#dark"
+        },
+        "south": {
+          "texture": "#dark"
+        },
+        "east": {
+          "texture": "#dark"
+        },
+        "west": {
+          "texture": "#dark"
+        },
+        "up": {
+          "texture": "#dark"
+        },
+        "down": {
+          "texture": "#dark"
+        }
+      }
+    },
+    {
+      "name": "service opening",
+      "from": [
+        3,
+        8.5,
+        0.55
+      ],
+      "to": [
+        13,
+        11.5,
+        0.8
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "corner trim left",
+      "from": [
+        0.55,
+        1,
+        0.5
+      ],
+      "to": [
+        1.5,
+        12,
+        1.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "corner trim right",
+      "from": [
+        14.5,
+        1,
+        0.5
+      ],
+      "to": [
+        15.5,
+        12,
+        1.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "hygienic tray inset",
+      "from": [
+        3.5,
+        12.98,
+        3.5
+      ],
+      "to": [
+        12.5,
+        13.1,
+        12.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#dark"
+        },
+        "south": {
+          "texture": "#dark"
+        },
+        "east": {
+          "texture": "#dark"
+        },
+        "west": {
+          "texture": "#dark"
+        },
+        "up": {
+          "texture": "#dark"
+        },
+        "down": {
+          "texture": "#dark"
         }
       }
     }
