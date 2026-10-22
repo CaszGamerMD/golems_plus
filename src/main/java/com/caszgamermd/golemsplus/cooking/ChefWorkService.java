@@ -58,6 +58,41 @@ public final class ChefWorkService{
                 :KitchenSupplies.around(level,station.getBlockPos());
     }
 
+    /** Client requests a detailed preview, never ingredients or crafting authority. */
+    public static boolean preview(ServerPlayer player,WorkerStationBlockEntity station,
+                                  String itemId,int count){
+        if(!station.isCooking()||!station.canConfigure(player.getUUID())
+                ||count<1||count>16)return false;
+        Identifier key=Identifier.tryParse(itemId);
+        if(key==null||!BuiltInRegistries.ITEM.containsKey(key))return false;
+        Item item=BuiltInRegistries.ITEM.getValue(key);
+        if(new ItemStack(item).get(DataComponents.FOOD)==null)return false;
+        KitchenSupplies linked=kitchen((ServerLevel)player.level(),station);
+        Map<Item,Integer> stocked=linked.snapshot();
+        var plan=ChefRecipePlanner.preview((ServerLevel)player.level(),item,count,stocked);
+        if(plan==null){
+            station.setChefPreview(player.getUUID(),itemId,List.of("No supported recipe for this food"));
+            return false;
+        }
+        List<String> lines=new ArrayList<>();
+        lines.add("INGREDIENTS / PANTRY");
+        plan.available().entrySet().stream()
+                .sorted(java.util.Comparator.comparing(e->BuiltInRegistries.ITEM.getKey(e.getKey()).toString()))
+                .limit(20).forEach(e->lines.add("OK "+e.getValue()+" x "+
+                        BuiltInRegistries.ITEM.getKey(e.getKey())));
+        plan.missing().entrySet().stream()
+                .sorted(java.util.Comparator.comparing(e->BuiltInRegistries.ITEM.getKey(e.getKey()).toString()))
+                .limit(20).forEach(e->lines.add("MISSING "+e.getValue()+" x "+
+                        BuiltInRegistries.ITEM.getKey(e.getKey())));
+        lines.add("RECIPE STEPS (BOTTOM TO TOP)");
+        for(String step:plan.steps()){
+            if(lines.size()>=49)break;
+            lines.add(step);
+        }
+        station.setChefPreview(player.getUUID(),itemId,lines);
+        return true;
+    }
+
     public static boolean order(ServerPlayer player,WorkerStationBlockEntity station,
                                 String id,int amount){
         if(!station.isCooking()||!station.canConfigure(player.getUUID())

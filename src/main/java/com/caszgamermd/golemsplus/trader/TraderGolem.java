@@ -4,6 +4,10 @@ import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import java.util.Map;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.ContainerHelper;
@@ -31,23 +35,33 @@ import net.minecraft.world.level.storage.ValueOutput;
 public final class TraderGolem extends PathfinderMob {
     private static final EntityDataAccessor<Boolean> CASE_OPEN =
             SynchedEntityData.defineId(TraderGolem.class,EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<ItemStack> CASE_ITEM =
+            SynchedEntityData.defineId(TraderGolem.class,EntityDataSerializers.ITEM_STACK);
     @Override protected void defineSynchedData(SynchedEntityData.Builder builder){
         super.defineSynchedData(builder);
         builder.define(CASE_OPEN,false);
+        builder.define(CASE_ITEM,ItemStack.EMPTY);
     }
     public boolean presenting(){return getEntityData().get(CASE_OPEN);}
     private void openCase(boolean show){getEntityData().set(CASE_OPEN,show);}
+    public ItemStack displayedOffer(){return getEntityData().get(CASE_ITEM);}
+    private void displayedOffer(ItemStack item){getEntityData().set(CASE_ITEM,item.copy());}
     private BlockPos home = BlockPos.ZERO;
     private UUID owner, order, villagerId;
     private int offerIndex=-1, stage=0, navigationFailures, quotedGoods;
     private ItemStack paymentA=ItemStack.EMPTY,paymentB=ItemStack.EMPTY,returning=ItemStack.EMPTY;
     private boolean hasTraded;
+    private int presentationTicks;
+    private BlockPos openedDoor;
 
     public TraderGolem(EntityType<? extends PathfinderMob> type, Level world){
         super(type,world);
         setPersistenceRequired();
         setInvulnerable(true); // no free iron drops or accidental cargo loss
         setCustomName(Component.literal("Trader Golem"));
+        if(getNavigation() instanceof GroundPathNavigation path){
+            path.setCanOpenDoors(true);
+        }
     }
     public static AttributeSupplier.Builder attributes(){
         return PathfinderMob.createMobAttributes()
@@ -79,7 +93,8 @@ public final class TraderGolem extends PathfinderMob {
         if(stage!=0 || this.order!=null)throw new IllegalStateException("Trader busy");
         if(order==null||villager==null||offer<0||a.isEmpty())throw new IllegalArgumentException();
         this.order=order;villagerId=villager;offerIndex=offer;
-        openCase(false);
+        openCase(false);displayedOffer(ItemStack.EMPTY);
+        presentationTicks=0;
         quotedGoods=expectedGoods;
         paymentA=a.copy();paymentB=b.copy();
         returning=ItemStack.EMPTY;hasTraded=false;stage=1;navigationFailures=0;
@@ -96,7 +111,8 @@ public final class TraderGolem extends PathfinderMob {
             getNavigation().stop();return;
         }
         if(stage==0){
-            openCase(false);
+            closeDoorAfterPassing(server);
+            openCase(false);displayedOffer(ItemStack.EMPTY);
             com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(server,this,home);
             return;
         }
@@ -111,15 +127,25 @@ public final class TraderGolem extends PathfinderMob {
         if(!TraderWorkService.withinVillage(server,depot,villager.blockPosition())){
             stage=2;depot.setProblem("Villager outside approved village");return;
         }
-        if(distanceToSqr(villager)>8){
-            if(!getNavigation().moveTo(villager,.87)&&++navigationFailures>15){
-                stage=2;depot.setProblem("Cannot reach villager");
+        // A closed wooden door can obstruct the path to a trading villager.
+        // Open it as we approach, then close it once both feet have cleared.
+        manageApproachDoor(server,villager);
+        closeDoorAfterPassing(server);
+        if(distanceToSqr(villager)>8||!hasLineOfSight(villager)){
+            presentationTicks=0;
+            openCase(false);
+            displayedOffer(ItemStack.EMPTY);
+            getLookControl().setLookAt(villager,30f,30f);
+            if(!getNavigation().moveTo(villager,.87)&&++navigationFailures>30){
+                stage=2;depot.setProblem("Cannot reach villager or establish eye contact");
             }
             return;
         }
+        // Face one another in clear sight before presenting an offer.
         getNavigation().stop();
-        openCase(true);
-        if(villager.isTrading())return; // do not interrupt players trading
+        getLookControl().setLookAt(villager,30f,30f);
+        villager.getLookControl().setLookAt(this,30f,30f);
+        if(villager.isTrading()){openCase(false);return;} // never interrupt players
         if(!order.equals(depot.activeOrder())){
             stage=2;return;
         }
@@ -129,6 +155,8 @@ public final class TraderGolem extends PathfinderMob {
         }
         MerchantOffer offer=offers.get(offerIndex);
         ItemStack desired=offer.getResult();
+        displayedOffer(desired);
+        openCase(true);
         if(offer.isOutOfStock()||desired.isEmpty()
                 ||!TraderWorkService.itemId(desired).equals(depot.wantedItem())
                 ||!offer.satisfiedBy(paymentA,paymentB)){
@@ -138,6 +166,9 @@ public final class TraderGolem extends PathfinderMob {
         for(var e:costs.entrySet())if(depot.budgetRemaining(e.getKey())<e.getValue()){
             stage=2;depot.setProblem("Spending limit reached");return;
         }
+        // Hold the case open long enough for clients to clearly see the
+        // offer inside it, rather than flashing for a single server tick.
+        if(++presentationTicks<4)return;
         // Result is held by THIS entity until a physical depot return.
         // MerchantOffer.take consumes actual escrowed stacks. notifyTrade
         // applies vanilla uses, XP and restock behavior exactly once.
@@ -157,7 +188,9 @@ public final class TraderGolem extends PathfinderMob {
         stage=2;
     }
     private void comeHome(ServerLevel server,WorkerStationBlockEntity depot){
-        openCase(false);
+        openCase(false);displayedOffer(ItemStack.EMPTY);
+        presentationTicks=0;
+        closeDoorAfterPassing(server);
         double distance=distanceToSqr(home.getX()+.5,home.getY()+.5,home.getZ()+.5);
         if(distance>9){
             getNavigation().moveTo(home.getX()+.5,home.getY()+1,home.getZ()+.5,.9);
@@ -183,11 +216,49 @@ public final class TraderGolem extends PathfinderMob {
         order=null;villagerId=null;offerIndex=-1;quotedGoods=0;
         hasTraded=false;stage=0;
     }
+    private void manageApproachDoor(ServerLevel server,Villager villager){
+        if(openedDoor!=null)return;
+        BlockPos origin=blockPosition();
+        BlockPos towards=villager.blockPosition();
+        BlockPos candidate=null;
+        double best=Double.POSITIVE_INFINITY;
+        for(int dx=-2;dx<=2;dx++)for(int dy=-1;dy<=1;dy++)
+            for(int dz=-2;dz<=2;dz++){
+                BlockPos at=origin.offset(dx,dy,dz);
+                if(!server.hasChunkAt(at))continue;
+                BlockState state=server.getBlockState(at);
+                if(!(state.getBlock() instanceof DoorBlock door)
+                        ||state.getValue(DoorBlock.OPEN)
+                        ||!door.type().canOpenByHand())continue;
+                double distance=at.distSqr(origin)+at.distSqr(towards)*.015;
+                if(distance<best){best=distance;candidate=at;}
+            }
+        if(candidate!=null&&best<9){
+            var state=server.getBlockState(candidate);
+            if(state.getBlock() instanceof DoorBlock door){
+                door.setOpen(this,server,state,candidate,true);
+                openedDoor=candidate.immutable();
+            }
+        }
+    }
+    private void closeDoorAfterPassing(ServerLevel server){
+        if(openedDoor==null)return;
+        if(distanceToSqr(openedDoor.getX()+.5,openedDoor.getY()+.5,
+                openedDoor.getZ()+.5)<5.0)return;
+        if(server.hasChunkAt(openedDoor)){
+            var state=server.getBlockState(openedDoor);
+            if(state.getBlock() instanceof DoorBlock door
+                    &&state.getValue(DoorBlock.OPEN))
+                door.setOpen(this,server,state,openedDoor,false);
+        }
+        openedDoor=null;
+    }
     private void dropEscrow(ServerLevel level) {
         for(ItemStack stack:new ItemStack[]{paymentA,paymentB,returning})
             if(!stack.isEmpty())
                 Containers.dropItemStack(level,getX(),getY(),getZ(),stack.copy());
         paymentA=paymentB=returning=ItemStack.EMPTY;
+        displayedOffer(ItemStack.EMPTY);
     }
     @Override public void die(DamageSource damage){
         if(level() instanceof ServerLevel server)dropEscrow(server);
@@ -205,6 +276,7 @@ public final class TraderGolem extends PathfinderMob {
         if(!paymentA.isEmpty())out.store("trader_cost_a",ItemStack.CODEC,paymentA);
         if(!paymentB.isEmpty())out.store("trader_cost_b",ItemStack.CODEC,paymentB);
         if(!returning.isEmpty())out.store("trader_result",ItemStack.CODEC,returning);
+        if(openedDoor!=null)out.store("trader_opened_door",BlockPos.CODEC,openedDoor);
     }
     private static UUID parse(String s){
         try{return UUID.fromString(s);}catch(IllegalArgumentException e){return null;}
@@ -222,6 +294,9 @@ public final class TraderGolem extends PathfinderMob {
         paymentA=in.read("trader_cost_a",ItemStack.CODEC).orElse(ItemStack.EMPTY);
         paymentB=in.read("trader_cost_b",ItemStack.CODEC).orElse(ItemStack.EMPTY);
         returning=in.read("trader_result",ItemStack.CODEC).orElse(ItemStack.EMPTY);
+        openedDoor=in.read("trader_opened_door",BlockPos.CODEC).orElse(null);
+        displayedOffer(ItemStack.EMPTY);
+        openCase(false);
         if(owner==null)stage=2;
     }
 }

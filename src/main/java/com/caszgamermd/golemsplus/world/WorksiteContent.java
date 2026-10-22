@@ -4,6 +4,7 @@ import com.caszgamermd.golemsplus.GolemsPlus;
 import com.caszgamermd.golemsplus.worker.WorkerSpecialty;
 import com.caszgamermd.golemsplus.worker.WorkerGolemItem;
 import com.caszgamermd.golemsplus.cooking.MealCounterBlock;
+import com.caszgamermd.golemsplus.cooking.CookingKioskTopBlock;
 import com.caszgamermd.golemsplus.cooking.MealCounterBlockEntity;
 import net.fabricmc.fabric.api.creativetab.v1.FabricCreativeModeTab;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
@@ -37,6 +38,7 @@ public final class WorksiteContent {
     public static WorkerStationBlock BUILDER_TABLE, FISHING_STATION, TRADER_COUNTER, BEEKEEPER_STATION, COOKING_STATION;
     public static BeeToolboxBlock BEE_TOOLBOX;
     public static MealCounterBlock MEAL_COUNTER;
+    public static CookingKioskTopBlock COOKING_KIOSK_TOP;
     public static Item MEAL_COUNTER_ITEM;
     public static BlockEntityType<MealCounterBlockEntity> MEAL_COUNTER_ENTITY;
     public static Item BUILDER_TABLE_ITEM, FISHING_STATION_ITEM, TRADER_COUNTER_ITEM, BEEKEEPER_STATION_ITEM, BEE_TOOLBOX_ITEM, COOKING_STATION_ITEM;
@@ -81,6 +83,12 @@ public final class WorksiteContent {
         TRADER_COUNTER = station("trader_counter", WorkerSpecialty.TRADER);
         BEEKEEPER_STATION=station("beekeeper_station",WorkerSpecialty.BEEKEEPER);
         COOKING_STATION=station("cooking_station",WorkerSpecialty.COOKING);
+        ResourceKey<net.minecraft.world.level.block.Block> upperKioskKey=
+                ResourceKey.create(Registries.BLOCK,GolemsPlus.id("cooking_kiosk_top"));
+        COOKING_KIOSK_TOP=Registry.register(BuiltInRegistries.BLOCK,upperKioskKey,
+                new CookingKioskTopBlock(BlockBehaviour.Properties
+                        .ofFullCopy(Blocks.IRON_BLOCK).strength(2.5f)
+                        .setId(upperKioskKey)));
         ResourceKey<net.minecraft.world.level.block.Block> plateKey=
                 ResourceKey.create(Registries.BLOCK,GolemsPlus.id("meal_counter"));
         MEAL_COUNTER=Registry.register(BuiltInRegistries.BLOCK,plateKey,

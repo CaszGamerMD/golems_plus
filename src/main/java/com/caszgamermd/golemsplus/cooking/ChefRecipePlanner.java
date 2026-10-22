@@ -13,12 +13,29 @@ import net.minecraft.world.item.crafting.*;
  * Unresolvable recipes are rejected, never synthesized from nothing. */
 public final class ChefRecipePlanner {
     public record Plan(Map<Item,Integer> ingredients,List<String> steps,Map<Item,Integer> leftovers){}
+    /** Explains the work tree and which terminal ingredients the kitchen lacks. */
+    public record Preview(Map<Item,Integer> available,Map<Item,Integer> missing,List<String> steps){}
+    public static Preview preview(ServerLevel level,Item target,int count,Map<Item,Integer> available){
+        var result=solve(level,target,count,available,true);
+        if(result==null)return null;
+        return new Preview(Map.copyOf(result.used),Map.copyOf(result.missing),
+                List.copyOf(result.steps));
+    }
     private record Entry(Item result,int count,List<Ingredient> ingredients,String method){}
     private ChefRecipePlanner(){}
     public static Plan plan(ServerLevel level,Item desired,int amount,Map<Item,Integer> stock){
-        // An already finished dish may be served without requiring a recipe.
-        if(stock.getOrDefault(desired,0)>=amount)
-            return new Plan(Map.of(desired,amount),List.of(),Map.of());
+        Mutable m=solve(level,desired,amount,stock,false);
+        if(m==null)return null;
+        return new Plan(Map.copyOf(m.used),List.copyOf(m.steps),Map.copyOf(m.crafted));
+    }
+    private static Mutable solve(ServerLevel level,Item desired,int amount,
+                                 Map<Item,Integer> stock,boolean inspection){
+        if(amount<1||amount>16)return null;
+        if(stock.getOrDefault(desired,0)>=amount){
+            Mutable ready=new Mutable(stock,Map.of(),inspection);
+            ready.resolve(desired,amount,new HashSet<>(),0);
+            return ready;
+        }
         Map<Item,List<Entry>> byResult=new HashMap<>();
         try{
             Object manager=level.getServer().getRecipeManager();
@@ -52,16 +69,18 @@ public final class ChefRecipePlanner {
                 }
             }
         }catch(ReflectiveOperationException | RuntimeException ex){return null;}
-        Mutable m=new Mutable(stock,byResult);
+        Mutable m=new Mutable(stock,byResult,inspection);
         if(!m.resolve(desired,amount,new HashSet<>(),0))return null;
-        return new Plan(Map.copyOf(m.used),List.copyOf(m.steps),Map.copyOf(m.crafted));
+        return m;
     }
     private static final class Mutable{
-        final Map<Item,Integer> remaining,used=new HashMap<>(),crafted=new HashMap<>();
+        final Map<Item,Integer> remaining,used=new HashMap<>(),crafted=new HashMap<>(),
+                missing=new HashMap<>();
         final Map<Item,List<Entry>> recipes;
         final List<String> steps=new ArrayList<>();
-        Mutable(Map<Item,Integer> stock,Map<Item,List<Entry>> recipes){
-            remaining=new HashMap<>(stock);this.recipes=recipes;
+        final boolean inspection;
+        Mutable(Map<Item,Integer> stock,Map<Item,List<Entry>> recipes,boolean inspection){
+            remaining=new HashMap<>(stock);this.recipes=recipes;this.inspection=inspection;
         }
         boolean resolve(Item item,int count,Set<Item> visiting,int depth){
             if(count<=0)return true;
@@ -82,6 +101,7 @@ public final class ChefRecipePlanner {
             var savedRemaining=new HashMap<>(remaining);
             var savedUsed=new HashMap<>(used);
             var savedCrafted=new HashMap<>(crafted);
+            var savedMissing=new HashMap<>(missing);
             int stepSize=steps.size();
             visiting.add(item);
             for(Entry recipe:recipes.getOrDefault(item,List.of())){
@@ -106,6 +126,7 @@ public final class ChefRecipePlanner {
                     var preRemaining=new HashMap<>(remaining);
                     var preUsed=new HashMap<>(used);
                     var preCrafted=new HashMap<>(crafted);
+                    var preMissing=new HashMap<>(missing);
                     int preSteps=steps.size();
                     for(Item candidate:options){
                         if(resolve(candidate,crafts,visiting,depth+1)){
@@ -114,6 +135,7 @@ public final class ChefRecipePlanner {
                         remaining.clear();remaining.putAll(preRemaining);
                         used.clear();used.putAll(preUsed);
                         crafted.clear();crafted.putAll(preCrafted);
+                        missing.clear();missing.putAll(preMissing);
                         while(steps.size()>preSteps)steps.removeLast();
                     }
                     if(!ingredientFound){ok=false;break;}
@@ -128,9 +150,15 @@ public final class ChefRecipePlanner {
                 remaining.clear();remaining.putAll(savedRemaining);
                 used.clear();used.putAll(savedUsed);
                 crafted.clear();crafted.putAll(savedCrafted);
+                missing.clear();missing.putAll(savedMissing);
                 while(steps.size()>stepSize)steps.removeLast();
             }
             visiting.remove(item);
+            if(inspection){
+                missing.merge(item,shortfall,Integer::sum);
+                steps.add("RAW "+shortfall+" x "+BuiltInRegistries.ITEM.getKey(item));
+                return true;
+            }
             return false;
         }
     }

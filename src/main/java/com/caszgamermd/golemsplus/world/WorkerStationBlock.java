@@ -7,6 +7,10 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import com.caszgamermd.golemsplus.cooking.CookingKioskTopBlock;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.server.level.ServerLevel;
@@ -42,6 +46,20 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
         this.specialty = specialty;
     }
     public WorkerSpecialty specialty() { return specialty; }
+    @Override public @Nullable BlockState getStateForPlacement(BlockPlaceContext ctx){
+        if(specialty==WorkerSpecialty.COOKING
+                &&!ctx.getLevel().getBlockState(ctx.getClickedPos().above()).canBeReplaced(ctx))
+            return null;
+        return super.getStateForPlacement(ctx);
+    }
+    @Override public void setPlacedBy(Level level,BlockPos pos,BlockState state,
+            @Nullable LivingEntity placer,ItemStack stack){
+        super.setPlacedBy(level,pos,state,placer,stack);
+        if(specialty==WorkerSpecialty.COOKING
+                &&level.getBlockState(pos.above()).canBeReplaced())
+            level.setBlockAndUpdate(pos.above(),
+                    WorksiteContent.COOKING_KIOSK_TOP.defaultBlockState());
+    }
     @Override protected MapCodec<? extends Block> codec() { return codec; }
 
     @Override public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
@@ -100,6 +118,9 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
             }
             Containers.dropContents(level,pos,station);
         }
+        if(!level.isClientSide()&&specialty==WorkerSpecialty.COOKING
+                &&level.getBlockState(pos.above()).is(WorksiteContent.COOKING_KIOSK_TOP))
+            level.removeBlock(pos.above(),false);
         return super.playerWillDestroy(level,pos,state,player);
     }
     @Override protected InteractionResult useWithoutItem(BlockState state, Level level,
