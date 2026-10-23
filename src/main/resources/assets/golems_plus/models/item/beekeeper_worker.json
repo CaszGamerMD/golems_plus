@@ -14,8 +14,8 @@
     "leather": "minecraft:block/brown_concrete",
     "white": "minecraft:block/white_wool",
     "light": "minecraft:block/white_concrete",
-    "mesh": "minecraft:block/iron_bars",
-    "blue": "minecraft:block/light_blue_stained_glass",
+    "mesh": "golems_plus:item/beekeeper_veil_mesh",
+    "blue": "minecraft:block/light_blue_concrete",
     "teal": "minecraft:block/cyan_terracotta",
     "silver": "minecraft:block/iron_block",
     "cream": "minecraft:block/birch_planks"
@@ -301,7 +301,7 @@
       "from": [
         2.4,
         2,
-        2
+        2.08
       ],
       "to": [
         13.6,

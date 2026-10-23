@@ -160,10 +160,11 @@ class AssetIntegrityTest {
      */
     @Test void blockModelsHaveNoCoplanarDepthFightingFaces() throws Exception {
         String[] models={
-            "builder_table","beekeeper_station","cooking_station",
-            "cooking_kiosk_top","fishing_station","fishing_station_wink",
-            "meal_counter","trader_counter","fishing_spot_buoy",
-            "fishing_spot_shore"
+            "block/builder_table","block/beekeeper_station","block/cooking_station",
+            "block/cooking_kiosk_top","block/fishing_station","block/fishing_station_wink",
+            "block/meal_counter","block/trader_counter","block/fishing_spot_buoy",
+            "block/fishing_spot_shore","item/beekeeper_worker","item/builder_worker",
+            "item/chef_worker","item/fisher_worker","item/trader_worker"
         };
         String[] sides={"north","south","east","west","up","down"};
         int[] axis={2,2,0,0,1,1};
@@ -171,7 +172,7 @@ class AssetIntegrityTest {
         int[] across1={0,0,1,1,0,0};
         int[] across2={1,1,2,2,2,2};
         for(String model:models){
-            JsonArray elements=json("models/block/"+model+".json")
+            JsonArray elements=json("models/"+model+".json")
                     .getAsJsonArray("elements");
             for(int i=0;i<elements.size();i++){
                 JsonObject a=elements.get(i).getAsJsonObject();
