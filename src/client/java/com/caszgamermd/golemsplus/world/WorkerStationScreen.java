@@ -412,10 +412,15 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                     button(truncate(name,27),PANE,y,182,()->safe(()->{
                         try{
                             LitematicaPlacementClient.sendPlacement(entry,menu.stationPos());
-                            feedback="Placement upload sent; use Preview to verify";
                             openPage(Page.BUILD);
-                            feedback="Placement upload sent; use Preview to verify";
-                        }catch(Exception e){throw new IllegalArgumentException(e.getMessage());}
+                            feedback="Upload sent; wait for server import confirmation in chat";
+                        }catch(Exception e){
+                            String message=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();
+                            if(minecraft.player!=null)
+                                minecraft.player.sendSystemMessage(
+                                        Component.literal("[Builder] Placement import: "+message));
+                            throw new IllegalArgumentException(message);
+                        }
                     }));
                 }
                 button("Previous",PANE,152,89,()->{

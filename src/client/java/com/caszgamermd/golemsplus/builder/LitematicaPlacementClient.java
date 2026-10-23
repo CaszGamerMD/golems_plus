@@ -171,11 +171,30 @@ public final class LitematicaPlacementClient {
         if(Boolean.TRUE.equals(invoke(placement,"isRegionPlacementModified")))
             throw new IllegalArgumentException(
                     "Modified subregion positions/rotations are not yet supported");
-        Object all=invoke(placement,"getAllSubRegions");
-        Object enabled=invoke(placement,"getEnabledSubRegions");
-        if(all instanceof java.util.Collection<?> a && enabled instanceof java.util.Collection<?> e
-                && a.size()!=e.size())
-            throw new IllegalArgumentException("Enable every subregion before importing");
+        // Litematica 26.2 renamed both accessors. The old calls here
+        // threw NoSuchMethodException when clicking *any* listed placement.
+        // getAllSubRegionsPlacements() returns Collection<SubRegionPlacement>
+        // and getEnabledRelativeSubRegionPlacements() returns Map<String,SubRegionPlacement>.
+        Object all=firstAvailable(placement,
+                "getAllSubRegionsPlacements","getAllSubRegions");
+        Object enabled=firstAvailable(placement,
+                "getEnabledRelativeSubRegionPlacements","getEnabledSubRegions");
+        if(all==null||enabled==null)
+            throw new IllegalArgumentException(
+                    "Litematica's subregion API is unavailable; expected "+
+                    "getAllSubRegionsPlacements() and "+
+                    "getEnabledRelativeSubRegionPlacements()");
+        int allCount=all instanceof java.util.Collection<?> values?values.size()
+                :all instanceof java.util.Map<?,?> values?values.size():-1;
+        int enabledCount=enabled instanceof java.util.Collection<?> values?values.size()
+                :enabled instanceof java.util.Map<?,?> values?values.size():-1;
+        if(allCount<0||enabledCount<0)
+            throw new IllegalArgumentException("Unknown Litematica subregion collection type");
+        if(allCount==0)
+            throw new IllegalArgumentException("This placement contains no subregions");
+        if(allCount!=enabledCount)
+            throw new IllegalArgumentException("Enable all "+allCount+
+                    " subregions in Litematica before importing ("+enabledCount+" enabled)");
         Object pathObj=firstAvailable(placement,"getSchematicFile","getFile");
         if(pathObj instanceof Optional<?> opt)pathObj=opt.orElse(null);
         if(pathObj==null)throw new IllegalArgumentException(

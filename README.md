@@ -421,3 +421,24 @@ remain unchanged. Doors are opened before path calculation where possible,
 and the normal collision width is restored after the Golem clears them.
 This applies to all five professions; it does not modify door models or
 change the Chef's maximum step height.
+
+## 0.3.13-dev — Builder Litematica selection fix
+
+Litematica 26.2 loads its list of placements through
+`getAllSchematicsPlacements()`, but uses different accessors when an
+individual placement is imported:
+`getAllSubRegionsPlacements()` returns the complete subregion collection
+and `getEnabledRelativeSubRegionPlacements()` returns a map of enabled
+subregions. The former Golems Plus selection handler incorrectly called
+`getAllSubRegions()` and `getEnabledSubRegions()`, which do not exist in
+this version. It could list placements successfully, then throw
+`NoSuchMethodException` when one was clicked.
+
+The client bridge now reads the correct method names, accepts either
+Map or Collection when checking the total/enabled counts, and reports
+how many subregions need enabling. If a separate file error occurs
+(e.g. the placement has never been saved as .litematic, is larger than
+the configured 2 MiB transfer limit, or isn't on disk), the full error
+is shown in chat rather than truncated in the Builder Planner GUI.
+Wait for a server-side '[Builder] Imported placed...' confirmation
+before pressing Preview or Start build.
