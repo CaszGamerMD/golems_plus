@@ -93,8 +93,12 @@ public final class BuilderScannerLink {
                 + (evaluation.computerVerified()
                     ? " (Rack Computer verified)."
                     : " (computer chunk unloaded; verification deferred)."));
-        tell(player, "The Builder still uses supplies in its Planning Table. "
-                + "Automatic warehouse withdrawals are not implemented yet.");
+        tell(player,"Warehouse auto-supply enabled. Start Build to request"
+                +" materials; warehouse Golems pack shulkers at an output PTP,"
+                +" then a Builder Golem carries them back to the Planning Table.");
+        tell(player,"Warehouse needs Storage Golems, racks with stock,"
+                +" an OUTPUT PTP, and an attached Shulker Station with empty boxes."
+                +" Keep the warehouse and travel route loaded.");
     }
 
     private static void tell(Player player, String message) {
