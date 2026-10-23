@@ -179,18 +179,141 @@ public final class ProfessionGolemModel
                         PartPose.ZERO);
             }
             case FISHER -> {
-                // A folding fabric camping chair appears under a seated Fisher.
-                // In walking mode it is hidden rather than carried around.
-                root.addOrReplaceChild("folding_chair",CubeListBuilder.create()
-                        .texOffs(190,1).addBox(-8,13,0,16,2,13)
-                        .texOffs(191,18).addBox(-8,4,11,16,10,2)
-                        .texOffs(190,30).addBox(-8,13,0,1.5f,11,1.5f)
-                        .texOffs(190,30).addBox(6.5f,13,0,1.5f,11,1.5f)
-                        .texOffs(190,30).addBox(-8,13,11,1.5f,11,1.5f)
-                        .texOffs(190,30).addBox(6.5f,13,11,1.5f,11,1.5f)
-                        .texOffs(206,29).addBox(-10,13,2,2.5f,1.5f,9)
-                        .texOffs(206,29).addBox(7.5f,13,2,2.5f,1.5f,9),
+                // High-detail red folding campsite chair modeled after the
+                // user's real-world reference: suspended canvas, reinforced
+                // seams, tubular X-frame, armrests, cup holder and feet.
+                // Coordinates use the same 24-pixel ground plane as the Golem.
+                // This group is hidden while walking, and follows the
+                // Fisher's torso position only when seated/waiting.
+                PartDefinition chair=root.addOrReplaceChild("folding_chair",
+                        CubeListBuilder.create(),PartPose.ZERO);
+
+                // Bright red canvas: a wide, lightly tilted seat and a
+                // high fabric back, with separately modeled top binding.
+                chair.addOrReplaceChild("red_canvas_seat",CubeListBuilder.create()
+                        .texOffs(190,0).addBox(-8.1f,16.4f,-7.2f,
+                                16.2f,1.0f,13.8f),PartPose.ZERO);
+                chair.addOrReplaceChild("red_canvas_back",CubeListBuilder.create()
+                        .texOffs(190,24).addBox(-8.0f,4.0f,6.0f,
+                                16.0f,12.3f,1.0f),PartPose.ZERO);
+                chair.addOrReplaceChild("red_headrest",CubeListBuilder.create()
+                        .texOffs(190,42).addBox(-8.4f,3.4f,5.7f,
+                                16.8f,2.4f,1.35f),PartPose.ZERO);
+                // Top and seat binding are black nylon webbing rather than
+                // black texture painted onto the middle of the fabric.
+                chair.addOrReplaceChild("seat_front_binding",CubeListBuilder.create()
+                        .texOffs(190,63).addBox(-8.7f,16.15f,-7.7f,
+                                17.4f,.65f,1.0f),PartPose.ZERO);
+                chair.addOrReplaceChild("seat_rear_binding",CubeListBuilder.create()
+                        .texOffs(190,63).addBox(-8.7f,16.15f,6.25f,
+                                17.4f,.65f,.8f),PartPose.ZERO);
+                chair.addOrReplaceChild("seat_side_binding_left",CubeListBuilder.create()
+                        .texOffs(190,63).addBox(7.85f,16.15f,-7.2f,
+                                .8f,.65f,13.7f),PartPose.ZERO);
+                chair.addOrReplaceChild("seat_side_binding_right",CubeListBuilder.create()
+                        .texOffs(190,63).addBox(-8.65f,16.15f,-7.2f,
+                                .8f,.65f,13.7f),PartPose.ZERO);
+                chair.addOrReplaceChild("back_binding_top",CubeListBuilder.create()
+                        .texOffs(190,63).addBox(-8.65f,3.20f,5.65f,
+                                17.3f,.8f,1.45f),PartPose.ZERO);
+                chair.addOrReplaceChild("back_binding_left",CubeListBuilder.create()
+                        .texOffs(190,63).addBox(-8.65f,4.0f,5.7f,
+                                .7f,12.4f,1.4f),PartPose.ZERO);
+                chair.addOrReplaceChild("back_binding_right",CubeListBuilder.create()
+                        .texOffs(190,63).addBox(7.95f,4.0f,5.7f,
+                                .7f,12.4f,1.4f),PartPose.ZERO);
+                // Woven nylon arms extend forward past the canvas body.
+                chair.addOrReplaceChild("left_red_armrest",CubeListBuilder.create()
+                        .texOffs(190,45).addBox(8.6f,12.5f,-8.4f,
+                                3.05f,1.1f,13.8f),PartPose.ZERO);
+                chair.addOrReplaceChild("right_red_armrest",CubeListBuilder.create()
+                        .texOffs(190,45).addBox(-11.65f,12.5f,-8.4f,
+                                3.05f,1.1f,13.8f),PartPose.ZERO);
+                chair.addOrReplaceChild("arm_binding_left",CubeListBuilder.create()
+                        .texOffs(190,63).addBox(8.4f,12.35f,-8.6f,
+                                3.35f,.34f,14.2f),PartPose.ZERO);
+                chair.addOrReplaceChild("arm_binding_right",CubeListBuilder.create()
+                        .texOffs(190,63).addBox(-11.75f,12.35f,-8.6f,
+                                3.35f,.34f,14.2f),PartPose.ZERO);
+
+                // Tube frame: four splayed upright posts, two back supports,
+                // folding pivots and double crossed diagonal braces.
+                CubeListBuilder metal=CubeListBuilder.create().texOffs(190,92);
+                chair.addOrReplaceChild("front_steel_post_left",
+                        metal.addBox(8.2f,13.35f,-6.7f,1.05f,10.2f,1.05f),
                         PartPose.ZERO);
+                chair.addOrReplaceChild("front_steel_post_right",CubeListBuilder.create()
+                        .texOffs(190,92).addBox(-9.25f,13.35f,-6.7f,
+                                1.05f,10.2f,1.05f),PartPose.ZERO);
+                chair.addOrReplaceChild("rear_steel_post_left",CubeListBuilder.create()
+                        .texOffs(190,92).addBox(8.2f,3.65f,6.0f,
+                                1.05f,20.0f,1.05f),PartPose.ZERO);
+                chair.addOrReplaceChild("rear_steel_post_right",CubeListBuilder.create()
+                        .texOffs(190,92).addBox(-9.25f,3.65f,6.0f,
+                                1.05f,20.0f,1.05f),PartPose.ZERO);
+                chair.addOrReplaceChild("arm_support_left",CubeListBuilder.create()
+                        .texOffs(190,92).addBox(8.4f,13.3f,-7.55f,
+                                .8f,6.4f,.85f),PartPose.ZERO);
+                chair.addOrReplaceChild("arm_support_right",CubeListBuilder.create()
+                        .texOffs(190,92).addBox(-9.2f,13.3f,-7.55f,
+                                .8f,6.4f,.85f),PartPose.ZERO);
+                // Real crossed braces are rotated rods, not an opaque
+                // tabletop or solid triangular polygons.
+                for(int side=0;side<2;side++){
+                    float z=side==0?-6.4f:6.5f;
+                    for(int diagonal=0;diagonal<2;diagonal++){
+                        float angle=diagonal==0?.71f:-.71f;
+                        chair.addOrReplaceChild("cross_"+side+"_"+diagonal,
+                                CubeListBuilder.create().texOffs(190,92)
+                                        .addBox(-.43f,-9.5f,-.45f,
+                                                .86f,19.0f,.9f),
+                                PartPose.offsetAndRotation(0,18.25f,z,0,0,angle));
+                    }
+                }
+                // Triangular side-fold braces and metal rivet blocks.
+                for(int side=0;side<2;side++){
+                    float x=side==0?-8.55f:8.55f;
+                    for(int diagonal=0;diagonal<2;diagonal++){
+                        float tilt=diagonal==0?.49f:-.49f;
+                        chair.addOrReplaceChild("side_cross_"+side+"_"+diagonal,
+                                CubeListBuilder.create().texOffs(190,92)
+                                        .addBox(-.38f,-7.1f,-.38f,
+                                                .76f,14.2f,.76f),
+                                PartPose.offsetAndRotation(x,18.8f,0,
+                                        tilt,0,0));
+                    }
+                    chair.addOrReplaceChild("frame_hinge_"+side,
+                            CubeListBuilder.create().texOffs(190,65)
+                                    .addBox(x-1.05f,16.5f,-.65f,
+                                            2.1f,2.1f,1.3f),PartPose.ZERO);
+                }
+                // Individually modeled plastic foot caps anchor each post.
+                for(int side=0;side<2;side++)
+                    for(int back=0;back<2;back++){
+                        float x=side==0?-9.1f:8.1f;
+                        float z=back==0?-7.4f:5.5f;
+                        chair.addOrReplaceChild("rubber_foot_"+side+"_"+back,
+                                CubeListBuilder.create().texOffs(190,119)
+                                        .addBox(x,22.2f,z,2.2f,1.8f,2.0f),
+                                PartPose.ZERO);
+                    }
+                // Cup-holder: black sewn rim, open top (not a solid cube),
+                // and a shallow dark mesh basket hanging off the left arm.
+                chair.addOrReplaceChild("cup_holder_front",CubeListBuilder.create()
+                        .texOffs(190,65).addBox(9.0f,12.05f,-5.8f,
+                                2.7f,.75f,.45f),PartPose.ZERO);
+                chair.addOrReplaceChild("cup_holder_back",CubeListBuilder.create()
+                        .texOffs(190,65).addBox(9.0f,12.05f,-2.25f,
+                                2.7f,.75f,.45f),PartPose.ZERO);
+                chair.addOrReplaceChild("cup_holder_left",CubeListBuilder.create()
+                        .texOffs(190,65).addBox(8.9f,12.05f,-5.8f,
+                                .45f,.75f,4.0f),PartPose.ZERO);
+                chair.addOrReplaceChild("cup_holder_right",CubeListBuilder.create()
+                        .texOffs(190,65).addBox(11.2f,12.05f,-5.8f,
+                                .45f,.75f,4.0f),PartPose.ZERO);
+                chair.addOrReplaceChild("mesh_cup_pouch",CubeListBuilder.create()
+                        .texOffs(212,75).addBox(9.35f,12.7f,-5.25f,
+                                1.9f,3.4f,2.9f),PartPose.ZERO);
                 // Broad soft fishing hat, woven band and raised brim.
                 head.addOrReplaceChild("hat_crown",CubeListBuilder.create()
                         .texOffs(75,24).addBox(-4.5f,-7.4f,-3.5f,9,4.1f,7),
