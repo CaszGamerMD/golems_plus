@@ -96,9 +96,6 @@
         "north": {
           "texture": "#wood"
         },
-        "south": {
-          "texture": "#wood"
-        },
         "east": {
           "texture": "#wood"
         },
@@ -127,9 +124,6 @@
       ],
       "faces": {
         "north": {
-          "texture": "#wood"
-        },
-        "south": {
           "texture": "#wood"
         },
         "east": {
@@ -163,12 +157,6 @@
           "texture": "#wood"
         },
         "south": {
-          "texture": "#wood"
-        },
-        "east": {
-          "texture": "#wood"
-        },
-        "west": {
           "texture": "#wood"
         },
         "up": {
@@ -815,7 +803,7 @@
       ],
       "to": [
         14.1,
-        14.75,
+        14.42,
         9.5
       ],
       "faces": {
@@ -1140,12 +1128,12 @@
       "name": "lamp glass bulb",
       "from": [
         12.3,
-        14.45,
+        14.48,
         7.8
       ],
       "to": [
         14.3,
-        14.9,
+        14.73,
         9.9
       ],
       "faces": {
