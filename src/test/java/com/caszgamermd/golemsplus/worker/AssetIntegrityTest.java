@@ -154,4 +154,57 @@ class AssetIntegrityTest {
         }
         assertNotNull(asset("textures/item/fishing_bait.png.mcmeta"));
     }
+    /** Same-direction, exactly coplanar outer faces shimmer as the camera
+     * moves. Opposite-facing joining faces are intentional and excluded.
+     * Rotated boxes need world-space geometry and are checked in-game.
+     */
+    @Test void blockModelsHaveNoCoplanarDepthFightingFaces() throws Exception {
+        String[] models={
+            "builder_table","beekeeper_station","cooking_station",
+            "cooking_kiosk_top","fishing_station","fishing_station_wink",
+            "meal_counter","trader_counter","fishing_spot_buoy",
+            "fishing_spot_shore"
+        };
+        String[] sides={"north","south","east","west","up","down"};
+        int[] axis={2,2,0,0,1,1};
+        int[] across1={0,0,1,1,0,0};
+        int[] across2={1,1,2,2,2,2};
+        for(String model:models){
+            JsonArray elements=json("models/block/"+model+".json")
+                    .getAsJsonArray("elements");
+            for(int i=0;i<elements.size();i++){
+                JsonObject a=elements.get(i).getAsJsonObject();
+                if(a.has("rotation")||!a.has("faces"))continue;
+                double[] af=new double[3],at=new double[3];
+                for(int k=0;k<3;k++){
+                    af[k]=a.getAsJsonArray("from").get(k).getAsDouble();
+                    at[k]=a.getAsJsonArray("to").get(k).getAsDouble();
+                }
+                for(int j=i+1;j<elements.size();j++){
+                    JsonObject b=elements.get(j).getAsJsonObject();
+                    if(b.has("rotation")||!b.has("faces"))continue;
+                    double[] bf=new double[3],bt=new double[3];
+                    for(int k=0;k<3;k++){
+                        bf[k]=b.getAsJsonArray("from").get(k).getAsDouble();
+                        bt[k]=b.getAsJsonArray("to").get(k).getAsDouble();
+                    }
+                    JsonObject facesA=a.getAsJsonObject("faces");
+                    JsonObject facesB=b.getAsJsonObject("faces");
+                    for(int f=0;f<sides.length;f++){
+                        if(!facesA.has(sides[f])||!facesB.has(sides[f]))continue;
+                        int k=axis[f],u=across1[f],v=across2[f];
+                        double pa=f%2==0?af[k]:at[k];
+                        double pb=f%2==0?bf[k]:bt[k];
+                        if(Math.abs(pa-pb)>.0001)continue;
+                        double du=Math.max(0,Math.min(at[u],bt[u])-Math.max(af[u],bf[u]));
+                        double dv=Math.max(0,Math.min(at[v],bt[v])-Math.max(af[v],bf[v]));
+                        assertTrue(du*dv<=.07,
+                                "Z-fighting same-plane "+sides[f]+" faces "
+                                +i+" and "+j+" in "+model);
+                    }
+                }
+            }
+        }
+    }
+
 }
