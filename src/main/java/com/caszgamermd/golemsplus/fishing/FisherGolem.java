@@ -7,6 +7,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.DustParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -43,12 +47,21 @@ public final class FisherGolem extends PathfinderMob {
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> SEATED=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> CASTING=
+            SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> REELING=
+            SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<BlockPos> CAST_TARGET=
+            SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BLOCK_POS);
     private static final int POCKET_SLOTS=9,BAIT_LOAD=24;
+    private static final DustParticleOptions LINE_COLOR=new DustParticleOptions(0x9caca7,.33f);
+    private static final DustParticleOptions FLOAT_WHITE=new DustParticleOptions(0xe8e8dc,.9f);
+    private static final DustParticleOptions FLOAT_RED=new DustParticleOptions(0xe34437,.75f);
     private BlockPos home=BlockPos.ZERO;
     private UUID owner;
     private ItemStack rod=ItemStack.EMPTY;
     private final List<ItemStack> pockets=new ArrayList<>();
-    private int bait,phase,fishTicks,tries;
+    private int bait,phase,fishTicks,tries,reelTicks;
     private BlockPos chairSpot;
 
     public FisherGolem(EntityType<? extends PathfinderMob> type,Level world){
@@ -68,6 +81,8 @@ public final class FisherGolem extends PathfinderMob {
         super.defineSynchedData(b);
         b.define(HAS_ROD,false);b.define(HAS_CATCH,false);
         b.define(SEATED,false);
+        b.define(CASTING,false);b.define(REELING,false);
+        b.define(CAST_TARGET,BlockPos.ZERO);
     }
     @Override protected void registerGoals(){}
     public void assign(BlockPos at,UUID who){home=at.immutable();owner=who;}
@@ -75,6 +90,9 @@ public final class FisherGolem extends PathfinderMob {
     public boolean hasRod(){return getEntityData().get(HAS_ROD);}
     public boolean hasCatch(){return getEntityData().get(HAS_CATCH);}
     public boolean seated(){return getEntityData().get(SEATED);}
+    public boolean casting(){return getEntityData().get(CASTING);}
+    public boolean reeling(){return getEntityData().get(REELING);}
+    public BlockPos castTarget(){return getEntityData().get(CAST_TARGET);}
     public int baitCount(){return bait;}
     private void syncCarried(){
         getEntityData().set(HAS_ROD,!rod.isEmpty());
@@ -83,6 +101,10 @@ public final class FisherGolem extends PathfinderMob {
     private void seat(boolean value){
         if(getEntityData().get(SEATED)!=value)getEntityData().set(SEATED,value);
         if(value)getNavigation().stop();
+    }
+    private void stopCasting(){
+        getEntityData().set(CASTING,false);
+        getEntityData().set(REELING,false);
     }
     private boolean full(){
         return pockets.stream().noneMatch(ItemStack::isEmpty);
@@ -116,15 +138,17 @@ public final class FisherGolem extends PathfinderMob {
         }
         if(held.isEmpty()&&player.isShiftKeyDown()&&!rod.isEmpty()){
             Containers.dropItemStack(level(),getX(),getY(),getZ(),rod.copy());
-            rod=ItemStack.EMPTY;seat(false);syncCarried();
+            rod=ItemStack.EMPTY;seat(false);stopCasting();syncCarried();
             return InteractionResult.SUCCESS;
         }
         return super.mobInteract(player,hand);
     }
     @Override public void tick(){
         super.tick();
-        if(level() instanceof ServerLevel world)
+        if(level() instanceof ServerLevel world){
             com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(world,this);
+            if(tickCount%5==0&&casting())renderFishingLine(world);
+        }
         if(!(level() instanceof ServerLevel level)||owner==null||tickCount%10!=0
                 ||!level.hasChunkAt(home))return;
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity station)
@@ -137,16 +161,18 @@ public final class FisherGolem extends PathfinderMob {
             // returned to the coolers, rather than standing frozen.
             boolean waiting=distanceToSqr(home.getX()+.5,home.getY()+.5,
                     home.getZ()+.5)<9.0;
+            stopCasting();
             seat(waiting);
             if(!waiting)walkToward(home,.75);
             else getNavigation().stop();
             return;
         }
-        if(anyFish()&&(full()||bait<=0))phase=3;
-        if((rod.isEmpty()||bait==0)&&phase!=3)phase=0;
+        if(anyFish()&&(full()||bait<=0)&&phase!=4)phase=3;
+        if((rod.isEmpty()||bait==0)&&phase!=3&&phase!=4)phase=0;
         if(phase==0)restock(level,station);
         else if(phase==1)travel(level,station);
         else if(phase==2)fish(level,station);
+        else if(phase==4)reel(level,station);
         else returnCatch(level,station);
     }
     private static int takeBait(WorkerStationBlockEntity station,int want){
@@ -159,6 +185,7 @@ public final class FisherGolem extends PathfinderMob {
         return want-left;
     }
     private void restock(ServerLevel level,WorkerStationBlockEntity station){
+        stopCasting();
         BlockPos home=station.getBlockPos();
         if(!walkToward(home,.8)){station.setProblem("Fisher returning to coolers");return;}
         if(rod.isEmpty())for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++)
@@ -184,6 +211,8 @@ public final class FisherGolem extends PathfinderMob {
     }
     private static boolean safeStanding(ServerLevel level,BlockPos p){
         return level.hasChunkAt(p)&&level.hasChunkAt(p.below())
+                &&level.getFluidState(p).isEmpty()
+                &&level.getFluidState(p.above()).isEmpty()
                 &&level.getBlockState(p).getCollisionShape(level,p).isEmpty()
                 &&level.getBlockState(p.above()).getCollisionShape(level,p.above()).isEmpty()
                 &&!level.getBlockState(p.below()).getCollisionShape(level,p.below()).isEmpty();
@@ -209,7 +238,76 @@ public final class FisherGolem extends PathfinderMob {
             }
         return false;
     }
+    /** Find a visible water surface in rod range. Different crew members
+     * favor slightly different landing points to avoid stacked bobbers.
+     */
+    private BlockPos chooseCastWater(ServerLevel level,BlockPos marker){
+        if(marker==null)return null;
+        int hash=getUUID().hashCode();
+        int ox=((hash&3)-1)*2,oz=(((hash>>>2)&3)-1)*2;
+        BlockPos preferred=marker.offset(ox,0,oz);
+        double best=Double.POSITIVE_INFINITY;
+        BlockPos chosen=null;
+        for(int dx=-7;dx<=7;dx++)for(int dz=-7;dz<=7;dz++)
+            for(int dy=-2;dy<=2;dy++){
+                BlockPos at=marker.offset(dx,dy,dz);
+                if(!level.hasChunkAt(at)||!level.hasChunkAt(at.above())
+                        ||!level.getFluidState(at).is(net.minecraft.world.level.material.Fluids.WATER)
+                        ||!level.getFluidState(at).isSource()
+                        ||!level.getFluidState(at.above()).isEmpty()
+                        ||at.distSqr(blockPosition())>95)continue;
+                double score=at.distSqr(preferred)+.18*at.distSqr(blockPosition());
+                if(score<best){best=score;chosen=at.immutable();}
+            }
+        return chosen;
+    }
+    private void faceCast(BlockPos water){
+        double dx=water.getX()+.5-getX();
+        double dz=water.getZ()+.5-getZ();
+        float yaw=-(float)Math.toDegrees(Math.atan2(dx,dz));
+        setYRot(yaw);setYHeadRot(yaw);setYBodyRot(yaw);
+    }
+    private boolean beginCast(ServerLevel level,WorkerStationBlockEntity station){
+        BlockPos target=chooseCastWater(level,station.fishingSpot());
+        if(target==null){
+            stopCasting();
+            station.setProblem("No open water surface within fishing rod range of the chair");
+            phase=1;chairSpot=null;seat(false);
+            return false;
+        }
+        faceCast(target);
+        getEntityData().set(CAST_TARGET,target);
+        getEntityData().set(REELING,false);
+        getEntityData().set(CASTING,true);
+        fishTicks=120+getRandom().nextInt(220);
+        level.playSound(null,getX(),getY(),getZ(),SoundEvents.FISHING_BOBBER_THROW,
+                SoundSource.NEUTRAL,.55f,.95f+getRandom().nextFloat()*.1f);
+        station.setProblem("");
+        return true;
+    }
+    private void renderFishingLine(ServerLevel level){
+        BlockPos target=castTarget();
+        if(target.equals(BlockPos.ZERO))return;
+        double yaw=Math.toRadians(getYRot());
+        Vec3 forward=new Vec3(-Math.sin(yaw),0,Math.cos(yaw));
+        Vec3 side=new Vec3(forward.z,0,-forward.x);
+        Vec3 tip=position().add(forward.scale(1.22)).add(side.scale(-.32)).add(0,1.64,0);
+        double floatY=target.getY()+.89+.028*Math.sin(tickCount*.29);
+        Vec3 bob=new Vec3(target.getX()+.5,floatY,target.getZ()+.5);
+        for(int i=1;i<12;i++){
+            double t=i/12.0;
+            Vec3 at=tip.lerp(bob,t).add(0,-.22*Math.sin(t*Math.PI),0);
+            level.sendParticles(LINE_COLOR,at.x,at.y,at.z,1,0,0,0,0);
+        }
+        level.sendParticles(FLOAT_WHITE,bob.x,bob.y,bob.z,1,0,0,0,0);
+        level.sendParticles(FLOAT_RED,bob.x,bob.y+.13,bob.z,1,0,0,0,0);
+        if(fishTicks<45&&tickCount%10==0){
+            level.sendParticles(ParticleTypes.FISHING,bob.x,bob.y,bob.z,3,.24,0,.24,.01);
+            level.sendParticles(ParticleTypes.BUBBLE,bob.x,bob.y-.13,bob.z,2,.18,.06,.18,.02);
+        }
+    }
     private void travel(ServerLevel level,WorkerStationBlockEntity station){
+        stopCasting();
         if(station.fishingSpot()==null){phase=0;return;}
         if(!fishableWater(level,station.fishingSpot())){
             station.setProblem("Fishing flag needs accessible water nearby");
@@ -227,34 +325,60 @@ public final class FisherGolem extends PathfinderMob {
                 tries=0;chairSpot=null;
             }return;
         }
-        tries=0;phase=2;seat(true);fishTicks=30+getRandom().nextInt(80);
-        station.setProblem("");
+        tries=0;phase=2;seat(true);
+        beginCast(level,station);
     }
     private void fish(ServerLevel level,WorkerStationBlockEntity station){
         seat(true);
-        if(!hasRod()||bait<=0||full()){phase=3;seat(false);return;}
-        if(station.fishingSpot()==null){phase=3;return;}
+        if(!hasRod()||bait<=0||full()){phase=3;stopCasting();seat(false);return;}
+        if(station.fishingSpot()==null){phase=3;stopCasting();return;}
+        if(!casting()&&!beginCast(level,station))return;
+        BlockPos bob=castTarget();
+        if(!level.hasChunkAt(bob)
+                ||!level.getFluidState(bob).is(net.minecraft.world.level.material.Fluids.WATER)){
+            stopCasting();phase=1;chairSpot=null;
+            station.setProblem("Fishing water disappeared; choosing a new shoreline");
+            return;
+        }
+        faceCast(bob);
         if(fishTicks>0){fishTicks-=10;return;}
-        // Only consume bait after a real fishing interval at an actual spot.
-        bait--;
+        // A visible bite has completed at a real water surface. Consume one
+        // stored bait and one rod-use only when an actual catch fits pockets.
         double roll=getRandom().nextDouble();
         Item result=roll<.66?Items.COD:roll<.91?Items.SALMON:
                 roll<.975?Items.TROPICAL_FISH:Items.PUFFERFISH;
-        if(!store(new ItemStack(result))){phase=3;seat(false);return;}
+        if(!store(new ItemStack(result))){phase=3;stopCasting();seat(false);return;}
+        bait--;
         if(rod.isDamageableItem()){
             int damage=rod.getDamageValue()+1;
             if(damage>=rod.getMaxDamage())rod=ItemStack.EMPTY;
             else rod.setDamageValue(damage);
         }
         syncCarried();
-        level.sendParticles(net.minecraft.core.particles.ParticleTypes.SPLASH,
-                station.fishingSpot().getX()+.5,station.fishingSpot().getY()+.85,
-                station.fishingSpot().getZ()+.5,5,.23,.13,.23,.02);
-        if(full()||bait==0||rod.isEmpty()){
+        getEntityData().set(CASTING,false);
+        getEntityData().set(REELING,true);
+        phase=4;
+        reelTicks=20;
+        level.sendParticles(ParticleTypes.SPLASH,
+                bob.getX()+.5,bob.getY()+.9,bob.getZ()+.5,12,.3,.12,.3,.06);
+        level.sendParticles(ParticleTypes.FISHING,
+                bob.getX()+.5,bob.getY()+.9,bob.getZ()+.5,8,.4,.05,.4,.03);
+        level.playSound(null,getX(),getY(),getZ(),SoundEvents.FISHING_BOBBER_RETRIEVE,
+                SoundSource.NEUTRAL,.8f,1f);
+    }
+    private void reel(ServerLevel level,WorkerStationBlockEntity station){
+        seat(true);
+        if(reelTicks>0){reelTicks-=10;return;}
+        getEntityData().set(REELING,false);
+        if(full()||bait<=0||rod.isEmpty()){
             phase=3;seat(false);
-        }else fishTicks=120+getRandom().nextInt(220);
+        }else{
+            phase=2;
+            beginCast(level,station);
+        }
     }
     private void returnCatch(ServerLevel level,WorkerStationBlockEntity station){
+        stopCasting();
         seat(false);
         if(!walkToward(home,.85))return;
         BlockPos dest=station.fisherOutput();
@@ -281,6 +405,7 @@ public final class FisherGolem extends PathfinderMob {
         for(ItemStack fish:pockets)if(!fish.isEmpty())
             Containers.dropItemStack(level,getX(),getY(),getZ(),fish.copy());
         rod=ItemStack.EMPTY;
+        stopCasting();
         pockets.replaceAll(item->ItemStack.EMPTY);
         syncCarried();
     }
@@ -296,6 +421,8 @@ public final class FisherGolem extends PathfinderMob {
         out.putInt("fisher_bait",bait);
         out.putInt("fisher_phase",phase);
         out.putInt("fisher_ticks",fishTicks);
+        out.putInt("fisher_reel_ticks",reelTicks);
+        out.store("fisher_cast_target",BlockPos.CODEC,castTarget());
         for(int i=0;i<POCKET_SLOTS;i++)
             if(!pockets.get(i).isEmpty())
                 out.store("fisher_pocket_"+i,ItemStack.CODEC,pockets.get(i));
@@ -307,8 +434,13 @@ public final class FisherGolem extends PathfinderMob {
         catch(IllegalArgumentException ex){owner=null;}
         rod=in.read("fisher_rod",ItemStack.CODEC).orElse(ItemStack.EMPTY);
         bait=Math.clamp(in.getIntOr("fisher_bait",0),0,BAIT_LOAD);
-        phase=Math.clamp(in.getIntOr("fisher_phase",0),0,3);
+        phase=Math.clamp(in.getIntOr("fisher_phase",0),0,4);
         fishTicks=Math.max(0,in.getIntOr("fisher_ticks",0));
+        reelTicks=Math.clamp(in.getIntOr("fisher_reel_ticks",0),0,20);
+        BlockPos target=in.read("fisher_cast_target",BlockPos.CODEC).orElse(BlockPos.ZERO);
+        getEntityData().set(CAST_TARGET,target);
+        getEntityData().set(CASTING,phase==2&&!target.equals(BlockPos.ZERO));
+        getEntityData().set(REELING,phase==4&&reelTicks>0);
         for(int i=0;i<POCKET_SLOTS;i++)
             pockets.set(i,in.read("fisher_pocket_"+i,ItemStack.CODEC).orElse(ItemStack.EMPTY));
         // Migrate pre-0.3.9 catches.

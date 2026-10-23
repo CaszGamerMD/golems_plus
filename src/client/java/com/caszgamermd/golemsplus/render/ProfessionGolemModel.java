@@ -345,17 +345,23 @@ public final class ProfessionGolemModel
                         .texOffs(107,15).addBox(-2.2f,7.2f,-3.5f,4.4f,.65f,6.8f)
                         .texOffs(108,0).addBox(-.55f,6.45f,-3.0f,1.1f,.8f,3.1f),
                         PartPose.ZERO);
+                // Long tapered rod leaves the hand toward the water instead
+                // of clipping backward through the Golem's shoulder.
                 PartDefinition rod=right.addOrReplaceChild("fishing_rod",
                         CubeListBuilder.create().texOffs(130,4)
-                        .addBox(-.45f,-17.5f,-1.0f,.9f,24,1.0f),
-                        PartPose.offsetAndRotation(0,6.5f,2.2f,-.40f,0,-.23f));
+                        .addBox(-.65f,-7.0f,-.65f,1.3f,13.0f,1.3f)
+                        .texOffs(134,4).addBox(-.43f,-23.0f,-.43f,.86f,17.0f,.86f)
+                        .texOffs(139,4).addBox(-.25f,-33.0f,-.25f,.5f,10.5f,.5f),
+                        PartPose.offsetAndRotation(0,7.6f,-2.7f,1.97f,0,-.14f));
                 rod.addOrReplaceChild("reel",CubeListBuilder.create()
-                        .texOffs(145,5).addBox(-1.8f,3.5f,-1.5f,3.6f,2.6f,2.4f),
+                        .texOffs(145,5).addBox(-1.8f,1.0f,-1.8f,3.6f,2.6f,2.8f),
                         PartPose.ZERO);
+                // The hooked fish is animated only during the actual reel-in,
+                // never indefinitely because fish exists in pocket storage.
                 PartDefinition fish=rod.addOrReplaceChild("caught_fish",
                         CubeListBuilder.create().texOffs(151,18)
-                        .addBox(-.20f,-17.25f,-1.0f,.35f,11.0f,.35f)
-                        .texOffs(160,4).addBox(-2.0f,-6.3f,-2.0f,4,3.6f,3),
+                        .addBox(-.17f,-32.5f,-.25f,.35f,12.0f,.35f)
+                        .texOffs(160,4).addBox(-2.0f,-20.5f,-1.0f,4,3.6f,3),
                         PartPose.ZERO);
                 fish.addOrReplaceChild("tail",CubeListBuilder.create()
                         .texOffs(176,4).addBox(-.9f,-2.7f,-.8f,1.8f,2.2f,1.7f),
@@ -440,12 +446,17 @@ public final class ProfessionGolemModel
                 leftArm.zRot=-.20f;rightArm.zRot=.15f;
             }
             fisherRod.visible=state.hasRod;
-            fisherFish.visible=state.hasRod&&state.carryingFish;
-            // Rod lies back across the shoulder while strolling, leaving
-            // the fishing line and the caught fish visible on return.
+            fisherFish.visible=state.reeling&&state.carryingFish;
             if(state.hasRod){
-                rightArm.xRot=state.seated?-1.25f:-.45f;
-                rightArm.zRot=-.20f;
+                float pulse=Mth.sin(state.ageInTicks*.17f);
+                // Casting: arm and long rod point over the water. A strike
+                // lifts the rod and wriggles the just-caught fish for 2s.
+                rightArm.xRot=state.reeling?-1.65f+.19f*pulse:
+                        state.casting?-1.12f+.045f*pulse:
+                        state.seated?-1.02f:-.44f;
+                rightArm.zRot=-.19f;
+                if(state.reeling)fisherFish.xRot=.24f*pulse;
+                else fisherFish.xRot=0;
             }
             leftArm.xRot*=.6f;
         }else if(profession==Profession.CHEF){
