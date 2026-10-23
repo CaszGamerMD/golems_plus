@@ -385,3 +385,20 @@ are saved, and previously held catches are migrated on load.
   cursor rather than to coordinates translated for the screen's labels.
 * Ingredient search uses bounded alternatives and fewer full-recipe
   scans to reduce stalls in large modpacks.
+
+## Golem navigation overhaul (0.3.11-dev)
+
+All five worker types (Builder, Trader, Beekeeper, Chef and Fisher)
+share a single door-aware server-side pathing controller. Workers keep
+their intended route instead of constantly restarting it, and detect
+stalls when their bodies make no progress. After a stall they try
+another walkable approach rather than continuing into a wall. Doors
+are opened before workers walk into them, and closed only after they
+have fully cleared the doorway, if no other entities are nearby.
+
+Workers now choose adjacent, reachable stand positions near solid
+job blocks. Close-proximity worker congestion triggers deterministic
+yielding so two golems cannot both shove one another through the same
+door. Chef's existing avoidance of countertop surfaces and its 0.6
+block maximum climb remain enforced; all worker entity collision
+widths remain 0.85 blocks with unchanged models.

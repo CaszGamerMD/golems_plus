@@ -122,6 +122,8 @@ public final class FisherGolem extends PathfinderMob {
     }
     @Override public void tick(){
         super.tick();
+        if(level() instanceof ServerLevel world)
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(world,this);
         if(!(level() instanceof ServerLevel level)||owner==null||tickCount%10!=0
                 ||!level.hasChunkAt(home))return;
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity station)
@@ -167,8 +169,9 @@ public final class FisherGolem extends PathfinderMob {
         double d=distanceToSqr(pos.getX()+.5,pos.getY(),pos.getZ()+.5);
         if(d<=7.5){getNavigation().stop();return true;}
         seat(false);
-        if(getNavigation().isDone()||tickCount%50==0)
-            getNavigation().moveTo(pos.getX()+.5,pos.getY(),pos.getZ()+.5,speed);
+        if(level() instanceof ServerLevel world)
+            com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeTo(world,this,pos,speed);
         return false;
     }
     private static boolean safeStanding(ServerLevel level,BlockPos p){

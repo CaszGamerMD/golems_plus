@@ -64,7 +64,8 @@ public final class ChefFloorNavigation {
         PathNavigation nav=chef.getNavigation();
         Path path=nav.createPath(feet,0);
         if(!clearPath(level,path))return false;
-        return nav.moveTo(path,speed);
+        return com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                level,chef,feet,speed);
     }
     /** Find a path to a standing tile near the currently used kitchen device. */
     public static void work(ServerLevel level,ChefGolem chef,BlockPos machine){

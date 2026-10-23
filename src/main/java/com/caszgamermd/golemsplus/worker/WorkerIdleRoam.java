@@ -19,7 +19,7 @@ public final class WorkerIdleRoam {
         double dx=mob.getX()-hx, dz=mob.getZ()-hz;
         if(dx*dx+dz*dz>RADIUS*RADIUS
                 ||Math.abs(mob.getY()-hy)>4){
-            mob.getNavigation().moveTo(hx,hy,hz,.75);
+            WorkerNavigation.routeTo(level,mob,home,.75);
             return;
         }
         if(!mob.getNavigation().isDone()||mob.getRandom().nextInt(3)!=0)
@@ -35,9 +35,7 @@ public final class WorkerIdleRoam {
                     ||!level.getBlockState(target.above()).isAir()
                     ||level.getBlockState(target.below())
                             .getCollisionShape(level,target.below()).isEmpty())continue;
-            mob.getNavigation().moveTo(target.getX()+.5,target.getY(),
-                    target.getZ()+.5,.65);
-            break;
+            if(WorkerNavigation.routeTo(level,mob,target,.65))break;
         }
     }
 }

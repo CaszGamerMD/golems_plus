@@ -62,6 +62,8 @@ public final class ChefGolem extends PathfinderMob {
 
     @Override public void tick(){
         super.tick();
+        if(level() instanceof ServerLevel world)
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(world,this);
         if(tickCount%40!=0||!(level() instanceof ServerLevel server)
                 ||owner==null||!server.hasChunkAt(home))return;
         if(!(server.getBlockEntity(home) instanceof

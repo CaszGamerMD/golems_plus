@@ -106,6 +106,8 @@ public final class TraderGolem extends PathfinderMob {
     }
     @Override public void tick(){
         super.tick();
+        if(level() instanceof ServerLevel level)
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(level,this);
         if(!(level() instanceof ServerLevel server)||tickCount%12!=0)return;
         if(!server.hasChunkAt(home))return;
         if(!(server.getBlockEntity(home) instanceof WorkerStationBlockEntity depot)
@@ -116,7 +118,6 @@ public final class TraderGolem extends PathfinderMob {
             getNavigation().stop();return;
         }
         if(stage==0){
-            closeDoorAfterPassing(server);
             openCase(false);displayedOffer(ItemStack.EMPTY);
             com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(server,this,home);
             return;
@@ -134,8 +135,8 @@ public final class TraderGolem extends PathfinderMob {
         }
         // A closed wooden door can obstruct the path to a trading villager.
         // Open it as we approach, then close it once both feet have cleared.
-        manageApproachDoor(server,villager);
-        closeDoorAfterPassing(server);
+        // Door opening/closing now belongs to the same controller as
+        // Builder, Beekeeper, Chef and Fisher navigation.
         if(distanceToSqr(villager)>8||!hasLineOfSight(villager)){
             presentationTicks=0;
             openCase(false);
@@ -196,7 +197,6 @@ public final class TraderGolem extends PathfinderMob {
     private void comeHome(ServerLevel server,WorkerStationBlockEntity depot){
         openCase(false);displayedOffer(ItemStack.EMPTY);
         presentationTicks=0;
-        closeDoorAfterPassing(server);
         double distance=distanceToSqr(home.getX()+.5,home.getY()+.5,home.getZ()+.5);
         if(distance>9){
             BlockPos access=accessibleHomeSide(server);
@@ -234,36 +234,12 @@ public final class TraderGolem extends PathfinderMob {
      */
     private boolean navigateAroundObstacles(ServerLevel server,BlockPos destination,
                                              Villager villager,double speed){
-        if(!server.hasChunkAt(destination))return false;
-        if(blockPosition().distSqr(lastProgress)>2){
-            lastProgress=blockPosition();
-            noProgressChecks=0;
-            navigationFailures=0;
-        }else noProgressChecks++;
-        if(waitForNearbyTrader(server,destination))return true;
-        if(!getNavigation().isDone() && noProgressChecks<7
-                &&tickCount%48!=0)return true;
-        boolean found=villager!=null
-                ?getNavigation().moveTo(villager,speed)
-                :getNavigation().moveTo(destination.getX()+.5,
-                        destination.getY(),destination.getZ()+.5,speed);
-        if(found){
-            if(noProgressChecks>=7)noProgressChecks=0;
-            return true;
-        }
-        // If a doorway or wall prevented finding a direct path, try
-        // unobstructed approach cells on either side of the objective.
-        BlockPos best=null;
-        double distance=Double.MAX_VALUE;
-        for(Direction direction:Direction.Plane.HORIZONTAL){
-            BlockPos p=destination.relative(direction);
-            if(!walkable(server,p)||occupiedByTrader(server,p))continue;
-            if(p.distSqr(blockPosition())<distance){
-                best=p;distance=p.distSqr(blockPosition());
-            }
-        }
-        if(best!=null)return getNavigation().moveTo(best.getX()+.5,
-                best.getY(),best.getZ()+.5,speed*.87);
+        // Reuse the shared route tracker. The old per-Trader controller
+        // rebuilt the path when a worker simply paused behind a door.
+        // That reset vanilla obstacle avoidance on every evaluation.
+        boolean path=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                .routeTo(server,this,destination,speed);
+        if(path){navigationFailures=0;return true;}
         return false;
     }
 
@@ -290,88 +266,6 @@ public final class TraderGolem extends PathfinderMob {
             if(score<distance){best=p;distance=score;}
         }
         return best;
-    }
-
-    /**
-     * Only the trailing worker waits if two traders are about to occupy a
-     * door-width aisle. This avoids all of them repeatedly ramming each
-     * other or recalculating the same obstructed path.
-     */
-    private boolean waitForNearbyTrader(ServerLevel server,BlockPos destination){
-        Vec3 toward=new Vec3(destination.getX()+.5-getX(),0,
-                destination.getZ()+.5-getZ());
-        if(toward.lengthSqr()<.25)return false;
-        Vec3 heading=toward.normalize();
-        for(TraderGolem other:server.getEntitiesOfClass(TraderGolem.class,
-                getBoundingBox().inflate(1.45),o->o!=this&&o.isAlive())){
-            Vec3 between=new Vec3(other.getX()-getX(),0,other.getZ()-getZ());
-            double ahead=heading.dot(between);
-            if(ahead<.15||ahead>1.65||between.lengthSqr()>2.9)continue;
-            // Allow the trader with the lexicographically smaller UUID to
-            // continue. The other waits rather than both pushing forward.
-            if(getUUID().compareTo(other.getUUID())>0){
-                getNavigation().stop();
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private void manageApproachDoor(ServerLevel server,Villager villager){
-        if(openedDoor!=null)return;
-        Vec3 direction=new Vec3(villager.getX()-getX(),0,
-                villager.getZ()-getZ());
-        if(direction.lengthSqr()<.05)return;
-        direction=direction.normalize();
-        BlockPos origin=blockPosition();
-        BlockPos candidate=null;
-        double best=Double.POSITIVE_INFINITY;
-        for(int dx=-2;dx<=2;dx++)for(int dy=-1;dy<=1;dy++)
-            for(int dz=-2;dz<=2;dz++){
-                BlockPos at=origin.offset(dx,dy,dz);
-                if(!server.hasChunkAt(at))continue;
-                BlockState state=server.getBlockState(at);
-                if(!(state.getBlock() instanceof DoorBlock door)
-                        ||state.getValue(DoorBlock.OPEN)
-                        ||!door.type().canOpenByHand())continue;
-                Vec3 rel=new Vec3(at.getX()+.5-getX(),0,
-                        at.getZ()+.5-getZ());
-                double forward=rel.dot(direction);
-                double side=Math.abs(rel.x*direction.z-rel.z*direction.x);
-                if(forward<-.3||forward>2.6||side>1.15)continue;
-                double score=rel.lengthSqr()+side*2;
-                if(score<best){best=score;candidate=at;}
-            }
-        if(candidate!=null){
-            var state=server.getBlockState(candidate);
-            if(state.getBlock() instanceof DoorBlock door){
-                door.setOpen(this,server,state,candidate,true);
-                openedDoor=candidate.immutable();
-                doorGraceChecks=0;
-                // Immediately recalculate the formerly obstructed path.
-                getNavigation().stop();
-                noProgressChecks=8;
-            }
-        }
-    }
-    private void closeDoorAfterPassing(ServerLevel server){
-        if(openedDoor==null)return;
-        doorGraceChecks++;
-        if(doorGraceChecks<3)return;
-        BlockPos doorPos=openedDoor;
-        if(distanceToSqr(doorPos.getX()+.5,doorPos.getY()+.5,
-                doorPos.getZ()+.5)<6.25)return;
-        // Never close a door on another trader entering or leaving.
-        if(!server.getEntitiesOfClass(TraderGolem.class,
-                new AABB(doorPos).inflate(1.25),
-                other->other!=this&&other.isAlive()).isEmpty())return;
-        if(server.hasChunkAt(doorPos)){
-            var state=server.getBlockState(doorPos);
-            if(state.getBlock() instanceof DoorBlock door
-                    &&state.getValue(DoorBlock.OPEN))
-                door.setOpen(this,server,state,doorPos,false);
-        }
-        openedDoor=null;
     }
 
     private void dropEscrow(ServerLevel level) {
