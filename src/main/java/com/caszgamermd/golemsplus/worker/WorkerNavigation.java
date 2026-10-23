@@ -1,6 +1,8 @@
 package com.caszgamermd.golemsplus.worker;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
@@ -10,10 +12,13 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
  * One shared, server-side ground-navigation controller for every worker.
@@ -30,14 +35,21 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class WorkerNavigation {
     private static final Map<PathfinderMob,Progress> states=new WeakHashMap<>();
-    private static final int STALL_TICKS=55;
-    private static final int ROUTE_RETRY=18;
+    private static final int STALL_TICKS=40;
+    // Cheap 5-tick waypoint inspection; full A* only when the goal changes,
+    // the path becomes obstructed, or progress genuinely stops.
+    private static final int ROUTE_RETRY=10;
+    private static final int CHECK_TICKS=5;
+    private static final int LOOK_AHEAD=4;
+    private static final int MAX_DESTINATION_PATHS=12;
     private WorkerNavigation(){}
 
     private static final class Progress {
         BlockPos requested,approach,openedDoor;
         Vec3 previous;
         int stalled,attempts,wait,doorAge,nextRoute;
+        int unsafeChecks;
+        BlockPos lastBad;
         boolean narrowDoorway;
     }
     private static Progress state(PathfinderMob mob){
@@ -88,57 +100,116 @@ public final class WorkerNavigation {
                 &&door.type().canOpenByHand();
     }
 
-    /** Recheck collision using the golem's real .85-block bounding width. */
-    private static boolean standable(ServerLevel world,PathfinderMob worker,BlockPos p){
-        if(!world.hasChunkAt(p)||!world.hasChunkAt(p.below())
-                ||!world.hasChunkAt(p.above()))return false;
-        BlockState at=world.getBlockState(p);
-        BlockState head=world.getBlockState(p.above());
-        if(!at.getCollisionShape(world,p).isEmpty()&&!handDoor(world,p))
-            return false;
-        if(!head.getCollisionShape(world,p.above()).isEmpty()
-                &&!handDoor(world,p.above()))return false;
-        return !world.getBlockState(p.below()).getCollisionShape(world,p.below()).isEmpty();
+    /** Check the floor and the full body clearance, not just whether the
+     * center of an (x,z) tile is air. Vanilla's node-based paths can graze
+     * corners or squeeze through gaps narrower than the actual worker.
+     */
+    private static boolean dangerous(BlockState state){
+        return state.is(Blocks.MAGMA_BLOCK)||state.is(Blocks.CACTUS)
+                ||state.is(Blocks.CAMPFIRE)||state.is(Blocks.SOUL_CAMPFIRE)
+                ||state.is(Blocks.FIRE)||state.is(Blocks.SOUL_FIRE)
+                ||state.is(Blocks.POWDER_SNOW)||state.is(Blocks.SWEET_BERRY_BUSH);
     }
+    private static double floorAt(ServerLevel level,BlockPos feet){
+        BlockPos below=feet.below();
+        VoxelShape footing=level.getBlockState(below).getCollisionShape(level,below);
+        if(footing.isEmpty())return Double.NaN;
+        double y=below.getY()+footing.max(Direction.Axis.Y);
+        VoxelShape inside=level.getBlockState(feet).getCollisionShape(level,feet);
+        if(!inside.isEmpty()&&!handDoor(level,feet)){
+            double height=inside.max(Direction.Axis.Y);
+            if(height>.6001)return Double.NaN;
+            y=Math.max(y,feet.getY()+height);
+        }
+        return y;
+    }
+    private static boolean standingTile(ServerLevel level,PathfinderMob mob,BlockPos feet){
+        if(!level.hasChunkAt(feet)||!level.hasChunkAt(feet.above())
+                ||!level.hasChunkAt(feet.below()))return false;
+        BlockState state=level.getBlockState(feet);
+        if(!level.getFluidState(feet).isEmpty()||dangerous(state)
+                ||dangerous(level.getBlockState(feet.below())))return false;
+        double floor=floorAt(level,feet);
+        if(Double.isNaN(floor))return false;
+        return bodyClear(level,mob,feet.getX()+.5,floor,feet.getZ()+.5);
+    }
+    private static boolean bodyClear(ServerLevel world,PathfinderMob mob,
+                                     double x,double y,double z){
+        BlockPos feet=BlockPos.containing(x,y+.02,z);
+        boolean door=handDoor(world,feet)||handDoor(world,feet.above());
+        // A hand-openable door temporarily narrows the worker from .85 to
+        // .70 blocks only while passing through its doorway.
+        double half=door?.35:mob.getBbWidth()*.5;
+        AABB body=new AABB(x-half,y+.01,z-half,
+                x+half,y+mob.getBbHeight()-.025,z+half);
+        // Closed wooden doors along a route are opened on approach. They
+        // are permitted as *nodes*, but other obstructed samples are not.
+        return world.noCollision(mob,body)||door;
+    }
+    private static boolean safePath(ServerLevel level,PathfinderMob mob,
+                                    Path path,boolean lookAheadOnly){
+        if(path==null||!path.canReach()||path.getNodeCount()<1)return false;
+        int start=lookAheadOnly?Math.max(0,path.getNextNodeIndex()):0;
+        int end=lookAheadOnly?Math.min(path.getNodeCount(),start+LOOK_AHEAD)
+                :path.getNodeCount();
+        if(start>=end)return true;
+        int checked=0;
+        for(int i=start;i<end;i++){
+            Node node=path.getNode(i);
+            BlockPos feet=new BlockPos(node.x,node.y,node.z);
+            if(!standingTile(level,mob,feet))return false;
+            if(i==start)continue;
+            Node previous=path.getNode(i-1);
+            double a=floorAt(level,new BlockPos(previous.x,previous.y,previous.z));
+            double b=floorAt(level,feet);
+            // One-block jumps and stair steps are legal for vanilla ground
+            // mobs; reject only taller climbs or dangerous drops. Clearance
+            // is checked at the raised position before entering the ledge.
+            if(Double.isNaN(a)||Double.isNaN(b)
+                    ||b-a>1.05||a-b>1.50)return false;
+            double dx=node.x-previous.x,dz=node.z-previous.z;
+            int samples=Math.max(1,(int)Math.ceil(Math.hypot(dx,dz)*3));
+            for(int k=1;k<samples;k++){
+                double t=(double)k/samples;
+                double x=previous.x+.5+dx*t,z=previous.z+.5+dz*t;
+                double y=Math.abs(a-b)>.60?Math.max(a,b):a+(b-a)*t;
+                if(!bodyClear(level,mob,x,y,z))return false;
+            }
+            if(++checked>120)break; // world chunks are never force-loaded
+        }
+        return true;
+    }
+
     private static boolean neighborOccupied(ServerLevel world,PathfinderMob mover,BlockPos p){
         return !world.getEntitiesOfClass(PathfinderMob.class,
                 new AABB(p).inflate(.10),
                 other->other!=mover&&other.isAlive()).isEmpty();
     }
-    private static BlockPos pathGoal(ServerLevel level,PathfinderMob mob,BlockPos requested,
-                                     int avoid){
-        // When asked to navigate to the inside of a solid workstation, hive,
-        // crate or wall, choose a reachable position within interaction range.
-        boolean solid=!standable(level,mob,requested);
-        if(!solid&&avoid==0&&!neighborOccupied(level,mob,requested))
-            return requested;
-        BlockPos best=null;
-        double score=Double.POSITIVE_INFINITY;
+    private record Candidate(BlockPos feet,double score){}
+    private static List<Candidate> candidateGoals(ServerLevel level,PathfinderMob mob,
+                                                  BlockPos requested,int avoid){
+        List<Candidate> candidates=new ArrayList<>();
+        BlockPos origin=mob.blockPosition();
+        // Direct goal first if it is genuinely standable. Never assume the
+        // requested coordinate is a traversable tile (workstations aren't).
         for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++)
             for(int dy=-1;dy<=1;dy++){
-                BlockPos candidate=requested.offset(dx,dy,dz);
-                if(candidate.equals(requested)&&solid)continue;
-                if(!standable(level,mob,candidate)
-                        ||neighborOccupied(level,mob,candidate))continue;
-                // Prefer a neighboring tile on the same level; avoid
-                // repeatedly choosing the same obstructed approach.
-                double metric=candidate.distSqr(requested)*2.5
-                        +candidate.distSqr(mob.blockPosition())*.11
-                        +Math.abs(dy)*2;
-                metric+=(Math.floorMod(candidate.hashCode(),4)==avoid-1)?9:0;
-                if(metric<score){
-                    Path path=mob.getNavigation().createPath(candidate,0);
-                    if(path!=null&&path.canReach()){
-                        best=candidate;score=metric;
-                    }
-                }
+                BlockPos p=requested.offset(dx,dy,dz);
+                if(!standingTile(level,mob,p)||neighborOccupied(level,mob,p))continue;
+                double score=p.distSqr(requested)*2.5
+                        +p.distSqr(origin)*.11+Math.abs(dy)*2;
+                if(avoid!=0&&Math.floorMod(p.hashCode(),4)==avoid-1)
+                    score+=10;
+                if(p.equals(requested))score-=6;
+                candidates.add(new Candidate(p.immutable(),score));
             }
-        return best;
+        candidates.sort(Comparator.comparingDouble(Candidate::score));
+        return candidates;
     }
 
-    /**
-     * Call on each worker job evaluation (~10-12 ticks). Returns whether a
-     * safe route is in progress; "arrived" remains the caller's own decision.
+    /** Job workers request goals about every 10-40 ticks. Maintain the
+     * current validated vanilla A* route, except when five-tick inspection
+     * detects a newly placed obstacle. All workers share this policy.
      */
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
                                   double speed){
@@ -149,51 +220,39 @@ public final class WorkerNavigation {
         boolean changed=!target.equals(p.requested);
         if(changed){
             p.requested=target.immutable();p.approach=null;
-            p.attempts=0;p.nextRoute=0;p.stalled=0;
+            p.attempts=0;p.nextRoute=0;p.stalled=0;p.unsafeChecks=0;
         }
         updateDoorClearance(level,mob,p);
-        // An obstructed door can make Minecraft reject the path outright.
-        // Try opening the nearest door on the intended approach BEFORE
-        // the first path calculation, not only after the golem hits it.
         if(p.openedDoor==null)openApproachDoor(level,mob,p);
         if(p.wait>0)return true;
-        // Do not cancel a sound active route for every repeated request.
         if(!changed&&!mob.getNavigation().isDone()
-                &&p.stalled<STALL_TICKS&&mob.tickCount<p.nextRoute)
-            return true;
-        if(!changed&&!mob.getNavigation().isDone()
-                &&p.stalled<STALL_TICKS){
-            p.nextRoute=mob.tickCount+35;
-            return true;
-        }
-        // An unreachable direct goal must trigger a neighboring route,
-        // even when vanilla reports "no path" immediately rather than
-        // moving into a wall long enough to trigger stall detection.
-        int variant=p.attempts>0||p.stalled>=STALL_TICKS
-                ?(p.attempts++%4)+1:0;
-        BlockPos destination=pathGoal(level,mob,target,variant);
-        if(destination==null){
-            if(p.stalled<STALL_TICKS){
-                p.nextRoute=mob.tickCount+ROUTE_RETRY;
+                &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
+        if(!changed&&mob.tickCount<p.nextRoute)return false;
+
+        int avoid=p.attempts==0?0:(p.attempts%4)+1;
+        List<Candidate> candidates=candidateGoals(level,mob,target,avoid);
+        int calculated=0;
+        for(Candidate candidate:candidates){
+            if(++calculated>MAX_DESTINATION_PATHS)break;
+            Path path=mob.getNavigation().createPath(candidate.feet(),0);
+            if(!safePath(level,mob,path,false))continue;
+            if(mob.getNavigation().moveTo(path,speed)){
+                p.approach=candidate.feet();
+                p.stalled=0;p.unsafeChecks=0;p.lastBad=null;
+                p.nextRoute=mob.tickCount+CHECK_TICKS;
+                return true;
             }
-            return false;
         }
-        boolean started=mob.getNavigation().moveTo(
-                destination.getX()+.5,destination.getY(),destination.getZ()+.5,speed);
-        if(started){
-            p.approach=destination;
-            p.stalled=0;
-            p.nextRoute=mob.tickCount+45;
-        }else{
-            p.nextRoute=mob.tickCount+ROUTE_RETRY;
-            p.attempts++;
-        }
-        return started;
+        // An impossible route must *not* fall back to walking directly at
+        // the wall; try another approach as obstacles change or workers move.
+        p.attempts++;
+        p.nextRoute=mob.tickCount+ROUTE_RETRY+Math.floorMod(mob.getId(),5);
+        return false;
     }
 
     public static void stop(PathfinderMob mob){
         Progress p=state(mob);
-        p.requested=null;p.approach=null;p.stalled=0;
+        p.requested=null;p.approach=null;p.stalled=0;p.unsafeChecks=0;
         mob.getNavigation().stop();
         // Door clearance is reset during the next server navigation tick.
     }
@@ -203,15 +262,30 @@ public final class WorkerNavigation {
         Progress p=state(mob);
         if(mob.getNavigation() instanceof GroundPathNavigation nav)
             nav.setCanOpenDoors(true);
-        if(mob.tickCount%5!=0)return;
+        if(mob.tickCount%CHECK_TICKS!=0)return;
         updateDoorClearance(level,mob,p);
         if(p.previous==null)p.previous=mob.position();
-        if(mob.position().distanceToSqr(p.previous)>.065){
-            p.stalled=0;p.previous=mob.position();
+        if(mob.position().distanceToSqr(p.previous)>.018){
+            p.stalled=0;
         }else if(p.requested!=null&&!mob.getNavigation().isDone()){
-            p.stalled+=5;
+            p.stalled+=CHECK_TICKS;
         }
-        if(p.wait>0){p.wait=Math.max(0,p.wait-5);return;}
+        p.previous=mob.position();
+        if(p.wait>0){p.wait=Math.max(0,p.wait-CHECK_TICKS);return;}
+        // Check the next four waypoints every five ticks. When a player
+        // places a block across the route, stop *before* walking into it;
+        // the next job evaluation recalculates a path around that obstacle.
+        if(p.requested!=null&&!mob.getNavigation().isDone()){
+            Path path=mob.getNavigation().getPath();
+            boolean blocked=!safePath(level,mob,path,true);
+            if(blocked||p.stalled>=STALL_TICKS){
+                p.unsafeChecks++;
+                p.attempts++;
+                p.nextRoute=mob.tickCount+CHECK_TICKS;
+                mob.getNavigation().stop();
+                return;
+            }
+        }
         if(p.requested!=null&&!mob.getNavigation().isDone()
                 &&yieldToWorker(level,mob,p)){
             p.wait=15+(Math.floorMod(mob.getId(),4)*5);
@@ -253,11 +327,19 @@ public final class WorkerNavigation {
         return false;
     }
     private static void openApproachDoor(ServerLevel level,PathfinderMob mob,Progress p){
-        Vec3 goal=p.approach==null?
-                new Vec3(p.requested.getX()+.5-mob.getX(),0,
-                        p.requested.getZ()+.5-mob.getZ()):
-                new Vec3(p.approach.getX()+.5-mob.getX(),0,
-                        p.approach.getZ()+.5-mob.getZ());
+        // Follow the *next actual path node*, not a straight line drawn
+        // through walls to the faraway workstation.
+        Path path=mob.getNavigation().getPath();
+        Vec3 goal;
+        if(path!=null&&!mob.getNavigation().isDone()
+                &&path.getNextNodeIndex()<path.getNodeCount()){
+            Node next=path.getNode(path.getNextNodeIndex());
+            goal=new Vec3(next.x+.5-mob.getX(),0,next.z+.5-mob.getZ());
+        }else{
+            BlockPos destination=p.approach==null?p.requested:p.approach;
+            goal=new Vec3(destination.getX()+.5-mob.getX(),0,
+                    destination.getZ()+.5-mob.getZ());
+        }
         if(goal.lengthSqr()<.09)return;
         Vec3 ahead=goal.normalize();
         BlockPos origin=mob.blockPosition();
@@ -291,7 +373,7 @@ public final class WorkerNavigation {
     private static void closeClearedDoor(ServerLevel level,PathfinderMob mob,Progress p){
         BlockPos door=p.openedDoor;
         if(door==null)return;
-        p.doorAge+=5;
+        p.doorAge+=CHECK_TICKS;
         if(p.doorAge<15||mob.distanceToSqr(door.getX()+.5,
                 door.getY()+.5,door.getZ()+.5)<6.3)return;
         // Don't slam a door into any mob or player; leave it open until
