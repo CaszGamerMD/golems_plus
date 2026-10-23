@@ -18,6 +18,7 @@ import net.minecraft.world.level.storage.ValueOutput;
 
 /** Small, fully suited, peaceful worker. Actual shears and harvest persist on the mob. */
 public final class BeekeeperGolem extends PathfinderMob {
+
     private BlockPos home=BlockPos.ZERO, targetHive=BlockPos.ZERO;
     private UUID owner,mateA,mateB;
     private ItemStack breedFlowers=ItemStack.EMPTY;

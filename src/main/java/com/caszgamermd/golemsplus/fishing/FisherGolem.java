@@ -36,6 +36,7 @@ import net.minecraft.world.phys.Vec3;
  * rod durability and a weighted fish catch after a variable delay.
  */
 public final class FisherGolem extends PathfinderMob {
+
     private static final EntityDataAccessor<Boolean> HAS_ROD=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> HAS_CATCH=

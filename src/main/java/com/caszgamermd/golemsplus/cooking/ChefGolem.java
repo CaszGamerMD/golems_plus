@@ -20,6 +20,7 @@ import net.minecraft.world.level.storage.ValueOutput;
  * system. Recipe planning and food processing are NOT enabled yet.
  */
 public final class ChefGolem extends PathfinderMob {
+
     private static final EntityDataAccessor<net.minecraft.world.item.ItemStack> CARRYING=
             SynchedEntityData.defineId(ChefGolem.class,EntityDataSerializers.ITEM_STACK);
     private static final EntityDataAccessor<Boolean> PREPARING=

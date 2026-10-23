@@ -35,6 +35,7 @@ import net.minecraft.world.level.storage.ValueOutput;
  * and retains them when villagers go out of stock.
  */
 public final class TraderGolem extends PathfinderMob {
+
     private static final EntityDataAccessor<Boolean> CASE_OPEN =
             SynchedEntityData.defineId(TraderGolem.class,EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<ItemStack> CASE_ITEM =

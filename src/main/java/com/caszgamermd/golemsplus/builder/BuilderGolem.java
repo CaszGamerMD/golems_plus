@@ -15,6 +15,7 @@ import net.minecraft.world.level.storage.ValueOutput;
 
 /** Physical construction courier. Every placement is checked server-side. */
 public final class BuilderGolem extends PathfinderMob {
+
     private BlockPos home=BlockPos.ZERO;
     private UUID owner;
     private ItemStack carriedSupplyBox=ItemStack.EMPTY;
