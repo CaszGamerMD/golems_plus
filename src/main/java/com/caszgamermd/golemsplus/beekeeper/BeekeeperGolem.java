@@ -18,13 +18,6 @@ import net.minecraft.world.level.storage.ValueOutput;
 
 /** Small, fully suited, peaceful worker. Actual shears and harvest persist on the mob. */
 public final class BeekeeperGolem extends PathfinderMob {
-    @Override public net.minecraft.world.entity.EntityDimensions getDimensions(
-            net.minecraft.world.entity.Pose pose){
-        var size=super.getDimensions(pose);
-        return com.caszgamermd.golemsplus.worker.WorkerNavigation.inDoorway(this)
-                ?net.minecraft.world.entity.EntityDimensions.scalable(.70f,size.height())
-                :size;
-    }
 
     private BlockPos home=BlockPos.ZERO, targetHive=BlockPos.ZERO;
     private UUID owner,mateA,mateB;
