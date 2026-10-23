@@ -105,11 +105,13 @@ public final class ChefRecipePlanner {
                     ItemStack output;
                     List<Ingredient> ingredients;
                     try{
-                        output=output(recipe);
-                        // Many modded recipes use a private template or
-                        // alternate result representation. If introspection
-                        // fails, a matching recipe ID is an authoritative
-                        // fallback ONLY when the item with the same ID exists.
+                        try{output=output(recipe);}
+                        catch(ReflectiveOperationException|RuntimeException ignored){
+                            output=ItemStack.EMPTY;
+                        }
+                        // Some modded crafting recipes use inaccessible
+                        // result templates. Recipes sharing the exact item
+                        // ID are still indexable for normal crafting inputs.
                         if(output.isEmpty())output=outputByRecipeId(holder);
                         if(output.isEmpty())continue;
                         ingredients=ingredients(recipe);
@@ -366,7 +368,7 @@ public final class ChefRecipePlanner {
             }catch(NoSuchFieldException ignored){}
             cls=cls.getSuperclass();
         }
-        if(!(value instanceof List<?> list)){
+        if(!(value instanceof List<?>)){
             // In 26.2 some recipes expose ingredients only via a public
             // method, not a field called "ingredients".
             try{value=recipe.getClass().getMethod("getIngredients").invoke(recipe);}
