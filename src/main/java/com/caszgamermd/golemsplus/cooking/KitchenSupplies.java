@@ -15,6 +15,7 @@ import net.minecraft.world.Container;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.Blocks;
 
 /**
  * A bounded, server-side view of physical Cooking for Blockheads kitchen storage.
@@ -47,21 +48,28 @@ public final class KitchenSupplies {
     public BlockPos workPoint(){return workPoint;}
     public BlockPos stationFor(ServerLevel world,String task){
         boolean heated=!task.equals("Assemble")&&!task.equals("Plate");
-        BlockPos chosen=null;
+        BlockPos chosen=null,cfbOven=null;
         for(BlockPos pos:appliances){
-            var id=BuiltInRegistries.BLOCK.getKey(world.getBlockState(pos).getBlock());
+            if(!world.hasChunkAt(pos))continue;
+            var blockState=world.getBlockState(pos);
+            var id=BuiltInRegistries.BLOCK.getKey(blockState.getBlock());
             String block=id.getPath();
             if(heated){
-                if(!block.contains("oven"))continue;
-                return pos;
+                if(id.getNamespace().equals("cookingforblockheads")
+                        &&block.contains("oven"))cfbOven=pos;
+                if(task.equals("Cook")&&blockState.is(Blocks.FURNACE))return pos;
+                if(task.equals("Smoke")&&blockState.is(Blocks.SMOKER))return pos;
+                continue;
             }
             if(block.contains("cooking_table"))return pos;
             if(block.contains("counter")||block.contains("cabinet"))chosen=pos;
         }
-        return heated?null:(chosen==null?workPoint:chosen);
+        return heated?cfbOven:(chosen==null?workPoint:chosen);
     }
     public boolean hasCooker(ServerLevel world){
-        return stationFor(world,"Cook")!=null;
+        return stationFor(world,"Cook")!=null
+                ||stationFor(world,"Smoke")!=null
+                ||stationFor(world,"Campfire")!=null;
     }
     public boolean connected(){return !containers.isEmpty()||milkSupply.hasJar();}
     public int milkPortions(){return milkSupply.availableUnits();}
@@ -141,6 +149,25 @@ public final class KitchenSupplies {
             // above each kitchen appliance for jar/sink attachments.
             BlockPos raised=pos.above(2);
             if(!visited.contains(raised))queue.addLast(raised);
+        }
+        // A vanilla furnace/smoker beside a connected CFB kitchen is a
+        // valid work appliance, but NEVER a food-supply chest. Do not make
+        // it part of the CFB multiblock or count its input/fuel/output as
+        // loose ingredients available to any Chef recipe.
+        Set<BlockPos> connected=new HashSet<>(visited);
+        Set<BlockPos> seen=new HashSet<>(appliances);
+        for(BlockPos kitchen:connected){
+            if(!kitchenBlock(level,kitchen))continue;
+            for(int dx=-2;dx<=2;dx++)for(int dy=-1;dy<=1;dy++)
+                for(int dz=-2;dz<=2;dz++){
+                    BlockPos candidate=kitchen.offset(dx,dy,dz);
+                    if(kiosk.distSqr(candidate)>LINK_RADIUS*LINK_RADIUS
+                            ||!level.hasChunkAt(candidate)||!seen.add(candidate))
+                        continue;
+                    var state=level.getBlockState(candidate);
+                    if(state.is(Blocks.FURNACE)||state.is(Blocks.SMOKER))
+                        appliances.add(candidate.immutable());
+                }
         }
         return new KitchenSupplies(supplies,appliance,milkJars,appliances);
     }
