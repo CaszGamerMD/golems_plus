@@ -93,3 +93,24 @@ moving. The current test build intentionally does not breed bees,
 craft more tools, force-load distant hives, or farm without a player
 online in the dimension. Use the job block status if tools or output
 are missing; further end-to-end game testing is needed.
+
+## Fisher Golems — rod casting and visible catches (0.3.18-dev)
+
+1. Place a Fisherman's Coolers job block and insert real fishing rods plus
+   `golems_plus:fishing_bait` in the supply slots.
+2. Link a specific catch chest using **CHOOSE OUTPUT CHEST**, then right-click
+   the chest. Mark an open-water surface with the Fishing Waypoint Flag.
+3. Place up to four Fisher Golems and allow them to reach the shoreline.
+   The chair appears when seated; their extended 3D rods point into water.
+4. Each cast produces a thin particle fishing line with a distinct red/white
+   bobber at real open source water. Fish ripples approach a bite, then a
+   splash and retrieval sound play. A fish hangs from the raised rod briefly.
+5. The actual catch goes into the Golem's nine saved pocket slots; stored
+   bait and rod durability are consumed only on a successful catch. The
+   Fisher visits the linked chest to deposit fish when it needs to resupply
+   or its pockets are full.
+
+Check that no bobber is shown without a real rod/bait, none is cast into
+solid blocks, and the line disappears if the Fisher is paused, travels,
+runs out of supplies, or water is removed. Existing in-progress fishermen
+should resume their saved task after reloading a world.

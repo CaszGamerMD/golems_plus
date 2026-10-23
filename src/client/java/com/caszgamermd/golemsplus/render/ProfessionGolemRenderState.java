@@ -10,6 +10,8 @@ public final class ProfessionGolemRenderState extends LivingEntityRenderState {
     public boolean hasRod;
     public boolean carryingFish;
     public boolean seated;
+    public boolean casting;
+    public boolean reeling;
     public final net.minecraft.client.renderer.item.ItemStackRenderState chefIngredient = new net.minecraft.client.renderer.item.ItemStackRenderState();
     public final net.minecraft.client.renderer.item.ItemStackRenderState tradeItem = new net.minecraft.client.renderer.item.ItemStackRenderState();
 }
