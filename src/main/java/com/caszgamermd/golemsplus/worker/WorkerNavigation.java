@@ -162,14 +162,17 @@ public final class WorkerNavigation {
             Node previous=path.getNode(i-1);
             double a=floorAt(level,new BlockPos(previous.x,previous.y,previous.z));
             double b=floorAt(level,feet);
+            // One-block jumps and stair steps are legal for vanilla ground
+            // mobs; reject only taller climbs or dangerous drops. Clearance
+            // is checked at the raised position before entering the ledge.
             if(Double.isNaN(a)||Double.isNaN(b)
-                    ||b-a>.65||a-b>1.10)return false;
+                    ||b-a>1.05||a-b>1.50)return false;
             double dx=node.x-previous.x,dz=node.z-previous.z;
             int samples=Math.max(1,(int)Math.ceil(Math.hypot(dx,dz)*3));
             for(int k=1;k<samples;k++){
                 double t=(double)k/samples;
                 double x=previous.x+.5+dx*t,z=previous.z+.5+dz*t;
-                double y=a+(b-a)*t;
+                double y=Math.abs(a-b)>.60?Math.max(a,b):a+(b-a)*t;
                 if(!bodyClear(level,mob,x,y,z))return false;
             }
             if(++checked>120)break; // world chunks are never force-loaded
