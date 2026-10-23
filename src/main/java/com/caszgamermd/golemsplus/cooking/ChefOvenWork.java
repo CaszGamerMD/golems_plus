@@ -21,7 +21,9 @@ final class ChefOvenWork {
                            ChefRecipePlanner.WorkStep step) {
         if(at==null||!level.hasChunkAt(at))return "No connected Cooking for Blockheads oven";
         BlockEntity entity=level.getBlockEntity(at);
-        if(entity==null)return "Connected oven block entity missing";
+        if(entity==null)return "Connected oven or furnace block entity missing";
+        if(entity instanceof net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity furnace)
+            return vanillaFurnace(level,furnace,station,step);
         try{
             Container internal=container(entity,"getInternalContainer");
             Container input=container(entity,"getInputContainer");
@@ -69,6 +71,60 @@ final class ChefOvenWork {
             return "Oven integration failed: "+ex.getClass().getSimpleName();
         }
     }
+    /** Real vanilla furnace/smoker work. The Chef must load real items
+     * from its reserved order, wait for genuine fuel-based cooking, and
+     * collect only the actual resulting output. */
+    private static String vanillaFurnace(ServerLevel level,
+            net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity furnace,
+            WorkerStationBlockEntity station,ChefRecipePlanner.WorkStep step){
+        if(step.inputs().size()!=1)
+            return "Furnace recipe requires one raw ingredient";
+        var ingredient=step.inputs().entrySet().iterator().next();
+        ItemStack input=furnace.getItem(0);
+        ItemStack output=furnace.getItem(2);
+        if(!station.chefOvenLoaded()){
+            if(!input.isEmpty()||!output.isEmpty())
+                return "Furnace is occupied; clear its input/output first";
+            if(ingredient.getValue()<1
+                    ||ingredient.getValue()>new ItemStack(ingredient.getKey()).getMaxStackSize())
+                return "Furnace batch is too large for one input slot";
+            if(!station.loadChefOven(step))
+                return "Reserved raw ingredients missing from Chef order";
+            furnace.setItem(0,new ItemStack(ingredient.getKey(),ingredient.getValue()));
+            furnace.setChanged();
+            return "Chef loaded "+ingredient.getValue()+" raw items into furnace";
+        }
+        if(!output.isEmpty()&&!output.is(step.result()))
+            return "Furnace output occupied by another item";
+        if(output.getCount()<step.resultCount()){
+            if(furnace.getItem(1).isEmpty()&&!furnace.getBlockState()
+                    .getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.LIT))
+                return "Add fuel to nearby furnace/smoker to cook this ingredient";
+            return "Furnace is cooking recipe ingredients";
+        }
+        ItemStack cooked=furnace.removeItem(2,step.resultCount());
+        if(cooked.getCount()!=step.resultCount()||!cooked.is(step.result())){
+            if(!cooked.isEmpty()){
+                ItemStack existing=furnace.getItem(2);
+                if(existing.isEmpty())furnace.setItem(2,cooked);
+                else if(ItemStack.isSameItemSameComponents(existing,cooked)){
+                    existing.grow(cooked.getCount());furnace.setChanged();
+                }
+            }
+            return "Furnace output changed during pickup";
+        }
+        furnace.setChanged();
+        if(!station.collectChefOven(step)){
+            ItemStack existing=furnace.getItem(2);
+            if(existing.isEmpty())furnace.setItem(2,cooked);
+            else if(ItemStack.isSameItemSameComponents(existing,cooked)){
+                existing.grow(cooked.getCount());furnace.setChanged();
+            }
+            return "Chef cannot record cooked result; kept output in furnace";
+        }
+        return null;
+    }
+
     private static Container container(BlockEntity entity,String getter)
             throws ReflectiveOperationException{
         Method m=entity.getClass().getMethod(getter);

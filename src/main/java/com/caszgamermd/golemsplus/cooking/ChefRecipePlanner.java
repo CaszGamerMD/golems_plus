@@ -60,7 +60,14 @@ public final class ChefRecipePlanner {
     }
     public static Preview preview(ServerLevel level,Item target,int count,
                                   Map<Item,Integer> available,boolean hasOven){
-        var result=solve(level,target,count,available,true,hasOven);
+        // Inspection must not depend on finding a *stock-complete*
+        // solution. A heavily tagged modded recipe can have millions of
+        // combinations, most of them missing from the kitchen. Traverse
+        // one selected recipe tree instead of trying every combination.
+        if(count<1||count>16)return null;
+        Mutable result=new Search(indexRecipes(level,hasOven))
+                .explain(new Mutable(available,true),target,count,
+                        new HashSet<>(),0);
         if(result==null)return null;
         return new Preview(Map.copyOf(result.used),Map.copyOf(result.missing),
                 List.copyOf(result.steps));
@@ -179,6 +186,7 @@ public final class ChefRecipePlanner {
 
     private static final class Search{
         private static final int MAX_DEPTH=14, MAX_BRANCHES=28, MAX_CHOICES=48;
+        private int explanationNodes;
         private final Map<Item,List<Entry>> recipes;
         private final Map<Ingredient,List<Item>> knownAlternatives=new IdentityHashMap<>();
         private int attempts;
@@ -196,6 +204,113 @@ public final class ChefRecipePlanner {
                             .toList());
         }
         Search(Map<Item,List<Entry>> recipes){this.recipes=recipes;}
+
+        /** Deterministic, single-path recipe explanation for the kiosk.
+         * Every real recipe ingredient is expanded into its own lower-level
+         * recipe or labeled RAW, regardless of current kitchen supplies.
+         * This is informational, never authorizes an actual order.
+         */
+        Mutable explain(Mutable before,Item desired,int quantity,
+                        Set<Item> visiting,int depth){
+            if(quantity<=0)return before;
+            if(depth>MAX_DEPTH||++explanationNodes>4500)return null;
+            Mutable working=new Mutable(before);
+            int surplus=Math.min(quantity,working.crafted.getOrDefault(desired,0));
+            if(surplus>0)working.crafted.merge(desired,-surplus,Integer::sum);
+            int remaining=quantity-surplus;
+            int owned=Math.min(remaining,working.remaining.getOrDefault(desired,0));
+            if(owned>0){
+                working.remaining.merge(desired,-owned,Integer::sum);
+                working.used.merge(desired,owned,Integer::sum);
+                remaining-=owned;
+            }
+            if(remaining==0)return working;
+            if(depth>0&&(visiting.contains(desired)||depth>=MAX_DEPTH)){
+                working.missing.merge(desired,remaining,Integer::sum);
+                working.steps.add("RAW "+remaining+" x "+
+                        BuiltInRegistries.ITEM.getKey(desired));
+                return working;
+            }
+            List<Entry> entries=recipes.getOrDefault(desired,List.of());
+            if(entries.isEmpty()){
+                if(depth==0)return null;
+                working.missing.merge(desired,remaining,Integer::sum);
+                working.steps.add("RAW "+remaining+" x "+
+                        BuiltInRegistries.ITEM.getKey(desired));
+                return working;
+            }
+            Set<Item> active=new HashSet<>(visiting);
+            active.add(desired);
+            Mutable best=null;
+            for(Entry entry:entries){
+                if(entry.count<1||entry.ingredients.isEmpty()
+                        ||entry.ingredients.size()>36)continue;
+                int repetitions=(remaining+entry.count-1)/entry.count;
+                if(repetitions>64)continue;
+                Mutable trial=new Mutable(working);
+                boolean valid=true;
+                for(Ingredient ingredient:entry.ingredients){
+                    var options=new ArrayList<>(optionsFor(ingredient));
+                    if(options.isEmpty()){valid=false;break;}
+                    // Prefer already stocked variants (including milk jars),
+                    // then constructible intermediates, then ordinary raw
+                    // items. Do NOT expand every tag member into all its
+                    // possible production pathways.
+                    options.sort(Comparator
+                            .<Item>comparingInt(item->
+                                    trialRemaining(working,item)>0?0:
+                                    recipes.containsKey(item)?1:2)
+                            .thenComparingInt(item->
+                                    BuiltInRegistries.ITEM.getKey(item)
+                                            .getNamespace().equals("minecraft")?0:1)
+                            .thenComparing(item->BuiltInRegistries.ITEM.getKey(item).toString()));
+                    Mutable selected=null;
+                    Item selectedItem=null;
+                    int checks=0;
+                    for(Item item:options){
+                        if(active.contains(item))continue;
+                        if(++checks>5)break;
+                        Mutable optionPlan=explain(trial,item,repetitions,active,depth+1);
+                        if(optionPlan!=null&&(selected==null
+                                ||optionPlan.score()<selected.score())){
+                            selected=optionPlan;
+                            selectedItem=item;
+                        }
+                        if(selected!=null&&selected.missing.isEmpty())break;
+                    }
+                    if(selected==null){valid=false;break;}
+                    trial=selected;
+                    // Explicit link between the requested recipe and each
+                    // chosen real ingredient, including recursive cheese,
+                    // dough, and cooked-meat intermediates.
+                    trial.steps.add("NEEDS "+repetitions+" x "+
+                            BuiltInRegistries.ITEM.getKey(selectedItem)
+                            +" for "+BuiltInRegistries.ITEM.getKey(desired));
+                }
+                if(!valid)continue;
+                trial.steps.add(entry.method+" "+repetitions+" x "+
+                        BuiltInRegistries.ITEM.getKey(desired));
+                trial.operations+=repetitions;
+                int excess=repetitions*entry.count-remaining;
+                if(excess>0)trial.crafted.merge(desired,excess,Integer::sum);
+                if(best==null||trial.score()<best.score())best=trial;
+                if(best!=null&&best.missing.isEmpty())break;
+                // A few competing recipes are enough to show a useful
+                // plan; subsequent selection for a REAL order will evaluate
+                // available pantry stock separately.
+                if(explanationNodes>4000)break;
+            }
+            if(best!=null)return best;
+            if(depth==0)return null;
+            working.missing.merge(desired,remaining,Integer::sum);
+            working.steps.add("RAW "+remaining+" x "+
+                    BuiltInRegistries.ITEM.getKey(desired));
+            return working;
+        }
+        private static int trialRemaining(Mutable state,Item item){
+            return state.remaining.getOrDefault(item,0)
+                    +state.crafted.getOrDefault(item,0);
+        }
 
         Mutable resolve(Mutable before,Item desired,int quantity,
                         Set<Item> visiting,int depth){
@@ -269,6 +384,13 @@ public final class ChefRecipePlanner {
                     int tried=0;
                     for(Item option:options){
                         if(tried++>=MAX_CHOICES)break;
+                        // Real orders may use only existing kitchen stock
+                        // or intermediates with a recipe. Skipping absent
+                        // noncraftable tag alternatives avoids combinatorial
+                        // searches that once exhausted the 80k attempt cap.
+                        if(trial.remaining.getOrDefault(option,0)<=0
+                                &&trial.crafted.getOrDefault(option,0)<=0
+                                &&!recipes.containsKey(option))continue;
                         Mutable variant=resolve(trial,option,times,occupied,depth+1);
                         if(variant!=null&&(selected==null||variant.score()<selected.score())){
                             selected=variant;
