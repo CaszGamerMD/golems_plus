@@ -133,7 +133,14 @@ public final class FisherGolem extends PathfinderMob {
             dropCargo(level);discard();return;
         }
         if(station.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED){
-            seat(false);getNavigation().stop();return;
+            // An off-duty Fisher rests in the camp chair when it has
+            // returned to the coolers, rather than standing frozen.
+            boolean waiting=distanceToSqr(home.getX()+.5,home.getY()+.5,
+                    home.getZ()+.5)<9.0;
+            seat(waiting);
+            if(!waiting)walkToward(home,.75);
+            else getNavigation().stop();
+            return;
         }
         if(anyFish()&&(full()||bait<=0))phase=3;
         if((rod.isEmpty()||bait==0)&&phase!=3)phase=0;
