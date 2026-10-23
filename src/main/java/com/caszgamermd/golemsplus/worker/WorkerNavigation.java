@@ -72,7 +72,8 @@ public final class WorkerNavigation {
         // When asked to navigate to the inside of a solid workstation, hive,
         // crate or wall, choose a reachable position within interaction range.
         boolean solid=!standable(level,mob,requested);
-        if(!solid&&avoid==0)return requested;
+        if(!solid&&avoid==0&&!neighborOccupied(level,mob,requested))
+            return requested;
         BlockPos best=null;
         double score=Double.POSITIVE_INFINITY;
         for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++)
@@ -122,7 +123,11 @@ public final class WorkerNavigation {
             p.nextRoute=mob.tickCount+35;
             return true;
         }
-        int variant=p.stalled>=STALL_TICKS?(++p.attempts%4)+1:0;
+        // An unreachable direct goal must trigger a neighboring route,
+        // even when vanilla reports "no path" immediately rather than
+        // moving into a wall long enough to trigger stall detection.
+        int variant=p.attempts>0||p.stalled>=STALL_TICKS
+                ?(p.attempts++%4)+1:0;
         BlockPos destination=pathGoal(level,mob,target,variant);
         if(destination==null){
             if(p.stalled<STALL_TICKS){
@@ -186,8 +191,11 @@ public final class WorkerNavigation {
         for(PathfinderMob other:world.getEntitiesOfClass(PathfinderMob.class,
                 mob.getBoundingBox().inflate(1.25),
                 ent->ent!=mob&&ent.isAlive()
-                    &&ent.getType().builtInRegistryHolder().key().location()
-                            .getNamespace().equals("golems_plus"))){
+                    &&(ent instanceof com.caszgamermd.golemsplus.trader.TraderGolem
+                        ||ent instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
+                        ||ent instanceof com.caszgamermd.golemsplus.beekeeper.BeekeeperGolem
+                        ||ent instanceof com.caszgamermd.golemsplus.cooking.ChefGolem
+                        ||ent instanceof com.caszgamermd.golemsplus.fishing.FisherGolem))){
             Vec3 delta=new Vec3(other.getX()-mob.getX(),0,other.getZ()-mob.getZ());
             double forwardDist=forward.dot(delta);
             if(forwardDist<.15||forwardDist>1.5||delta.lengthSqr()>2.0)
