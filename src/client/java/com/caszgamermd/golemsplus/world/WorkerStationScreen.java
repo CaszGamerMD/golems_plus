@@ -417,8 +417,8 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                         }catch(Exception e){
                             String message=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();
                             if(minecraft.player!=null)
-                                minecraft.player.displayClientMessage(
-                                        Component.literal("[Builder] Placement import: "+message),false);
+                                minecraft.player.sendSystemMessage(
+                                        Component.literal("[Builder] Placement import: "+message));
                             throw new IllegalArgumentException(message);
                         }
                     }));
