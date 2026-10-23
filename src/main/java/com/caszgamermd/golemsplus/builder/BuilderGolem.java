@@ -46,6 +46,8 @@ public final class BuilderGolem extends PathfinderMob {
     public void clearSupplyBox(){carriedSupplyBox=ItemStack.EMPTY;}
     @Override public void tick(){
         super.tick();
+        if(level() instanceof ServerLevel server)
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
         if(tickCount%12==0 && level() instanceof ServerLevel server)
             BuilderBuildService.tick(server,this);
     }
