@@ -7,7 +7,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write  # Publish stable downloads after successful main builds
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -24,3 +24,51 @@ jobs:
           name: golems-plus-dev
           path: build/libs/*.jar
           if-no-files-found: error
+      # Unlike Actions artifacts, release attachments have stable download
+      # URLs and don't expire with GitHub's artifact retention window.
+      - name: Publish stable JAR and mods-folder ZIP
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t jars < <(find build/libs -maxdepth 1 -type f -name '*.jar' \
+              ! -name '*-sources.jar' ! -name '*-javadoc.jar' | sort)
+          if [ "${#jars[@]}" -ne 1 ]; then
+            printf 'Expected exactly one playable JAR, got %s\n' "${#jars[@]}"
+            printf '%s\n' "${jars[@]}"
+            exit 1
+          fi
+          version="$(sed -n 's/^mod_version=//p' gradle.properties)"
+          mkdir -p "$RUNNER_TEMP/mods"
+          cp "${jars[0]}" "$RUNNER_TEMP/golems-plus-latest.jar"
+          cp "${jars[0]}" "$RUNNER_TEMP/mods/golems-plus-latest.jar"
+          (cd "$RUNNER_TEMP" && zip -q -r golems-plus-latest-mods.zip mods)
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Golems Plus ${version} for Minecraft Fabric 26.2.
+
+          Built and tested automatically from commit ${GITHUB_SHA}.
+
+          Direct JAR: golems-plus-latest.jar
+          ZIP backup: golems-plus-latest-mods.zip (contains a mods/ folder)
+
+          Remove any older Golems Plus JARs before installing.
+          EOF
+          if gh release view dev-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload dev-latest \
+              "$RUNNER_TEMP/golems-plus-latest.jar" \
+              "$RUNNER_TEMP/golems-plus-latest-mods.zip" \
+              --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit dev-latest --repo "$GITHUB_REPOSITORY" \
+              --title "Golems Plus ${version} — latest development build" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          else
+            gh release create dev-latest \
+              "$RUNNER_TEMP/golems-plus-latest.jar" \
+              "$RUNNER_TEMP/golems-plus-latest-mods.zip" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --prerelease \
+              --title "Golems Plus ${version} — latest development build" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
