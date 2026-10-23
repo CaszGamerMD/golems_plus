@@ -115,8 +115,9 @@ public final class BuilderCommands {
                         "Cannot build until unsupported states are resolved: "+
                         plan.unsupported().stream().limit(8).toList()));
             else
-                player.sendSystemMessage(Component.literal(
-                        "Ready. Supply the Builder Table input slots, then /golembuilder start"));
+                player.sendSystemMessage(Component.literal(table.warehouse()==null
+                        ? "Ready. To auto-supply, link a Rack Computer by using a linked Warehouse Scanner on this Planning Table. Then press Start Build."
+                        : "Ready. Warehouse linked. Press Start Build: one Builder will collect real shulker supplies from the warehouse output PTP."));
             return 1;
         }catch(Exception ex){
             player.sendSystemMessage(Component.literal("Preview failed: "+ex.getMessage()));
