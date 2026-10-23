@@ -72,7 +72,13 @@ public final class ChefWorkService{
         var plan=ChefRecipePlanner.preview((ServerLevel)player.level(),item,count,stocked,
                 linked.hasCooker((ServerLevel)player.level()));
         if(plan==null){
-            station.setChefPreview(player.getUUID(),itemId,List.of("No supported recipe for this food"));
+            boolean recipe=ChefRecipePlanner.hasRecipe((ServerLevel)player.level(),item,
+                    linked.hasCooker((ServerLevel)player.level()));
+            station.setChefPreview(player.getUUID(),itemId,List.of(
+                    recipe
+                        ?"Recipe exists, but a required ingredient or preparation method could not be resolved"
+                        :"No supported crafting or cooking recipe registered for this food",
+                    "Finished meals may be served directly ONLY from linked kitchen storage"));
             return false;
         }
         List<String> lines=new ArrayList<>();

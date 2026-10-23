@@ -66,6 +66,13 @@ public final class ChefRecipePlanner {
                 List.copyOf(result.steps));
     }
     private record Entry(Item result,int count,List<Ingredient> ingredients,String method){}
+    /** A recipe can exist even when the pantry cannot currently fulfill it.
+     * The kiosk never equates an unavailable ingredient with a missing recipe.
+     */
+    public static boolean hasRecipe(ServerLevel level,Item target,boolean hasOven){
+        Map<Item,List<Entry>> index=indexRecipes(level,hasOven);
+        return index.containsKey(target);
+    }
     private ChefRecipePlanner(){}
     public static Plan plan(ServerLevel level,Item desired,int amount,Map<Item,Integer> stock){
         return plan(level,desired,amount,stock,true);
@@ -86,6 +93,14 @@ public final class ChefRecipePlanner {
             Mutable ready=new Mutable(stock,inspection);
             return new Search(Map.of()).resolve(ready,desired,amount,new HashSet<>(),0);
         }
+        Map<Item,List<Entry>> byResult=indexRecipes(level,hasOven);
+        // Compare available alternatives and keep one selected recipe path.
+        Search search=new Search(byResult);
+        return search.resolve(new Mutable(stock,inspection),desired,amount,
+                new HashSet<>(),0);
+    }
+
+    private static Map<Item,List<Entry>> indexRecipes(ServerLevel level,boolean hasOven){
         Map<Item,List<Entry>> byResult=new HashMap<>();
         try{
             Object manager=level.getServer().getRecipeManager();
@@ -127,11 +142,10 @@ public final class ChefRecipePlanner {
                             .add(new Entry(output.getItem(),output.getCount(),ingredients,method));
                 }
             }
-        }catch(ReflectiveOperationException | RuntimeException ex){return null;}
-        // Compare available alternatives and keep one selected recipe path.
-        Search search=new Search(byResult);
-        return search.resolve(new Mutable(stock,inspection),desired,amount,
-                new HashSet<>(),0);
+        }catch(ReflectiveOperationException | RuntimeException ex){
+            return Map.of();
+        }
+        return byResult;
     }
 
     private static final class Mutable{
@@ -164,7 +178,7 @@ public final class ChefRecipePlanner {
     }
 
     private static final class Search{
-        private static final int MAX_DEPTH=14, MAX_BRANCHES=18, MAX_CHOICES=14;
+        private static final int MAX_DEPTH=14, MAX_BRANCHES=28, MAX_CHOICES=48;
         private final Map<Item,List<Entry>> recipes;
         private final Map<Ingredient,List<Item>> knownAlternatives=new IdentityHashMap<>();
         private int attempts;
@@ -290,8 +304,10 @@ public final class ChefRecipePlanner {
             // For the preview, show missing raw ingredients when no known
             // recipe can satisfy the shortage. Do not ever use this path
             // for an actual order.
-            if(best==null&&before.inspection&&depth>0
-                    &&recipes.getOrDefault(desired,List.of()).isEmpty()){
+            if(best==null&&before.inspection&&depth>0){
+                // For preview, this is a supply shortage/unsupported
+                // intermediate, not proof that the top-level recipe is
+                // missing. Keep showing its parent ingredient chain.
                 Mutable missing=new Mutable(start);
                 missing.missing.merge(desired,unmet,Integer::sum);
                 missing.steps.add("RAW "+unmet+" x "+BuiltInRegistries.ITEM.getKey(desired));
@@ -323,8 +339,11 @@ public final class ChefRecipePlanner {
     private static ItemStack output(Object recipe)throws ReflectiveOperationException{
         for(Class<?> cls=recipe.getClass();cls!=null;cls=cls.getSuperclass()){
             for(Field field:cls.getDeclaredFields()){
-                if(!field.getName().equals("result")&&!field.getName().equals("output")
-                        &&!field.getName().equals("resultItem"))continue;
+                // Minecraft 26.2 modded recipe implementations needn't
+                // call their result field exactly "result". Use the
+                // result's type, not a list of guessed field names.
+                if(!ItemStackTemplate.class.isAssignableFrom(field.getType())
+                        &&!ItemStack.class.isAssignableFrom(field.getType()))continue;
                 try{
                     field.setAccessible(true);
                     ItemStack item=stackFrom(field.get(recipe));
@@ -360,7 +379,16 @@ public final class ChefRecipePlanner {
         if(recipe instanceof AbstractCookingRecipe cooking)return List.of(cooking.input());
         if(recipe instanceof ShapedRecipe shaped)
             return shaped.getIngredients().stream().flatMap(java.util.Optional::stream).toList();
-        Object value=null;Class<?> cls=recipe.getClass();
+        Object value=null;
+        // On modern Minecraft versions the canonical crafting ingredient
+        // list is frequently held inside PlacementInfo rather than directly
+        // on ShapelessRecipe. Check it before legacy reflective fields.
+        try{
+            Object placement=recipe.getClass().getMethod("placementInfo").invoke(recipe);
+            if(placement!=null)
+                value=placement.getClass().getMethod("ingredients").invoke(placement);
+        }catch(ReflectiveOperationException|RuntimeException ignored){}
+        Class<?> cls=recipe.getClass();
         while(cls!=null&&value==null){
             try{
                 Field f=cls.getDeclaredField("ingredients");f.setAccessible(true);
@@ -374,6 +402,8 @@ public final class ChefRecipePlanner {
             try{value=recipe.getClass().getMethod("getIngredients").invoke(recipe);}
             catch(ReflectiveOperationException|RuntimeException ignored){}
         }
+        if(value instanceof java.util.Collection<?> c
+                &&!(value instanceof List<?>))value=new ArrayList<>(c);
         if(!(value instanceof List<?> list))return List.of();
         List<Ingredient> items=new ArrayList<>();
         for(Object item:list){

@@ -442,3 +442,30 @@ the configured 2 MiB transfer limit, or isn't on disk), the full error
 is shown in chat rather than truncated in the Builder Planner GUI.
 Wait for a server-side '[Builder] Imported placed...' confirmation
 before pressing Preview or Start build.
+
+## Golems Plus 0.3.14-dev — Fisher camp chair and Chef recipe recognition
+
+* The Fisher's former simple rectangular placeholder has been replaced by a
+  detailed red camping chair based on the reference photo: red canvas
+  seat/back/headrest, black sewn bindings, two fabric armrests, mesh
+  cupholder, crossed steel folding legs, hinge blocks and four rubber feet.
+  The pixel-art chair material is now baked into the Fisher's entity texture
+  atlas; it is not transparent. The model appears when a Fisher sits at a
+  fishing spot, waits without supplies, or is paused near the cooler.
+  The chair is hidden while walking. This changes existing Fisher models
+  in place and does not spawn a separate chair entity.
+* The Chef recipe catalog is built independently from what the connected
+  kitchen has in stock. Inventory only influences which ingredient variant
+  is selected and which items are marked missing. In particular, an empty
+  kitchen should still show a known recipe and its missing leaf materials.
+* For modded recipes, the catalog now finds output stacks by Java type,
+  including ItemStackTemplate, instead of relying on a few assumed field
+  names. It also reads ingredient alternatives through the 26.2
+  PlacementInfo API when a shapeless recipe does not store an accessible
+  direct ingredients list. Preview permits missing leaf resources without
+  treating them as a finished meal in the pantry.
+* When a preview truly fails it now distinguishes 'recipe not registered'
+  from 'registered recipe with unsupported intermediate or processing
+  method'. Actual orders still consume only real available kitchen items,
+  and completed food can only be picked directly from the kitchen's
+  inventory (never from a player's carried inventory).
