@@ -15,13 +15,6 @@ import net.minecraft.world.level.storage.ValueOutput;
 
 /** Physical construction courier. Every placement is checked server-side. */
 public final class BuilderGolem extends PathfinderMob {
-    @Override public net.minecraft.world.entity.EntityDimensions getDimensions(
-            net.minecraft.world.entity.Pose pose){
-        var size=super.getDimensions(pose);
-        return com.caszgamermd.golemsplus.worker.WorkerNavigation.inDoorway(this)
-                ?net.minecraft.world.entity.EntityDimensions.scalable(.70f,size.height())
-                :size;
-    }
 
     private BlockPos home=BlockPos.ZERO;
     private UUID owner;
