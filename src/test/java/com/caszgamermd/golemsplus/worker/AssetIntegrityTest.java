@@ -1,0 +1,152 @@
+package com.caszgamermd.golemsplus.worker;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.awt.image.BufferedImage;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Set;
+import javax.imageio.ImageIO;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * In-pack model, texture and UV smoke checks. They protect against the
+ * missing-purple asset bugs that ordinary Gradle compilation cannot see.
+ */
+class AssetIntegrityTest {
+    private static final String ROOT="/assets/golems_plus/";
+    private static final String[] BLOCKS={
+        "builder_table","beekeeper_station","beekeeper_toolbox",
+        "cooking_station","cooking_kiosk_top","fishing_spot",
+        "fishing_station","meal_counter","trader_counter"
+    };
+    private static final String[] MODELS={
+        "block/builder_table","block/beekeeper_station",
+        "block/beekeeper_toolbox","block/cooking_station",
+        "block/cooking_kiosk_top","block/fishing_spot_buoy",
+        "block/fishing_spot_shore","block/fishing_station",
+        "block/fishing_station_wink","block/meal_counter",
+        "block/trader_counter","item/builder_worker",
+        "item/beekeeper_worker","item/chef_worker",
+        "item/fisher_worker","item/trader_worker",
+        "item/fishing_bait","item/fishing_spot_marker"
+    };
+    private static final String[] ITEMS={
+        "builder_table","beekeeper_station","beekeeper_toolbox",
+        "cooking_station","fishing_station","meal_counter",
+        "trader_counter","builder_worker","beekeeper_worker",
+        "chef_worker","fisher_worker","trader_worker",
+        "fishing_bait","fishing_spot_marker"
+    };
+
+    private static InputStream asset(String name) {
+        return AssetIntegrityTest.class.getResourceAsStream(ROOT+name);
+    }
+    private static JsonObject json(String name) throws Exception {
+        try(InputStream input=asset(name)){
+            assertNotNull(input,"Resource missing: "+name);
+            return JsonParser.parseReader(new InputStreamReader(
+                    input,StandardCharsets.UTF_8)).getAsJsonObject();
+        }
+    }
+    private static String path(String id){
+        return id.startsWith("golems_plus:")?id.substring("golems_plus:".length()):id;
+    }
+
+    @Test void everyBlockstateAndItemModelResolves() throws Exception {
+        Set<String> known=new HashSet<>();
+        for(String name:MODELS)known.add(name);
+        for(String name:BLOCKS){
+            JsonObject variants=json("blockstates/"+name+".json")
+                    .getAsJsonObject("variants");
+            assertNotNull(variants,name+" missing blockstate variants");
+            for(var entry:variants.entrySet()){
+                JsonElement data=entry.getValue();
+                JsonObject option=data.isJsonArray()?data.getAsJsonArray().get(0)
+                        .getAsJsonObject():data.getAsJsonObject();
+                String ref=option.get("model").getAsString();
+                if(ref.startsWith("golems_plus:"))
+                    assertTrue(known.contains(path(ref)),
+                            "Unresolved blockstate model "+name+": "+ref);
+            }
+        }
+        for(String name:ITEMS){
+            JsonObject selector=json("items/"+name+".json")
+                    .getAsJsonObject("model");
+            assertNotNull(selector,"Item definition missing model: "+name);
+            String ref=selector.get("model").getAsString();
+            if(ref.startsWith("golems_plus:"))
+                assertTrue(known.contains(path(ref)),
+                        "Unresolved item model "+name+": "+ref);
+        }
+    }
+
+    @Test void localTexturesExistAndModelFacesReferenceDeclaredKeys() throws Exception {
+        for(String model:MODELS){
+            JsonObject data=json("models/"+model+".json");
+            JsonObject textures=data.getAsJsonObject("textures");
+            if(textures==null)continue;
+            for(var entry:textures.entrySet()){
+                String texture=entry.getValue().getAsString();
+                assertNotEquals("minecraft:block/leather",texture,
+                        "Nonexistent vanilla texture: "+model);
+                if(texture.startsWith("golems_plus:")){
+                    String resource="textures/"+path(texture)+".png";
+                    try(InputStream in=asset(resource)){
+                        assertNotNull(in,"Missing local PNG "+resource+" in "+model);
+                        assertNotNull(ImageIO.read(in),"Invalid PNG "+resource);
+                    }
+                }
+            }
+            JsonArray elements=data.getAsJsonArray("elements");
+            if(elements==null)continue;
+            for(JsonElement e:elements){
+                JsonObject faces=e.getAsJsonObject().getAsJsonObject("faces");
+                if(faces==null)continue;
+                for(var face:faces.entrySet()){
+                    JsonObject props=face.getValue().getAsJsonObject();
+                    if(props.has("texture")){
+                        String ref=props.get("texture").getAsString();
+                        if(ref.startsWith("#"))
+                            assertTrue(textures.has(ref.substring(1)),
+                                    "Unknown face texture "+ref+" in "+model);
+                    }
+                    if(props.has("uv")){
+                        JsonArray uv=props.getAsJsonArray("uv");
+                        for(JsonElement coordinate:uv){
+                            double value=coordinate.getAsDouble();
+                            assertTrue(value>=0&&value<=16,
+                                    "UV outside 0..16 in "+model);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test void everyProfessionTextureMatchesItsRendererAtlas() throws Exception {
+        for(String type:new String[]{"builder","trader","chef","fisher","beekeeper"}){
+            try(InputStream in=asset("textures/entity/"+type+"_golem.png")){
+                assertNotNull(in,"Missing golem atlas "+type);
+                BufferedImage image=ImageIO.read(in);
+                assertNotNull(image,"Unrecognized PNG "+type);
+                assertEquals(256,image.getWidth(),"Texture width "+type);
+                assertEquals(128,image.getHeight(),"Texture height "+type);
+                assertEquals(0,(image.getRGB(255,127)>>>24)&255,
+                        "Unused atlas corner should remain transparent "+type);
+            }
+        }
+        try(InputStream in=asset("textures/item/fishing_bait.png")){
+            assertNotNull(in);
+            BufferedImage frames=ImageIO.read(in);
+            assertEquals(32,frames.getWidth());
+            assertEquals(256,frames.getHeight());
+        }
+        assertNotNull(asset("textures/item/fishing_bait.png.mcmeta"));
+    }
+}
