@@ -69,13 +69,17 @@ public final class BeekeeperGolem extends PathfinderMob {
         if(distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)<=5.5){
             routeMisses=0;getNavigation().stop();return true;
         }
-        if(!getNavigation().moveTo(pos.getX()+.5,pos.getY(),pos.getZ()+.5,speed))
+        if(level() instanceof ServerLevel server
+                &&!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeTo(server,this,pos,speed))
             routeMisses++;
         return false;
     }
     public boolean stuck(){return routeMisses>15;}
     @Override public void tick(){
         super.tick();
+        if(level() instanceof ServerLevel server)
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
         if(tickCount%12==0 && level() instanceof ServerLevel server)
             BeekeeperWorkService.tickWorker(server,this);
     }
