@@ -56,8 +56,11 @@ public final class BuilderBuildService {
             if(materials.isEmpty())return "Next construction batch already stocked in Planner";
             if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan.steps()))
                 return table.problem().isBlank()?"Warehouse not ready":table.problem();
-            return "Warehouse request queued: "+materials.size()
-                    +" material types. One Builder will collect packed shulkers from the output PTP";
+            if(table.supplyPtp().equals(BlockPos.ZERO))
+                return "Warehouse request saved; "+table.problem();
+            return "Warehouse preparing "+materials.size()
+                    +" material types at PTP "+table.supplyPtp().toShortString()
+                    +". One Builder Golem will collect the packed shulkers";
         }catch(Exception ex){
             String reason=ex.getMessage();
             return "Cannot prepare warehouse batch: "+
