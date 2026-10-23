@@ -26,6 +26,45 @@ public final class BuilderBuildService {
                          List<BuilderConstructionPlan.Step> steps){}
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
     private BuilderBuildService(){}
+    /** Start the warehouse packing reservation as soon as the user
+     * presses Start, before any Builder Golem has reached the first block.
+     * Only the server's already-imported schematic is read; this never
+     * creates materials or pulls from the player's inventory.
+     */
+    public static String primeWarehouse(ServerLevel level,
+            WorkerStationBlockEntity table){
+        if(!table.isBuilder()||table.activeOrder()==null)return "No active Builder job";
+        if(table.warehouse()==null)
+            return "Manual supply mode: link a Rack Computer with a Warehouse Scanner to enable warehouse deliveries";
+        if(table.supplyRequest()!=null)return "Warehouse material request already active";
+        try{
+            Path folder=FabricLoader.getInstance().getConfigDir()
+                    .resolve("golems_plus").resolve("schematics");
+            Path file=folder.resolve(table.builderFile()).normalize();
+            if(!file.startsWith(folder)||!Files.isRegularFile(file))
+                return "The uploaded build schematic is missing on the server";
+            var schematic=LitematicFileReader.read(file);
+            var origin=table.builderOrigin();
+            var site=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                    BuildSite.Rotation.values()[table.builderRotation()/90],
+                    BuildSite.Mirror.values()[table.builderMirror()]);
+            var plan=BuilderConstructionPlan.create(schematic,site);
+            if(!plan.unsupported().isEmpty())
+                return "Schematic has unsupported blocks: "+plan.unsupported().size();
+            var materials=BuilderMaterialDemand.batch(plan.steps(),
+                    table.builderCursor(),BuilderSupplyInventory.available(table));
+            if(materials.isEmpty())return "Next construction batch already stocked in Planner";
+            if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan.steps()))
+                return table.problem().isBlank()?"Warehouse not ready":table.problem();
+            return "Warehouse request queued: "+materials.size()
+                    +" material types. One Builder will collect packed shulkers from the output PTP";
+        }catch(Exception ex){
+            String reason=ex.getMessage();
+            return "Cannot prepare warehouse batch: "+
+                    (reason==null?ex.getClass().getSimpleName():reason);
+        }
+    }
+
     public static void dispatch(ServerLevel level,WorkerStationBlockEntity table){
         BuilderWarehouseCoordinator.pollTable(level,table);
         // Existing crafted crew members execute the job; the station never
