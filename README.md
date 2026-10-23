@@ -513,3 +513,41 @@ on an Output PTP; it does not teleport items out of rack storage.
 Workers cannot pass through unwalkable terrain, closed iron doors
 or blocked walkways. Error messages describe missing inventory, no
 Output PTP, missing empty shulkers and inaccessible walking routes.
+
+## Chefs: recursive food recipe previews and nearby vanilla furnaces (0.3.16-dev)
+
+The Cooking Order Kiosk can now explain a selected food recipe **even
+when its ingredients are missing**. It starts at the selected food,
+chooses one recipe, and follows each ingredient into its own recipe until
+the leaf supplies are reached. Each dependency appears as `NEEDS ... for
+...` and the build steps are shown bottom-up; already-stocked ingredients
+are `OK` and missing physical ingredients are `MISSING`. The preview
+does not combine every alternative milk/cheese/flour recipe and does not
+authorize crafting items that the kitchen cannot actually supply.
+
+When placing a real order, the Chef still selects a supply-backed route
+and reserves only real items in Cooking for Blockheads shared kitchen
+storage. Recipe alternatives that are neither present nor craftable are
+pruned rather than wasting an enormous number of search attempts. The
+player's personal inventory is never considered.
+
+**Vanilla furnace and smoker support:** Place an ordinary Furnace or
+Smoker within 2 blocks horizontally and 1 block vertically of any
+connected Cooking for Blockheads kitchen block (within 16 blocks of the
+Kiosk). They are detected as reachable heating appliances. Furnace
+ingredients and outputs are **not** included in pantry inventory.
+Chefs must walk to the appliance, put the already-reserved ingredients
+into the real input slot, and wait for fuel-powered cooking. They then
+collect the actual produced item into their job buffer before moving to
+the next recipe step. Supply fuel in the furnace/smoker normally.
+Cooking for Blockheads ovens remain supported.
+
+In particular, Croptopia's `cheeseburger` involves bread, a cheese
+tag, a frying pan, and beef replacements. Croptopia cheese additionally
+uses a cooking pot, a milk tag and a salt tag. Missing milk/salt/cheese
+should now appear explicitly in the kiosk instead of a generic
+"recipe exists, but ... could not be resolved" message.
+
+This build requires testing with the actual installed Croptopia and
+Cooking for Blockheads versions to verify all recipe overrides, kitchen
+connectivity, fuel use and utensil returns.
