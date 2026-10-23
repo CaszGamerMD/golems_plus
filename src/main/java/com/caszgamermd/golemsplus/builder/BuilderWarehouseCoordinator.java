@@ -14,6 +14,43 @@ import net.minecraft.network.chat.Component;
 /** Owner-driven supply trips; neither racks nor shulkers are teleported. */
 public final class BuilderWarehouseCoordinator {
     private BuilderWarehouseCoordinator(){}
+    /** Pre-order physical shulker deliveries against the next 256
+     * construction steps. A UUID reservation prevents duplicate stock
+     * allocations when multiple Builders are ticking the same job.
+     * No player inventory or fabricated supplies are ever used.
+     */
+    public static boolean queueMaterials(ServerLevel level,
+            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps){
+        if(!table.isBuilder()||table.activeOrder()==null
+                ||table.warehouse()==null||table.supplyRequest()!=null
+                ||table.builderCursor()>=steps.size())return false;
+        var warehouse=table.warehouse();
+        if(!level.dimension().identifier().toString().equals(warehouse.dimension())){
+            table.setProblem("Builder warehouse must be in the same dimension");
+            return false;
+        }
+        if(!BuilderWarehousePort.available()){
+            table.setProblem("Install Caszual Additions with Builder warehouse support");
+            return false;
+        }
+        Map<String,Integer> needed=BuilderMaterialDemand.batch(
+                steps,table.builderCursor(),BuilderSupplyInventory.available(table));
+        if(needed.isEmpty())return false;
+        table.prepareSupplyRequest(UUID.randomUUID(),needed);
+        BlockPos computer=new BlockPos(warehouse.x(),warehouse.y(),warehouse.z());
+        var reply=BuilderWarehousePort.request(level,computer,table.getBlockPos(),
+                table.owner(),table.supplyRequest(),needed);
+        if(reply.accepted()&&!reply.ptp().equals(BlockPos.ZERO)){
+            table.setSupplyPtp(reply.ptp());
+            table.setProblem("Warehouse preparing "+needed.size()
+                    +" material types; Builder courier will collect shulkers");
+        }else{
+            table.setProblem("Warehouse supply waiting: "+reply.state()
+                    +(!level.hasChunkAt(computer)?" (load the Rack Computer chunk)":""));
+        }
+        return true;
+    }
+
     /** Table-side inbound notification, including while no golem is near. */
     public static void pollTable(ServerLevel level,WorkerStationBlockEntity table){
         if(table.supplyRequest()==null||table.warehouse()==null
@@ -43,8 +80,9 @@ public final class BuilderWarehouseCoordinator {
         if(worker.hasSupplyBox()){
             if(worker.distanceToSqr(table.getBlockPos().getX()+.5,
                     table.getBlockPos().getY()+1,table.getBlockPos().getZ()+.5)>9){
-                worker.getNavigation().moveTo(table.getBlockPos().getX()+.5,
-                        table.getBlockPos().getY()+1,table.getBlockPos().getZ()+.5,.86);
+                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                        level,worker,table.getBlockPos(),.86))
+                    table.setProblem("Builder courier cannot reach its Planning Table");
             }else if(BuilderSupplyInventory.depositBox(table,worker.supplyBox())){
                 worker.clearSupplyBox();
                 table.setProblem("");
@@ -100,9 +138,9 @@ public final class BuilderWarehouseCoordinator {
             }
             if(worker.distanceToSqr(destination.getX()+.5,
                     destination.getY()+1,destination.getZ()+.5)>12){
-                if(!worker.getNavigation().moveTo(destination.getX()+.5,
-                        destination.getY()+1,destination.getZ()+.5,.9))
-                    table.setProblem("Builder cannot reach assigned output PTP");
+                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                        level,worker,destination,.9))
+                    table.setProblem("Builder cannot reach warehouse output PTP; clear a walkable route");
                 return true;
             }
             ItemStack boxed=BuilderWarehousePort.takeBox(level,computer,
@@ -160,12 +198,9 @@ public final class BuilderWarehouseCoordinator {
             table.setProblem("Caszual Additions warehouse integration unavailable");
             return true;
         }
-        if(table.supplyRequest()==null){
-            Map<String,Integer> needed=BuilderMaterialDemand.batch(steps,
-                    table.builderCursor(),BuilderSupplyInventory.available(table));
-            if(needed.isEmpty())return false;
-            table.prepareSupplyRequest(UUID.randomUUID(),needed);
-        }
-        return tick(level,worker,table,player,steps);
+        if(table.supplyRequest()==null)
+            queueMaterials(level,table,steps);
+        return table.supplyRequest()!=null
+                &&tick(level,worker,table,player,steps);
     }
 }

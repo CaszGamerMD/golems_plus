@@ -29,7 +29,7 @@ public final class BuilderGolem extends PathfinderMob {
         return PathfinderMob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH,20)
                 .add(Attributes.MOVEMENT_SPEED,.30)
-                .add(Attributes.FOLLOW_RANGE,48);
+                .add(Attributes.FOLLOW_RANGE,128);
     }
     @Override protected void registerGoals(){}
     public void assign(BlockPos table,UUID player){

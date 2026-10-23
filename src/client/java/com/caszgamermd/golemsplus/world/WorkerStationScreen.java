@@ -440,6 +440,7 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                 });
                 button("Preview materials",PANE,87,182,()->
                         send("builder_preview",0));
+                button("Warehouse supplies",PANE,151,182,()->send("builder_supplies",0));
                 button("Pause",PANE,119,89,()->send("builder_pause",0));
                 button("Resume",PANE+92,119,90,()->send("builder_resume",0));
             }else{
@@ -449,6 +450,8 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
                 button("Pause",PANE,119,89,()->send("builder_pause",0));
                 button("Resume",PANE+92,119,90,()->send("builder_resume",0));
                 button("Cancel job",PANE,151,182,()->send("builder_cancel",0));
+                button("Check / request warehouse materials",PANE,180,182,
+                        ()->send("builder_supplies",0));
             }
             crewControls();
         }else{
@@ -641,11 +644,12 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             g.text(font,"Page "+(placementPage+1)+"/"+Math.max(1,(choices.size()+2)/3),
                     185,139,LABEL_COLOR,false);
         }else if(builder()&&page==Page.BUILDER_SETUP){
-            g.text(font,"Warehouse: use a linked",185,163,LABEL_COLOR,false);
-            g.text(font,"scanner on this Planner.",185,175,LABEL_COLOR,false);
+            g.text(font,"Link by clicking the Planning",185,140,LABEL_COLOR,false);
+            g.text(font,"Table with a linked Warehouse",185,152,LABEL_COLOR,false);
+            g.text(font,"Scanner. Then press Start.",185,164,LABEL_COLOR,false);
             if(station!=null&&station.warehouse()!=null){
                 var w=station.warehouse();
-                g.text(font,truncate(w.x()+", "+w.y()+", "+w.z(),34),
+                g.text(font,truncate("Linked: "+w.x()+", "+w.y()+", "+w.z(),34),
                         185,188,0xffb8eec7,false);
             }else g.text(font,"No warehouse linked",185,188,0xffffc480,false);
         }
