@@ -469,3 +469,47 @@ before pressing Preview or Start build.
   method'. Actual orders still consume only real available kitchen items,
   and completed food can only be picked directly from the kitchen's
   inventory (never from a player's carried inventory).
+
+
+## Builder warehouse supplies — 0.3.15-dev
+
+Once a Litematica placement has been successfully imported into the
+**Builder's Planning Table**, you can construct it using materials stocked
+inside a **Caszual Additions** warehouse.
+
+1. Link a **Caszual Additions Warehouse Scanner** to the desired **Rack Computer**.
+2. Right-click the **Builder's Planning Table** using that linked Scanner.
+   The Planning Table retains the warehouse assignment; the Scanner is not consumed.
+3. Ensure the warehouse has racks/pallets containing the construction
+   materials, Storage Golem workers, a usable **Output PTP** attached
+   to a **Shulker Station**, and empty shulker boxes.
+4. Place the crafted **Builder Golems** by the Planning Table. The station
+   displays the linked crew count (up to 4).
+5. Open the Planning Table and select **Preview** to inspect the
+   imported building, then click **Start Build**.
+6. Starting now **immediately queues a real warehouse request** for the
+   next 256 building steps (up to 16 item types, 64 per type, minus
+   stock already in the Planning Table). The warehouse's Storage Golems
+   fulfill the order and pack real materials into shulkers at the Output
+   PTP. **One Builder Golem physically walks to collect a packed box**
+   and carries it back to the Planning Table. Other Builders keep working
+   with whatever materials are already available.
+7. Builders consume actual items from the Planning Table or its stored
+   shulkers as they place each block. Subsequent batches are automatically
+   requested as construction progresses. A Builder cannot create free
+   materials, borrow items from player inventory or teleport a packed box.
+
+**Check / request warehouse materials** (on the BUILD tab) reports the
+active order and warehouse reservation and retries a missing request.
+The SETUP tab shows the warehouse link and how to attach a scanner.
+The old manual supply workflow also remains: place materials and/or
+filled shulker boxes directly into the Planning Table.
+
+**Limitations:** The Rack Computer, PTP, warehouse material
+inventory and the Builder's walking route must remain in loaded chunks.
+The warehouse and construction site must be in the same dimension.
+The current warehouse fulfillment adapter requires a Shulker Station
+on an Output PTP; it does not teleport items out of rack storage.
+Workers cannot pass through unwalkable terrain, closed iron doors
+or blocked walkways. Error messages describe missing inventory, no
+Output PTP, missing empty shulkers and inaccessible walking routes.
