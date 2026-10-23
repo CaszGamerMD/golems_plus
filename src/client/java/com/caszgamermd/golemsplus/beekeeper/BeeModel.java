@@ -34,10 +34,20 @@ public final class BeeModel extends EntityModel<BeeRenderState> {
                 PartPose.offset(0,13,0));
         root.addOrReplaceChild("head",CubeListBuilder.create()
                 .texOffs(0,26).addBox(-4,-5,-3,8,7,6)
-                .texOffs(35,26).addBox(-5,-6,-4,10,9,8)
-                // Projecting rigid brim and a forward mesh veil.
+                // The older single cube covered the mesh from behind and
+                // collided with the face at some view angles. Split the hood
+                // into side/back panels and a crown; keep the front open.
+                .texOffs(35,26).addBox(-5,-6,-4,10,2,8)
+                .texOffs(35,26).addBox(-5,-4,3.2f,10,7,0.8f)
+                .texOffs(35,26).addBox(-5,-4,-4,1,7,8)
+                .texOffs(35,26).addBox(4,-4,-4,1,7,8)
+                // Forward brim and cloth veil have distinct depth layers.
                 .texOffs(78,26).addBox(-5.5f,-2,-5,11,1,10)
-                .texOffs(130,26).addBox(-4.3f,-1,-5.2f,8.6f,5.5f,.7f),
+                .texOffs(130,26).addBox(-4.3f,-.85f,-5.30f,8.6f,5.35f,.40f)
+                // Narrow noncoplanar borders connect mesh to protective hood.
+                .texOffs(85,56).addBox(-5.18f,-.84f,-5.16f,.72f,5.3f,1.06f)
+                .texOffs(85,56).addBox(4.46f,-.84f,-5.16f,.72f,5.3f,1.06f)
+                .texOffs(85,56).addBox(-4.55f,4.38f,-5.12f,9.1f,.70f,1.0f),
                 PartPose.offset(0,6,0));
         root.addOrReplaceChild("left_arm",CubeListBuilder.create()
                 .texOffs(0,56).addBox(-2.5f,-1,-2.5f,5,10,5)
