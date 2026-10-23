@@ -131,7 +131,10 @@ public final class BuilderCommands {
             return 0;
         }
         player.sendSystemMessage(Component.literal(
-                "Builder started at exact imported Litematica location. Only air is filled, using table stock."));
+                "Builder started at imported Litematica position. Existing blocks will not be replaced."));
+        player.sendSystemMessage(Component.literal("[Builder] "+
+                BuilderBuildService.primeWarehouse((net.minecraft.server.level.ServerLevel)
+                        player.level(),table)));
         return 1;
     }
     private static int pause(ServerPlayer player){
