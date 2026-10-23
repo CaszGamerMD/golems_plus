@@ -167,6 +167,7 @@ class AssetIntegrityTest {
         };
         String[] sides={"north","south","east","west","up","down"};
         int[] axis={2,2,0,0,1,1};
+        boolean[] high={false,true,true,false,true,false};
         int[] across1={0,0,1,1,0,0};
         int[] across2={1,1,2,2,2,2};
         for(String model:models){
@@ -193,8 +194,8 @@ class AssetIntegrityTest {
                     for(int f=0;f<sides.length;f++){
                         if(!facesA.has(sides[f])||!facesB.has(sides[f]))continue;
                         int k=axis[f],u=across1[f],v=across2[f];
-                        double pa=f%2==0?af[k]:at[k];
-                        double pb=f%2==0?bf[k]:bt[k];
+                        double pa=high[f]?at[k]:af[k];
+                        double pb=high[f]?bt[k]:bf[k];
                         if(Math.abs(pa-pb)>.0001)continue;
                         double du=Math.max(0,Math.min(at[u],bt[u])-Math.max(af[u],bf[u]));
                         double dv=Math.max(0,Math.min(at[v],bt[v])-Math.max(af[v],bf[v]));
