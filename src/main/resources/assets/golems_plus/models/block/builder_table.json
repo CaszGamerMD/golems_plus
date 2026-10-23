@@ -312,16 +312,247 @@
       }
     },
     {
-      "name": "blue grid overlay",
+      "name": "blueprint vertical ruling 4.5",
       "from": [
-        2.25,
-        13.28,
-        2.3
+        4.5,
+        13.31,
+        2.43
       ],
       "to": [
-        13.25,
-        13.3,
-        12
+        4.555,
+        13.36,
+        11.83
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint vertical ruling 6.75",
+      "from": [
+        6.75,
+        13.31,
+        2.43
+      ],
+      "to": [
+        6.805,
+        13.36,
+        11.83
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint vertical ruling 9",
+      "from": [
+        9,
+        13.31,
+        2.43
+      ],
+      "to": [
+        9.055,
+        13.36,
+        11.83
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint vertical ruling 11.25",
+      "from": [
+        11.25,
+        13.31,
+        2.43
+      ],
+      "to": [
+        11.305,
+        13.36,
+        11.83
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint horizontal ruling 4.5",
+      "from": [
+        2.4,
+        13.31,
+        4.5
+      ],
+      "to": [
+        13.13,
+        13.36,
+        4.555
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint horizontal ruling 6.75",
+      "from": [
+        2.4,
+        13.31,
+        6.75
+      ],
+      "to": [
+        13.13,
+        13.36,
+        6.805
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint horizontal ruling 9",
+      "from": [
+        2.4,
+        13.31,
+        9
+      ],
+      "to": [
+        13.13,
+        13.36,
+        9.055
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint horizontal ruling 11.15",
+      "from": [
+        2.4,
+        13.31,
+        11.15
+      ],
+      "to": [
+        13.13,
+        13.36,
+        11.205
       ],
       "faces": {
         "north": {
