@@ -106,12 +106,15 @@ public final class ChefRecipePlanner {
                     List<Ingredient> ingredients;
                     try{
                         output=output(recipe);
+                        // Many modded recipes use a private template or
+                        // alternate result representation. If introspection
+                        // fails, a matching recipe ID is an authoritative
+                        // fallback ONLY when the item with the same ID exists.
+                        if(output.isEmpty())output=outputByRecipeId(holder);
                         if(output.isEmpty())continue;
                         ingredients=ingredients(recipe);
                         if(ingredients.isEmpty())continue;
                     }catch(ReflectiveOperationException|RuntimeException ignored){
-                        // A modded recipe can have custom internals; leave it
-                        // unsupported without hiding all other food recipes.
                         continue;
                     }
                     String method=type==RecipeType.CRAFTING?"Assemble":
@@ -159,7 +162,7 @@ public final class ChefRecipePlanner {
     }
 
     private static final class Search{
-        private static final int MAX_DEPTH=14, MAX_BRANCHES=18, MAX_CHOICES=40;
+        private static final int MAX_DEPTH=14, MAX_BRANCHES=18, MAX_CHOICES=14;
         private final Map<Item,List<Entry>> recipes;
         private final Map<Ingredient,List<Item>> knownAlternatives=new IdentityHashMap<>();
         private int attempts;
@@ -181,7 +184,7 @@ public final class ChefRecipePlanner {
         Mutable resolve(Mutable before,Item desired,int quantity,
                         Set<Item> visiting,int depth){
             if(quantity<=0)return before;
-            if(depth>MAX_DEPTH||before.steps.size()>140||attempts++>30000
+            if(depth>MAX_DEPTH||before.steps.size()>140||attempts++>80000
                     ||visiting.contains(desired))return null;
             Mutable start=new Mutable(before);
             int made=Math.min(quantity,start.crafted.getOrDefault(desired,0));
@@ -257,8 +260,8 @@ public final class ChefRecipePlanner {
                         }
                         // A stocked ingredient is optimal for this
                         // ingredient if its use incurs no new recipe steps.
-                        if(selected!=null && selected.steps.size()==trial.steps.size()
-                                &&selected.missing.equals(trial.missing))break;
+                        if(selected!=null&&selected.missing.isEmpty()
+                                &&selected.steps.size()<=trial.steps.size()+2)break;
                     }
                     if(selected==null){
                         possible=false;break;
@@ -278,11 +281,15 @@ public final class ChefRecipePlanner {
                         ||trial.score()==best.score()&&
                         trial.steps.toString().compareTo(best.steps.toString())<0)
                     best=trial;
+                // Avoid exploring exponentially many alternative recipes
+                // once a stock-backed, fully satisfied path exists.
+                if(best!=null&&best.missing.isEmpty()&&best.score()<2000)break;
             }
             // For the preview, show missing raw ingredients when no known
             // recipe can satisfy the shortage. Do not ever use this path
             // for an actual order.
-            if(best==null&&before.inspection&&depth>0){
+            if(best==null&&before.inspection&&depth>0
+                    &&recipes.getOrDefault(desired,List.of()).isEmpty()){
                 Mutable missing=new Mutable(start);
                 missing.missing.merge(desired,unmet,Integer::sum);
                 missing.steps.add("RAW "+unmet+" x "+BuiltInRegistries.ITEM.getKey(desired));
@@ -291,16 +298,58 @@ public final class ChefRecipePlanner {
             return best;
         }
     }
+    private static ItemStack outputByRecipeId(RecipeHolder<?> holder){
+        try{
+            Object id=holder.getClass().getMethod("id").invoke(holder);
+            Object location=id;
+            try{location=id.getClass().getMethod("location").invoke(id);}
+            catch(NoSuchMethodException ignored){}
+            String raw=location.toString();
+            // ResourceKey[... / namespace:path] and ResourceLocation
+            // both end in the actual recipe id.
+            java.util.regex.Matcher found=java.util.regex.Pattern
+                    .compile("([a-z0-9_.-]+:[a-z0-9_./-]+)").matcher(raw);
+            String name=null;
+            while(found.find())name=found.group(1);
+            if(name==null)return ItemStack.EMPTY;
+            var idKey=net.minecraft.resources.Identifier.tryParse(name);
+            if(idKey!=null&&BuiltInRegistries.ITEM.containsKey(idKey))
+                return new ItemStack(BuiltInRegistries.ITEM.getValue(idKey));
+        }catch(ReflectiveOperationException|RuntimeException ignored){}
+        return ItemStack.EMPTY;
+    }
     private static ItemStack output(Object recipe)throws ReflectiveOperationException{
-        Class<?> cls=recipe.getClass();
-        while(cls!=null){
+        for(Class<?> cls=recipe.getClass();cls!=null;cls=cls.getSuperclass()){
+            for(Field field:cls.getDeclaredFields()){
+                if(!field.getName().equals("result")&&!field.getName().equals("output")
+                        &&!field.getName().equals("resultItem"))continue;
+                try{
+                    field.setAccessible(true);
+                    ItemStack item=stackFrom(field.get(recipe));
+                    if(!item.isEmpty())return item;
+                }catch(RuntimeException ignored){}
+            }
+        }
+        for(String method:new String[]{"result","getResultItem","getResult","output"}){
             try{
-                Field f=cls.getDeclaredField("result");f.setAccessible(true);
-                Object value=f.get(recipe);
-                if(value instanceof ItemStackTemplate template)return template.create();
-                if(value instanceof ItemStack stack)return stack.copy();
-            }catch(NoSuchFieldException ignored){}
-            cls=cls.getSuperclass();
+                Method getter=recipe.getClass().getMethod(method);
+                if(getter.getParameterCount()!=0)continue;
+                ItemStack item=stackFrom(getter.invoke(recipe));
+                if(!item.isEmpty())return item;
+            }catch(NoSuchMethodException ignored){}
+            catch(RuntimeException ignored){}
+        }
+        return ItemStack.EMPTY;
+    }
+    private static ItemStack stackFrom(Object value){
+        if(value instanceof ItemStackTemplate template)return template.create();
+        if(value instanceof ItemStack stack)return stack.copy();
+        if(value instanceof Optional<?> opt)return stackFrom(opt.orElse(null));
+        if(value!=null){
+            try{
+                Object created=value.getClass().getMethod("create").invoke(value);
+                if(created instanceof ItemStack stack)return stack;
+            }catch(ReflectiveOperationException|RuntimeException ignored){}
         }
         return ItemStack.EMPTY;
     }
@@ -316,6 +365,12 @@ public final class ChefRecipePlanner {
                 value=f.get(recipe);
             }catch(NoSuchFieldException ignored){}
             cls=cls.getSuperclass();
+        }
+        if(!(value instanceof List<?> list)){
+            // In 26.2 some recipes expose ingredients only via a public
+            // method, not a field called "ingredients".
+            try{value=recipe.getClass().getMethod("getIngredients").invoke(recipe);}
+            catch(ReflectiveOperationException|RuntimeException ignored){}
         }
         if(!(value instanceof List<?> list))return List.of();
         List<Ingredient> items=new ArrayList<>();
