@@ -93,6 +93,15 @@ public final class BuilderBuildService {
         }
         try{
             Cache plan=cache(table,worker);
+            // Reserve the next actual construction materials *before*
+            // walking to a placement that would otherwise leave the crew
+            // stalled waiting for a block. Warehouse golems can prepare a
+            // shulker while Builders continue working with existing stock.
+            // Only one linked worker can claim the courier ticket; other
+            // crew members may keep building.
+            if(table.warehouse()!=null && table.supplyRequest()==null
+                    &&table.builderCursor()<plan.steps().size())
+                BuilderWarehouseCoordinator.queueMaterials(level,table,plan.steps());
             if((worker.hasSupplyBox()||table.supplyRequest()!=null)
                     &&BuilderWarehouseCoordinator.tick(level,worker,table,
                             owner,plan.steps()))return;
