@@ -69,9 +69,6 @@
         },
         "up": {
           "texture": "#metal"
-        },
-        "down": {
-          "texture": "#metal"
         }
       }
     },
@@ -298,9 +295,6 @@
         "west": {
           "texture": "#metal"
         },
-        "up": {
-          "texture": "#metal"
-        },
         "down": {
           "texture": "#metal"
         }
@@ -329,9 +323,6 @@
           "texture": "#metal"
         },
         "west": {
-          "texture": "#metal"
-        },
-        "up": {
           "texture": "#metal"
         },
         "down": {
