@@ -67,7 +67,17 @@ public final class WorkerNavigation {
                     }
         if(progress.narrowDoorway!=near){
             progress.narrowDoorway=near;
-            mob.refreshDimensions();
+            if(!near)mob.refreshDimensions();
+        }
+        if(near){
+            // LivingEntity.getDimensions(Pose) is FINAL in 26.2.
+            // Use a transient collision AABB for the door passage,
+            // while leaving the entity's registered .85 dimensions and
+            // visible rendering completely unchanged. The normal box
+            // returns immediately once the doorway has been cleared.
+            double half=.35;
+            mob.setBoundingBox(new AABB(mob.getX()-half,mob.getY(),mob.getZ()-half,
+                    mob.getX()+half,mob.getY()+mob.getBbHeight(),mob.getZ()+half));
         }
     }
 
