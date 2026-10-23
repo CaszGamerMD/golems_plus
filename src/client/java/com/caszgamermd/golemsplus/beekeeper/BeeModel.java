@@ -45,8 +45,11 @@ public final class BeeModel extends EntityModel<BeeRenderState> {
                 .texOffs(78,26).addBox(-5.5f,-2,-5,11,1,10)
                 .texOffs(130,26).addBox(-4.3f,-.85f,-5.30f,8.6f,5.35f,.40f)
                 // Narrow noncoplanar borders connect mesh to protective hood.
-                .texOffs(85,56).addBox(-5.18f,-.84f,-5.16f,.72f,5.3f,1.06f)
-                .texOffs(85,56).addBox(4.46f,-.84f,-5.16f,.72f,5.3f,1.06f)
+                .texOffs(85,56).addBox(-5.18f,-.98f,-5.16f,.94f,5.47f,1.22f)
+                .texOffs(85,56).addBox(4.24f,-.98f,-5.16f,.94f,5.47f,1.22f)
+                // A brow band closes the 0.15-pixel seam between the rim
+                // and mesh without occupying the mesh's outward face.
+                .texOffs(130,26).addBox(-4.33f,-1.05f,-5.17f,8.66f,.32f,1.20f)
                 .texOffs(85,56).addBox(-4.55f,4.38f,-5.12f,9.1f,.70f,1.0f),
                 PartPose.offset(0,6,0));
         root.addOrReplaceChild("left_arm",CubeListBuilder.create()
