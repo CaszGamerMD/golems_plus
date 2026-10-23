@@ -38,9 +38,37 @@ public final class WorkerNavigation {
         BlockPos requested,approach,openedDoor;
         Vec3 previous;
         int stalled,attempts,wait,doorAge,nextRoute;
+        boolean narrowDoorway;
     }
     private static Progress state(PathfinderMob mob){
         return states.computeIfAbsent(mob,m->new Progress());
+    }
+    /** Open wooden doors leave only 13/16 of a block of width. A .85
+     * worker is physically too wide, so while it is *crossing a doorway*
+     * its real collision box briefly narrows to .70. Away from a doorway
+     * it resumes its normal .85 width. The visible model never changes.
+     */
+    public static boolean inDoorway(PathfinderMob mob){
+        Progress progress=states.get(mob);
+        return progress!=null&&progress.narrowDoorway;
+    }
+    private static void updateDoorClearance(ServerLevel level,PathfinderMob mob,Progress progress){
+        BlockPos pos=mob.blockPosition();
+        boolean near=false;
+        if(progress.requested!=null||progress.openedDoor!=null)
+            for(int dx=-2;dx<=2&&!near;dx++)
+                for(int dy=-1;dy<=1&&!near;dy++)
+                    for(int dz=-2;dz<=2&&!near;dz++){
+                        BlockPos probe=pos.offset(dx,dy,dz);
+                        if(!handDoor(level,probe))continue;
+                        double distance=mob.distanceToSqr(probe.getX()+.5,
+                                probe.getY()+.4,probe.getZ()+.5);
+                        if(distance<4.0)near=true;
+                    }
+        if(progress.narrowDoorway!=near){
+            progress.narrowDoorway=near;
+            mob.refreshDimensions();
+        }
     }
 
     private static boolean handDoor(ServerLevel world,BlockPos pos){
@@ -113,6 +141,11 @@ public final class WorkerNavigation {
             p.requested=target.immutable();p.approach=null;
             p.attempts=0;p.nextRoute=0;p.stalled=0;
         }
+        updateDoorClearance(level,mob,p);
+        // An obstructed door can make Minecraft reject the path outright.
+        // Try opening the nearest door on the intended approach BEFORE
+        // the first path calculation, not only after the golem hits it.
+        if(p.openedDoor==null)openApproachDoor(level,mob,p);
         if(p.wait>0)return true;
         // Do not cancel a sound active route for every repeated request.
         if(!changed&&!mob.getNavigation().isDone()
@@ -152,6 +185,7 @@ public final class WorkerNavigation {
         Progress p=state(mob);
         p.requested=null;p.approach=null;p.stalled=0;
         mob.getNavigation().stop();
+        // Door clearance is reset during the next server navigation tick.
     }
 
     /** Call every server tick, including when idle, to operate and close doors. */
@@ -160,6 +194,7 @@ public final class WorkerNavigation {
         if(mob.getNavigation() instanceof GroundPathNavigation nav)
             nav.setCanOpenDoors(true);
         if(mob.tickCount%5!=0)return;
+        updateDoorClearance(level,mob,p);
         if(p.previous==null)p.previous=mob.position();
         if(mob.position().distanceToSqr(p.previous)>.065){
             p.stalled=0;p.previous=mob.position();
@@ -218,8 +253,8 @@ public final class WorkerNavigation {
         BlockPos origin=mob.blockPosition();
         BlockPos doorPos=null;
         double closest=Double.MAX_VALUE;
-        for(int dx=-2;dx<=2;dx++)for(int dy=0;dy<=1;dy++)
-            for(int dz=-2;dz<=2;dz++){
+        for(int dx=-3;dx<=3;dx++)for(int dy=-1;dy<=1;dy++)
+            for(int dz=-3;dz<=3;dz++){
                 BlockPos probe=origin.offset(dx,dy,dz);
                 if(!handDoor(level,probe))continue;
                 BlockState state=level.getBlockState(probe);
@@ -228,7 +263,7 @@ public final class WorkerNavigation {
                         probe.getZ()+.5-mob.getZ());
                 double along=delta.dot(ahead);
                 double side=Math.abs(delta.x*ahead.z-delta.z*ahead.x);
-                if(along<-.3||along>2.45||side>1.0)continue;
+                if(along<-.3||along>3.5||side>1.20)continue;
                 double score=delta.lengthSqr()+side*2;
                 if(score<closest){doorPos=probe;closest=score;}
             }
@@ -236,9 +271,11 @@ public final class WorkerNavigation {
             BlockState state=level.getBlockState(doorPos);
             ((DoorBlock)state.getBlock()).setOpen(mob,level,state,doorPos,true);
             p.openedDoor=doorPos.immutable();p.doorAge=0;
+            updateDoorClearance(level,mob,p);
             // Path planned while the door was closed may be impossible.
             // Re-evaluate only once after opening it.
-            p.stalled=STALL_TICKS;p.nextRoute=0;
+            p.stalled=0;p.nextRoute=0;
+            mob.getNavigation().stop();
         }
     }
     private static void closeClearedDoor(ServerLevel level,PathfinderMob mob,Progress p){
