@@ -114,3 +114,33 @@ Check that no bobber is shown without a real rod/bait, none is cast into
 solid blocks, and the line disappears if the Fisher is paused, travels,
 runs out of supplies, or water is removed. Existing in-progress fishermen
 should resume their saved task after reloading a world.
+
+
+## Shared obstacle-aware worker navigation (0.3.19-dev)
+
+Builder, Trader, Chef, Beekeeper and Fisher Golems now use one ground route
+controller. Every five server ticks it validates the upcoming four path nodes
+and swept body width (including corners and low ceilings). Routes are not
+replanned repeatedly when still clear. When a new wall, rack, table, block,
+water or hazard cuts across the route, the worker stops and its next work
+step requests a fresh route. Unreachable jobs choose a different nearby
+standable approach, not a direct push against the obstructing block. Closed
+wooden doors may be opened and are closed after the golem clears them.
+
+Playtest in a **backed-up** world:
+
+- Place a two- or three-wide corridor with a wall across the direct line
+  from workstation to destination, but an alternate route around it.
+  Confirm all five professions follow the detour without pushing at walls.
+- While walking, place a full block or a fence across the chosen path.
+  Check the worker stops and reroutes. Then clear the obstruction and confirm
+  it proceeds without having to respawn it.
+- Check carpets, half-slabs, wooden doors, tight corners, two-block headroom,
+  golems meeting head-on, and multiple golems using one workspace.
+- Confirm full-height hazards, water and unsupported ledges are avoided;
+  no waypoint or scan may force-load a chunk.
+- Confirm Fisher casting still works once seated and Chef workers do not
+  walk on top of counters or ovens.
+
+The five-tick check is a lightweight route inspection, **not** a full A*
+search every five ticks. Full navigation remains server-controlled.
