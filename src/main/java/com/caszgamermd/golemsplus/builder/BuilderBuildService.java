@@ -82,7 +82,8 @@ public final class BuilderBuildService {
                 &&!worker.hasSupplyBox()){
             worker.setNoGravity(false);
             BuilderScaffolding.retrieve(level,worker,table,false);
-            worker.getNavigation().moveTo(home.getX()+.5,home.getY()+1,home.getZ()+.5,.8);
+            com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeTo(level,worker,home,.8);
             return;
         }
         ServerPlayer owner=level.getServer().getPlayerList().getPlayer(worker.owner());
@@ -137,8 +138,9 @@ public final class BuilderBuildService {
             if(pos.getY()-worker.getY()>2.5 && horizontal>=36){
                 // Reach the base of the tower on foot before laying any
                 // temporary blocks; never construct remotely.
-                worker.getNavigation().moveTo(pos.getX()+.5,
-                        worker.blockPosition().getY(),pos.getZ()+.5,.85);
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                        level,worker,new BlockPos(pos.getX(),
+                                worker.blockPosition().getY(),pos.getZ()),.85);
                 return;
             }
             if(pos.getY()-worker.getY()>2.5 && horizontal<36){
@@ -158,8 +160,8 @@ public final class BuilderBuildService {
                 if(climbing==BuilderScaffolding.Result.CLIMBING)return;
             }
             if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>14){
-                if(!worker.getNavigation().moveTo(pos.getX()+.5,pos.getY(),
-                        pos.getZ()+.5,.85))
+                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeTo(level,worker,pos,.85))
                     table.setProblem("Builder cannot path to "+pos);
                 return;
             }
