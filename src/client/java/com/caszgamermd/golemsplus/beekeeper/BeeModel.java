@@ -29,33 +29,33 @@ public final class BeeModel extends EntityModel<BeeRenderState> {
         PartDefinition root=mesh.getRoot();
         root.addOrReplaceChild("body",CubeListBuilder.create()
                 .texOffs(0,0).addBox(-5,-6,-3.5f,10,11,7)
-                .texOffs(36,34).addBox(-5.5f,-6.5f,-4,11,5,8)
-                .texOffs(36,46).addBox(-5.5f,3,-4,11,3,8),
+                .texOffs(40,0).addBox(-5.5f,-6.5f,-4,11,5,8)
+                .texOffs(84,0).addBox(-5.5f,3,-4,11,3,8),
                 PartPose.offset(0,13,0));
         root.addOrReplaceChild("head",CubeListBuilder.create()
-                .texOffs(0,20).addBox(-4,-5,-3,8,7,6)
-                .texOffs(0,34).addBox(-5,-6,-4,10,9,8)
+                .texOffs(0,26).addBox(-4,-5,-3,8,7,6)
+                .texOffs(35,26).addBox(-5,-6,-4,10,9,8)
                 // Projecting rigid brim and a forward mesh veil.
-                .texOffs(0,52).addBox(-5.5f,-2,-5,11,1,10)
-                .texOffs(38,12).addBox(-4.3f,-1,-5.2f,8.6f,5.5f,.7f),
+                .texOffs(78,26).addBox(-5.5f,-2,-5,11,1,10)
+                .texOffs(130,26).addBox(-4.3f,-1,-5.2f,8.6f,5.5f,.7f),
                 PartPose.offset(0,6,0));
         root.addOrReplaceChild("left_arm",CubeListBuilder.create()
-                .texOffs(0,40).addBox(-2.5f,-1,-2.5f,5,10,5)
-                .texOffs(40,22).addBox(-2.7f,6.5f,-2.7f,5.4f,3,5.4f),
+                .texOffs(0,56).addBox(-2.5f,-1,-2.5f,5,10,5)
+                .texOffs(30,56).addBox(-2.7f,6.5f,-2.7f,5.4f,3,5.4f),
                 PartPose.offset(7,11,0));
         root.addOrReplaceChild("right_arm",CubeListBuilder.create()
-                .texOffs(0,40).addBox(-2.5f,-1,-2.5f,5,10,5)
-                .texOffs(40,22).addBox(-2.7f,6.5f,-2.7f,5.4f,3,5.4f),
+                .texOffs(0,56).addBox(-2.5f,-1,-2.5f,5,10,5)
+                .texOffs(30,56).addBox(-2.7f,6.5f,-2.7f,5.4f,3,5.4f),
                 PartPose.offset(-7,11,0));
         root.addOrReplaceChild("left_leg",CubeListBuilder.create()
-                .texOffs(44,0).addBox(-2,0,-2,4,8,4)
-                .texOffs(48,52).addBox(-2.3f,5.5f,-2.7f,4.6f,3,5.4f),
+                .texOffs(60,56).addBox(-2,0,-2,4,8,4)
+                .texOffs(85,56).addBox(-2.3f,5.5f,-2.7f,4.6f,3,5.4f),
                 PartPose.offset(3,16,0));
         root.addOrReplaceChild("right_leg",CubeListBuilder.create()
-                .texOffs(44,0).addBox(-2,0,-2,4,8,4)
-                .texOffs(48,52).addBox(-2.3f,5.5f,-2.7f,4.6f,3,5.4f),
+                .texOffs(60,56).addBox(-2,0,-2,4,8,4)
+                .texOffs(85,56).addBox(-2.3f,5.5f,-2.7f,4.6f,3,5.4f),
                 PartPose.offset(-3,16,0));
-        return LayerDefinition.create(mesh,64,64);
+        return LayerDefinition.create(mesh,256,128);
     }
     @Override public void setupAnim(BeeRenderState state){
         super.setupAnim(state);

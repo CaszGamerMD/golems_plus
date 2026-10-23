@@ -4,7 +4,7 @@
     "canvas": "minecraft:block/brown_wool",
     "seam": "minecraft:block/dark_oak_planks",
     "trim": "minecraft:block/brown_concrete",
-    "strap": "minecraft:block/leather",
+    "strap": "minecraft:block/brown_terracotta",
     "metal": "minecraft:block/iron_block",
     "brass": "minecraft:block/gold_block",
     "smoker": "minecraft:block/copper_block",
@@ -116,12 +116,12 @@
       "name": "front stitching left",
       "from": [
         3,
-        3,
+        3.06,
         1.48
       ],
       "to": [
         3.35,
-        7.5,
+        7.44,
         1.75
       ],
       "faces": {
@@ -149,12 +149,12 @@
       "name": "front stitching right",
       "from": [
         10,
-        3,
+        3.06,
         1.48
       ],
       "to": [
         10.35,
-        7.5,
+        7.44,
         1.75
       ],
       "faces": {
@@ -451,7 +451,7 @@
       ],
       "to": [
         15.45,
-        11.4,
+        11.5,
         10.2
       ],
       "faces": {

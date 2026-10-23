@@ -1,1 +1,909 @@
-{ "parent": "minecraft:block/cube_all", "textures": { "all": "minecraft:block/stonecutter_top" } }
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "particle": "minecraft:block/oak_planks",
+    "wood": "minecraft:block/spruce_planks",
+    "top": "minecraft:block/oak_planks",
+    "leg": "minecraft:block/dark_oak_planks",
+    "leather": "minecraft:block/brown_terracotta",
+    "paper": "minecraft:block/birch_planks",
+    "map": "minecraft:block/light_blue_terracotta",
+    "trim": "minecraft:block/iron_block",
+    "brass": "minecraft:block/gold_block",
+    "iron": "minecraft:block/iron_block",
+    "ink": "minecraft:block/black_concrete"
+  },
+  "elements": [
+    {
+      "name": "reinforced leg 1-1",
+      "from": [
+        1,
+        0,
+        1
+      ],
+      "to": [
+        3,
+        10.8,
+        3
+      ],
+      "faces": {
+        "north": {
+          "texture": "#leg"
+        },
+        "south": {
+          "texture": "#leg"
+        },
+        "east": {
+          "texture": "#leg"
+        },
+        "west": {
+          "texture": "#leg"
+        },
+        "up": {
+          "texture": "#leg"
+        },
+        "down": {
+          "texture": "#leg"
+        }
+      }
+    },
+    {
+      "name": "reinforced leg 1-13",
+      "from": [
+        1,
+        0,
+        13
+      ],
+      "to": [
+        3,
+        10.8,
+        15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#leg"
+        },
+        "south": {
+          "texture": "#leg"
+        },
+        "east": {
+          "texture": "#leg"
+        },
+        "west": {
+          "texture": "#leg"
+        },
+        "up": {
+          "texture": "#leg"
+        },
+        "down": {
+          "texture": "#leg"
+        }
+      }
+    },
+    {
+      "name": "reinforced leg 13-1",
+      "from": [
+        13,
+        0,
+        1
+      ],
+      "to": [
+        15,
+        10.8,
+        3
+      ],
+      "faces": {
+        "north": {
+          "texture": "#leg"
+        },
+        "south": {
+          "texture": "#leg"
+        },
+        "east": {
+          "texture": "#leg"
+        },
+        "west": {
+          "texture": "#leg"
+        },
+        "up": {
+          "texture": "#leg"
+        },
+        "down": {
+          "texture": "#leg"
+        }
+      }
+    },
+    {
+      "name": "reinforced leg 13-13",
+      "from": [
+        13,
+        0,
+        13
+      ],
+      "to": [
+        15,
+        10.8,
+        15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#leg"
+        },
+        "south": {
+          "texture": "#leg"
+        },
+        "east": {
+          "texture": "#leg"
+        },
+        "west": {
+          "texture": "#leg"
+        },
+        "up": {
+          "texture": "#leg"
+        },
+        "down": {
+          "texture": "#leg"
+        }
+      }
+    },
+    {
+      "name": "lower underframe",
+      "from": [
+        1.25,
+        7.9,
+        1.25
+      ],
+      "to": [
+        14.75,
+        9.1,
+        14.75
+      ],
+      "faces": {
+        "north": {
+          "texture": "#wood"
+        },
+        "south": {
+          "texture": "#wood"
+        },
+        "east": {
+          "texture": "#wood"
+        },
+        "west": {
+          "texture": "#wood"
+        },
+        "up": {
+          "texture": "#wood"
+        },
+        "down": {
+          "texture": "#wood"
+        }
+      }
+    },
+    {
+      "name": "raised drafting desktop",
+      "from": [
+        0,
+        10,
+        0
+      ],
+      "to": [
+        16,
+        12.4,
+        16
+      ],
+      "faces": {
+        "north": {
+          "texture": "#wood"
+        },
+        "south": {
+          "texture": "#wood"
+        },
+        "east": {
+          "texture": "#wood"
+        },
+        "west": {
+          "texture": "#wood"
+        },
+        "up": {
+          "texture": "#wood"
+        },
+        "down": {
+          "texture": "#wood"
+        }
+      }
+    },
+    {
+      "name": "weathered oak worktop",
+      "from": [
+        0.4,
+        12.4,
+        0.4
+      ],
+      "to": [
+        15.6,
+        13,
+        15.6
+      ],
+      "faces": {
+        "north": {
+          "texture": "#top"
+        },
+        "south": {
+          "texture": "#top"
+        },
+        "east": {
+          "texture": "#top"
+        },
+        "west": {
+          "texture": "#top"
+        },
+        "up": {
+          "texture": "#top"
+        },
+        "down": {
+          "texture": "#top"
+        }
+      }
+    },
+    {
+      "name": "blueprint leather roll backing",
+      "from": [
+        1.6,
+        13.05,
+        1.3
+      ],
+      "to": [
+        14.45,
+        13.18,
+        13
+      ],
+      "faces": {
+        "north": {
+          "texture": "#leather"
+        },
+        "south": {
+          "texture": "#leather"
+        },
+        "east": {
+          "texture": "#leather"
+        },
+        "west": {
+          "texture": "#leather"
+        },
+        "up": {
+          "texture": "#leather"
+        },
+        "down": {
+          "texture": "#leather"
+        }
+      }
+    },
+    {
+      "name": "blueprint page",
+      "from": [
+        2,
+        13.19,
+        2
+      ],
+      "to": [
+        13.55,
+        13.27,
+        12.35
+      ],
+      "faces": {
+        "north": {
+          "texture": "#paper"
+        },
+        "south": {
+          "texture": "#paper"
+        },
+        "east": {
+          "texture": "#paper"
+        },
+        "west": {
+          "texture": "#paper"
+        },
+        "up": {
+          "texture": "#paper"
+        },
+        "down": {
+          "texture": "#paper"
+        }
+      }
+    },
+    {
+      "name": "blueprint vertical ruling 4.5",
+      "from": [
+        4.5,
+        13.31,
+        2.43
+      ],
+      "to": [
+        4.555,
+        13.36,
+        11.83
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint vertical ruling 6.75",
+      "from": [
+        6.75,
+        13.31,
+        2.43
+      ],
+      "to": [
+        6.805,
+        13.36,
+        11.83
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint vertical ruling 9",
+      "from": [
+        9,
+        13.31,
+        2.43
+      ],
+      "to": [
+        9.055,
+        13.36,
+        11.83
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint vertical ruling 11.25",
+      "from": [
+        11.25,
+        13.31,
+        2.43
+      ],
+      "to": [
+        11.305,
+        13.36,
+        11.83
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint horizontal ruling 4.5",
+      "from": [
+        2.4,
+        13.31,
+        4.5
+      ],
+      "to": [
+        13.13,
+        13.36,
+        4.555
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint horizontal ruling 6.75",
+      "from": [
+        2.4,
+        13.31,
+        6.75
+      ],
+      "to": [
+        13.13,
+        13.36,
+        6.805
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint horizontal ruling 9",
+      "from": [
+        2.4,
+        13.31,
+        9
+      ],
+      "to": [
+        13.13,
+        13.36,
+        9.055
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "blueprint horizontal ruling 11.15",
+      "from": [
+        2.4,
+        13.31,
+        11.15
+      ],
+      "to": [
+        13.13,
+        13.36,
+        11.205
+      ],
+      "faces": {
+        "north": {
+          "texture": "#map"
+        },
+        "south": {
+          "texture": "#map"
+        },
+        "east": {
+          "texture": "#map"
+        },
+        "west": {
+          "texture": "#map"
+        },
+        "up": {
+          "texture": "#map"
+        },
+        "down": {
+          "texture": "#map"
+        }
+      }
+    },
+    {
+      "name": "rolled parchment top",
+      "from": [
+        2,
+        13.24,
+        1.8
+      ],
+      "to": [
+        13.55,
+        13.72,
+        2.15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#paper"
+        },
+        "south": {
+          "texture": "#paper"
+        },
+        "east": {
+          "texture": "#paper"
+        },
+        "west": {
+          "texture": "#paper"
+        },
+        "up": {
+          "texture": "#paper"
+        },
+        "down": {
+          "texture": "#paper"
+        }
+      }
+    },
+    {
+      "name": "rolled parchment foot",
+      "from": [
+        2,
+        13.24,
+        12.15
+      ],
+      "to": [
+        13.55,
+        13.72,
+        12.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#paper"
+        },
+        "south": {
+          "texture": "#paper"
+        },
+        "east": {
+          "texture": "#paper"
+        },
+        "west": {
+          "texture": "#paper"
+        },
+        "up": {
+          "texture": "#paper"
+        },
+        "down": {
+          "texture": "#paper"
+        }
+      }
+    },
+    {
+      "name": "rear ruler rail",
+      "from": [
+        0.8,
+        13,
+        14.2
+      ],
+      "to": [
+        15.2,
+        13.8,
+        15.15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#trim"
+        },
+        "south": {
+          "texture": "#trim"
+        },
+        "east": {
+          "texture": "#trim"
+        },
+        "west": {
+          "texture": "#trim"
+        },
+        "up": {
+          "texture": "#trim"
+        },
+        "down": {
+          "texture": "#trim"
+        }
+      }
+    },
+    {
+      "name": "plotted plan backboard",
+      "from": [
+        1.5,
+        13.8,
+        14.5
+      ],
+      "to": [
+        14.5,
+        16,
+        15.35
+      ],
+      "faces": {
+        "north": {
+          "texture": "#wood"
+        },
+        "south": {
+          "texture": "#wood"
+        },
+        "east": {
+          "texture": "#wood"
+        },
+        "west": {
+          "texture": "#wood"
+        },
+        "up": {
+          "texture": "#wood"
+        },
+        "down": {
+          "texture": "#wood"
+        }
+      }
+    },
+    {
+      "name": "brass corner bracket",
+      "from": [
+        0.5,
+        12.65,
+        0.5
+      ],
+      "to": [
+        1.55,
+        13.18,
+        1.55
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brass"
+        },
+        "south": {
+          "texture": "#brass"
+        },
+        "east": {
+          "texture": "#brass"
+        },
+        "west": {
+          "texture": "#brass"
+        },
+        "up": {
+          "texture": "#brass"
+        },
+        "down": {
+          "texture": "#brass"
+        }
+      }
+    },
+    {
+      "name": "brass corner bracket",
+      "from": [
+        14.45,
+        12.65,
+        0.5
+      ],
+      "to": [
+        15.5,
+        13.18,
+        1.55
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brass"
+        },
+        "south": {
+          "texture": "#brass"
+        },
+        "east": {
+          "texture": "#brass"
+        },
+        "west": {
+          "texture": "#brass"
+        },
+        "up": {
+          "texture": "#brass"
+        },
+        "down": {
+          "texture": "#brass"
+        }
+      }
+    },
+    {
+      "name": "brass corner bracket",
+      "from": [
+        0.5,
+        12.65,
+        14.45
+      ],
+      "to": [
+        1.55,
+        13.18,
+        15.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brass"
+        },
+        "south": {
+          "texture": "#brass"
+        },
+        "east": {
+          "texture": "#brass"
+        },
+        "west": {
+          "texture": "#brass"
+        },
+        "up": {
+          "texture": "#brass"
+        },
+        "down": {
+          "texture": "#brass"
+        }
+      }
+    },
+    {
+      "name": "brass corner bracket",
+      "from": [
+        14.45,
+        12.65,
+        14.45
+      ],
+      "to": [
+        15.5,
+        13.18,
+        15.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brass"
+        },
+        "south": {
+          "texture": "#brass"
+        },
+        "east": {
+          "texture": "#brass"
+        },
+        "west": {
+          "texture": "#brass"
+        },
+        "up": {
+          "texture": "#brass"
+        },
+        "down": {
+          "texture": "#brass"
+        }
+      }
+    },
+    {
+      "name": "measuring pen",
+      "from": [
+        13.7,
+        13.28,
+        4.2
+      ],
+      "to": [
+        14.05,
+        13.62,
+        11.8
+      ],
+      "faces": {
+        "north": {
+          "texture": "#ink"
+        },
+        "south": {
+          "texture": "#ink"
+        },
+        "east": {
+          "texture": "#ink"
+        },
+        "west": {
+          "texture": "#ink"
+        },
+        "up": {
+          "texture": "#ink"
+        },
+        "down": {
+          "texture": "#ink"
+        }
+      }
+    },
+    {
+      "name": "plan clip",
+      "from": [
+        6.3,
+        13.3,
+        2.1
+      ],
+      "to": [
+        9.5,
+        13.56,
+        2.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#iron"
+        },
+        "south": {
+          "texture": "#iron"
+        },
+        "east": {
+          "texture": "#iron"
+        },
+        "west": {
+          "texture": "#iron"
+        },
+        "up": {
+          "texture": "#iron"
+        },
+        "down": {
+          "texture": "#iron"
+        }
+      }
+    }
+  ]
+}
