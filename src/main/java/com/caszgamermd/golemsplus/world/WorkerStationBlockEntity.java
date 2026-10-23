@@ -610,6 +610,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                             net.minecraft.resources.Identifier.parse("minecraft:bee_food"))));
         if(isFishing())return slot>=0&&slot<INPUT_SLOTS
                 &&(stack.is(net.minecraft.world.item.Items.FISHING_ROD)
+                     ||stack.is(WorksiteContent.FISHING_BAIT)
                     ||stack.is(net.minecraft.world.item.Items.COD)
                     ||stack.is(net.minecraft.world.item.Items.SALMON)
                     ||stack.is(net.minecraft.world.item.Items.TROPICAL_FISH)

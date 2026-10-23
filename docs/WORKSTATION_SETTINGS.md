@@ -134,3 +134,22 @@ are **not** shown for other workstation specialties.
 
 See [Litematica placement instructions](LITEMATICA_PLACEMENTS.md) and
 [playtest guide](PLAYTEST.md) for further behavior and limitations.
+
+## Fisherman's bait and chest targeting (0.3.17-dev)
+
+The Fisherman's Coolers now accept fishing rods and `golems_plus:fishing_bait`
+in the first 27 slots, including shift-click transfers from player inventory.
+Bait uses an eight-frame wriggling worm-ball texture.
+
+To link an output chest on either the Fisherman's Coolers or the Beekeeper Tool
+Bag & Smoker, open its job-block menu, press **CHOOSE OUTPUT CHEST**, then
+right-click the desired chest, barrel, shulker box or other storage inventory.
+The click marks the container *instead of opening it*; the nearest container is
+no longer selected automatically. The Fisher range is 16 blocks, the Beekeeper
+range is 8. Invalid clicks keep the picker armed for 60 seconds. A confirmed
+link persists across world reloads.
+
+Playtest: place bait and a rod in the Coolers, mark a fishing waypoint and link
+a chest other than the nearest one. Confirm the fisherman takes stored bait and
+delivers catches to that exact chest. Confirm out-of-range/non-chest clicks
+cannot change the link. Repeat selection for the Beekeeper station.

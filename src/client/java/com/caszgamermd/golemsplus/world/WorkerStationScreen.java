@@ -357,7 +357,10 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             button("Resume",PANE+92,178,90,()->send("trader_resume",0));
             crewControls();
         }else if(beekeeper()){
-            button("LINK OUTPUT CHEST",PANE,36,182,()->send("bee_output",0));
+            button("CHOOSE OUTPUT CHEST",PANE,36,182,()->{
+                send("bee_output",0);
+                onClose(); // mark the selected chest from the world
+            });
             button("Mode: "+(beeMode==0?"Both":beeMode==1?"Comb":"Honey"),
                     PANE,91,182,()->{
                         beeMode=(beeMode+1)%3;send("bee_mode",beeMode);
@@ -379,7 +382,10 @@ public final class WorkerStationScreen extends AbstractContainerScreen<WorkerSta
             if(worker!=null&&worker.fishingSpot()!=null)
                 fishingPosition=worker.fishingSpot().getX()+" "+
                         worker.fishingSpot().getY()+" "+worker.fishingSpot().getZ();
-            button("LINK OUTPUT CHEST",PANE,36,182,()->send("fish_output",0));
+            button("CHOOSE OUTPUT CHEST",PANE,36,182,()->{
+                send("fish_output",0);
+                onClose(); // mark the selected chest from the world
+            });
             editor(87,"Fishing waypoint X Y Z",fishingPosition,true);
             button("USE PLAYER POSITION",PANE,119,182,()->{
                 if(minecraft.player!=null){

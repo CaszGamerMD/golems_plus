@@ -69,32 +69,9 @@ public final class StationSettingsNetworking {
         boolean done=false;
         String action=change.action;
         switch(action) {
-            case "bee_tools","bee_output" -> {
-                if(!table.isBeekeeper())break;
-                boolean tools=action.equals("bee_tools");
-                BlockPos closest=null;double best=Double.MAX_VALUE;
-                BlockPos center=table.getBlockPos();
-                for(int dx=-8;dx<=8;dx++)for(int dy=-5;dy<=5;dy++)
-                    for(int dz=-8;dz<=8;dz++){
-                        BlockPos pos=center.offset(dx,dy,dz);
-                        if(!player.level().hasChunkAt(pos)||!player.level().mayInteract(player,pos))
-                            continue;
-                        var target=player.level().getBlockEntity(pos);
-                        boolean good=tools?target instanceof BeeToolboxBlockEntity:
-                                target instanceof Container
-                                    &&!(target instanceof BeeToolboxBlockEntity)
-                                    &&!(target instanceof WorkerStationBlockEntity);
-                        if(!good)continue;
-                        double distance=pos.distSqr(center);
-                        if(distance<best){closest=pos;best=distance;}
-                    }
-                if(closest!=null){
-                    done=table.setBeeLink(player.getUUID(),tools,closest);
-                    if(done)reply(player,(tools?"Toolbox":"Output")+" linked at "+closest);
-                    return;
-                }
-                reply(player,tools?"Place a Beekeeper Toolbox within 8 blocks":
-                        "Place an output chest/barrel within 8 blocks");
+            case "bee_output" -> {
+                if (!table.isBeekeeper()) return;
+                OutputChestSelection.begin(player, table, false);
                 return;
             }
             case "bee_mode" -> {
@@ -208,25 +185,8 @@ public final class StationSettingsNetworking {
                 if(table.isCooking()){table.setPhase(WorkerPhase.IDLE);done=true;}
             }
             case "fish_output" -> {
-                if(!table.isFishing())return;
-                BlockPos nearest=null;double best=Double.MAX_VALUE;
-                BlockPos origin=table.getBlockPos();
-                for(int x=-12;x<=12;x++)for(int y=-6;y<=6;y++)
-                    for(int z=-12;z<=12;z++){
-                        BlockPos location=origin.offset(x,y,z);
-                        double distance=origin.distSqr(location);
-                        if(distance>=best||distance>16*16
-                                ||!player.level().hasChunkAt(location))continue;
-                        if(player.level().getBlockEntity(location) instanceof Container box
-                                &&box!=table){
-                            nearest=location;best=distance;
-                        }
-                    }
-                if(nearest==null){
-                    reply(player,"No output chest found within 16 blocks");return;
-                }
-                if(table.setFisherOutput(player.getUUID(),nearest))
-                    reply(player,"Fisher catch chest linked: "+nearest.toShortString());
+                if (!table.isFishing()) return;
+                OutputChestSelection.begin(player, table, true);
                 return;
             }
             case "fish_spot" -> {
