@@ -79,3 +79,24 @@ chef. The Chef also has entity ID `golems_plus:chef_golem`.
 Review worker outfits at walk, idle, carry and work animations. Check the
 new Planning Table from all four sides, Trader lamps at night, Fisher cooler
 fish face and cans, and Beekeeper veils at close and distant camera ranges.
+
+## 0.3.21-dev: missing pixel and depth-fighting repair
+
+- Beekeeper suit: split the front-open cloth hood into separate roof, sides
+  and rear panels to stop overlapping the translucent-looking face veil.
+  Recessed and framed the veil, and sealed exposed mesh edges. The crafted
+  Beekeeper item now uses a dedicated **opaque woven pixel-mesh texture**,
+  avoiding missing pixels from vanilla transparent iron-bars textures.
+- Builder, Trader, Chef and Fisher: filled *only* alpha-zero texels that
+  lie under real model UV faces, sampling the nearest valid pixel from the
+  same atlas region so the original clothing palette remains intact.
+- Golem inventory models: adjusted Beekeeper collar/veil plane, Chef toque
+  brim, Fisher vest side panels and Trader briefcase edging/handles to
+  remove coplanar face conflicts and flicker.
+- Added tests for actual texel opacity of Golem cuboid UV faces (all five
+  professions), and expanded the model Z-fighting checks to all worker
+  item models as well as workstation blocks.
+
+Gameplay, AI, inventories, recipes and existing item IDs are unchanged.
+Use a fresh 0.3.21-dev client JAR for the visual changes. CI verifies
+the assets; inspect moving Beekeepers from all directions in-game.
