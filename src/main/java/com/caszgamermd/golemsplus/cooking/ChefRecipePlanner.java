@@ -265,18 +265,27 @@ public final class ChefRecipePlanner {
                                             .getNamespace().equals("minecraft")?0:1)
                             .thenComparing(item->BuiltInRegistries.ITEM.getKey(item).toString()));
                     Mutable selected=null;
+                    Item selectedItem=null;
                     int checks=0;
                     for(Item item:options){
                         if(active.contains(item))continue;
                         if(++checks>5)break;
                         Mutable optionPlan=explain(trial,item,repetitions,active,depth+1);
                         if(optionPlan!=null&&(selected==null
-                                ||optionPlan.score()<selected.score()))
+                                ||optionPlan.score()<selected.score())){
                             selected=optionPlan;
+                            selectedItem=item;
+                        }
                         if(selected!=null&&selected.missing.isEmpty())break;
                     }
                     if(selected==null){valid=false;break;}
                     trial=selected;
+                    // Explicit link between the requested recipe and each
+                    // chosen real ingredient, including recursive cheese,
+                    // dough, and cooked-meat intermediates.
+                    trial.steps.add("NEEDS "+repetitions+" x "+
+                            BuiltInRegistries.ITEM.getKey(selectedItem)
+                            +" for "+BuiltInRegistries.ITEM.getKey(desired));
                 }
                 if(!valid)continue;
                 trial.steps.add(entry.method+" "+repetitions+" x "+
