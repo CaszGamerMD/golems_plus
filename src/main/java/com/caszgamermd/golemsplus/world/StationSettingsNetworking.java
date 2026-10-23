@@ -120,7 +120,18 @@ public final class StationSettingsNetworking {
                 }
             }
             case "builder_start" -> {
-                if(table.isBuilder())done=table.startPlacedBuilder(player.getUUID());
+                if(!table.isBuilder())return;
+                done=table.startPlacedBuilder(player.getUUID());
+                if(done){
+                    reply(player,"Construction started: "+table.builderBlocks()
+                            +" schematic blocks; "+table.builderWorkerIds().size()
+                            +" Builder Golems assigned");
+                    reply(player,com.caszgamermd.golemsplus.builder.BuilderBuildService
+                            .primeWarehouse((net.minecraft.server.level.ServerLevel)player.level(),
+                                    table));
+                }else reply(player,"Cannot start: choose/import a schematic, resolve unsupported blocks, "
+                            +"and ensure no other build is active");
+                return;
             }
             case "builder_pause" -> {
                 if(table.isBuilder()&&table.activeOrder()!=null){
