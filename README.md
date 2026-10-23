@@ -402,3 +402,22 @@ yielding so two golems cannot both shove one another through the same
 door. Chef's existing avoidance of countertop surfaces and its 0.6
 block maximum climb remain enforced; all worker entity collision
 widths remain 0.85 blocks with unchanged models.
+
+## 0.3.12-dev — Chefs / doorway clearance
+
+The Croptopia Cheeseburger uses the normal shapeless crafting recipe with
+bread, a cheese-tag ingredient, a frying pan and beef. The Chef planner now
+accepts recipes that have compatible result templates or a registered
+recipe ID matching the actual food item, and avoids exhausting its recipe
+search budget evaluating every alternative. It still requires a real
+recipe; if the finished food is stored in the *linked kitchen only*, it
+may be served directly. Player inventories never supply food.
+
+A single open Minecraft wooden door has less than 0.85 blocks of usable
+clearance because its hinge panel has collision. Golems remain 0.85 blocks
+wide normally, but temporarily use a 0.70-block collision width within
+two blocks of a wooden doorway while routing through it. Their 3D models
+remain unchanged. Doors are opened before path calculation where possible,
+and the normal collision width is restored after the Golem clears them.
+This applies to all five professions; it does not modify door models or
+change the Chef's maximum step height.
