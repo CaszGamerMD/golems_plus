@@ -39,7 +39,11 @@ public final class KitchenSupplies {
     // Preserve original storage positions, including the exact slot from
     // which a reserved ingredient was physically withdrawn.
     private final Map<Container,BlockPos> locations;
-    public record Origin(String itemId,BlockPos container,int slot) {}
+    public record Origin(String itemId,BlockPos container,int slot,int quantity) {
+        public Origin(String itemId,BlockPos container,int slot){
+            this(itemId,container,slot,1);
+        }
+    }
     private final KitchenMilkSupply milkSupply;
     private final BlockPos workPoint;
     private final List<BlockPos> appliances;
@@ -367,7 +371,7 @@ public final class KitchenSupplies {
                         BlockPos source=locations.get(c);
                         if(source!=null)origins.add(new Origin(
                                 BuiltInRegistries.ITEM.getKey(entry.getKey()).toString(),
-                                source,i));
+                                source,i,n));
                         left-=n;
                     }
                 }

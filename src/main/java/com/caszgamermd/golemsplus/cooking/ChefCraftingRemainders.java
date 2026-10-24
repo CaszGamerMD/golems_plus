@@ -8,6 +8,9 @@ import net.minecraft.world.item.Items;
 /** Return genuine crafting remainders, including modded utensils. */
 public final class ChefCraftingRemainders {
     private ChefCraftingRemainders(){}
+    public static boolean isVirtualMilkCandidate(Item item){
+        return new ItemStack(item).is(KitchenMilkSupply.MILK_ITEMS);
+    }
     public static ItemStack forIngredient(Item item){
         ItemStack ingredient=new ItemStack(item);
         // Modern component-driven recipes (including many modded pots,

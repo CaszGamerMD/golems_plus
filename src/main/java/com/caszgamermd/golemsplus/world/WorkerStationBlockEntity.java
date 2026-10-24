@@ -77,6 +77,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.Map<String,Integer> chefSurplus=new java.util.LinkedHashMap<>();
     private final java.util.List<com.caszgamermd.golemsplus.cooking.KitchenSupplies.Origin>
             chefOrigins=new java.util.ArrayList<>();
+    // Fluid-backed CFB milk jars do not produce physical empty buckets or
+    // bottles. Only originally withdrawn physical milk containers can do so.
+    private final java.util.Map<String,Integer> physicalMilkRemaining=new java.util.HashMap<>();
     private final java.util.Map<String,Integer> chefStock=new java.util.LinkedHashMap<>();
     private final java.util.List<UUID> fisherIds=new java.util.ArrayList<>();
     private int beeRadius=12,beeMode=0;
@@ -134,6 +137,16 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public void setChefOrigins(java.util.List<com.caszgamermd.golemsplus.cooking.KitchenSupplies.Origin> origins){
         if(!isCooking()||!chefBusy())return;
         chefOrigins.clear();chefOrigins.addAll(origins.stream().limit(256).toList());
+        physicalMilkRemaining.clear();
+        for(var origin:chefOrigins){
+            var key=net.minecraft.resources.Identifier.tryParse(origin.itemId());
+            if(key!=null&&net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(key)){
+                var item=net.minecraft.core.registries.BuiltInRegistries.ITEM.getValue(key);
+                if(com.caszgamermd.golemsplus.cooking.ChefCraftingRemainders
+                        .isVirtualMilkCandidate(item))
+                    physicalMilkRemaining.merge(origin.itemId(),origin.quantity(),Integer::sum);
+            }
+        }
         sync();
     }
     public void progressChef(){
@@ -163,10 +176,23 @@ public final class WorkerStationBlockEntity extends BlockEntity
             for(var entry:step.inputs().entrySet()){
                 ItemStack remains=com.caszgamermd.golemsplus.cooking.ChefCraftingRemainders
                         .forIngredient(entry.getKey());
-                if(!remains.isEmpty()){
+                int sourceCount=entry.getValue();
+                // Some milk inputs came from fluid-backed Cow/Milk Jars:
+                // their fluid is real, but no physical milk bucket/bottle
+                // entered the kitchen, so none may be invented as a remainder.
+                if(com.caszgamermd.golemsplus.cooking.ChefCraftingRemainders
+                        .isVirtualMilkCandidate(entry.getKey())){
+                    String source=net.minecraft.core.registries.BuiltInRegistries.ITEM
+                            .getKey(entry.getKey()).toString();
+                    int available=physicalMilkRemaining.getOrDefault(source,0);
+                    sourceCount=Math.min(sourceCount,available);
+                    if(sourceCount==available)physicalMilkRemaining.remove(source);
+                    else physicalMilkRemaining.put(source,available-sourceCount);
+                }
+                if(!remains.isEmpty()&&sourceCount>0){
                     String key=net.minecraft.core.registries.BuiltInRegistries.ITEM
                             .getKey(remains.getItem()).toString();
-                    chefEscrow.merge(key,remains.getCount()*entry.getValue(),Integer::sum);
+                    chefEscrow.merge(key,remains.getCount()*sourceCount,Integer::sum);
                 }
             }
         String out=net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(step.result()).toString();
@@ -229,7 +255,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         chefSteps.clear();chefSteps.addAll(steps);
         chefEscrow.clear();chefEscrow.putAll(escrow);
         chefSurplus.clear();chefSurplus.putAll(leftovers);
-        chefOrigins.clear();
+        chefOrigins.clear();physicalMilkRemaining.clear();
         setProblem("");sync();return true;
     }
     public void tickChefStep(){
@@ -245,7 +271,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         java.util.Map<String,Integer> refund=java.util.Map.copyOf(chefEscrow);
         chefFood="";chefQuantity=chefStepIndex=chefStepTicks=0;
         chefOvenLoaded=false;chefDeliveryStarted=false;
-        chefSteps.clear();chefEscrow.clear();chefSurplus.clear();chefOrigins.clear();sync();
+        chefSteps.clear();chefEscrow.clear();chefSurplus.clear();
+        chefOrigins.clear();physicalMilkRemaining.clear();sync();
         return refund;
     }
     public void setChefWorkerId(UUID id){
@@ -743,6 +770,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
             out.putString("chef_origin_id_"+i,origin.itemId());
             out.store("chef_origin_pos_"+i,BlockPos.CODEC,origin.container());
             out.putInt("chef_origin_slot_"+i,origin.slot());
+            out.putInt("chef_origin_quantity_"+i,origin.quantity());
+        }
+        out.putInt("chef_physical_milk_count",Math.min(64,physicalMilkRemaining.size()));
+        int milkIndex=0;
+        for(var entry:physicalMilkRemaining.entrySet()){
+            if(milkIndex>=64)break;
+            out.putString("chef_physical_milk_id_"+milkIndex,entry.getKey());
+            out.putInt("chef_physical_milk_qty_"+milkIndex,entry.getValue());
+            milkIndex++;
         }
         out.putInt("chef_surplus_count",Math.min(64,chefSurplus.size()));
         int bc=0;
@@ -890,7 +926,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
             BlockPos pos=in.read("chef_origin_pos_"+i,BlockPos.CODEC).orElse(null);
             int slot=in.getIntOr("chef_origin_slot_"+i,-1);
             if(!itemId.isBlank()&&pos!=null&&slot>=0&&slot<512)
-                chefOrigins.add(new com.caszgamermd.golemsplus.cooking.KitchenSupplies.Origin(itemId,pos,slot));
+                chefOrigins.add(new com.caszgamermd.golemsplus.cooking.KitchenSupplies.Origin(
+                        itemId,pos,slot,Math.clamp(in.getIntOr("chef_origin_quantity_"+i,1),1,64)));
+        }
+        physicalMilkRemaining.clear();
+        for(int i=0,n=Math.clamp(in.getIntOr("chef_physical_milk_count",0),0,64);i<n;i++){
+            String item=in.getStringOr("chef_physical_milk_id_"+i,"");
+            int count=in.getIntOr("chef_physical_milk_qty_"+i,0);
+            if(!item.isBlank()&&count>0&&count<=4096)
+                physicalMilkRemaining.put(item,count);
         }
         chefSurplus.clear();
         for(int i=0,n=Math.clamp(in.getIntOr("chef_surplus_count",0),0,64);i<n;i++){
