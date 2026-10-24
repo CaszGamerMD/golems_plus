@@ -17,6 +17,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
+      - name: Verify snow clearing, full Builder orders and safe recycling
+        run: python3 scripts/builder_snow_delivery_recycling_smoke.py
       - name: Verify Builder workforce and OnSite logistics cleanup
         run: python3 scripts/builder_job_cleanup_smoke.py
       - name: Verify warehouse pending order and courier deferral

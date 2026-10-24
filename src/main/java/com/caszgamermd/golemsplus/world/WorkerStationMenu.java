@@ -33,7 +33,7 @@ public final class WorkerStationMenu extends AbstractContainerMenu {
                 ||inventory.player.level().getBlockState(position).getBlock()==WorksiteContent.COOKING_STATION;
         builderTable=(source instanceof WorkerStationBlockEntity station&&station.isBuilder())
                 ||inventory.player.level().getBlockState(position).getBlock()==WorksiteContent.BUILDER_TABLE;
-        if(kiosk)return; // no hidden/ghost inventory slots for the kiosk
+        if(kiosk||builderTable)return; // Builder Planner and Chef are slotless job kiosks
         for(int i=0;i<WorkerStationBlockEntity.SLOTS;i++){
             final int slot=i;
             addSlot(new Slot(depot,i,builderTable?18+(i%9)*18:8+(i%9)*18,
@@ -50,7 +50,7 @@ public final class WorkerStationMenu extends AbstractContainerMenu {
     public boolean isBuilderTable(){return builderTable;}
     @Override public boolean stillValid(Player player){return depot.stillValid(player);}
     @Override public ItemStack quickMoveStack(Player player,int index){
-        if(kiosk)return ItemStack.EMPTY;
+        if(kiosk||builderTable)return ItemStack.EMPTY;
         if(index<0||index>=slots.size())return ItemStack.EMPTY;
         Slot src=slots.get(index);
         if(!src.hasItem())return ItemStack.EMPTY;

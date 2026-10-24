@@ -249,12 +249,11 @@ public final class BuilderWarehouseCoordinator {
                 &&!reply.state().equals("DELIVERED")
                 &&!reply.ptp().equals(BlockPos.ZERO)){
             BlockPos pickup=reply.ptp();
-            int cursor=table.builderCursor();
-            if(cursor>=0&&cursor<steps.size()){
-                String next=steps.get(cursor).requiredItem();
-                if(next!=null&&BuilderSupplyInventory.available(table)
-                        .getOrDefault(next,0)>0)return false;
-            }
+            // Once a real Builder has been assigned the delivery role,
+            // do not send that worker back to construction simply because
+            // another Builder can consume material already staged on-site.
+            // Courier identity stays fixed until the warehouse confirms the
+            // entire ticket delivered and the PTP has been released.
             if(level.hasChunkAt(pickup)
                     &&worker.distanceToSqr(pickup.getX()+.5,
                             pickup.getY()+1,pickup.getZ()+.5)>12

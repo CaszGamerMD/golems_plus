@@ -298,7 +298,8 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     private static String stacks(long count,int limit){
         int size=Math.max(1,limit);
         long full=count/size,partial=count%size;
-        return count+" items ("+full+" stacks"+(partial==0?"":", "+partial+" extra")+")";
+        return full+" stack"+(full==1?"":"s")+" + "+partial
+                +" item"+(partial==1?"":"s");
     }
     @Override public void extractBackground(GuiGraphicsExtractor g,
             int mouseX,int mouseY,float partialTick){
@@ -308,18 +309,9 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         g.fill(x+9,y+76,x+SIDE-8,y+panelHeight-12,0xff283c40);
         g.fill(x+SIDE+4,y+76,x+panelWidth-9,y+panelHeight-12,0xff1e313c);
         g.fill(x+SIDE+5,y+114,x+panelWidth-10,y+panelHeight-119,0xff162932);
-        // Job-block and player inventory remain available in the planner.
-        // Draw the slot backgrounds from the *actual* slots owned by the
-        // server-backed WorkerStationMenu, rather than guessing their Y.
-        // In particular the last nine player slots are the hotbar, not
-        // another row of storage.
-        if(page==Page.JOB)
-            for(int i=0;i<menu.slots.size();i++){
-                var slot=menu.slots.get(i);
-                int sx=x+slot.x,sy=y+slot.y;
-                g.fill(sx-1,sy-1,sx+17,sy+17,
-                        i<36?0xff637578:0xff627478);
-            }
+        // Builder Planner is a job dashboard only. Its old inventory
+        // slots have been removed from the menu and cannot be used for
+        // deposits; all materials, tools and scaffolding live OnSite.
     }
     @Override protected void extractTooltip(GuiGraphicsExtractor g,int mouseX,int mouseY){
         super.extractTooltip(g,mouseX,mouseY);
@@ -340,11 +332,13 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             long need=Math.max(0,entry.getValue()-staged);
             String warehouse=table==null||!table.builderStockChecked()?"not checked":
                     ""+table.builderWarehouseStock().getOrDefault(entry.getKey(),0);
-            String name=stack.getHoverName().getString();
-            stack.set(DataComponents.CUSTOM_NAME,Component.literal(name+
-                    " | left "+stacks(entry.getValue(),stack.getMaxStackSize())+
-                    " | need delivery "+stacks(need,stack.getMaxStackSize())+
-                    " | staged "+staged+" | warehouse "+warehouse));
+            // Never put stock numbers into CUSTOM_NAME. That made the
+            // entire order a single unreadable giant first tooltip line.
+            // Item name stays vanilla; two compact lore lines carry need.
+            stack.set(DataComponents.LORE,
+                    new net.minecraft.world.item.component.ItemLore(List.of(
+                            Component.literal("Amount Needed: "+need),
+                            Component.literal(stacks(need,stack.getMaxStackSize())))));
             g.setTooltipForNextFrame(font,stack,mouseX,mouseY);
             return;
         }
