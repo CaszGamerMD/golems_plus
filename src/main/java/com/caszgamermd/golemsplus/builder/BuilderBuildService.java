@@ -241,34 +241,14 @@ public final class BuilderBuildService {
             // parallel. A site with an obstruction or no tool cannot start
             // placing around that obstruction or advance into upper layers.
             if(table.builderClearCursor()<plan.clearing().size()){
-                // The previous choice used the first *registered* UUID,
-                // even when that Builder was unloaded or had died. It also
-                // selected nobody if the solo worker was the courier.
-                // Select the first ACTUALLY LOADED non-courier Builder;
-                // a solo courier may clear while no pickup is ready.
-                java.util.List<UUID> candidates=new java.util.ArrayList<>();
-                for(UUID id:table.builderWorkerIds()){
-                    if(id.equals(table.supplyRunner()))continue;
-                    if(level.getEntity(id) instanceof BuilderGolem available
-                            &&available.isAlive())candidates.add(id);
-                }
-                if(candidates.isEmpty()&&table.builderWorkerIds().size()==1
-                        &&table.builderWorkerIds().contains(worker.getUUID())
-                        &&!worker.hasSupplyBox())candidates.add(worker.getUUID());
-                ClearWatch watch=clearWatch.computeIfAbsent(table,k->new ClearWatch());
-                long now=level.getGameTime();
-                if(watch.cursor!=table.builderClearCursor()){
-                    watch.cursor=table.builderClearCursor();watch.lastProgress=now;
-                }
-                UUID cleaner=candidates.isEmpty()?null:candidates.get(
-                        (int)Math.floorMod((now-watch.lastProgress)/80,
-                                candidates.size()));
-                if(worker.getUUID().equals(cleaner))
+                // Every actual crew member can claim a DIFFERENT obstruction
+                // or already-correct schematic cell. Courier stays available
+                // to collect ready shulkers; when this is the only Builder,
+                // it can clear while its next shulker is being packed.
+                boolean courier=worker.getUUID().equals(table.supplyRunner());
+                if(!courier||table.builderWorkerIds().size()==1)
                     BuilderSiteClearance.tick(level,worker,table,owner,
                             plan.clearing(),plan.steps());
-                else if(cleaner==null)
-                    table.setProblem("No loaded Builder available to clear site; "
-                            +"reload or assign a Builder crew member");
                 return;
             }
             // All workers finish the current bottommost layer before any
