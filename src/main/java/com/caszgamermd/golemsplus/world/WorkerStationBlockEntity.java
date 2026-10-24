@@ -402,6 +402,24 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 });
         builderWarehouseStock.clear();builderStockChecked=false;sync();
     }
+    public void setBuilderMaterialsForFile(String file,Map<String,Long> materials){
+        if(!isBuilder()||file==null||materials==null)return;
+        if(file.equals(builderFile)&&activeOrder==null){
+            setBuilderMaterials(materials);
+            return;
+        }
+        for(int i=0;i<builderJobs.size();i++){
+            BuilderJob job=builderJobs.get(i);
+            if(!file.equals(job.file()))continue;
+            Map<String,Long> copy=new java.util.LinkedHashMap<>();
+            materials.entrySet().stream().filter(e->e.getKey()!=null&&e.getValue()!=null
+                    &&e.getValue()>0).limit(1024).forEach(e->copy.put(e.getKey(),e.getValue()));
+            builderJobs.set(i,new BuilderJob(job.file(),job.name(),job.origin(),
+                    job.rotation(),job.mirror(),job.blocks(),job.unsupported(),
+                    job.cursor(),copy,copy,job.warehouse(),job.storage(),job.phase()));
+            sync();return;
+        }
+    }
     public void recordBuilderPlacement(String material){
         if(material==null||material.isBlank())return;
         builderRemaining.computeIfPresent(material,(key,v)->Math.max(0L,v-1));
