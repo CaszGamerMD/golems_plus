@@ -24,10 +24,16 @@ public final class LitematicFileReader {
     private static final int MAX_TAG_ELEMENTS=5_000_000;
     private static final int MAX_BLOCKS=16_777_216;
     public record Block(int x,int y,int z,String state) {}
-    public record Schematic(String name,List<Block> blocks,Map<String,Long> stateCounts) {
+    public record Schematic(String name,List<Block> blocks,Map<String,Long> stateCounts,
+                            List<Block> airBlocks) {
         public Schematic {
             blocks=List.copyOf(blocks);
             stateCounts=Map.copyOf(stateCounts);
+            airBlocks=List.copyOf(airBlocks);
+        }
+        /** Compatibility for existing schematic parser tests and consumers. */
+        public Schematic(String name,List<Block> blocks,Map<String,Long> counts){
+            this(name,blocks,counts,List.of());
         }
     }
     private LitematicFileReader(){}
@@ -49,6 +55,7 @@ public final class LitematicFileReader {
             Map<String,Object> regions=asCompound(root.get("Regions"),"Regions");
             if(regions.isEmpty()||regions.size()>256)throw new IOException("Invalid region count");
             List<Block> blocks=new ArrayList<>();
+            List<Block> emptyPositions=new ArrayList<>();
             Map<String,Long> counts=new LinkedHashMap<>();
             for(var entry:regions.entrySet()){
                 var region=asCompound(entry.getValue(),"Region");
@@ -97,8 +104,8 @@ public final class LitematicFileReader {
                 for(int i=0;i<indexes.length;i++){
                     String state=palette.get(indexes[i]);
                     String plain=state.split("\\[",2)[0];
-                    if(Set.of("minecraft:air","minecraft:cave_air","minecraft:void_air").contains(plain))
-                        continue;
+                    boolean air=Set.of("minecraft:air","minecraft:cave_air",
+                            "minecraft:void_air").contains(plain);
                     int x=i%width,z=(i/width)%depth,y=i/(width*depth);
                     long bx=(long)px+(sx<0?-x:x);
                     long by=(long)py+(sy<0?-y:y);
@@ -107,15 +114,24 @@ public final class LitematicFileReader {
                             by<Integer.MIN_VALUE||by>Integer.MAX_VALUE||
                             bz<Integer.MIN_VALUE||bz>Integer.MAX_VALUE)
                         throw new IOException("Block coordinate overflow");
-                    blocks.add(new Block((int)bx,(int)by,(int)bz,state));
-                    counts.merge(state,1L,Long::sum);
+                    if(air){
+                        // Do not create a huge unbounded in-memory clearing
+                        // blueprint from mostly-empty schematic regions.
+                        if(emptyPositions.size()>=300_000)
+                            throw new IOException("Air clearing volume exceeds 300000; "
+                                    +"split this schematic into smaller placements");
+                        emptyPositions.add(new Block((int)bx,(int)by,(int)bz,"minecraft:air"));
+                    }else{
+                        blocks.add(new Block((int)bx,(int)by,(int)bz,state));
+                        counts.merge(state,1L,Long::sum);
+                    }
                 }
             }
             String title="Untitled";
             if(root.get("Metadata") instanceof Map<?,?> metadata
                     &&metadata.get("Name") instanceof String name &&!name.isBlank())
                 title=name;
-            return new Schematic(title,blocks,counts);
+            return new Schematic(title,blocks,counts,emptyPositions);
         }catch(IllegalArgumentException exception){
             throw new IOException("Malformed Litematica schematic",exception);
         }

@@ -69,6 +69,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private int selectedBuilderJob=-1;
     private String placedSchematicName="";
     private int builderCursor;
+    private int builderClearCursor;
+    private final java.util.Map<String,Integer> builderClearByFile=
+            new java.util.HashMap<>();
+    private final java.util.Map<Integer,Long> builderMissingRetries=
+            new java.util.HashMap<>();
     private UUID builderWorkerId;
     private int crewTarget=1;
     private final java.util.List<UUID> additionalBuilderWorkers=new java.util.ArrayList<>();
@@ -482,6 +487,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderOrigin=selected.origin();builderRotation=selected.rotation();
         builderMirror=selected.mirror();builderBlocks=selected.blocks();
         builderUnresolved=selected.unsupported();builderCursor=selected.cursor();
+        builderClearCursor=builderClearByFile.getOrDefault(builderFile,0);
+        builderMissingRetries.clear();
         builderRequired.clear();builderRequired.putAll(selected.required());
         builderRemaining.clear();builderRemaining.putAll(selected.remaining());
         warehouse=selected.warehouse();builderMaterialStorage=selected.storage();
@@ -503,12 +510,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||index<0||index>=builderJobs.size())return false;
         if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
             builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
-        builderJobs.remove(index);
+        String deleted=builderJobs.remove(index).file();
+        builderClearByFile.remove(deleted);
         if(builderJobs.isEmpty()){
             selectedBuilderJob=-1;
             builderFile="";placedSchematicName="";builderPlaced=false;
             builderBlocks=0;builderUnresolved=0;builderRotation=0;builderMirror=0;
-            builderOrigin=BlockPos.ZERO;builderCursor=0;
+            builderOrigin=BlockPos.ZERO;builderCursor=0;builderClearCursor=0;
             builderMaterialStorage=null;warehouse=null;
             builderRequired.clear();builderRemaining.clear();
             builderWarehouseStock.clear();builderStagedStock.clear();
@@ -529,6 +537,23 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public BlockPos builderOrigin(){return builderOrigin;}
     public String placedSchematicName(){return placedSchematicName;}
     public int builderCursor(){return builderCursor;}
+    public int builderClearCursor(){return builderClearCursor;}
+    public void advanceBuilderClearing(int index){
+        if(index<=builderClearCursor)return;
+        builderClearCursor=index;
+        builderClearByFile.put(builderFile,index);
+        sync();
+    }
+    /** Temporarily skip a construction step that is missing stock, without
+     * skipping its layer or calling it completed. Other available blocks in
+     * the same Y layer can still be placed.
+     */
+    public void waitForBuilderMaterial(UUID worker,int step,long tick){
+        if(builderClaims.getOrDefault(worker,-1)!=step)return;
+        builderClaims.remove(worker);
+        builderMissingRetries.put(step,tick+60);
+        sync();
+    }
     public UUID builderWorkerId(){return builderWorkerId;}
     public int crewTarget(){return crewTarget;}
     /**
@@ -605,9 +630,18 @@ public final class WorkerStationBlockEntity extends BlockEntity
             int existing=builderClaims.get(worker);
             return existing<layerExclusive?existing:-1;
         }
-        int next=com.caszgamermd.golemsplus.builder.BuilderCrewSchedule.next(
-                builderCursor,builderBlocks,completedAhead,builderClaims.values());
-        if(next>=layerExclusive)return -1;
+        // One blocked/missing item must not monopolize every worker.
+        // Preserve ordered cursor/finishedAhead bits so no step can be
+        // wrongly counted completed or advance into the next layer.
+        int upper=Math.min(Math.min(builderBlocks,layerExclusive),builderCursor+32);
+        long now=level==null?0:level.getGameTime();
+        int next=-1;
+        for(int i=builderCursor;i<upper;i++){
+            if(((completedAhead >>> (i-builderCursor))&1L)!=0
+                    ||builderClaims.containsValue(i)
+                    ||builderMissingRetries.getOrDefault(i,0L)>now)continue;
+            next=i;break;
+        }
         if(next>=0){builderClaims.put(worker,next);sync();}
         return next;
     }
@@ -617,6 +651,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         var updated=com.caszgamermd.golemsplus.builder.BuilderCrewSchedule.finish(
                 builderCursor,builderBlocks,completedAhead,index);
         builderClaims.remove(worker);
+        builderMissingRetries.remove(index);
         builderCursor=updated.cursor();
         completedAhead=updated.finishedAhead();
         if(builderCursor>=builderBlocks){
@@ -704,6 +739,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderFile=filename;placedSchematicName=display;builderOrigin=origin.immutable();
         builderRotation=rotation*90;builderMirror=mirror;builderBlocks=blocks;
         builderUnresolved=unresolved;builderCursor=0;completedAhead=0;
+        builderClearCursor=0;builderClearByFile.put(builderFile,0);
+        builderMissingRetries.clear();
         builderClaims.clear();builderPlaced=true;
         builderRequired.clear();builderRemaining.clear();
         builderWarehouseStock.clear();builderStockChecked=false;
@@ -718,6 +755,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||activeOrder!=null||warehouse==null
                 ||builderWorkerIds().isEmpty()||builderBlocks<1)return false;
         activeOrder=UUID.randomUUID();builderCursor=0;completedAhead=0;
+        builderClearCursor=0;builderClearByFile.put(builderFile,0);
+        builderMissingRetries.clear();
         builderClaims.clear();phase=WorkerPhase.WORKING;sync();return true;
     }
     public void advanceBuilder(){
@@ -1064,6 +1103,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             out.putInt(key+"blocks",job.blocks());
             out.putInt(key+"unsupported",job.unsupported());
             out.putInt(key+"cursor",job.cursor());
+            out.putInt(key+"clearing",builderClearByFile.getOrDefault(job.file(),0));
             out.putString(key+"phase",job.phase());
             if(job.storage()!=null)out.store(key+"storage",BlockPos.CODEC,job.storage());
             if(job.warehouse()!=null){
@@ -1083,6 +1123,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             }
         }
         out.putString("builder_schematic",builderFile);
+        out.putInt("builder_clear_cursor",builderClearCursor);
         out.putInt("builder_blocks",builderBlocks);
         out.putInt("builder_unresolved",builderUnresolved);
         out.putInt("builder_rotation",builderRotation);
@@ -1245,7 +1286,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         wantedCount=Math.clamp(in.getIntOr("trade_count",0),0,4096);
         deliveredCount=Math.clamp(in.getIntOr("trade_delivered",0),0,wantedCount);
         problem=in.getStringOr("trade_problem","");
-        builderJobs.clear();
+        builderJobs.clear();builderClearByFile.clear();
         int jobCount=Math.clamp(in.getIntOr("builder_job_count",0),0,12);
         for(int i=0;i<jobCount;i++){
             String key="builder_job_"+i+"_";
@@ -1267,6 +1308,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             WarehouseAssignment wh=dim.isBlank()?null:new WarehouseAssignment(dim,
                     in.getIntOr(key+"warehouse_x",0),in.getIntOr(key+"warehouse_y",0),
                     in.getIntOr(key+"warehouse_z",0));
+            builderClearByFile.put(file,Math.max(0,in.getIntOr(key+"clearing",0)));
             builderJobs.add(new BuilderJob(file,in.getStringOr(key+"name",file),
                     in.read(key+"origin",BlockPos.CODEC).orElse(BlockPos.ZERO),
                     in.getIntOr(key+"rotation",0),in.getIntOr(key+"mirror",0),
@@ -1313,6 +1355,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             if(!id.isBlank()&&count>=0)builderWarehouseStock.put(id,count);
         }
         builderCursor=Math.clamp(in.getIntOr("builder_cursor",0),0,builderBlocks);
+        builderClearCursor=Math.max(0,in.getIntOr("builder_clear_cursor",
+                builderClearByFile.getOrDefault(builderFile,0)));
+        builderMissingRetries.clear();
         builderWorkerId=uuid(in,"builder_worker");
         crewTarget=Math.clamp(in.getIntOr("builder_crew_target",1),1,4);
         additionalBuilderWorkers.clear();

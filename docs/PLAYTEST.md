@@ -364,3 +364,28 @@ Move another worker through the aisle while one is routing; no infinite
 blocked tile blacklist. Try ramps, slabs, a two-high wall, open water,
 a closed wooden door and a far output PTP. No teleporting, forced chunk
 loads or expensive A* every five ticks is permitted.
+
+## 0.3.31-dev — Clear complete site, then construct one layer at a time
+
+- Import a placement that contains both stone blocks and explicit air cells.
+  Plant cobblestone/dirt in both types of positions. The Builder should
+  prepare the COMPLETE specified schematic area BEFORE placing its first
+  block, including air cells that were ignored by earlier versions.
+- Clearing uses physically supplied matching mining tools and puts real
+  drops in the selected site debris/storage container; never break chest
+  blocks, protected positions, fluids, bedrock, the Planning Table, or
+  any position outside the placement.
+- Progress through at most 128 already-correct/empty site positions per
+  worker tick, with at most one physical block removed per tick. Clearing
+  progress is saved with each job and survives a reload. Missing tools,
+  unreachable scaffolding or a full debris container pause safely.
+- After clearing reaches the end, the first layer starts. Keep two distinct
+  materials in that layer, but remove one type from the warehouse. Builders
+  should place all available items of the OTHER material at that same Y,
+  not mark the layer complete. Only when the missing material arrives
+  should they finish that layer and then move up.
+- Warehouse pickers may fill shulkers while clearing proceeds. The Builder
+  still uses real item pouches, physical courier delivery and scaffolding.
+- For extremely large mostly-air schematics, the reader rejects more than
+  300,000 explicit clearing-air positions and instructs the player to
+  split the schematic, instead of allocating unbounded world work.
