@@ -209,4 +209,18 @@ class AssetIntegrityTest {
         }
     }
 
+    @Test void twelveChairColorVariantsArePackaged() throws Exception {
+        for(String color:new String[]{"red","green","blue","purple",
+                "orange","white","black","grey","aqua","gold","pink","brown"}){
+            String path="textures/entity/fisher_chair_"+color+".png";
+            try(InputStream in=asset(path)){
+                assertNotNull(in,"Fisher chair color not packed: "+color);
+                BufferedImage atlas=ImageIO.read(in);
+                assertNotNull(atlas,"Invalid Fisher chair PNG: "+color);
+                assertEquals(256,atlas.getWidth());
+                assertEquals(128,atlas.getHeight());
+            }
+        }
+    }
+
 }

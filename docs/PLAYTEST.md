@@ -168,3 +168,35 @@ fill the original slot while the chef works, then confirm the spare stack
 moves to another matching slot. Fill every slot and check the chef waits
 without voiding stock or issuing free food. Save/reload an active order and
 confirm the original slot provenance is retained.
+
+## Chef cooking + service and Fisher chair (0.3.24-dev)
+
+1. Place a two-high Cooking Ordering Kiosk against stripped wood. Its wall
+   screen must face the player and occupy only the rear half of each block.
+   Click either top or bottom to open the same kiosk. Check all four facing
+   directions; also test breaking either half and replacing it.
+2. Place the Meal Pickup Counter alongside CFB kitchen counters. The surface
+   should align in height, with no purple/black checkerboard missing textures.
+   Place a meal and verify the rendered plate sits just above the worktop.
+3. Link a connected CFB kitchen, fill its storage with Croptopia ingredients,
+   and submit food containing milk, bottles and/or reusable cookware. Watch
+   Chef Golems visit the kitchen crafting surface and real oven/furnace.
+   Verify recipe remainders go to original storage slots or matching stacks,
+   and otherwise empty kitchen slots. When all storage is full, ingredients
+   must stay reserved instead of getting dropped or duplicated.
+4. Confirm **exactly one** Chef physically collects the completed plate at
+   the kitchen work area, walks to the serving counter and deposits the meal.
+   The order-up bell should ring exactly once when the item actually arrives,
+   never while a delivery is blocked. When paused, resume the same courier
+   without conjuring a second meal.
+5. Place multiple Fisher Golems by a marked lake. Observe full seated
+   casting/reeling with a visible rod. Side chair braces should meet metal
+   front/rear legs, and no front support may cut through the Golem's legs.
+   Each new seating session should choose one of 12 fabric colors; color
+   remains stable within that session, across players and save/reload.
+6. Confirm all **12** Fisher chair atlas variants are packed in the JAR.
+   `AssetIntegrityTest` checks them automatically on every CI build.
+
+The Chef uses real connected kitchen inventories and actual furnaces/smokers;
+crafting operations are processed by the recipe planner at the connected
+kitchen work surface, rather than opening a vanilla crafting table GUI.
