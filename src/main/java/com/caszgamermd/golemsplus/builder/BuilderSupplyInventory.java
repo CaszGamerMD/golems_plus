@@ -330,45 +330,35 @@ public final class BuilderSupplyInventory {
             WorkerStationBlockEntity table,
             net.minecraft.world.level.block.state.BlockState target){
         if(toolSlot(worker,target)>=0)return ToolStatus.READY;
+        Container site=selectedStorage(table);
+        if(site==null)return ToolStatus.MISSING;
         int selected=-1;
-        for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++)
-            if(correctTool(table.getItem(i),target)){selected=i;break;}
+        for(int i=0;i<site.getContainerSize();i++)
+            if(correctTool(site.getItem(i),target)){selected=i;break;}
         if(selected<0)return ToolStatus.MISSING;
+        BlockPos depot=table.builderMaterialStorage();
+        if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,depot.getZ()+.5)>12){
+            com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeTo(level,worker,depot,.83);
+            return ToolStatus.MOVING;
+        }
         int pocket=-1;
         for(int i=0;i<worker.getContainerSize();i++)
             if(worker.getItem(i).isEmpty()){pocket=i;break;}
         if(pocket<0){
-            // A full pouch is NOT a missing pickaxe. Make a physical
-            // unload trip to the selected site chest, then go back to
-            // the Planner to borrow the real tool. Never delete stock
-            // to create an inventory slot.
-            BlockPos depot=pouchReturnPos(table);
-            if(!level.hasChunkAt(depot))return ToolStatus.MISSING;
-            if(worker.distanceToSqr(depot.getX()+.5,
-                    depot.getY()+.5,depot.getZ()+.5)>12){
-                com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                        level,worker,depot,.84);
-                return ToolStatus.MOVING;
-            }
             returnPouch(table,worker);
             for(int i=0;i<worker.getContainerSize();i++)
                 if(worker.getItem(i).isEmpty()){pocket=i;break;}
-            if(pocket<0)return ToolStatus.MISSING;
         }
-        BlockPos station=table.getBlockPos();
-        if(worker.distanceToSqr(station.getX()+.5,
-                station.getY()+.5,station.getZ()+.5)>12){
-            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                    level,worker,station,.85);
-            return ToolStatus.MOVING;
-        }
-        ItemStack stored=table.getItem(selected);
+        if(pocket<0)return ToolStatus.MISSING;
+        ItemStack stored=site.getItem(selected);
         worker.setItem(pocket,stored.copyWithCount(1));
-        table.setItem(selected,stored.copyWithCount(stored.getCount()-1));
+        site.setItem(selected,stored.copyWithCount(stored.getCount()-1));
+        site.setChanged();
         return ToolStatus.READY;
     }
-    /** Prioritize returning tool stacks to their original Builder Planner
-     * rather than mixing them into the construction debris chest.
+    /** Any borrowed tools must go back to the actual OnSite Storage, not
+     * the Planner's now-deprecated 27-slot inventory.
      */
     public static boolean hasTools(BuilderGolem worker){
         for(int i=0;i<worker.getContainerSize();i++)
@@ -377,29 +367,33 @@ public final class BuilderSupplyInventory {
     }
     public static boolean returnTools(BuilderGolem worker,
             WorkerStationBlockEntity table){
+        Container site=selectedStorage(table);
+        if(site==null)return false;
         boolean all=true;
         for(int i=0;i<worker.getContainerSize();i++){
             ItemStack held=worker.getItem(i);
             if(!isMiningTool(held))continue;
             int left=held.getCount();
-            for(int slot=0;slot<WorkerStationBlockEntity.INPUT_SLOTS&&left>0;slot++){
-                ItemStack existing=table.getItem(slot);
-                if(!existing.isEmpty()&&ItemStack.isSameItemSameComponents(existing,held)
-                        &&table.canPlaceItem(slot,held)){
-                    int moved=Math.min(left,existing.getMaxStackSize()-existing.getCount());
-                    if(moved>0){
-                        table.setItem(slot,existing.copyWithCount(existing.getCount()+moved));
-                        left-=moved;
-                    }
+            for(int pass=0;pass<2;pass++)
+                for(int slot=0;slot<site.getContainerSize()&&left>0;slot++){
+                    ItemStack previous=site.getItem(slot);
+                    if((pass==0&&previous.isEmpty())
+                            ||(pass==1&&!previous.isEmpty())
+                            ||!site.canPlaceItem(slot,held)
+                            ||!previous.isEmpty()&&!ItemStack.isSameItemSameComponents(previous,held))
+                        continue;
+                    int capacity=Math.min(site.getMaxStackSize(),held.getMaxStackSize());
+                    int space=previous.isEmpty()?capacity:
+                            Math.max(0,Math.min(capacity,previous.getMaxStackSize())
+                                    -previous.getCount());
+                    int moved=Math.min(left,space);
+                    if(moved<=0)continue;
+                    site.setItem(slot,held.copyWithCount(moved+
+                            (previous.isEmpty()?0:previous.getCount())));
+                    left-=moved;
                 }
-            }
-            for(int slot=0;slot<WorkerStationBlockEntity.INPUT_SLOTS&&left>0;slot++){
-                if(!table.getItem(slot).isEmpty()||!table.canPlaceItem(slot,held))continue;
-                int moved=Math.min(left,held.getMaxStackSize());
-                table.setItem(slot,held.copyWithCount(moved));
-                left-=moved;
-            }
             worker.setItem(i,held.copyWithCount(left));
+            site.setChanged();
             if(left>0)all=false;
         }
         return all;
