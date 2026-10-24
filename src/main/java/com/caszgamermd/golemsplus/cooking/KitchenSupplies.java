@@ -347,7 +347,7 @@ public final class KitchenSupplies {
             if(inChest>0)physicalToTake.put(entry.getKey(),inChest);
             int virtual=entry.getValue()-inChest;
             if(virtual>0){
-                if(!milkSupply.isMilk(entry.getKey()))return false;
+                if(!milkSupply.isMilk(entry.getKey()))return null;
                 fromJars.put(entry.getKey(),virtual);
             }
         }
