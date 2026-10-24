@@ -324,7 +324,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         var t=station();
         g.text(font,"CASZUAL BUILDERS  /  JOB PLANNER",16,14,0xffeff6eb,false);
         g.text(font,"ACTIVE / SAVED JOBS",16,73,MUTED,false);
-        g.text(font,"JOB-BLOCK SUPPLIES / SCAFFOLDING",18,85,TEXT,false);
+        g.text(font,"PLANNER: TOOLS / BLOCKS / SCAFFOLD",18,85,TEXT,false);
         g.text(font,"PLAYER INVENTORY",18,188,TEXT,false);
         if(t!=null){
             g.text(font,"CREW "+t.builderWorkerIds().size()+"/"+t.crewTarget(),18,274,
