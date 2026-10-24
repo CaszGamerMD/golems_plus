@@ -248,22 +248,11 @@ public final class BuilderWarehouseCoordinator {
         if(reply.accepted()&&reply.boxes()==0
                 &&!reply.state().equals("DELIVERED")
                 &&!reply.ptp().equals(BlockPos.ZERO)){
-            // A solo Builder must make use of real onsite/pouch stock while
-            // the warehouse is filling its next shulker. The courier UUID
-            // remains assigned to this order, so the same worker will
-            // collect the box as soon as one is ready.
-            if(table.builderWorkerIds().size()==1){
-                var available=BuilderSupplyInventory.available(table);
-                for(int i=table.builderCursor();i<steps.size();i++){
-                    String id=steps.get(i).requiredItem();
-                    if(id!=null&&available.getOrDefault(id,0)>0)return false;
-                    if(i>table.builderCursor()+64)break;
-                }
-                // Even with no construction material, site clearing may
-                // need only bare-hand work (snow, vegetation, etc.).
-                if(table.builderClearCursor()<table.builderBlocks()
-                        &&table.builderClearCursor()==0)return false;
-            }
+            // A solo courier is also the only Builder. Until a REAL
+            // packed box reaches the PTP, keep clearing/placing onsite
+            // instead of marching to an empty PTP and deadlocking the job.
+            // supplyRunner stays assigned, so ready boxes interrupt work.
+            if(table.builderWorkerIds().size()==1)return false;
             BlockPos pickup=reply.ptp();
             // Once a real Builder has been assigned the delivery role,
             // do not send that worker back to construction simply because
