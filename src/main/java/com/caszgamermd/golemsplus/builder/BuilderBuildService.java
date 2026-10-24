@@ -73,6 +73,7 @@ public final class BuilderBuildService {
     }
 
     public static void dispatch(ServerLevel level,WorkerStationBlockEntity table){
+        BuilderChunkTickets.tick(level,table);
         if(table.isBuilder()&&level.getGameTime()%40==0)
             table.updateBuilderStagedStock(BuilderSupplyInventory.available(table));
         if(table.isBuilder()&&level.getGameTime()%80==0){
@@ -100,7 +101,11 @@ public final class BuilderBuildService {
         // Never replace a registered but unloaded worker: its work, materials
         // and provisional scaffold could be persisted in another chunk.
         for(UUID id:linked)if(level.getEntity(id)==null){
-            table.setProblem("Builder crew member unloaded; load its chunk");
+            BlockPos last=table.builderLastPosition(id);
+            table.setProblem(last==null
+                    ?"Builder crew unavailable; last location not recorded"
+                    :"Reloading Builder crew from last saved chunk "
+                        +last.toShortString()+" (no replacement or cargo loss)");
             return;
         }
         // Wait for the player to craft and place builders beside the table.
@@ -110,8 +115,12 @@ public final class BuilderBuildService {
         if(worker.owner()==null||!level.hasChunkAt(home))return;
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)
                 ||!table.isBuilder()||!worker.owner().equals(table.owner())){
-            worker.dropCargo(level);
-            worker.discard();return;
+            // An asynchronously unloading or replaced home block must NEVER
+            // destroy a real Builder with tools, materials or shulker cargo.
+            // Preserve the named entity and its exact saved inventory so the
+            // owner can restore the Planner or reclaim it safely.
+            worker.getNavigation().stop();
+            return;
         }
         if(!table.builderWorkerIds().contains(worker.getUUID())){
             // Never discard inventory-bearing entities: a misconfigured
