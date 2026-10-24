@@ -2,6 +2,8 @@ package com.caszgamermd.golemsplus.builder;
 
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import com.caszgamermd.golemsplus.worker.ProfessionGolemNames;
+import com.caszgamermd.golemsplus.worker.ProfessionGolemNamePool;
 import net.minecraft.core.NonNullList;
 import net.minecraft.world.Container;
 import net.minecraft.world.ContainerHelper;
@@ -31,7 +33,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         super(type,world);
         setPersistenceRequired();
         setInvulnerable(true);
-        setCustomName(Component.literal("Builder Golem"));
+        // A personal name is picked on the logical server when assigned.
     }
     public static AttributeSupplier.Builder attributes(){
         return PathfinderMob.createMobAttributes()
@@ -42,6 +44,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     @Override protected void registerGoals(){}
     public void assign(BlockPos table,UUID player){
         home=table.immutable();owner=player;
+        ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.BUILDER);
     }
     public BlockPos home(){return home;}
     public UUID owner(){return owner;}
@@ -99,6 +102,8 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     }
     @Override public void tick(){
         super.tick();
+        // Also covers Golems created with a spawn egg, command or an older save.
+        if(tickCount==1)ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.BUILDER);
         if(level() instanceof ServerLevel server)
             com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
         if(tickCount%12==0 && level() instanceof ServerLevel server)
@@ -116,6 +121,9 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     }
     @Override protected void readAdditionalSaveData(ValueInput in){
         super.readAdditionalSaveData(in);
+        // Vanilla persists custom names; migrate old generic names, but keep
+        // names given by players with a name tag unchanged.
+        ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.BUILDER);
         home=in.read("builder_home",BlockPos.CODEC).orElse(BlockPos.ZERO);
         try{owner=UUID.fromString(in.getStringOr("builder_owner",""));}
         catch(IllegalArgumentException ex){owner=null;}

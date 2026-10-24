@@ -4,6 +4,8 @@ import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import java.util.Map;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import com.caszgamermd.golemsplus.worker.ProfessionGolemNames;
+import com.caszgamermd.golemsplus.worker.ProfessionGolemNamePool;
 import net.minecraft.core.Direction;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.AABB;
@@ -63,7 +65,7 @@ public final class TraderGolem extends PathfinderMob {
         super(type,world);
         setPersistenceRequired();
         setInvulnerable(true); // no free iron drops or accidental cargo loss
-        setCustomName(Component.literal("Trader Golem"));
+        // A personal name is picked on the logical server when assigned.
         if(getNavigation() instanceof GroundPathNavigation path){
             path.setCanOpenDoors(true);
         }
@@ -80,6 +82,7 @@ public final class TraderGolem extends PathfinderMob {
     }
     public void assign(BlockPos home,UUID owner) {
         this.home=home.immutable();this.owner=owner;
+        ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.TRADER);
     }
     public BlockPos home(){return home;}
     public boolean idle(){return stage==0;}
@@ -107,6 +110,8 @@ public final class TraderGolem extends PathfinderMob {
     }
     @Override public void tick(){
         super.tick();
+        // Also covers Golems created with a spawn egg, command or an older save.
+        if(tickCount==1)ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.TRADER);
         if(level() instanceof ServerLevel level)
             com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(level,this);
         if(!(level() instanceof ServerLevel server)||tickCount%12!=0)return;
@@ -299,6 +304,9 @@ public final class TraderGolem extends PathfinderMob {
     }
     @Override protected void readAdditionalSaveData(ValueInput in){
         super.readAdditionalSaveData(in);
+        // Vanilla persists custom names; migrate old generic names, but keep
+        // names given by players with a name tag unchanged.
+        ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.TRADER);
         home=in.read("trader_home",BlockPos.CODEC).orElse(BlockPos.ZERO);
         owner=parse(in.getStringOr("trader_owner",""));
         order=parse(in.getStringOr("trader_order",""));

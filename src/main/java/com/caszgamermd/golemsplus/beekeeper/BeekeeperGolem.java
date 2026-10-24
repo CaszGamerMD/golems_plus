@@ -3,6 +3,8 @@ package com.caszgamermd.golemsplus.beekeeper;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import com.caszgamermd.golemsplus.worker.ProfessionGolemNames;
+import com.caszgamermd.golemsplus.worker.ProfessionGolemNamePool;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Containers;
@@ -29,7 +31,7 @@ public final class BeekeeperGolem extends PathfinderMob {
     private boolean bottles;
     public BeekeeperGolem(EntityType<? extends PathfinderMob> type,Level level){
         super(type,level);setPersistenceRequired();
-        setCustomName(Component.literal("Beekeeper Golem"));
+        // A personal name is picked on the logical server when assigned.
     }
     public static AttributeSupplier.Builder attributes(){
         return PathfinderMob.createMobAttributes()
@@ -42,6 +44,7 @@ public final class BeekeeperGolem extends PathfinderMob {
     }
     public void assign(BlockPos jobBlock,UUID player) {
         home=jobBlock.immutable();owner=player;
+        ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.BEEKEEPER);
     }
     public BlockPos home(){return home;}
     public UUID owner(){return owner;}
@@ -79,6 +82,8 @@ public final class BeekeeperGolem extends PathfinderMob {
     public boolean stuck(){return routeMisses>15;}
     @Override public void tick(){
         super.tick();
+        // Also covers Golems created with a spawn egg, command or an older save.
+        if(tickCount==1)ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.BEEKEEPER);
         if(level() instanceof ServerLevel server)
             com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
         if(tickCount%12==0 && level() instanceof ServerLevel server)
@@ -109,6 +114,9 @@ public final class BeekeeperGolem extends PathfinderMob {
     }
     @Override protected void readAdditionalSaveData(ValueInput in){
         super.readAdditionalSaveData(in);
+        // Vanilla persists custom names; migrate old generic names, but keep
+        // names given by players with a name tag unchanged.
+        ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.BEEKEEPER);
         home=in.read("beekeeper_home",BlockPos.CODEC).orElse(BlockPos.ZERO);
         targetHive=in.read("beekeeper_hive",BlockPos.CODEC).orElse(BlockPos.ZERO);
         try{owner=UUID.fromString(in.getStringOr("beekeeper_owner",""));}
