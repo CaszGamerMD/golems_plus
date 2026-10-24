@@ -389,3 +389,24 @@ loads or expensive A* every five ticks is permitted.
 - For extremely large mostly-air schematics, the reader rejects more than
   300,000 explicit clearing-air positions and instructs the player to
   split the schematic, instead of allocating unbounded world work.
+
+## 0.3.32-dev — Active Builder crew chunk loading and survival
+
+- Start a Builder job with its site more than four chunks away from the
+  Planning Table. Leave the area. The Planner, current site, staged material
+  chest, output PTP/warehouse computer and each moving Builder's short
+  approach corridor should remain simulated through temporary tickets.
+- Tickets are scoped to an ACTIVE Builder job, not /forceload. Pause/cancel
+  the job, finish it, or remove the Planner: the mod releases all its tickets.
+  No owner inventories or arbitrary chunks are duplicated or permanently
+  forced. A server restart clears the transient tickets; approach the
+  Planner once to resume active work and re-arm them.
+- Cross chunk boundaries on a long warehouse collection journey and verify
+  the same UUID, name, materials, tool and carried shulker persist. The
+  Planner saves each Golem's last known chunk. If it was temporarily
+  unloaded, reload that location instead of replacing or spawning a Golem.
+- Remove a Planner while an assigned Builder has items. The Builder must
+  NOT delete itself or drop/lose its cargo because its home disappeared;
+  it remains intact until a valid home is restored or the player handles it.
+- Confirm idle/no-job Builders do NOT force-load chunks. A paused job does
+  not continue accumulating tickets. No mass area /forceload is used.

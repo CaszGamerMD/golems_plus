@@ -75,6 +75,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.Map<Integer,Long> builderMissingRetries=
             new java.util.HashMap<>();
     private UUID builderWorkerId;
+    // Saved chunk positions of actual crafted Builders, never substitute entities.
+    // Allows an active Planner to reload a temporarily absent crew member.
+    private final Map<UUID,BlockPos> builderLastPositions=new HashMap<>();
     private int crewTarget=1;
     private final java.util.List<UUID> additionalBuilderWorkers=new java.util.ArrayList<>();
     private final java.util.List<UUID> additionalTraderWorkers=new java.util.ArrayList<>();
@@ -603,6 +606,17 @@ public final class WorkerStationBlockEntity extends BlockEntity
         else additionalTraderWorkers.add(id);
         sync();return true;
     }
+    public BlockPos builderLastPosition(UUID worker){
+        return builderLastPositions.get(worker);
+    }
+    public void rememberBuilderPosition(UUID worker,BlockPos position){
+        if(worker==null||position==null||!builderWorkerIds().contains(worker))return;
+        BlockPos before=builderLastPositions.get(worker);
+        if(before!=null&&before.getX() >> 4 == position.getX() >> 4
+                &&before.getZ() >> 4 == position.getZ() >> 4)return;
+        builderLastPositions.put(worker,position.immutable());
+        setChanged(); // One disk write per chunk transition, not per Golem tick.
+    }
     public java.util.List<UUID> builderWorkerIds(){
         java.util.List<UUID> ids=new java.util.ArrayList<>();
         if(builderWorkerId!=null)ids.add(builderWorkerId);
@@ -879,6 +893,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
     }
 
+    @Override public void setRemoved(){
+        if(level instanceof net.minecraft.server.level.ServerLevel server)
+            com.caszgamermd.golemsplus.builder.BuilderChunkTickets
+                    .release(server,worldPosition);
+        super.setRemoved();
+    }
+
     @Override public Component getDisplayName() {
         if(isTrader())return Component.literal("Trader Counter");
         if(isBeekeeper())return Component.literal("Beekeeper Workstation");
@@ -1137,6 +1158,16 @@ public final class WorkerStationBlockEntity extends BlockEntity
         for(int n=0;n<additionalTraderWorkers.size()&&n<3;n++)
             out.putString("trader_extra_worker_"+n,additionalTraderWorkers.get(n).toString());
         out.putInt("builder_crew_target",crewTarget);
+        int lastIndex=0;
+        for(UUID id:builderWorkerIds()){
+            if(lastIndex>=4)break;
+            BlockPos last=builderLastPositions.get(id);
+            if(last==null)continue;
+            out.putString("builder_last_worker_"+lastIndex,id.toString());
+            out.store("builder_last_position_"+lastIndex,BlockPos.CODEC,last);
+            lastIndex++;
+        }
+        out.putInt("builder_last_count",lastIndex);
         out.putInt("builder_extra_workers",Math.min(3,additionalBuilderWorkers.size()));
         for(int n=0;n<additionalBuilderWorkers.size()&&n<3;n++)
             out.putString("builder_extra_worker_"+n,additionalBuilderWorkers.get(n).toString());
@@ -1366,6 +1397,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
             UUID id=uuid(in,"builder_extra_worker_"+j);
             if(id!=null&&!additionalBuilderWorkers.contains(id)
                     &&!id.equals(builderWorkerId))additionalBuilderWorkers.add(id);
+        }
+        builderLastPositions.clear();
+        int lastCount=Math.clamp(in.getIntOr("builder_last_count",0),0,4);
+        for(int n=0;n<lastCount;n++){
+            UUID id=uuid(in,"builder_last_worker_"+n);
+            BlockPos pos=in.read("builder_last_position_"+n,BlockPos.CODEC)
+                    .orElse(null);
+            if(id!=null&&pos!=null&&builderWorkerIds().contains(id))
+                builderLastPositions.put(id,pos.immutable());
         }
         completedAhead=in.getLongOr("builder_ahead_bits",0);
         builderClaims.clear();

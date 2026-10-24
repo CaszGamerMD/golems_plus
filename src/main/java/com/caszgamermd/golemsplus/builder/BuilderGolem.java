@@ -104,8 +104,10 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         super.tick();
         // Also covers Golems created with a spawn egg, command or an older save.
         if(tickCount==1)ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.BUILDER);
-        if(level() instanceof ServerLevel server)
+        if(level() instanceof ServerLevel server){
+            BuilderChunkTickets.track(server,this);
             com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
+        }
         if(tickCount%12==0 && level() instanceof ServerLevel server)
             BuilderBuildService.tick(server,this);
     }

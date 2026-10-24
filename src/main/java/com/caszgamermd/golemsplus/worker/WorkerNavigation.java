@@ -217,6 +217,9 @@ public final class WorkerNavigation {
      */
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
                                   double speed){
+        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder)
+            com.caszgamermd.golemsplus.builder.BuilderChunkTickets
+                    .destination(level,builder,target);
         if(target==null||!level.hasChunkAt(target))return false;
         Progress p=state(mob);
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
