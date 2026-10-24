@@ -4,6 +4,12 @@ import com.caszgamermd.golemsplus.worker.WorkerPhase;
 import com.caszgamermd.golemsplus.worker.WorkerSpecialty;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -42,22 +48,25 @@ import org.jspecify.annotations.Nullable;
 public final class WorkerStationBlock extends Block implements EntityBlock {
     private final MapCodec<WorkerStationBlock> codec = MapCodec.unit(this);
     public static final BooleanProperty WINK=BooleanProperty.create("wink");
+    public static final EnumProperty FACING=BlockStateProperties.HORIZONTAL_FACING;
     private final WorkerSpecialty specialty;
     @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){
-        super.createBlockStateDefinition(builder);builder.add(WINK);
+        super.createBlockStateDefinition(builder);builder.add(WINK,FACING);
     }
 
     public WorkerStationBlock(WorkerSpecialty specialty, BlockBehaviour.Properties properties) {
         super(properties);
         this.specialty = specialty;
-        registerDefaultState(defaultBlockState().setValue(WINK,false));
+        registerDefaultState(defaultBlockState().setValue(WINK,false)
+                .setValue(FACING,Direction.NORTH));
     }
     public WorkerSpecialty specialty() { return specialty; }
     @Override public @Nullable BlockState getStateForPlacement(BlockPlaceContext ctx){
         if(specialty==WorkerSpecialty.COOKING
                 &&!ctx.getLevel().getBlockState(ctx.getClickedPos().above()).canBeReplaced(ctx))
             return null;
-        return super.getStateForPlacement(ctx);
+        return super.getStateForPlacement(ctx).setValue(FACING,
+                ctx.getHorizontalDirection().getOpposite());
     }
     @Override public void setPlacedBy(Level level,BlockPos pos,BlockState state,
             @Nullable LivingEntity placer,ItemStack stack){
@@ -65,9 +74,24 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
         if(specialty==WorkerSpecialty.COOKING
                 &&level.getBlockState(pos.above()).canBeReplaced())
             level.setBlockAndUpdate(pos.above(),
-                    WorksiteContent.COOKING_KIOSK_TOP.defaultBlockState());
+                    WorksiteContent.COOKING_KIOSK_TOP.defaultBlockState()
+                            .setValue(CookingKioskTopBlock.FACING,state.getValue(FACING)));
     }
     @Override protected MapCodec<? extends Block> codec() { return codec; }
+
+    @Override protected VoxelShape getShape(BlockState state,BlockGetter level,
+            BlockPos pos,CollisionContext context){
+        if(specialty!=WorkerSpecialty.COOKING)
+            return super.getShape(state,level,pos,context);
+        // Back half of each cell only: a genuine wall-screen kiosk.
+        return switch(state.getValue(FACING).toString()){
+            case "north" -> Block.box(0,0,8,16,16,16);
+            case "south" -> Block.box(0,0,0,16,16,8);
+            case "east" -> Block.box(0,0,0,8,16,16);
+            case "west" -> Block.box(8,0,0,16,16,16);
+            default -> Block.box(0,0,8,16,16,16);
+        };
+    }
 
     @Override public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return new WorkerStationBlockEntity(pos, state);

@@ -1,9 +1,27 @@
 {
   "variants": {
-    "wink=false": {
+    "facing=north,wink=false": {
       "model": "golems_plus:block/beekeeper_station"
     },
-    "wink=true": {
+    "facing=north,wink=true": {
+      "model": "golems_plus:block/beekeeper_station"
+    },
+    "facing=east,wink=false": {
+      "model": "golems_plus:block/beekeeper_station"
+    },
+    "facing=east,wink=true": {
+      "model": "golems_plus:block/beekeeper_station"
+    },
+    "facing=south,wink=false": {
+      "model": "golems_plus:block/beekeeper_station"
+    },
+    "facing=south,wink=true": {
+      "model": "golems_plus:block/beekeeper_station"
+    },
+    "facing=west,wink=false": {
+      "model": "golems_plus:block/beekeeper_station"
+    },
+    "facing=west,wink=true": {
       "model": "golems_plus:block/beekeeper_station"
     }
   }

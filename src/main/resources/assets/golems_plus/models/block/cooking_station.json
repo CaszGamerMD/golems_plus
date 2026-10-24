@@ -1,579 +1,247 @@
 {
+  "parent": "minecraft:block/block",
   "textures": {
-    "particle": "golems_plus:block/kiosk_casing",
-    "frame": "golems_plus:block/kiosk_casing",
+    "particle": "minecraft:block/gray_concrete",
+    "frame": "minecraft:block/gray_concrete",
+    "body": "minecraft:block/light_gray_concrete",
+    "bezel": "minecraft:block/black_concrete",
     "metal": "minecraft:block/iron_block",
     "screen": "golems_plus:block/kiosk_screen",
-    "trim": "minecraft:block/orange_concrete",
-    "panel": "minecraft:block/smooth_quartz",
-    "light": "minecraft:block/sea_lantern"
+    "status": "minecraft:block/cyan_concrete",
+    "accent": "minecraft:block/orange_concrete",
+    "button": "minecraft:block/sea_lantern"
   },
   "elements": [
     {
-      "name": "weighted base",
+      "name": "back half / lower housing",
       "from": [
-        1,
+        0.6,
         0,
-        2
+        9.1
       ],
       "to": [
-        15,
-        1.4,
-        14
-      ],
-      "faces": {
-        "north": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "south": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "east": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "west": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "up": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "down": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        }
-      }
-    },
-    {
-      "name": "steel foot",
-      "from": [
-        3,
-        1.4,
-        4
-      ],
-      "to": [
-        13,
-        2.5,
-        12
-      ],
-      "faces": {
-        "north": {
-          "texture": "#metal",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "south": {
-          "texture": "#metal",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "east": {
-          "texture": "#metal",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "west": {
-          "texture": "#metal",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "up": {
-          "texture": "#metal",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "down": {
-          "texture": "#metal",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        }
-      }
-    },
-    {
-      "name": "kiosk pedestal",
-      "from": [
-        5,
-        2.5,
-        5.5
-      ],
-      "to": [
-        11,
-        8.5,
-        11
-      ],
-      "faces": {
-        "north": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "south": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "east": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "west": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "up": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "down": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        }
-      }
-    },
-    {
-      "name": "lower white panel",
-      "from": [
-        2,
-        7.84,
-        3.5
-      ],
-      "to": [
-        14,
-        15.96,
-        12.5
-      ],
-      "faces": {
-        "north": {
-          "texture": "#panel",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "south": {
-          "texture": "#panel",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "east": {
-          "texture": "#panel",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "west": {
-          "texture": "#panel",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "up": {
-          "texture": "#panel",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "down": {
-          "texture": "#panel",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        }
-      }
-    },
-    {
-      "name": "side bezel",
-      "from": [
-        1.5,
-        7.8,
-        3
-      ],
-      "to": [
-        14.5,
+        15.4,
         16,
-        4.3
+        16
       ],
       "faces": {
         "north": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#body"
         },
         "south": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#body"
         },
         "east": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#body"
         },
         "west": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#body"
         },
         "up": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#body"
         },
         "down": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#body"
         }
       }
     },
     {
-      "name": "lower touchscreen",
+      "name": "dark side rails",
       "from": [
-        2.25,
-        9,
-        2.85
+        0.25,
+        0.1,
+        8.75
       ],
       "to": [
-        13.75,
-        15.85,
-        3
+        15.75,
+        15.95,
+        9.15
       ],
       "faces": {
         "north": {
-          "texture": "#screen",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#frame"
         },
         "south": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#frame"
         },
         "east": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#frame"
         },
         "west": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#frame"
         },
         "up": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#frame"
         },
         "down": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#frame"
         }
       }
     },
     {
-      "name": "bottom orange CTA",
+      "name": "lower touchscreen surround",
       "from": [
-        4.5,
-        8.1,
-        2.6
+        1.15,
+        3.3,
+        8.4
       ],
       "to": [
-        11.5,
-        9,
-        3
+        14.85,
+        15.65,
+        8.82
       ],
       "faces": {
         "north": {
-          "texture": "#trim",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#bezel"
         },
         "south": {
-          "texture": "#trim",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#bezel"
         },
         "east": {
-          "texture": "#trim",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#bezel"
         },
         "west": {
-          "texture": "#trim",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#bezel"
         },
         "up": {
-          "texture": "#trim",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#bezel"
         },
         "down": {
-          "texture": "#trim",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#bezel"
         }
       }
     },
     {
-      "name": "card slot",
+      "name": "lower control surface",
       "from": [
-        6,
-        7.8,
-        2.4
+        1.65,
+        4.05,
+        8.23
       ],
       "to": [
-        10,
-        8.2,
-        2.75
+        14.35,
+        15.02,
+        8.43
       ],
       "faces": {
         "north": {
-          "texture": "#light",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#status"
         },
         "south": {
-          "texture": "#light",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#status"
         },
         "east": {
-          "texture": "#light",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#status"
         },
         "west": {
-          "texture": "#light",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#status"
         },
         "up": {
-          "texture": "#light",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#status"
         },
         "down": {
-          "texture": "#light",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#status"
+        }
+      }
+    },
+    {
+      "name": "thin title strip",
+      "from": [
+        1.6,
+        14.8,
+        8.18
+      ],
+      "to": [
+        14.4,
+        15.2,
+        8.27
+      ],
+      "faces": {
+        "north": {
+          "texture": "#accent"
+        },
+        "south": {
+          "texture": "#accent"
+        },
+        "east": {
+          "texture": "#accent"
+        },
+        "west": {
+          "texture": "#accent"
+        },
+        "up": {
+          "texture": "#accent"
+        },
+        "down": {
+          "texture": "#accent"
+        }
+      }
+    },
+    {
+      "name": "card / receipt slot",
+      "from": [
+        5.1,
+        2.15,
+        8.25
+      ],
+      "to": [
+        10.9,
+        2.65,
+        8.38
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      }
+    },
+    {
+      "name": "lower aluminum trim",
+      "from": [
+        0.8,
+        0.35,
+        8.4
+      ],
+      "to": [
+        15.2,
+        1.55,
+        8.75
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
         }
       }
     }
-  ],
-  "display": {
-    "gui": {
-      "rotation": [
-        25,
-        135,
-        0
-      ],
-      "scale": [
-        0.56,
-        0.56,
-        0.56
-      ]
-    }
-  }
+  ]
 }

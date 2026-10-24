@@ -12,6 +12,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.core.particles.ParticleTypes;
 
 /**
  * Shared-kitchen dispatcher. The recipe graph is resolved bottom-up and the
@@ -254,6 +257,15 @@ public final class ChefWorkService{
             // intermediate is materialized in the sealed job buffer and is
             // then used by later steps instead of being generated at pickup.
             station.progressChef();
+            // Work physically occurs beside the linked kitchen's crafting
+            // table/counter; emit sounds and visible preparation particles.
+            if(level.getGameTime()%16==0){
+                level.playSound(null,workplace,SoundEvents.WOODEN_BUTTON_CLICK_ON,
+                        SoundSource.BLOCKS,.28f,.84f+level.getRandom().nextFloat()*.2f);
+                level.sendParticles(ParticleTypes.POOF,workplace.getX()+.5,
+                        workplace.getY()+1.08,workplace.getZ()+.5,
+                        2,.18,.08,.18,.012);
+            }
             if(station.chefWorkTicks()>=75){
                 if(!station.completeChefWork(step))
                     station.setProblem("Planned ingredient unavailable in reserved job buffer");
@@ -261,7 +273,6 @@ public final class ChefWorkService{
             return;
         }
 
-        for(ChefGolem chef:chefs)chef.setJobAppearance(false,ItemStack.EMPTY);
         MealCounterBlockEntity pickup=counter(level,station.getBlockPos());
         if(pickup==null){station.setProblem("Meal Pickup Counter missing");return;}
         if(!pickup.food().isEmpty()){
@@ -286,6 +297,14 @@ public final class ChefWorkService{
             station.setProblem("Unknown reserved ingredient: keep the missing item's mod installed");
             return;
         }
+        ItemStack plated=new ItemStack(BuiltInRegistries.ITEM.getValue(id),
+                station.chefQuantity());
+        // A finished plate is carried to the actual pickup counter first.
+        if(!deliverPlate(level,chefs,station,pantry,pickup.getBlockPos(),plated)){
+            if(level.getGameTime()%80==0)
+                station.setProblem("Chef needs a clear floor route to the serving counter");
+            return;
+        }
         if(!pantry.canInsertAll(leftovers,station.chefOrigins())){
             station.setProblem("Kitchen storage is full: cannot return unused recipe items");
             return;
@@ -295,8 +314,12 @@ public final class ChefWorkService{
         if(!pantry.insertAll(leftovers,station.chefOrigins())){
             station.setProblem("Kitchen changed during item return; retrying");return;
         }
-        if(pickup.serve(new ItemStack(BuiltInRegistries.ITEM.getValue(id),
-                                    station.chefQuantity()))){
+        if(pickup.serve(plated)){
+            // Ding only once, when a real plate has been delivered.
+            level.playSound(null,pickup.getBlockPos(),SoundEvents.NOTE_BLOCK_BELL.value(),
+                    SoundSource.BLOCKS,1.2f,1.65f);
+            for(ChefGolem chef:chefs)
+                chef.setJobAppearance(false,ItemStack.EMPTY);
             station.clearChefOrder();
             station.setProblem("");
         }
@@ -316,6 +339,38 @@ public final class ChefWorkService{
             }
         }
         return stacks;
+    }
+
+    private static boolean deliverPlate(ServerLevel level,List<ChefGolem> chefs,
+            WorkerStationBlockEntity station,KitchenSupplies kitchen,
+            BlockPos counter,ItemStack food){
+        // Exactly ONE worker is the courier; other Chefs never magically
+        // materialize the same plate while standing elsewhere.
+        ChefGolem courier=chefs.get(0);
+        for(int i=1;i<chefs.size();i++)
+            chefs.get(i).setJobAppearance(false,ItemStack.EMPTY);
+        BlockPos prep=kitchen.stationFor(level,"Assemble");
+        if(!station.chefDeliveryStarted()){
+            // Collect the prepared plate from the kitchen work surface
+            // before walking it over. Persist this phase on the workstation.
+            if(prep==null)return false;
+            double distance=courier.distanceToSqr(prep.getX()+.5,
+                    prep.getY()+.5,prep.getZ()+.5);
+            courier.setJobAppearance(false,ItemStack.EMPTY);
+            if(distance>5.3){
+                if(level.getGameTime()%20==0||courier.getNavigation().isDone())
+                    ChefFloorNavigation.work(level,courier,prep);
+                return false;
+            }
+            station.setChefDeliveryStarted(true);
+            return false;
+        }
+        courier.setJobAppearance(false,food);
+        boolean arrived=courier.distanceToSqr(counter.getX()+.5,
+                counter.getY()+.5,counter.getZ()+.5)<=5.3;
+        if(!arrived&&(level.getGameTime()%20==0||courier.getNavigation().isDone()))
+            ChefFloorNavigation.work(level,courier,counter);
+        return arrived;
     }
 
     private static boolean approachChefs(ServerLevel level,List<ChefGolem> chefs,

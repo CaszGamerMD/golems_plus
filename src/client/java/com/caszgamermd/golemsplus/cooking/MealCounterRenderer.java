@@ -34,7 +34,7 @@ public final class MealCounterRenderer implements BlockEntityRenderer<MealCounte
             CameraRenderState camera){
         if(state.item.isEmpty())return;
         pose.pushPose();
-        pose.translate(.5,.84,.5);
+        pose.translate(.5,1.02,.5);
         pose.scale(.46f,.46f,.46f);
         state.item.submit(pose,collector,state.lightCoords,OverlayTexture.NO_OVERLAY,0);
         pose.popPose();

@@ -1,9 +1,27 @@
 {
   "variants": {
-    "wink=false": {
+    "facing=north,wink=false": {
       "model": "golems_plus:block/trader_counter"
     },
-    "wink=true": {
+    "facing=north,wink=true": {
+      "model": "golems_plus:block/trader_counter"
+    },
+    "facing=east,wink=false": {
+      "model": "golems_plus:block/trader_counter"
+    },
+    "facing=east,wink=true": {
+      "model": "golems_plus:block/trader_counter"
+    },
+    "facing=south,wink=false": {
+      "model": "golems_plus:block/trader_counter"
+    },
+    "facing=south,wink=true": {
+      "model": "golems_plus:block/trader_counter"
+    },
+    "facing=west,wink=false": {
+      "model": "golems_plus:block/trader_counter"
+    },
+    "facing=west,wink=true": {
       "model": "golems_plus:block/trader_counter"
     }
   }
