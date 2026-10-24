@@ -20,6 +20,10 @@ assert "table.phase()!=WorkerPhase.PAUSED" in ticket
 assert "table.activeOrder()!=null" in ticket
 assert "release(level,table.getBlockPos())" in ticket
 assert "lease.held.clear()" in ticket
+assert "counts.put(center,owners+1)" in ticket
+assert "relinquish(level,key)" in ticket
+assert "if(owners==1)" in ticket
+assert "counts.put(center,owners-1)" in ticket
 assert "table.builderLastPosition(id)" in ticket
 assert "table.rememberBuilderPosition(id,previous)" in ticket
 assert "lease.destinations.get(id)" in ticket
