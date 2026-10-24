@@ -189,6 +189,10 @@ public final class ChefWorkService{
             if(!station.chefBusy()&&!station.chefReserved().isEmpty()){
                 KitchenSupplies pantry=kitchen(level,station);
                 List<ItemStack> unused=reservedStacks(station.chefReserved());
+                if(unused==null){
+                    station.setProblem("Unrecognized idle Chef item: restore the mod before returning stock");
+                    return;
+                }
                 if(pantry.connected()&&pantry.insertAll(unused,station.chefOrigins())){
                     station.clearChefOrder();station.setProblem("");
                 }else station.setProblem("Kitchen storage full/disconnected: cannot return idle Chef stock");
@@ -278,6 +282,10 @@ public final class ChefWorkService{
         if(remain==0)reserved.remove(id.toString());
         else reserved.put(id.toString(),remain);
         List<ItemStack> leftovers=reservedStacks(reserved);
+        if(leftovers==null){
+            station.setProblem("Unknown reserved ingredient: keep the missing item's mod installed");
+            return;
+        }
         if(!pantry.canInsertAll(leftovers,station.chefOrigins())){
             station.setProblem("Kitchen storage is full: cannot return unused recipe items");
             return;
@@ -298,11 +306,12 @@ public final class ChefWorkService{
         List<ItemStack> stacks=new ArrayList<>();
         for(var entry:reserved.entrySet()){
             Identifier id=Identifier.tryParse(entry.getKey());
-            if(id==null||!BuiltInRegistries.ITEM.containsKey(id))continue;
+            if(id==null||!BuiltInRegistries.ITEM.containsKey(id))return null;
             Item item=BuiltInRegistries.ITEM.getValue(id);
             int count=entry.getValue();
+            if(count<0||count>4096)return null;
             while(count>0){
-                int portion=Math.min(count,new ItemStack(item).getMaxStackSize());
+                int portion=Math.min(count,Math.max(1,new ItemStack(item).getMaxStackSize()));
                 stacks.add(new ItemStack(item,portion));count-=portion;
             }
         }
