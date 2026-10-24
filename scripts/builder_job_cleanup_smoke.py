@@ -33,4 +33,11 @@ assert "table.retireBuilderWorker(worker.getUUID())" in returner
 assert "if(!closest.acceptWorker(stored))" in returner
 assert "worker.discard();" in returner
 assert "BuilderReturnService.tick(level,worker,table)" in build
+assert "public static boolean cancel(" in (s/"warehouse/BuilderWarehousePort.java").read_text()
+assert "public static boolean cancelShipment(" in (s/"builder/BuilderWarehouseCoordinator.java").read_text()
+assert "if(table.builderCancelShipment())return false;" in (s/"builder/BuilderWarehouseCoordinator.java").read_text()
+assert 'builder_cancel_shipment' in entity
+assert "BuilderWarehouseCoordinator.cancelShipment(level,table)" in build
+assert '"builder_restart_order"' in net
+assert '"RECALCULATE ORDER"' in screen
 print("PASS: eight builders, onsight-only supplies, material sort and safe returned worker items")

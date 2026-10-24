@@ -115,6 +115,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private int beeRadius=12,beeMode=0;
     private final java.util.List<UUID> beekeeperIds=new java.util.ArrayList<>();
     private UUID supplyRequest;
+    private boolean builderCancelShipment;
     private UUID supplyRunner;
     private BlockPos supplyPtp=BlockPos.ZERO;
     private String supplyNotice="";
@@ -721,6 +722,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public BlockPos supplyPtp(){return supplyPtp;}
     public String supplyNotice(){return supplyNotice;}
     public Map<String,Integer> supplyManifest(){return Map.copyOf(supplyManifest);}
+    public boolean builderCancelShipment(){return builderCancelShipment;}
+    public void requestBuilderShipmentCancellation(){
+        if(isBuilder()&&supplyRequest!=null){
+            builderCancelShipment=true;sync();
+        }
+    }
     public void prepareSupplyRequest(UUID ticket,Map<String,Integer> manifest){
         if(!isBuilder()||activeOrder==null||supplyRequest!=null
                 ||ticket==null||manifest==null||manifest.isEmpty()
@@ -736,6 +743,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     public void clearSupplyRequest(){
         supplyRequest=null;supplyRunner=null;supplyPtp=BlockPos.ZERO;
+        builderCancelShipment=false;
         supplyManifest.clear();supplyNotice="";
         // Apply a scanner re-link only AFTER the previous warehouse's
         // physical reserved shulkers were delivered/released safely.
@@ -805,6 +813,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(!canConfigure(actor)||!isBuilder())return false;
         activeOrder=null;builderClaims.clear();completedAhead=0;
         builderRecallRequested=true;
+        builderCancelShipment=supplyRequest!=null;
         phase=WorkerPhase.IDLE;sync();return true;
     }
     public boolean setBuilderFile(UUID actor,String filename,int blocks,int unresolved) {
@@ -1211,6 +1220,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             }
         out.putInt("builder_scaffold_count",scix);
         if(supplyRequest!=null)out.putString("builder_supply_request",supplyRequest.toString());
+        out.putBoolean("builder_cancel_shipment",builderCancelShipment);
         if(supplyRunner!=null)out.putString("builder_supply_runner",supplyRunner.toString());
         out.store("builder_supply_ptp",BlockPos.CODEC,supplyPtp);
         out.putString("builder_supply_notice",supplyNotice);
@@ -1451,6 +1461,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
                         .add(position.get());
         }
         supplyRequest=uuid(in,"builder_supply_request");
+        builderCancelShipment=in.getBooleanOr("builder_cancel_shipment",false)
+                &&supplyRequest!=null;
         supplyRunner=uuid(in,"builder_supply_runner");
         supplyPtp=in.read("builder_supply_ptp",BlockPos.CODEC).orElse(BlockPos.ZERO);
         supplyNotice=in.getStringOr("builder_supply_notice","");

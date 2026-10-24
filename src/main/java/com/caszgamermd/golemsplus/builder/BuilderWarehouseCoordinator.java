@@ -77,6 +77,30 @@ public final class BuilderWarehouseCoordinator {
     }
 
     /** Table-side inbound notification, including while no golem is near. */
+    /** Cancel an outstanding ticket only after the warehouse confirms
+     * that no physical shipment, picker, or packing inventory can be lost.
+     */
+    public static boolean cancelShipment(ServerLevel level,
+            WorkerStationBlockEntity table){
+        if(table.supplyRequest()==null)return true;
+        // Do not discard the reservation UUID while its courier holds a
+        // real shulker in the saved entity. It must reach OnSite Storage
+        // first so RE-CALCULATE counts those nested materials correctly.
+        for(UUID id:table.builderWorkerIds())
+            if(level.getEntity(id) instanceof BuilderGolem golem
+                    &&golem.hasSupplyBox())return false;
+        var warehouse=table.warehouse();
+        if(warehouse==null||table.owner()==null
+                ||!level.dimension().identifier().toString().equals(warehouse.dimension()))
+            return false;
+        BlockPos computer=new BlockPos(warehouse.x(),warehouse.y(),warehouse.z());
+        if(!level.hasChunkAt(computer))return false;
+        if(!BuilderWarehousePort.cancel(level,computer,table.getBlockPos(),
+                table.owner(),table.supplyRequest(),table.supplyPtp()))
+            return false;
+        table.clearSupplyRequest();
+        return true;
+    }
     public static void pollTable(ServerLevel level,WorkerStationBlockEntity table){
         if(table.supplyRequest()==null||table.warehouse()==null
                 ||table.supplyPtp().equals(BlockPos.ZERO)
@@ -121,6 +145,10 @@ public final class BuilderWarehouseCoordinator {
                     +destination.toShortString());
             return true;
         }
+        // A canceled construction never dispatches a NEW supply pickup.
+        // A courier already holding an actual shulker was handled above
+        // and must still physically return it to the on-site chest.
+        if(table.builderCancelShipment())return false;
         UUID ticket=table.supplyRequest();
         var warehouse=table.warehouse();
         if(ticket==null)return false;

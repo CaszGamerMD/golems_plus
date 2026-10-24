@@ -92,6 +92,18 @@ public final class BuilderWarehousePort {
             return (ItemStack)method.invoke(null,level,computer,table,owner,ticket,ptp);
         }catch(ReflectiveOperationException|LinkageError ex){return ItemStack.EMPTY;}
     }
+    /** No cross-mod hard dependency: refuse to forget a ticket unless the
+     * warehouse confirms there is no already shipped or in-flight cargo.
+     */
+    public static boolean cancel(ServerLevel level,BlockPos computer,BlockPos table,
+            UUID owner,UUID ticket,BlockPos ptp){
+        try{
+            Class<?> cls=Class.forName(IMPL);
+            Method method=cls.getMethod("cancel",ServerLevel.class,BlockPos.class,
+                    BlockPos.class,UUID.class,UUID.class,BlockPos.class);
+            return (boolean)method.invoke(null,level,computer,table,owner,ticket,ptp);
+        }catch(ReflectiveOperationException|LinkageError ex){return false;}
+    }
     public static boolean release(ServerLevel level,BlockPos computer,BlockPos table,
             UUID owner,UUID ticket,BlockPos ptp){
         try{
