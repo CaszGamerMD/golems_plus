@@ -149,6 +149,16 @@ public final class BuilderWarehouseCoordinator {
                         table.owner(),ticket,table.supplyPtp());
         if(reply.accepted()&&!reply.ptp().equals(table.supplyPtp()))
             table.setSupplyPtp(reply.ptp());
+        if(!reply.accepted()&&table.supplyPtp().equals(BlockPos.ZERO)){
+            // Repair stuck reservations left by previous mod versions.
+            // No PTP was ever reserved, so no physical shulker exists to
+            // orphan. Release the invalid ticket and retry on a later tick.
+            String failure=reply.state();
+            table.clearSupplyRequest();
+            table.setProblem("No warehouse output assigned ("+failure+
+                    "); check output PTP / Shulker Station and retrying");
+            return false;
+        }
         if(!reply.missing().isEmpty()){
             String missing="Warehouse missing: "+reply.missing();
             if(!missing.equals(table.supplyNotice())){
