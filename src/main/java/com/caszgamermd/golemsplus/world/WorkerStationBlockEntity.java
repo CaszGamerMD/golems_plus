@@ -53,6 +53,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.Map<String,Long> builderRequired=new java.util.LinkedHashMap<>();
     private final java.util.Map<String,Long> builderRemaining=new java.util.LinkedHashMap<>();
     private final java.util.Map<String,Integer> builderWarehouseStock=new java.util.LinkedHashMap<>();
+    private final java.util.Map<String,Integer> builderStagedStock=new java.util.LinkedHashMap<>();
     private boolean builderStockChecked;
     private String builderWarehouseName="";
     public record BuilderJob(String file,String name,BlockPos origin,int rotation,
@@ -369,6 +370,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public Map<String,Long> builderRequired(){return Map.copyOf(builderRequired);}
     public Map<String,Long> builderRemaining(){return Map.copyOf(builderRemaining);}
     public Map<String,Integer> builderWarehouseStock(){return Map.copyOf(builderWarehouseStock);}
+    public Map<String,Integer> builderStagedStock(){return Map.copyOf(builderStagedStock);}
+    public void updateBuilderStagedStock(Map<String,Integer> stock){
+        if(!isBuilder()||builderStagedStock.equals(stock))return;
+        builderStagedStock.clear();builderStagedStock.putAll(stock);sync();
+    }
     public boolean builderStockChecked(){return builderStockChecked;}
     public String builderWarehouseName(){return builderWarehouseName;}
     public void updateBuilderWarehouseName(String name){
@@ -937,6 +943,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
             out.putString("beekeeper_worker_"+ix,beekeeperIds.get(ix).toString());
         out.putInt("trade_count",wantedCount);out.putInt("trade_delivered",deliveredCount);
         out.putString("trade_problem",problem);
+        out.putInt("builder_staged_count",Math.min(1024,builderStagedStock.size()));
+        int stagedIndex=0;
+        for(var e:builderStagedStock.entrySet()){
+            if(stagedIndex>=1024)break;
+            out.putString("builder_staged_item_"+stagedIndex,e.getKey());
+            out.putInt("builder_staged_qty_"+stagedIndex,e.getValue());stagedIndex++;
+        }
         out.putString("builder_warehouse_name",builderWarehouseName);
         out.putInt("builder_stock_checked",builderStockChecked?1:0);
         out.putInt("builder_stock_count",Math.min(1024,builderWarehouseStock.size()));
@@ -1188,7 +1201,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderRemaining.putAll(job.remaining());
             builderMaterialStorage=job.storage();
         }else builderMaterialStorage=null;
-        builderWarehouseStock.clear();
+        builderWarehouseStock.clear();builderStagedStock.clear();
+        for(int i=0,n=Math.clamp(in.getIntOr("builder_staged_count",0),0,1024);i<n;i++){
+            String id=in.getStringOr("builder_staged_item_"+i,"");
+            int count=in.getIntOr("builder_staged_qty_"+i,0);
+            if(!id.isBlank()&&count>=0)builderStagedStock.put(id,count);
+        }
         builderStockChecked=in.getIntOr("builder_stock_checked",0)==1;
         builderWarehouseName=in.getStringOr("builder_warehouse_name","");
         for(int i=0,n=Math.clamp(in.getIntOr("builder_stock_count",0),0,1024);i<n;i++){
