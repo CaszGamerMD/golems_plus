@@ -196,7 +196,33 @@ public final class StationSettingsNetworking {
                 }
             }
             case "builder_cancel" -> {
-                if(table.isBuilder())done=table.cancelBuilder(player.getUUID());
+                if(!table.isBuilder())return;
+                done=table.cancelBuilder(player.getUUID());
+                if(done&&table.supplyRequest()!=null){
+                    boolean cancelled=com.caszgamermd.golemsplus.builder
+                            .BuilderWarehouseCoordinator.cancelShipment(
+                                    (net.minecraft.server.level.ServerLevel)player.level(),
+                                    table);
+                    reply(player,cancelled
+                            ?"Construction stopped and unshipped warehouse order cancelled"
+                            :"Construction stopped; active cargo prevents immediate warehouse "
+                                +"cancellation. The Planner will retry without losing items.");
+                }
+            }
+            case "builder_restart_order" -> {
+                if(!table.isBuilder()||table.activeOrder()==null)return;
+                var server=(net.minecraft.server.level.ServerLevel)player.level();
+                if(table.supplyRequest()!=null
+                        &&!com.caszgamermd.golemsplus.builder
+                            .BuilderWarehouseCoordinator.cancelShipment(server,table)){
+                    reply(player,"Cannot recalculate while previous warehouse order has "
+                            +"packed shulkers or Storage Golems still in flight. "
+                            +"Collect/return those first; no supplies were lost.");
+                    return;
+                }
+                reply(player,com.caszgamermd.golemsplus.builder.BuilderBuildService
+                        .primeWarehouse(server,table));
+                return;
             }
             case "builder_rotate" -> {
                 if(table.isBuilder())done=table.setBuilderRotation(player.getUUID(),
