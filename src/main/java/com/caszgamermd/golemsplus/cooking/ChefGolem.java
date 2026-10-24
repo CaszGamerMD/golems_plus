@@ -2,6 +2,8 @@ package com.caszgamermd.golemsplus.cooking;
 
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import com.caszgamermd.golemsplus.worker.ProfessionGolemNames;
+import com.caszgamermd.golemsplus.worker.ProfessionGolemNamePool;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -43,7 +45,7 @@ public final class ChefGolem extends PathfinderMob {
     public ChefGolem(EntityType<? extends PathfinderMob> type,Level world){
         super(type,world);
         setPersistenceRequired();
-        setCustomName(Component.literal("Chef Golem"));
+        // A personal name is picked on the logical server when assigned.
     }
     public static AttributeSupplier.Builder attributes(){
         return PathfinderMob.createMobAttributes()
@@ -57,12 +59,15 @@ public final class ChefGolem extends PathfinderMob {
     }
     public void assign(BlockPos position,UUID player){
         home=position.immutable();owner=player;
+        ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.CHEF);
     }
     public BlockPos home(){return home;}
     public UUID owner(){return owner;}
 
     @Override public void tick(){
         super.tick();
+        // Also covers Golems created with a spawn egg, command or an older save.
+        if(tickCount==1)ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.CHEF);
         if(level() instanceof ServerLevel world)
             com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(world,this);
         if(tickCount%10!=0||!(level() instanceof ServerLevel server))return;
@@ -93,6 +98,9 @@ public final class ChefGolem extends PathfinderMob {
     }
     @Override protected void readAdditionalSaveData(ValueInput in){
         super.readAdditionalSaveData(in);
+        // Vanilla persists custom names; migrate old generic names, but keep
+        // names given by players with a name tag unchanged.
+        ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.CHEF);
         home=in.read("chef_home",BlockPos.CODEC).orElse(BlockPos.ZERO);
         try{owner=UUID.fromString(in.getStringOr("chef_owner",""));}
         catch(IllegalArgumentException ex){owner=null;}

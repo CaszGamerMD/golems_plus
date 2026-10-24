@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import com.caszgamermd.golemsplus.worker.ProfessionGolemNames;
+import com.caszgamermd.golemsplus.worker.ProfessionGolemNamePool;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.sounds.SoundEvents;
@@ -69,7 +71,7 @@ public final class FisherGolem extends PathfinderMob {
     public FisherGolem(EntityType<? extends PathfinderMob> type,Level world){
         super(type,world);
         setPersistenceRequired();
-        setCustomName(Component.literal("Fisher Golem"));
+        // A personal name is picked on the logical server when assigned.
         for(int i=0;i<POCKET_SLOTS;i++)pockets.add(ItemStack.EMPTY);
     }
     public static AttributeSupplier.Builder attributes(){
@@ -88,7 +90,8 @@ public final class FisherGolem extends PathfinderMob {
         b.define(CAST_TARGET,BlockPos.ZERO);
     }
     @Override protected void registerGoals(){}
-    public void assign(BlockPos at,UUID who){home=at.immutable();owner=who;}
+    public void assign(BlockPos at,UUID who){home=at.immutable();owner=who;
+        ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.FISHER);}
     public BlockPos home(){return home;}
     public boolean hasRod(){return getEntityData().get(HAS_ROD);}
     public boolean hasCatch(){return getEntityData().get(HAS_CATCH);}
@@ -153,6 +156,8 @@ public final class FisherGolem extends PathfinderMob {
     }
     @Override public void tick(){
         super.tick();
+        // Also covers Golems created with a spawn egg, command or an older save.
+        if(tickCount==1)ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.FISHER);
         if(level() instanceof ServerLevel world){
             com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(world,this);
             if(tickCount%5==0&&casting())renderFishingLine(world);
@@ -438,6 +443,9 @@ public final class FisherGolem extends PathfinderMob {
     }
     @Override protected void readAdditionalSaveData(ValueInput in){
         super.readAdditionalSaveData(in);
+        // Vanilla persists custom names; migrate old generic names, but keep
+        // names given by players with a name tag unchanged.
+        ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.FISHER);
         home=in.read("fisher_home",BlockPos.CODEC).orElse(BlockPos.ZERO);
         try{owner=UUID.fromString(in.getStringOr("fisher_owner",""));}
         catch(IllegalArgumentException ex){owner=null;}

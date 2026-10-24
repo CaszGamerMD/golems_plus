@@ -115,3 +115,17 @@ between the front and rear post locations; its ends join the leg structure.
 The rest of the chair, including cupholder and sewn bindings, remains intact.
 Twelve PNG variants are built deterministically by Java ImageIO in Gradle
 without a Python dependency and included in the production JAR.
+
+## Profession-specific Golem names (0.3.27-dev)
+
+Each Builder, Chef, Fisher, Beekeeper, and Trader Golem has **30 distinct names**
+(150 in all). Its name is assigned once, on the logical server, then saved
+with the Golem's standard Minecraft custom-name tag. Nameplates remain
+visible in the world. The name also remains the same after save/reload and
+when the worker is assigned to another job.
+
+A Golem with a custom name given using a **Name Tag** keeps that name; the
+mod never rerolls it. Older saves with generic names such as `Builder Golem`
+are automatically given a new personal name after loading. The role-specific
+lists are defined in `ProfessionGolemNamePool.java`, and their counts and
+uniqueness are protected by `ProfessionGolemNamePoolTest`.
