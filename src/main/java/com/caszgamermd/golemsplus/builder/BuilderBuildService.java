@@ -122,6 +122,8 @@ public final class BuilderBuildService {
             worker.getNavigation().stop();
             return;
         }
+        worker.setDeliveryRole(table.activeOrder()!=null
+                &&worker.getUUID().equals(table.supplyRunner()));
         if(!table.builderWorkerIds().contains(worker.getUUID())){
             // Never discard inventory-bearing entities: a misconfigured
             // workstation must not silently destroy delivered shulker cargo.
@@ -145,14 +147,15 @@ public final class BuilderBuildService {
             // A furnished tool belongs back at the Planner, not buried
             // in the on-site debris/materials chest.
             if(BuilderSupplyInventory.hasTools(worker)){
-                if(worker.distanceToSqr(home.getX()+.5,home.getY()+.5,
-                        home.getZ()+.5)>12){
+                BlockPos depot=BuilderSupplyInventory.pouchReturnPos(table);
+                if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                        depot.getZ()+.5)>12){
                     com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .routeTo(level,worker,home,.83);
+                            .routeTo(level,worker,depot,.83);
                     return;
                 }
                 if(!BuilderSupplyInventory.returnTools(worker,table)){
-                    table.setProblem("Make room in Builder Planner for returned mining tools");
+                    table.setProblem("Make room in OnSite Storage for returned mining tools");
                     return;
                 }
             }
@@ -167,8 +170,11 @@ public final class BuilderBuildService {
                 }
                 return;
             }
-            if(!worker.hasSupplyBox()&&table.supplyRequest()==null)
-                com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(level,worker,home);
+            if(!worker.hasSupplyBox()&&table.supplyRequest()==null){
+                if(BuilderReturnService.tick(level,worker,table))return;
+                if(table.phase()!=WorkerPhase.COMPLETE&&!table.builderRecallRequested())
+                    com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(level,worker,home);
+            }
             return;
         }
         if(table.phase()==WorkerPhase.PAUSED){

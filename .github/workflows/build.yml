@@ -17,6 +17,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
+      - name: Verify Builder workforce and OnSite logistics cleanup
+        run: python3 scripts/builder_job_cleanup_smoke.py
       - name: Verify warehouse pending order and courier deferral
         run: python3 scripts/builder_warehouse_queued_smoke.py
       - name: Verify Builder chunk ticket and worker persistence protections

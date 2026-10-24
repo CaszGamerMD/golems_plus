@@ -39,12 +39,15 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 public final class WorksiteContent {
     public static WorkerStationBlock BUILDER_TABLE, FISHING_STATION, TRADER_COUNTER, BEEKEEPER_STATION, COOKING_STATION;
     public static BeeToolboxBlock BEE_TOOLBOX;
+    public static UnemployedCenterBlock UNEMPLOYED_CENTER;
     public static MealCounterBlock MEAL_COUNTER;
     public static CookingKioskTopBlock COOKING_KIOSK_TOP;
     public static Item MEAL_COUNTER_ITEM;
     public static BlockEntityType<MealCounterBlockEntity> MEAL_COUNTER_ENTITY;
     public static Item BUILDER_TABLE_ITEM, FISHING_STATION_ITEM, TRADER_COUNTER_ITEM, BEEKEEPER_STATION_ITEM, BEE_TOOLBOX_ITEM, COOKING_STATION_ITEM;
     public static BlockEntityType<BeeToolboxBlockEntity> BEE_TOOLBOX_ENTITY;
+    public static BlockEntityType<UnemployedCenterBlockEntity> UNEMPLOYED_CENTER_ENTITY;
+    public static Item UNEMPLOYED_CENTER_ITEM;
     public static BlockEntityType<WorkerStationBlockEntity> STATION_ENTITY;
     public static MenuType<WorkerStationMenu> STATION_MENU;
     public static EntityType<TraderGolem> TRADER_GOLEM;
@@ -114,6 +117,18 @@ public final class WorksiteContent {
         BEE_TOOLBOX=Registry.register(BuiltInRegistries.BLOCK,toolboxKey,
                 new BeeToolboxBlock(BlockBehaviour.Properties
                         .ofFullCopy(Blocks.BARREL).strength(2.5f).noOcclusion().setId(toolboxKey)));
+        ResourceKey<net.minecraft.world.level.block.Block> unemployedBlockKey=
+                ResourceKey.create(Registries.BLOCK,GolemsPlus.id("unemployed_center"));
+        UNEMPLOYED_CENTER=Registry.register(BuiltInRegistries.BLOCK,
+                unemployedBlockKey,new UnemployedCenterBlock(BlockBehaviour.Properties
+                        .ofFullCopy(Blocks.BARREL).strength(2.5f)
+                        .setId(unemployedBlockKey)));
+        ResourceKey<Item> unemployedItemKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("unemployed_center"));
+        UNEMPLOYED_CENTER_ITEM=Registry.register(BuiltInRegistries.ITEM,
+                unemployedItemKey,new BlockItem(UNEMPLOYED_CENTER,
+                        new Item.Properties().setId(unemployedItemKey)
+                                .useBlockDescriptionPrefix()));
         BUILDER_TABLE_ITEM = blockItem("builder_table", BUILDER_TABLE);
         FISHING_STATION_ITEM = blockItem("fishing_station", FISHING_STATION);
         ResourceKey<Item> baitKey=ResourceKey.create(Registries.ITEM,GolemsPlus.id("fishing_bait"));
@@ -150,6 +165,10 @@ public final class WorksiteContent {
                 GolemsPlus.id("beekeeper_toolbox_entity"),
                 FabricBlockEntityTypeBuilder.create(BeeToolboxBlockEntity::new,
                         BEE_TOOLBOX).build());
+        UNEMPLOYED_CENTER_ENTITY=Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE,
+                GolemsPlus.id("unemployed_center_entity"),
+                FabricBlockEntityTypeBuilder.create(UnemployedCenterBlockEntity::new,
+                        UNEMPLOYED_CENTER).build());
         STATION_MENU=Registry.register(BuiltInRegistries.MENU,GolemsPlus.id("worker_station_menu"),
                 new ExtendedMenuType<>(
                         (menuId,inv,pos)->new WorkerStationMenu(menuId,inv,pos),
@@ -196,6 +215,7 @@ public final class WorksiteContent {
                         .icon(() -> new ItemStack(BUILDER_TABLE_ITEM))
                         .displayItems((parameters, output) -> {
                             output.accept(BUILDER_TABLE_ITEM);
+                            output.accept(UNEMPLOYED_CENTER_ITEM);
                             output.accept(FISHING_STATION_ITEM);
                             output.accept(TRADER_COUNTER_ITEM);
                             output.accept(BEEKEEPER_STATION_ITEM);

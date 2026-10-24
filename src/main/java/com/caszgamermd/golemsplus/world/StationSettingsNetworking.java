@@ -140,6 +140,15 @@ public final class StationSettingsNetworking {
             }
             case "builder_start" -> {
                 if(!table.isBuilder())return;
+                if(table.warehouse()==null){
+                    reply(player,"Link a warehouse with a Warehouse Scanner before starting.");
+                    return;
+                }
+                if(!com.caszgamermd.golemsplus.builder.BuilderSupplyInventory.ready(table)){
+                    reply(player,"Select a loaded OnSite Storage chest/container before starting. "
+                            +"The Planner no longer stores construction tools or blocks.");
+                    return;
+                }
                 done=table.startPlacedBuilder(player.getUUID());
                 if(done){
                     reply(player,"Construction started: "+table.builderBlocks()

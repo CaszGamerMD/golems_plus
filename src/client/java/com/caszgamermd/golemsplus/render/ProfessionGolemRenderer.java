@@ -63,6 +63,7 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
     @Override public void extractRenderState(T entity,
             ProfessionGolemRenderState state,float partialTick){
         super.extractRenderState(entity,state,partialTick);
+        state.courier=entity instanceof BuilderGolem builder&&builder.deliveryRole();
         state.carrying=(entity instanceof BuilderGolem builder&&builder.hasSupplyBox())
                 || (entity instanceof TraderGolem trader&&trader.busy());
         state.working=(entity instanceof BuilderGolem

@@ -21,6 +21,8 @@ public final class ProfessionGolemModel
     public enum Profession { BUILDER, TRADER, CHEF, FISHER }
 
     private final ModelPart head,leftArm,rightArm,leftLeg,rightLeg;
+    private final ModelPart[] safetyGear;
+    private final ModelPart courierScalp,courierShirt;
     private final ModelPart traderClosed,traderOpen,fisherRod,fisherFish,foldingChair;
     private final Profession profession;
 
@@ -38,6 +40,14 @@ public final class ProfessionGolemModel
         fisherRod=profession==Profession.FISHER?rightArm.getChild("fishing_rod"):null;
         fisherFish=profession==Profession.FISHER?fisherRod.getChild("caught_fish"):null;
         foldingChair=profession==Profession.FISHER?root.getChild("folding_chair"):null;
+        safetyGear=profession==Profession.BUILDER?new ModelPart[]{
+                head.getChild("helmet_crown"),head.getChild("helmet_brim"),
+                head.getChild("helmet_ridge"),torso.getChild("hi_vis_vest"),
+                torso.getChild("vest_strap_l"),torso.getChild("vest_strap_r"),
+                torso.getChild("vest_belt"),torso.getChild("utility_belt"),
+                torso.getChild("tool_pouch")}:new ModelPart[0];
+        courierScalp=profession==Profession.BUILDER?head.getChild("bald_patch"):null;
+        courierShirt=profession==Profession.BUILDER?torso.getChild("dirty_shirt"):null;
     }
 
     public static LayerDefinition builderLayer(){return layer(Profession.BUILDER);}
@@ -70,6 +80,15 @@ public final class ProfessionGolemModel
 
         switch(type){
             case BUILDER -> {
+                // Courier attire is physically separate cuboids toggled by
+                // the server-owned role: bald patch and dirty work shirt.
+                head.addOrReplaceChild("bald_patch",CubeListBuilder.create()
+                        .texOffs(0,26).addBox(-4,-4,-3,8,7,6,
+                                new net.minecraft.client.model.geom.builders.CubeDeformation(.10f)),
+                        PartPose.ZERO);
+                torso.addOrReplaceChild("dirty_shirt",CubeListBuilder.create()
+                        .texOffs(0,0).addBox(-5,-6,-3.5f,10,11,7,
+                                new net.minecraft.client.model.geom.builders.CubeDeformation(.13f)),PartPose.ZERO);
                 // Raised hard-hat bowl, brow brim, rear flap and center rib.
                 head.addOrReplaceChild("helmet_crown",CubeListBuilder.create()
                         .texOffs(75,24).addBox(-4.7f,-7.2f,-3.8f,9.4f,4,7.6f),
@@ -421,6 +440,9 @@ public final class ProfessionGolemModel
         rightArm.xRot=leftLeg.xRot*.52f;
         leftArm.zRot=rightArm.zRot=0;
         if(profession==Profession.BUILDER){
+            for(ModelPart part:safetyGear)part.visible=!state.courier;
+            courierScalp.visible=state.courier;
+            courierShirt.visible=state.courier;
             // A construction worker carries a shulker using both hands.
             if(state.carrying){
                 leftArm.xRot=rightArm.xRot=-1.10f;

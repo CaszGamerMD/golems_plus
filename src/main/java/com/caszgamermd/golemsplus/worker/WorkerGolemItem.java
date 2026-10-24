@@ -72,7 +72,7 @@ public final class WorkerGolemItem extends Item {
             case COOKING -> station.chefWorkerIds().size();
             case FISHING -> station.fisherWorkerIds().size();
         };
-        if(count>=4){
+        if(count>=(profession==WorkerSpecialty.BUILDER?8:4)){
             player.sendSystemMessage(Component.literal(
                     "This workstation already has its maximum crew"));
             return InteractionResult.FAIL;
@@ -90,6 +90,9 @@ public final class WorkerGolemItem extends Item {
         else if(worker instanceof BeekeeperGolem g)g.assign(nearest,player.getUUID());
         else if(worker instanceof ChefGolem g)g.assign(nearest,player.getUUID());
         else if(worker instanceof FisherGolem g)g.assign(nearest,player.getUUID());
+        if(context.getItemInHand().has(net.minecraft.core.component.DataComponents.CUSTOM_NAME))
+            worker.setCustomName(context.getItemInHand().get(
+                    net.minecraft.core.component.DataComponents.CUSTOM_NAME));
         worker.setPos(placed.getX()+.5,placed.getY(),placed.getZ()+.5);
         if(!level.addFreshEntity(worker)){
             player.sendSystemMessage(Component.literal("Cannot place Golem here"));

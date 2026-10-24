@@ -31,7 +31,7 @@ import net.minecraft.world.item.ItemStack;
  */
 public final class BuilderPlannerScreen extends WorkerStationScreen {
     private enum Page { JOB, PLACEMENTS }
-    private enum Sort { ALPHABETICAL, VOLUME }
+    private enum Sort { ALPHABETICAL, VOLUME, LEFT }
     private record Memory(Page page,Sort sort,int scroll,int placementPage,
                           int jobPage,String search){}
     private static final Map<String,Memory> VIEW=new HashMap<>();
@@ -216,8 +216,8 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             });
             return;
         }
-        button(sort==Sort.ALPHABETICAL?"SORT: A-Z":"SORT: QTY",SIDE+14,94,116,()->{
-            sort=sort==Sort.ALPHABETICAL?Sort.VOLUME:Sort.ALPHABETICAL;
+        button(sort==Sort.ALPHABETICAL?"SORT: A-Z":sort==Sort.VOLUME?"SORT: QTY":"SORT: LEFT",SIDE+14,94,116,()->{
+            sort=sort==Sort.ALPHABETICAL?Sort.VOLUME:sort==Sort.VOLUME?Sort.LEFT:Sort.ALPHABETICAL;
             scroll=0;show(Page.JOB);
         });
         query=new EditBox(font,leftPos+SIDE+142,topPos+95,
@@ -258,7 +258,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             if(table!=null)send("crew",Math.max(1,table.crewTarget()-1));
         });
         button("CREW +",113,285,90,()->{
-            if(table!=null)send("crew",Math.min(4,table.crewTarget()+1));
+            if(table!=null)send("crew",Math.min(8,table.crewTarget()+1));
         });
     }
     private List<Map.Entry<String,Long>> materials(){
@@ -271,8 +271,13 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
                 out.add(row);
         if(sort==Sort.ALPHABETICAL)
             out.sort(Map.Entry.comparingByKey());
+        else if(sort==Sort.VOLUME)
+            out.sort(Comparator.<Map.Entry<String,Long>>comparingLong(
+                    Map.Entry::getValue).reversed().thenComparing(Map.Entry::getKey));
         else out.sort(Comparator.<Map.Entry<String,Long>>comparingLong(
-                Map.Entry::getValue).reversed().thenComparing(Map.Entry::getKey));
+                e->Math.max(0L,e.getValue()
+                        -table.builderStagedStock().getOrDefault(e.getKey(),0)))
+                .reversed().thenComparing(Map.Entry::getKey));
         return out;
     }
     private int color(WorkerStationBlockEntity table,String id,long remaining){
