@@ -73,8 +73,12 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         VIEW.put(key(),new Memory(page,sort,scroll,placementPage,jobPage,search));
     }
     @Override protected void init(){
-        panelWidth=Math.max(520,width-16);
-        panelHeight=Math.max(420,height-16);
+        // The old UI forced a minimum 520x420 box even when Minecraft was
+        // scaled smaller. That moved the real inventory slots off-screen.
+        // Use the available viewport while retaining the minimum underlying
+        // menu size for the physical 9-column inventory.
+        panelWidth=Math.max(imageWidth,Math.min(1200,width-16));
+        panelHeight=Math.max(imageHeight,Math.min(900,height-16));
         super.init();
         // Container-screen image dimensions are final in Minecraft 26.2.
         // The planner draws across the actual viewport and repositions slots.
@@ -92,6 +96,17 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     @Override public void onClose(){
         remember();
         super.onClose();
+    }
+    // AbstractContainerScreen uses its original 375x254 image dimensions
+    // to test clicks outside. This planner is much larger, so normal clicks
+    // in the player's 36 slots (and the planner's 27 input slots) were
+    // incorrectly interpreted as THROW/DROP carried items.
+    //
+    // No click inside the planner should ever count as a world drop; players
+    // can still use Q in their inventory if they deliberately want to drop.
+    @Override protected boolean hasClickedOutside(double mouseX,double mouseY,
+            int left,int top,int button){
+        return false;
     }
     @Override public boolean keyPressed(KeyEvent key){
         if(key.isEscape()){onClose();return true;}
@@ -283,14 +298,17 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         g.fill(x+SIDE+4,y+76,x+panelWidth-9,y+panelHeight-12,0xff1e313c);
         g.fill(x+SIDE+5,y+114,x+panelWidth-10,y+panelHeight-119,0xff162932);
         // Job-block and player inventory remain available in the planner.
-        for(int i=0;i<36;i++){
-            int sx=x+18+(i%9)*18,sy=y+95+(i/9)*18;
-            g.fill(sx-1,sy-1,sx+17,sy+17,0xff637578);
-        }
-        for(int i=0;i<36;i++){
-            int sx=x+18+(i%9)*18,sy=y+198+(i/9)*18;
-            g.fill(sx-1,sy-1,sx+17,sy+17,0xff627478);
-        }
+        // Draw the slot backgrounds from the *actual* slots owned by the
+        // server-backed WorkerStationMenu, rather than guessing their Y.
+        // In particular the last nine player slots are the hotbar, not
+        // another row of storage.
+        if(page==Page.JOB)
+            for(int i=0;i<menu.slots.size();i++){
+                var slot=menu.slots.get(i);
+                int sx=x+slot.x,sy=y+slot.y;
+                g.fill(sx-1,sy-1,sx+17,sy+17,
+                        i<36?0xff637578:0xff627478);
+            }
     }
     @Override protected void extractTooltip(GuiGraphicsExtractor g,int mouseX,int mouseY){
         super.extractTooltip(g,mouseX,mouseY);
