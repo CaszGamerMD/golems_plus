@@ -51,6 +51,10 @@ public final class KitchenSupplies {
         this.appliances=List.copyOf(appliances);
         this.milkSupply=new KitchenMilkSupply(milkJars);
     }
+    // In-memory storage view used by the insertion regression tests.
+    KitchenSupplies(List<Container> containers,Map<Container,BlockPos> locations){
+        this(containers,locations,null,List.of(),List.of());
+    }
     public BlockPos workPoint(){return workPoint;}
     public BlockPos stationFor(ServerLevel world,String task){
         boolean heated=!task.equals("Assemble")&&!task.equals("Plate");
