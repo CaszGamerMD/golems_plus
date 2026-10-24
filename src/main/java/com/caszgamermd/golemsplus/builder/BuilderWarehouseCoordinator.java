@@ -78,15 +78,22 @@ public final class BuilderWarehouseCoordinator {
             WorkerStationBlockEntity table,ServerPlayer player,
             List<BuilderConstructionPlan.Step> steps){
         if(worker.hasSupplyBox()){
-            if(worker.distanceToSqr(table.getBlockPos().getX()+.5,
-                    table.getBlockPos().getY()+1,table.getBlockPos().getZ()+.5)>9){
+            BlockPos destination=table.builderMaterialStorage()==null
+                    ?table.getBlockPos():table.builderMaterialStorage();
+            if(!level.hasChunkAt(destination)){
+                table.setProblem("Material storage chunk must be loaded");
+                return true;
+            }
+            if(worker.distanceToSqr(destination.getX()+.5,
+                    destination.getY()+.5,destination.getZ()+.5)>10){
                 if(!com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                        level,worker,table.getBlockPos(),.86))
-                    table.setProblem("Builder courier cannot reach its Planning Table");
+                        level,worker,destination,.86))
+                    table.setProblem("Builder courier cannot reach designated material storage");
             }else if(BuilderSupplyInventory.depositBox(table,worker.supplyBox())){
                 worker.clearSupplyBox();
                 table.setProblem("");
-            }else table.setProblem("Builder Table full; free an input slot for shulker supply");
+            }else table.setProblem("Materials storage is full or blocked: "
+                    +destination.toShortString());
             return true;
         }
         UUID ticket=table.supplyRequest();
