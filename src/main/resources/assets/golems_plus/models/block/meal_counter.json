@@ -1,11 +1,11 @@
 {
   "parent": "minecraft:block/block",
   "textures": {
-    "particle": "minecraft:block/smooth_quartz",
-    "shell": "minecraft:block/smooth_quartz",
+    "particle": "minecraft:block/quartz_block_side",
+    "shell": "minecraft:block/quartz_block_side",
     "front": "minecraft:block/iron_block",
     "toe": "minecraft:block/gray_concrete",
-    "top": "minecraft:block/quartz_block",
+    "top": "minecraft:block/quartz_block_top",
     "edge": "minecraft:block/light_gray_concrete",
     "plate": "minecraft:block/white_concrete",
     "rim": "minecraft:block/light_gray_concrete",

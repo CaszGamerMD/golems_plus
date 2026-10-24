@@ -8,6 +8,24 @@ import net.minecraft.world.item.Items;
 /** Return genuine crafting remainders, including modded utensils. */
 public final class ChefCraftingRemainders {
     private ChefCraftingRemainders(){}
+    /**
+     * Known cooking catalysts, such as Croptopia cooking pots and frying
+     * pans, must be returned intact even if a modded recipe omits Minecraft's
+     * crafting-remainder component. Do not treat arbitrary flower pots or
+     * cauldrons as reusable cookware.
+     */
+    public static boolean reusableUtensil(Item item){
+        String name=net.minecraft.core.registries.BuiltInRegistries.ITEM
+                .getKey(item).toString();
+        int colon=name.indexOf(':');
+        if(colon<0)return false;
+        String ns=name.substring(0,colon),path=name.substring(colon+1);
+        return (ns.equals("croptopia")||ns.equals("cookingforblockheads")
+                ||ns.equals("farmersdelight")||ns.equals("farm_and_charm"))
+                &&(path.equals("pot")||path.equals("pan")||path.equals("cooking_pot")
+                    ||path.equals("frying_pan")||path.equals("skillet")
+                    ||path.equals("saucepan")||path.equals("stockpot"));
+    }
     public static boolean isVirtualMilkCandidate(Item item){
         return new ItemStack(item).is(KitchenMilkSupply.MILK_ITEMS);
     }

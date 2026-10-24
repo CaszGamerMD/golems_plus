@@ -87,6 +87,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private String chefFood="";
     private boolean chefOvenLoaded;
     private boolean chefDeliveryStarted;
+    // Delivery happens ONCE before cookware restoration. Keeping this flag
+    // on disk prevents a full pantry from duplicating an already served meal.
+    private boolean chefMealServed;
     private String chefPreviewFood="";
     private final java.util.List<String> chefPreviewLines=new java.util.ArrayList<>();
     private int chefQuantity,chefStepIndex,chefStepTicks;
@@ -193,7 +196,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(step.method().equals("Assemble"))
             for(var entry:step.inputs().entrySet()){
                 ItemStack remains=com.caszgamermd.golemsplus.cooking.ChefCraftingRemainders
-                        .forIngredient(entry.getKey());
+                        .reusableUtensil(entry.getKey())?
+                            new ItemStack(entry.getKey()):
+                            com.caszgamermd.golemsplus.cooking.ChefCraftingRemainders
+                                    .forIngredient(entry.getKey());
                 int sourceCount=entry.getValue();
                 // Some milk inputs came from fluid-backed Cow/Milk Jars:
                 // their fluid is real, but no physical milk bucket/bottle
@@ -245,6 +251,16 @@ public final class WorkerStationBlockEntity extends BlockEntity
         chefStepIndex++;chefStepTicks=0;sync();return true;
     }
     public boolean chefDeliveryStarted(){return chefDeliveryStarted;}
+    public boolean chefMealServed(){return chefMealServed;}
+    public boolean markChefMealServed(){
+        if(!chefBusy()||chefMealServed||!chefStepsFinished())return false;
+        String key=chefFood;
+        int available=chefEscrow.getOrDefault(key,0);
+        if(available<chefQuantity)return false;
+        if(available==chefQuantity)chefEscrow.remove(key);
+        else chefEscrow.put(key,available-chefQuantity);
+        chefMealServed=true;sync();return true;
+    }
     public void setChefDeliveryStarted(boolean started){
         if(chefDeliveryStarted!=started){chefDeliveryStarted=started;sync();}
     }
@@ -269,7 +285,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||quantity<1||quantity>16
                 ||steps.isEmpty()||steps.size()>160)return false;
         chefFood=food;chefQuantity=quantity;chefStepIndex=chefStepTicks=0;
-        chefOvenLoaded=false;chefDeliveryStarted=false;
+        chefOvenLoaded=false;chefDeliveryStarted=false;chefMealServed=false;
         chefSteps.clear();chefSteps.addAll(steps);
         chefEscrow.clear();chefEscrow.putAll(escrow);
         chefSurplus.clear();chefSurplus.putAll(leftovers);
@@ -288,7 +304,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public java.util.Map<String,Integer> clearChefOrder(){
         java.util.Map<String,Integer> refund=java.util.Map.copyOf(chefEscrow);
         chefFood="";chefQuantity=chefStepIndex=chefStepTicks=0;
-        chefOvenLoaded=false;chefDeliveryStarted=false;
+        chefOvenLoaded=false;chefDeliveryStarted=false;chefMealServed=false;
         chefSteps.clear();chefEscrow.clear();chefSurplus.clear();
         chefOrigins.clear();physicalMilkRemaining.clear();sync();
         return refund;
@@ -474,6 +490,37 @@ public final class WorkerStationBlockEntity extends BlockEntity
         try{phase=WorkerPhase.valueOf(selected.phase());}
         catch(IllegalArgumentException ex){phase=WorkerPhase.READY;}
         sync();return true;
+    }
+    /** Delete only inactive job metadata. Never destroy on-site blocks,
+     * real staged items, or a worker's material inventory. A warehouse
+     * shipment must be settled first, so deleting a job cannot orphan
+     * reserved shulkers. The uploaded snapshot file is left on disk since
+     * it may be referenced by another Planning Table.
+     */
+    public boolean deleteBuilderJob(UUID actor,int index){
+        if(!isBuilder()||!canConfigure(actor)||activeOrder!=null
+                ||supplyRequest!=null||pendingBuilderWarehouse!=null
+                ||index<0||index>=builderJobs.size())return false;
+        if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
+            builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
+        builderJobs.remove(index);
+        if(builderJobs.isEmpty()){
+            selectedBuilderJob=-1;
+            builderFile="";placedSchematicName="";builderPlaced=false;
+            builderBlocks=0;builderUnresolved=0;builderRotation=0;builderMirror=0;
+            builderOrigin=BlockPos.ZERO;builderCursor=0;
+            builderMaterialStorage=null;warehouse=null;
+            builderRequired.clear();builderRemaining.clear();
+            builderWarehouseStock.clear();builderStagedStock.clear();
+            builderStockChecked=false;builderWarehouseName="";
+            builderClaims.clear();completedAhead=0;phase=WorkerPhase.IDLE;
+            sync();return true;
+        }
+        // Selecting a saved job automatically persists its snapshot.
+        // Do not allow the removed job to be reintroduced by sync().
+        selectedBuilderJob=-1;
+        int successor=Math.min(index,builderJobs.size()-1);
+        return selectBuilderJob(actor,successor);
     }
     public int builderBlocks() { return builderBlocks; }
     public int builderUnresolved() { return builderUnresolved; }
@@ -926,6 +973,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putInt("chef_step_ticks",chefStepTicks);
         out.putBoolean("chef_oven_loaded",chefOvenLoaded);
         out.putBoolean("chef_delivery_started",chefDeliveryStarted);
+        out.putBoolean("chef_meal_served",chefMealServed);
         out.putInt("chef_step_total",Math.min(160,chefSteps.size()));
         for(int i=0;i<chefSteps.size()&&i<160;i++)
             out.putString("chef_step_"+i,chefSteps.get(i));
@@ -1135,6 +1183,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         chefStepTicks=Math.clamp(in.getIntOr("chef_step_ticks",0),0,24000);
         chefOvenLoaded=in.getBooleanOr("chef_oven_loaded",false);
         chefDeliveryStarted=in.getBooleanOr("chef_delivery_started",false);
+        chefMealServed=in.getBooleanOr("chef_meal_served",false);
         chefSteps.clear();
         for(int i=0,n=Math.clamp(in.getIntOr("chef_step_total",0),0,160);i<n;i++)
             chefSteps.add(in.getStringOr("chef_step_"+i,"Prepare"));

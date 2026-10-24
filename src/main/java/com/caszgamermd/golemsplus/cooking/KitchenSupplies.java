@@ -39,6 +39,10 @@ public final class KitchenSupplies {
     // Preserve original storage positions, including the exact slot from
     // which a reserved ingredient was physically withdrawn.
     private final Map<Container,BlockPos> locations;
+    // Oven accessory slots are an inventory in their own right. We can
+    // borrow utensils from them, but MUST NOT claim oven fuel/food/output
+    // as pantry stock or return ordinary leftovers to oven input slots.
+    private final Map<Container,Integer> firstAllowedSlot;
     public record Origin(String itemId,BlockPos container,int slot,int quantity) {
         public Origin(String itemId,BlockPos container,int slot){
             this(itemId,container,slot,1);
@@ -48,16 +52,18 @@ public final class KitchenSupplies {
     private final BlockPos workPoint;
     private final List<BlockPos> appliances;
     private KitchenSupplies(List<Container> containers,Map<Container,BlockPos> locations,
+                            Map<Container,Integer> toolSlots,
                             BlockPos workPoint,List<BlockEntity> milkJars,
                             List<BlockPos> appliances){
         this.containers=List.copyOf(containers);
-        this.locations=new IdentityHashMap<>(locations);this.workPoint=workPoint;
+        this.locations=new IdentityHashMap<>(locations);
+        this.firstAllowedSlot=new IdentityHashMap<>(toolSlots);this.workPoint=workPoint;
         this.appliances=List.copyOf(appliances);
         this.milkSupply=new KitchenMilkSupply(milkJars);
     }
     // In-memory storage view used by the insertion regression tests.
     KitchenSupplies(List<Container> containers,Map<Container,BlockPos> locations){
-        this(containers,locations,null,List.of(),List.of());
+        this(containers,locations,Map.of(),null,List.of(),List.of());
     }
     public BlockPos workPoint(){return workPoint;}
     public BlockPos stationFor(ServerLevel world,String task){
@@ -127,13 +133,14 @@ public final class KitchenSupplies {
     public static KitchenSupplies around(ServerLevel level,BlockPos kiosk,BlockPos anchor){
         if(anchor==null||kiosk.distSqr(anchor)>LINK_RADIUS*LINK_RADIUS
                 ||!kitchenBlock(level,anchor))
-            return new KitchenSupplies(List.of(),Map.of(),null,List.of(),List.of());
+            return new KitchenSupplies(List.of(),Map.of(),Map.of(),null,List.of(),List.of());
 
         Set<BlockPos> visited=new HashSet<>();
         ArrayDeque<BlockPos> queue=new ArrayDeque<>();
         queue.add(anchor);
         List<Container> supplies=new ArrayList<>();
         Map<Container,BlockPos> locations=new IdentityHashMap<>();
+        Map<Container,Integer> ovenToolSlots=new IdentityHashMap<>();
         List<BlockEntity> milkJars=new ArrayList<>();
         List<BlockPos> appliances=new ArrayList<>();
         BlockPos appliance=anchor;
@@ -150,6 +157,23 @@ public final class KitchenSupplies {
             BlockEntity be=level.getBlockEntity(pos);
             if(be!=null){
                 appliances.add(pos.immutable());
+                // The Cooking for Blockheads oven exposes an internal
+                // container. Slots >=16 are cookware/accessories; lower
+                // slots contain active recipes, fuel and prepared meals.
+                if(key.getNamespace().equals("cookingforblockheads")
+                        &&key.getPath().contains("oven")){
+                    try{
+                        Method getter=be.getClass().getMethod("getInternalContainer");
+                        Object result=getter.invoke(be);
+                        if(result instanceof Container tools
+                                &&tools.getContainerSize()>16
+                                &&!supplies.contains(tools)){
+                            supplies.add(tools);
+                            locations.put(tools,pos.immutable());
+                            ovenToolSlots.put(tools,16);
+                        }
+                    }catch(ReflectiveOperationException|LinkageError|SecurityException ignored){}
+                }
                 if(key.getPath().equals("cow_jar")||key.getPath().equals("milk_jar"))
                     milkJars.add(be);
                 Container inventory=container(be);
@@ -186,7 +210,8 @@ public final class KitchenSupplies {
                         appliances.add(candidate.immutable());
                 }
         }
-        return new KitchenSupplies(supplies,locations,appliance,milkJars,appliances);
+        return new KitchenSupplies(supplies,locations,ovenToolSlots,
+                appliance,milkJars,appliances);
     }
 
     private static Container container(BlockEntity be){
@@ -223,7 +248,8 @@ public final class KitchenSupplies {
 
     private Map<Item,Integer> physicalSnapshot(){
         Map<Item,Integer> result=new HashMap<>();
-        for(Container c:containers)for(int slot=0;slot<c.getContainerSize();slot++){
+        for(Container c:containers)for(int slot=firstAllowedSlot.getOrDefault(c,0);
+                slot<c.getContainerSize();slot++){
             ItemStack stack=c.getItem(slot);
             if(!stack.isEmpty())result.merge(stack.getItem(),stack.getCount(),Integer::sum);
         }
@@ -286,7 +312,8 @@ public final class KitchenSupplies {
                                       boolean commit){
         List<SlotState> slots=new ArrayList<>();
         for(Container c:containers){
-            for(int n=0;n<c.getContainerSize();n++){
+            for(int n=firstAllowedSlot.getOrDefault(c,0);
+                    n<c.getContainerSize();n++){
                 ItemStack before=c.getItem(n);
                 slots.add(new SlotState(c,locations.get(c),n,before));
             }
@@ -361,7 +388,8 @@ public final class KitchenSupplies {
         for(var entry:physicalToTake.entrySet()){
             int left=entry.getValue();
             for(Container c:containers){
-                for(int i=0;i<c.getContainerSize()&&left>0;i++){
+                for(int i=firstAllowedSlot.getOrDefault(c,0);
+                        i<c.getContainerSize()&&left>0;i++){
                     ItemStack stack=c.getItem(i);
                     if(stack.is(entry.getKey())){
                         int n=Math.min(left,stack.getCount());

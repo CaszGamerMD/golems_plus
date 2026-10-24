@@ -132,6 +132,20 @@ public final class BuilderBuildService {
                             recipient,outstanding.steps()))return;
                 }catch(Exception ignored){}
             }
+            // A furnished tool belongs back at the Planner, not buried
+            // in the on-site debris/materials chest.
+            if(BuilderSupplyInventory.hasTools(worker)){
+                if(worker.distanceToSqr(home.getX()+.5,home.getY()+.5,
+                        home.getZ()+.5)>12){
+                    com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .routeTo(level,worker,home,.83);
+                    return;
+                }
+                if(!BuilderSupplyInventory.returnTools(worker,table)){
+                    table.setProblem("Make room in Builder Planner for returned mining tools");
+                    return;
+                }
+            }
             if(!worker.hasSupplyBox()&&!worker.isEmpty()){
                 BlockPos returnTo=BuilderSupplyInventory.pouchReturnPos(table);
                 if(level.hasChunkAt(returnTo)){
@@ -218,7 +232,9 @@ public final class BuilderBuildService {
                 table.setProblem("");return;
             }
             if(!existing.isAir()){
-                table.setProblem("Occupied target "+pos+"; no destructive replacement");
+                var clearing=BuilderClearance.clear(level,worker,table,owner,pos,existing);
+                // Exactly one world mutation at most per tick. Revalidate
+                // support and reload the correct building material next tick.
                 return;
             }
             if(!state.state().canSurvive(level,pos)){

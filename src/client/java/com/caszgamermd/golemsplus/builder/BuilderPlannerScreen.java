@@ -41,6 +41,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     private String search="";
     private EditBox query;
     private String notice="";
+    private int deleteConfirm=-1;
     private List<LitematicaPlacementClient.PlacementChoice> choices=List.of();
     private static final int TEXT=0xffdce9e6, MUTED=0xffa6c0c7, GREEN=0xff89f39f,
             YELLOW=0xffffd379, RED=0xffff7b81, WHITE=0xfff4f5f5;
@@ -49,6 +50,13 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     public BuilderPlannerScreen(WorkerStationMenu menu,Inventory inventory,Component title){
         super(menu,inventory,title);
         titleLabelX=15;titleLabelY=10;inventoryLabelX=18;inventoryLabelY=188;
+    }
+    /** Full viewport JEI exclusion area. Container's default width is
+     * small due to inventory slots, but the Builder planner fills the screen.
+     */
+    public net.minecraft.client.renderer.Rect2i plannerBounds(){
+        return new net.minecraft.client.renderer.Rect2i(
+                leftPos,topPos,panelWidth,panelHeight);
     }
     private String key(){
         return (minecraft!=null&&minecraft.level!=null?
@@ -213,6 +221,24 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         });
         button("SCAN STOCK",SIDE+158,y+27,116,()->send("builder_refresh",0));
         button("CANCEL",SIDE+282,y+27,117,()->send("builder_cancel",0));
+        button(deleteConfirm>=0?"CONFIRM DELETE":"DELETE JOB",
+                SIDE+12,y+54,137,()->{
+            if(table==null||table.selectedBuilderJob()<0)return;
+            if(table.activeOrder()!=null){
+                notice="Cancel the running construction before deleting its job";
+                return;
+            }
+            if(deleteConfirm!=table.selectedBuilderJob()){
+                deleteConfirm=table.selectedBuilderJob();
+                notice="Press CONFIRM DELETE to remove only this saved job";
+                show(Page.JOB);
+                return;
+            }
+            send("builder_delete",deleteConfirm);
+            deleteConfirm=-1;
+            notice="Job delete requested. Saved material inventory is not destroyed.";
+            show(Page.JOB);
+        });
         button("CREW -",18,285,90,()->{
             if(table!=null)send("crew",Math.max(1,table.crewTarget()-1));
         });
@@ -298,7 +324,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         var t=station();
         g.text(font,"CASZUAL BUILDERS  /  JOB PLANNER",16,14,0xffeff6eb,false);
         g.text(font,"ACTIVE / SAVED JOBS",16,73,MUTED,false);
-        g.text(font,"JOB-BLOCK SUPPLIES / SCAFFOLDING",18,85,TEXT,false);
+        g.text(font,"PLANNER: TOOLS / BLOCKS / SCAFFOLD",18,85,TEXT,false);
         g.text(font,"PLAYER INVENTORY",18,188,TEXT,false);
         if(t!=null){
             g.text(font,"CREW "+t.builderWorkerIds().size()+"/"+t.crewTarget(),18,274,

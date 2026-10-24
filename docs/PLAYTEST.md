@@ -275,3 +275,14 @@ kitchen work surface, rather than opening a vanilla crafting table GUI.
 - Watch the palette status after opening/removing shulker contents, and compare
   counted warehouse quantities with actual pallets in Caszual Additions.
   Verify white unchecked when the updated Additions bridge is absent.
+
+## Builder debris & tools / Chef repair (0.3.26-dev)
+
+- Chef oven-accessory slots are counted as real utensil supply, never as oven fuel or cooking output. Prepare Croptopia recipes using a pot or pan stored with the CFB oven; check that the real utensil returns to its original oven tool slot if permitted, otherwise to matching/empty kitchen storage.
+- Once food is genuinely in the Chef's saved reservation, a courier walks the finished plate to a reachable pickup counter and rings once on deposit. Full ingredient storage may delay cookware return but must NOT delay the order-up bell or produce a duplicate meal.
+- Check the Meal Pickup Counter on all faces and in inventory for quartz texture resolution: no pink/black missing model faces.
+- JEI's ingredient grid must stay outside the full-screen Builder planner; default other JEI screens and recipe browsing must remain unchanged.
+- DELETE JOB on a selected inactive job requires a second click to confirm. It removes only that job's saved metadata, not physical blocks, stored materials or uploaded schematic files. It must be rejected while a job runs or shulker reservation is in flight.
+- Start a build with an empty site chest and populated linked warehouse. One Builder must request real partial material stock, retrieve shulkers and put them into the selected site chest. Building then proceeds; empty/partially stocked warehouses must not require the user to prefill the site chest manually.
+- Put the appropriate pickaxe/axe/shovel/hoe and scaffolding in the 27 Planner input slots. At a planned occupied block, verify a Builder physically collects a matching tool, walks to the site, checks permissions and debris capacity, breaks only that specific mismatched block, and deposits its actual loot in the on-site container. It should damage the real tool, and return it to the Planner when idle.
+- Never remove a tile entity/inventory, a liquid, a world-protected block, a worker's temporary scaffold or a non-schematic position. If debris storage is full or the correct tool is missing, the obstructed block must remain unchanged with an actionable station warning.

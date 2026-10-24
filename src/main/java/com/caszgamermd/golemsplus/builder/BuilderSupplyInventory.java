@@ -272,6 +272,136 @@ public final class BuilderSupplyInventory {
         }
         return worker.carriedCount(target)>0;
     }
+    /** Store actual block drops in the designated on-site container. The
+     * entire set is simulated before touching any slot; if storage lacks
+     * space, the obstruction is NOT removed.
+     */
+    public static boolean storeDebris(WorkerStationBlockEntity table,
+            java.util.List<ItemStack> drops,boolean commit){
+        Container destination=table.builderMaterialStorage()==null
+                ?table:selectedStorage(table);
+        if(destination==null)return false;
+        int count=destination==table?WorkerStationBlockEntity.INPUT_SLOTS:
+                destination.getContainerSize();
+        ItemStack[] planned=new ItemStack[count];
+        for(int i=0;i<count;i++)planned[i]=destination.getItem(i).copy();
+        for(ItemStack drop:drops){
+            if(drop.isEmpty())continue;
+            int remaining=drop.getCount();
+            for(int pass=0;pass<2;pass++)
+                for(int slot=0;slot<count&&remaining>0;slot++){
+                    ItemStack existing=planned[slot];
+                    if(pass==0&&existing.isEmpty())continue;
+                    if(pass==1&&!existing.isEmpty())continue;
+                    if(!existing.isEmpty()&&!ItemStack.isSameItemSameComponents(
+                            existing,drop))continue;
+                    if(!destination.canPlaceItem(slot,drop))continue;
+                    int capacity=Math.min(drop.getMaxStackSize(),
+                            destination.getMaxStackSize());
+                    int room=capacity-(existing.isEmpty()?0:existing.getCount());
+                    int moved=Math.min(remaining,Math.max(0,room));
+                    if(moved==0)continue;
+                    planned[slot]=drop.copyWithCount(moved+
+                            (existing.isEmpty()?0:existing.getCount()));
+                    remaining-=moved;
+                }
+            if(remaining>0)return false;
+        }
+        if(commit){
+            for(int i=0;i<count;i++)
+                if(!ItemStack.matches(destination.getItem(i),planned[i]))
+                    destination.setItem(i,planned[i]);
+            destination.setChanged();
+        }
+        return true;
+    }
+    public static boolean isMiningTool(ItemStack item){
+        return item.is(net.minecraft.tags.ItemTags.PICKAXES)
+                ||item.is(net.minecraft.tags.ItemTags.AXES)
+                ||item.is(net.minecraft.tags.ItemTags.SHOVELS)
+                ||item.is(net.minecraft.tags.ItemTags.HOES);
+    }
+    public static boolean correctTool(ItemStack item,
+            net.minecraft.world.level.block.state.BlockState block){
+        if(!isMiningTool(item))return false;
+        if(block.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_PICKAXE))
+            return item.is(net.minecraft.tags.ItemTags.PICKAXES);
+        if(block.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_AXE))
+            return item.is(net.minecraft.tags.ItemTags.AXES);
+        if(block.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_SHOVEL))
+            return item.is(net.minecraft.tags.ItemTags.SHOVELS);
+        if(block.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_HOE))
+            return item.is(net.minecraft.tags.ItemTags.HOES);
+        return !block.requiresCorrectToolForDrops();
+    }
+    public enum ToolStatus { READY, MOVING, MISSING }
+    public static int toolSlot(BuilderGolem worker,
+            net.minecraft.world.level.block.state.BlockState target){
+        for(int i=0;i<worker.getContainerSize();i++)
+            if(correctTool(worker.getItem(i),target))return i;
+        return -1;
+    }
+    public static ToolStatus equipForClearing(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            net.minecraft.world.level.block.state.BlockState target){
+        if(toolSlot(worker,target)>=0)return ToolStatus.READY;
+        int selected=-1;
+        for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++)
+            if(correctTool(table.getItem(i),target)){selected=i;break;}
+        if(selected<0)return ToolStatus.MISSING;
+        int pocket=-1;
+        for(int i=0;i<worker.getContainerSize();i++)
+            if(worker.getItem(i).isEmpty()){pocket=i;break;}
+        if(pocket<0)return ToolStatus.MISSING;
+        BlockPos station=table.getBlockPos();
+        if(worker.distanceToSqr(station.getX()+.5,
+                station.getY()+.5,station.getZ()+.5)>12){
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                    level,worker,station,.85);
+            return ToolStatus.MOVING;
+        }
+        ItemStack stored=table.getItem(selected);
+        worker.setItem(pocket,stored.copyWithCount(1));
+        table.setItem(selected,stored.copyWithCount(stored.getCount()-1));
+        return ToolStatus.READY;
+    }
+    /** Prioritize returning tool stacks to their original Builder Planner
+     * rather than mixing them into the construction debris chest.
+     */
+    public static boolean hasTools(BuilderGolem worker){
+        for(int i=0;i<worker.getContainerSize();i++)
+            if(isMiningTool(worker.getItem(i)))return true;
+        return false;
+    }
+    public static boolean returnTools(BuilderGolem worker,
+            WorkerStationBlockEntity table){
+        boolean all=true;
+        for(int i=0;i<worker.getContainerSize();i++){
+            ItemStack held=worker.getItem(i);
+            if(!isMiningTool(held))continue;
+            int left=held.getCount();
+            for(int slot=0;slot<WorkerStationBlockEntity.INPUT_SLOTS&&left>0;slot++){
+                ItemStack existing=table.getItem(slot);
+                if(!existing.isEmpty()&&ItemStack.isSameItemSameComponents(existing,held)
+                        &&table.canPlaceItem(slot,held)){
+                    int moved=Math.min(left,existing.getMaxStackSize()-existing.getCount());
+                    if(moved>0){
+                        table.setItem(slot,existing.copyWithCount(existing.getCount()+moved));
+                        left-=moved;
+                    }
+                }
+            }
+            for(int slot=0;slot<WorkerStationBlockEntity.INPUT_SLOTS&&left>0;slot++){
+                if(!table.getItem(slot).isEmpty()||!table.canPlaceItem(slot,held))continue;
+                int moved=Math.min(left,held.getMaxStackSize());
+                table.setItem(slot,held.copyWithCount(moved));
+                left-=moved;
+            }
+            worker.setItem(i,held.copyWithCount(left));
+            if(left>0)all=false;
+        }
+        return all;
+    }
     public enum ScaffoldLoad { READY, MOVING, MISSING }
     /** Fetch scaffolding with the same real chest/pouch contract as build
      * materials. No tower block can be purchased from a distant container.

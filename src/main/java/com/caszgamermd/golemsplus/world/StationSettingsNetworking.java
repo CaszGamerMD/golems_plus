@@ -90,6 +90,14 @@ public final class StationSettingsNetworking {
                 done=table.setCrewTarget(player.getUUID(),change.amount);
                 if(done)reply(player,"Assigned crew size: "+change.amount);
             }
+            case "builder_delete" -> {
+                if(!table.isBuilder())return;
+                done=table.deleteBuilderJob(player.getUUID(),change.amount());
+                reply(player,done?"Builder job deleted; saved blocks and supplies are untouched":
+                        "Cannot delete an active job or a job with an outstanding shipment. "
+                        +"Cancel or finish its work and settle supplies first.");
+                return;
+            }
             case "builder_select" -> {
                 if(!table.isBuilder())return;
                 done=table.selectBuilderJob(player.getUUID(),change.amount());
