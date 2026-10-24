@@ -33,11 +33,27 @@ public final class BuilderWarehouseCoordinator {
             table.setProblem("Install Caszual Additions with Builder warehouse support");
             return false;
         }
-        Map<String,Integer> needed=BuilderMaterialDemand.batch(
-                steps,table.builderCursor(),BuilderSupplyInventory.available(table));
+        Map<String,Integer> needed=new java.util.LinkedHashMap<>(
+                BuilderMaterialDemand.batch(steps,table.builderCursor(),
+                        BuilderSupplyInventory.available(table)));
         if(needed.isEmpty())return false;
-        table.prepareSupplyRequest(UUID.randomUUID(),needed);
+        // Do not ask the warehouse for a full stack when it has only a
+        // handful of required blocks. Reserve the stock it actually has,
+        // deliver it, build as far as possible, then request the remainder.
         BlockPos computer=new BlockPos(warehouse.x(),warehouse.y(),warehouse.z());
+        Map<String,Integer> stock=BuilderWarehousePort.stockSnapshot(
+                level,computer,table.builderRemaining());
+        if(stock!=null){
+            needed.replaceAll((id,count)->Math.min(count,
+                    Math.max(0,stock.getOrDefault(id,0))));
+            needed.values().removeIf(count->count<=0);
+            if(needed.isEmpty()){
+                table.setProblem("Warehouse currently has no required blocks; "
+                        +"Builder waits for restock or uses staged supplies");
+                return false;
+            }
+        }
+        table.prepareSupplyRequest(UUID.randomUUID(),needed);
         var reply=BuilderWarehousePort.request(level,computer,table.getBlockPos(),
                 table.owner(),table.supplyRequest(),needed);
         if(reply.accepted()&&!reply.ptp().equals(BlockPos.ZERO)){
@@ -136,7 +152,7 @@ public final class BuilderWarehouseCoordinator {
         if(reply.boxes()>0&&reply.accepted()){
             BlockPos destination=reply.ptp();
             if(!BuilderSupplyInventory.hasRoomForBox(table)){
-                table.setProblem("Free an input slot in the Builder Table for supplies");
+                table.setProblem("Free a slot in the selected on-site material storage for warehouse shulkers");
                 return true;
             }
             if(!level.hasChunkAt(destination)){

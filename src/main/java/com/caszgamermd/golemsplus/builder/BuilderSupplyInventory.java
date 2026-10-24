@@ -368,6 +368,11 @@ public final class BuilderSupplyInventory {
     /** Prioritize returning tool stacks to their original Builder Planner
      * rather than mixing them into the construction debris chest.
      */
+    public static boolean hasTools(BuilderGolem worker){
+        for(int i=0;i<worker.getContainerSize();i++)
+            if(isMiningTool(worker.getItem(i)))return true;
+        return false;
+    }
     public static boolean returnTools(BuilderGolem worker,
             WorkerStationBlockEntity table){
         boolean all=true;
