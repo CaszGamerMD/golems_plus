@@ -286,3 +286,37 @@ kitchen work surface, rather than opening a vanilla crafting table GUI.
 - Start a build with an empty site chest and populated linked warehouse. One Builder must request real partial material stock, retrieve shulkers and put them into the selected site chest. Building then proceeds; empty/partially stocked warehouses must not require the user to prefill the site chest manually.
 - Put the appropriate pickaxe/axe/shovel/hoe and scaffolding in the 27 Planner input slots. At a planned occupied block, verify a Builder physically collects a matching tool, walks to the site, checks permissions and debris capacity, breaks only that specific mismatched block, and deposits its actual loot in the on-site container. It should damage the real tool, and return it to the Planner when idle.
 - Never remove a tile entity/inventory, a liquid, a world-protected block, a worker's temporary scaffold or a non-schematic position. If debris storage is full or the correct tool is missing, the obstructed block must remain unchanged with an actionable station warning.
+
+## 0.3.28-dev — Builder worksite clearing, GUI and courier dispatch regression
+
+**Planner inventory:** Open a Builder Table with a pickaxe, axe, shovel,
+scaffolding and building blocks in your player inventory. Regular click,
+right-click and shift-click each stack into the real 27 input slots;
+retrieve them. Specifically test the bottom hotbar row with a carried stack:
+a click must never throw it onto the ground. Repeat at 2×, 3× and 4× GUI
+scales. Background slot rectangles must align with the real menu slots.
+
+**Builder clearing:** Place stone/dirt in the exact location occupied by
+a schematic step and a matching tool in the Builder Planner. The Builder
+returns to the planner, picks up the real tool and comes back to clear the
+obstruction, deposits its drops into the selected site chest, damages the
+tool, then places the planned block. If the nine-slot pouch is full, it must
+unload real inventory to the site chest before borrowing the pickaxe; if the
+chest is full, it must stop rather than discard anything.
+
+**Warehouse dispatch:** Start a build with an EMPTY on-site storage chest and
+required stone in Caszual Additions warehouse racks. Observe that a real
+output PTP reservation is accepted before a supply ticket persists, and the
+closest available Builder starts walking toward the PTP even while the shulker
+is still being packed. Once full, the golem carries the physical packed box
+back to the selected site chest, then builders use its contents. For a solo
+Builder, the same Golem must perform both jobs. Force an unavailable output
+PTP, then clear it: the Planner must show a retryable warning and recover
+automatically (no permanent ticket stuck at 0,0,0). Load a saved game with
+an orphaned pre-0.3.28 ticket and confirm it retries safely.
+
+**Stock shortfalls:** When the warehouse has only part of a requested batch,
+request the actual amount; never forge the missing materials or lose a
+shulker if its delivery chest fills up. Verify that missing stock and PTP
+problems remain visible, rather than being masked by a generic 'site storage
+empty' warning.
