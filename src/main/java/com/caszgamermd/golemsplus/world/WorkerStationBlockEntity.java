@@ -553,7 +553,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     public int claimBuilderStep(UUID worker,int layerExclusive){
         if(!builderWorkerIds().contains(worker)||activeOrder==null)return -1;
-        if(builderClaims.containsKey(worker))return builderClaims.get(worker);
+        if(builderClaims.containsKey(worker)){
+            int existing=builderClaims.get(worker);
+            return existing<layerExclusive?existing:-1;
+        }
         int next=com.caszgamermd.golemsplus.builder.BuilderCrewSchedule.next(
                 builderCursor,builderBlocks,completedAhead,builderClaims.values());
         if(next>=layerExclusive)return -1;
