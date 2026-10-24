@@ -298,7 +298,8 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     private static String stacks(long count,int limit){
         int size=Math.max(1,limit);
         long full=count/size,partial=count%size;
-        return count+" items ("+full+" stacks"+(partial==0?"":", "+partial+" extra")+")";
+        return full+" stack"+(full==1?"":"s")+" + "+partial
+                +" item"+(partial==1?"":"s");
     }
     @Override public void extractBackground(GuiGraphicsExtractor g,
             int mouseX,int mouseY,float partialTick){
