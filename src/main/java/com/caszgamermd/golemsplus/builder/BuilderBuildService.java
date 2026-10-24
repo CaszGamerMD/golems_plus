@@ -22,6 +22,16 @@ import net.minecraft.world.level.block.state.BlockState;
  * existing structures, clone block entities or modify non-air blocks.
  */
 public final class BuilderBuildService {
+    // Site clearing is one-at-a-time to preserve protected block checks,
+    // but the selected cleaner cannot monopolize the cursor forever if
+    // navigation is blocked. Hand the unchanged target to another loaded
+    // crew member every four seconds without discarding any real items.
+    private static final java.util.Map<WorkerStationBlockEntity,ClearWatch>
+            clearWatch=new java.util.WeakHashMap<>();
+    private static final class ClearWatch {
+        int cursor=-1;
+        long lastProgress;
+    }
     private record Cache(String file, int rotation,int mirror,BlockPos origin,
                          List<BuilderConstructionPlan.Step> steps,
                          List<BuilderSiteClearance.Target> clearing){}
@@ -236,17 +246,23 @@ public final class BuilderBuildService {
                 // selected nobody if the solo worker was the courier.
                 // Select the first ACTUALLY LOADED non-courier Builder;
                 // a solo courier may clear while no pickup is ready.
-                UUID cleaner=null;
+                java.util.List<UUID> candidates=new java.util.ArrayList<>();
                 for(UUID id:table.builderWorkerIds()){
                     if(id.equals(table.supplyRunner()))continue;
                     if(level.getEntity(id) instanceof BuilderGolem available
-                            &&available.isAlive()){
-                        cleaner=id;break;
-                    }
+                            &&available.isAlive())candidates.add(id);
                 }
-                if(cleaner==null&&table.builderWorkerIds().size()==1
+                if(candidates.isEmpty()&&table.builderWorkerIds().size()==1
                         &&table.builderWorkerIds().contains(worker.getUUID())
-                        &&!worker.hasSupplyBox())cleaner=worker.getUUID();
+                        &&!worker.hasSupplyBox())candidates.add(worker.getUUID());
+                ClearWatch watch=clearWatch.computeIfAbsent(table,k->new ClearWatch());
+                long now=level.getGameTime();
+                if(watch.cursor!=table.builderClearCursor()){
+                    watch.cursor=table.builderClearCursor();watch.lastProgress=now;
+                }
+                UUID cleaner=candidates.isEmpty()?null:candidates.get(
+                        (int)Math.floorMod((now-watch.lastProgress)/80,
+                                candidates.size()));
                 if(worker.getUUID().equals(cleaner))
                     BuilderSiteClearance.tick(level,worker,table,owner,
                             plan.clearing(),plan.steps());
