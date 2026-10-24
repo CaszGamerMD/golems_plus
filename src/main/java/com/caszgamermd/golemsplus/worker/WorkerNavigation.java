@@ -230,17 +230,59 @@ public final class WorkerNavigation {
         if(!changed&&mob.tickCount<p.nextRoute)return false;
 
         int avoid=p.attempts==0?0:(p.attempts%4)+1;
-        List<Candidate> candidates=candidateGoals(level,mob,target,avoid);
+        // Minecraft's native path search is bounded around the mob. A PTP
+        // across a warehouse can be farther away than that search volume,
+        // so demanding one complete A* route reported "no path" despite a
+        // wide, obstacle-free corridor. For long journeys, validate local
+        // walkable waypoints and advance in physical 10-24 block legs.
+        double dx=target.getX()+.5-mob.getX();
+        double dz=target.getZ()+.5-mob.getZ();
+        double distance=Math.hypot(dx,dz);
         int calculated=0;
-        for(Candidate candidate:candidates){
-            if(++calculated>MAX_DESTINATION_PATHS)break;
-            Path path=mob.getNavigation().createPath(candidate.feet(),0);
-            if(!safePath(level,mob,path,false))continue;
-            if(mob.getNavigation().moveTo(path,speed)){
-                p.approach=candidate.feet();
-                p.stalled=0;p.unsafeChecks=0;p.lastBad=null;
-                p.nextRoute=mob.tickCount+CHECK_TICKS;
-                return true;
+        if(distance<=30){
+            for(Candidate candidate:candidateGoals(level,mob,target,avoid)){
+                if(++calculated>MAX_DESTINATION_PATHS)break;
+                Path path=mob.getNavigation().createPath(candidate.feet(),0);
+                if(!safePath(level,mob,path,false))continue;
+                if(mob.getNavigation().moveTo(path,speed)){
+                    p.approach=candidate.feet();
+                    p.stalled=0;p.unsafeChecks=0;p.lastBad=null;
+                    p.nextRoute=mob.tickCount+CHECK_TICKS;
+                    return true;
+                }
+            }
+        }
+        if(distance>16){
+            double forwardX=dx/distance,forwardZ=dz/distance;
+            // Scan a small fan of alternate aisle approaches around the
+            // desired heading. Each waypoint must be standable, reachable
+            // by vanilla A*, and measurably closer to the final destination.
+            // Never skip the path and teleport or steer through walls.
+            int[][] shifts={{0,0},{0,7},{0,-7},{0,13},{0,-13},
+                    {-7,7},{-7,-7}};
+            int[] lengths={24,16,10};
+            int first=p.attempts%shifts.length;
+            outer:
+            for(int length:lengths)for(int k=0;k<shifts.length;k++){
+                int[] shift=shifts[(k+first)%shifts.length];
+                double advance=length+shift[0];
+                double wx=mob.getX()+forwardX*advance-forwardZ*shift[1];
+                double wz=mob.getZ()+forwardZ*advance+forwardX*shift[1];
+                BlockPos intermediate=BlockPos.containing(wx,mob.getY(),wz);
+                if(!level.hasChunkAt(intermediate))continue;
+                for(Candidate candidate:candidateGoals(level,mob,intermediate,avoid)){
+                    if(candidate.feet().distSqr(target)>=
+                            mob.blockPosition().distSqr(target)-24)continue;
+                    if(++calculated>MAX_DESTINATION_PATHS+15)break outer;
+                    Path path=mob.getNavigation().createPath(candidate.feet(),0);
+                    if(!safePath(level,mob,path,false))continue;
+                    if(mob.getNavigation().moveTo(path,speed)){
+                        p.approach=candidate.feet();
+                        p.stalled=0;p.unsafeChecks=0;p.lastBad=null;
+                        p.nextRoute=mob.tickCount+CHECK_TICKS;
+                        return true;
+                    }
+                }
             }
         }
         // An impossible route must *not* fall back to walking directly at
