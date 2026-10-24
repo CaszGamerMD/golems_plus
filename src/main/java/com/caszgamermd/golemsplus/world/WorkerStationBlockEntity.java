@@ -156,6 +156,18 @@ public final class WorkerStationBlockEntity extends BlockEntity
             int remains=chefEscrow.get(id)-e.getValue();
             if(remains==0)chefEscrow.remove(id);else chefEscrow.put(id,remains);
         }
+        // Real recipe remainders are reusable tools and containers.
+        // Track them in escrow exactly once per actually completed step.
+        if(step.method().equals("Assemble"))
+            for(var entry:step.inputs().entrySet()){
+                ItemStack remains=com.caszgamermd.golemsplus.cooking.ChefCraftingRemainders
+                        .forIngredient(entry.getKey());
+                if(!remains.isEmpty()){
+                    String key=net.minecraft.core.registries.BuiltInRegistries.ITEM
+                            .getKey(remains.getItem()).toString();
+                    chefEscrow.merge(key,remains.getCount()*entry.getValue(),Integer::sum);
+                }
+            }
         String out=net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(step.result()).toString();
         chefEscrow.merge(out,step.resultCount(),Integer::sum);
         chefStepIndex++;chefStepTicks=0;sync();return true;
