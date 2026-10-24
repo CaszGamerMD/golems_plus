@@ -257,28 +257,26 @@ public final class ProfessionGolemModel
                 chair.addOrReplaceChild("arm_support_right",CubeListBuilder.create()
                         .texOffs(190,92).addBox(-9.2f,13.3f,-7.55f,
                                 .8f,6.4f,.85f),PartPose.ZERO);
-                // Real crossed braces are rotated rods, not an opaque
-                // tabletop or solid triangular polygons.
+                // The front braces previously spanned the Fisher's lap.
+                // Lower rigid crossbars run between the real foot posts,
+                // underneath the seat and never through the Golem's legs.
                 for(int side=0;side<2;side++){
-                    float z=side==0?-6.4f:6.5f;
-                    for(int diagonal=0;diagonal<2;diagonal++){
-                        float angle=diagonal==0?.71f:-.71f;
-                        chair.addOrReplaceChild("cross_"+side+"_"+diagonal,
-                                CubeListBuilder.create().texOffs(190,92)
-                                        .addBox(-.43f,-9.5f,-.45f,
-                                                .86f,19.0f,.9f),
-                                PartPose.offsetAndRotation(0,18.25f,z,0,0,angle));
-                    }
+                    float z=side==0?-6.15f:6.15f;
+                    chair.addOrReplaceChild("underseat_crossbar_"+side,
+                            CubeListBuilder.create().texOffs(190,92)
+                                    .addBox(-8.6f,21.5f,z-.43f,
+                                            17.2f,.86f,.86f),PartPose.ZERO);
                 }
-                // Triangular side-fold braces and metal rivet blocks.
+                // Side X braces attach at y~14 (upper post) and y~23
+                // (feet), rather than ending in the air.
                 for(int side=0;side<2;side++){
                     float x=side==0?-8.55f:8.55f;
                     for(int diagonal=0;diagonal<2;diagonal++){
-                        float tilt=diagonal==0?.49f:-.49f;
+                        float tilt=diagonal==0?.99f:-.99f;
                         chair.addOrReplaceChild("side_cross_"+side+"_"+diagonal,
                                 CubeListBuilder.create().texOffs(190,92)
-                                        .addBox(-.38f,-7.1f,-.38f,
-                                                .76f,14.2f,.76f),
+                                        .addBox(-.38f,-7.65f,-.38f,
+                                                .76f,15.3f,.76f),
                                 PartPose.offsetAndRotation(x,18.8f,0,
                                         tilt,0,0));
                     }
