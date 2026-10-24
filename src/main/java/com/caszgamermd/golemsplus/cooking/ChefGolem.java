@@ -65,17 +65,25 @@ public final class ChefGolem extends PathfinderMob {
         super.tick();
         if(level() instanceof ServerLevel world)
             com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(world,this);
-        if(tickCount%40!=0||!(level() instanceof ServerLevel server)
-                ||owner==null||!server.hasChunkAt(home))return;
+        if(tickCount%10!=0||!(level() instanceof ServerLevel server))return;
+        // The held food is a visual work prop, not a second inventory.
+        // Clear it promptly when we have no accessible active workstation.
+        if(owner==null||!server.hasChunkAt(home)){
+            setJobAppearance(false,net.minecraft.world.item.ItemStack.EMPTY);
+            return;
+        }
         if(!(server.getBlockEntity(home) instanceof
                 com.caszgamermd.golemsplus.world.WorkerStationBlockEntity station)
                 ||!station.isCooking()||!owner.equals(station.owner())){
             discard();return;
         }
-        if(!station.chefBusy()){
+        if(!station.chefBusy()
+                ||station.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED)
             setJobAppearance(false,net.minecraft.world.item.ItemStack.EMPTY);
-        }
-        if(!station.chefBusy() && station.phase()!=com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED)
+        // Maintain the original paced idle movement, but do not let it
+        // slow down hand/appearance cleanup.
+        if(tickCount%40==0&&!station.chefBusy()
+                &&station.phase()!=com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED)
             ChefFloorNavigation.idle(server,this,home);
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
