@@ -122,6 +122,8 @@ public final class BuilderBuildService {
             worker.getNavigation().stop();
             return;
         }
+        worker.setDeliveryRole(table.activeOrder()!=null
+                &&worker.getUUID().equals(table.supplyRunner()));
         if(!table.builderWorkerIds().contains(worker.getUUID())){
             // Never discard inventory-bearing entities: a misconfigured
             // workstation must not silently destroy delivered shulker cargo.
