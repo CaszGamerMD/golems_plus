@@ -352,7 +352,24 @@ public final class BuilderSupplyInventory {
         int pocket=-1;
         for(int i=0;i<worker.getContainerSize();i++)
             if(worker.getItem(i).isEmpty()){pocket=i;break;}
-        if(pocket<0)return ToolStatus.MISSING;
+        if(pocket<0){
+            // A full pouch is NOT a missing pickaxe. Make a physical
+            // unload trip to the selected site chest, then go back to
+            // the Planner to borrow the real tool. Never delete stock
+            // to create an inventory slot.
+            BlockPos depot=pouchReturnPos(table);
+            if(!level.hasChunkAt(depot))return ToolStatus.MISSING;
+            if(worker.distanceToSqr(depot.getX()+.5,
+                    depot.getY()+.5,depot.getZ()+.5)>12){
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                        level,worker,depot,.84);
+                return ToolStatus.MOVING;
+            }
+            returnPouch(table,worker);
+            for(int i=0;i<worker.getContainerSize();i++)
+                if(worker.getItem(i).isEmpty()){pocket=i;break;}
+            if(pocket<0)return ToolStatus.MISSING;
+        }
         BlockPos station=table.getBlockPos();
         if(worker.distanceToSqr(station.getX()+.5,
                 station.getY()+.5,station.getZ()+.5)>12){
