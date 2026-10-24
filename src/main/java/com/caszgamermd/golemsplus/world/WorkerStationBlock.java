@@ -84,11 +84,11 @@ public final class WorkerStationBlock extends Block implements EntityBlock {
         if(specialty!=WorkerSpecialty.COOKING)
             return super.getShape(state,level,pos,context);
         // Back half of each cell only: a genuine wall-screen kiosk.
-        return switch(state.getValue(FACING)){
-            case NORTH -> Block.box(0,0,8,16,16,16);
-            case SOUTH -> Block.box(0,0,0,16,16,8);
-            case EAST -> Block.box(0,0,0,8,16,16);
-            case WEST -> Block.box(8,0,0,16,16,16);
+        return switch(state.getValue(FACING).toString()){
+            case "north" -> Block.box(0,0,8,16,16,16);
+            case "south" -> Block.box(0,0,0,16,16,8);
+            case "east" -> Block.box(0,0,0,8,16,16);
+            case "west" -> Block.box(8,0,0,16,16,16);
             default -> Block.box(0,0,8,16,16,16);
         };
     }

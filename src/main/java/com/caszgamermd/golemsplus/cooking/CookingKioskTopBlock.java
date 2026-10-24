@@ -38,11 +38,11 @@ public final class CookingKioskTopBlock extends Block{
     }
     @Override protected VoxelShape getShape(BlockState state,BlockGetter level,
             BlockPos pos,CollisionContext context){
-        return switch(state.getValue(FACING)){
-            case NORTH -> Block.box(0,0,8,16,16,16);
-            case SOUTH -> Block.box(0,0,0,16,16,8);
-            case EAST -> Block.box(0,0,0,8,16,16);
-            case WEST -> Block.box(8,0,0,16,16,16);
+        return switch(state.getValue(FACING).toString()){
+            case "north" -> Block.box(0,0,8,16,16,16);
+            case "south" -> Block.box(0,0,0,16,16,8);
+            case "east" -> Block.box(0,0,0,8,16,16);
+            case "west" -> Block.box(8,0,0,16,16,16);
             default -> Block.box(0,0,8,16,16,16);
         };
     }
