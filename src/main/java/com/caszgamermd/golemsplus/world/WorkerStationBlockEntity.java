@@ -572,13 +572,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
             crewTarget=Math.max(crewTarget,chefWorkerIds().size());sync();return true;
         }
         int count=switch(specialty){
-            case BUILDER -> isBuilder()?builderWorkerIds().size():4;
+            case BUILDER -> isBuilder()?builderWorkerIds().size():8;
             case TRADER -> isTrader()?traderWorkerIds().size():4;
             case BEEKEEPER -> isBeekeeper()?beekeeperWorkers().size():4;
             case FISHING -> isFishing()?fisherWorkerIds().size():4;
             default -> 4;
         };
-        if(count>=4)return false;
+        if(count>=(specialty==WorkerSpecialty.BUILDER?8:4))return false;
         crewTarget=Math.max(crewTarget,count+1);
         return switch(specialty) {
             case BUILDER -> registerBuilderWorker(worker);
@@ -590,7 +590,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
 
     public boolean setCrewTarget(UUID actor,int count){
-        if(!canConfigure(actor)||(!isBuilder()&&!isTrader()&&!isBeekeeper()&&!isFishing()&&!isCooking())||count<1||count>4)return false;
+        if(!canConfigure(actor)||(!isBuilder()&&!isTrader()&&!isBeekeeper()&&!isFishing()&&!isCooking())||count<1||count>(isBuilder()?8:4))return false;
         crewTarget=count;sync();return true;
     }
     public java.util.List<UUID> traderWorkerIds(){
@@ -1160,7 +1160,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putInt("builder_crew_target",crewTarget);
         int lastIndex=0;
         for(UUID id:builderWorkerIds()){
-            if(lastIndex>=4)break;
+            if(lastIndex>=8)break;
             BlockPos last=builderLastPositions.get(id);
             if(last==null)continue;
             out.putString("builder_last_worker_"+lastIndex,id.toString());
@@ -1168,14 +1168,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
             lastIndex++;
         }
         out.putInt("builder_last_count",lastIndex);
-        out.putInt("builder_extra_workers",Math.min(3,additionalBuilderWorkers.size()));
-        for(int n=0;n<additionalBuilderWorkers.size()&&n<3;n++)
+        out.putInt("builder_extra_workers",Math.min(7,additionalBuilderWorkers.size()));
+        for(int n=0;n<additionalBuilderWorkers.size()&&n<7;n++)
             out.putString("builder_extra_worker_"+n,additionalBuilderWorkers.get(n).toString());
         out.putLong("builder_ahead_bits",completedAhead);
-        out.putInt("builder_claim_count",Math.min(4,builderClaims.size()));
+        out.putInt("builder_claim_count",Math.min(8,builderClaims.size()));
         int cix=0;
         for(var entry:builderClaims.entrySet()){
-            if(cix>=4)break;
+            if(cix>=8)break;
             out.putString("builder_claim_worker_"+cix,entry.getKey().toString());
             out.putInt("builder_claim_index_"+cix,entry.getValue());cix++;
         }
@@ -1390,16 +1390,16 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 builderClearByFile.getOrDefault(builderFile,0)));
         builderMissingRetries.clear();
         builderWorkerId=uuid(in,"builder_worker");
-        crewTarget=Math.clamp(in.getIntOr("builder_crew_target",1),1,4);
+        crewTarget=Math.clamp(in.getIntOr("builder_crew_target",1),1,isBuilder()?8:4);
         additionalBuilderWorkers.clear();
-        int extra=Math.clamp(in.getIntOr("builder_extra_workers",0),0,3);
+        int extra=Math.clamp(in.getIntOr("builder_extra_workers",0),0,7);
         for(int j=0;j<extra;j++){
             UUID id=uuid(in,"builder_extra_worker_"+j);
             if(id!=null&&!additionalBuilderWorkers.contains(id)
                     &&!id.equals(builderWorkerId))additionalBuilderWorkers.add(id);
         }
         builderLastPositions.clear();
-        int lastCount=Math.clamp(in.getIntOr("builder_last_count",0),0,4);
+        int lastCount=Math.clamp(in.getIntOr("builder_last_count",0),0,8);
         for(int n=0;n<lastCount;n++){
             UUID id=uuid(in,"builder_last_worker_"+n);
             BlockPos pos=in.read("builder_last_position_"+n,BlockPos.CODEC)
@@ -1409,7 +1409,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         completedAhead=in.getLongOr("builder_ahead_bits",0);
         builderClaims.clear();
-        int claims=Math.clamp(in.getIntOr("builder_claim_count",0),0,4);
+        int claims=Math.clamp(in.getIntOr("builder_claim_count",0),0,8);
         for(int j=0;j<claims;j++){
             UUID id=uuid(in,"builder_claim_worker_"+j);
             int index=in.getIntOr("builder_claim_index_"+j,-1);
