@@ -93,7 +93,12 @@ public final class BuilderSiteClearance {
             // Reach above-head blocks from real supplied scaffolding. This
             // is the same non-creative, trackable, reclaimable system used
             // later for layer-by-layer construction.
-            if(pos.getY()-worker.getY()>2.5){
+            // Clear thin snow directly before asking for a scaffold column.
+            // Thin snow is replaceable ground cover, not an elevated
+            // structural obstruction. A temporary tower would often have
+            // nowhere to stand until the snow itself had been removed.
+            boolean surfaceSnow=existing.is(Blocks.SNOW);
+            if(!surfaceSnow&&pos.getY()-worker.getY()>2.5){
                 var reach=BuilderScaffolding.reach(
                         world,worker,table,owner,pos,construction);
                 if(reach==BuilderScaffolding.Result.NEED_MATERIALS){
