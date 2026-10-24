@@ -330,35 +330,69 @@ public final class BuilderSupplyInventory {
         }
         return null;
     }
-    /** Return unused real pouch items at the next accessible site container.
-     * If storage fills up, leave remaining stock persisted on the golem.
+    private static int tuckIntoShulker(Container target,int slot,ItemStack item,
+            int remaining,boolean onlyMatching){
+        ItemStack box=target.getItem(slot);
+        if(!box.is(ItemTags.SHULKER_BOXES)||!box.has(DataComponents.CONTAINER))
+            return remaining;
+        var slots=contents(box);
+        boolean modified=false;
+        for(int j=0;j<slots.size()&&remaining>0;j++){
+            ItemStack old=slots.get(j);
+            if(onlyMatching && old.isEmpty())continue;
+            if(!old.isEmpty()&&!ItemStack.isSameItemSameComponents(old,item))
+                continue;
+            int limit=item.getMaxStackSize();
+            int room=old.isEmpty()?limit:Math.max(0,limit-old.getCount());
+            int accepted=Math.min(room,remaining);
+            if(accepted>0){
+                slots.set(j,item.copyWithCount((old.isEmpty()?0:old.getCount())+accepted));
+                remaining-=accepted;modified=true;
+            }
+        }
+        if(modified){
+            ItemStack packed=box.copy();
+            packed.set(DataComponents.CONTAINER,ItemContainerContents.fromItems(slots));
+            target.setItem(slot,packed);
+            target.setChanged();
+        }
+        return remaining;
+    }
+    /** Return unused real pouch items to the staging container, including
+     * empty space INSIDE physically stored shulker boxes. If every real
+     * slot is full, remaining materials stay saved on the Golem.
      */
     public static boolean returnPouch(WorkerStationBlockEntity table,BuilderGolem worker){
         Container target=table.builderMaterialStorage()==null?table:selectedStorage(table);
         if(target==null)return false;
         int count=target==table?WorkerStationBlockEntity.INPUT_SLOTS:target.getContainerSize();
         for(int i=0;i<worker.getContainerSize();i++){
-            ItemStack stack=worker.getItem(i);
-            if(stack.isEmpty())continue;
-            int left=stack.getCount();
+            ItemStack item=worker.getItem(i);
+            if(item.isEmpty())continue;
+            int left=item.getCount();
+            // Existing matching loose stacks first.
             for(int k=0;k<count&&left>0;k++){
-                ItemStack existing=target.getItem(k);
-                if(!existing.isEmpty()&&ItemStack.isSameItemSameComponents(existing,stack)
-                        &&target.canPlaceItem(k,stack)){
-                    int accepted=Math.min(left,existing.getMaxStackSize()-existing.getCount());
-                    if(accepted>0){
-                        target.setItem(k,existing.copyWithCount(existing.getCount()+accepted));
-                        left-=accepted;
-                    }
+                ItemStack old=target.getItem(k);
+                if(old.isEmpty()||!ItemStack.isSameItemSameComponents(old,item)
+                        ||!target.canPlaceItem(k,item))continue;
+                int accepted=Math.min(left,old.getMaxStackSize()-old.getCount());
+                if(accepted>0){
+                    target.setItem(k,old.copyWithCount(old.getCount()+accepted));
+                    left-=accepted;
                 }
             }
+            // Matching item stacks already packed in delivered shulkers.
+            for(int k=0;k<count&&left>0;k++)
+                left=tuckIntoShulker(target,k,item,left,true);
             for(int k=0;k<count&&left>0;k++){
-                if(!target.getItem(k).isEmpty()||!target.canPlaceItem(k,stack))continue;
-                int accepted=Math.min(left,stack.getMaxStackSize());
-                target.setItem(k,stack.copyWithCount(accepted));
-                left-=accepted;
+                if(!target.getItem(k).isEmpty()||!target.canPlaceItem(k,item))continue;
+                int moved=Math.min(left,item.getMaxStackSize());
+                target.setItem(k,item.copyWithCount(moved));left-=moved;
             }
-            worker.setItem(i,stack.copyWithCount(left));
+            // Last resort: spare empty slots inside shulkers.
+            for(int k=0;k<count&&left>0;k++)
+                left=tuckIntoShulker(target,k,item,left,false);
+            worker.setItem(i,item.copyWithCount(left));
             target.setChanged();
         }
         return worker.isEmpty();
