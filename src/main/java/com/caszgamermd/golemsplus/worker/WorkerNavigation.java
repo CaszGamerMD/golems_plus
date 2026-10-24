@@ -48,9 +48,13 @@ public final class WorkerNavigation {
         BlockPos requested,approach,openedDoor;
         Vec3 previous;
         int stalled,attempts,wait,doorAge,nextRoute;
-        int unsafeChecks;
+        int unsafeChecks,avoidUntil;
         BlockPos lastBad;
         boolean narrowDoorway;
+        // Cached weighted route is transient: the actual job and cargo
+        // remain persisted on the worker and may safely resume after reload.
+        List<BlockPos> weightedRoute=List.of();
+        int routeCursor;
     }
     private static Progress state(PathfinderMob mob){
         return states.computeIfAbsent(mob,m->new Progress());
@@ -221,6 +225,7 @@ public final class WorkerNavigation {
         if(changed){
             p.requested=target.immutable();p.approach=null;
             p.attempts=0;p.nextRoute=0;p.stalled=0;p.unsafeChecks=0;
+            p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
         }
         updateDoorClearance(level,mob,p);
         if(p.openedDoor==null)openApproachDoor(level,mob,p);
@@ -228,63 +233,67 @@ public final class WorkerNavigation {
         if(!changed&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
         if(!changed&&mob.tickCount<p.nextRoute)return false;
+        // A temporary body-block or a closed door must not permanently
+        // blacklist the only valid aisle. Expire bad waypoints after
+        // roughly three seconds, then try the new world state.
+        if(p.lastBad!=null&&mob.tickCount>=p.avoidUntil)
+            p.lastBad=null;
 
-        int avoid=p.attempts==0?0:(p.attempts%4)+1;
-        // Minecraft's native path search is bounded around the mob. A PTP
-        // across a warehouse can be farther away than that search volume,
-        // so demanding one complete A* route reported "no path" despite a
-        // wide, obstacle-free corridor. For long journeys, validate local
-        // walkable waypoints and advance in physical 10-24 block legs.
-        double dx=target.getX()+.5-mob.getX();
-        double dz=target.getZ()+.5-mob.getZ();
-        double distance=Math.hypot(dx,dz);
-        int calculated=0;
-        if(distance<=30){
+        // Retain the same route across job updates. The old fan of 24/16/10
+        // straight-line waypoints repeatedly chose the same dead end next
+        // to a wall. Instead use one bounded lowest-cost search starting
+        // from the actual Golem and validate every intermediate floor tile.
+        if(p.routeCursor>=p.weightedRoute.size()){
+            p.weightedRoute=List.of();
+            p.routeCursor=0;
+        }
+        if(!p.weightedRoute.isEmpty()&&p.approach!=null
+                &&mob.blockPosition().distSqr(p.approach)>9){
+            // Navigation ended without arriving at the promised waypoint.
+            // Invalidate this branch and search another physically valid
+            // route after a short per-worker retry delay.
+            p.lastBad=p.approach;p.avoidUntil=mob.tickCount+60;
+            p.weightedRoute=List.of();p.routeCursor=0;
+        }
+        if(p.weightedRoute.isEmpty()){
+            int avoid=p.attempts==0?0:(p.attempts%4)+1;
+            List<BlockPos> goals=new ArrayList<>();
             for(Candidate candidate:candidateGoals(level,mob,target,avoid)){
-                if(++calculated>MAX_DESTINATION_PATHS)break;
-                Path path=mob.getNavigation().createPath(candidate.feet(),0);
-                if(!safePath(level,mob,path,false))continue;
-                if(mob.getNavigation().moveTo(path,speed)){
-                    p.approach=candidate.feet();
-                    p.stalled=0;p.unsafeChecks=0;p.lastBad=null;
-                    p.nextRoute=mob.tickCount+CHECK_TICKS;
-                    return true;
-                }
+                if(goals.size()>=16)break;
+                goals.add(candidate.feet());
             }
-        }
-        if(distance>16){
-            double forwardX=dx/distance,forwardZ=dz/distance;
-            // Scan a small fan of alternate aisle approaches around the
-            // desired heading. Each waypoint must be standable, reachable
-            // by vanilla A*, and measurably closer to the final destination.
-            // Never skip the path and teleport or steer through walls.
-            int[][] shifts={{0,0},{0,7},{0,-7},{0,13},{0,-13},
-                    {-7,7},{-7,-7}};
-            int[] lengths={24,16,10};
-            int first=p.attempts%shifts.length;
-            outer:
-            for(int length:lengths)for(int k=0;k<shifts.length;k++){
-                int[] shift=shifts[(k+first)%shifts.length];
-                double advance=length+shift[0];
-                double wx=mob.getX()+forwardX*advance-forwardZ*shift[1];
-                double wz=mob.getZ()+forwardZ*advance+forwardX*shift[1];
-                BlockPos intermediate=BlockPos.containing(wx,mob.getY(),wz);
-                if(!level.hasChunkAt(intermediate))continue;
-                for(Candidate candidate:candidateGoals(level,mob,intermediate,avoid)){
-                    if(candidate.feet().distSqr(target)>=
-                            mob.blockPosition().distSqr(target)-24)continue;
-                    if(++calculated>MAX_DESTINATION_PATHS+15)break outer;
-                    Path path=mob.getNavigation().createPath(candidate.feet(),0);
-                    if(!safePath(level,mob,path,false))continue;
-                    if(mob.getNavigation().moveTo(path,speed)){
-                        p.approach=candidate.feet();
-                        p.stalled=0;p.unsafeChecks=0;p.lastBad=null;
-                        p.nextRoute=mob.tickCount+CHECK_TICKS;
-                        return true;
-                    }
-                }
+            WorkerRoutePlanner.Route route=WorkerRoutePlanner.plan(
+                    mob.blockPosition(),goals,
+                    at->standingTile(level,mob,at),
+                    at->floorAt(level,at),p.lastBad);
+            if(route==null||route.steps().isEmpty()){
+                p.attempts++;
+                p.nextRoute=mob.tickCount+ROUTE_RETRY+Math.floorMod(mob.getId(),5);
+                return false;
             }
+            p.weightedRoute=route.steps();p.routeCursor=0;
         }
+        // One native A* only for a SHORT portion of the already-validated
+        // cheapest route. Trying shorter checkpoints prevents false "cannot
+        // path" reports from the vanilla navigation radius.
+        int count=p.weightedRoute.size();
+        for(int distance:new int[]{10,6,3,1}){
+            int index=Math.min(count-1,p.routeCursor+distance-1);
+            if(index<p.routeCursor)continue;
+            BlockPos waypoint=p.weightedRoute.get(index);
+            if(!standingTile(level,mob,waypoint))continue;
+            Path path=mob.getNavigation().createPath(waypoint,0);
+            if(!safePath(level,mob,path,false))continue;
+            if(!mob.getNavigation().moveTo(path,speed))continue;
+            p.approach=waypoint;
+            p.routeCursor=index+1;
+            p.stalled=0;p.unsafeChecks=0;p.lastBad=null;
+            p.nextRoute=mob.tickCount+CHECK_TICKS;
+            return true;
+        }
+        p.lastBad=p.weightedRoute.get(p.routeCursor);
+        p.avoidUntil=mob.tickCount+60;
+        p.weightedRoute=List.of();p.routeCursor=0;
         // An impossible route must *not* fall back to walking directly at
         // the wall; try another approach as obstacles change or workers move.
         p.attempts++;
@@ -295,6 +304,7 @@ public final class WorkerNavigation {
     public static void stop(PathfinderMob mob){
         Progress p=state(mob);
         p.requested=null;p.approach=null;p.stalled=0;p.unsafeChecks=0;
+        p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
         mob.getNavigation().stop();
         // Door clearance is reset during the next server navigation tick.
     }
@@ -323,6 +333,13 @@ public final class WorkerNavigation {
             if(blocked||p.stalled>=STALL_TICKS){
                 p.unsafeChecks++;
                 p.attempts++;
+                Path old=mob.getNavigation().getPath();
+                if(old!=null&&old.getNextNodeIndex()<old.getNodeCount()){
+                    Node node=old.getNode(old.getNextNodeIndex());
+                    p.lastBad=new BlockPos(node.x,node.y,node.z);
+                    p.avoidUntil=mob.tickCount+60;
+                }
+                p.weightedRoute=List.of();p.routeCursor=0;
                 p.nextRoute=mob.tickCount+CHECK_TICKS;
                 mob.getNavigation().stop();
                 return;
@@ -334,6 +351,7 @@ public final class WorkerNavigation {
             mob.getNavigation().stop();
             // Keep requested target so the next evaluation resumes.
             p.nextRoute=0;p.stalled=STALL_TICKS;
+            p.weightedRoute=List.of();p.routeCursor=0;
             return;
         }
         // Open door based on actual next-step or desired route direction,

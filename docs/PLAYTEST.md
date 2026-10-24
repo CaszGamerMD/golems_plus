@@ -342,3 +342,25 @@ empty' warning.
   own status should identify inaccessible racks or missing shulker capacity.
 - Check that a solo Builder also builds from staged blocks and makes a supply
   trip when running low, without duplicating shulker reservations.
+
+## 0.3.30-dev — shortest legal worker navigation
+
+The shared navigation for Builder, Chef, Beekeeper, Fisher and Trader Golems
+uses bounded weighted A* from the worker's actual feet to valid service
+positions. Only cardinal, collision-checked tiles with a real floor and
+space for the full body are allowed; climbs/drops of at most one block
+incur a terrain cost. It ranks the true route cost, not straight-line
+distance to the nearest-looking waypoint. Distant trips use cached,
+short, physically traversed legs. Each Golem checks upcoming path nodes
+every five server ticks and replans on obstruction or a genuine stall.
+Temporarily occupied cells expire from avoidance after 60 ticks.
+
+Regression: create a solid 7-wide wall between a Builder and warehouse
+with an open door/aisle off to one side. Verify that the Golem goes AROUND
+the wall without running into its center. Add a second wider but shorter
+open corridor and ensure route selection favors the cheaper real walk.
+Repeat for the Chef's serving counter, Fisher cooler and Beekeeper bag.
+Move another worker through the aisle while one is routing; no infinite
+blocked tile blacklist. Try ramps, slabs, a two-high wall, open water,
+a closed wooden door and a far output PTP. No teleporting, forced chunk
+loads or expensive A* every five ticks is permitted.
