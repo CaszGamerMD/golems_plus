@@ -69,6 +69,21 @@ public final class BuilderBuildService {
     }
 
     public static void dispatch(ServerLevel level,WorkerStationBlockEntity table){
+        if(table.isBuilder()&&level.getGameTime()%80==0){
+            var link=table.warehouse();
+            if(link!=null&&level.dimension().identifier().toString().equals(link.dimension())){
+                BlockPos computer=new BlockPos(link.x(),link.y(),link.z());
+                var snapshot=com.caszgamermd.golemsplus.warehouse.BuilderWarehousePort
+                        .stockSnapshot(level,computer,table.builderRemaining());
+                table.setBuilderWarehouseStock(snapshot==null?Map.of():snapshot,snapshot!=null);
+                table.updateBuilderWarehouseName(
+                        com.caszgamermd.golemsplus.warehouse.BuilderWarehousePort
+                                .warehouseName(level,computer));
+            }else{
+                table.setBuilderWarehouseStock(Map.of(),false);
+                table.updateBuilderWarehouseName("");
+            }
+        }
         BuilderWarehouseCoordinator.pollTable(level,table);
         // Existing crafted crew members execute the job; the station never
         // materializes extra golems automatically.
@@ -173,6 +188,7 @@ public final class BuilderBuildService {
             }
             BlockState existing=level.getBlockState(pos);
             if(existing.equals(state.state())){
+                table.recordBuilderPlacement(step.requiredItem());
                 table.completeBuilderStep(worker.getUUID(),index);
                 BuilderScaffolding.retrieve(level,worker,table,false);
                 table.setProblem("");return;
@@ -231,6 +247,7 @@ public final class BuilderBuildService {
                 table.setProblem("World rejected placement at "+pos);
                 return;
             }
+            table.recordBuilderPlacement(step.requiredItem());
             table.completeBuilderStep(worker.getUUID(),index);
             BuilderSupplyInventory.recycleEmptyShulkers(table);
             BuilderScaffolding.retrieve(level,worker,table,false);
