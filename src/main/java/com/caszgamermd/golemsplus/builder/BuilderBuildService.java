@@ -324,8 +324,9 @@ public final class BuilderBuildService {
             // Every worker first visits actual staging storage, loads a
             // three-layer pouch, THEN walks to the construction site.
             // Never debit a remote chest while standing at the build.
-            if(worker.carriedCount(state.item())<=0 &&
-                    !BuilderSupplyInventory.loadForLayer(
+            if(step.requiredItem()!=null
+                    &&worker.carriedCount(state.item())<=0
+                    &&!BuilderSupplyInventory.loadForLayer(
                             level,worker,table,plan.steps(),index)){
                 // Release this assignment temporarily: another real block
                 // in the SAME layer may already be available. A missing
@@ -377,9 +378,13 @@ public final class BuilderBuildService {
                     table.setProblem("Builder cannot path to "+pos);
                 return;
             }
-            BuilderSupplyInventory.Receipt payment=
+            // Upper door halves do not consume another door item; the
+            // lower half was already placed and paid for in the prior
+            // layer. Keep refund logic for all ordinary materials.
+            boolean freeHalf=step.requiredItem()==null;
+            BuilderSupplyInventory.Receipt payment=freeHalf?null:
                     BuilderSupplyInventory.consume(worker,state.item());
-            if(payment==null){
+            if(!freeHalf&&payment==null){
                 table.waitForBuilderMaterial(worker.getUUID(),index,
                         level.getGameTime());
                 if(BuilderWarehouseCoordinator.request(level,worker,table,
@@ -390,7 +395,7 @@ public final class BuilderBuildService {
             // The real consumed stack is debited from either a loose slot
             // or its packed shulker box BEFORE the world changes.
             if(!level.setBlock(pos,state.state(),3)){
-                BuilderSupplyInventory.refund(table,payment);
+                if(payment!=null)BuilderSupplyInventory.refund(table,payment);
                 table.setProblem("World rejected placement at "+pos);
                 return;
             }
