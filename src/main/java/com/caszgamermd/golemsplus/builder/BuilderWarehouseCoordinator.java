@@ -169,6 +169,20 @@ public final class BuilderWarehouseCoordinator {
             table.setProblem("Install current Caszual Additions with Builder warehouse support");
         else if(!reply.accepted())
             table.setProblem("Warehouse: "+reply.state());
+        // A solo Builder must still build with the physical material already
+        // delivered or manually staged, even if a later warehouse request is
+        // waiting on missing rack stock or empty shulkers.
+        if(reply.boxes()==0 && (reply.state().equals("MISSING_STOCK")
+                ||reply.state().equals("MISSING_EMPTY_SHULKERS")
+                ||reply.state().equals("NO_EMPTY_OUTPUT_PTP")
+                ||reply.state().equals("FULFILLING"))){
+            int cursor=table.builderCursor();
+            if(cursor>=0&&cursor<steps.size()){
+                String next=steps.get(cursor).requiredItem();
+                if(next!=null&&BuilderSupplyInventory.available(table)
+                        .getOrDefault(next,0)>0)return false;
+            }
+        }
         return true;
     }
     /** Scaffold ladders are real construction supplies, never free world blocks. */
