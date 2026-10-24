@@ -83,6 +83,12 @@ public final class BuilderWarehouseCoordinator {
     public static boolean cancelShipment(ServerLevel level,
             WorkerStationBlockEntity table){
         if(table.supplyRequest()==null)return true;
+        // Do not discard the reservation UUID while its courier holds a
+        // real shulker in the saved entity. It must reach OnSite Storage
+        // first so RE-CALCULATE counts those nested materials correctly.
+        for(UUID id:table.builderWorkerIds())
+            if(level.getEntity(id) instanceof BuilderGolem golem
+                    &&golem.hasSupplyBox())return false;
         var warehouse=table.warehouse();
         if(warehouse==null||table.owner()==null
                 ||!level.dimension().identifier().toString().equals(warehouse.dimension()))
