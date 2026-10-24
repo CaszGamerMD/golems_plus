@@ -39,7 +39,7 @@ public final class BuilderChunkTickets {
                     |TicketType.FLAG_KEEP_DIMENSION_ACTIVE));
 
     private static final class Lease {
-        final Set<Long> held=new HashSet<>();
+        final Set<ChunkPos> held=new HashSet<>();
         final Map<UUID,BlockPos> destinations=new HashMap<>();
     }
     private static final Map<ServerLevel,Map<Long,Lease>> jobs=new WeakHashMap<>();
@@ -54,11 +54,11 @@ public final class BuilderChunkTickets {
                 &&table.phase()!=WorkerPhase.PAUSED
                 &&table.phase()!=WorkerPhase.COMPLETE;
     }
-    private static void add(Set<Long> chunks,BlockPos center,BlockPos reference){
+    private static void add(Set<ChunkPos> chunks,BlockPos center,BlockPos reference){
         if(center==null||reference==null||chunks.size()>=24)return;
         if(Math.abs((long)center.getX()-reference.getX())>MAX_DISTANCE
                 ||Math.abs((long)center.getZ()-reference.getZ())>MAX_DISTANCE)return;
-        chunks.add(new ChunkPos(center).toLong());
+        chunks.add(new ChunkPos(center.getX() >> 4,center.getZ() >> 4));
     }
     private static BlockPos ahead(BlockPos from,BlockPos goal){
         long dx=(long)goal.getX()-from.getX(),dz=(long)goal.getZ()-from.getZ();
@@ -81,7 +81,7 @@ public final class BuilderChunkTickets {
         }
         BlockPos home=table.getBlockPos();
         Lease lease=world(level).computeIfAbsent(home.asLong(),ignored->new Lease());
-        Set<Long> required=new HashSet<>();
+        Set<ChunkPos> required=new HashSet<>();
         add(required,home,home);
         if(table.hasPlacedSchematic())add(required,table.builderOrigin(),home);
         add(required,table.builderMaterialStorage(),home);
@@ -109,10 +109,10 @@ public final class BuilderChunkTickets {
             if(previous!=null&&target!=null)
                 add(required,ahead(previous,target),home);
         }
-        for(long key:required)if(!lease.held.contains(key))
-            level.getChunkSource().addTicketWithRadius(BUILDER,new ChunkPos(key),RADIUS);
-        for(long key:Set.copyOf(lease.held))if(!required.contains(key))
-            level.getChunkSource().removeTicketWithRadius(BUILDER,new ChunkPos(key),RADIUS);
+        for(ChunkPos key:required)if(!lease.held.contains(key))
+            level.getChunkSource().addTicketWithRadius(BUILDER,key,RADIUS);
+        for(ChunkPos key:Set.copyOf(lease.held))if(!required.contains(key))
+            level.getChunkSource().removeTicketWithRadius(BUILDER,key,RADIUS);
         lease.held.clear();
         lease.held.addAll(required);
     }
@@ -153,8 +153,8 @@ public final class BuilderChunkTickets {
         if(entries==null)return;
         Lease lease=entries.remove(home.asLong());
         if(lease==null)return;
-        for(long key:lease.held)
-            level.getChunkSource().removeTicketWithRadius(BUILDER,new ChunkPos(key),RADIUS);
+        for(ChunkPos key:lease.held)
+            level.getChunkSource().removeTicketWithRadius(BUILDER,key,RADIUS);
         if(entries.isEmpty())jobs.remove(level);
     }
 }
