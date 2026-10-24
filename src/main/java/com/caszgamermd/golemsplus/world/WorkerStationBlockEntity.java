@@ -612,8 +612,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public void rememberBuilderPosition(UUID worker,BlockPos position){
         if(worker==null||position==null||!builderWorkerIds().contains(worker))return;
         BlockPos before=builderLastPositions.get(worker);
-        if(before!=null&&new net.minecraft.world.level.ChunkPos(before)
-                .equals(new net.minecraft.world.level.ChunkPos(position)))return;
+        if(before!=null&&before.getX() >> 4 == position.getX() >> 4
+                &&before.getZ() >> 4 == position.getZ() >> 4)return;
         builderLastPositions.put(worker,position.immutable());
         setChanged(); // One disk write per chunk transition, not per Golem tick.
     }
