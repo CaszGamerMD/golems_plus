@@ -47,7 +47,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     private static final int SIDE=220;
     private int panelWidth=600,panelHeight=390;
     public BuilderPlannerScreen(WorkerStationMenu menu,Inventory inventory,Component title){
-        super(menu,inventory,title,600,390);
+        super(menu,inventory,title);
         titleLabelX=15;titleLabelY=10;inventoryLabelX=18;inventoryLabelY=188;
     }
     private String key(){

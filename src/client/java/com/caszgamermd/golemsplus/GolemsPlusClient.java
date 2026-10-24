@@ -16,7 +16,8 @@ import com.caszgamermd.golemsplus.render.ProfessionGolemRenderer;
 
 public final class GolemsPlusClient implements ClientModInitializer {
     @Override public void onInitializeClient() {
-        MenuScreens.register(WorksiteContent.STATION_MENU,(menu,inventory,title)->
+        MenuScreens.<com.caszgamermd.golemsplus.world.WorkerStationMenu,WorkerStationScreen>register(
+                WorksiteContent.STATION_MENU,(menu,inventory,title)->
                 menu.isBuilderTable()?new BuilderPlannerScreen(menu,inventory,title):
                         new WorkerStationScreen(menu,inventory,title));
         BlockEntityRenderers.register(WorksiteContent.MEAL_COUNTER_ENTITY,MealCounterRenderer::new);
