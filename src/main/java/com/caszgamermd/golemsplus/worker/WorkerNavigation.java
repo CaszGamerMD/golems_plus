@@ -48,7 +48,7 @@ public final class WorkerNavigation {
         BlockPos requested,approach,openedDoor;
         Vec3 previous;
         int stalled,attempts,wait,doorAge,nextRoute;
-        int unsafeChecks;
+        int unsafeChecks,avoidUntil;
         BlockPos lastBad;
         boolean narrowDoorway;
         // Cached weighted route is transient: the actual job and cargo
@@ -233,6 +233,11 @@ public final class WorkerNavigation {
         if(!changed&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
         if(!changed&&mob.tickCount<p.nextRoute)return false;
+        // A temporary body-block or a closed door must not permanently
+        // blacklist the only valid aisle. Expire bad waypoints after
+        // roughly three seconds, then try the new world state.
+        if(p.lastBad!=null&&mob.tickCount>=p.avoidUntil)
+            p.lastBad=null;
 
         // Retain the same route across job updates. The old fan of 24/16/10
         // straight-line waypoints repeatedly chose the same dead end next
@@ -247,7 +252,7 @@ public final class WorkerNavigation {
             // Navigation ended without arriving at the promised waypoint.
             // Invalidate this branch and search another physically valid
             // route after a short per-worker retry delay.
-            p.lastBad=p.approach;
+            p.lastBad=p.approach;p.avoidUntil=mob.tickCount+60;
             p.weightedRoute=List.of();p.routeCursor=0;
         }
         if(p.weightedRoute.isEmpty()){
@@ -287,6 +292,7 @@ public final class WorkerNavigation {
             return true;
         }
         p.lastBad=p.weightedRoute.get(p.routeCursor);
+        p.avoidUntil=mob.tickCount+60;
         p.weightedRoute=List.of();p.routeCursor=0;
         // An impossible route must *not* fall back to walking directly at
         // the wall; try another approach as obstacles change or workers move.
@@ -331,6 +337,7 @@ public final class WorkerNavigation {
                 if(old!=null&&old.getNextNodeIndex()<old.getNodeCount()){
                     Node node=old.getNode(old.getNextNodeIndex());
                     p.lastBad=new BlockPos(node.x,node.y,node.z);
+                    p.avoidUntil=mob.tickCount+60;
                 }
                 p.weightedRoute=List.of();p.routeCursor=0;
                 p.nextRoute=mob.tickCount+CHECK_TICKS;
