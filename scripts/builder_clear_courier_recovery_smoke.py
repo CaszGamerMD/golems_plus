@@ -6,8 +6,8 @@ build=(root/"builder/BuilderBuildService.java").read_text()
 courier=(root/"builder/BuilderWarehouseCoordinator.java").read_text()
 clear=(root/"builder/BuilderSiteClearance.java").read_text()
 nav=(root/"worker/WorkerNavigation.java").read_text()
-assert "class ClearWatch" in build
-assert "watch.cursor!=table.builderClearCursor()" in build
+assert "BuilderSiteClearance.tick(level,worker,table,owner," in build
+assert "boolean courier=worker.getUUID().equals(table.supplyRunner())" in build
 assert "candidates.size()" in build
 assert "level.getEntity(id) instanceof BuilderGolem available" in build
 assert "table.builderWorkerIds().size()==1" in build
