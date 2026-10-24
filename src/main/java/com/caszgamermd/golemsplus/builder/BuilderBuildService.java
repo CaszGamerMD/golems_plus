@@ -23,7 +23,8 @@ import net.minecraft.world.level.block.state.BlockState;
  */
 public final class BuilderBuildService {
     private record Cache(String file, int rotation,int mirror,BlockPos origin,
-                         List<BuilderConstructionPlan.Step> steps){}
+                         List<BuilderConstructionPlan.Step> steps,
+                         List<BuilderSiteClearance.Target> clearing){}
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
     private BuilderBuildService(){}
     /** Start the warehouse packing reservation as soon as the user
@@ -196,6 +197,21 @@ public final class BuilderBuildService {
             if(table.builderCursor()>=plan.steps().size()){
                 table.setPhase(WorkerPhase.COMPLETE);return;
             }
+            // PREPARE THE ENTIRE SELECTED SITE before placing the first
+            // block. A clearing worker visits each exact schematic position,
+            // including AIR cells; the courier may still fetch shulkers in
+            // parallel. A site with an obstruction or no tool cannot start
+            // placing around that obstruction or advance into upper layers.
+            if(table.builderClearCursor()<plan.clearing().size()){
+                UUID cleaner=null;
+                for(UUID id:table.builderWorkerIds()){
+                    if(!id.equals(table.supplyRunner())){cleaner=id;break;}
+                }
+                if(worker.getUUID().equals(cleaner))
+                    BuilderSiteClearance.tick(level,worker,table,owner,
+                            plan.clearing(),plan.steps());
+                return;
+            }
             // All workers finish the current bottommost layer before any
             // worker can claim a higher block, even with four-person crews.
             int layer=plan.steps().get(Math.min(table.builderCursor(),
@@ -232,9 +248,10 @@ public final class BuilderBuildService {
                 table.setProblem("");return;
             }
             if(!existing.isAir()){
-                var clearing=BuilderClearance.clear(level,worker,table,owner,pos,existing);
-                // Exactly one world mutation at most per tick. Revalidate
-                // support and reload the correct building material next tick.
+                // A player may add a block after the initial site-clear
+                // phase. Safely clear only this exact schematic cell,
+                // retaining bottom-up ordering and normal protections.
+                BuilderClearance.clear(level,worker,table,owner,pos,existing);
                 return;
             }
             if(!state.state().canSurvive(level,pos)){
@@ -246,6 +263,11 @@ public final class BuilderBuildService {
             if(worker.carriedCount(state.item())<=0 &&
                     !BuilderSupplyInventory.loadForLayer(
                             level,worker,table,plan.steps(),index)){
+                // Release this assignment temporarily: another real block
+                // in the SAME layer may already be available. A missing
+                // material does not consume a step or skip to the next Y.
+                table.waitForBuilderMaterial(worker.getUUID(),index,
+                        level.getGameTime());
                 if(BuilderWarehouseCoordinator.request(level,worker,table,
                         owner,plan.steps()))return;
                 // Do not hide a more useful warehouse diagnostic behind
@@ -294,6 +316,8 @@ public final class BuilderBuildService {
             BuilderSupplyInventory.Receipt payment=
                     BuilderSupplyInventory.consume(worker,state.item());
             if(payment==null){
+                table.waitForBuilderMaterial(worker.getUUID(),index,
+                        level.getGameTime());
                 if(BuilderWarehouseCoordinator.request(level,worker,table,
                         owner,plan.steps()))return;
                 table.setProblem("Builder pouch missing "+step.requiredItem());
@@ -336,7 +360,8 @@ public final class BuilderBuildService {
         // unresolvable step and reports the exact state instead of deleting
         // blocks or fabricating missing materials.
         Cache next=new Cache(table.builderFile(),table.builderRotation(),
-                table.builderMirror(),table.builderOrigin(),result.steps());
+                table.builderMirror(),table.builderOrigin(),result.steps(),
+                BuilderSiteClearance.targets(schematic,site));
         cached.put(worker,next);
         return next;
     }
