@@ -43,11 +43,33 @@ public final class BuilderChunkTickets {
         final Map<UUID,BlockPos> destinations=new HashMap<>();
     }
     private static final Map<ServerLevel,Map<Long,Lease>> jobs=new WeakHashMap<>();
+    // Chunk tickets are identified by type and radius, not workstation.
+    // Reference-count shared centers so cancelling one of two nearby jobs
+    // cannot accidentally unload the other job's Builder or supply chest.
+    private static final Map<ServerLevel,Map<ChunkPos,Integer>> holders=new WeakHashMap<>();
     private BuilderChunkTickets(){}
     public static void initialize(){} // Force the ticket type to register at mod initialization.
 
     private static Map<Long,Lease> world(ServerLevel level){
         return jobs.computeIfAbsent(level,ignored->new HashMap<>());
+    }
+    private static void acquire(ServerLevel level,ChunkPos center){
+        Map<ChunkPos,Integer> counts=holders.computeIfAbsent(level,
+                ignored->new HashMap<>());
+        int owners=counts.getOrDefault(center,0);
+        if(owners==0)level.getChunkSource().addTicketWithRadius(BUILDER,center,RADIUS);
+        counts.put(center,owners+1);
+    }
+    private static void relinquish(ServerLevel level,ChunkPos center){
+        Map<ChunkPos,Integer> counts=holders.get(level);
+        if(counts==null)return;
+        int owners=counts.getOrDefault(center,0);
+        if(owners<=0)return;
+        if(owners==1){
+            counts.remove(center);
+            level.getChunkSource().removeTicketWithRadius(BUILDER,center,RADIUS);
+            if(counts.isEmpty())holders.remove(level);
+        }else counts.put(center,owners-1);
     }
     private static boolean running(WorkerStationBlockEntity table){
         return table.isBuilder()&&table.activeOrder()!=null
@@ -110,9 +132,9 @@ public final class BuilderChunkTickets {
                 add(required,ahead(previous,target),home);
         }
         for(ChunkPos key:required)if(!lease.held.contains(key))
-            level.getChunkSource().addTicketWithRadius(BUILDER,key,RADIUS);
+            acquire(level,key);
         for(ChunkPos key:Set.copyOf(lease.held))if(!required.contains(key))
-            level.getChunkSource().removeTicketWithRadius(BUILDER,key,RADIUS);
+            relinquish(level,key);
         lease.held.clear();
         lease.held.addAll(required);
     }
@@ -154,7 +176,7 @@ public final class BuilderChunkTickets {
         Lease lease=entries.remove(home.asLong());
         if(lease==null)return;
         for(ChunkPos key:lease.held)
-            level.getChunkSource().removeTicketWithRadius(BUILDER,key,RADIUS);
+            relinquish(level,key);
         if(entries.isEmpty())jobs.remove(level);
     }
 }
