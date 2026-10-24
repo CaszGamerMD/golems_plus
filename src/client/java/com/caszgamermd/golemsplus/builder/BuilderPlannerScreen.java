@@ -350,8 +350,9 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             g.fill(px-3,py-3,px+42,py+43,0xff344851);
             g.fill(px-2,py+39,px+41,py+41,shade);
             g.item(new ItemStack(item),px+10,py+4);
-            String caption=entry.getValue()>=10000?""+(entry.getValue()/1000)+"k":
-                    ""+entry.getValue();
+            long pending=Math.max(0,entry.getValue()
+                    -t.builderStagedStock().getOrDefault(entry.getKey(),0));
+            String caption=pending>=10000?""+(pending/1000)+"k":""+pending;
             g.text(font,caption,px+8,py+27,shade,false);
         }
         if(rows.isEmpty())g.text(font,t.hasPlacedSchematic()?

@@ -53,6 +53,24 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         carriedSupplyBox=box.copyWithCount(1);
     }
     public void clearSupplyBox(){carriedSupplyBox=ItemStack.EMPTY;}
+    /** On loss of the job block, drop exact held items instead of
+     * discarding inventory-bearing workers and deleting their cargo.
+     */
+    public void dropCargo(ServerLevel world){
+        for(int i=0;i<materials.size();i++){
+            ItemStack stack=materials.get(i);
+            if(!stack.isEmpty()){
+                net.minecraft.world.Containers.dropItemStack(world,
+                        getX(),getY(),getZ(),stack.copy());
+                materials.set(i,ItemStack.EMPTY);
+            }
+        }
+        if(!carriedSupplyBox.isEmpty()){
+            net.minecraft.world.Containers.dropItemStack(world,
+                    getX(),getY(),getZ(),carriedSupplyBox.copy());
+            carriedSupplyBox=ItemStack.EMPTY;
+        }
+    }
     @Override public int getContainerSize(){return materials.size();}
     @Override public boolean isEmpty(){return materials.stream().allMatch(ItemStack::isEmpty);}
     @Override public ItemStack getItem(int i){

@@ -109,6 +109,7 @@ public final class BuilderBuildService {
         if(worker.owner()==null||!level.hasChunkAt(home))return;
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)
                 ||!table.isBuilder()||!worker.owner().equals(table.owner())){
+            worker.dropCargo(level);
             worker.discard();return;
         }
         if(!table.builderWorkerIds().contains(worker.getUUID())){
