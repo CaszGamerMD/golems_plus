@@ -199,9 +199,14 @@ public final class WorkerNavigation {
         for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++)
             for(int dy=-1;dy<=1;dy++){
                 BlockPos p=requested.offset(dx,dy,dz);
-                if(!standingTile(level,mob,p)||neighborOccupied(level,mob,p))continue;
+                if(!standingTile(level,mob,p))continue;
+                // Dynamic occupants must not invalidate every goal around
+                // a crowded Planner or depot. Other Golems will move;
+                // prefer free cells but retain the occupied ones as safe
+                // fallback candidates rather than reporting "no route".
                 double score=p.distSqr(requested)*2.5
-                        +p.distSqr(origin)*.11+Math.abs(dy)*2;
+                        +p.distSqr(origin)*.11+Math.abs(dy)*2
+                        +(neighborOccupied(level,mob,p)?14:0);
                 if(avoid!=0&&Math.floorMod(p.hashCode(),4)==avoid-1)
                     score+=10;
                 if(p.equals(requested))score-=6;
@@ -252,7 +257,7 @@ public final class WorkerNavigation {
             Path best=null;BlockPos bestGoal=null;
             int bestLength=Integer.MAX_VALUE,checked=0;
             for(Candidate option:candidateGoals(level,mob,target,0)){
-                if(++checked>8)break;
+                if(++checked>5)break;
                 Path candidate=mob.getNavigation().createPath(option.feet(),0);
                 if(!safePath(level,mob,candidate,false))continue;
                 int length=candidate.getNodeCount();
