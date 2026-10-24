@@ -145,14 +145,15 @@ public final class BuilderBuildService {
             // A furnished tool belongs back at the Planner, not buried
             // in the on-site debris/materials chest.
             if(BuilderSupplyInventory.hasTools(worker)){
-                if(worker.distanceToSqr(home.getX()+.5,home.getY()+.5,
-                        home.getZ()+.5)>12){
+                BlockPos depot=BuilderSupplyInventory.pouchReturnPos(table);
+                if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                        depot.getZ()+.5)>12){
                     com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .routeTo(level,worker,home,.83);
+                            .routeTo(level,worker,depot,.83);
                     return;
                 }
                 if(!BuilderSupplyInventory.returnTools(worker,table)){
-                    table.setProblem("Make room in Builder Planner for returned mining tools");
+                    table.setProblem("Make room in OnSite Storage for returned mining tools");
                     return;
                 }
             }
