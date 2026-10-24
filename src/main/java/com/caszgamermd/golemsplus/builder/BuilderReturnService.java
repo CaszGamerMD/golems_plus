@@ -16,7 +16,9 @@ public final class BuilderReturnService {
     private BuilderReturnService(){}
     public static boolean tick(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
-        if(table.activeOrder()!=null||table.supplyRequest()!=null
+        if(!(table.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.COMPLETE
+                ||table.builderRecallRequested())
+                ||table.activeOrder()!=null||table.supplyRequest()!=null
                 ||worker.hasSupplyBox()||!worker.isEmpty()
                 ||table.claimedStep(worker.getUUID())>=0)return false;
         BlockPos home=table.getBlockPos();
