@@ -12,6 +12,9 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.pathfinder.Path;
@@ -114,12 +117,30 @@ public final class WorkerNavigation {
                 ||state.is(Blocks.FIRE)||state.is(Blocks.SOUL_FIRE)
                 ||state.is(Blocks.POWDER_SNOW)||state.is(Blocks.SWEET_BERRY_BUSH);
     }
+    /** The integer navigation node is not always an air block. Vanilla
+     * can put the feet node INSIDE a slab or a stair when walking on its
+     * collision surface. A solid cube remains impassable, but partial
+     * architectural blocks are legitimate floor. Avoid using only the
+     * maximum Y of the block below as a fake full-block obstruction.
+     */
+    private static boolean partialFloor(BlockState state){
+        return state.getBlock() instanceof StairBlock
+                ||state.getBlock() instanceof SlabBlock
+                    &&state.getValue(SlabBlock.TYPE)!=SlabType.DOUBLE;
+    }
     private static double floorAt(ServerLevel level,BlockPos feet){
         BlockPos below=feet.below();
         VoxelShape footing=level.getBlockState(below).getCollisionShape(level,below);
+        BlockState state=level.getBlockState(feet);
+        VoxelShape inside=state.getCollisionShape(level,feet);
+        // A stair or lower slab itself supplies the support surface;
+        // vanilla can legitimately report its own Y as the path node.
+        if(partialFloor(state)&&!inside.isEmpty()){
+            double top=feet.getY()+inside.max(Direction.Axis.Y);
+            return top;
+        }
         if(footing.isEmpty())return Double.NaN;
         double y=below.getY()+footing.max(Direction.Axis.Y);
-        VoxelShape inside=level.getBlockState(feet).getCollisionShape(level,feet);
         if(!inside.isEmpty()&&!handDoor(level,feet)){
             double height=inside.max(Direction.Axis.Y);
             if(height>.6001)return Double.NaN;
@@ -176,7 +197,17 @@ public final class WorkerNavigation {
             for(int k=1;k<samples;k++){
                 double t=(double)k/samples;
                 double x=previous.x+.5+dx*t,z=previous.z+.5+dz*t;
-                double y=Math.abs(a-b)>.60?Math.max(a,b):a+(b-a)*t;
+                BlockPos beforeFeet=new BlockPos(previous.x,previous.y,previous.z);
+                // Stair risers and half slabs are stepped over, not walked
+                // through diagonally at intermediate interpolated heights.
+                // Sweeping the worker through the step's collision shape
+                // repeatedly rejected legal vanilla paths as blocked.
+                boolean architecturalStep=partialFloor(level.getBlockState(beforeFeet))
+                        ||partialFloor(level.getBlockState(feet))
+                        ||partialFloor(level.getBlockState(beforeFeet.below()))
+                        ||partialFloor(level.getBlockState(feet.below()));
+                double y=architecturalStep||Math.abs(a-b)>.60
+                        ?Math.max(a,b):a+(b-a)*t;
                 if(!bodyClear(level,mob,x,y,z))return false;
             }
             if(++checked>120)break; // world chunks are never force-loaded
