@@ -69,6 +69,8 @@ public final class BuilderBuildService {
     }
 
     public static void dispatch(ServerLevel level,WorkerStationBlockEntity table){
+        if(table.isBuilder()&&level.getGameTime()%40==0)
+            table.updateBuilderStagedStock(BuilderSupplyInventory.available(table));
         if(table.isBuilder()&&level.getGameTime()%80==0){
             var link=table.warehouse();
             if(link!=null&&level.dimension().identifier().toString().equals(link.dimension())){
