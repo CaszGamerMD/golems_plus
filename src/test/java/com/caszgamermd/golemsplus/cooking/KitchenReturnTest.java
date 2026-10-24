@@ -9,10 +9,14 @@ import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Protect actual storage slot priorities and no-loss behavior. */
 class KitchenReturnTest {
+    @BeforeAll static void setupMinecraftRegistries(){
+        net.minecraft.server.Bootstrap.bootStrap();
+    }
     private record Scene(KitchenSupplies kitchen,SimpleContainer origin,
                          SimpleContainer other,BlockPos source){}
     private static Scene scene(){
