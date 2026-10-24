@@ -167,8 +167,10 @@ public final class BuilderBuildService {
                 }
                 return;
             }
-            if(!worker.hasSupplyBox()&&table.supplyRequest()==null)
+            if(!worker.hasSupplyBox()&&table.supplyRequest()==null){
+                if(BuilderReturnService.tick(level,worker,table))return;
                 com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(level,worker,home);
+            }
             return;
         }
         if(table.phase()==WorkerPhase.PAUSED){
