@@ -90,6 +90,40 @@ public final class StationSettingsNetworking {
                 done=table.setCrewTarget(player.getUUID(),change.amount);
                 if(done)reply(player,"Assigned crew size: "+change.amount);
             }
+            case "builder_select" -> {
+                if(!table.isBuilder())return;
+                done=table.selectBuilderJob(player.getUUID(),change.amount());
+                if(done)reply(player,"Selected Builder job "+(change.amount()+1)+": "+
+                        table.placedSchematicName());
+                else reply(player,"Finish or cancel the currently running build before selecting another job");
+                return;
+            }
+            case "builder_storage" -> {
+                if(!table.isBuilder())return;
+                OutputChestSelection.beginBuilder(player,table);
+                return;
+            }
+            case "builder_refresh" -> {
+                if(!table.isBuilder())return;
+                var wh=table.warehouse();
+                if(wh==null){
+                    table.setBuilderWarehouseStock(java.util.Map.of(),false);
+                    reply(player,"Link the scanner to a warehouse and right-click the Planning Table");
+                    return;
+                }
+                var remote=new BlockPos(wh.x(),wh.y(),wh.z());
+                var available=com.caszgamermd.golemsplus.warehouse.BuilderWarehousePort
+                        .stockSnapshot((net.minecraft.server.level.ServerLevel)player.level(),
+                                remote,table.builderRemaining());
+                table.setBuilderWarehouseStock(
+                        available==null?java.util.Map.of():available,available!=null);
+                table.updateBuilderWarehouseName(
+                        com.caszgamermd.golemsplus.warehouse.BuilderWarehousePort
+                                .warehouseName((net.minecraft.server.level.ServerLevel)player.level(),remote));
+                reply(player,available==null?"Warehouse unchecked; update Caszual Additions "
+                        +"and load the Rack Computer":"Warehouse materials refreshed");
+                return;
+            }
             case "builder_preview" -> {
                 if(table.isBuilder()){
                     BuilderCommands.previewFromStation(player,table);
@@ -106,14 +140,18 @@ public final class StationSettingsNetworking {
                     reply(player,com.caszgamermd.golemsplus.builder.BuilderBuildService
                             .primeWarehouse((net.minecraft.server.level.ServerLevel)player.level(),
                                     table));
-                }else reply(player,"Cannot start: choose/import a schematic, resolve unsupported blocks, "
-                            +"and ensure no other build is active");
+                }else reply(player,"Cannot start: select an imported placement with a material list, "
+                            +"link a warehouse scanner, assign at least one Builder, "
+                            +"and ensure the job isn't already running. Supplies need not be complete.");
                 return;
             }
             case "builder_supplies" -> {
                 if(!table.isBuilder())return;
-                if(table.activeOrder()==null){
-                    reply(player,"Start a loaded schematic first, then the warehouse can fulfill materials");
+                if(!table.hasPlacedSchematic()){
+                    reply(player,"Select and upload a Litematica placement first");
+                }else if(table.activeOrder()==null){
+                    reply(player,"Placement ready ("+table.builderRemaining().size()
+                            +" material types). Start the job to authorize warehouse pickups.");
                 }else if(table.warehouse()==null){
                     reply(player,"Use a warehouse-linked Caszual Additions scanner on the Planning Table");
                 }else if(table.supplyRequest()!=null){
