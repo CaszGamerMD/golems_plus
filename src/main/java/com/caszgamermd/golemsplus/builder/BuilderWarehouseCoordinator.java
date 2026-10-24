@@ -53,17 +53,21 @@ public final class BuilderWarehouseCoordinator {
                 return false;
             }
         }
-        // Persist only confirmed physical output-PTP reservations.
-        // An unavailable PTP must not leave a ticket stuck at (0,0,0).
+        // The warehouse accepts the request FIRST, persisting its UUID at
+        // the computer. An unavailable pallet is NOT locked; this same
+        // ticket will later claim a prepared OUTPUT PTP without duplication.
         UUID ticket=UUID.randomUUID();
         var reply=BuilderWarehousePort.request(level,computer,table.getBlockPos(),
                 table.owner(),ticket,needed);
-        if(reply.accepted()&&!reply.ptp().equals(BlockPos.ZERO)){
+        if(reply.accepted()){
             table.prepareSupplyRequest(ticket,needed);
-            table.setSupplyPtp(reply.ptp());
-            table.setProblem("Warehouse output reserved at "
-                    +reply.ptp().toShortString()
-                    +"; Builder courier departing to collect real shulkers");
+            if(!reply.ptp().equals(BlockPos.ZERO)){
+                table.setSupplyPtp(reply.ptp());
+                table.setProblem("Warehouse output reserved at "
+                        +reply.ptp().toShortString()
+                        +"; Builder courier departing to collect real shulkers");
+            }else table.setProblem("Builder request visible at Rack Computer; "
+                    +"waiting for an empty OUTPUT PTP pallet and Shulker Station");
             return true;
         }
         table.setProblem("Warehouse request not reserved: "+reply.state()
@@ -136,7 +140,6 @@ public final class BuilderWarehouseCoordinator {
             }
             if(nearestId!=null&&!nearestId.equals(worker.getUUID()))return false;
         }
-        if(!table.claimSupplyRunner(worker.getUUID()))return false;
         if(warehouse==null){
             table.setProblem("Linked warehouse removed while delivery pending");
             return true;
@@ -149,6 +152,16 @@ public final class BuilderWarehouseCoordinator {
                         table.owner(),ticket,table.supplyPtp());
         if(reply.accepted()&&!reply.ptp().equals(table.supplyPtp()))
             table.setSupplyPtp(reply.ptp());
+        if(reply.accepted()&&reply.ptp().equals(BlockPos.ZERO)){
+            // This is a REAL order persisted at the Rack Computer, awaiting
+            // a configured output pallet. Keep the Builder at the worksite
+            // so it may clear/build with staged materials; do not claim its
+            // UUID as the supply courier until an output is actually ready.
+            table.setProblem("Warehouse order queued; configure OUTPUT PTP "
+                    +"with pallet and Shulker Station to begin packing");
+            return false;
+        }
+        if(!table.claimSupplyRunner(worker.getUUID()))return false;
         if(!reply.accepted()&&table.supplyPtp().equals(BlockPos.ZERO)){
             // Repair stuck reservations left by previous mod versions.
             // No PTP was ever reserved, so no physical shulker exists to
@@ -277,12 +290,13 @@ public final class BuilderWarehouseCoordinator {
             UUID ticket=UUID.randomUUID();
             var reply=BuilderWarehousePort.request(level,computer,table.getBlockPos(),
                     table.owner(),ticket,requested);
-            if(!reply.accepted()||reply.ptp().equals(BlockPos.ZERO)){
-                table.setProblem("Cannot reserve warehouse scaffolding: "+reply.state());
+            if(!reply.accepted()){
+                table.setProblem("Cannot queue warehouse scaffolding: "+reply.state());
                 return false;
             }
             table.prepareSupplyRequest(ticket,requested);
-            table.setSupplyPtp(reply.ptp());
+            if(!reply.ptp().equals(BlockPos.ZERO))
+                table.setSupplyPtp(reply.ptp());
         }
         return tick(level,worker,table,player,steps);
     }
