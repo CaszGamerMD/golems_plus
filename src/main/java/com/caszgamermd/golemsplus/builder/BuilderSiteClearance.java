@@ -60,6 +60,9 @@ public final class BuilderSiteClearance {
         for(int i=cursor;i<end;i++){
             Target step=plan.get(i);
             BlockPos pos=step.pos();
+            // Request the next exact schematic chunk before testing whether
+            // the world has loaded it; clearing can span many chunks.
+            BuilderChunkTickets.destination(world,worker,pos);
             if(!world.hasChunkAt(pos)){
                 table.advanceBuilderClearing(i);
                 table.setProblem("CLEARING: build chunk unloaded "+pos);
