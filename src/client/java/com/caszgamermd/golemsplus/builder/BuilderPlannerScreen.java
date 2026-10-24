@@ -41,6 +41,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     private String search="";
     private EditBox query;
     private String notice="";
+    private int deleteConfirm=-1;
     private List<LitematicaPlacementClient.PlacementChoice> choices=List.of();
     private static final int TEXT=0xffdce9e6, MUTED=0xffa6c0c7, GREEN=0xff89f39f,
             YELLOW=0xffffd379, RED=0xffff7b81, WHITE=0xfff4f5f5;
@@ -220,6 +221,24 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         });
         button("SCAN STOCK",SIDE+158,y+27,116,()->send("builder_refresh",0));
         button("CANCEL",SIDE+282,y+27,117,()->send("builder_cancel",0));
+        button(deleteConfirm>=0?"CONFIRM DELETE":"DELETE JOB",
+                SIDE+12,y+54,137,()->{
+            if(table==null||table.selectedBuilderJob()<0)return;
+            if(table.activeOrder()!=null){
+                notice="Cancel the running construction before deleting its job";
+                return;
+            }
+            if(deleteConfirm!=table.selectedBuilderJob()){
+                deleteConfirm=table.selectedBuilderJob();
+                notice="Press CONFIRM DELETE to remove only this saved job";
+                show(Page.JOB);
+                return;
+            }
+            send("builder_delete",deleteConfirm);
+            deleteConfirm=-1;
+            notice="Job delete requested. Saved material inventory is not destroyed.";
+            show(Page.JOB);
+        });
         button("CREW -",18,285,90,()->{
             if(table!=null)send("crew",Math.max(1,table.crewTarget()-1));
         });
