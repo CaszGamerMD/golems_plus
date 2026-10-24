@@ -21,6 +21,8 @@ public final class BuilderReturnService {
                 ||table.activeOrder()!=null||table.supplyRequest()!=null
                 ||worker.hasSupplyBox()||!worker.isEmpty()
                 ||table.claimedStep(worker.getUUID())>=0)return false;
+        // Avoid 31k-block bin scans every 12-tick worker update.
+        if(level.getGameTime()%80!=0)return false;
         BlockPos home=table.getBlockPos();
         UnemployedCenterBlockEntity closest=null;
         double distance=Double.MAX_VALUE;
