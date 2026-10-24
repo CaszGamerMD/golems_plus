@@ -54,6 +54,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.Map<String,Long> builderRemaining=new java.util.LinkedHashMap<>();
     private final java.util.Map<String,Integer> builderWarehouseStock=new java.util.LinkedHashMap<>();
     private final java.util.Map<String,Integer> builderStagedStock=new java.util.LinkedHashMap<>();
+    private WarehouseAssignment pendingBuilderWarehouse;
     private boolean builderStockChecked;
     private String builderWarehouseName="";
     public record BuilderJob(String file,String name,BlockPos origin,int rotation,
@@ -621,7 +622,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     public void clearSupplyRequest(){
         supplyRequest=null;supplyRunner=null;supplyPtp=BlockPos.ZERO;
-        supplyManifest.clear();supplyNotice="";sync();
+        supplyManifest.clear();supplyNotice="";
+        // Apply a scanner re-link only AFTER the previous warehouse's
+        // physical reserved shulkers were delivered/released safely.
+        if(pendingBuilderWarehouse!=null){
+            warehouse=pendingBuilderWarehouse;pendingBuilderWarehouse=null;
+            builderStockChecked=false;builderWarehouseStock.clear();
+            builderWarehouseName="";
+        }
+        sync();
     }
     public boolean hasPlacedSchematic(){return builderPlaced&&!builderFile.isBlank();}
     public boolean isBuilder(){
@@ -704,8 +713,21 @@ public final class WorkerStationBlockEntity extends BlockEntity
         owner = actor; sync(); return true;
     }
     public boolean setWarehouse(UUID actor, WarehouseAssignment selection) {
-        if (!canConfigure(actor)||supplyRequest!=null) return false;
-        warehouse = selection; sync(); return true;
+        if(!canConfigure(actor)||selection==null)return false;
+        if(isBuilder()&&supplyRequest!=null){
+            // Never orphan a supply ticket or its real packed cargo.
+            pendingBuilderWarehouse=selection;
+            setProblem("Warehouse switch queued until current shulker shipment completes");
+            sync();return true;
+        }
+        if(supplyRequest!=null)return false;
+        warehouse=selection;
+        if(isBuilder()){
+            pendingBuilderWarehouse=null;
+            builderStockChecked=false;builderWarehouseStock.clear();
+            builderWarehouseName="";
+        }
+        sync();return true;
     }
     public boolean setVillage(UUID actor, VillageSearchArea selection) {
         if (!canConfigure(actor) || !isTrader()) return false;
@@ -966,6 +988,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
             out.putString("builder_staged_item_"+stagedIndex,e.getKey());
             out.putInt("builder_staged_qty_"+stagedIndex,e.getValue());stagedIndex++;
         }
+        if(pendingBuilderWarehouse!=null){
+            out.putString("builder_pending_warehouse_dim",pendingBuilderWarehouse.dimension());
+            out.putInt("builder_pending_warehouse_x",pendingBuilderWarehouse.x());
+            out.putInt("builder_pending_warehouse_y",pendingBuilderWarehouse.y());
+            out.putInt("builder_pending_warehouse_z",pendingBuilderWarehouse.z());
+        }
         out.putString("builder_warehouse_name",builderWarehouseName);
         out.putInt("builder_stock_checked",builderStockChecked?1:0);
         out.putInt("builder_stock_count",Math.min(1024,builderWarehouseStock.size()));
@@ -1225,6 +1253,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         builderStockChecked=in.getIntOr("builder_stock_checked",0)==1;
         builderWarehouseName=in.getStringOr("builder_warehouse_name","");
+        String queuedDim=in.getStringOr("builder_pending_warehouse_dim","");
+        pendingBuilderWarehouse=queuedDim.isBlank()?null:new WarehouseAssignment(queuedDim,
+                in.getIntOr("builder_pending_warehouse_x",0),
+                in.getIntOr("builder_pending_warehouse_y",0),
+                in.getIntOr("builder_pending_warehouse_z",0));
         for(int i=0,n=Math.clamp(in.getIntOr("builder_stock_count",0),0,1024);i<n;i++){
             String id=in.getStringOr("builder_stock_item_"+i,"");
             int count=in.getIntOr("builder_stock_qty_"+i,0);
