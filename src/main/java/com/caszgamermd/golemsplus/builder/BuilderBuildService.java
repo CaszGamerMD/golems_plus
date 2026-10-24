@@ -49,8 +49,11 @@ public final class BuilderBuildService {
                     BuildSite.Rotation.values()[table.builderRotation()/90],
                     BuildSite.Mirror.values()[table.builderMirror()]);
             var plan=BuilderConstructionPlan.create(schematic,site);
-            if(!plan.unsupported().isEmpty())
-                return "Schematic has unsupported blocks: "+plan.unsupported().size();
+            if(table.builderRequired().isEmpty()&&table.activeOrder()!=null){
+                // Running legacy build: retain its current cursor and only
+                // backfill the static required-material checklist.
+                table.backfillBuilderMaterials(plan.required());
+            }
             var materials=BuilderMaterialDemand.batch(plan.steps(),
                     table.builderCursor(),BuilderSupplyInventory.available(table));
             if(materials.isEmpty())return "Next construction batch already stocked in Planner";

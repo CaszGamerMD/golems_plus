@@ -434,6 +434,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
             sync();return;
         }
     }
+    public void backfillBuilderMaterials(Map<String,Long> materials){
+        if(!isBuilder()||!builderRequired.isEmpty()||materials==null)return;
+        builderRequired.putAll(materials);
+        builderRemaining.putAll(materials);
+        // Pre-0.3.25 construction cursor may already have placed some
+        // blocks; exact per-item history is unknown. Avoid guessing and
+        // retain a conservative overestimate rather than reducing stock.
+        sync();
+    }
     public void recordBuilderPlacement(String material){
         if(material==null||material.isBlank())return;
         builderRemaining.computeIfPresent(material,(key,v)->Math.max(0L,v-1));
@@ -1276,6 +1285,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
         dim=in.getStringOr("warehouse_dimension","");
         warehouse=dim.isBlank()?null:new WarehouseAssignment(dim,in.getIntOr("warehouse_x",0),
                 in.getIntOr("warehouse_y",0),in.getIntOr("warehouse_z",0));
+        // Migration for Builder tables from 0.3.24 and earlier: their one
+        // selected schematic predated the job list and manifest format.
+        if(builderJobs.isEmpty()&&builderPlaced&&!builderFile.isBlank()){
+            selectedBuilderJob=0;
+            builderJobs.add(snapshotBuilderJob());
+        }
         items=NonNullList.withSize(SLOTS,ItemStack.EMPTY);
         ContainerHelper.loadAllItems(in,items);
     }

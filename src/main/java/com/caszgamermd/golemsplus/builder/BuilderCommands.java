@@ -104,6 +104,8 @@ public final class BuilderCommands {
                     BuildSite.Rotation.values()[table.builderRotation()/90],
                     BuildSite.Mirror.values()[table.builderMirror()]);
             var plan=BuilderConstructionPlan.create(schematic,site);
+            if(table.builderRequired().isEmpty()&&table.activeOrder()==null)
+                table.setBuilderMaterialsForFile(table.builderFile(),plan.required());
             player.sendSystemMessage(Component.literal("[Builder preview] "+
                     plan.steps().size()+" blocks at "+origin+
                     "; unsupported types: "+plan.unsupported().size()));
