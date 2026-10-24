@@ -3,6 +3,7 @@ package com.caszgamermd.golemsplus.builder;
 import com.caszgamermd.golemsplus.world.StationSettingsNetworking;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import com.caszgamermd.golemsplus.world.WorkerStationMenu;
+import com.caszgamermd.golemsplus.world.WorkerStationScreen;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -28,7 +29,7 @@ import net.minecraft.world.item.ItemStack;
  * right pane. All actual job data is server-owned in the block entity; this
  * cache keeps only presentation state when the player closes/reopens.
  */
-public final class BuilderPlannerScreen extends AbstractContainerScreen<WorkerStationMenu> {
+public final class BuilderPlannerScreen extends WorkerStationScreen {
     private enum Page { JOB, PLACEMENTS }
     private enum Sort { ALPHABETICAL, VOLUME }
     private record Memory(Page page,Sort sort,int scroll,int placementPage,
@@ -44,6 +45,7 @@ public final class BuilderPlannerScreen extends AbstractContainerScreen<WorkerSt
     private static final int TEXT=0xffdce9e6, MUTED=0xffa6c0c7, GREEN=0xff89f39f,
             YELLOW=0xffffd379, RED=0xffff7b81, WHITE=0xfff4f5f5;
     private static final int SIDE=220;
+    private int panelWidth=600,panelHeight=390;
     public BuilderPlannerScreen(WorkerStationMenu menu,Inventory inventory,Component title){
         super(menu,inventory,title,600,390);
         titleLabelX=15;titleLabelY=10;inventoryLabelX=18;inventoryLabelY=188;
@@ -63,9 +65,14 @@ public final class BuilderPlannerScreen extends AbstractContainerScreen<WorkerSt
         VIEW.put(key(),new Memory(page,sort,scroll,placementPage,jobPage,search));
     }
     @Override protected void init(){
-        imageWidth=Math.max(500,width-16);
-        imageHeight=Math.max(344,height-16);
+        panelWidth=Math.max(520,width-16);
+        panelHeight=Math.max(420,height-16);
         super.init();
+        // Container-screen image dimensions are final in Minecraft 26.2.
+        // The planner draws across the actual viewport and repositions slots.
+        leftPos=(width-panelWidth)/2;
+        topPos=(height-panelHeight)/2;
+        clearWidgets();
         Memory saved=VIEW.get(key());
         if(saved!=null){
             page=saved.page();sort=saved.sort();
@@ -95,9 +102,9 @@ public final class BuilderPlannerScreen extends AbstractContainerScreen<WorkerSt
         }
         return super.mouseScrolled(x,y,dx,dy);
     }
-    private int materialWidth(){return Math.max(200,imageWidth-SIDE-35);}
+    private int materialWidth(){return Math.max(200,panelWidth-SIDE-35);}
     private int columns(){return Math.max(3,materialWidth()/76);}
-    private int rows(){return Math.max(2,(imageHeight-225)/62);}
+    private int rows(){return Math.max(2,(panelHeight-225)/62);}
     private int pageSize(){return columns()*rows();}
     private void show(Page next){
         remember();page=next;
@@ -128,7 +135,7 @@ public final class BuilderPlannerScreen extends AbstractContainerScreen<WorkerSt
     private void buildWidgets(){
         var table=station();
         int jobCount=table==null?0:table.builderJobs().size();
-        int visibleTabs=Math.max(2,Math.min(6,(imageWidth-205)/125));
+        int visibleTabs=Math.max(2,Math.min(6,(panelWidth-205)/125));
         jobPage=Math.clamp(jobPage,0,Math.max(0,(jobCount-1)/visibleTabs));
         button("<",12,39,22,()->{jobPage=Math.max(0,jobPage-1);show(page);});
         for(int i=jobPage*visibleTabs;i<Math.min(jobCount,(jobPage+1)*visibleTabs);i++){
@@ -146,16 +153,16 @@ public final class BuilderPlannerScreen extends AbstractContainerScreen<WorkerSt
                 show(Page.JOB);
             });
         }
-        button(">",Math.min(imageWidth-174,40+visibleTabs*125),39,22,()->{
+        button(">",Math.min(panelWidth-174,40+visibleTabs*125),39,22,()->{
             jobPage=Math.min(Math.max(0,(jobCount-1)/visibleTabs),jobPage+1);
             show(page);
         });
-        button("+ NEW JOB",imageWidth-134,39,118,this::placements);
+        button("+ NEW JOB",panelWidth-134,39,118,this::placements);
 
         if(page==Page.PLACEMENTS){
             button("REFRESH",SIDE+12,92,100,this::placements);
             button("BACK TO JOB",SIDE+119,92,126,()->show(Page.JOB));
-            int maxPerPage=Math.max(4,(imageHeight-182)/30);
+            int maxPerPage=Math.max(4,(panelHeight-182)/30);
             int max=Math.max(0,(choices.size()-1)/maxPerPage);
             placementPage=Math.min(placementPage,max);
             for(int i=placementPage*maxPerPage;
@@ -166,7 +173,7 @@ public final class BuilderPlannerScreen extends AbstractContainerScreen<WorkerSt
                         +" @ "+placement.origin().toShortString();
                 if(label.length()>75)label=label.substring(0,74)+"…";
                 button(label,SIDE+15,129+at*30,
-                        Math.min(materialWidth()-10,imageWidth-SIDE-40),()->{
+                        Math.min(materialWidth()-10,panelWidth-SIDE-40),()->{
                     try{
                         LitematicaPlacementClient.sendPlacement(placement,menu.stationPos());
                         notice="Uploading selected placement. Server will save its block list.";
@@ -176,10 +183,10 @@ public final class BuilderPlannerScreen extends AbstractContainerScreen<WorkerSt
                     }
                 });
             }
-            button("PREV",SIDE+16,imageHeight-43,85,()->{
+            button("PREV",SIDE+16,panelHeight-43,85,()->{
                 placementPage=Math.max(0,placementPage-1);show(Page.PLACEMENTS);
             });
-            button("NEXT",SIDE+110,imageHeight-43,85,()->{
+            button("NEXT",SIDE+110,panelHeight-43,85,()->{
                 placementPage=Math.min(max,placementPage+1);show(Page.PLACEMENTS);
             });
             return;
@@ -193,7 +200,7 @@ public final class BuilderPlannerScreen extends AbstractContainerScreen<WorkerSt
                 Component.literal("Search materials"));
         query.setMaxLength(80);query.setValue(search);
         addRenderableWidget(query);
-        int y=imageHeight-106;
+        int y=panelHeight-106;
         button("START BUILD",SIDE+12,y,116,()->send("builder_start",0));
         button("PAUSE",SIDE+136,y,72,()->send("builder_pause",0));
         button("RESUME",SIDE+216,y,82,()->send("builder_resume",0));
@@ -239,14 +246,14 @@ public final class BuilderPlannerScreen extends AbstractContainerScreen<WorkerSt
         long full=count/size,partial=count%size;
         return count+" items ("+full+" stacks"+(partial==0?"":", "+partial+" extra")+")";
     }
-    @Override protected void extractBackground(GuiGraphicsExtractor g,
+    @Override public void extractBackground(GuiGraphicsExtractor g,
             int mouseX,int mouseY,float partialTick){
         int x=leftPos,y=topPos;
-        g.fill(x,y,x+imageWidth,y+imageHeight,0xff111b24);
-        g.fill(x+4,y+4,x+imageWidth-4,y+69,0xff263946);
-        g.fill(x+9,y+76,x+SIDE-8,y+imageHeight-12,0xff283c40);
-        g.fill(x+SIDE+4,y+76,x+imageWidth-9,y+imageHeight-12,0xff1e313c);
-        g.fill(x+SIDE+5,y+114,x+imageWidth-10,y+imageHeight-119,0xff162932);
+        g.fill(x,y,x+panelWidth,y+panelHeight,0xff111b24);
+        g.fill(x+4,y+4,x+panelWidth-4,y+69,0xff263946);
+        g.fill(x+9,y+76,x+SIDE-8,y+panelHeight-12,0xff283c40);
+        g.fill(x+SIDE+4,y+76,x+panelWidth-9,y+panelHeight-12,0xff1e313c);
+        g.fill(x+SIDE+5,y+114,x+panelWidth-10,y+panelHeight-119,0xff162932);
         // Job-block and player inventory remain available in the planner.
         for(int i=0;i<36;i++){
             int sx=x+18+(i%9)*18,sy=y+95+(i/9)*18;
@@ -314,7 +321,7 @@ public final class BuilderPlannerScreen extends AbstractContainerScreen<WorkerSt
             if(choices.isEmpty())g.text(font,"No Litematica placement loaded; refresh.",
                     SIDE+15,161,YELLOW,false);
             if(!notice.isBlank())g.text(font,shorten(notice,90),
-                    SIDE+15,imageHeight-12,YELLOW,false);
+                    SIDE+15,panelHeight-12,YELLOW,false);
             return;
         }
         if(t==null)return;
@@ -350,13 +357,13 @@ public final class BuilderPlannerScreen extends AbstractContainerScreen<WorkerSt
                 "Click + NEW JOB to select and import a Litematica placement.",
                 SIDE+19,156,YELLOW,false);
         g.text(font,"MATERIALS "+rows.size()+" | SCROLL "+(scroll+1)+"/"+
-                Math.max(1,(rows.size()+column-1)/column),SIDE+18,imageHeight-119,MUTED,false);
+                Math.max(1,(rows.size()+column-1)/column),SIDE+18,panelHeight-119,MUTED,false);
         g.text(font,"WHITE unchecked   GREEN enough   YELLOW partial   RED none",
-                SIDE+16,imageHeight-15,TEXT,false);
+                SIDE+16,panelHeight-15,TEXT,false);
         if(!t.problem().isBlank())g.text(font,shorten("STATUS: "+t.problem(),93),
-                SIDE+16,imageHeight-128,YELLOW,false);
+                SIDE+16,panelHeight-128,YELLOW,false);
         else if(!notice.isBlank())g.text(font,shorten(notice,93),
-                SIDE+16,imageHeight-128,MUTED,false);
+                SIDE+16,panelHeight-128,MUTED,false);
     }
     private static String shorten(String s,int max){
         return s.length()<=max?s:s.substring(0,Math.max(0,max-1))+"…";

@@ -20,7 +20,7 @@ import net.minecraft.world.entity.player.Inventory;
  * The right pane controls the server-owned workstation. It never edits block
  * entity state directly on the client or dispatches slash commands.
  */
-public final class WorkerStationScreen extends AbstractContainerScreen<WorkerStationMenu> {
+public class WorkerStationScreen extends AbstractContainerScreen<WorkerStationMenu> {
     private enum Page { BUILD, BUILDER_SETUP, BUILDER_PLACEMENTS, TRADE_ORDER, TRADE_BUDGET, TRADE_VILLAGE, BEEKEEPER, CHEF_MENU, CHEF_SUPPLIES, CHEF_DETAILS }
     private Page page=Page.BUILD;
     private EditBox first,second;
