@@ -2,6 +2,10 @@ package com.caszgamermd.golemsplus.builder;
 
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.NonNullList;
+import net.minecraft.world.Container;
+import net.minecraft.world.ContainerHelper;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -14,11 +18,15 @@ import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 
 /** Physical construction courier. Every placement is checked server-side. */
-public final class BuilderGolem extends PathfinderMob {
+public final class BuilderGolem extends PathfinderMob implements Container {
 
     private BlockPos home=BlockPos.ZERO;
     private UUID owner;
     private ItemStack carriedSupplyBox=ItemStack.EMPTY;
+    // Nine real stacks: solo builders load once from their staging chest,
+    // walk to the site, and pay for placed blocks from this persisted pouch.
+    private final NonNullList<ItemStack> materials=
+            NonNullList.withSize(9,ItemStack.EMPTY);
     public BuilderGolem(EntityType<? extends PathfinderMob> type,Level world){
         super(type,world);
         setPersistenceRequired();
@@ -45,6 +53,32 @@ public final class BuilderGolem extends PathfinderMob {
         carriedSupplyBox=box.copyWithCount(1);
     }
     public void clearSupplyBox(){carriedSupplyBox=ItemStack.EMPTY;}
+    @Override public int getContainerSize(){return materials.size();}
+    @Override public boolean isEmpty(){return materials.stream().allMatch(ItemStack::isEmpty);}
+    @Override public ItemStack getItem(int i){
+        return i>=0&&i<materials.size()?materials.get(i):ItemStack.EMPTY;
+    }
+    @Override public ItemStack removeItem(int i,int qty){
+        if(i<0||i>=materials.size())return ItemStack.EMPTY;
+        return ContainerHelper.removeItem(materials,i,qty);
+    }
+    @Override public ItemStack removeItemNoUpdate(int i){
+        if(i<0||i>=materials.size())return ItemStack.EMPTY;
+        return ContainerHelper.takeItem(materials,i);
+    }
+    @Override public void setItem(int i,ItemStack item){
+        if(i>=0&&i<materials.size())materials.set(i,item.copy());
+    }
+    @Override public void setChanged(){}
+    @Override public boolean stillValid(Player player){
+        return isAlive()&&distanceToSqr(player)<64;
+    }
+    @Override public void clearContent(){materials.replaceAll(item->ItemStack.EMPTY);}
+    public int carriedCount(net.minecraft.world.item.Item item){
+        int n=0;
+        for(ItemStack stack:materials)if(stack.is(item))n+=stack.getCount();
+        return n;
+    }
     @Override public void tick(){
         super.tick();
         if(level() instanceof ServerLevel server)
@@ -58,6 +92,9 @@ public final class BuilderGolem extends PathfinderMob {
         if(owner!=null)out.putString("builder_owner",owner.toString());
         if(!carriedSupplyBox.isEmpty())
             out.store("builder_carried_shulker",ItemStack.CODEC,carriedSupplyBox);
+        for(int i=0;i<materials.size();i++)
+            if(!materials.get(i).isEmpty())
+                out.store("builder_material_"+i,ItemStack.CODEC,materials.get(i));
     }
     @Override protected void readAdditionalSaveData(ValueInput in){
         super.readAdditionalSaveData(in);
@@ -66,5 +103,8 @@ public final class BuilderGolem extends PathfinderMob {
         catch(IllegalArgumentException ex){owner=null;}
         carriedSupplyBox=in.read("builder_carried_shulker",ItemStack.CODEC)
                 .orElse(ItemStack.EMPTY);
+        for(int i=0;i<materials.size();i++)
+            materials.set(i,in.read("builder_material_"+i,ItemStack.CODEC)
+                    .orElse(ItemStack.EMPTY));
     }
 }
