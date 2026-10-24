@@ -248,8 +248,15 @@ public final class BuilderBuildService {
                             level,worker,table,plan.steps(),index)){
                 if(BuilderWarehouseCoordinator.request(level,worker,table,
                         owner,plan.steps()))return;
-                table.setProblem("Builder needs "+step.requiredItem()+
-                        " at its linked material storage to continue");
+                // Do not hide a more useful warehouse diagnostic behind
+                // the generic "site storage is empty" warning. A courier
+                // request can be retried automatically when a PTP is freed.
+                String problem=table.problem();
+                if(problem.isBlank()||(!problem.contains("Warehouse")
+                        &&!problem.contains("output")&&!problem.contains("PTP")
+                        &&!problem.contains("shulker")))
+                    table.setProblem("Builder needs "+step.requiredItem()+
+                            " in on-site storage; waiting for warehouse delivery");
                 return;
             }
             double horizontal=Math.pow(worker.getX()-(pos.getX()+.5),2)
