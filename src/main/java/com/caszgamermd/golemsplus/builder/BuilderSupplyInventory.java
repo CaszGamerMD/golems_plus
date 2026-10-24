@@ -224,6 +224,13 @@ public final class BuilderSupplyInventory {
                         level,worker,location,.83);
                 return false;
             }
+            // When a nine-slot pouch contains leftovers from prior layers,
+            // unload them at the *physical* staging chest before trying the
+            // next recipe material. Never silently deadlock at pouch capacity.
+            if(room(worker,new ItemStack(target))<=0){
+                returnPouch(table,worker);
+                if(room(worker,new ItemStack(target))<=0)return false;
+            }
             int limit=source==table?WorkerStationBlockEntity.INPUT_SLOTS:
                     source.getContainerSize();
             for(int i=0;i<limit&&needed>0;i++){
