@@ -83,10 +83,10 @@ public final class ProfessionGolemModel
                 // Courier attire is physically separate cuboids toggled by
                 // the server-owned role: bald patch and dirty work shirt.
                 head.addOrReplaceChild("bald_patch",CubeListBuilder.create()
-                        .texOffs(12,26).addBox(-3.75f,-4.25f,-2.75f,7.5f,.5f,5.5f),
+                        .texOffs(0,26).addBox(-3.75f,-4.25f,-2.75f,7.5f,.5f,5.5f),
                         PartPose.ZERO);
                 torso.addOrReplaceChild("dirty_shirt",CubeListBuilder.create()
-                        .texOffs(86,33).addBox(-5.32f,-6.23f,-3.78f,
+                        .texOffs(0,0).addBox(-5.32f,-6.23f,-3.78f,
                                 10.64f,10.55f,7.56f),PartPose.ZERO);
                 // Raised hard-hat bowl, brow brim, rear flap and center rib.
                 head.addOrReplaceChild("helmet_crown",CubeListBuilder.create()
