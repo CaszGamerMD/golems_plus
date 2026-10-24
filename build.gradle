@@ -36,3 +36,52 @@ java {
     targetCompatibility = JavaVersion.VERSION_25
     withSourcesJar()
 }
+
+// The Fisher's chair is part of the entity model. Generate a separate atlas
+// for each fabric color, recoloring only the red canvas UV island. The body,
+// tackle, metallic tube frame and original fabric shadowing are untouched.
+// Generation uses only Java/ImageIO, so Gradle works on Windows or Linux.
+tasks.named('processResources') {
+    doLast {
+        def original=javax.imageio.ImageIO.read(file(
+                'src/main/resources/assets/golems_plus/textures/entity/fisher_golem.png'))
+        def colors=[
+                red:0xD73837,green:0x348945,blue:0x336CC0,
+                purple:0x8652AE,orange:0xDE7628,white:0xE2E0D9,
+                black:0x292B31,grey:0x85878B,aqua:0x28BFC3,
+                gold:0xDBB844,pink:0xE184B2,brown:0x835337
+        ]
+        def folder=new File(destinationDir,'assets/golems_plus/textures/entity')
+        folder.mkdirs()
+        colors.each { name, color ->
+            def target=new java.awt.image.BufferedImage(
+                    original.width,original.height,java.awt.image.BufferedImage.TYPE_INT_ARGB)
+            int count=0
+            for(int y=0;y<original.height;y++){
+                for(int x=0;x<original.width;x++){
+                    int rgb=original.getRGB(x,y)
+                    int alpha=(rgb>>>24)&255
+                    int red=(rgb>>>16)&255,green=(rgb>>>8)&255,blue=rgb&255
+                    // Chair fabric is on the upper-right of the entity UV
+                    // sheet; red-predominant texels distinguish it from
+                    // black webbing, metal, rubber and white uniforms.
+                    boolean fabric=x>=190&&y<90&&alpha>0
+                            &&red>58&&red>green*1.20&&red>blue*1.18
+                    if(fabric){
+                        double shade=Math.min(1.13,Math.max(.35,red/204.0))
+                        int r=Math.min(255,(int)(((color>>>16)&255)*shade))
+                        int g=Math.min(255,(int)(((color>>>8)&255)*shade))
+                        int bl=Math.min(255,(int)((color&255)*shade))
+                        rgb=(alpha<<24)|(r<<16)|(g<<8)|bl
+                        count++
+                    }
+                    target.setRGB(x,y,rgb)
+                }
+            }
+            if(count==0)throw new GradleException('Missing Fisher chair canvas UVs')
+            if(!javax.imageio.ImageIO.write(target,'png',
+                    new File(folder,"fisher_chair_${name}.png")))
+                throw new GradleException('Unable to pack Fisher chair texture')
+        }
+    }
+}

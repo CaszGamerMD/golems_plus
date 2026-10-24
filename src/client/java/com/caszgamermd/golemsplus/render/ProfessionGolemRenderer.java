@@ -33,6 +33,10 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
     public static final ModelLayerLocation FISHER_LAYER=
             new ModelLayerLocation(GolemsPlus.id("fisher_worker"),"main");
     private final Identifier uniformTexture;
+    private static final String[] CHAIR_COLORS={
+            "red","green","blue","purple","orange","white",
+            "black","grey","aqua","gold","pink","brown"};
+    private final Identifier[] chairTextures;
     private final ItemModelResolver itemModelResolver;
 
     public ProfessionGolemRenderer(EntityRendererProvider.Context context,
@@ -41,13 +45,20 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
         itemModelResolver=context.getItemModelResolver();
         uniformTexture=GolemsPlus.id("textures/entity/"+
                 kind.name().toLowerCase(java.util.Locale.ROOT)+"_golem.png");
+        chairTextures=kind==ProfessionGolemModel.Profession.FISHER
+                ?java.util.Arrays.stream(CHAIR_COLORS)
+                    .map(color->GolemsPlus.id("textures/entity/fisher_chair_"+color+".png"))
+                    .toArray(Identifier[]::new)
+                :new Identifier[0];
     }
 
     @Override public ProfessionGolemRenderState createRenderState(){
         return new ProfessionGolemRenderState();
     }
     @Override public Identifier getTextureLocation(ProfessionGolemRenderState state){
-        return uniformTexture;
+        return chairTextures.length>0&&state.seated
+                ?chairTextures[Math.floorMod(state.chairColor,chairTextures.length)]
+                :uniformTexture;
     }
     @Override public void extractRenderState(T entity,
             ProfessionGolemRenderState state,float partialTick){
@@ -69,6 +80,7 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
         state.hasRod=entity instanceof FisherGolem fisher&&fisher.hasRod();
         state.carryingFish=entity instanceof FisherGolem fisher&&fisher.hasCatch();
         state.seated=entity instanceof FisherGolem fisher&&fisher.seated();
+        state.chairColor=entity instanceof FisherGolem fisher?fisher.chairColor():0;
         state.casting=entity instanceof FisherGolem fisher&&fisher.casting();
         state.reeling=entity instanceof FisherGolem fisher&&fisher.reeling();
         // Chef ingredient matches the chosen job step, not synthetic food.
