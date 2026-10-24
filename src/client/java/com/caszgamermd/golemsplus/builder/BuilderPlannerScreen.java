@@ -141,8 +141,10 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         for(int i=jobPage*visibleTabs;i<Math.min(jobCount,(jobPage+1)*visibleTabs);i++){
             int n=i,at=i-jobPage*visibleTabs;
             var job=table.builderJobs().get(i);
-            String label=(table.selectedBuilderJob()==i?"● ":"")+
-                    job.name()+" ("+(job.blocks()==0?0:job.cursor()*100/job.blocks())+"%)";
+            String symbol=job.phase().equals("WORKING")?"▶":
+                    job.phase().equals("COMPLETE")?"✓":"•";
+            String label=symbol+" "+job.name()+" "+
+                    (job.blocks()==0?0:job.cursor()*100/job.blocks())+"%";
             if(label.length()>17)label=label.substring(0,16)+"…";
             button(label,40+at*125,39,121,()->{
                 if(table.activeOrder()!=null&&table.selectedBuilderJob()!=n){
@@ -295,7 +297,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     @Override protected void extractLabels(GuiGraphicsExtractor g,int mouseX,int mouseY){
         var t=station();
         g.text(font,"CASZUAL BUILDERS  /  JOB PLANNER",16,14,0xffeff6eb,false);
-        g.text(font,"STORED BUILD JOBS",16,73,MUTED,false);
+        g.text(font,"ACTIVE / SAVED JOBS",16,73,MUTED,false);
         g.text(font,"JOB-BLOCK SUPPLIES / SCAFFOLDING",18,85,TEXT,false);
         g.text(font,"PLAYER INVENTORY",18,188,TEXT,false);
         if(t!=null){
