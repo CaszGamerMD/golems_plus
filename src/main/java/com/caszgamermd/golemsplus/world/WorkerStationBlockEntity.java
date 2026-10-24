@@ -50,6 +50,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private int builderMirror;
     private BlockPos builderOrigin=BlockPos.ZERO;
     private BlockPos builderMaterialStorage;
+    // Keep the deleted job's physical chest available for unloading the
+    // departing crew, even after its saved job entry is gone.
+    private BlockPos builderRetirementStorage;
     private final java.util.Map<String,Long> builderRequired=new java.util.LinkedHashMap<>();
     private final java.util.Map<String,Long> builderRemaining=new java.util.LinkedHashMap<>();
     private final java.util.Map<String,Integer> builderWarehouseStock=new java.util.LinkedHashMap<>();
@@ -394,6 +397,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public String problem() { return problem; }
     public String builderFile() { return builderFile; }
     public BlockPos builderMaterialStorage(){return builderMaterialStorage;}
+    public BlockPos builderUnloadingStorage(){
+        return builderRecallRequested&&builderRetirementStorage!=null
+                ?builderRetirementStorage:builderMaterialStorage;
+    }
     public Map<String,Long> builderRequired(){return Map.copyOf(builderRequired);}
     public Map<String,Long> builderRemaining(){return Map.copyOf(builderRemaining);}
     public Map<String,Integer> builderWarehouseStock(){return Map.copyOf(builderWarehouseStock);}
@@ -515,6 +522,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||index<0||index>=builderJobs.size())return false;
         if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
             builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
+        // Capture the deleted job's depot BEFORE selectBuilderJob() switches
+        // the Planner to another job (or clears the final stored link).
+        BlockPos oldSite=builderJobs.get(index).storage();
+        if(oldSite!=null)builderRetirementStorage=oldSite.immutable();
         String deleted=builderJobs.remove(index).file();
         builderRecallRequested=true;
         builderClearByFile.remove(deleted);
@@ -633,7 +644,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClaims.remove(worker);
         trackedScaffolds.remove(worker);
         if(worker.equals(supplyRunner))supplyRunner=null;
-        if(builderWorkerIds().isEmpty())builderRecallRequested=false;
+        if(builderWorkerIds().isEmpty()){
+            builderRecallRequested=false;builderRetirementStorage=null;
+        }
         sync();
     }
     public java.util.List<UUID> builderWorkerIds(){
@@ -1190,6 +1203,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             out.putString("trader_extra_worker_"+n,additionalTraderWorkers.get(n).toString());
         out.putInt("builder_crew_target",crewTarget);
         out.putBoolean("builder_recall_requested",builderRecallRequested);
+        if(builderRetirementStorage!=null)
+            out.store("builder_retirement_storage",BlockPos.CODEC,
+                    builderRetirementStorage);
         int lastIndex=0;
         for(UUID id:builderWorkerIds()){
             if(lastIndex>=8)break;
@@ -1425,6 +1441,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderWorkerId=uuid(in,"builder_worker");
         crewTarget=Math.clamp(in.getIntOr("builder_crew_target",1),1,isBuilder()?8:4);
         builderRecallRequested=in.getBooleanOr("builder_recall_requested",false);
+        builderRetirementStorage=in.read("builder_retirement_storage",
+                BlockPos.CODEC).orElse(null);
         additionalBuilderWorkers.clear();
         int extra=Math.clamp(in.getIntOr("builder_extra_workers",0),0,7);
         for(int j=0;j<extra;j++){
