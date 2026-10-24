@@ -129,6 +129,7 @@ public final class BuilderUploadNetworking {
                 Files.deleteIfExists(saved);
                 notify(player,"The table could not accept this placement.");return;
             }
+            table.setBuilderMaterialsForFile(saved.getFileName().toString(),plan.required());
             notify(player,"Imported placed '"+p.name()+"' at "+p.origin()+
                     " ("+plan.steps().size()+" blocks; "+
                     plan.unsupported().size()+" unsupported states).");
