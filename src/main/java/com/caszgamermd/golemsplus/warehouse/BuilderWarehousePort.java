@@ -17,8 +17,10 @@ public final class BuilderWarehousePort {
         public Reply {
             missing=Map.copyOf(missing);
         }
-        public boolean accepted(){return ptp!=null&&!ptp.equals(BlockPos.ZERO)
-                &&!state.equals("WAREHOUSE_OFFLINE")&&!state.equals("RESERVATION_MISSING");}
+        public boolean accepted(){return "QUEUED_AT_WAREHOUSE".equals(state)
+                ||(ptp!=null&&!ptp.equals(BlockPos.ZERO)
+                &&!state.equals("WAREHOUSE_OFFLINE")
+                &&!state.equals("RESERVATION_MISSING"));}
     }
     private static final String IMPL=
             "com.caszgamermd.caszualadditions.racks.BuilderWarehouseFulfillment";
