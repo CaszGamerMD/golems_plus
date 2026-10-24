@@ -29,7 +29,10 @@ public final class BuilderBlockResolver {
         Block block=BuiltInRegistries.BLOCK.getValue(identifier);
         Item item=block.asItem();
         if(item==Items.AIR || block instanceof EntityBlock)return null;
-        if(id.endsWith("_door")||id.endsWith("_bed")||id.endsWith("_tall_flower")
+        // Door halves are represented by two successive schematic cells.
+        // Lower block consumes the single physical door item; upper half
+        // is placed after its lower support, without duplicating materials.
+        if(id.endsWith("_bed")||id.endsWith("_tall_flower")
                 ||id.endsWith("_double_plant")||id.endsWith("_crop")
                 ||id.equals("minecraft:water")||id.equals("minecraft:lava")
                 ||id.contains("redstone_wire")||id.contains("piston")

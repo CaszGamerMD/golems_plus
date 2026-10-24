@@ -241,34 +241,14 @@ public final class BuilderBuildService {
             // parallel. A site with an obstruction or no tool cannot start
             // placing around that obstruction or advance into upper layers.
             if(table.builderClearCursor()<plan.clearing().size()){
-                // The previous choice used the first *registered* UUID,
-                // even when that Builder was unloaded or had died. It also
-                // selected nobody if the solo worker was the courier.
-                // Select the first ACTUALLY LOADED non-courier Builder;
-                // a solo courier may clear while no pickup is ready.
-                java.util.List<UUID> candidates=new java.util.ArrayList<>();
-                for(UUID id:table.builderWorkerIds()){
-                    if(id.equals(table.supplyRunner()))continue;
-                    if(level.getEntity(id) instanceof BuilderGolem available
-                            &&available.isAlive())candidates.add(id);
-                }
-                if(candidates.isEmpty()&&table.builderWorkerIds().size()==1
-                        &&table.builderWorkerIds().contains(worker.getUUID())
-                        &&!worker.hasSupplyBox())candidates.add(worker.getUUID());
-                ClearWatch watch=clearWatch.computeIfAbsent(table,k->new ClearWatch());
-                long now=level.getGameTime();
-                if(watch.cursor!=table.builderClearCursor()){
-                    watch.cursor=table.builderClearCursor();watch.lastProgress=now;
-                }
-                UUID cleaner=candidates.isEmpty()?null:candidates.get(
-                        (int)Math.floorMod((now-watch.lastProgress)/80,
-                                candidates.size()));
-                if(worker.getUUID().equals(cleaner))
+                // Every actual crew member can claim a DIFFERENT obstruction
+                // or already-correct schematic cell. Courier stays available
+                // to collect ready shulkers; when this is the only Builder,
+                // it can clear while its next shulker is being packed.
+                boolean courier=worker.getUUID().equals(table.supplyRunner());
+                if(!courier||table.builderWorkerIds().size()==1)
                     BuilderSiteClearance.tick(level,worker,table,owner,
                             plan.clearing(),plan.steps());
-                else if(cleaner==null)
-                    table.setProblem("No loaded Builder available to clear site; "
-                            +"reload or assign a Builder crew member");
                 return;
             }
             // All workers finish the current bottommost layer before any
@@ -324,8 +304,9 @@ public final class BuilderBuildService {
             // Every worker first visits actual staging storage, loads a
             // three-layer pouch, THEN walks to the construction site.
             // Never debit a remote chest while standing at the build.
-            if(worker.carriedCount(state.item())<=0 &&
-                    !BuilderSupplyInventory.loadForLayer(
+            if(step.requiredItem()!=null
+                    &&worker.carriedCount(state.item())<=0
+                    &&!BuilderSupplyInventory.loadForLayer(
                             level,worker,table,plan.steps(),index)){
                 // Release this assignment temporarily: another real block
                 // in the SAME layer may already be available. A missing
@@ -377,9 +358,13 @@ public final class BuilderBuildService {
                     table.setProblem("Builder cannot path to "+pos);
                 return;
             }
-            BuilderSupplyInventory.Receipt payment=
+            // Upper door halves do not consume another door item; the
+            // lower half was already placed and paid for in the prior
+            // layer. Keep refund logic for all ordinary materials.
+            boolean freeHalf=step.requiredItem()==null;
+            BuilderSupplyInventory.Receipt payment=freeHalf?null:
                     BuilderSupplyInventory.consume(worker,state.item());
-            if(payment==null){
+            if(!freeHalf&&payment==null){
                 table.waitForBuilderMaterial(worker.getUUID(),index,
                         level.getGameTime());
                 if(BuilderWarehouseCoordinator.request(level,worker,table,
@@ -390,7 +375,7 @@ public final class BuilderBuildService {
             // The real consumed stack is debited from either a loose slot
             // or its packed shulker box BEFORE the world changes.
             if(!level.setBlock(pos,state.state(),3)){
-                BuilderSupplyInventory.refund(table,payment);
+                if(payment!=null)BuilderSupplyInventory.refund(table,payment);
                 table.setProblem("World rejected placement at "+pos);
                 return;
             }

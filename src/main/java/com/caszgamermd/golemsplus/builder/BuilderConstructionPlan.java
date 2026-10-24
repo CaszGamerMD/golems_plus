@@ -35,7 +35,12 @@ public final class BuilderConstructionPlan {
             if(world.y()<-64||world.y()>511)
                 throw new IllegalArgumentException("Placement exceeds supported world height");
             if(resolved==null)unsupported.add(b.state());
-            String item=resolved==null?null:
+            // A door consumes ONE item for its lower half. Both door
+            // states are present in Litematica, so counting the upper
+            // half would request and spend twice the correct materials.
+            boolean upperDoor=b.state().contains("_door[")
+                    &&b.state().contains("half=upper");
+            String item=resolved==null||upperDoor?null:
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(resolved.item()).toString();
             steps.add(new Step(world.x(),world.y(),world.z(),b.state(),item));
             if(item!=null)quantities.merge(item,1L,Long::sum);

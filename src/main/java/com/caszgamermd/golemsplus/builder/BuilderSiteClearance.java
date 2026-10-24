@@ -46,74 +46,65 @@ public final class BuilderSiteClearance {
         return List.copyOf(result);
     }
 
-    /**
-     * One worker clears; other assigned workers may fetch supplies in
-     * parallel. At most 128 already-correct/air tiles are scanned per tick,
-     * and at most ONE actual obstruction is physically removed per tick.
-     * Progress is saved on the Planner so reloads can't restart/desync.
+    /** Every assigned non-courier Builder can verify and clear distinct
+     * schematic cells. The Planning Table allocates per-worker claims, so
+     * the saved head cursor advances only over positively verified cells.
+     * There is no shared single cleaner and no ability to clear a cell
+     * another Builder already owns.
      */
     public static boolean tick(ServerLevel world,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer owner,List<Target> plan,
             List<BuilderConstructionPlan.Step> construction){
-        int cursor=table.builderClearCursor(),end=Math.min(plan.size(),
-                cursor+MAX_CHECKS_PER_TICK);
-        for(int i=cursor;i<end;i++){
-            Target step=plan.get(i);
+        int checks=0;
+        while(checks++<MAX_CHECKS_PER_TICK){
+            int index=table.claimBuilderClear(worker.getUUID(),plan.size());
+            if(index<0)return table.builderClearCursor()>=plan.size();
+            Target step=plan.get(index);
             BlockPos pos=step.pos();
-            // Request the next exact schematic chunk before testing whether
-            // the world has loaded it; clearing can span many chunks.
-            // Reading the 128-cell schematic scan must not constantly
-            // reticket every already-loaded, already-correct position.
-            // Only an unloaded target or an actual obstruction needs the
-            // dedicated task chunk reservation.
             if(!world.hasChunkAt(pos))
                 BuilderChunkTickets.destination(world,worker,pos);
             if(!world.hasChunkAt(pos)){
-                table.advanceBuilderClearing(i);
-                table.setProblem("CLEARING: build chunk unloaded "+pos);
+                table.setProblem("CLEARING: loading construction chunk "+pos);
                 return false;
             }
             if(!world.mayInteract(owner,pos)){
-                table.advanceBuilderClearing(i);
                 table.setProblem("CLEARING: protected site location "+pos);
                 return false;
             }
-            BlockState expected;
-            if(step.state().equals("minecraft:air"))expected=Blocks.AIR.defaultBlockState();
-            else{
+            // An empty position needs no schematic-state parser at all.
+            // Previously a spruce door at a future empty position was
+            // rejected before checking the existing world block.
+            BlockState existing=world.getBlockState(pos);
+            if(existing.isAir()){
+                table.completeBuilderClear(worker.getUUID(),index,false);
+                continue;
+            }
+            BlockState expected=Blocks.AIR.defaultBlockState();
+            if(!step.state().equals("minecraft:air")){
                 var resolved=BuilderBlockResolver.resolve(step.state(),
                         BuildSite.Rotation.values()[table.builderRotation()/90],
                         BuildSite.Mirror.values()[table.builderMirror()]);
                 if(resolved==null){
-                    table.advanceBuilderClearing(i);
+                    // Never destroy an obstruction we cannot subsequently
+                    // rebuild. Report the precise state, retaining its
+                    // claimed cell for player/mod review.
                     table.setProblem("CLEARING: unsupported schematic state "+
                             step.state()+" at "+pos);
                     return false;
                 }
                 expected=resolved.state();
             }
-            BlockState existing=world.getBlockState(pos);
-            if(existing.isAir()||existing.equals(expected))continue;
+            if(existing.equals(expected)){
+                table.completeBuilderClear(worker.getUUID(),index,false);
+                continue;
+            }
             BuilderChunkTickets.destination(world,worker,pos);
-            table.advanceBuilderClearing(i);
-            // Reach above-head blocks from real supplied scaffolding. This
-            // is the same non-creative, trackable, reclaimable system used
-            // later for layer-by-layer construction.
-            // Clear thin snow directly before asking for a scaffold column.
-            // Thin snow is replaceable ground cover, not an elevated
-            // structural obstruction. A temporary tower would often have
-            // nowhere to stand until the snow itself had been removed.
             boolean surfaceSnow=existing.is(Blocks.SNOW);
             if(!surfaceSnow&&pos.getY()-worker.getY()>2.5){
                 var reach=BuilderScaffolding.reach(
                         world,worker,table,owner,pos,construction);
                 if(reach==BuilderScaffolding.Result.NEED_MATERIALS){
                     table.setProblem("CLEARING: needs supplied scaffolding at "+pos);
-                    // Preparation is part of the build supply pipeline too:
-                    // request real scaffolding from the linked warehouse
-                    // instead of waiting forever for a manual refill.
-                    // The same UUID ticket/physical courier/shulker flow
-                    // used by the placement phase prevents duplicate stock.
                     BuilderWarehouseCoordinator.requestScaffolding(
                             world,worker,table,owner,construction);
                     return false;
@@ -124,18 +115,12 @@ public final class BuilderSiteClearance {
                     return false;
                 }
             }
-            var status=BuilderClearance.clear(world,worker,table,owner,pos,existing);
-            if(status==BuilderClearance.Result.CLEARED){
-                table.advanceBuilderClearing(i+1);
-                // No further destructive action this tick.
-            }
-            return false;
+            var status=BuilderClearance.clear(
+                    world,worker,table,owner,pos,existing);
+            if(status==BuilderClearance.Result.CLEARED)
+                table.completeBuilderClear(worker.getUUID(),index,true);
+            return false; // Only one destructive action per worker tick.
         }
-        table.advanceBuilderClearing(end);
-        if(end==plan.size()){
-            table.setProblem("");
-            return true;
-        }
-        return false;
+        return table.builderClearCursor()>=plan.size();
     }
 }
