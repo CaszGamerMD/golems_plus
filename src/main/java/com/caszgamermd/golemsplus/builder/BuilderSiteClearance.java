@@ -95,6 +95,13 @@ public final class BuilderSiteClearance {
                         world,worker,table,owner,pos,construction);
                 if(reach==BuilderScaffolding.Result.NEED_MATERIALS){
                     table.setProblem("CLEARING: needs supplied scaffolding at "+pos);
+                    // Preparation is part of the build supply pipeline too:
+                    // request real scaffolding from the linked warehouse
+                    // instead of waiting forever for a manual refill.
+                    // The same UUID ticket/physical courier/shulker flow
+                    // used by the placement phase prevents duplicate stock.
+                    BuilderWarehouseCoordinator.requestScaffolding(
+                            world,worker,table,owner,construction);
                     return false;
                 }
                 if(reach!=BuilderScaffolding.Result.NOT_NEEDED){
