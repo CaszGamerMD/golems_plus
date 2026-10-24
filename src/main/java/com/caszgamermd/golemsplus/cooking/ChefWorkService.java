@@ -143,7 +143,8 @@ public final class ChefWorkService{
                 plan.work().stream().map(ChefRecipePlanner.WorkStep::encode).toList();
         var escrow=new LinkedHashMap<String,Integer>();
         plan.ingredients().forEach((k,v)->escrow.put(BuiltInRegistries.ITEM.getKey(k).toString(),v));
-        if(!kitchen.consume(plan.ingredients())){
+        List<KitchenSupplies.Origin> withdrawn=kitchen.withdraw(plan.ingredients());
+        if(withdrawn==null){
             station.setProblem("Kitchen stock changed; check supplies and order again");
             return false;
         }
@@ -153,6 +154,7 @@ public final class ChefWorkService{
         if(!station.startChefOrder(player.getUUID(),key.toString(),amount,steps,escrow,surplus)){
             station.setProblem("Could not reserve order");return false;
         }
+        station.setChefOrigins(withdrawn);
         station.setProblem("");
         return true;
     }
@@ -176,6 +178,15 @@ public final class ChefWorkService{
         if(!station.chefBusy()
                 ||station.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED){
             for(ChefGolem chef:chefs)chef.setJobAppearance(false,ItemStack.EMPTY);
+            // Paused recipes retain reserved ingredients for safe resume.
+            // An idle kiosk with orphaned escrow returns it to storage.
+            if(!station.chefBusy()&&!station.chefReserved().isEmpty()){
+                KitchenSupplies pantry=kitchen(level,station);
+                List<ItemStack> unused=reservedStacks(station.chefReserved());
+                if(pantry.connected()&&pantry.insertAll(unused,station.chefOrigins())){
+                    station.clearChefOrder();station.setProblem("");
+                }else station.setProblem("Kitchen storage full/disconnected: cannot return idle Chef stock");
+            }
             return;
         }
         if(chefs.isEmpty()){
@@ -260,26 +271,14 @@ public final class ChefWorkService{
         int remain=available-station.chefQuantity();
         if(remain==0)reserved.remove(id.toString());
         else reserved.put(id.toString(),remain);
-        List<ItemStack> leftovers=new ArrayList<>();
-        for(var entry:reserved.entrySet()){
-            Identifier itemId=Identifier.tryParse(entry.getKey());
-            if(itemId==null||!BuiltInRegistries.ITEM.containsKey(itemId))continue;
-            Item item=BuiltInRegistries.ITEM.getValue(itemId);
-            int count=entry.getValue();
-            if(count<0)continue;
-            while(count>0){
-                int n=Math.min(count,new ItemStack(item).getMaxStackSize());
-                leftovers.add(new ItemStack(item,n));
-                count-=n;
-            }
-        }
-        if(!pantry.canInsertAll(leftovers)){
+        List<ItemStack> leftovers=reservedStacks(reserved);
+        if(!pantry.canInsertAll(leftovers,station.chefOrigins())){
             station.setProblem("Kitchen storage is full: cannot return unused recipe items");
             return;
         }
         // Both inventories are server-thread-owned. No inventory reads from
         // any player or synthetic generated prepared meal are involved.
-        if(!pantry.insertAll(leftovers)){
+        if(!pantry.insertAll(leftovers,station.chefOrigins())){
             station.setProblem("Kitchen changed during item return; retrying");return;
         }
         if(pickup.serve(new ItemStack(BuiltInRegistries.ITEM.getValue(id),
@@ -287,6 +286,21 @@ public final class ChefWorkService{
             station.clearChefOrder();
             station.setProblem("");
         }
+    }
+
+    private static List<ItemStack> reservedStacks(Map<String,Integer> reserved){
+        List<ItemStack> stacks=new ArrayList<>();
+        for(var entry:reserved.entrySet()){
+            Identifier id=Identifier.tryParse(entry.getKey());
+            if(id==null||!BuiltInRegistries.ITEM.containsKey(id))continue;
+            Item item=BuiltInRegistries.ITEM.getValue(id);
+            int count=entry.getValue();
+            while(count>0){
+                int portion=Math.min(count,new ItemStack(item).getMaxStackSize());
+                stacks.add(new ItemStack(item,portion));count-=portion;
+            }
+        }
+        return stacks;
     }
 
     private static boolean approachChefs(ServerLevel level,List<ChefGolem> chefs,

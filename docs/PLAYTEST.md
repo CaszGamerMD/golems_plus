@@ -144,3 +144,27 @@ Playtest in a **backed-up** world:
 
 The five-tick check is a lightweight route inspection, **not** a full A*
 search every five ticks. Full navigation remains server-controlled.
+
+## Chef idle ingredient return — 0.3.22-dev
+
+Chefs must clear their displayed hand contents whenever there is no active
+order, and also when an order is paused. The physical ingredient reserve
+belongs to the Kitchen Ordering Kiosk, **not** the individual Golem; do not
+create synthetic item stacks to mirror the animated hands.
+
+- Reserve items from actual connected CFB fridges, cabinets and counters.
+  Original source block positions and slots are saved in the job block.
+- After serving a meal, return surplus to the original slot when compatible;
+  otherwise a same-item stack, then a free slot anywhere in the *linked*
+  kitchen. Retained surplus never overflows or drops onto the floor.
+- Idle orphaned ingredient reserves are returned by the same rules; when
+  storage is full/disconnected, keep the reserve and show a kitchen warning.
+- A PAUSED chef job retains its reserved material for resumption; it only
+  clears the rendered hand item. No duplicate refunds on tick/reload.
+
+Regression: use a stocked fridge with two matching ingredient stacks and
+additional free space in connected drawers. Finish a recipe with surplus,
+fill the original slot while the chef works, then confirm the spare stack
+moves to another matching slot. Fill every slot and check the chef waits
+without voiding stock or issuing free food. Save/reload an active order and
+confirm the original slot provenance is retained.
