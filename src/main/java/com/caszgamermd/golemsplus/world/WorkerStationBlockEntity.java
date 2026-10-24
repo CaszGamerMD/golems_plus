@@ -75,6 +75,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.Map<Integer,Long> builderMissingRetries=
             new java.util.HashMap<>();
     private UUID builderWorkerId;
+    private boolean builderRecallRequested;
     // Saved chunk positions of actual crafted Builders, never substitute entities.
     // Allows an active Planner to reload a temporarily absent crew member.
     private final Map<UUID,BlockPos> builderLastPositions=new HashMap<>();
@@ -514,6 +515,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
             builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
         String deleted=builderJobs.remove(index).file();
+        builderRecallRequested=true;
         builderClearByFile.remove(deleted);
         if(builderJobs.isEmpty()){
             selectedBuilderJob=-1;
@@ -616,6 +618,22 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 &&before.getZ() >> 4 == position.getZ() >> 4)return;
         builderLastPositions.put(worker,position.immutable());
         setChanged(); // One disk write per chunk transition, not per Golem tick.
+    }
+    public boolean builderRecallRequested(){return builderRecallRequested;}
+    /** Called only after an empty physical Builder has been deposited as
+     * a real worker item at the Unemployed Center. */
+    public void retireBuilderWorker(UUID worker){
+        if(worker==null||!builderWorkerIds().contains(worker))return;
+        if(worker.equals(builderWorkerId)){
+            builderWorkerId=additionalBuilderWorkers.isEmpty()?null:
+                    additionalBuilderWorkers.removeFirst();
+        }else additionalBuilderWorkers.remove(worker);
+        builderLastPositions.remove(worker);
+        builderClaims.remove(worker);
+        trackedScaffolds.remove(worker);
+        if(worker.equals(supplyRunner))supplyRunner=null;
+        if(builderWorkerIds().isEmpty())builderRecallRequested=false;
+        sync();
     }
     public java.util.List<UUID> builderWorkerIds(){
         java.util.List<UUID> ids=new java.util.ArrayList<>();
@@ -771,7 +789,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         activeOrder=UUID.randomUUID();builderCursor=0;completedAhead=0;
         builderClearCursor=0;builderClearByFile.put(builderFile,0);
         builderMissingRetries.clear();
-        builderClaims.clear();phase=WorkerPhase.WORKING;sync();return true;
+        builderClaims.clear();builderRecallRequested=false;
+        phase=WorkerPhase.WORKING;sync();return true;
     }
     public void advanceBuilder(){
         if(builderCursor<builderBlocks){
@@ -785,6 +804,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean cancelBuilder(UUID actor){
         if(!canConfigure(actor)||!isBuilder())return false;
         activeOrder=null;builderClaims.clear();completedAhead=0;
+        builderRecallRequested=true;
         phase=WorkerPhase.IDLE;sync();return true;
     }
     public boolean setBuilderFile(UUID actor,String filename,int blocks,int unresolved) {
@@ -1158,6 +1178,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         for(int n=0;n<additionalTraderWorkers.size()&&n<3;n++)
             out.putString("trader_extra_worker_"+n,additionalTraderWorkers.get(n).toString());
         out.putInt("builder_crew_target",crewTarget);
+        out.putBoolean("builder_recall_requested",builderRecallRequested);
         int lastIndex=0;
         for(UUID id:builderWorkerIds()){
             if(lastIndex>=8)break;
@@ -1391,6 +1412,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderMissingRetries.clear();
         builderWorkerId=uuid(in,"builder_worker");
         crewTarget=Math.clamp(in.getIntOr("builder_crew_target",1),1,isBuilder()?8:4);
+        builderRecallRequested=in.getBooleanOr("builder_recall_requested",false);
         additionalBuilderWorkers.clear();
         int extra=Math.clamp(in.getIntOr("builder_extra_workers",0),0,7);
         for(int j=0;j<extra;j++){
