@@ -105,7 +105,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     // No click inside the planner should ever count as a world drop; players
     // can still use Q in their inventory if they deliberately want to drop.
     @Override protected boolean hasClickedOutside(double mouseX,double mouseY,
-            int left,int top,int button){
+            int left,int top){
         return false;
     }
     @Override public boolean keyPressed(KeyEvent key){
