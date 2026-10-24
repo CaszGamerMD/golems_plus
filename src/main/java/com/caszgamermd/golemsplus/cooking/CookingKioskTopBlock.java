@@ -5,6 +5,13 @@ import com.caszgamermd.golemsplus.world.WorksiteContent;
 import com.caszgamermd.golemsplus.worker.WorkerPhase;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -20,7 +27,25 @@ import net.minecraft.world.phys.BlockHitResult;
 /** Upper half of a true 2-block kiosk. All state belongs to the lower block. */
 public final class CookingKioskTopBlock extends Block{
     private final MapCodec<CookingKioskTopBlock> codec=MapCodec.unit(this);
-    public CookingKioskTopBlock(BlockBehaviour.Properties properties){super(properties);}
+    public static final DirectionProperty FACING=BlockStateProperties.HORIZONTAL_FACING;
+    public CookingKioskTopBlock(BlockBehaviour.Properties properties){
+        super(properties);
+        registerDefaultState(defaultBlockState().setValue(FACING,Direction.NORTH));
+    }
+    @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> b){
+        super.createBlockStateDefinition(b);
+        b.add(FACING);
+    }
+    @Override protected VoxelShape getShape(BlockState state,BlockGetter level,
+            BlockPos pos,CollisionContext context){
+        return switch(state.getValue(FACING)){
+            case NORTH -> Block.box(0,0,8,16,16,16);
+            case SOUTH -> Block.box(0,0,0,16,16,8);
+            case EAST -> Block.box(0,0,0,8,16,16);
+            case WEST -> Block.box(8,0,0,16,16,16);
+            default -> Block.box(0,0,8,16,16,16);
+        };
+    }
     @Override protected MapCodec<? extends Block> codec(){return codec;}
     @Override protected InteractionResult useItemOn(ItemStack stack,BlockState state,
             Level level,BlockPos pos,Player player,InteractionHand hand,BlockHitResult hit){

@@ -1,493 +1,212 @@
 {
+  "parent": "minecraft:block/block",
   "textures": {
-    "particle": "golems_plus:block/kiosk_casing",
-    "frame": "golems_plus:block/kiosk_casing",
+    "particle": "minecraft:block/gray_concrete",
+    "frame": "minecraft:block/gray_concrete",
+    "body": "minecraft:block/light_gray_concrete",
+    "bezel": "minecraft:block/black_concrete",
+    "metal": "minecraft:block/iron_block",
     "screen": "golems_plus:block/kiosk_screen",
-    "trim": "minecraft:block/orange_concrete",
-    "panel": "minecraft:block/smooth_quartz",
-    "metal": "minecraft:block/iron_block"
+    "status": "minecraft:block/cyan_concrete",
+    "accent": "minecraft:block/orange_concrete",
+    "button": "minecraft:block/sea_lantern"
   },
   "elements": [
     {
-      "name": "upper back",
+      "name": "upper shallow screen housing",
       "from": [
-        2,
+        0.6,
         0,
-        3.3
+        9.1
       ],
       "to": [
-        14,
-        15.8,
-        12.2
+        15.4,
+        16,
+        16
       ],
       "faces": {
         "north": {
-          "texture": "#panel",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#body"
         },
         "south": {
-          "texture": "#panel",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#body"
         },
         "east": {
-          "texture": "#panel",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#body"
         },
         "west": {
-          "texture": "#panel",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#body"
         },
         "up": {
-          "texture": "#panel",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#body"
         },
         "down": {
-          "texture": "#panel",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#body"
         }
       }
     },
     {
-      "name": "screen bezel",
+      "name": "upper dark frame",
+      "from": [
+        0.25,
+        0.1,
+        8.75
+      ],
+      "to": [
+        15.75,
+        15.95,
+        9.15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#frame"
+        },
+        "south": {
+          "texture": "#frame"
+        },
+        "east": {
+          "texture": "#frame"
+        },
+        "west": {
+          "texture": "#frame"
+        },
+        "up": {
+          "texture": "#frame"
+        },
+        "down": {
+          "texture": "#frame"
+        }
+      }
+    },
+    {
+      "name": "portrait screen bezel",
+      "from": [
+        1.1,
+        0.65,
+        8.4
+      ],
+      "to": [
+        14.9,
+        15.55,
+        8.82
+      ],
+      "faces": {
+        "north": {
+          "texture": "#bezel"
+        },
+        "south": {
+          "texture": "#bezel"
+        },
+        "east": {
+          "texture": "#bezel"
+        },
+        "west": {
+          "texture": "#bezel"
+        },
+        "up": {
+          "texture": "#bezel"
+        },
+        "down": {
+          "texture": "#bezel"
+        }
+      }
+    },
+    {
+      "name": "full menu flat display",
       "from": [
         1.6,
-        0.06,
-        2.65
+        1.2,
+        8.22
       ],
       "to": [
         14.4,
-        15.91,
-        4.1
+        14.2,
+        8.41
       ],
       "faces": {
         "north": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#screen"
         },
         "south": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#screen"
         },
         "east": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#screen"
         },
         "west": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#screen"
         },
         "up": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#screen"
         },
         "down": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#screen"
         }
       }
     },
     {
-      "name": "large portrait menu display",
+      "name": "menu header accent",
       "from": [
-        2.25,
-        1.1,
-        2.47
+        1.6,
+        14.35,
+        8.2
       ],
       "to": [
-        13.75,
-        13.5,
-        2.68
+        14.4,
+        15.08,
+        8.4
       ],
       "faces": {
         "north": {
-          "texture": "#screen",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#accent"
         },
         "south": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#accent"
         },
         "east": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#accent"
         },
         "west": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#accent"
         },
         "up": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#accent"
         },
         "down": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#accent"
         }
       }
     },
     {
-      "name": "purple header bar",
+      "name": "power light",
       "from": [
-        2,
-        13.5,
-        2.45
+        13.2,
+        0.73,
+        8.15
       ],
       "to": [
-        14,
-        15.5,
-        2.9
+        13.8,
+        1.3,
+        8.4
       ],
       "faces": {
         "north": {
-          "texture": "#trim",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#button"
         },
         "south": {
-          "texture": "#trim",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#button"
         },
         "east": {
-          "texture": "#trim",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#button"
         },
         "west": {
-          "texture": "#trim",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#button"
         },
         "up": {
-          "texture": "#trim",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#button"
         },
         "down": {
-          "texture": "#trim",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        }
-      }
-    },
-    {
-      "name": "upper rim",
-      "from": [
-        1.5,
-        15.4,
-        2.6
-      ],
-      "to": [
-        14.5,
-        16,
-        12.4
-      ],
-      "faces": {
-        "north": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "south": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "east": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "west": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "up": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "down": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        }
-      }
-    },
-    {
-      "name": "black side",
-      "from": [
-        13.9,
-        0.5,
-        4
-      ],
-      "to": [
-        14.3,
-        15.2,
-        12
-      ],
-      "faces": {
-        "north": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "south": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "east": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "west": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "up": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "down": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        }
-      }
-    },
-    {
-      "name": "back shell",
-      "from": [
-        2.06,
-        0.5,
-        12
-      ],
-      "to": [
-        13.94,
-        15.7,
-        13
-      ],
-      "faces": {
-        "north": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "south": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "east": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "west": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "up": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
-        },
-        "down": {
-          "texture": "#frame",
-          "uv": [
-            0,
-            0,
-            16,
-            16
-          ]
+          "texture": "#button"
         }
       }
     }
