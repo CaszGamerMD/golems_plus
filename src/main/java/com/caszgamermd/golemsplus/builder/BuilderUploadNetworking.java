@@ -86,7 +86,8 @@ public final class BuilderUploadNetworking {
                 ||p.index()<0||p.index()>=p.total()
                 ||p.bytes().length<1||p.bytes().length>PART_SIZE
                 ||p.rotation()<0||p.rotation()>3||p.mirror()<0||p.mirror()>2
-                ||!p.name().matches("[a-zA-Z0-9_.-]{1,90}")
+                ||p.name().isBlank()||p.name().length()>90
+                ||p.name().chars().anyMatch(c->Character.isISOControl(c))
                 ||Math.abs((long)p.table().getX()-p.origin().getX())>256
                 ||Math.abs((long)p.table().getZ()-p.origin().getZ())>256
                 ||Math.abs((long)p.table().getY()-p.origin().getY())>128){
@@ -129,6 +130,7 @@ public final class BuilderUploadNetworking {
                 Files.deleteIfExists(saved);
                 notify(player,"The table could not accept this placement.");return;
             }
+            table.setBuilderMaterialsForFile(saved.getFileName().toString(),plan.required());
             notify(player,"Imported placed '"+p.name()+"' at "+p.origin()+
                     " ("+plan.steps().size()+" blocks; "+
                     plan.unsupported().size()+" unsupported states).");

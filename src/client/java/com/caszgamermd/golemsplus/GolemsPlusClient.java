@@ -1,6 +1,7 @@
 package com.caszgamermd.golemsplus;
 
 import com.caszgamermd.golemsplus.world.WorkerStationScreen;
+import com.caszgamermd.golemsplus.builder.BuilderPlannerScreen;
 import com.caszgamermd.golemsplus.world.WorksiteContent;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.rendering.v1.ModelLayerRegistry;
@@ -15,7 +16,10 @@ import com.caszgamermd.golemsplus.render.ProfessionGolemRenderer;
 
 public final class GolemsPlusClient implements ClientModInitializer {
     @Override public void onInitializeClient() {
-        MenuScreens.register(WorksiteContent.STATION_MENU,WorkerStationScreen::new);
+        MenuScreens.<com.caszgamermd.golemsplus.world.WorkerStationMenu,WorkerStationScreen>register(
+                WorksiteContent.STATION_MENU,(menu,inventory,title)->
+                menu.isBuilderTable()?new BuilderPlannerScreen(menu,inventory,title):
+                        new WorkerStationScreen(menu,inventory,title));
         BlockEntityRenderers.register(WorksiteContent.MEAL_COUNTER_ENTITY,MealCounterRenderer::new);
         ModelLayerRegistry.registerModelLayer(
                 ProfessionGolemRenderer.BUILDER_LAYER,ProfessionGolemModel::builderLayer);

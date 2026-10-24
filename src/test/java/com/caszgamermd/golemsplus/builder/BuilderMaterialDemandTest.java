@@ -6,12 +6,12 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BuilderMaterialDemandTest {
-    @Test void requestsOnlyMissingItemsFromNextTwoHundredFiftySixBlocks(){
+    @Test void requestsFullStackForThreeLayersWhenMoreWorkNeedsThatMaterial(){
         var list=new ArrayList<BuilderConstructionPlan.Step>();
         for(int i=0;i<300;i++)list.add(new BuilderConstructionPlan.Step(
                 i,70,0,"minecraft:stone","minecraft:stone"));
         var requested=BuilderMaterialDemand.batch(list,0,Map.of("minecraft:stone",30));
-        assertEquals(34,requested.get("minecraft:stone"));
+        assertEquals(64,requested.get("minecraft:stone"));
         assertEquals(Map.of(),BuilderMaterialDemand.batch(list,300,Map.of()));
     }
     @Test void capsTypeCountAndOmitsMaterialsAlreadyOwned(){
@@ -24,4 +24,27 @@ class BuilderMaterialDemandTest {
         assertFalse(requested.containsKey("example:item0"));
         assertFalse(requested.containsKey("example:item18"));
     }
+    @Test void threeLayerWindowExcludesFutureMaterialsUntilNeeded(){
+        var steps=List.of(
+                new BuilderConstructionPlan.Step(0,4,0,"a","example:a"),
+                new BuilderConstructionPlan.Step(1,5,0,"a","example:a"),
+                new BuilderConstructionPlan.Step(2,6,0,"a","example:a"),
+                new BuilderConstructionPlan.Step(3,7,0,"b","example:b"));
+        assertEquals(Map.of("example:a",3),
+                BuilderMaterialDemand.batch(steps,0,Map.of()));
+        assertEquals(Map.of("example:b",1),
+                BuilderMaterialDemand.batch(steps,3,Map.of()));
+    }
+    @Test void neverRequestsMaterialsAlreadyStagedAndLimitsToOneStack(){
+        var steps=new ArrayList<BuilderConstructionPlan.Step>();
+        for(int n=0;n<130;n++)
+            steps.add(new BuilderConstructionPlan.Step(n,60,0,"block","example:brick"));
+        assertEquals(Map.of("example:brick",64),
+                BuilderMaterialDemand.batch(steps,0,Map.of()));
+        assertEquals(Map.of("example:brick",20),
+                BuilderMaterialDemand.batch(steps,0,Map.of("example:brick",110)));
+        assertEquals(Map.of(),
+                BuilderMaterialDemand.batch(steps,0,Map.of("example:brick",130)));
+    }
+
 }

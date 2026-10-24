@@ -23,6 +23,29 @@ public final class BuilderWarehousePort {
     private static final String IMPL=
             "com.caszgamermd.caszualadditions.racks.BuilderWarehouseFulfillment";
     private BuilderWarehousePort(){}
+    @SuppressWarnings("unchecked")
+    public static Map<String,Integer> stockSnapshot(ServerLevel level,
+            BlockPos computer,Map<String,Long> needed){
+        try{
+            Class<?> cls=Class.forName(IMPL);
+            Method method=cls.getMethod("available",ServerLevel.class,
+                    BlockPos.class,Map.class);
+            Object result=method.invoke(null,level,computer,needed);
+            return result instanceof Map<?,?> ? (Map<String,Integer>)result:null;
+        }catch(ReflectiveOperationException|LinkageError|RuntimeException ex){
+            return null; // unchecked/unknown, never fabricate "zero available"
+        }
+    }
+    public static String warehouseName(ServerLevel level,BlockPos computer){
+        try{
+            Class<?> cls=Class.forName(
+                    "com.caszgamermd.caszualadditions.racks.WarehouseComputerBlockEntity");
+            return (String)cls.getMethod("name",ServerLevel.class,BlockPos.class)
+                    .invoke(null,level,computer);
+        }catch(ReflectiveOperationException|LinkageError|RuntimeException ex){
+            return "";
+        }
+    }
     public static boolean available(){
         try{Class.forName(IMPL);return true;}
         catch(ClassNotFoundException ex){return false;}

@@ -49,8 +49,11 @@ public final class BuilderBuildService {
                     BuildSite.Rotation.values()[table.builderRotation()/90],
                     BuildSite.Mirror.values()[table.builderMirror()]);
             var plan=BuilderConstructionPlan.create(schematic,site);
-            if(!plan.unsupported().isEmpty())
-                return "Schematic has unsupported blocks: "+plan.unsupported().size();
+            if(table.builderRequired().isEmpty()&&table.activeOrder()!=null){
+                // Running legacy build: retain its current cursor and only
+                // backfill the static required-material checklist.
+                table.backfillBuilderMaterials(plan.required());
+            }
             var materials=BuilderMaterialDemand.batch(plan.steps(),
                     table.builderCursor(),BuilderSupplyInventory.available(table));
             if(materials.isEmpty())return "Next construction batch already stocked in Planner";
@@ -69,6 +72,23 @@ public final class BuilderBuildService {
     }
 
     public static void dispatch(ServerLevel level,WorkerStationBlockEntity table){
+        if(table.isBuilder()&&level.getGameTime()%40==0)
+            table.updateBuilderStagedStock(BuilderSupplyInventory.available(table));
+        if(table.isBuilder()&&level.getGameTime()%80==0){
+            var link=table.warehouse();
+            if(link!=null&&level.dimension().identifier().toString().equals(link.dimension())){
+                BlockPos computer=new BlockPos(link.x(),link.y(),link.z());
+                var snapshot=com.caszgamermd.golemsplus.warehouse.BuilderWarehousePort
+                        .stockSnapshot(level,computer,table.builderRemaining());
+                table.setBuilderWarehouseStock(snapshot==null?Map.of():snapshot,snapshot!=null);
+                table.updateBuilderWarehouseName(
+                        com.caszgamermd.golemsplus.warehouse.BuilderWarehousePort
+                                .warehouseName(level,computer));
+            }else{
+                table.setBuilderWarehouseStock(Map.of(),false);
+                table.updateBuilderWarehouseName("");
+            }
+        }
         BuilderWarehouseCoordinator.pollTable(level,table);
         // Existing crafted crew members execute the job; the station never
         // materializes extra golems automatically.
@@ -89,6 +109,7 @@ public final class BuilderBuildService {
         if(worker.owner()==null||!level.hasChunkAt(home))return;
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)
                 ||!table.isBuilder()||!worker.owner().equals(table.owner())){
+            worker.dropCargo(level);
             worker.discard();return;
         }
         if(!table.builderWorkerIds().contains(worker.getUUID())){
@@ -110,6 +131,17 @@ public final class BuilderBuildService {
                     if(BuilderWarehouseCoordinator.tick(level,worker,table,
                             recipient,outstanding.steps()))return;
                 }catch(Exception ignored){}
+            }
+            if(!worker.hasSupplyBox()&&!worker.isEmpty()){
+                BlockPos returnTo=BuilderSupplyInventory.pouchReturnPos(table);
+                if(level.hasChunkAt(returnTo)){
+                    if(worker.distanceToSqr(returnTo.getX()+.5,returnTo.getY()+.5,
+                            returnTo.getZ()+.5)>12)
+                        com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .routeTo(level,worker,returnTo,.8);
+                    else BuilderSupplyInventory.returnPouch(table,worker);
+                }
+                return;
             }
             if(!worker.hasSupplyBox()&&table.supplyRequest()==null)
                 com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(level,worker,home);
@@ -150,8 +182,15 @@ public final class BuilderBuildService {
             if(table.builderCursor()>=plan.steps().size()){
                 table.setPhase(WorkerPhase.COMPLETE);return;
             }
-            int index=table.claimBuilderStep(worker.getUUID());
-            if(index<0)return; // other workers own every slot in this window
+            // All workers finish the current bottommost layer before any
+            // worker can claim a higher block, even with four-person crews.
+            int layer=plan.steps().get(Math.min(table.builderCursor(),
+                    plan.steps().size()-1)).y();
+            int limit=table.builderCursor()+1;
+            while(limit<plan.steps().size()&&plan.steps().get(limit).y()==layer)
+                limit++;
+            int index=table.claimBuilderStep(worker.getUUID(),limit);
+            if(index<0)return; // wait for current layer assignments to finish
             var step=plan.steps().get(index);
             BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
             if(Math.abs((long)pos.getX()-home.getX())>256||
@@ -173,6 +212,7 @@ public final class BuilderBuildService {
             }
             BlockState existing=level.getBlockState(pos);
             if(existing.equals(state.state())){
+                table.recordBuilderPlacement(step.requiredItem());
                 table.completeBuilderStep(worker.getUUID(),index);
                 BuilderScaffolding.retrieve(level,worker,table,false);
                 table.setProblem("");return;
@@ -183,6 +223,18 @@ public final class BuilderBuildService {
             }
             if(!state.state().canSurvive(level,pos)){
                 table.setProblem("Missing supporting blocks at "+pos);return;
+            }
+            // Every worker first visits actual staging storage, loads a
+            // three-layer pouch, THEN walks to the construction site.
+            // Never debit a remote chest while standing at the build.
+            if(worker.carriedCount(state.item())<=0 &&
+                    !BuilderSupplyInventory.loadForLayer(
+                            level,worker,table,plan.steps(),index)){
+                if(BuilderWarehouseCoordinator.request(level,worker,table,
+                        owner,plan.steps()))return;
+                table.setProblem("Builder needs "+step.requiredItem()+
+                        " at its linked material storage to continue");
+                return;
             }
             double horizontal=Math.pow(worker.getX()-(pos.getX()+.5),2)
                     +Math.pow(worker.getZ()-(pos.getZ()+.5),2);
@@ -217,11 +269,11 @@ public final class BuilderBuildService {
                 return;
             }
             BuilderSupplyInventory.Receipt payment=
-                    BuilderSupplyInventory.consume(table,state.item());
+                    BuilderSupplyInventory.consume(worker,state.item());
             if(payment==null){
                 if(BuilderWarehouseCoordinator.request(level,worker,table,
                         owner,plan.steps()))return;
-                table.setProblem("Missing "+step.requiredItem()+" in Builder Table");
+                table.setProblem("Builder pouch missing "+step.requiredItem());
                 return;
             }
             // The real consumed stack is debited from either a loose slot
@@ -231,6 +283,7 @@ public final class BuilderBuildService {
                 table.setProblem("World rejected placement at "+pos);
                 return;
             }
+            table.recordBuilderPlacement(step.requiredItem());
             table.completeBuilderStep(worker.getUUID(),index);
             BuilderSupplyInventory.recycleEmptyShulkers(table);
             BuilderScaffolding.retrieve(level,worker,table,false);
@@ -256,8 +309,9 @@ public final class BuilderBuildService {
                 BuildSite.Rotation.values()[table.builderRotation()/90],
                 BuildSite.Mirror.values()[table.builderMirror()]);
         var result=BuilderConstructionPlan.create(schematic,site);
-        if(!result.unsupported().isEmpty())
-            throw new IllegalArgumentException("Unsupported states in selected placement");
+        // A job may start with unsupported blocks. It stops safely at any
+        // unresolvable step and reports the exact state instead of deleting
+        // blocks or fabricating missing materials.
         Cache next=new Cache(table.builderFile(),table.builderRotation(),
                 table.builderMirror(),table.builderOrigin(),result.steps());
         cached.put(worker,next);

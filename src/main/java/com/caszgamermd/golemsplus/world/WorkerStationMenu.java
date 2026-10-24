@@ -16,6 +16,7 @@ public final class WorkerStationMenu extends AbstractContainerMenu {
     private final Container depot;
     private final BlockPos position;
     private final boolean kiosk;
+    private final boolean builderTable;
     public WorkerStationMenu(int id,Inventory inventory,BlockPos position){
         this(id,inventory,inventory.player.level().getBlockEntity(position)
                 instanceof WorkerStationBlockEntity station?station:null,position);
@@ -30,19 +31,23 @@ public final class WorkerStationMenu extends AbstractContainerMenu {
         depot=source==null?new SimpleContainer(WorkerStationBlockEntity.SLOTS):source;
         kiosk=(source instanceof WorkerStationBlockEntity station&&station.isCooking())
                 ||inventory.player.level().getBlockState(position).getBlock()==WorksiteContent.COOKING_STATION;
+        builderTable=(source instanceof WorkerStationBlockEntity station&&station.isBuilder())
+                ||inventory.player.level().getBlockState(position).getBlock()==WorksiteContent.BUILDER_TABLE;
         if(kiosk)return; // no hidden/ghost inventory slots for the kiosk
         for(int i=0;i<WorkerStationBlockEntity.SLOTS;i++){
             final int slot=i;
-            addSlot(new Slot(depot,i,8+(i%9)*18,29+(i/9)*18){
+            addSlot(new Slot(depot,i,builderTable?18+(i%9)*18:8+(i%9)*18,
+                    builderTable?95+(i/9)*18:29+(i/9)*18){
                 @Override public boolean mayPlace(ItemStack stack){
                     return depot.canPlaceItem(slot,stack);
                 }
             });
         }
-        addStandardInventorySlots(inventory,8,121);
+        addStandardInventorySlots(inventory,builderTable?18:8,builderTable?198:121);
     }
     public BlockPos stationPos(){return position;}
     public boolean isKitchenKiosk(){return kiosk;}
+    public boolean isBuilderTable(){return builderTable;}
     @Override public boolean stillValid(Player player){return depot.stillValid(player);}
     @Override public ItemStack quickMoveStack(Player player,int index){
         if(kiosk)return ItemStack.EMPTY;

@@ -49,6 +49,24 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private int builderRotation;
     private int builderMirror;
     private BlockPos builderOrigin=BlockPos.ZERO;
+    private BlockPos builderMaterialStorage;
+    private final java.util.Map<String,Long> builderRequired=new java.util.LinkedHashMap<>();
+    private final java.util.Map<String,Long> builderRemaining=new java.util.LinkedHashMap<>();
+    private final java.util.Map<String,Integer> builderWarehouseStock=new java.util.LinkedHashMap<>();
+    private final java.util.Map<String,Integer> builderStagedStock=new java.util.LinkedHashMap<>();
+    private WarehouseAssignment pendingBuilderWarehouse;
+    private boolean builderStockChecked;
+    private String builderWarehouseName="";
+    public record BuilderJob(String file,String name,BlockPos origin,int rotation,
+            int mirror,int blocks,int unsupported,int cursor,
+            Map<String,Long> required,Map<String,Long> remaining,
+            WarehouseAssignment warehouse,BlockPos storage,String phase){
+        public BuilderJob{
+            required=Map.copyOf(required);remaining=Map.copyOf(remaining);
+        }
+    }
+    private final java.util.List<BuilderJob> builderJobs=new java.util.ArrayList<>();
+    private int selectedBuilderJob=-1;
     private String placedSchematicName="";
     private int builderCursor;
     private UUID builderWorkerId;
@@ -349,6 +367,114 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public int deliveredCount() { return deliveredCount; }
     public String problem() { return problem; }
     public String builderFile() { return builderFile; }
+    public BlockPos builderMaterialStorage(){return builderMaterialStorage;}
+    public Map<String,Long> builderRequired(){return Map.copyOf(builderRequired);}
+    public Map<String,Long> builderRemaining(){return Map.copyOf(builderRemaining);}
+    public Map<String,Integer> builderWarehouseStock(){return Map.copyOf(builderWarehouseStock);}
+    public Map<String,Integer> builderStagedStock(){return Map.copyOf(builderStagedStock);}
+    public void updateBuilderStagedStock(Map<String,Integer> stock){
+        if(!isBuilder()||builderStagedStock.equals(stock))return;
+        builderStagedStock.clear();builderStagedStock.putAll(stock);sync();
+    }
+    public boolean builderStockChecked(){return builderStockChecked;}
+    public String builderWarehouseName(){return builderWarehouseName;}
+    public void updateBuilderWarehouseName(String name){
+        String resolved=name==null?"":name;
+        if(!builderWarehouseName.equals(resolved)){
+            builderWarehouseName=resolved;sync();
+        }
+    }
+    public java.util.List<BuilderJob> builderJobs(){return java.util.List.copyOf(builderJobs);}
+    public int selectedBuilderJob(){return selectedBuilderJob;}
+    public boolean setBuilderMaterialStorage(UUID actor,BlockPos target){
+        if(!isBuilder()||!canConfigure(actor)||target==null
+                ||builderOrigin.distSqr(target)>128L*128L)return false;
+        builderMaterialStorage=target.immutable();sync();return true;
+    }
+    public void setBuilderWarehouseStock(Map<String,Integer> stock,boolean verified){
+        if(!isBuilder())return;
+        if(!verified){
+            if(builderStockChecked){builderStockChecked=false;builderWarehouseStock.clear();sync();}
+            return;
+        }
+        java.util.Map<String,Integer> normalized=new java.util.LinkedHashMap<>();
+        for(var entry:stock.entrySet()){
+            if(builderRemaining.containsKey(entry.getKey())&&entry.getValue()!=null)
+                normalized.put(entry.getKey(),Math.max(0,entry.getValue()));
+        }
+        if(!builderStockChecked||!builderWarehouseStock.equals(normalized)){
+            builderStockChecked=true;builderWarehouseStock.clear();
+            builderWarehouseStock.putAll(normalized);sync();
+        }
+    }
+    public void setBuilderMaterials(java.util.Map<String,Long> materials){
+        if(!isBuilder()||materials==null)return;
+        builderRequired.clear();builderRemaining.clear();
+        materials.entrySet().stream().filter(e->e.getKey()!=null&&e.getValue()!=null
+                &&e.getValue()>0).limit(1024).forEach(e->{
+                    builderRequired.put(e.getKey(),e.getValue());
+                    builderRemaining.put(e.getKey(),e.getValue());
+                });
+        builderWarehouseStock.clear();builderStockChecked=false;sync();
+    }
+    public void setBuilderMaterialsForFile(String file,Map<String,Long> materials){
+        if(!isBuilder()||file==null||materials==null)return;
+        if(file.equals(builderFile)&&activeOrder==null){
+            setBuilderMaterials(materials);
+            return;
+        }
+        for(int i=0;i<builderJobs.size();i++){
+            BuilderJob job=builderJobs.get(i);
+            if(!file.equals(job.file()))continue;
+            Map<String,Long> copy=new java.util.LinkedHashMap<>();
+            materials.entrySet().stream().filter(e->e.getKey()!=null&&e.getValue()!=null
+                    &&e.getValue()>0).limit(1024).forEach(e->copy.put(e.getKey(),e.getValue()));
+            builderJobs.set(i,new BuilderJob(job.file(),job.name(),job.origin(),
+                    job.rotation(),job.mirror(),job.blocks(),job.unsupported(),
+                    job.cursor(),copy,copy,job.warehouse(),job.storage(),job.phase()));
+            sync();return;
+        }
+    }
+    public void backfillBuilderMaterials(Map<String,Long> materials){
+        if(!isBuilder()||!builderRequired.isEmpty()||materials==null)return;
+        builderRequired.putAll(materials);
+        builderRemaining.putAll(materials);
+        // Pre-0.3.25 construction cursor may already have placed some
+        // blocks; exact per-item history is unknown. Avoid guessing and
+        // retain a conservative overestimate rather than reducing stock.
+        sync();
+    }
+    public void recordBuilderPlacement(String material){
+        if(material==null||material.isBlank())return;
+        builderRemaining.computeIfPresent(material,(key,v)->Math.max(0L,v-1));
+        sync();
+    }
+    private BuilderJob snapshotBuilderJob(){
+        return new BuilderJob(builderFile,placedSchematicName,builderOrigin,
+                builderRotation,builderMirror,builderBlocks,builderUnresolved,
+                builderCursor,builderRequired,builderRemaining,warehouse,
+                builderMaterialStorage,phase.name());
+    }
+    public boolean selectBuilderJob(UUID actor,int index){
+        if(!isBuilder()||!canConfigure(actor)||index<0||index>=builderJobs.size()
+                ||activeOrder!=null)return false;
+        if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
+            builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
+        var selected=builderJobs.get(index);
+        selectedBuilderJob=index;
+        builderFile=selected.file();placedSchematicName=selected.name();
+        builderOrigin=selected.origin();builderRotation=selected.rotation();
+        builderMirror=selected.mirror();builderBlocks=selected.blocks();
+        builderUnresolved=selected.unsupported();builderCursor=selected.cursor();
+        builderRequired.clear();builderRequired.putAll(selected.required());
+        builderRemaining.clear();builderRemaining.putAll(selected.remaining());
+        warehouse=selected.warehouse();builderMaterialStorage=selected.storage();
+        builderPlaced=true;completedAhead=0;builderClaims.clear();
+        builderWarehouseStock.clear();builderStockChecked=false;builderWarehouseName="";
+        try{phase=WorkerPhase.valueOf(selected.phase());}
+        catch(IllegalArgumentException ex){phase=WorkerPhase.READY;}
+        sync();return true;
+    }
     public int builderBlocks() { return builderBlocks; }
     public int builderUnresolved() { return builderUnresolved; }
     public int builderRotation() { return builderRotation; }
@@ -424,10 +550,17 @@ public final class WorkerStationBlockEntity extends BlockEntity
     /** All callbacks execute on the Minecraft server thread. Every index
      * has one owner; the head cursor only moves over confirmed completions. */
     public int claimBuilderStep(UUID worker){
+        return claimBuilderStep(worker,Integer.MAX_VALUE);
+    }
+    public int claimBuilderStep(UUID worker,int layerExclusive){
         if(!builderWorkerIds().contains(worker)||activeOrder==null)return -1;
-        if(builderClaims.containsKey(worker))return builderClaims.get(worker);
+        if(builderClaims.containsKey(worker)){
+            int existing=builderClaims.get(worker);
+            return existing<layerExclusive?existing:-1;
+        }
         int next=com.caszgamermd.golemsplus.builder.BuilderCrewSchedule.next(
                 builderCursor,builderBlocks,completedAhead,builderClaims.values());
+        if(next>=layerExclusive)return -1;
         if(next>=0){builderClaims.put(worker,next);sync();}
         return next;
     }
@@ -489,7 +622,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     public void clearSupplyRequest(){
         supplyRequest=null;supplyRunner=null;supplyPtp=BlockPos.ZERO;
-        supplyManifest.clear();supplyNotice="";sync();
+        supplyManifest.clear();supplyNotice="";
+        // Apply a scanner re-link only AFTER the previous warehouse's
+        // physical reserved shulkers were delivered/released safely.
+        if(pendingBuilderWarehouse!=null){
+            warehouse=pendingBuilderWarehouse;pendingBuilderWarehouse=null;
+            builderStockChecked=false;builderWarehouseStock.clear();
+            builderWarehouseName="";
+        }
+        sync();
     }
     public boolean hasPlacedSchematic(){return builderPlaced&&!builderFile.isBlank();}
     public boolean isBuilder(){
@@ -498,21 +639,37 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     public boolean setPlacedBuilderPlan(UUID actor,String filename,String display,
             BlockPos origin,int rotation,int mirror,int blocks,int unresolved){
-        if(!canConfigure(actor)||!isBuilder()||activeOrder!=null
+        if(!canConfigure(actor)||!isBuilder()
                 ||supplyRequest!=null||filename==null||!filename.startsWith("placed-")
                 ||!filename.endsWith(".litematic")
                 ||filename.contains("/")||filename.contains("..")||filename.contains("\\")
                 ||origin==null||rotation<0||rotation>3||mirror<0||mirror>2
-                ||blocks<1||blocks>100000||unresolved<0)return false;
+                ||blocks<1||blocks>100000||unresolved<0
+                ||builderJobs.size()>=12)return false;
+        if(activeOrder!=null){
+            // Queue a future placement without disturbing the running
+            // worker's active file, cursor or material escrow.
+            builderJobs.add(new BuilderJob(filename,display,origin.immutable(),
+                    rotation*90,mirror,blocks,unresolved,0,
+                    Map.of(),Map.of(),warehouse,null,"READY"));
+            sync();return true;
+        }
         builderFile=filename;placedSchematicName=display;builderOrigin=origin.immutable();
         builderRotation=rotation*90;builderMirror=mirror;builderBlocks=blocks;
         builderUnresolved=unresolved;builderCursor=0;completedAhead=0;
         builderClaims.clear();builderPlaced=true;
+        builderRequired.clear();builderRemaining.clear();
+        builderWarehouseStock.clear();builderStockChecked=false;
+        builderWarehouseName="";
+        builderMaterialStorage=null;
+        selectedBuilderJob=builderJobs.size();
+        builderJobs.add(snapshotBuilderJob());
         phase=WorkerPhase.READY;sync();return true;
     }
     public boolean startPlacedBuilder(UUID actor){
         if(!canConfigure(actor)||!isBuilder()||!hasPlacedSchematic()
-                ||supplyRequest!=null||builderUnresolved!=0||activeOrder!=null)return false;
+                ||activeOrder!=null||warehouse==null
+                ||builderWorkerIds().isEmpty()||builderBlocks<1)return false;
         activeOrder=UUID.randomUUID();builderCursor=0;completedAhead=0;
         builderClaims.clear();phase=WorkerPhase.WORKING;sync();return true;
     }
@@ -556,8 +713,21 @@ public final class WorkerStationBlockEntity extends BlockEntity
         owner = actor; sync(); return true;
     }
     public boolean setWarehouse(UUID actor, WarehouseAssignment selection) {
-        if (!canConfigure(actor)||supplyRequest!=null) return false;
-        warehouse = selection; sync(); return true;
+        if(!canConfigure(actor)||selection==null)return false;
+        if(isBuilder()&&supplyRequest!=null){
+            // Never orphan a supply ticket or its real packed cargo.
+            pendingBuilderWarehouse=selection;
+            setProblem("Warehouse switch queued until current shulker shipment completes");
+            sync();return true;
+        }
+        if(supplyRequest!=null)return false;
+        warehouse=selection;
+        if(isBuilder()){
+            pendingBuilderWarehouse=null;
+            builderStockChecked=false;builderWarehouseStock.clear();
+            builderWarehouseName="";
+        }
+        sync();return true;
     }
     public boolean setVillage(UUID actor, VillageSearchArea selection) {
         if (!canConfigure(actor) || !isTrader()) return false;
@@ -614,6 +784,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         sync();
     }
     public void sync() {
+        if(isBuilder()&&selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
+            builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
         setChanged();
         if (level!=null) {
             BlockState state=getBlockState();
@@ -809,6 +981,59 @@ public final class WorkerStationBlockEntity extends BlockEntity
             out.putString("beekeeper_worker_"+ix,beekeeperIds.get(ix).toString());
         out.putInt("trade_count",wantedCount);out.putInt("trade_delivered",deliveredCount);
         out.putString("trade_problem",problem);
+        out.putInt("builder_staged_count",Math.min(1024,builderStagedStock.size()));
+        int stagedIndex=0;
+        for(var e:builderStagedStock.entrySet()){
+            if(stagedIndex>=1024)break;
+            out.putString("builder_staged_item_"+stagedIndex,e.getKey());
+            out.putInt("builder_staged_qty_"+stagedIndex,e.getValue());stagedIndex++;
+        }
+        if(pendingBuilderWarehouse!=null){
+            out.putString("builder_pending_warehouse_dim",pendingBuilderWarehouse.dimension());
+            out.putInt("builder_pending_warehouse_x",pendingBuilderWarehouse.x());
+            out.putInt("builder_pending_warehouse_y",pendingBuilderWarehouse.y());
+            out.putInt("builder_pending_warehouse_z",pendingBuilderWarehouse.z());
+        }
+        out.putString("builder_warehouse_name",builderWarehouseName);
+        out.putInt("builder_stock_checked",builderStockChecked?1:0);
+        out.putInt("builder_stock_count",Math.min(1024,builderWarehouseStock.size()));
+        int stockIndex=0;
+        for(var e:builderWarehouseStock.entrySet()){
+            if(stockIndex>=1024)break;
+            out.putString("builder_stock_item_"+stockIndex,e.getKey());
+            out.putInt("builder_stock_qty_"+stockIndex,e.getValue());stockIndex++;
+        }
+        out.putInt("builder_job_count",Math.min(12,builderJobs.size()));
+        out.putInt("builder_selected_job",selectedBuilderJob);
+        for(int i=0;i<builderJobs.size()&&i<12;i++){
+            BuilderJob job=builderJobs.get(i);
+            String key="builder_job_"+i+"_";
+            out.putString(key+"file",job.file());
+            out.putString(key+"name",job.name());
+            out.store(key+"origin",BlockPos.CODEC,job.origin());
+            out.putInt(key+"rotation",job.rotation());
+            out.putInt(key+"mirror",job.mirror());
+            out.putInt(key+"blocks",job.blocks());
+            out.putInt(key+"unsupported",job.unsupported());
+            out.putInt(key+"cursor",job.cursor());
+            out.putString(key+"phase",job.phase());
+            if(job.storage()!=null)out.store(key+"storage",BlockPos.CODEC,job.storage());
+            if(job.warehouse()!=null){
+                out.putString(key+"warehouse_dim",job.warehouse().dimension());
+                out.putInt(key+"warehouse_x",job.warehouse().x());
+                out.putInt(key+"warehouse_y",job.warehouse().y());
+                out.putInt(key+"warehouse_z",job.warehouse().z());
+            }
+            out.putInt(key+"material_count",Math.min(1024,job.required().size()));
+            int n=0;
+            for(var e:job.required().entrySet()){
+                if(n>=1024)break;
+                out.putString(key+"item_"+n,e.getKey());
+                out.putLong(key+"required_"+n,e.getValue());
+                out.putLong(key+"remaining_"+n,job.remaining().getOrDefault(e.getKey(),0L));
+                n++;
+            }
+        }
         out.putString("builder_schematic",builderFile);
         out.putInt("builder_blocks",builderBlocks);
         out.putInt("builder_unresolved",builderUnresolved);
@@ -971,6 +1196,38 @@ public final class WorkerStationBlockEntity extends BlockEntity
         wantedCount=Math.clamp(in.getIntOr("trade_count",0),0,4096);
         deliveredCount=Math.clamp(in.getIntOr("trade_delivered",0),0,wantedCount);
         problem=in.getStringOr("trade_problem","");
+        builderJobs.clear();
+        int jobCount=Math.clamp(in.getIntOr("builder_job_count",0),0,12);
+        for(int i=0;i<jobCount;i++){
+            String key="builder_job_"+i+"_";
+            String file=in.getStringOr(key+"file","");
+            if(file.isBlank()||file.contains("/")||file.contains("\\")
+                    ||file.contains(".."))continue;
+            java.util.Map<String,Long> materials=new java.util.LinkedHashMap<>();
+            java.util.Map<String,Long> pending=new java.util.LinkedHashMap<>();
+            int size=Math.clamp(in.getIntOr(key+"material_count",0),0,1024);
+            for(int n=0;n<size;n++){
+                String item=in.getStringOr(key+"item_"+n,"");
+                long count=Math.max(0,in.getLongOr(key+"required_"+n,0));
+                if(!item.isBlank()&&count>0){
+                    materials.put(item,count);
+                    pending.put(item,Math.clamp(in.getLongOr(key+"remaining_"+n,0),0,count));
+                }
+            }
+            String dim=in.getStringOr(key+"warehouse_dim","");
+            WarehouseAssignment wh=dim.isBlank()?null:new WarehouseAssignment(dim,
+                    in.getIntOr(key+"warehouse_x",0),in.getIntOr(key+"warehouse_y",0),
+                    in.getIntOr(key+"warehouse_z",0));
+            builderJobs.add(new BuilderJob(file,in.getStringOr(key+"name",file),
+                    in.read(key+"origin",BlockPos.CODEC).orElse(BlockPos.ZERO),
+                    in.getIntOr(key+"rotation",0),in.getIntOr(key+"mirror",0),
+                    in.getIntOr(key+"blocks",0),in.getIntOr(key+"unsupported",0),
+                    in.getIntOr(key+"cursor",0),materials,pending,wh,
+                    in.read(key+"storage",BlockPos.CODEC).orElse(null),
+                    in.getStringOr(key+"phase","READY")));
+        }
+        selectedBuilderJob=Math.clamp(in.getIntOr("builder_selected_job",-1),-1,
+                Math.max(-1,builderJobs.size()-1));
         builderFile=in.getStringOr("builder_schematic","");
         builderBlocks=Math.max(0,in.getIntOr("builder_blocks",0));
         builderUnresolved=Math.max(0,in.getIntOr("builder_unresolved",0));
@@ -981,6 +1238,31 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderOrigin=in.read("builder_origin",BlockPos.CODEC).orElse(BlockPos.ZERO);
         placedSchematicName=in.getStringOr("builder_placement_name","");
         builderPlaced=in.getBooleanOr("builder_placed",false);
+        builderRequired.clear();builderRemaining.clear();
+        if(selectedBuilderJob>=0){
+            BuilderJob job=builderJobs.get(selectedBuilderJob);
+            builderRequired.putAll(job.required());
+            builderRemaining.putAll(job.remaining());
+            builderMaterialStorage=job.storage();
+        }else builderMaterialStorage=null;
+        builderWarehouseStock.clear();builderStagedStock.clear();
+        for(int i=0,n=Math.clamp(in.getIntOr("builder_staged_count",0),0,1024);i<n;i++){
+            String id=in.getStringOr("builder_staged_item_"+i,"");
+            int count=in.getIntOr("builder_staged_qty_"+i,0);
+            if(!id.isBlank()&&count>=0)builderStagedStock.put(id,count);
+        }
+        builderStockChecked=in.getIntOr("builder_stock_checked",0)==1;
+        builderWarehouseName=in.getStringOr("builder_warehouse_name","");
+        String queuedDim=in.getStringOr("builder_pending_warehouse_dim","");
+        pendingBuilderWarehouse=queuedDim.isBlank()?null:new WarehouseAssignment(queuedDim,
+                in.getIntOr("builder_pending_warehouse_x",0),
+                in.getIntOr("builder_pending_warehouse_y",0),
+                in.getIntOr("builder_pending_warehouse_z",0));
+        for(int i=0,n=Math.clamp(in.getIntOr("builder_stock_count",0),0,1024);i<n;i++){
+            String id=in.getStringOr("builder_stock_item_"+i,"");
+            int count=in.getIntOr("builder_stock_qty_"+i,0);
+            if(!id.isBlank()&&count>=0)builderWarehouseStock.put(id,count);
+        }
         builderCursor=Math.clamp(in.getIntOr("builder_cursor",0),0,builderBlocks);
         builderWorkerId=uuid(in,"builder_worker");
         crewTarget=Math.clamp(in.getIntOr("builder_crew_target",1),1,4);
@@ -1039,6 +1321,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
         dim=in.getStringOr("warehouse_dimension","");
         warehouse=dim.isBlank()?null:new WarehouseAssignment(dim,in.getIntOr("warehouse_x",0),
                 in.getIntOr("warehouse_y",0),in.getIntOr("warehouse_z",0));
+        // Migration for Builder tables from 0.3.24 and earlier: their one
+        // selected schematic predated the job list and manifest format.
+        if(builderJobs.isEmpty()&&builderPlaced&&!builderFile.isBlank()){
+            selectedBuilderJob=0;
+            builderJobs.add(snapshotBuilderJob());
+        }
         items=NonNullList.withSize(SLOTS,ItemStack.EMPTY);
         ContainerHelper.loadAllItems(in,items);
     }

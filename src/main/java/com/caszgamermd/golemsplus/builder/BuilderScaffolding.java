@@ -51,16 +51,16 @@ public final class BuilderScaffolding {
             }else if(level.getBlockState(p).isAir())needed++;
             else return Result.NO_SAFE_TOWER;
         }
-        int available=BuilderSupplyInventory.available(table).getOrDefault(
-                "minecraft:scaffolding",0);
-        if(available<needed)return Result.NEED_MATERIALS;
+        var load=BuilderSupplyInventory.loadScaffold(level,worker,table,needed);
+        if(load==BuilderSupplyInventory.ScaffoldLoad.MOVING)return Result.CLIMBING;
+        if(load==BuilderSupplyInventory.ScaffoldLoad.MISSING)return Result.NEED_MATERIALS;
         for(int y=base.getY();y<=top;y++){
             var at=new BlockPos(base.getX(),y,base.getZ());
             if(level.getBlockState(at).is(Blocks.SCAFFOLDING))continue;
             if(!level.getBlockState(at.below()).isFaceSturdy(level,at.below(),Direction.UP)
                     &&!level.getBlockState(at.below()).is(Blocks.SCAFFOLDING))
                 return Result.NO_SAFE_TOWER;
-            var receipt=BuilderSupplyInventory.consume(table,Items.SCAFFOLDING);
+            var receipt=BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING);
             if(receipt==null)return Result.NEED_MATERIALS;
             if(!level.setBlock(at,Blocks.SCAFFOLDING.defaultBlockState(),3)){
                 BuilderSupplyInventory.refund(table,receipt);

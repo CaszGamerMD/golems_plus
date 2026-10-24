@@ -104,6 +104,8 @@ public final class BuilderCommands {
                     BuildSite.Rotation.values()[table.builderRotation()/90],
                     BuildSite.Mirror.values()[table.builderMirror()]);
             var plan=BuilderConstructionPlan.create(schematic,site);
+            if(table.builderRequired().isEmpty()&&table.activeOrder()==null)
+                table.setBuilderMaterialsForFile(table.builderFile(),plan.required());
             player.sendSystemMessage(Component.literal("[Builder preview] "+
                     plan.steps().size()+" blocks at "+origin+
                     "; unsupported types: "+plan.unsupported().size()));
@@ -112,7 +114,7 @@ public final class BuilderCommands {
                             "  "+e.getValue()+" × "+e.getKey())));
             if(!plan.unsupported().isEmpty())
                 player.sendSystemMessage(Component.literal(
-                        "Cannot build until unsupported states are resolved: "+
+                        "Unsupported states will block their individual steps: "+
                         plan.unsupported().stream().limit(8).toList()));
             else
                 player.sendSystemMessage(Component.literal(table.warehouse()==null
@@ -128,7 +130,7 @@ public final class BuilderCommands {
         var table=nearest(player);
         if(table==null||!table.startPlacedBuilder(player.getUUID())){
             player.sendSystemMessage(Component.literal(
-                    "Cannot start: select a placed schematic, ensure no unsupported states or active order."));
+                    "Cannot start: select an imported placement, linked warehouse and at least one registered Builder Golem."));
             return 0;
         }
         player.sendSystemMessage(Component.literal(
@@ -243,7 +245,7 @@ public final class BuilderCommands {
                         "  "+e.getValue()+" x "+e.getKey())));
             if(!result.unsupported().isEmpty())
                 player.sendSystemMessage(Component.literal(
-                        "Construction locked: resolve unsupported blocks first."));
+                        "Unresolved blocks will pause their step, not prevent the build from starting."));
             return 1;
         }catch(Exception e){
             player.sendSystemMessage(Component.literal("Cannot import: "+e.getMessage()));
