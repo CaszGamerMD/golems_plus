@@ -10,7 +10,8 @@
   "environment": "*",
   "entrypoints": {
     "main": ["com.caszgamermd.golemsplus.GolemsPlus"],
-    "client": ["com.caszgamermd.golemsplus.GolemsPlusClient"]
+    "client": ["com.caszgamermd.golemsplus.GolemsPlusClient"],
+    "jei_mod_plugin": ["com.caszgamermd.golemsplus.builder.BuilderJeiPlugin"]
   },
   "depends": {
     "fabricloader": ">=0.19.5",

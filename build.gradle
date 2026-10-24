@@ -14,11 +14,16 @@ loom {
 group = project.maven_group
 version = project.mod_version
 base { archivesName = project.archives_base_name }
-repositories { mavenCentral() }
+repositories {
+    mavenCentral()
+    maven { url = uri("https://maven.blamejared.com") }
+}
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    // Optional JEI GUI exclusion: never load JEI as a required runtime mod.
+    modCompileOnly "mezz.jei:jei-26.2-fabric-api:30.47.0.240"
     testImplementation 'org.junit.jupiter:junit-jupiter:5.12.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
 }

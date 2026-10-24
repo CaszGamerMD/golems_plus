@@ -50,6 +50,13 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         super(menu,inventory,title);
         titleLabelX=15;titleLabelY=10;inventoryLabelX=18;inventoryLabelY=188;
     }
+    /** Full viewport JEI exclusion area. Container's default width is
+     * small due to inventory slots, but the Builder planner fills the screen.
+     */
+    public net.minecraft.client.renderer.Rect2i plannerBounds(){
+        return new net.minecraft.client.renderer.Rect2i(
+                leftPos,topPos,panelWidth,panelHeight);
+    }
     private String key(){
         return (minecraft!=null&&minecraft.level!=null?
                 minecraft.level.dimension().identifier().toString():"world")
