@@ -215,6 +215,10 @@ public final class BuilderBuildService {
             if(table.warehouse()!=null && table.supplyRequest()==null
                     &&table.builderCursor()<plan.steps().size())
                 BuilderWarehouseCoordinator.queueMaterials(level,table,plan.steps());
+            // The assigned courier keeps ownership of the whole ticket.
+            // Only its actual carried box or a ready warehouse pickup
+            // interrupts local Builder work; unassigned crew never waits
+            // for an unrelated PTP reservation.
             if((worker.hasSupplyBox()||table.supplyRequest()!=null)
                     &&BuilderWarehouseCoordinator.tick(level,worker,table,
                             owner,plan.steps()))return;
@@ -227,13 +231,28 @@ public final class BuilderBuildService {
             // parallel. A site with an obstruction or no tool cannot start
             // placing around that obstruction or advance into upper layers.
             if(table.builderClearCursor()<plan.clearing().size()){
+                // The previous choice used the first *registered* UUID,
+                // even when that Builder was unloaded or had died. It also
+                // selected nobody if the solo worker was the courier.
+                // Select the first ACTUALLY LOADED non-courier Builder;
+                // a solo courier may clear while no pickup is ready.
                 UUID cleaner=null;
                 for(UUID id:table.builderWorkerIds()){
-                    if(!id.equals(table.supplyRunner())){cleaner=id;break;}
+                    if(id.equals(table.supplyRunner()))continue;
+                    if(level.getEntity(id) instanceof BuilderGolem available
+                            &&available.isAlive()){
+                        cleaner=id;break;
+                    }
                 }
+                if(cleaner==null&&table.builderWorkerIds().size()==1
+                        &&table.builderWorkerIds().contains(worker.getUUID())
+                        &&!worker.hasSupplyBox())cleaner=worker.getUUID();
                 if(worker.getUUID().equals(cleaner))
                     BuilderSiteClearance.tick(level,worker,table,owner,
                             plan.clearing(),plan.steps());
+                else if(cleaner==null)
+                    table.setProblem("No loaded Builder available to clear site; "
+                            +"reload or assign a Builder crew member");
                 return;
             }
             // All workers finish the current bottommost layer before any
