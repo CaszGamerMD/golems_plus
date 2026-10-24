@@ -37,22 +37,12 @@ public final class BuilderWarehouseCoordinator {
                 BuilderMaterialDemand.batch(steps,table.builderCursor(),
                         BuilderSupplyInventory.available(table)));
         if(needed.isEmpty())return false;
-        // Do not ask the warehouse for a full stack when it has only a
-        // handful of required blocks. Reserve the stock it actually has,
-        // deliver it, build as far as possible, then request the remainder.
+        // Keep the ENTIRE remaining order at the Warehouse Computer,
+        // including temporarily out-of-stock items. The old stockSnapshot
+        // clamp reduced every zero-stock item to 0 and could result in no
+        // order ever appearing in the warehouse UI. Actual pickers still
+        // require real rack stock before reserving or removing items.
         BlockPos computer=new BlockPos(warehouse.x(),warehouse.y(),warehouse.z());
-        Map<String,Integer> stock=BuilderWarehousePort.stockSnapshot(
-                level,computer,table.builderRemaining());
-        if(stock!=null){
-            needed.replaceAll((id,count)->Math.min(count,
-                    Math.max(0,stock.getOrDefault(id,0))));
-            needed.values().removeIf(count->count<=0);
-            if(needed.isEmpty()){
-                table.setProblem("Warehouse currently has no required blocks; "
-                        +"Builder waits for restock or uses staged supplies");
-                return false;
-            }
-        }
         // The warehouse accepts the request FIRST, persisting its UUID at
         // the computer. An unavailable pallet is NOT locked; this same
         // ticket will later claim a prepared OUTPUT PTP without duplication.
