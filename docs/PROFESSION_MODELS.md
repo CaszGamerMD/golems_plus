@@ -100,3 +100,18 @@ fish face and cans, and Beekeeper veils at close and distant camera ranges.
 Gameplay, AI, inventories, recipes and existing item IDs are unchanged.
 Use a fresh 0.3.21-dev client JAR for the visual changes. CI verifies
 the assets; inspect moving Beekeepers from all directions in-game.
+
+## Fisher folding chair — 0.3.23-dev
+
+Every time a Fisher opens their camp chair, its upholstery is assigned one of
+12 synchronized colors (red, green, blue, purple, orange, white, black, grey,
+aqua, gold, pink or brown). The color stays fixed while seated and is stored
+with the Fisher for reloads. The seat is visible throughout active fishing,
+casting and reeling.
+
+The front transverse X rods are now horizontal crossbars *under* the seat,
+away from the occupant's legs. Each side X brace is a physical diagonal
+between the front and rear post locations; its ends join the leg structure.
+The rest of the chair, including cupholder and sewn bindings, remains intact.
+Twelve PNG variants are built deterministically by Java ImageIO in Gradle
+without a Python dependency and included in the production JAR.
