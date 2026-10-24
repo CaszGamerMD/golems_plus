@@ -237,8 +237,13 @@ public final class BuilderBuildService {
                 table.setProblem("Build extends beyond 256-block Builder range");
                 return;
             }
+            // Load the current layer's next target before stopping on an
+            // unloaded schematic chunk. The same ticket is reclaimed as
+            // the real Builder advances to the next target.
+            BuilderChunkTickets.destination(level,worker,pos);
             if(!level.hasChunkAt(pos)){
-                table.setProblem("Build chunk is not loaded");return;
+                table.setProblem("Loading construction chunk "+pos.toShortString());
+                return;
             }
             if(!level.mayInteract(owner,pos)){
                 table.setProblem("Owner cannot modify this location");return;
