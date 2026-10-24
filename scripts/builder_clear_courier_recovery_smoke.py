@@ -15,7 +15,8 @@ assert "if(table.builderWorkerIds().size()==1)return false;" in courier
 assert "if(reply.boxes()>0&&reply.accepted())" in courier
 assert "table.claimSupplyRunner(worker.getUUID())" in courier
 assert "if(!world.hasChunkAt(pos))\n                BuilderChunkTickets.destination" in clear
-assert "if(existing.isAir()){" in clear\nassert "if(existing.equals(expected)){" in clear
+assert "if(existing.isAir()){" in clear
+assert "if(existing.equals(expected)){" in clear
 assert "(neighborOccupied(level,mob,p)?14:0)" in nav
 assert "if(++checked>5)break;" in nav
 print("PASS Builder clearing failover, solo courier prioritization, no chunk ticket churn, navigation goals")
