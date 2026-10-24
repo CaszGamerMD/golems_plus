@@ -73,6 +73,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private String placedSchematicName="";
     private int builderCursor;
     private int builderClearCursor;
+    // Separate claims let eight Builders clear different schematic cells
+    // without advancing the saved contiguous verification cursor early.
+    private final Map<UUID,Integer> builderClearClaims=new HashMap<>();
+    private final Map<UUID,Long> builderClearClaimTick=new HashMap<>();
+    private final java.util.Set<Integer> builderClearVerified=new java.util.HashSet<>();
     private final java.util.Map<String,Integer> builderClearByFile=
             new java.util.HashMap<>();
     private final java.util.Map<Integer,Long> builderMissingRetries=
@@ -500,6 +505,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderMirror=selected.mirror();builderBlocks=selected.blocks();
         builderUnresolved=selected.unsupported();builderCursor=selected.cursor();
         builderClearCursor=builderClearByFile.getOrDefault(builderFile,0);
+        builderClearClaims.clear();builderClearClaimTick.clear();
+        builderClearVerified.clear();
         builderMissingRetries.clear();
         builderRequired.clear();builderRequired.putAll(selected.required());
         builderRemaining.clear();builderRemaining.putAll(selected.remaining());
@@ -555,6 +562,46 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public String placedSchematicName(){return placedSchematicName;}
     public int builderCursor(){return builderCursor;}
     public int builderClearCursor(){return builderClearCursor;}
+    /** The job block owns the clear cursor, verified cells and claims.
+     * A stalled claim expires after five seconds; a different Builder can
+     * retry the same cell without any premature world modifications.
+     */
+    public int claimBuilderClear(UUID worker,int limit){
+        if(activeOrder==null||!builderWorkerIds().contains(worker))return -1;
+        long now=level==null?0:level.getGameTime();
+        for(UUID id:new java.util.ArrayList<>(builderClearClaims.keySet()))
+            if(now-builderClearClaimTick.getOrDefault(id,now)>100){
+                builderClearClaims.remove(id);builderClearClaimTick.remove(id);
+            }
+        Integer previous=builderClearClaims.get(worker);
+        if(previous!=null)return previous;
+        int upper=Math.min(limit,builderClearCursor+256);
+        for(int i=builderClearCursor;i<upper;i++){
+            if(builderClearVerified.contains(i)||builderClearClaims.containsValue(i))
+                continue;
+            builderClearClaims.put(worker,i);
+            builderClearClaimTick.put(worker,now);
+            return i;
+        }
+        return -1;
+    }
+    public void completeBuilderClear(UUID worker,int index,boolean brokeBlock){
+        if(!java.util.Objects.equals(builderClearClaims.get(worker),index))return;
+        builderClearClaims.remove(worker);builderClearClaimTick.remove(worker);
+        builderClearVerified.add(index);
+        int old=builderClearCursor;
+        while(builderClearVerified.remove(builderClearCursor))
+            builderClearCursor++;
+        builderClearByFile.put(builderFile,builderClearCursor);
+        // Physical clearance saves immediately; fast verification of
+        // already-empty cells batches network syncs every 32 positions.
+        if(brokeBlock||builderClearCursor-old>0&&builderClearCursor%32==0)
+            sync();
+        else setChanged();
+    }
+    public void releaseBuilderClear(UUID worker){
+        builderClearClaims.remove(worker);builderClearClaimTick.remove(worker);
+    }
     public void advanceBuilderClearing(int index){
         if(index<=builderClearCursor)return;
         builderClearCursor=index;
@@ -642,6 +689,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }else additionalBuilderWorkers.remove(worker);
         builderLastPositions.remove(worker);
         builderClaims.remove(worker);
+        releaseBuilderClear(worker);
         trackedScaffolds.remove(worker);
         if(worker.equals(supplyRunner))supplyRunner=null;
         if(builderWorkerIds().isEmpty()){
@@ -793,6 +841,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderRotation=rotation*90;builderMirror=mirror;builderBlocks=blocks;
         builderUnresolved=unresolved;builderCursor=0;completedAhead=0;
         builderClearCursor=0;builderClearByFile.put(builderFile,0);
+        builderClearClaims.clear();builderClearClaimTick.clear();
+        builderClearVerified.clear();
         builderMissingRetries.clear();
         builderClaims.clear();builderPlaced=true;
         builderRequired.clear();builderRemaining.clear();
@@ -809,6 +859,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||builderWorkerIds().isEmpty()||builderBlocks<1)return false;
         activeOrder=UUID.randomUUID();builderCursor=0;completedAhead=0;
         builderClearCursor=0;builderClearByFile.put(builderFile,0);
+        builderClearClaims.clear();builderClearClaimTick.clear();
+        builderClearVerified.clear();
         builderMissingRetries.clear();
         builderClaims.clear();builderRecallRequested=false;
         phase=WorkerPhase.WORKING;sync();return true;
@@ -1196,6 +1248,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         out.putString("builder_schematic",builderFile);
         out.putInt("builder_clear_cursor",builderClearCursor);
+        int vix=0;
+        for(int verified:builderClearVerified){
+            if(vix>=256)break;
+            out.putInt("builder_clear_verified_"+vix,verified);vix++;
+        }
+        out.putInt("builder_clear_verified_count",vix);
         out.putInt("builder_blocks",builderBlocks);
         out.putInt("builder_unresolved",builderUnresolved);
         out.putInt("builder_rotation",builderRotation);
@@ -1444,6 +1502,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderCursor=Math.clamp(in.getIntOr("builder_cursor",0),0,builderBlocks);
         builderClearCursor=Math.max(0,in.getIntOr("builder_clear_cursor",
                 builderClearByFile.getOrDefault(builderFile,0)));
+        builderClearClaims.clear();builderClearClaimTick.clear();
+        builderClearVerified.clear();
+        for(int i=0,n=Math.clamp(in.getIntOr("builder_clear_verified_count",0),0,256);
+                i<n;i++){
+            int idx=in.getIntOr("builder_clear_verified_"+i,-1);
+            if(idx>=builderClearCursor&&idx<builderClearCursor+256)
+                builderClearVerified.add(idx);
+        }
         builderMissingRetries.clear();
         builderWorkerId=uuid(in,"builder_worker");
         crewTarget=Math.clamp(in.getIntOr("builder_crew_target",1),1,isBuilder()?8:4);
