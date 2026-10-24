@@ -74,6 +74,15 @@ public final class BuilderBuildService {
 
     public static void dispatch(ServerLevel level,WorkerStationBlockEntity table){
         BuilderChunkTickets.tick(level,table);
+        // Keep cancellation on the JOB'S loaded block, not the player or
+        // courier entity. Retry while packing is in flight; never drop a
+        // live order UUID or orphan its physical shulkers.
+        if(table.isBuilder()&&table.builderCancelShipment()
+                &&level.getGameTime()%40==0){
+            if(!BuilderWarehouseCoordinator.cancelShipment(level,table))
+                table.setProblem("Warehouse cancellation pending: "
+                        +"finish/collect any packed shulkers or active picker cargo");
+        }
         if(table.isBuilder()&&level.getGameTime()%40==0)
             table.updateBuilderStagedStock(BuilderSupplyInventory.available(table));
         if(table.isBuilder()&&level.getGameTime()%80==0){
