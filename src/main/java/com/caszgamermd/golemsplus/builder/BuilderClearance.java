@@ -34,23 +34,29 @@ public final class BuilderClearance{
             table.setProblem("Site obstruction requires player review: "+pos);
             return Result.BLOCKED;
         }
-        // Get an appropriate real mining tool from the Planner before
-        // travelling to the site. Don't break a block barehanded.
-        var result=BuilderSupplyInventory.equipForClearing(level,worker,table,current);
-        if(result==BuilderSupplyInventory.ToolStatus.MOVING)return Result.MOVING;
-        if(result==BuilderSupplyInventory.ToolStatus.MISSING){
-            table.setProblem("Supply a matching pickaxe, axe, shovel or hoe "
-                    +"in the Builder Planner to clear "+pos);
-            return Result.BLOCKED;
+        // Thin snow (and snow blocks) are harmless construction debris.
+        // They are breakable by hand; requiring a shovel AND a scaffold
+        // tower before removing a one-pixel snow layer deadlocks clearing.
+        // Hard blocks still require a real borrowed OnSite Storage tool.
+        boolean snow=current.is(Blocks.SNOW)||current.is(Blocks.SNOW_BLOCK);
+        int slot=-1;
+        if(!snow){
+            var result=BuilderSupplyInventory.equipForClearing(level,worker,table,current);
+            if(result==BuilderSupplyInventory.ToolStatus.MOVING)return Result.MOVING;
+            if(result==BuilderSupplyInventory.ToolStatus.MISSING){
+                table.setProblem("Supply a matching pickaxe, axe, shovel or hoe "
+                        +"in OnSite Storage to clear "+pos);
+                return Result.BLOCKED;
+            }
+            slot=BuilderSupplyInventory.toolSlot(worker,current);
+            if(slot<0)return Result.BLOCKED;
         }
-        int slot=BuilderSupplyInventory.toolSlot(worker,current);
-        if(slot<0)return Result.BLOCKED;
         if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>14){
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                     level,worker,pos,.84);
             return Result.MOVING;
         }
-        ItemStack tool=worker.getItem(slot);
+        ItemStack tool=snow?ItemStack.EMPTY:worker.getItem(slot);
         List<ItemStack> drops=Block.getDrops(current,level,pos,null,worker,tool);
         // Require room for ALL item drops before breaking the world block.
         // Drops may be zero legitimately, e.g. glass without Silk Touch.
@@ -72,7 +78,7 @@ public final class BuilderClearance{
             table.setProblem("Debris storage changed; dropped recovered items at site");
         }else table.setProblem("");
         // Explicit durability debit: no magic infinitely durable tools.
-        if(tool.isDamageableItem()){
+        if(slot>=0&&tool.isDamageableItem()){
             ItemStack used=tool.copy();
             used.setDamageValue(used.getDamageValue()+1);
             worker.setItem(slot,used.getDamageValue()>=used.getMaxDamage()?
