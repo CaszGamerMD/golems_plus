@@ -265,6 +265,61 @@ public final class BuilderSupplyInventory {
         }
         return worker.carriedCount(target)>0;
     }
+    public enum ScaffoldLoad { READY, MOVING, MISSING }
+    /** Fetch scaffolding with the same real chest/pouch contract as build
+     * materials. No tower block can be purchased from a distant container.
+     */
+    public static ScaffoldLoad loadScaffold(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,int required){
+        Item item=net.minecraft.world.item.Items.SCAFFOLDING;
+        if(worker.carriedCount(item)>=required)return ScaffoldLoad.READY;
+        Container site=selectedStorage(table);
+        Container source=site!=null&&includesItem(site,site.getContainerSize(),item)
+                ?site:includesItem(table,WorkerStationBlockEntity.INPUT_SLOTS,item)
+                    ?table:null;
+        if(source==null)return ScaffoldLoad.MISSING;
+        BlockPos pos=source==table?table.getBlockPos():table.builderMaterialStorage();
+        if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>12){
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                    level,worker,pos,.82);
+            return ScaffoldLoad.MOVING;
+        }
+        int stillNeeded=required-worker.carriedCount(item);
+        int limit=source==table?WorkerStationBlockEntity.INPUT_SLOTS:source.getContainerSize();
+        for(int slot=0;slot<limit&&stillNeeded>0;slot++){
+            ItemStack container=source.getItem(slot);
+            if(container.is(item)){
+                int requested=Math.min(stillNeeded,Math.min(container.getCount(),
+                        room(worker,container)));
+                int moved=tryPocket(worker,container,Math.max(0,requested));
+                if(moved>0){
+                    source.setItem(slot,container.copyWithCount(container.getCount()-moved));
+                    source.setChanged();stillNeeded-=moved;
+                }
+            }else if(container.is(ItemTags.SHULKER_BOXES)
+                    &&container.has(DataComponents.CONTAINER)){
+                var nested=contents(container);
+                boolean changed=false;
+                for(int inner=0;inner<nested.size()&&stillNeeded>0;inner++){
+                    ItemStack stack=nested.get(inner);
+                    if(!stack.is(item))continue;
+                    int wanted=Math.min(stillNeeded,Math.min(stack.getCount(),room(worker,stack)));
+                    int moved=tryPocket(worker,stack,Math.max(0,wanted));
+                    if(moved>0){
+                        nested.set(inner,stack.copyWithCount(stack.getCount()-moved));
+                        stillNeeded-=moved;changed=true;
+                    }
+                }
+                if(changed){
+                    ItemStack replaced=container.copy();
+                    replaced.set(DataComponents.CONTAINER,ItemContainerContents.fromItems(nested));
+                    source.setItem(slot,replaced);source.setChanged();
+                }
+            }
+        }
+        return worker.carriedCount(item)>=required?
+                ScaffoldLoad.READY:ScaffoldLoad.MISSING;
+    }
     public static Receipt consume(BuilderGolem worker,Item item){
         for(int i=0;i<worker.getContainerSize();i++){
             ItemStack have=worker.getItem(i);
