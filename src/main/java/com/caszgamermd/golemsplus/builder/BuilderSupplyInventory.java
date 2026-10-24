@@ -26,7 +26,7 @@ public final class BuilderSupplyInventory {
         box.getOrDefault(DataComponents.CONTAINER,ItemContainerContents.EMPTY).copyInto(slots);
         return slots;
     }
-    private static Container selectedStorage(WorkerStationBlockEntity table){
+    public static Container selectedStorage(WorkerStationBlockEntity table){
         BlockPos pos=table.builderMaterialStorage();
         if(pos==null||!(table.getLevel() instanceof ServerLevel world)
                 ||!world.hasChunkAt(pos))return null;
@@ -36,12 +36,15 @@ public final class BuilderSupplyInventory {
     }
     private static java.util.List<Container> sources(WorkerStationBlockEntity table){
         Container selected=selectedStorage(table);
-        return selected==null?java.util.List.of(table):java.util.List.of(selected,table);
+        return selected==null?java.util.List.of():java.util.List.of(selected);
+    }
+    public static boolean ready(WorkerStationBlockEntity table){
+        return selectedStorage(table)!=null;
     }
     public static Map<String,Integer> available(WorkerStationBlockEntity table){
         Map<String,Integer> stock=new LinkedHashMap<>();
         for(Container store:sources(table)){
-            int max=store==table?WorkerStationBlockEntity.INPUT_SLOTS:store.getContainerSize();
+            int max=store.getContainerSize();
             for(int i=0;i<max;i++){
                 ItemStack source=store.getItem(i);
                 if(source.isEmpty())continue;
@@ -69,58 +72,44 @@ public final class BuilderSupplyInventory {
         }
         return stock;
     }
-    /**
-     * Used packing shulkers are not garbage. Return genuinely empty
-     * container boxes to the Planner's 9 output slots, preserving dye and
-     * all item components. If output is full, keep the box in inputs.
-     */
-    public static int recycleEmptyShulkers(WorkerStationBlockEntity table){
-        int returned=0;
-        for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++){
-            ItemStack stack=table.getItem(i);
-            if(stack.isEmpty()||!stack.is(ItemTags.SHULKER_BOXES)
-                    ||!stack.has(DataComponents.CONTAINER)
-                    ||stack.get(DataComponents.CONTAINER).nonEmptyItemCopyStream()
-                        .findAny().isPresent())continue;
-            if(!table.canReceive(stack))continue;
-            if(table.deposit(stack.copy())){
-                table.setItem(i,ItemStack.EMPTY);
-                returned++;
-            }
-        }
-        return returned;
-    }
+    /** Keep empty delivered shulkers at the physical site, not in Planner slots. */
+    public static int recycleEmptyShulkers(WorkerStationBlockEntity table){return 0;}
     public static boolean canStoreScaffolding(WorkerStationBlockEntity table){
+        Container site=selectedStorage(table);
+        if(site==null)return false;
         ItemStack sample=new ItemStack(net.minecraft.world.item.Items.SCAFFOLDING);
-        for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++){
-            ItemStack stack=table.getItem(i);
-            if(stack.isEmpty()||(ItemStack.isSameItemSameComponents(stack,sample)
-                    &&stack.getCount()<stack.getMaxStackSize()))return true;
+        for(int i=0;i<site.getContainerSize();i++){
+            ItemStack stack=site.getItem(i);
+            if((stack.isEmpty()||ItemStack.isSameItemSameComponents(stack,sample)
+                    &&stack.getCount()<stack.getMaxStackSize())
+                    &&site.canPlaceItem(i,sample))return true;
         }
-        return table.canReceive(sample);
+        return false;
     }
-    /** Server-side exact stack merge; never deletes a real scaffold refund. */
+    /** Server-side exact single-block return into the OnSite chest. */
     public static boolean storeScaffolding(WorkerStationBlockEntity table,ItemStack sample){
-        for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++){
-            ItemStack slot=table.getItem(i);
-            if(!slot.isEmpty()&&ItemStack.isSameItemSameComponents(slot,sample)
-                    &&slot.getCount()<slot.getMaxStackSize()){
-                table.setItem(i,slot.copyWithCount(slot.getCount()+1));return true;
+        Container site=selectedStorage(table);
+        if(site==null||sample.isEmpty())return false;
+        for(int pass=0;pass<2;pass++)
+            for(int i=0;i<site.getContainerSize();i++){
+                ItemStack old=site.getItem(i);
+                if(pass==0&&old.isEmpty()||pass==1&&!old.isEmpty()
+                        ||!site.canPlaceItem(i,sample))continue;
+                if(!old.isEmpty()&&!ItemStack.isSameItemSameComponents(old,sample))
+                    continue;
+                if(!old.isEmpty()&&old.getCount()>=old.getMaxStackSize())continue;
+                site.setItem(i,old.isEmpty()?sample.copyWithCount(1):
+                        old.copyWithCount(old.getCount()+1));
+                site.setChanged();return true;
             }
-        }
-        for(int i=0;i<WorkerStationBlockEntity.INPUT_SLOTS;i++){
-            if(table.getItem(i).isEmpty()){
-                table.setItem(i,sample.copyWithCount(1));return true;
-            }
-        }
-        return table.deposit(sample.copyWithCount(1));
+        return false;
     }
     public static boolean hasRoomForBox(WorkerStationBlockEntity table){
         // A configured site container is the destination, even if full.
         // Do not silently divert supplies to another storage location.
-        Container destination=table.builderMaterialStorage()==null?table:selectedStorage(table);
+        Container destination=selectedStorage(table);
         if(destination==null)return false;
-        int limit=destination==table?WorkerStationBlockEntity.INPUT_SLOTS:destination.getContainerSize();
+        int limit=destination.getContainerSize();
         ItemStack box=new ItemStack(net.minecraft.world.item.Items.SHULKER_BOX);
         for(int i=0;i<limit;i++)
             if(destination.getItem(i).isEmpty()&&destination.canPlaceItem(i,box))
@@ -129,9 +118,9 @@ public final class BuilderSupplyInventory {
     }
     public static boolean depositBox(WorkerStationBlockEntity table,ItemStack box){
         if(box.isEmpty()||!box.is(ItemTags.SHULKER_BOXES))return false;
-        Container destination=table.builderMaterialStorage()==null?table:selectedStorage(table);
+        Container destination=selectedStorage(table);
         if(destination==null)return false;
-        int limit=destination==table?WorkerStationBlockEntity.INPUT_SLOTS:destination.getContainerSize();
+        int limit=destination.getContainerSize();
         for(int i=0;i<limit;i++)if(destination.getItem(i).isEmpty()
                 &&destination.canPlaceItem(i,box)){
             destination.setItem(i,box.copyWithCount(1));
@@ -214,8 +203,6 @@ public final class BuilderSupplyInventory {
             Container site=selectedStorage(table);
             if(site!=null&&includesItem(site,site.getContainerSize(),requested)){
                 source=site;location=table.builderMaterialStorage();
-            }else if(includesItem(table,WorkerStationBlockEntity.INPUT_SLOTS,requested)){
-                source=table;location=table.getBlockPos();
             }
             if(source==null)continue;
             if(worker.distanceToSqr(location.getX()+.5,location.getY()+.5,
@@ -231,8 +218,7 @@ public final class BuilderSupplyInventory {
                 returnPouch(table,worker);
                 if(room(worker,new ItemStack(target))<=0)return false;
             }
-            int limit=source==table?WorkerStationBlockEntity.INPUT_SLOTS:
-                    source.getContainerSize();
+            int limit=source.getContainerSize();
             for(int i=0;i<limit&&needed>0;i++){
                 ItemStack original=source.getItem(i);
                 if(original.isEmpty())continue;
@@ -281,8 +267,7 @@ public final class BuilderSupplyInventory {
         Container destination=table.builderMaterialStorage()==null
                 ?table:selectedStorage(table);
         if(destination==null)return false;
-        int count=destination==table?WorkerStationBlockEntity.INPUT_SLOTS:
-                destination.getContainerSize();
+        int count=destination.getContainerSize();
         ItemStack[] planned=new ItemStack[count];
         for(int i=0;i<count;i++)planned[i]=destination.getItem(i).copy();
         for(ItemStack drop:drops){
@@ -429,17 +414,16 @@ public final class BuilderSupplyInventory {
         if(worker.carriedCount(item)>=required)return ScaffoldLoad.READY;
         Container site=selectedStorage(table);
         Container source=site!=null&&includesItem(site,site.getContainerSize(),item)
-                ?site:includesItem(table,WorkerStationBlockEntity.INPUT_SLOTS,item)
-                    ?table:null;
+                ?site:null;
         if(source==null)return ScaffoldLoad.MISSING;
-        BlockPos pos=source==table?table.getBlockPos():table.builderMaterialStorage();
+        BlockPos pos=table.builderMaterialStorage();
         if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>12){
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                     level,worker,pos,.82);
             return ScaffoldLoad.MOVING;
         }
         int stillNeeded=required-worker.carriedCount(item);
-        int limit=source==table?WorkerStationBlockEntity.INPUT_SLOTS:source.getContainerSize();
+        int limit=source.getContainerSize();
         for(int slot=0;slot<limit&&stillNeeded>0;slot++){
             ItemStack container=source.getItem(slot);
             if(container.is(item)){
@@ -517,9 +501,9 @@ public final class BuilderSupplyInventory {
      * slot is full, remaining materials stay saved on the Golem.
      */
     public static boolean returnPouch(WorkerStationBlockEntity table,BuilderGolem worker){
-        Container target=table.builderMaterialStorage()==null?table:selectedStorage(table);
+        Container target=selectedStorage(table);
         if(target==null)return false;
-        int count=target==table?WorkerStationBlockEntity.INPUT_SLOTS:target.getContainerSize();
+        int count=target.getContainerSize();
         for(int i=0;i<worker.getContainerSize();i++){
             ItemStack item=worker.getItem(i);
             if(item.isEmpty())continue;
@@ -557,7 +541,7 @@ public final class BuilderSupplyInventory {
     }
     public static Receipt consume(WorkerStationBlockEntity table,Item item){
         for(Container store:sources(table)){
-            int limit=store==table?WorkerStationBlockEntity.INPUT_SLOTS:store.getContainerSize();
+            int limit=store.getContainerSize();
             for(int i=0;i<limit;i++){
                 ItemStack existing=store.getItem(i);
                 if(existing.isEmpty())continue;
