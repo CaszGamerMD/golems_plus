@@ -273,6 +273,24 @@ public final class ChefWorkService{
             return;
         }
 
+        if(station.chefMealServed()){
+            // The meal has already been physically placed and the order-up
+            // bell sounded. Do not require that counter to stay empty while
+            // returning utensils. Retry pantry returns without serving again.
+            List<ItemStack> held=reservedStacks(station.chefReserved());
+            if(held==null){
+                station.setProblem("Cannot return a missing mod's cookware yet");
+                return;
+            }
+            if(!pantry.insertAll(held,station.chefOrigins())){
+                station.setProblem("Meal served; make room for cookware/leftovers in kitchen or oven");
+                return;
+            }
+            for(ChefGolem chef:chefs)chef.setJobAppearance(false,ItemStack.EMPTY);
+            station.clearChefOrder();
+            station.setProblem("");
+            return;
+        }
         MealCounterBlockEntity pickup=counter(level,station.getBlockPos());
         if(pickup==null){station.setProblem("Meal Pickup Counter missing");return;}
         if(!pickup.food().isEmpty()){
@@ -305,23 +323,17 @@ public final class ChefWorkService{
                 station.setProblem("Chef needs a clear floor route to the serving counter");
             return;
         }
-        if(!pantry.canInsertAll(leftovers,station.chefOrigins())){
-            station.setProblem("Kitchen storage is full: cannot return unused recipe items");
-            return;
-        }
-        // Both inventories are server-thread-owned. No inventory reads from
-        // any player or synthetic generated prepared meal are involved.
-        if(!pantry.insertAll(leftovers,station.chefOrigins())){
-            station.setProblem("Kitchen changed during item return; retrying");return;
-        }
+        // Do not make a finished meal hostage to an unavailable cookware
+        // return slot. Serve the real reserved meal first, then enter a
+        // persistent return phase which retries independently.
         if(pickup.serve(plated)){
-            // Ding only once, when a real plate has been delivered.
+            station.markChefMealServed();
             level.playSound(null,pickup.getBlockPos(),SoundEvents.NOTE_BLOCK_BELL.value(),
                     SoundSource.BLOCKS,1.2f,1.65f);
             for(ChefGolem chef:chefs)
                 chef.setJobAppearance(false,ItemStack.EMPTY);
-            station.clearChefOrder();
-            station.setProblem("");
+            station.setProblem(leftovers.isEmpty()?"Meal ready for pickup":
+                    "Meal ready; returning pots, pans and spare ingredients");
         }
     }
 
@@ -350,6 +362,7 @@ public final class ChefWorkService{
         for(int i=1;i<chefs.size();i++)
             chefs.get(i).setJobAppearance(false,ItemStack.EMPTY);
         BlockPos prep=kitchen.stationFor(level,"Assemble");
+        if(prep==null)prep=kitchen.workPoint();
         if(!station.chefDeliveryStarted()){
             // Collect the prepared plate from the kitchen work surface
             // before walking it over. Persist this phase on the workstation.
@@ -367,7 +380,7 @@ public final class ChefWorkService{
         }
         courier.setJobAppearance(false,food);
         boolean arrived=courier.distanceToSqr(counter.getX()+.5,
-                counter.getY()+.5,counter.getZ()+.5)<=5.3;
+                counter.getY()+.5,counter.getZ()+.5)<=10.0;
         if(!arrived&&(level.getGameTime()%20==0||courier.getNavigation().isDone()))
             ChefFloorNavigation.work(level,courier,counter);
         return arrived;
