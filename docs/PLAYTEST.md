@@ -320,3 +320,25 @@ request the actual amount; never forge the missing materials or lose a
 shulker if its delivery chest fills up. Verify that missing stock and PTP
 problems remain visible, rather than being masked by a generic 'site storage
 empty' warning.
+
+## Builder warehouse route regression (0.3.29-dev)
+
+- Link a Caszual Additions warehouse through the Builder scanner and reserve an
+  OUTPUT PTP at least 40 blocks from the Builder's Table (try 80-128 blocks
+  across loaded chunks). Place a genuine stone floor and open aisles; ensure
+  the selected output PTP and Shulker Station are in the same connected
+  warehouse and properly provisioned with empty real shulkers.
+- Start with an empty on-site chest and at least one Builder. The Builder
+  courier should travel using multiple checked ground-path legs rather than
+  reporting 'cannot path to warehouse' just because the PTP is farther away
+  than a single Minecraft path search. It must physically approach the
+  transfer point, claim packed shulkers, walk them back and deposit them.
+- Add an aisle corner, stairs and an openable door: intermediate waypoints
+  must remain collision-checked and never clip through racks, pallets,
+  walls, unopened non-wood doors or unloaded chunks. Verify no teleportation.
+- At the warehouse, observe the storage Golem pick items from the rack
+  through its reachable front/service aisle, walk to the physically attached
+  Shulker Station and fill the output PTP. The warehouse output worker's
+  own status should identify inaccessible racks or missing shulker capacity.
+- Check that a solo Builder also builds from staged blocks and makes a supply
+  trip when running low, without duplicating shulker reservations.
