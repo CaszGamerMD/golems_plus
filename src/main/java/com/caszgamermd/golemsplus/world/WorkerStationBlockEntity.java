@@ -643,8 +643,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     public boolean startPlacedBuilder(UUID actor){
         if(!canConfigure(actor)||!isBuilder()||!hasPlacedSchematic()
-                ||builderUnresolved!=0||activeOrder!=null||warehouse==null
-                ||builderWorkerIds().isEmpty()||builderRequired.isEmpty())return false;
+                ||activeOrder!=null||warehouse==null
+                ||builderWorkerIds().isEmpty()||builderBlocks<1)return false;
         activeOrder=UUID.randomUUID();builderCursor=0;completedAhead=0;
         builderClaims.clear();phase=WorkerPhase.WORKING;sync();return true;
     }

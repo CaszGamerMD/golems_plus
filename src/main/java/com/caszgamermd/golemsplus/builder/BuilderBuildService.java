@@ -275,8 +275,9 @@ public final class BuilderBuildService {
                 BuildSite.Rotation.values()[table.builderRotation()/90],
                 BuildSite.Mirror.values()[table.builderMirror()]);
         var result=BuilderConstructionPlan.create(schematic,site);
-        if(!result.unsupported().isEmpty())
-            throw new IllegalArgumentException("Unsupported states in selected placement");
+        // A job may start with unsupported blocks. It stops safely at any
+        // unresolvable step and reports the exact state instead of deleting
+        // blocks or fabricating missing materials.
         Cache next=new Cache(table.builderFile(),table.builderRotation(),
                 table.builderMirror(),table.builderOrigin(),result.steps());
         cached.put(worker,next);
