@@ -62,7 +62,12 @@ public final class BuilderSiteClearance {
             BlockPos pos=step.pos();
             // Request the next exact schematic chunk before testing whether
             // the world has loaded it; clearing can span many chunks.
-            BuilderChunkTickets.destination(world,worker,pos);
+            // Reading the 128-cell schematic scan must not constantly
+            // reticket every already-loaded, already-correct position.
+            // Only an unloaded target or an actual obstruction needs the
+            // dedicated task chunk reservation.
+            if(!world.hasChunkAt(pos))
+                BuilderChunkTickets.destination(world,worker,pos);
             if(!world.hasChunkAt(pos)){
                 table.advanceBuilderClearing(i);
                 table.setProblem("CLEARING: build chunk unloaded "+pos);
@@ -89,6 +94,7 @@ public final class BuilderSiteClearance {
             }
             BlockState existing=world.getBlockState(pos);
             if(existing.isAir()||existing.equals(expected))continue;
+            BuilderChunkTickets.destination(world,worker,pos);
             table.advanceBuilderClearing(i);
             // Reach above-head blocks from real supplied scaffolding. This
             // is the same non-creative, trackable, reclaimable system used
