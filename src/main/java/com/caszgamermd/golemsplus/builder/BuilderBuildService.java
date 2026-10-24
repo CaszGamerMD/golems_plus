@@ -128,6 +128,17 @@ public final class BuilderBuildService {
                             recipient,outstanding.steps()))return;
                 }catch(Exception ignored){}
             }
+            if(!worker.hasSupplyBox()&&!worker.isEmpty()){
+                BlockPos returnTo=BuilderSupplyInventory.pouchReturnPos(table);
+                if(level.hasChunkAt(returnTo)){
+                    if(worker.distanceToSqr(returnTo.getX()+.5,returnTo.getY()+.5,
+                            returnTo.getZ()+.5)>12)
+                        com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .routeTo(level,worker,returnTo,.8);
+                    else BuilderSupplyInventory.returnPouch(table,worker);
+                }
+                return;
+            }
             if(!worker.hasSupplyBox()&&table.supplyRequest()==null)
                 com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(level,worker,home);
             return;
@@ -202,6 +213,18 @@ public final class BuilderBuildService {
             if(!state.state().canSurvive(level,pos)){
                 table.setProblem("Missing supporting blocks at "+pos);return;
             }
+            // Every worker first visits actual staging storage, loads a
+            // three-layer pouch, THEN walks to the construction site.
+            // Never debit a remote chest while standing at the build.
+            if(worker.carriedCount(state.item())<=0 &&
+                    !BuilderSupplyInventory.loadForLayer(
+                            level,worker,table,plan.steps(),index)){
+                if(BuilderWarehouseCoordinator.request(level,worker,table,
+                        owner,plan.steps()))return;
+                table.setProblem("Builder needs "+step.requiredItem()+
+                        " at its linked material storage to continue");
+                return;
+            }
             double horizontal=Math.pow(worker.getX()-(pos.getX()+.5),2)
                     +Math.pow(worker.getZ()-(pos.getZ()+.5),2);
             if(pos.getY()-worker.getY()>2.5 && horizontal>=36){
@@ -235,11 +258,11 @@ public final class BuilderBuildService {
                 return;
             }
             BuilderSupplyInventory.Receipt payment=
-                    BuilderSupplyInventory.consume(table,state.item());
+                    BuilderSupplyInventory.consume(worker,state.item());
             if(payment==null){
                 if(BuilderWarehouseCoordinator.request(level,worker,table,
                         owner,plan.steps()))return;
-                table.setProblem("Missing "+step.requiredItem()+" in Builder Table");
+                table.setProblem("Builder pouch missing "+step.requiredItem());
                 return;
             }
             // The real consumed stack is debited from either a loose slot
