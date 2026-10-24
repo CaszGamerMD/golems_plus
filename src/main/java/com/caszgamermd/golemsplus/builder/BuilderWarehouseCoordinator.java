@@ -248,6 +248,11 @@ public final class BuilderWarehouseCoordinator {
         if(reply.accepted()&&reply.boxes()==0
                 &&!reply.state().equals("DELIVERED")
                 &&!reply.ptp().equals(BlockPos.ZERO)){
+            // A solo courier is also the only Builder. Until a REAL
+            // packed box reaches the PTP, keep clearing/placing onsite
+            // instead of marching to an empty PTP and deadlocking the job.
+            // supplyRunner stays assigned, so ready boxes interrupt work.
+            if(table.builderWorkerIds().size()==1)return false;
             BlockPos pickup=reply.ptp();
             // Once a real Builder has been assigned the delivery role,
             // do not send that worker back to construction simply because
