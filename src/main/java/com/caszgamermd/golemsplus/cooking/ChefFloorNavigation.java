@@ -74,18 +74,21 @@ public final class ChefFloorNavigation {
         // not standing on its top. Equal-height tiles are favored.
         BlockPos base=chef.blockPosition();
         for(int preference=0;preference<2;preference++){
-            BlockPos best=null;
-            double bestScore=Double.MAX_VALUE;
+            java.util.List<BlockPos> candidates=new java.util.ArrayList<>();
             for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++)
                 for(int dy=-2;dy<=2;dy++){
                     BlockPos feet=machine.offset(dx,dy,dz);
                     if(!usable(level,feet))continue;
-                    boolean floor=kitchenFloor(level,feet.below());
-                    if(preference==0&&!floor)continue;
-                    double distance=feet.distSqr(machine)+feet.distSqr(base)*.04;
-                    if(distance<bestScore){best=feet;bestScore=distance;}
+                    if(preference==0&&!kitchenFloor(level,feet.below()))continue;
+                    candidates.add(feet);
                 }
-            if(best!=null&&approach(level,chef,best,.75))return;
+            // A kitchen table can be surrounded by counters. The former
+            // algorithm tried ONLY the single closest floor cell and stopped
+            // if its path was blocked, trapping a Chef with a finished meal.
+            candidates.sort(java.util.Comparator.comparingDouble(feet->
+                    feet.distSqr(machine)+feet.distSqr(base)*.04));
+            for(int i=0;i<Math.min(48,candidates.size());i++)
+                if(approach(level,chef,candidates.get(i),.75))return;
         }
         // No safe path? Remain where we are rather than climb onto a counter.
         chef.getNavigation().stop();
