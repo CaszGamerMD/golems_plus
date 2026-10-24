@@ -1,1 +1,266 @@
-{"parent":"minecraft:block/cube_bottom_top","textures":{"side":"minecraft:block/blue_concrete","top":"minecraft:block/blue_concrete","bottom":"minecraft:block/black_concrete"}}
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "particle": "minecraft:block/blue_concrete",
+    "blue": "minecraft:block/blue_concrete",
+    "black": "minecraft:block/black_concrete",
+    "white": "minecraft:block/white_concrete"
+  },
+  "elements": [
+    {
+      "name": "blue_bin_body",
+      "from": [
+        2,
+        0,
+        2
+      ],
+      "to": [
+        14,
+        14,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#blue"
+        },
+        "south": {
+          "texture": "#blue"
+        },
+        "east": {
+          "texture": "#blue"
+        },
+        "west": {
+          "texture": "#blue"
+        },
+        "up": {
+          "texture": "#blue"
+        },
+        "down": {
+          "texture": "#blue"
+        }
+      }
+    },
+    {
+      "name": "bin_inner_dark",
+      "from": [
+        3,
+        14.1,
+        3
+      ],
+      "to": [
+        13,
+        14.9,
+        13
+      ],
+      "faces": {
+        "up": {
+          "texture": "#black"
+        }
+      }
+    },
+    {
+      "name": "left_bin_lip",
+      "from": [
+        1,
+        13.8,
+        1
+      ],
+      "to": [
+        3,
+        16,
+        15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#blue"
+        },
+        "south": {
+          "texture": "#blue"
+        },
+        "east": {
+          "texture": "#blue"
+        },
+        "west": {
+          "texture": "#blue"
+        },
+        "up": {
+          "texture": "#blue"
+        },
+        "down": {
+          "texture": "#blue"
+        }
+      }
+    },
+    {
+      "name": "right_bin_lip",
+      "from": [
+        13,
+        13.8,
+        1
+      ],
+      "to": [
+        15,
+        16,
+        15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#blue"
+        },
+        "south": {
+          "texture": "#blue"
+        },
+        "east": {
+          "texture": "#blue"
+        },
+        "west": {
+          "texture": "#blue"
+        },
+        "up": {
+          "texture": "#blue"
+        },
+        "down": {
+          "texture": "#blue"
+        }
+      }
+    },
+    {
+      "name": "front_bin_lip",
+      "from": [
+        3,
+        13.8,
+        1
+      ],
+      "to": [
+        13,
+        16,
+        3
+      ],
+      "faces": {
+        "north": {
+          "texture": "#blue"
+        },
+        "south": {
+          "texture": "#blue"
+        },
+        "east": {
+          "texture": "#blue"
+        },
+        "west": {
+          "texture": "#blue"
+        },
+        "up": {
+          "texture": "#blue"
+        },
+        "down": {
+          "texture": "#blue"
+        }
+      }
+    },
+    {
+      "name": "back_bin_lip",
+      "from": [
+        3,
+        13.8,
+        13
+      ],
+      "to": [
+        13,
+        16,
+        15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#blue"
+        },
+        "south": {
+          "texture": "#blue"
+        },
+        "east": {
+          "texture": "#blue"
+        },
+        "west": {
+          "texture": "#blue"
+        },
+        "up": {
+          "texture": "#blue"
+        },
+        "down": {
+          "texture": "#blue"
+        }
+      }
+    },
+    {
+      "name": "front_recycle_mark_left",
+      "from": [
+        5,
+        5,
+        1.75
+      ],
+      "to": [
+        6,
+        9,
+        2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#white"
+        }
+      }
+    },
+    {
+      "name": "front_recycle_mark_top",
+      "from": [
+        5,
+        8,
+        1.75
+      ],
+      "to": [
+        10,
+        9,
+        2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#white"
+        }
+      }
+    },
+    {
+      "name": "front_recycle_mark_right",
+      "from": [
+        9,
+        5,
+        1.75
+      ],
+      "to": [
+        10,
+        9,
+        2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#white"
+        }
+      }
+    },
+    {
+      "name": "front_recycle_mark_bottom",
+      "from": [
+        5,
+        5,
+        1.75
+      ],
+      "to": [
+        10,
+        6,
+        2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#white"
+        }
+      }
+    }
+  ]
+}
