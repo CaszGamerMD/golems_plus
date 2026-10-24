@@ -7,18 +7,29 @@ import java.util.Map;
 /** Small forward-looking batches avoid reserving an entire large structure. */
 public final class BuilderMaterialDemand {
     private BuilderMaterialDemand(){}
+    /** Reserve for the next three vertical Y-levels, bottom-up.
+     * For each needed material request a complete stack whenever possible;
+     * if fewer remain, request exactly the partial stack. Staged physical
+     * stock is subtracted first, so deliveries never double count.
+     */
     public static Map<String,Integer> batch(List<BuilderConstructionPlan.Step> steps,
             int cursor,Map<String,Integer> stocked){
         if(cursor<0||cursor>=steps.size())return Map.of();
-        Map<String,Integer> wanted=new LinkedHashMap<>();
-        for(int i=cursor;i<steps.size()&&i<cursor+256;i++){
-            String key=steps.get(i).requiredItem();
-            if(key==null||key.isBlank())continue;
-            if(!wanted.containsKey(key)&&wanted.size()>=16)break;
-            wanted.compute(key,(k,v)->Math.min(64,(v==null?0:v)+1));
+        int firstY=steps.get(cursor).y();
+        Map<String,Integer> needed=new LinkedHashMap<>();
+        for(int i=cursor;i<steps.size();i++){
+            var step=steps.get(i);
+            if(step.y()>=firstY+3)break;
+            String item=step.requiredItem();
+            if(item==null||item.isBlank())continue;
+            if(!needed.containsKey(item)&&needed.size()>=16)continue;
+            needed.merge(item,1,Integer::sum);
         }
-        wanted.replaceAll((k,v)->Math.max(0,v-Math.max(0,stocked.getOrDefault(k,0))));
-        wanted.values().removeIf(v->v==0);
-        return Map.copyOf(wanted);
+        needed.replaceAll((k,v)->{
+            int shortage=Math.max(0,v-Math.max(0,stocked.getOrDefault(k,0)));
+            return shortage==0?0:Math.min(64,Math.max(64,shortage));
+        });
+        needed.values().removeIf(v->v<=0);
+        return Map.copyOf(needed);
     }
 }
