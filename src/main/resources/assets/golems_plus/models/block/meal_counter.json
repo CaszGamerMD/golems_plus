@@ -72,9 +72,6 @@
         },
         "up": {
           "texture": "#toe"
-        },
-        "down": {
-          "texture": "#toe"
         }
       }
     },
@@ -134,9 +131,6 @@
           "texture": "#edge"
         },
         "west": {
-          "texture": "#edge"
-        },
-        "up": {
           "texture": "#edge"
         },
         "down": {
