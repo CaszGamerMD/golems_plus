@@ -170,7 +170,8 @@ public final class BuilderBuildService {
             }
             if(!worker.hasSupplyBox()&&table.supplyRequest()==null){
                 if(BuilderReturnService.tick(level,worker,table))return;
-                com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(level,worker,home);
+                if(table.phase()!=WorkerPhase.COMPLETE&&!table.builderRecallRequested())
+                    com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(level,worker,home);
             }
             return;
         }
