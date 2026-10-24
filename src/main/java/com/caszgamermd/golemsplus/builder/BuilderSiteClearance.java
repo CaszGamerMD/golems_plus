@@ -97,7 +97,7 @@ public final class BuilderSiteClearance {
                     table.setProblem("CLEARING: needs supplied scaffolding at "+pos);
                     return false;
                 }
-                if(reach!=BuilderScaffolding.Result.READY){
+                if(reach!=BuilderScaffolding.Result.NOT_NEEDED){
                     if(reach==BuilderScaffolding.Result.NO_SAFE_TOWER)
                         table.setProblem("CLEARING: no safe scaffold column "+pos);
                     return false;
