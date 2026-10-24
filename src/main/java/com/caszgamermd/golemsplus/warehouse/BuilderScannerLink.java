@@ -88,7 +88,9 @@ public final class BuilderScannerLink {
             tell(player, "Unable to assign this warehouse to the Builder.");
             return;
         }
-        tell(player, "Builder warehouse linked from scanner: "
+        tell(player, (table.supplyRequest()!=null
+                    ?"Warehouse change queued until current delivery finishes: "
+                    :"Builder warehouse linked from scanner: ")
                 + x + ", " + y + ", " + z
                 + (evaluation.computerVerified()
                     ? " (Rack Computer verified)."
