@@ -106,6 +106,10 @@ public final class ChefWorkService{
                                 String id,int amount){
         if(!station.isCooking()||!station.canConfigure(player.getUUID())
                 ||station.chefBusy()||amount<1||amount>16)return false;
+        if(!station.chefReserved().isEmpty()){
+            station.setProblem("Return unused Chef ingredients to storage before a new order");
+            return false;
+        }
         Identifier key=Identifier.tryParse(id);
         if(key==null||!BuiltInRegistries.ITEM.containsKey(key))return false;
         Item item=BuiltInRegistries.ITEM.getValue(key);
@@ -143,16 +147,18 @@ public final class ChefWorkService{
                 plan.work().stream().map(ChefRecipePlanner.WorkStep::encode).toList();
         var escrow=new LinkedHashMap<String,Integer>();
         plan.ingredients().forEach((k,v)->escrow.put(BuiltInRegistries.ITEM.getKey(k).toString(),v));
-        List<KitchenSupplies.Origin> withdrawn=kitchen.withdraw(plan.ingredients());
-        if(withdrawn==null){
-            station.setProblem("Kitchen stock changed; check supplies and order again");
-            return false;
-        }
-        // Any spare batch results are created only when the corresponding
-        // recipe actually runs, and are tracked in the reserved buffer.
+        // Establish a saved order before taking ingredients from storage.
+        // This closes the previous consume-then-start failure window which
+        // could remove stock without any persisted recipe reservation.
         var surplus=new LinkedHashMap<String,Integer>();
         if(!station.startChefOrder(player.getUUID(),key.toString(),amount,steps,escrow,surplus)){
             station.setProblem("Could not reserve order");return false;
+        }
+        List<KitchenSupplies.Origin> withdrawn=kitchen.withdraw(plan.ingredients());
+        if(withdrawn==null){
+            station.clearChefOrder();
+            station.setProblem("Kitchen stock changed; check supplies and order again");
+            return false;
         }
         station.setChefOrigins(withdrawn);
         station.setProblem("");

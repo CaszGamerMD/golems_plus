@@ -204,7 +204,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean startChefOrder(java.util.UUID actor,String food,int quantity,
             java.util.List<String> steps,java.util.Map<String,Integer> escrow,
             java.util.Map<String,Integer> leftovers){
-        if(!isCooking()||!canConfigure(actor)||chefBusy()||quantity<1||quantity>16
+        if(!isCooking()||!canConfigure(actor)||chefBusy()||!chefEscrow.isEmpty()
+                ||quantity<1||quantity>16
                 ||steps.isEmpty()||steps.size()>160)return false;
         chefFood=food;chefQuantity=quantity;chefStepIndex=chefStepTicks=0;
         chefOvenLoaded=false;
