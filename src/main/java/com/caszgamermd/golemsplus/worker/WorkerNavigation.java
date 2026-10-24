@@ -242,6 +242,32 @@ public final class WorkerNavigation {
         if(p.lastBad!=null&&mob.tickCount>=p.avoidUntil)
             p.lastBad=null;
 
+        // Nearby destinations should NOT pay for a new 2,800-node
+        // global search or blindly take the first roundabout candidate.
+        // Compare a handful of validated native paths by actual path
+        // length and choose the shortest legal one; the weighted search
+        // remains the fallback for distant or blocked corridors.
+        if(p.weightedRoute.isEmpty()
+                &&mob.blockPosition().distSqr(target)<=20*20){
+            Path best=null;BlockPos bestGoal=null;
+            int bestLength=Integer.MAX_VALUE,checked=0;
+            for(Candidate option:candidateGoals(level,mob,target,0)){
+                if(++checked>8)break;
+                Path candidate=mob.getNavigation().createPath(option.feet(),0);
+                if(!safePath(level,mob,candidate,false))continue;
+                int length=candidate.getNodeCount();
+                if(length<bestLength){
+                    best=candidate;bestGoal=option.feet();
+                    bestLength=length;
+                }
+            }
+            if(best!=null&&mob.getNavigation().moveTo(best,speed)){
+                p.approach=bestGoal;
+                p.stalled=0;p.unsafeChecks=0;p.lastBad=null;
+                p.nextRoute=mob.tickCount+CHECK_TICKS;
+                return true;
+            }
+        }
         // Retain the same route across job updates. The old fan of 24/16/10
         // straight-line waypoints repeatedly chose the same dead end next
         // to a wall. Instead use one bounded lowest-cost search starting
