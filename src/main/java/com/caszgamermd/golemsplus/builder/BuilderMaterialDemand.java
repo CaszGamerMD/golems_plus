@@ -8,9 +8,11 @@ import java.util.Map;
 public final class BuilderMaterialDemand {
     private BuilderMaterialDemand(){}
     /** Reserve for the next three vertical Y-levels, bottom-up.
-     * For each needed material request a complete stack whenever possible;
-     * if fewer remain, request exactly the partial stack. Staged physical
-     * stock is subtracted first, so deliveries never double count.
+     * Request all needed stock for the selected material types, capped at
+     * the warehouse's 4096-item per-line contract. The old 64-item cap
+     * forced a fresh one-stack shulker on every trip and kept delivery
+     * golems crossing the warehouse for tiny repeated batches. Staged
+     * OnSite and worker pouch stock is deducted before placing an order.
      */
     public static Map<String,Integer> batch(List<BuilderConstructionPlan.Step> steps,
             int cursor,Map<String,Integer> stocked){
@@ -34,7 +36,7 @@ public final class BuilderMaterialDemand {
         needed.replaceAll((k,v)->{
             int shortage=Math.max(0,entireJob.getOrDefault(k,0)
                     -Math.max(0,stocked.getOrDefault(k,0)));
-            return shortage==0?0:Math.min(64,shortage);
+            return shortage==0?0:Math.min(4096,shortage);
         });
         needed.values().removeIf(v->v<=0);
         return Map.copyOf(needed);
