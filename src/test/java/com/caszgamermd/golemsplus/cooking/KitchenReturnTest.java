@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Protect actual storage slot priorities and no-loss behavior. */
 class KitchenReturnTest {
     @BeforeAll static void setupMinecraftRegistries(){
+        net.minecraft.SharedConstants.tryDetectVersion();
         net.minecraft.server.Bootstrap.bootStrap();
     }
     private record Scene(KitchenSupplies kitchen,SimpleContainer origin,
