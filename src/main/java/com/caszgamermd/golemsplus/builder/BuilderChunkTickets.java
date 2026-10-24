@@ -72,7 +72,14 @@ public final class BuilderChunkTickets {
         }else counts.put(center,owners-1);
     }
     private static boolean running(WorkerStationBlockEntity table){
-        return table.isBuilder()&&table.activeOrder()!=null
+        if(!table.isBuilder())return false;
+        // Keep the actual assigned crew simulated while they return real
+        // inventory and walk to an Unemployed Center after job completion.
+        // Release every ticket once all UUIDs have physically checked in.
+        if((table.phase()==WorkerPhase.COMPLETE
+                ||table.builderRecallRequested())
+                &&!table.builderWorkerIds().isEmpty())return true;
+        return table.activeOrder()!=null
                 &&table.phase()!=WorkerPhase.PAUSED
                 &&table.phase()!=WorkerPhase.COMPLETE;
     }
