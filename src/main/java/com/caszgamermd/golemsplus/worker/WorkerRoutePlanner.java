@@ -57,6 +57,11 @@ public final class WorkerRoutePlanner {
         boolean distant=original>RADIUS*MOVE_COST;
         Map<BlockPos,Integer> cost=new HashMap<>();
         Map<BlockPos,BlockPos> parents=new HashMap<>();
+        // Block collision/headroom checks dominate routing time. Within
+        // one request every cell has only one actual world result, so
+        // evaluate it once rather than up to 12 times as neighbors overlap.
+        Map<BlockPos,Boolean> validCache=new HashMap<>();
+        Map<BlockPos,Double> heightCache=new HashMap<>();
         PriorityQueue<Node> queue=new PriorityQueue<>(
                 Comparator.comparingInt(Node::estimate)
                     .thenComparingInt(Node::travelled));
@@ -88,9 +93,10 @@ public final class WorkerRoutePlanner {
                     if(next.equals(avoid)||Math.abs(next.getX()-start.getX())>RADIUS
                             ||Math.abs(next.getZ()-start.getZ())>RADIUS
                             ||Math.abs(next.getY()-start.getY())>8
-                            ||!standable.test(next))continue;
-                    double rise=Math.abs(floor.applyAsDouble(next)
-                            -floor.applyAsDouble(current));
+                            ||!validCache.computeIfAbsent(next,standable::test))continue;
+                    double rise=Math.abs(heightCache.computeIfAbsent(next,
+                            floor::applyAsDouble)-heightCache.computeIfAbsent(
+                                    current,floor::applyAsDouble));
                     if(!Double.isFinite(rise)||rise>1.01)continue;
                     int weight=MOVE_COST+(rise>.51?HEIGHT_COST:0);
                     int candidate=node.travelled()+weight;
