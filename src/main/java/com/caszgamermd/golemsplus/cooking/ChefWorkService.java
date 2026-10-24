@@ -300,7 +300,7 @@ public final class ChefWorkService{
         ItemStack plated=new ItemStack(BuiltInRegistries.ITEM.getValue(id),
                 station.chefQuantity());
         // A finished plate is carried to the actual pickup counter first.
-        if(!deliverPlate(level,chefs,pickup.getBlockPos(),plated)){
+        if(!deliverPlate(level,chefs,station,pantry,pickup.getBlockPos(),plated)){
             if(level.getGameTime()%80==0)
                 station.setProblem("Chef needs a clear floor route to the serving counter");
             return;
@@ -342,19 +342,35 @@ public final class ChefWorkService{
     }
 
     private static boolean deliverPlate(ServerLevel level,List<ChefGolem> chefs,
-                                        BlockPos counter,ItemStack food){
-        boolean delivered=false;
-        for(ChefGolem chef:chefs){
-            // Delivery requires actual counter proximity, not kitchen-wide
-            // prep proximity. The rendered hand carries the real plate.
-            boolean arrived=chef.distanceToSqr(counter.getX()+.5,
-                    counter.getY()+.5,counter.getZ()+.5)<=5.3;
-            chef.setJobAppearance(false,food);
-            if(arrived)delivered=true;
-            else if(level.getGameTime()%20==0||chef.getNavigation().isDone())
-                ChefFloorNavigation.work(level,chef,counter);
+            WorkerStationBlockEntity station,KitchenSupplies kitchen,
+            BlockPos counter,ItemStack food){
+        // Exactly ONE worker is the courier; other Chefs never magically
+        // materialize the same plate while standing elsewhere.
+        ChefGolem courier=chefs.get(0);
+        for(int i=1;i<chefs.size();i++)
+            chefs.get(i).setJobAppearance(false,ItemStack.EMPTY);
+        BlockPos prep=kitchen.stationFor(level,"Assemble");
+        if(!station.chefDeliveryStarted()){
+            // Collect the prepared plate from the kitchen work surface
+            // before walking it over. Persist this phase on the workstation.
+            if(prep==null)return false;
+            double distance=courier.distanceToSqr(prep.getX()+.5,
+                    prep.getY()+.5,prep.getZ()+.5);
+            courier.setJobAppearance(false,ItemStack.EMPTY);
+            if(distance>5.3){
+                if(level.getGameTime()%20==0||courier.getNavigation().isDone())
+                    ChefFloorNavigation.work(level,courier,prep);
+                return false;
+            }
+            station.setChefDeliveryStarted(true);
+            return false;
         }
-        return delivered;
+        courier.setJobAppearance(false,food);
+        boolean arrived=courier.distanceToSqr(counter.getX()+.5,
+                counter.getY()+.5,counter.getZ()+.5)<=5.3;
+        if(!arrived&&(level.getGameTime()%20==0||courier.getNavigation().isDone()))
+            ChefFloorNavigation.work(level,courier,counter);
+        return arrived;
     }
 
     private static boolean approachChefs(ServerLevel level,List<ChefGolem> chefs,

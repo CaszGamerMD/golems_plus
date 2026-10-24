@@ -68,6 +68,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private BlockPos kitchenLink;
     private String chefFood="";
     private boolean chefOvenLoaded;
+    private boolean chefDeliveryStarted;
     private String chefPreviewFood="";
     private final java.util.List<String> chefPreviewLines=new java.util.ArrayList<>();
     private int chefQuantity,chefStepIndex,chefStepTicks;
@@ -199,6 +200,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
         chefOvenLoaded=false;
         chefStepIndex++;chefStepTicks=0;sync();return true;
     }
+    public boolean chefDeliveryStarted(){return chefDeliveryStarted;}
+    public void setChefDeliveryStarted(boolean started){
+        if(chefDeliveryStarted!=started){chefDeliveryStarted=started;sync();}
+    }
     public boolean chefOvenLoaded(){return chefOvenLoaded;}
     public void setChefOvenLoaded(boolean loaded){
         if(chefOvenLoaded==loaded)return;
@@ -220,7 +225,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||quantity<1||quantity>16
                 ||steps.isEmpty()||steps.size()>160)return false;
         chefFood=food;chefQuantity=quantity;chefStepIndex=chefStepTicks=0;
-        chefOvenLoaded=false;
+        chefOvenLoaded=false;chefDeliveryStarted=false;
         chefSteps.clear();chefSteps.addAll(steps);
         chefEscrow.clear();chefEscrow.putAll(escrow);
         chefSurplus.clear();chefSurplus.putAll(leftovers);
@@ -239,7 +244,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public java.util.Map<String,Integer> clearChefOrder(){
         java.util.Map<String,Integer> refund=java.util.Map.copyOf(chefEscrow);
         chefFood="";chefQuantity=chefStepIndex=chefStepTicks=0;
-        chefOvenLoaded=false;
+        chefOvenLoaded=false;chefDeliveryStarted=false;
         chefSteps.clear();chefEscrow.clear();chefSurplus.clear();chefOrigins.clear();sync();
         return refund;
     }
@@ -721,6 +726,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putInt("chef_step_index",chefStepIndex);
         out.putInt("chef_step_ticks",chefStepTicks);
         out.putBoolean("chef_oven_loaded",chefOvenLoaded);
+        out.putBoolean("chef_delivery_started",chefDeliveryStarted);
         out.putInt("chef_step_total",Math.min(160,chefSteps.size()));
         for(int i=0;i<chefSteps.size()&&i<160;i++)
             out.putString("chef_step_"+i,chefSteps.get(i));
@@ -867,6 +873,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         chefStepIndex=Math.clamp(in.getIntOr("chef_step_index",0),0,160);
         chefStepTicks=Math.clamp(in.getIntOr("chef_step_ticks",0),0,24000);
         chefOvenLoaded=in.getBooleanOr("chef_oven_loaded",false);
+        chefDeliveryStarted=in.getBooleanOr("chef_delivery_started",false);
         chefSteps.clear();
         for(int i=0,n=Math.clamp(in.getIntOr("chef_step_total",0),0,160);i<n;i++)
             chefSteps.add(in.getStringOr("chef_step_"+i,"Prepare"));
