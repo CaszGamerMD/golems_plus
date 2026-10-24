@@ -9,6 +9,32 @@ import net.minecraft.world.item.Items;
 public final class ChefCraftingRemainders {
     private ChefCraftingRemainders(){}
     public static ItemStack forIngredient(Item item){
+        ItemStack ingredient=new ItemStack(item);
+        // Modern component-driven recipes (including many modded pots,
+        // pans and reusable kitchen vessels) declare the remainder on
+        // ItemStack rather than directly on the Item class.
+        for(String name:new String[]{"getCraftingRemainder","getRecipeRemainder"}){
+            try{
+                Method getter=ingredient.getClass().getMethod(name);
+                Object result=getter.invoke(ingredient);
+                if(result instanceof ItemStack stack&&!stack.isEmpty())
+                    return stack.copy();
+                if(result instanceof Item leftover&&leftover!=Items.AIR)
+                    return new ItemStack(leftover);
+            }catch(ReflectiveOperationException|RuntimeException ignored){}
+        }
+        try{
+            var field=net.minecraft.core.component.DataComponents.class
+                    .getField("CRAFTING_REMAINDER");
+            Object key=field.get(null);
+            if(key instanceof net.minecraft.core.component.DataComponentType<?> type){
+                Object remainder=ingredient.get(type);
+                if(remainder instanceof ItemStack stack&&!stack.isEmpty())
+                    return stack.copy();
+                if(remainder instanceof Item leftover&&leftover!=Items.AIR)
+                    return new ItemStack(leftover);
+            }
+        }catch(ReflectiveOperationException|RuntimeException ignored){}
         for(String name:new String[]{"getCraftingRemainder","getRecipeRemainder"}){
             try{
                 Method getter=item.getClass().getMethod(name);
