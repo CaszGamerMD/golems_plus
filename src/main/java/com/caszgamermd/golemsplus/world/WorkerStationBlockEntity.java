@@ -969,7 +969,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
                     ||stack.is(net.minecraft.world.item.Items.SALMON)
                     ||stack.is(net.minecraft.world.item.Items.TROPICAL_FISH)
                     ||stack.is(net.minecraft.world.item.Items.PUFFERFISH));
-        return !isCooking()&&slot>=0&&slot<INPUT_SLOTS;
+        // Preserve old stored stacks so a player can remove them; newly
+        // deposited Builder materials/tools belong in selected OnSite Storage.
+        return !isCooking()&&!isBuilder()&&slot>=0&&slot<INPUT_SLOTS;
     }
     @Override public void clearContent() {
         items=NonNullList.withSize(SLOTS,ItemStack.EMPTY);sync();
