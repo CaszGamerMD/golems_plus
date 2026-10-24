@@ -6,12 +6,12 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BuilderMaterialDemandTest {
-    @Test void requestsOnlyMissingItemsFromNextTwoHundredFiftySixBlocks(){
+    @Test void requestsFullStackForThreeLayersWhenMoreWorkNeedsThatMaterial(){
         var list=new ArrayList<BuilderConstructionPlan.Step>();
         for(int i=0;i<300;i++)list.add(new BuilderConstructionPlan.Step(
                 i,70,0,"minecraft:stone","minecraft:stone"));
         var requested=BuilderMaterialDemand.batch(list,0,Map.of("minecraft:stone",30));
-        assertEquals(34,requested.get("minecraft:stone"));
+        assertEquals(64,requested.get("minecraft:stone"));
         assertEquals(Map.of(),BuilderMaterialDemand.batch(list,300,Map.of()));
     }
     @Test void capsTypeCountAndOmitsMaterialsAlreadyOwned(){

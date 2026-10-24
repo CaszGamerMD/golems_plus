@@ -25,9 +25,16 @@ public final class BuilderMaterialDemand {
             if(!needed.containsKey(item)&&needed.size()>=16)continue;
             needed.merge(item,1,Integer::sum);
         }
+        Map<String,Integer> entireJob=new LinkedHashMap<>();
+        for(int i=cursor;i<steps.size();i++){
+            String id=steps.get(i).requiredItem();
+            if(needed.containsKey(id))
+                entireJob.merge(id,1,Integer::sum);
+        }
         needed.replaceAll((k,v)->{
-            int shortage=Math.max(0,v-Math.max(0,stocked.getOrDefault(k,0)));
-            return shortage==0?0:Math.min(64,Math.max(64,shortage));
+            int shortage=Math.max(0,entireJob.getOrDefault(k,0)
+                    -Math.max(0,stocked.getOrDefault(k,0)));
+            return shortage==0?0:Math.min(64,shortage);
         });
         needed.values().removeIf(v->v<=0);
         return Map.copyOf(needed);
