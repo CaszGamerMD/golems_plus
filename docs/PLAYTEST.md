@@ -200,3 +200,78 @@ confirm the original slot provenance is retained.
 The Chef uses real connected kitchen inventories and actual furnaces/smokers;
 crafting operations are processed by the recipe planner at the connected
 kitchen work surface, rather than opening a vanilla crafting table GUI.
+
+## Builder Job Planner and warehouse staging (0.3.25-dev)
+
+### Job setup
+- Open a Builder Planning Table: the Builder interface takes the whole viewport.
+  The *left* inventory remains the block's real stored stacks and the player's
+  inventory. Across the top, tabs show up to 12 saved placements and progress;
+  +NEW JOB opens the currently enabled Litematica placement list.
+- Choose a **loaded** Litematica placement. The client uploads its bounded
+  snapshot to the server. Wait for the [Builder] import confirmation. The
+  selected job, origin, rotation, required items and outstanding material
+  manifest are saved in the Planning Table, including across close/reopen.
+- Link a Rack Computer to the Caszual Additions Warehouse Scanner, then
+  right-click the Builder Table with the scanner. The selected job gets this
+  warehouse; a later scanner click relinks the selected job when no shipment
+  is already reserved. The job panel displays its actual warehouse name.
+- In the planner choose PICK STORAGE, close the GUI, and right-click a
+  chest, barrel or shulker within 128 blocks of the schematic's origin.
+  This is the physical construction-material staging location. If omitted,
+  use the Planner itself. A second selection replaces the previous location.
+- Item icons in the scrolling material grid show the remaining block count.
+  Alphabetical or quantity descending sorts are available. Hover an item
+  for quantity, full stacks plus remainder, staged count, and verified
+  warehouse quantity. A white label means unchecked (no stock API or unloaded
+  Rack Computer), green enough including staged stock, yellow partially
+  available, and red zero verified warehouse stock.
+- Set crew target to 1-4. Place crafted Builder Golems and confirm they
+  register. Start requires an imported placement, at least one assigned
+  physical Golem and a linked warehouse, **not full material coverage**.
+
+### Actual construction
+- Every 40 ticks the Planner rescans its real inventory, selected storage and
+  on-duty Golem pouches. Do not duplicate queued stock; reloading must keep
+  both shulker cargo and nine-slot Builder pouches intact.
+- Build step order is low-to-high Y. Multiple workers can claim separate
+  blocks within the same layer, never higher layers until the lower is done.
+- Warehouse shulker requests look at the next **three vertical layers**
+  and request complete stacks when future demand warrants them, or the exact
+  partial stack when the entire job needs less than 64.
+- One assigned worker claims the warehouse supply ticket and walks to the
+  real output PTP. It carries the shulker to the selected staging container
+  (or the Builder Table) and physically deposits it. Other Builders continue
+  building with staged material. The solo worker handles both roles.
+- Each builder walks to the actual material storage, transfers up to nine
+  real stacks into its saved pouch, then walks to the build location. One
+  actual item is consumed from the pouch per placed block. If placement is
+  rejected, the material is refunded to the same pouch slot. Unused materials
+  are brought back to storage after the job is complete or canceled.
+- Scaffolding is requested and spent as physical minecraft:scaffolding from
+  the Planner. It is only created beside the build for genuine height reach;
+  once safely grounded, tracked scaffolds are instantly reclaimed to the job
+  block, never other players' scaffolds.
+- When a warehouse has no more items, existing on-site stock and pouch items
+  can continue being built. The station gives an actionable missing-stock
+  message rather than creating materials, destroying obstructing blocks, or
+  skipping unsupported schematic states.
+
+### Regression checklist
+- Choose and upload multiple placements; ensure each job keeps its own
+  material manifest, warehouse, storage and progress after reloading a save.
+  Selecting a different job while one is running must be rejected, not alter
+  the running cursor or inventory.
+- Put a half-full shulker of stone inside a storage chest by the site; start
+  solo with a warehouse missing some items. Observe the Golem actually walk
+  to the chest, pick physical items, travel and place the lower layer first.
+- Place four Builders at one table and confirm one warehouse courier and up
+  to three simultaneous on-site builders, with no duplicate item consumption
+  or two workers claiming the same block.
+- Block a scaffold column or replace a planned block with a player's block:
+  no item is spent or modified in the wrong location.
+- Full staging chest, unloaded PTP, unloaded Rack Computer and disconnected
+  warehouse should never delete held shulkers. Inspect the persistent error.
+- Watch the palette status after opening/removing shulker contents, and compare
+  counted warehouse quantities with actual pallets in Caszual Additions.
+  Verify white unchecked when the updated Additions bridge is absent.
