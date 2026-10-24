@@ -8,7 +8,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraft.world.phys.shapes.CollisionContext;
-import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
@@ -48,7 +48,7 @@ import org.jspecify.annotations.Nullable;
 public final class WorkerStationBlock extends Block implements EntityBlock {
     private final MapCodec<WorkerStationBlock> codec = MapCodec.unit(this);
     public static final BooleanProperty WINK=BooleanProperty.create("wink");
-    public static final DirectionProperty FACING=BlockStateProperties.HORIZONTAL_FACING;
+    public static final EnumProperty FACING=BlockStateProperties.HORIZONTAL_FACING;
     private final WorkerSpecialty specialty;
     @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){
         super.createBlockStateDefinition(builder);builder.add(WINK,FACING);

@@ -261,7 +261,7 @@ public final class ChefWorkService{
             // table/counter; emit sounds and visible preparation particles.
             if(level.getGameTime()%16==0){
                 level.playSound(null,workplace,SoundEvents.WOODEN_BUTTON_CLICK_ON,
-                        SoundSource.BLOCKS,.28f,.84f+level.random.nextFloat()*.2f);
+                        SoundSource.BLOCKS,.28f,.84f+level.getRandom().nextFloat()*.2f);
                 level.sendParticles(ParticleTypes.POOF,workplace.getX()+.5,
                         workplace.getY()+1.08,workplace.getZ()+.5,
                         2,.18,.08,.18,.012);

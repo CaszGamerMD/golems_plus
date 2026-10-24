@@ -10,7 +10,7 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.level.block.state.StateDefinition;
-import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -27,7 +27,7 @@ import net.minecraft.world.phys.BlockHitResult;
 /** Upper half of a true 2-block kiosk. All state belongs to the lower block. */
 public final class CookingKioskTopBlock extends Block{
     private final MapCodec<CookingKioskTopBlock> codec=MapCodec.unit(this);
-    public static final DirectionProperty FACING=BlockStateProperties.HORIZONTAL_FACING;
+    public static final EnumProperty FACING=BlockStateProperties.HORIZONTAL_FACING;
     public CookingKioskTopBlock(BlockBehaviour.Properties properties){
         super(properties);
         registerDefaultState(defaultBlockState().setValue(FACING,Direction.NORTH));
