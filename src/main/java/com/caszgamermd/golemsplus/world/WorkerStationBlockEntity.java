@@ -491,6 +491,37 @@ public final class WorkerStationBlockEntity extends BlockEntity
         catch(IllegalArgumentException ex){phase=WorkerPhase.READY;}
         sync();return true;
     }
+    /** Delete only inactive job metadata. Never destroy on-site blocks,
+     * real staged items, or a worker's material inventory. A warehouse
+     * shipment must be settled first, so deleting a job cannot orphan
+     * reserved shulkers. The uploaded snapshot file is left on disk since
+     * it may be referenced by another Planning Table.
+     */
+    public boolean deleteBuilderJob(UUID actor,int index){
+        if(!isBuilder()||!canConfigure(actor)||activeOrder!=null
+                ||supplyRequest!=null||pendingBuilderWarehouse!=null
+                ||index<0||index>=builderJobs.size())return false;
+        if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
+            builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
+        builderJobs.remove(index);
+        if(builderJobs.isEmpty()){
+            selectedBuilderJob=-1;
+            builderFile="";placedSchematicName="";builderPlaced=false;
+            builderBlocks=0;builderUnresolved=0;builderRotation=0;builderMirror=0;
+            builderOrigin=BlockPos.ZERO;builderCursor=0;
+            builderMaterialStorage=null;warehouse=null;
+            builderRequired.clear();builderRemaining.clear();
+            builderWarehouseStock.clear();builderStagedStock.clear();
+            builderStockChecked=false;builderWarehouseName="";
+            builderClaims.clear();completedAhead=0;phase=WorkerPhase.IDLE;
+            sync();return true;
+        }
+        // Selecting a saved job automatically persists its snapshot.
+        // Do not allow the removed job to be reintroduced by sync().
+        selectedBuilderJob=-1;
+        int successor=Math.min(index,builderJobs.size()-1);
+        return selectBuilderJob(actor,successor);
+    }
     public int builderBlocks() { return builderBlocks; }
     public int builderUnresolved() { return builderUnresolved; }
     public int builderRotation() { return builderRotation; }
