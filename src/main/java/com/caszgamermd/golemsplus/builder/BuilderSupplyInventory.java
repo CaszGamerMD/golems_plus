@@ -27,11 +27,12 @@ public final class BuilderSupplyInventory {
         return slots;
     }
     public static Container selectedStorage(WorkerStationBlockEntity table){
-        BlockPos pos=table.builderMaterialStorage();
+        BlockPos pos=table.builderUnloadingStorage();
         if(pos==null||!(table.getLevel() instanceof ServerLevel world)
                 ||!world.hasChunkAt(pos))return null;
         if(pos.equals(table.getBlockPos()))return null;
-        if(table.builderOrigin().distSqr(pos)>128L*128L)return null;
+        if(!table.builderRecallRequested()
+                &&table.builderOrigin().distSqr(pos)>128L*128L)return null;
         return world.getBlockEntity(pos) instanceof Container storage?storage:null;
     }
     private static java.util.List<Container> sources(WorkerStationBlockEntity table){
@@ -202,7 +203,7 @@ public final class BuilderSupplyInventory {
             BlockPos location=null;
             Container site=selectedStorage(table);
             if(site!=null&&includesItem(site,site.getContainerSize(),requested)){
-                source=site;location=table.builderMaterialStorage();
+                source=site;location=table.builderUnloadingStorage();
             }
             if(source==null)continue;
             if(worker.distanceToSqr(location.getX()+.5,location.getY()+.5,
@@ -264,8 +265,7 @@ public final class BuilderSupplyInventory {
      */
     public static boolean storeDebris(WorkerStationBlockEntity table,
             java.util.List<ItemStack> drops,boolean commit){
-        Container destination=table.builderMaterialStorage()==null
-                ?table:selectedStorage(table);
+        Container destination=selectedStorage(table);
         if(destination==null)return false;
         int count=destination.getContainerSize();
         ItemStack[] planned=new ItemStack[count];
@@ -336,7 +336,7 @@ public final class BuilderSupplyInventory {
         for(int i=0;i<site.getContainerSize();i++)
             if(correctTool(site.getItem(i),target)){selected=i;break;}
         if(selected<0)return ToolStatus.MISSING;
-        BlockPos depot=table.builderMaterialStorage();
+        BlockPos depot=table.builderUnloadingStorage();
         if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,depot.getZ()+.5)>12){
             com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .routeTo(level,worker,depot,.83);
@@ -410,7 +410,7 @@ public final class BuilderSupplyInventory {
         Container source=site!=null&&includesItem(site,site.getContainerSize(),item)
                 ?site:null;
         if(source==null)return ScaffoldLoad.MISSING;
-        BlockPos pos=table.builderMaterialStorage();
+        BlockPos pos=table.builderUnloadingStorage();
         if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>12){
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                     level,worker,pos,.82);
@@ -530,8 +530,8 @@ public final class BuilderSupplyInventory {
         return worker.isEmpty();
     }
     public static BlockPos pouchReturnPos(WorkerStationBlockEntity table){
-        return table.builderMaterialStorage()==null?table.getBlockPos():
-                table.builderMaterialStorage();
+        return table.builderUnloadingStorage()==null?table.getBlockPos():
+                table.builderUnloadingStorage();
     }
     public static Receipt consume(WorkerStationBlockEntity table,Item item){
         for(Container store:sources(table)){
