@@ -254,6 +254,12 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             notice="Job delete requested. Saved material inventory is not destroyed.";
             show(Page.JOB);
         });
+        button("RECALCULATE ORDER",SIDE+158,y+54,180,()->{
+            if(table!=null&&table.activeOrder()!=null){
+                send("builder_restart_order",0);
+                notice="Requesting new remaining-blocks minus OnSite Storage order";
+            }else notice="Start the selected build before restarting its order";
+        });
         button("CREW -",18,285,90,()->{
             if(table!=null)send("crew",Math.max(1,table.crewTarget()-1));
         });
