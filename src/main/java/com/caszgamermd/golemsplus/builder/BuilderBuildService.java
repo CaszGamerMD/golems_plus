@@ -178,8 +178,15 @@ public final class BuilderBuildService {
             if(table.builderCursor()>=plan.steps().size()){
                 table.setPhase(WorkerPhase.COMPLETE);return;
             }
-            int index=table.claimBuilderStep(worker.getUUID());
-            if(index<0)return; // other workers own every slot in this window
+            // All workers finish the current bottommost layer before any
+            // worker can claim a higher block, even with four-person crews.
+            int layer=plan.steps().get(Math.min(table.builderCursor(),
+                    plan.steps().size()-1)).y();
+            int limit=table.builderCursor()+1;
+            while(limit<plan.steps().size()&&plan.steps().get(limit).y()==layer)
+                limit++;
+            int index=table.claimBuilderStep(worker.getUUID(),limit);
+            if(index<0)return; // wait for current layer assignments to finish
             var step=plan.steps().get(index);
             BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
             if(Math.abs((long)pos.getX()-home.getX())>256||

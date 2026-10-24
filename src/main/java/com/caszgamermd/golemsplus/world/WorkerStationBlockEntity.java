@@ -540,10 +540,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
     /** All callbacks execute on the Minecraft server thread. Every index
      * has one owner; the head cursor only moves over confirmed completions. */
     public int claimBuilderStep(UUID worker){
+        return claimBuilderStep(worker,Integer.MAX_VALUE);
+    }
+    public int claimBuilderStep(UUID worker,int layerExclusive){
         if(!builderWorkerIds().contains(worker)||activeOrder==null)return -1;
         if(builderClaims.containsKey(worker))return builderClaims.get(worker);
         int next=com.caszgamermd.golemsplus.builder.BuilderCrewSchedule.next(
                 builderCursor,builderBlocks,completedAhead,builderClaims.values());
+        if(next>=layerExclusive)return -1;
         if(next>=0){builderClaims.put(worker,next);sync();}
         return next;
     }
