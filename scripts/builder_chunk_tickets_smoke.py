@@ -29,6 +29,8 @@ assert "table.rememberBuilderPosition(id,previous)" in ticket
 assert "lease.destinations.get(id)" in ticket
 assert "add(required,ahead(previous,target),home)" in ticket
 assert "BuilderChunkTickets.tick(level,table)" in builder
+assert "BuilderChunkTickets.destination(level,worker,pos);" in builder
+assert "BuilderChunkTickets.destination(world,worker,pos);" in (main / "builder/BuilderSiteClearance.java").read_text()
 assert "BuilderChunkTickets.track(server,this)" in worker
 assert "BuilderChunkTickets\n                    .destination(level,builder,target)" in nav
 assert "BuilderChunkTickets.initialize()" in entry
