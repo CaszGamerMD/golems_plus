@@ -24,4 +24,27 @@ class BuilderMaterialDemandTest {
         assertFalse(requested.containsKey("example:item0"));
         assertFalse(requested.containsKey("example:item18"));
     }
+    @Test void threeLayerWindowExcludesFutureMaterialsUntilNeeded(){
+        var steps=List.of(
+                new BuilderConstructionPlan.Step(0,4,0,"a","example:a"),
+                new BuilderConstructionPlan.Step(1,5,0,"a","example:a"),
+                new BuilderConstructionPlan.Step(2,6,0,"a","example:a"),
+                new BuilderConstructionPlan.Step(3,7,0,"b","example:b"));
+        assertEquals(Map.of("example:a",3),
+                BuilderMaterialDemand.batch(steps,0,Map.of()));
+        assertEquals(Map.of("example:b",1),
+                BuilderMaterialDemand.batch(steps,3,Map.of()));
+    }
+    @Test void neverRequestsMaterialsAlreadyStagedAndLimitsToOneStack(){
+        var steps=new ArrayList<BuilderConstructionPlan.Step>();
+        for(int n=0;n<130;n++)
+            steps.add(new BuilderConstructionPlan.Step(n,60,0,"block","example:brick"));
+        assertEquals(Map.of("example:brick",64),
+                BuilderMaterialDemand.batch(steps,0,Map.of()));
+        assertEquals(Map.of("example:brick",20),
+                BuilderMaterialDemand.batch(steps,0,Map.of("example:brick",110)));
+        assertEquals(Map.of(),
+                BuilderMaterialDemand.batch(steps,0,Map.of("example:brick",130)));
+    }
+
 }
