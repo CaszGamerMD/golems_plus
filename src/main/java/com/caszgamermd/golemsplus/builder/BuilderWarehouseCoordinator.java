@@ -53,18 +53,23 @@ public final class BuilderWarehouseCoordinator {
                 return false;
             }
         }
-        table.prepareSupplyRequest(UUID.randomUUID(),needed);
+        // Persist only confirmed physical output-PTP reservations.
+        // An unavailable PTP must not leave a ticket stuck at (0,0,0).
+        UUID ticket=UUID.randomUUID();
         var reply=BuilderWarehousePort.request(level,computer,table.getBlockPos(),
-                table.owner(),table.supplyRequest(),needed);
+                table.owner(),ticket,needed);
         if(reply.accepted()&&!reply.ptp().equals(BlockPos.ZERO)){
+            table.prepareSupplyRequest(ticket,needed);
             table.setSupplyPtp(reply.ptp());
-            table.setProblem("Warehouse preparing "+needed.size()
-                    +" material types; Builder courier will collect shulkers");
-        }else{
-            table.setProblem("Warehouse supply waiting: "+reply.state()
-                    +(!level.hasChunkAt(computer)?" (load the Rack Computer chunk)":""));
+            table.setProblem("Warehouse output reserved at "
+                    +reply.ptp().toShortString()
+                    +"; Builder courier departing to collect real shulkers");
+            return true;
         }
-        return true;
+        table.setProblem("Warehouse request not reserved: "+reply.state()
+                +(!level.hasChunkAt(computer)?" (Rack Computer chunk unloaded)":"")
+                +"; will retry automatically");
+        return false;
     }
 
     /** Table-side inbound notification, including while no golem is near. */
@@ -115,9 +120,22 @@ public final class BuilderWarehouseCoordinator {
         UUID ticket=table.supplyRequest();
         var warehouse=table.warehouse();
         if(ticket==null)return false;
-        // Only one courier may take packed shulkers from a reservation.
-        // Every other Builder is free to continue building using supplies
-        // already inside the Planning Table.
+        // Dispatch the closest currently loaded Builder as courier, not
+        // whichever worker happened to tick first.
+        if(table.supplyRunner()==null){
+            BlockPos pickup=table.supplyPtp().equals(BlockPos.ZERO)
+                    ?new BlockPos(warehouse.x(),warehouse.y(),warehouse.z())
+                    :table.supplyPtp();
+            UUID nearestId=null;
+            double nearest=Double.MAX_VALUE;
+            for(UUID member:table.builderWorkerIds()){
+                if(!(level.getEntity(member) instanceof BuilderGolem candidate))continue;
+                double dist=candidate.distanceToSqr(
+                        pickup.getX()+.5,pickup.getY()+1,pickup.getZ()+.5);
+                if(dist<nearest){nearest=dist;nearestId=member;}
+            }
+            if(nearestId!=null&&!nearestId.equals(worker.getUUID()))return false;
+        }
         if(!table.claimSupplyRunner(worker.getUUID()))return false;
         if(warehouse==null){
             table.setProblem("Linked warehouse removed while delivery pending");
@@ -174,6 +192,29 @@ public final class BuilderWarehouseCoordinator {
             }
             return true;
         }
+        // Leave for the warehouse as soon as the PTP is reserved.
+        // Do not wait at the worksite until the shulker is already packed.
+        if(reply.accepted()&&reply.boxes()==0
+                &&!reply.state().equals("DELIVERED")
+                &&!reply.ptp().equals(BlockPos.ZERO)){
+            BlockPos pickup=reply.ptp();
+            int cursor=table.builderCursor();
+            if(cursor>=0&&cursor<steps.size()){
+                String next=steps.get(cursor).requiredItem();
+                if(next!=null&&BuilderSupplyInventory.available(table)
+                        .getOrDefault(next,0)>0)return false;
+            }
+            if(level.hasChunkAt(pickup)
+                    &&worker.distanceToSqr(pickup.getX()+.5,
+                            pickup.getY()+1,pickup.getZ()+.5)>12
+                    &&(level.getGameTime()%20==0||worker.getNavigation().isDone())){
+                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeTo(level,worker,pickup,.88))
+                    table.setProblem("Courier cannot path to warehouse output "
+                            +pickup.toShortString());
+            }
+            return true;
+        }
         if(reply.state().equals("DELIVERED")&&reply.accepted()
                 &&BuilderWarehousePort.release(level,computer,
                         table.getBlockPos(),table.owner(),ticket,reply.ptp())){
@@ -217,8 +258,21 @@ public final class BuilderWarehouseCoordinator {
             int existing=BuilderSupplyInventory.available(table)
                     .getOrDefault("minecraft:scaffolding",0);
             int amount=Math.max(1,48-existing);
-            table.prepareSupplyRequest(UUID.randomUUID(),
-                    Map.of("minecraft:scaffolding",amount));
+            // Scaffolding uses the same real reservation contract as blocks.
+            if(level.getGameTime()%40!=0)return false;
+            Map<String,Integer> requested=Map.of("minecraft:scaffolding",amount);
+            var warehouse=table.warehouse();
+            if(warehouse==null)return false;
+            BlockPos computer=new BlockPos(warehouse.x(),warehouse.y(),warehouse.z());
+            UUID ticket=UUID.randomUUID();
+            var reply=BuilderWarehousePort.request(level,computer,table.getBlockPos(),
+                    table.owner(),ticket,requested);
+            if(!reply.accepted()||reply.ptp().equals(BlockPos.ZERO)){
+                table.setProblem("Cannot reserve warehouse scaffolding: "+reply.state());
+                return false;
+            }
+            table.prepareSupplyRequest(ticket,requested);
+            table.setSupplyPtp(reply.ptp());
         }
         return tick(level,worker,table,player,steps);
     }
