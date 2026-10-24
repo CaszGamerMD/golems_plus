@@ -389,3 +389,15 @@ loads or expensive A* every five ticks is permitted.
 - For extremely large mostly-air schematics, the reader rejects more than
   300,000 explicit clearing-air positions and instructs the player to
   split the schematic, instead of allocating unbounded world work.
+
+## 0.3.32-dev — Solo Builder site-clearing priority
+
+Place one Builder, an obstruction inside a schematic, a real pickaxe in the
+Planner, and an EMPTY site chest. Start while the warehouse prepares the
+requested shulkers. The SOLO Builder must finish clearing the site first,
+even while a physical warehouse PTP reservation is active. It must not get
+stuck waiting for itself to be both the cleaner and the warehouse courier.
+After clearing, it travels to collect the reserved finished shulkers and
+starts the lowest layer. With multiple Builders, one may courier while
+another clears; they must not build higher layers until all lower-layer
+steps are complete.

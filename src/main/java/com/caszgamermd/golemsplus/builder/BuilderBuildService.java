@@ -191,27 +191,36 @@ public final class BuilderBuildService {
             if(table.warehouse()!=null && table.supplyRequest()==null
                     &&table.builderCursor()<plan.steps().size())
                 BuilderWarehouseCoordinator.queueMaterials(level,table,plan.steps());
+            // Clearing is the construction site's FIRST active phase.
+            // With one Builder, it must clear BEFORE walking away as a
+            // warehouse courier; packed shulkers remain reserved safely
+            // at the output PTP until site preparation finishes. With a
+            // larger crew, prefer a non-courier cleaner while the other
+            // Golem handles physical warehouse pickup.
+            if(table.builderClearCursor()<plan.clearing().size()){
+                UUID cleaner=null;
+                for(UUID id:table.builderWorkerIds()){
+                    if(!id.equals(table.supplyRunner())){cleaner=id;break;}
+                }
+                if(cleaner==null&&!table.builderWorkerIds().isEmpty())
+                    cleaner=table.builderWorkerIds().getFirst();
+                if(worker.getUUID().equals(cleaner)){
+                    BuilderSiteClearance.tick(level,worker,table,owner,
+                            plan.clearing(),plan.steps());
+                    return;
+                }
+                if((worker.hasSupplyBox()||table.supplyRequest()!=null)
+                        &&BuilderWarehouseCoordinator.tick(level,worker,table,
+                                owner,plan.steps()))return;
+                return;
+            }
             if((worker.hasSupplyBox()||table.supplyRequest()!=null)
                     &&BuilderWarehouseCoordinator.tick(level,worker,table,
                             owner,plan.steps()))return;
             if(table.builderCursor()>=plan.steps().size()){
                 table.setPhase(WorkerPhase.COMPLETE);return;
             }
-            // PREPARE THE ENTIRE SELECTED SITE before placing the first
-            // block. A clearing worker visits each exact schematic position,
-            // including AIR cells; the courier may still fetch shulkers in
-            // parallel. A site with an obstruction or no tool cannot start
-            // placing around that obstruction or advance into upper layers.
-            if(table.builderClearCursor()<plan.clearing().size()){
-                UUID cleaner=null;
-                for(UUID id:table.builderWorkerIds()){
-                    if(!id.equals(table.supplyRunner())){cleaner=id;break;}
-                }
-                if(worker.getUUID().equals(cleaner))
-                    BuilderSiteClearance.tick(level,worker,table,owner,
-                            plan.clearing(),plan.steps());
-                return;
-            }
+            // Clearing has been fully completed and persisted at this point.
             // All workers finish the current bottommost layer before any
             // worker can claim a higher block, even with four-person crews.
             int layer=plan.steps().get(Math.min(table.builderCursor(),
