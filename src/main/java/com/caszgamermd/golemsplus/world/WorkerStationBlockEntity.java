@@ -918,7 +918,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     public void setPhase(WorkerPhase next) {
         if (next==null) throw new IllegalArgumentException("Missing phase");
+        // Completion must also close the persisted job UUID: returning
+        // workers cannot recycle while a phantom activeOrder survives.
+        if(isBuilder()&&next==WorkerPhase.COMPLETE){
+            activeOrder=null;
+            builderClaims.clear();
+        }
         if (phase!=next) { phase=next; sync(); }
+        else if(isBuilder()&&next==WorkerPhase.COMPLETE)sync();
     }
     public void clearOrder() {
         activeOrder=null; wantedItem=""; wantedCount=0; deliveredCount=0;
