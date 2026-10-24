@@ -51,6 +51,8 @@ public final class FisherGolem extends PathfinderMob {
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> REELING=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Integer> CHAIR_COLOR=
+            SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.INT);
     private static final EntityDataAccessor<BlockPos> CAST_TARGET=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BLOCK_POS);
     private static final int POCKET_SLOTS=9,BAIT_LOAD=24;
@@ -81,6 +83,7 @@ public final class FisherGolem extends PathfinderMob {
         super.defineSynchedData(b);
         b.define(HAS_ROD,false);b.define(HAS_CATCH,false);
         b.define(SEATED,false);
+        b.define(CHAIR_COLOR,0);
         b.define(CASTING,false);b.define(REELING,false);
         b.define(CAST_TARGET,BlockPos.ZERO);
     }
@@ -90,6 +93,7 @@ public final class FisherGolem extends PathfinderMob {
     public boolean hasRod(){return getEntityData().get(HAS_ROD);}
     public boolean hasCatch(){return getEntityData().get(HAS_CATCH);}
     public boolean seated(){return getEntityData().get(SEATED);}
+    public int chairColor(){return getEntityData().get(CHAIR_COLOR);}
     public boolean casting(){return getEntityData().get(CASTING);}
     public boolean reeling(){return getEntityData().get(REELING);}
     public BlockPos castTarget(){return getEntityData().get(CAST_TARGET);}
@@ -99,7 +103,11 @@ public final class FisherGolem extends PathfinderMob {
         getEntityData().set(HAS_CATCH,pockets.stream().anyMatch(s->!s.isEmpty()));
     }
     private void seat(boolean value){
-        if(getEntityData().get(SEATED)!=value)getEntityData().set(SEATED,value);
+        boolean previous=getEntityData().get(SEATED);
+        if(previous!=value){
+            if(value)getEntityData().set(CHAIR_COLOR,getRandom().nextInt(12));
+            getEntityData().set(SEATED,value);
+        }
         if(value)getNavigation().stop();
     }
     private void stopCasting(){
@@ -422,6 +430,7 @@ public final class FisherGolem extends PathfinderMob {
         out.putInt("fisher_phase",phase);
         out.putInt("fisher_ticks",fishTicks);
         out.putInt("fisher_reel_ticks",reelTicks);
+        out.putInt("fisher_chair_color",chairColor());
         out.store("fisher_cast_target",BlockPos.CODEC,castTarget());
         for(int i=0;i<POCKET_SLOTS;i++)
             if(!pockets.get(i).isEmpty())
@@ -437,6 +446,8 @@ public final class FisherGolem extends PathfinderMob {
         phase=Math.clamp(in.getIntOr("fisher_phase",0),0,4);
         fishTicks=Math.max(0,in.getIntOr("fisher_ticks",0));
         reelTicks=Math.clamp(in.getIntOr("fisher_reel_ticks",0),0,20);
+        getEntityData().set(CHAIR_COLOR,Math.clamp(in.getIntOr("fisher_chair_color",0),0,11));
+        getEntityData().set(SEATED,phase==2||phase==4);
         BlockPos target=in.read("fisher_cast_target",BlockPos.CODEC).orElse(BlockPos.ZERO);
         getEntityData().set(CAST_TARGET,target);
         getEntityData().set(CASTING,phase==2&&!target.equals(BlockPos.ZERO));
