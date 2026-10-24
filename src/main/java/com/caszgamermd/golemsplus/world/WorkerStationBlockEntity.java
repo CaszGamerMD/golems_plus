@@ -74,6 +74,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.List<String> chefSteps=new java.util.ArrayList<>();
     private final java.util.Map<String,Integer> chefEscrow=new java.util.LinkedHashMap<>();
     private final java.util.Map<String,Integer> chefSurplus=new java.util.LinkedHashMap<>();
+    private final java.util.List<com.caszgamermd.golemsplus.cooking.KitchenSupplies.Origin>
+            chefOrigins=new java.util.ArrayList<>();
     private final java.util.Map<String,Integer> chefStock=new java.util.LinkedHashMap<>();
     private final java.util.List<UUID> fisherIds=new java.util.ArrayList<>();
     private int beeRadius=12,beeMode=0;
@@ -126,6 +128,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
             chefSteps.get(chefStepIndex):"";}
     public int chefWorkTicks(){return chefStepTicks;}
     public java.util.Map<String,Integer> chefReserved(){return java.util.Map.copyOf(chefEscrow);}
+    public java.util.List<com.caszgamermd.golemsplus.cooking.KitchenSupplies.Origin>
+            chefOrigins(){return java.util.List.copyOf(chefOrigins);}
+    public void setChefOrigins(java.util.List<com.caszgamermd.golemsplus.cooking.KitchenSupplies.Origin> origins){
+        if(!isCooking()||!chefBusy())return;
+        chefOrigins.clear();chefOrigins.addAll(origins.stream().limit(256).toList());
+        sync();
+    }
     public void progressChef(){
         if(!chefBusy()||chefStepIndex>=chefSteps.size())return;
         if(++chefStepTicks%10==0)sync();
@@ -195,13 +204,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean startChefOrder(java.util.UUID actor,String food,int quantity,
             java.util.List<String> steps,java.util.Map<String,Integer> escrow,
             java.util.Map<String,Integer> leftovers){
-        if(!isCooking()||!canConfigure(actor)||chefBusy()||quantity<1||quantity>16
+        if(!isCooking()||!canConfigure(actor)||chefBusy()||!chefEscrow.isEmpty()
+                ||quantity<1||quantity>16
                 ||steps.isEmpty()||steps.size()>160)return false;
         chefFood=food;chefQuantity=quantity;chefStepIndex=chefStepTicks=0;
         chefOvenLoaded=false;
         chefSteps.clear();chefSteps.addAll(steps);
         chefEscrow.clear();chefEscrow.putAll(escrow);
         chefSurplus.clear();chefSurplus.putAll(leftovers);
+        chefOrigins.clear();
         setProblem("");sync();return true;
     }
     public void tickChefStep(){
@@ -217,7 +228,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         java.util.Map<String,Integer> refund=java.util.Map.copyOf(chefEscrow);
         chefFood="";chefQuantity=chefStepIndex=chefStepTicks=0;
         chefOvenLoaded=false;
-        chefSteps.clear();chefEscrow.clear();chefSurplus.clear();sync();
+        chefSteps.clear();chefEscrow.clear();chefSurplus.clear();chefOrigins.clear();sync();
         return refund;
     }
     public void setChefWorkerId(UUID id){
@@ -708,6 +719,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
             out.putString("chef_escrow_id_"+ec,e.getKey());
             out.putInt("chef_escrow_qty_"+ec,e.getValue());ec++;
         }
+        out.putInt("chef_origin_count",Math.min(256,chefOrigins.size()));
+        for(int i=0;i<chefOrigins.size()&&i<256;i++){
+            var origin=chefOrigins.get(i);
+            out.putString("chef_origin_id_"+i,origin.itemId());
+            out.store("chef_origin_pos_"+i,BlockPos.CODEC,origin.container());
+            out.putInt("chef_origin_slot_"+i,origin.slot());
+        }
         out.putInt("chef_surplus_count",Math.min(64,chefSurplus.size()));
         int bc=0;
         for(var e:chefSurplus.entrySet()){
@@ -846,6 +864,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
             String id=in.getStringOr("chef_escrow_id_"+i,"");
             int qty=in.getIntOr("chef_escrow_qty_"+i,0);
             if(!id.isBlank()&&qty>0)chefEscrow.put(id,qty);
+        }
+        chefOrigins.clear();
+        for(int i=0,n=Math.clamp(in.getIntOr("chef_origin_count",0),0,256);i<n;i++){
+            String itemId=in.getStringOr("chef_origin_id_"+i,"");
+            BlockPos pos=in.read("chef_origin_pos_"+i,BlockPos.CODEC).orElse(null);
+            int slot=in.getIntOr("chef_origin_slot_"+i,-1);
+            if(!itemId.isBlank()&&pos!=null&&slot>=0&&slot<512)
+                chefOrigins.add(new com.caszgamermd.golemsplus.cooking.KitchenSupplies.Origin(itemId,pos,slot));
         }
         chefSurplus.clear();
         for(int i=0,n=Math.clamp(in.getIntOr("chef_surplus_count",0),0,64);i<n;i++){
