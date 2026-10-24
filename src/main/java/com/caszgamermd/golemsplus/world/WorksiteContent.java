@@ -121,7 +121,7 @@ public final class WorksiteContent {
                 ResourceKey.create(Registries.BLOCK,GolemsPlus.id("unemployed_center"));
         UNEMPLOYED_CENTER=Registry.register(BuiltInRegistries.BLOCK,
                 unemployedBlockKey,new UnemployedCenterBlock(BlockBehaviour.Properties
-                        .ofFullCopy(Blocks.BLUE_CONCRETE).strength(2.5f)
+                        .ofFullCopy(Blocks.BARREL).strength(2.5f)
                         .setId(unemployedBlockKey)));
         ResourceKey<Item> unemployedItemKey=ResourceKey.create(Registries.ITEM,
                 GolemsPlus.id("unemployed_center"));
