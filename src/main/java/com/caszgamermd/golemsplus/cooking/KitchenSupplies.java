@@ -292,24 +292,18 @@ public final class KitchenSupplies {
         // overwritten. This entire operation is staged before mutation.
         for(ItemStack incoming:additions){
             if(incoming.isEmpty())continue;
-            int left=incoming.getCount();
             String id=BuiltInRegistries.ITEM.getKey(incoming.getItem()).toString();
-            for(Origin origin:originalSlots){
+            List<SlotState> ordered=KitchenReturnPriority.order(slots,
+                    slot->originalSlots.stream().anyMatch(origin->
+                            id.equals(origin.itemId())&&origin.slot()==slot.slot
+                            &&origin.container().equals(slot.position)),
+                    slot->!slot.after.isEmpty()
+                            &&ItemStack.isSameItemSameComponents(slot.after,incoming),
+                    slot->slot.after.isEmpty());
+            int left=incoming.getCount();
+            for(SlotState slot:ordered){
                 if(left==0)break;
-                if(!id.equals(origin.itemId()))continue;
-                for(SlotState slot:slots){
-                    if(slot.slot==origin.slot()&&origin.container().equals(slot.position)){
-                        left=put(slot,incoming,left);break;
-                    }
-                }
-            }
-            for(SlotState slot:slots){
-                if(left==0)break;
-                if(!slot.after.isEmpty())left=put(slot,incoming,left);
-            }
-            for(SlotState slot:slots){
-                if(left==0)break;
-                if(slot.after.isEmpty())left=put(slot,incoming,left);
+                left=put(slot,incoming,left);
             }
             if(left>0)return false;
         }
