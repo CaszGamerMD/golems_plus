@@ -65,9 +65,17 @@ public final class BuilderBuildService {
                 // backfill the static required-material checklist.
                 table.backfillBuilderMaterials(plan.required());
             }
-            var materials=BuilderMaterialDemand.batch(plan.steps(),
-                    table.builderCursor(),BuilderSupplyInventory.available(table));
-            if(materials.isEmpty())return "Next construction batch already stocked in Planner";
+            var stock=BuilderSupplyInventory.available(table);
+            var warehouse=table.warehouse();
+            var pickable=warehouse==null?null:
+                    com.caszgamermd.golemsplus.warehouse.BuilderWarehousePort
+                        .stockSnapshot(level,new BlockPos(
+                                warehouse.x(),warehouse.y(),warehouse.z()),
+                                table.builderRemaining());
+            var materials=BuilderMaterialDemand.outstanding(plan.steps(),
+                    table.builderCursor(),stock,pickable==null?Map.of():pickable);
+            if(materials.isEmpty())
+                return "All remaining construction materials are already staged OnSite or with the crew";
             if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan.steps()))
                 return table.problem().isBlank()?"Warehouse not ready":table.problem();
             if(table.supplyPtp().equals(BlockPos.ZERO))
@@ -111,6 +119,16 @@ public final class BuilderBuildService {
             }
         }
         BuilderWarehouseCoordinator.pollTable(level,table);
+        // Warehouse requests belong to the active JOB, not construction
+        // cursor progress or whichever Builder happens to be loaded.
+        // Retry the manifest from the Planner every four seconds while
+        // no order is active. Actual rack stock is prioritized, and the
+        // full remaining demand is never silently dropped.
+        if(table.isBuilder()&&table.activeOrder()!=null
+                &&table.warehouse()!=null&&table.supplyRequest()==null
+                &&!table.builderCancelShipment()
+                &&level.getGameTime()%80==0)
+            primeWarehouse(level,table);
         // Existing crafted crew members execute the job; the station never
         // materializes extra golems automatically.
         if(level.getGameTime()%20!=0 || !table.isBuilder()
