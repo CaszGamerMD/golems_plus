@@ -35,7 +35,7 @@ public final class BuilderBuildService {
     private record Cache(String file, int rotation,int mirror,BlockPos origin,
                          List<BuilderConstructionPlan.Step> steps,
                          List<BuilderSiteClearance.Target> clearing,
-                         boolean ignorePlants){}
+                         boolean ignorePlants,BuilderZones.Layout zones){}
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
     // Reuse the immutable server-side schematic work plan across queued
     // warehouse retries. Parsing a 100k-block Litematica file every four
@@ -72,8 +72,9 @@ public final class BuilderBuildService {
                         .stockSnapshot(level,new BlockPos(
                                 warehouse.x(),warehouse.y(),warehouse.z()),
                                 table.builderRemaining());
-            var materials=BuilderMaterialDemand.outstanding(plan,
-                    table.builderCursor(),stock,pickable==null?Map.of():pickable);
+            var materials=BuilderMaterialDemand.outstandingRemaining(
+                    table.builderRemaining(),stock,
+                    pickable==null?Map.of():pickable);
             if(materials.isEmpty())
                 return "All remaining construction materials are already staged OnSite or with the crew";
             if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan))
@@ -119,6 +120,13 @@ public final class BuilderBuildService {
             }
         }
         BuilderWarehouseCoordinator.pollTable(level,table);
+        // Keep already-queued warehouse work in sync with the real on-site
+        // ledger. Cancel only via the warehouse's safe physical cargo
+        // contract, never erase existing packing or carried shulkers.
+        if(table.isBuilder()&&table.activeOrder()!=null
+                &&table.supplyRequest()!=null&&!table.builderCancelShipment()
+                &&level.getGameTime()%40==0)
+            BuilderWarehouseCoordinator.reconcileTicket(level,table);
         // Warehouse requests belong to the active JOB, not construction
         // cursor progress or whichever Builder happens to be loaded.
         // Retry the manifest from the Planner every four seconds while
@@ -273,13 +281,9 @@ public final class BuilderBuildService {
                             plan.clearing(),plan.steps());
                 return;
             }
-            // All workers finish the current bottommost layer before any
-            // worker can claim a higher block, even with four-person crews.
-            int layer=plan.steps().get(Math.min(table.builderCursor(),
-                    plan.steps().size()-1)).y();
-            int limit=table.builderCursor()+1;
-            while(limit<plan.steps().size()&&plan.steps().get(limit).y()==layer)
-                limit++;
+            // Each assigned X/Z zone progresses its own bottommost Y.
+            // Work in a separate zone cannot block this worker's floors.
+            int limit=plan.steps().size();
             // Existing materials are REAL items in each Builder's pouch.
             // Prioritize construction cells needing what this worker already
             // carries, before assigning it work that another worker has
@@ -298,7 +302,7 @@ public final class BuilderBuildService {
                     &&!table.scaffoldPositions(worker.getUUID()).isEmpty())
                 BuilderScaffolding.retrieve(level,worker,table,false);
             int index=table.claimBuilderStep(worker.getUUID(),limit,
-                    plan.steps(),carriedItems);
+                    plan.steps(),carriedItems,plan.zones());
             if(index<0)return; // wait for current layer assignments to finish
             var step=plan.steps().get(index);
             if(step.ignorePlant()){
@@ -354,7 +358,8 @@ public final class BuilderBuildService {
                 // a correct block in pursuit of stale schematic geometry.
                 table.recordBuilderPlacement(step.requiredItem());
                 table.completeBuilderStep(worker.getUUID(),index);
-                BuilderScaffolding.retrieve(level,worker,table,false);
+                // Already-correct positions are NO-OPs, never mine or
+                // dismantle the nearby scaffold to rebuild them.
                 table.setProblem("");return;
             }
             // Check the replacement's survival BEFORE clearing an existing
@@ -421,15 +426,9 @@ public final class BuilderBuildService {
             }
             double horizontal=Math.pow(worker.getX()-(pos.getX()+.5),2)
                     +Math.pow(worker.getZ()-(pos.getZ()+.5),2);
-            if(pos.getY()-worker.getY()>2.5 && horizontal>=36){
-                // Reach the base of the tower on foot before laying any
-                // temporary blocks; never construct remotely.
-                com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                        level,worker,new BlockPos(pos.getX(),
-                                worker.blockPosition().getY(),pos.getZ()),.85);
-                return;
-            }
-            if(pos.getY()-worker.getY()>2.5 && horizontal<36){
+            if(pos.getY()-worker.getY()>2.5){
+                // Select a safe ascent directly beside the desired X/Z
+                // and travel to it on foot before placing scaffolding.
                 var climbing=BuilderScaffolding.reach(level,worker,table,owner,pos,
                         plan.steps());
                 if(climbing==BuilderScaffolding.Result.NEED_MATERIALS){
@@ -549,7 +548,7 @@ public final class BuilderBuildService {
         Cache next=new Cache(table.builderFile(),table.builderRotation(),
                 table.builderMirror(),origin,result.steps(),
                 BuilderSiteClearance.targets(schematic,site),
-                table.builderIgnorePlants());
+                table.builderIgnorePlants(),BuilderZones.footprint(result.steps()));
         cachedWarehousePlans.put(table,next);
         return next;
     }
