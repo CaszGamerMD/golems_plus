@@ -145,7 +145,7 @@ public final class BuilderScaffoldBridgeGameTest {
             var state=BuilderScaffoldBridge.reach(level,worker,table,owner,
                     goal,plan);
             if(state==BuilderScaffolding.Result.NO_SAFE_TOWER
-                    ||state==BuilderScaffolding.Result.NEED_MATERIALS)
+                    ||state==BuilderScaffolding.Result.NEED_MATERIALS){
                 BlockPos pier=helper.absolutePos(new BlockPos(6,3,2));
                 helper.fail("Long bridge denied physical detour: "+state
                         +" "+BuilderScaffoldBridge.debug(worker)
@@ -153,6 +153,7 @@ public final class BuilderScaffoldBridgeGameTest {
                         +" footing="+level.getBlockState(pier.below().below())
                         +" perm="+level.mayInteract(owner,pier.below())
                         +" at "+worker.blockPosition());
+            }
         });
     }
 
