@@ -17,6 +17,13 @@ assert "public static boolean retryScheduled(PathfinderMob mob)" in navigation
 assert 'WorkerNavigation' in building
 assert ".retryScheduled(worker);" in building
 assert '"Builder exploring alternate routes to "' in building
+approaches=(root/"builder/BuilderPlacementSpace.java").read_text()
+assert "private static final Map<BuilderGolem,Approach> workApproaches" in approaches
+assert "cached.target().equals(target)" in approaches
+assert "cached.until()>level.getGameTime()" in approaches
+assert "WorkerNavigation.canStandOn(level,worker,cached.destination())" in approaches
+assert "level.getGameTime()+100" in approaches
+assert "public static boolean canStandOn(ServerLevel level" in navigation
 assert "worker.distanceToSqr(landing.getX()+.5" in scaffolds
 assert "return Result.NOT_NEEDED;" in scaffolds
 assert "routeToExact(level,worker,landing,1.0)" in scaffolds

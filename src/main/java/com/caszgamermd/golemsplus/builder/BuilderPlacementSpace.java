@@ -27,6 +27,12 @@ public final class BuilderPlacementSpace {
     private record Yield(BlockPos target,BlockPos destination,
             long until,boolean placingWorker){}
     private static final Map<BuilderGolem,Yield> yielding=new WeakHashMap<>();
+    // A work target must keep the same approach position across successive
+    // 12-tick updates. Recomputing the nearest spot from a moving golem
+    // makes it switch sides every few steps and continually resets A*.
+    private record Approach(BlockPos target,BlockPos destination,long until){}
+    private static final Map<BuilderGolem,Approach> workApproaches=
+            new WeakHashMap<>();
 
     private static AABB volume(BlockPos pos){
         // Horizontal breathing room prevents a Golem's shoulder/edge
@@ -134,7 +140,17 @@ public final class BuilderPlacementSpace {
      */
     public static BlockPos approach(ServerLevel level,BuilderGolem worker,
             BlockPos target){
-        return escape(level,worker,target);
+        Approach cached=workApproaches.get(worker);
+        if(cached!=null&&cached.target().equals(target)
+                &&cached.until()>level.getGameTime()
+                &&WorkerNavigation.canStandOn(level,worker,cached.destination()))
+            return cached.destination();
+        BlockPos selected=escape(level,worker,target);
+        if(selected!=null)
+            workApproaches.put(worker,new Approach(target,selected,
+                    level.getGameTime()+100));
+        else workApproaches.remove(worker);
+        return selected;
     }
 
     /** @return true only when the future block volume is clear of workers. */

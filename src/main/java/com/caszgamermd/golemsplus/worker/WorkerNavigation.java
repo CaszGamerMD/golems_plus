@@ -271,6 +271,14 @@ public final class WorkerNavigation {
      * navigation may stop two blocks short of the goal; doing that while
      * vacating a future solid block would leave the Builder in danger.
      */
+    /** Evaluate only the actual physical tile, not nearby transient
+     * crowd occupancy. Used to retain a stable Builder approach target
+     * without re-running pathfinding on every construction tick.
+     */
+    public static boolean canStandOn(ServerLevel level,PathfinderMob mob,
+                                     BlockPos target){
+        return target!=null&&standingTile(level,mob,target);
+    }
     public static boolean canReachExact(ServerLevel level,PathfinderMob mob,
                                         BlockPos target){
         if(target==null||!level.hasChunkAt(target))return false;
