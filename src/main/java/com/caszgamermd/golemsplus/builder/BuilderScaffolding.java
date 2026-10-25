@@ -332,6 +332,7 @@ public final class BuilderScaffolding {
         if(motion.next>=motion.waypoints.size()){
             bridgeMotion.remove(worker);
             worker.getNavigation().stop();
+            worker.setDeltaMovement(0,Math.min(0,worker.getDeltaMovement().y),0);
             return false;
         }
         BlockPos waypoint=motion.waypoints.get(motion.next);
@@ -357,6 +358,8 @@ public final class BuilderScaffolding {
             if(motion.next==motion.waypoints.size()){
                 bridgeMotion.remove(worker);
                 worker.getNavigation().stop();
+                worker.setDeltaMovement(0,Math.min(0,
+                        worker.getDeltaMovement().y),0);
                 return false;
             }
             return true;
@@ -407,7 +410,10 @@ public final class BuilderScaffolding {
         return true;
     }
 
-    private static void beginBridge(ServerLevel level,BuilderGolem worker,
+    /** Package-private so real server GameTests can drive the identical
+     * physical bridge controller without faking an owning player.
+     */
+    static void beginBridge(ServerLevel level,BuilderGolem worker,
             java.util.List<BlockPos> waypoints,boolean back){
         clearMotion(worker);
         exiting.remove(worker);
