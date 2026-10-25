@@ -117,6 +117,7 @@ public final class BuilderScaffoldBridgeGameTest {
         }
         BlockPos anchor=helper.absolutePos(new BlockPos(2,3,3));
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPersistenceRequired(); // keep focused physics tests deterministic
         worker.setPos(anchor.getX()+.5,anchor.getY()+1,anchor.getZ()+.5);
         worker.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
         level.addFreshEntity(worker);
@@ -135,7 +136,9 @@ public final class BuilderScaffoldBridgeGameTest {
                 "minecraft:stone","minecraft:stone"));
         helper.onEachTick(()->{
             if(!worker.isAlive()){
-                helper.fail("Long bridge worker disappeared");return;
+                helper.fail("Long bridge worker disappeared at "
+                        +worker.blockPosition()+" fall="+worker.fallDistance
+                        +" step="+BuilderScaffoldBridge.debug(worker));return;
             }
             if(helper.getTick()%5!=0)return;
             if(worker.distanceToSqr(goal.getX()+.5,goal.getY()+.5,
