@@ -146,8 +146,12 @@ public final class BuilderScaffoldBridgeGameTest {
                     goal,plan);
             if(state==BuilderScaffolding.Result.NO_SAFE_TOWER
                     ||state==BuilderScaffolding.Result.NEED_MATERIALS)
+                BlockPos pier=helper.absolutePos(new BlockPos(6,3,2));
                 helper.fail("Long bridge denied physical detour: "+state
                         +" "+BuilderScaffoldBridge.debug(worker)
+                        +" pierBelow="+level.getBlockState(pier.below())
+                        +" footing="+level.getBlockState(pier.below().below())
+                        +" perm="+level.mayInteract(owner,pier.below())
                         +" at "+worker.blockPosition());
         });
     }
