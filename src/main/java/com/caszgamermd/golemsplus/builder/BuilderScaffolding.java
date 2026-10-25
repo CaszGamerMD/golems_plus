@@ -45,6 +45,20 @@ public final class BuilderScaffolding {
             new java.util.WeakHashMap<>();
     private static final java.util.Map<BuilderGolem,AvoidColumn> avoided=
             new java.util.WeakHashMap<>();
+    /** Watch the ACTUAL ground approach to a proposed scaffold tower.
+     * If a selected column is physically unreachable, use a different
+     * candidate instead of restarting the same A* request forever.
+     */
+    private static final class TowerApproach {
+        final BlockPos base;
+        double bestDistance;
+        int lastAdvance;
+        TowerApproach(BlockPos base,double distance,int tick){
+            this.base=base;bestDistance=distance;lastAdvance=tick;
+        }
+    }
+    private static final java.util.Map<BuilderGolem,TowerApproach> approaches=
+            new java.util.WeakHashMap<>();
     private static boolean avoided(ServerLevel level,BuilderGolem worker,
                                     BlockPos candidate){
         AvoidColumn bad=avoided.get(worker);
@@ -133,6 +147,7 @@ public final class BuilderScaffolding {
         bridgeMotion.remove(worker);
         bridgeTrails.remove(worker);
         bridgeCooldown.remove(worker);
+        approaches.remove(worker);
         // Motion cancellation must never delete unrecovered world supports.
     }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
@@ -840,6 +855,24 @@ public final class BuilderScaffolding {
         // tried to walk through buildings to reach it.
         if(approachX*approachX+approachZ*approachZ>1.20){
             clearMotion(worker);
+            TowerApproach watch=approaches.get(worker);
+            double remaining=Math.hypot(approachX,approachZ);
+            if(watch==null||!watch.base.equals(base)){
+                watch=new TowerApproach(base.immutable(),remaining,worker.tickCount);
+                approaches.put(worker,watch);
+            }else if(remaining<watch.bestDistance-.25){
+                watch.bestDistance=remaining;
+                watch.lastAdvance=worker.tickCount;
+            }else if(worker.tickCount-watch.lastAdvance>100){
+                // A column may have a perfect vertical shaft but an
+                // inaccessible base behind a completed wall or gap.
+                // Expire it and retry the next physically reachable one.
+                avoided.put(worker,new AvoidColumn(base.immutable(),
+                        level.getGameTime()+160));
+                approaches.remove(worker);
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                return Result.NO_SAFE_TOWER;
+            }
             // Existing scaffolding is not a walkable A* node. When a
             // Builder is already on an upper platform it must return to
             // that SAME elevation beside the tower, rather than walking
@@ -868,6 +901,7 @@ public final class BuilderScaffolding {
                         .routeTo(level,worker,approach,1.0);
             return Result.CLIMBING;
         }
+        approaches.remove(worker); // arrived at the chosen tower
         int wantedTop=target.getY()-1;
         final BlockPos column=base;
         int existingTop=existing.stream()
