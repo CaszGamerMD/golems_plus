@@ -28,30 +28,32 @@ public final class BuilderDoorwayGameTest {
     }
     private static void runCrossing(GameTestHelper helper,boolean gate){
         ServerLevel world=helper.getLevel();
-        for(int x=0;x<=12;x++)for(int z=0;z<=8;z++)
+        for(int x=0;x<=7;x++)for(int z=0;z<=7;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
-        for(int z=0;z<=8;z++)for(int y=2;y<=4;y++)
-            helper.setBlock(6,y,z,Blocks.COBBLESTONE);
+        for(int z=0;z<=7;z++)for(int y=2;y<=4;y++)
+            helper.setBlock(3,y,z,Blocks.COBBLESTONE);
+        // The default server GameTest arena is eight blocks across;
+        // DO NOT extend this route into the invisible barrier perimeter.
         // An enclosed single-width opening bordered by real walls.
-        helper.setBlock(6,2,4,Blocks.AIR);
-        helper.setBlock(6,3,4,Blocks.AIR);
+        helper.setBlock(3,2,3,Blocks.AIR);
+        helper.setBlock(3,3,3,Blocks.AIR);
         if(gate){
             BlockState block=Blocks.OAK_FENCE_GATE.defaultBlockState()
                     .setValue(FenceGateBlock.FACING,Direction.EAST)
                     .setValue(FenceGateBlock.OPEN,false);
-            helper.setBlock(6,2,4,block);
+            helper.setBlock(3,2,3,block);
         }else{
             BlockState door=Blocks.OAK_DOOR.defaultBlockState()
                     .setValue(DoorBlock.FACING,Direction.EAST)
                     .setValue(DoorBlock.OPEN,false);
-            helper.setBlock(6,2,4,door.setValue(DoorBlock.HALF,
+            helper.setBlock(3,2,3,door.setValue(DoorBlock.HALF,
                     DoubleBlockHalf.LOWER));
-            helper.setBlock(6,3,4,door.setValue(DoorBlock.HALF,
+            helper.setBlock(3,3,3,door.setValue(DoorBlock.HALF,
                     DoubleBlockHalf.UPPER));
         }
-        BlockPos door=helper.absolutePos(new BlockPos(6,2,4));
-        BlockPos target=helper.absolutePos(new BlockPos(10,2,4));
-        BlockPos start=helper.absolutePos(new BlockPos(3,2,4));
+        BlockPos door=helper.absolutePos(new BlockPos(3,2,3));
+        BlockPos target=helper.absolutePos(new BlockPos(6,2,3));
+        BlockPos start=helper.absolutePos(new BlockPos(1,2,3));
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         world.addFreshEntity(worker);
