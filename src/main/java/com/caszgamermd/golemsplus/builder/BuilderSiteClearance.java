@@ -80,7 +80,14 @@ public final class BuilderSiteClearance {
                 continue;
             }
             BlockState expected=Blocks.AIR.defaultBlockState();
-            if(!step.state().equals("minecraft:air")){
+            // The vegetation toggle skips only S C H E M A T I C plant
+            // placements. Clearing stays fully active: if a flower, crop,
+            // snow layer or other block occupies this ignored position,
+            // remove that obstruction rather than preserving it because
+            // it happens to match the original blueprint.
+            boolean ignoredPlant=table.builderIgnorePlants()
+                    &&BuilderVegetation.ignoreSchematicState(step.state());
+            if(!ignoredPlant&&!step.state().equals("minecraft:air")){
                 var resolved=BuilderBlockResolver.resolve(step.state(),
                         BuildSite.Rotation.values()[table.builderRotation()/90],
                         BuildSite.Mirror.values()[table.builderMirror()]);

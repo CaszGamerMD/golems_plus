@@ -34,7 +34,8 @@ public final class BuilderBuildService {
     }
     private record Cache(String file, int rotation,int mirror,BlockPos origin,
                          List<BuilderConstructionPlan.Step> steps,
-                         List<BuilderSiteClearance.Target> clearing){}
+                         List<BuilderSiteClearance.Target> clearing,
+                         boolean ignorePlants){}
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
     // Reuse the immutable server-side schematic work plan across queued
     // warehouse retries. Parsing a 100k-block Litematica file every four
@@ -300,6 +301,13 @@ public final class BuilderBuildService {
                     plan.steps(),carriedItems);
             if(index<0)return; // wait for current layer assignments to finish
             var step=plan.steps().get(index);
+            if(step.ignorePlant()){
+                // The position stays in the saved indexed work order, but
+                // the requested crop/flower is never placed or debited.
+                // Site clearance already ran normally for this coordinate.
+                table.completeBuilderStep(worker.getUUID(),index);
+                return;
+            }
             // Every real Builder goes to the chosen OnSite depot ONCE per
             // exclusive ten-coordinate batch, unloads other materials and
             // collects actual stock (including flowers within shulkers).
@@ -489,13 +497,40 @@ public final class BuilderBuildService {
             table.setProblem("Builder paused: "+exception.getMessage());
         }
     }
+    /** Reconcile the selected job's visible materials immediately after
+     * changing its vegetation filter, including while construction runs.
+     * Never reset the already-completed real block quantities.
+     */
+    public static String refreshPlantFilter(ServerLevel level,
+            WorkerStationBlockEntity table){
+        try{
+            var cache=jobCache(table);
+            Map<String,Long> materials=new java.util.LinkedHashMap<>();
+            int ignored=0;
+            for(var step:cache.steps()){
+                if(step.ignorePlant())ignored++;
+                else if(step.requiredItem()!=null)
+                    materials.merge(step.requiredItem(),1L,Long::sum);
+            }
+            table.reconcileBuilderMaterials(materials);
+            return table.builderIgnorePlants()
+                    ?"Ignoring "+ignored+" schematic vegetation placements; "
+                            +"site clearing remains enabled"
+                    :"Crops and flowers restored to this job's material plan";
+        }catch(Exception e){
+            return "Plant filter saved; unable to recalculate material list: "
+                    +e.getClass().getSimpleName();
+        }
+    }
+
     private static Cache jobCache(WorkerStationBlockEntity table)
             throws Exception {
         Cache previous=cachedWarehousePlans.get(table);
         if(previous!=null&&previous.file().equals(table.builderFile())
                 &&previous.rotation()==table.builderRotation()
                 &&previous.mirror()==table.builderMirror()
-                &&previous.origin().equals(table.builderOrigin()))
+                &&previous.origin().equals(table.builderOrigin())
+                &&previous.ignorePlants()==table.builderIgnorePlants())
             return previous;
         if(!table.hasPlacedSchematic())
             throw new IllegalArgumentException("No placed schematic");
@@ -509,10 +544,12 @@ public final class BuilderBuildService {
         var site=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
                 BuildSite.Rotation.values()[table.builderRotation()/90],
                 BuildSite.Mirror.values()[table.builderMirror()]);
-        var result=BuilderConstructionPlan.create(schematic,site);
+        var result=BuilderConstructionPlan.create(schematic,site,
+                table.builderIgnorePlants());
         Cache next=new Cache(table.builderFile(),table.builderRotation(),
                 table.builderMirror(),origin,result.steps(),
-                BuilderSiteClearance.targets(schematic,site));
+                BuilderSiteClearance.targets(schematic,site),
+                table.builderIgnorePlants());
         cachedWarehousePlans.put(table,next);
         return next;
     }
@@ -523,7 +560,9 @@ public final class BuilderBuildService {
         if(previous!=null&&previous.file().equals(table.builderFile())
                 &&previous.rotation()==table.builderRotation()
                 &&previous.mirror()==table.builderMirror()
-                &&previous.origin().equals(table.builderOrigin()))return previous;
+                &&previous.origin().equals(table.builderOrigin())
+                &&previous.ignorePlants()==table.builderIgnorePlants())
+            return previous;
         // Share the same immutable validated work plan among all eight
         // Builders. A different Litematica parse per worker caused pauses
         // when several workers started the job at once.

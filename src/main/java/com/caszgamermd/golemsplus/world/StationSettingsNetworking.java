@@ -106,6 +106,22 @@ public final class StationSettingsNetworking {
                 else reply(player,"Finish or cancel the currently running build before selecting another job");
                 return;
             }
+            case "builder_ignore_plants" -> {
+                if(!table.isBuilder())return;
+                done=table.setBuilderIgnorePlants(player.getUUID(),
+                        change.amount()!=0);
+                if(!done){
+                    reply(player,"Select a saved Builder job before changing "
+                            +"its vegetation setting");
+                    return;
+                }
+                String result=com.caszgamermd.golemsplus.builder.BuilderBuildService
+                        .refreshPlantFilter(
+                                (net.minecraft.server.level.ServerLevel)player.level(),
+                                table);
+                reply(player,result);
+                return;
+            }
             case "builder_storage" -> {
                 if(!table.isBuilder())return;
                 OutputChestSelection.beginBuilder(player,table);

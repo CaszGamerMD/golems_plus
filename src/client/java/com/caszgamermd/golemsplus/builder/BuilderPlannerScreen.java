@@ -260,6 +260,25 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
                 notice="Requesting new remaining-blocks minus OnSite Storage order";
             }else notice="Start the selected build before restarting its order";
         });
+        // Saved per job, not globally. Keep this control on the Planner's
+        // left side so it does not overlap the material list/footer.
+        var vegetation=Button.builder(Component.literal(
+                table!=null&&table.builderIgnorePlants()
+                        ?"IGNORE CROPS/PLANTS: ON"
+                        :"IGNORE CROPS/PLANTS: OFF"),control->{
+            if(table==null||!table.hasPlacedSchematic()){
+                notice="Select a saved Builder job first";
+                return;
+            }
+            boolean enable=!control.getMessage().getString().endsWith("ON");
+            send("builder_ignore_plants",enable?1:0);
+            control.setMessage(Component.literal(enable
+                    ?"IGNORE CROPS/PLANTS: ON"
+                    :"IGNORE CROPS/PLANTS: OFF"));
+            notice="Only schematic vegetation placement is skipped; "
+                    +"site clearing remains enabled";
+        }).bounds(leftPos+18,topPos+232,194,20).build();
+        addRenderableWidget(vegetation);
         button("CREW -",18,285,90,()->{
             if(table!=null)send("crew",Math.max(1,table.crewTarget()-1));
         });
@@ -349,6 +368,8 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         g.text(font,"ACTIVE / SAVED JOBS",16,73,MUTED,false);
         g.text(font,"PLANNER: TOOLS / BLOCKS / SCAFFOLD",18,85,TEXT,false);
         g.text(font,"PLAYER INVENTORY",18,188,TEXT,false);
+        g.text(font,"Schematic placement only; clearing stays ON",
+                18,258,MUTED,false);
         if(t!=null){
             g.text(font,"CREW "+t.builderWorkerIds().size()+"/"+t.crewTarget(),18,274,
                     TEXT,false);
