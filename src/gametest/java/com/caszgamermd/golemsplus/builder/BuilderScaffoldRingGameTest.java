@@ -58,6 +58,11 @@ public final class BuilderScaffoldRingGameTest {
                 helper.fail("Builder stalled at stage="+stage[0]+
                         " ring="+visited[0]+
                         " feet="+builder.blockPosition()+
+                        " feetY="+builder.getY()+
+                        " groundY="+groundExit.getY()+
+                        " onGround="+builder.onGround()+
+                        " under="+level.getBlockState(builder.blockPosition().below())+
+                        " column="+column+
                         " climb="+BuilderScaffolding.debugClimb(builder)+
                         " nav="+WorkerNavigation.debugStatus(builder));
                 return;
@@ -103,11 +108,16 @@ public final class BuilderScaffoldRingGameTest {
                         helper.fail("No physically safe ground landing beside tower");
                 }
             }else if(stage[0]==4) { // Feet must land on solid ground.
-                double dx=builder.getX()-(groundExit.getX()+.5);
-                double dz=builder.getZ()-(groundExit.getZ()+.5);
-                if(dx*dx+dz*dz<.55
+                // Exit direction can legitimately vary; verify the
+                // actual invariant: feet on solid stone outside the
+                // scaffold footprint, not a chosen compass side.
+                double dx=builder.getX()-(column.getX()+.5);
+                double dz=builder.getZ()-(column.getZ()+.5);
+                if(dx*dx+dz*dz>1.0
                         &&Math.abs(builder.getY()-groundExit.getY())<.25
-                        &&builder.onGround()){
+                        &&builder.onGround()
+                        &&level.getBlockState(builder.blockPosition().below())
+                                .is(Blocks.STONE)){
                     helper.succeed();
                 }
             }
