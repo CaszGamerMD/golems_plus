@@ -44,6 +44,15 @@ public final class BuilderDomeImportGameTest {
                     .contains("azalea")).allMatch(
                     BuilderConstructionPlan.Step::ignorePlant))
                 throw new IllegalStateException("Azalea plant remained a construction task");
+            // The original Dome has vanilla flowers whose block classes no longer
+            // extend BushBlock; they must not become unsatisfiable support
+            // steps when the user's Ignore Crops/Plants option is enabled.
+            if(plan.steps().stream().noneMatch(s->s.encodedState()
+                    .contains("pink_tulip")&&s.ignorePlant()))
+                throw new IllegalStateException("Pink tulips remain mandatory building tasks");
+            if(plan.steps().stream().anyMatch(s->s.encodedState()
+                    .contains("pink_tulip")&&!s.ignorePlant()))
+                throw new IllegalStateException("Pink tulip still has build requirement");
             if(ignored<20)
                 throw new IllegalStateException("Ignore Plants did not skip Dome grass and flowers: "+ignored);
             // Verify the ignored plant states still exist in the plan, so
