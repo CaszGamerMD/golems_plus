@@ -41,6 +41,8 @@ jobs:
         run: python3 scripts/builder_gate_scaffold_shulker_smoke.py
       - name: Verify active Builder scaffold descent and door deadlock recovery
         run: python3 scripts/builder_scaffold_door_recovery_smoke.py
+      - name: Verify 0.65 worker collision, return-to-scaffold and safe exit
+        run: python3 scripts/builder_scaffold_return_065_smoke.py
       - name: Verify continuous Builder scaffold ascent and descent
         run: python3 scripts/builder_scaffold_continuous_smoke.py
       - name: Verify per-door FIFO traffic and scaffold gravity recovery
