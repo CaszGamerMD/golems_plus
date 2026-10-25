@@ -640,6 +640,14 @@ public final class WorkerNavigation {
             PathfinderMob mob,Progress progress,BlockPos candidate){
         BlockPos door=WorkerDoorTraffic.canonical(level,candidate);
         if(!handDoor(level,door)||progress.requested==null)return false;
+        // On the Dome, a worker walking on the second-floor platform
+        // reserved a door two blocks BELOW its feet. It could never walk
+        // through that lower doorway and held the FIFO lane indefinitely.
+        // Only workers whose real collision box overlaps the doorway's
+        // vertical span may take a reservation. A ground-floor worker
+        // may still reserve its door from a few blocks horizontally away.
+        if(mob.getBoundingBox().minY>=door.getY()+1.95
+                ||mob.getBoundingBox().maxY<=door.getY())return false;
         BlockState state=level.getBlockState(door);
         Direction normal=entranceFacing(state);
         double ex=normal.getStepX(),ez=normal.getStepZ();
@@ -828,7 +836,13 @@ public final class WorkerNavigation {
 
     private static boolean doorTrafficTick(ServerLevel level,PathfinderMob mob,Progress p){
         if(p.queuedDoor!=null){
-            if(!handDoor(level,p.queuedDoor)
+            // A Builder can climb onto a completed dome platform while
+            // retaining a FIFO token for the lower door. It is physically
+            // outside the doorway and must release the lane for others.
+            boolean onDifferentFloor=mob.getBoundingBox().minY
+                    >=p.queuedDoor.getY()+1.95
+                    ||mob.getBoundingBox().maxY<=p.queuedDoor.getY();
+            if(onDifferentFloor||!handDoor(level,p.queuedDoor)
                     ||!p.finishingDoor
                         &&WorkerDoorTraffic.crossed(level,p.queuedDoor,mob)
                     ||mob.distanceToSqr(p.queuedDoor.getX()+.5,
