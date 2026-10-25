@@ -117,8 +117,11 @@ public final class CraneDomeCollisionGameTest {
             }
             for(int x=2;x<=44;x++)
                 world.setBlock(helper.absolutePos(new BlockPos(x,2,3)),railState,2);
+            // Keep the basket on the *north* side of the rails. A fixed
+            // eastward stow would cross the 48-block arena boundary when
+            // the chassis reaches the far east edge.
             Vec3 stowed=CraneMovement.anchorPoint(world,westAnchor)
-                    .add(3,0,0);
+                    .add(0,0,3);
             crane.place(owner.getUUID(),westAnchor,stowed);
             var detour=CraneMovement.railPath(world,crane,farY38);
             if(detour==null || detour.size()<20)
