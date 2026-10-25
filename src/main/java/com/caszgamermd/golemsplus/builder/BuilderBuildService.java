@@ -307,19 +307,16 @@ public final class BuilderBuildService {
                 BuilderScaffolding.retrieve(level,worker,table,false);
                 table.setProblem("");return;
             }
-            if(!existing.isAir()){
-                // A player may add a block after the initial site-clear
-                // phase. Safely clear only this exact schematic cell,
-                // retaining bottom-up ordering and normal protections.
-                BuilderClearance.clear(level,worker,table,owner,pos,existing);
-                return;
-            }
+            // Check the replacement's survival BEFORE clearing an existing
+            // block. Clearing first destroyed a useful piece of completed
+            // cobblestone/support, then deadlocked on "Missing supporting
+            // blocks" after the now-unsupported target turned to air.
             if(!state.state().canSurvive(level,pos)){
-                // Support-dependent blocks (door halves, torches, rails,
-                // flowers, etc.) can be ordered ahead of their supports
-                // in the same schematic layer. Releasing THIS claim for
-                // a short retry lets the rest of the crew place the actual
-                // support. Never charge or place an unsupported block.
+                // A door, wall torch, rail or other dependent schematic
+                // cell may be queued before its supporting neighbour in
+                // this same layer. Yield the cell without consuming an
+                // item or advancing the layer; another Builder can fill
+                // the support, and the cell will be retried after 40 ticks.
                 table.waitForBuilderSupport(worker.getUUID(),index,
                         level.getGameTime());
                 BlockPos underneath=pos.below();
@@ -329,6 +326,13 @@ public final class BuilderBuildService {
                 table.setProblem("Waiting for support: "+step.encodedState()
                         +" at "+pos+"; below="+support
                         +" (other Builders continuing this layer)");
+                return;
+            }
+            if(!existing.isAir()){
+                // A player may add a block after the initial site-clear
+                // phase. Never destroy it until its planned replacement
+                // has support. This protects physical build progress.
+                BuilderClearance.clear(level,worker,table,owner,pos,existing);
                 return;
             }
             // Every worker first visits actual staging storage, loads a
