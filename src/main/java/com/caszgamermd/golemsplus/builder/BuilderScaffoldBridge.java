@@ -35,6 +35,7 @@ public final class BuilderScaffoldBridge {
     private record Walk(BlockPos destination,long expires){}
     private static final Map<BuilderGolem,Route> routes=new WeakHashMap<>();
     private static final Map<BuilderGolem,Walk> walking=new WeakHashMap<>();
+    private static final Map<BuilderGolem,String> failures=new WeakHashMap<>();
 
     private BuilderScaffoldBridge(){}
 
@@ -44,6 +45,7 @@ public final class BuilderScaffoldBridge {
     public static void cancel(BuilderGolem worker){
         routes.remove(worker);
         walking.remove(worker);
+        failures.remove(worker);
     }
     /** Retrace an already built bridge in reverse before descending a
      * tower or returning to the real OnSite chest. No aerial shortcuts:
@@ -87,7 +89,8 @@ public final class BuilderScaffoldBridge {
         Walk moving=walking.get(worker);
         Route route=routes.get(worker);
         return moving!=null?"BRIDGE WALK "+moving.destination().toShortString()
-                :route==null?"NONE":"BRIDGE "+route.next()+"/"+route.cells().size();
+                :route==null?failures.getOrDefault(worker,"NONE")
+                        :"BRIDGE "+route.next()+"/"+route.cells().size();
     }
 
     /** Steering uses normal gravity and the real collision box, and runs
@@ -215,6 +218,7 @@ public final class BuilderScaffoldBridge {
                     &&step.y()==bridgeY)
                 future.add(new BlockPos(step.x(),step.y(),step.z()));
             List<BlockPos> best=List.of();
+            int matchingTops=0;
             double score=Double.POSITIVE_INFINITY;
             // Only genuine owner-tracked, existing tower tops can anchor a
             // bridge. Select the shortest turn-capable route around the wall.
@@ -227,7 +231,8 @@ public final class BuilderScaffoldBridge {
                 if(previous==null||previous.getY()<p.getY())tops.put(key,p);
             }
             for(BlockPos top:tops.values()){
-                if(top.getY()!=bridgeY)continue;
+                if(top.getY()!=bridgeY&&top.getY()!=bridgeY-1)continue;
+                matchingTops++;
                 List<BlockPos> candidate=search(level,owner,table,worker,
                         top,target,future,owned);
                 if(candidate.isEmpty())continue;
@@ -236,7 +241,13 @@ public final class BuilderScaffoldBridge {
                                 top.getY()+1,top.getZ()+.5));
                 if(cost<score){score=cost;best=candidate;}
             }
-            if(best.isEmpty())return BuilderScaffolding.Result.NO_SAFE_TOWER;
+            if(best.isEmpty()){
+                failures.put(worker,"NO_BRIDGE owned="+owned.size()
+                        +" tops="+tops.size()+" compatible="+matchingTops
+                        +" targetY="+target.getY());
+                return BuilderScaffolding.Result.NO_SAFE_TOWER;
+            }
+            failures.remove(worker);
             route=new Route(target,best,1,level.getGameTime());
             routes.put(worker,route);
         }
