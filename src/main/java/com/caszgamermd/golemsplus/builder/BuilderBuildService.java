@@ -331,23 +331,9 @@ public final class BuilderBuildService {
                 activity.phase=Action.COMPLETE;
                 return;
             }
-            // Every real Builder goes to the chosen OnSite depot ONCE per
-            // exclusive ten-coordinate batch, unloads other materials and
-            // collects actual stock (including flowers within shulkers).
-            // It does not visit the Planning Table for assignments.
-            if(!table.builderOrderPrepared(worker.getUUID())){
-                activity.phase=Action.STAGE_MATERIALS;
-                var prep=BuilderSupplyInventory.prepareWorkOrder(
-                        level,worker,table,plan.steps());
-                if(prep==BuilderSupplyInventory.LoadStatus.MOVING)return;
-                if(prep==BuilderSupplyInventory.LoadStatus.MISSING){
-                    table.setProblem("Builder work order waiting for reachable "
-                            +"OnSite Storage (material staging not complete)");
-                    return;
-                }
-                table.prepareBuilderOrder(worker.getUUID());
-            }
-            activity.phase=Action.MOVE_TO_WORK;
+            // Read the actual world first. Already-correct positions are
+            // NO-OP assignments, not an excuse to walk all the way back to
+            // OnSite for materials that will never be consumed.
             BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
             if(Math.abs((long)pos.getX()-home.getX())>256||
                     Math.abs((long)pos.getZ()-home.getZ())>256){
@@ -384,6 +370,23 @@ public final class BuilderBuildService {
                 // dismantle the nearby scaffold to rebuild them.
                 return;
             }
+            // Every real Builder goes to the chosen OnSite depot ONCE per
+            // exclusive ten-coordinate batch, unloads other materials and
+            // collects actual stock (including flowers within shulkers).
+            // It does not visit the Planning Table for assignments.
+            if(!table.builderOrderPrepared(worker.getUUID())){
+                activity.phase=Action.STAGE_MATERIALS;
+                var prep=BuilderSupplyInventory.prepareWorkOrder(
+                        level,worker,table,plan.steps());
+                if(prep==BuilderSupplyInventory.LoadStatus.MOVING)return;
+                if(prep==BuilderSupplyInventory.LoadStatus.MISSING){
+                    table.setProblem("Builder work order waiting for reachable "
+                            +"OnSite Storage (material staging not complete)");
+                    return;
+                }
+                table.prepareBuilderOrder(worker.getUUID());
+            }
+            activity.phase=Action.MOVE_TO_WORK;
             // Check the replacement's survival BEFORE clearing an existing
             // block. Clearing first destroyed a useful piece of completed
             // cobblestone/support, then deadlocked on "Missing supporting
