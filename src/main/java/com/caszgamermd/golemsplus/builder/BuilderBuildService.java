@@ -437,10 +437,18 @@ public final class BuilderBuildService {
                 }
                 if(climbing==BuilderScaffolding.Result.CLIMBING)return;
             }
-            if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>14){
+            double workDistance=worker.distanceToSqr(
+                    pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+            if(workDistance>14){
+                // Do not drive Builders into the center of their own
+                // future flower/cobblestone placement. Close approaches
+                // stop alongside an unoccupied, genuinely reachable tile.
+                BlockPos approach=workDistance<=100
+                        ?BuilderPlacementSpace.approach(level,worker,pos):null;
+                BlockPos goal=approach==null?pos:approach;
                 if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .routeTo(level,worker,pos,.85))
-                    table.setProblem("Builder cannot path to "+pos);
+                        .routeTo(level,worker,goal,.85))
+                    table.setProblem("Builder cannot path alongside "+pos);
                 return;
             }
             // Never place into any Builder's body. Check before spending
