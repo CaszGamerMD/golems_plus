@@ -20,5 +20,15 @@ public final class CraneDispatch {
     public void remove(UUID worker){waiting.remove(worker);}
     public void clear(){waiting.clear();}
     public int size(){return waiting.size();}
+    /** Return the closest reachable passenger, or null when all docks are blocked.
+     * Insertion order breaks ties, preserving the order of this batch.
+     */
+    public static UUID nearestReachable(Map<UUID,Double> distances){
+        return distances.entrySet().stream()
+                .filter(entry->entry.getValue()!=null
+                        &&Double.isFinite(entry.getValue())&&entry.getValue()>=0)
+                .min(Comparator.comparingDouble(entry->entry.getValue()))
+                .map(Map.Entry::getKey).orElse(null);
+    }
     public static int reach(int upgrades){return 30+30*Math.max(0,Math.min(2,upgrades));}
 }
