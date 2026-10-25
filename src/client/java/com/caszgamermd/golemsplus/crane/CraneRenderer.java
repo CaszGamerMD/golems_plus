@@ -8,6 +8,7 @@ import net.minecraft.client.renderer.item.*;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.world.item.*;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 
@@ -23,7 +24,7 @@ public final class CraneRenderer extends EntityRenderer<BuildingCrane,CraneRende
     @Override public void extractRenderState(BuildingCrane crane,State s,float partial){
         super.extractRenderState(crane,s,partial);s.anchor=crane.anchorPoint().subtract(crane.position());s.supply=crane.supplyMode();s.box=crane.hasBox();
         ItemStackRenderState[] states={s.yellow,s.black,s.glass,s.iron,s.wood};
-        Item[] items={Items.YELLOW_CONCRETE,Items.BLACK_CONCRETE,Items.CYAN_STAINED_GLASS,Items.IRON_BLOCK,Items.OAK_PLANKS};
+        Item[] items={Blocks.YELLOW_CONCRETE.asItem(),Blocks.BLACK_CONCRETE.asItem(),Blocks.CYAN_STAINED_GLASS.asItem(),Blocks.IRON_BLOCK.asItem(),Blocks.OAK_PLANKS.asItem()};
         for(int i=0;i<items.length;i++)resolver.updateForTopItem(states[i],new ItemStack(items[i]),ItemDisplayContext.NONE,crane.level(),null,crane.getId());
     }
     private static void box(ItemStackRenderState material,State s,PoseStack pose,SubmitNodeCollector collector,double x,double y,double z,float w,float h,float d){
