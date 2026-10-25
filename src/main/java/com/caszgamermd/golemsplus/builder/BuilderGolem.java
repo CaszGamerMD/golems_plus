@@ -125,7 +125,11 @@ public final class BuilderGolem extends PathfinderMob implements Container {
             BuilderChunkTickets.track(server,this);
             com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
         }
-        if(tickCount%12==0 && level() instanceof ServerLevel server)
+        // Each Builder evaluates its own long-lived task state four times
+        // per second. Offset different entities across server ticks: a
+        // large crew must not all scan inventories/pathfind/serialize the
+        // Planner on the SAME tick (the original synchronized sputter).
+        if((tickCount+getId())%5==0 && level() instanceof ServerLevel server)
             BuilderBuildService.tick(server,this);
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
