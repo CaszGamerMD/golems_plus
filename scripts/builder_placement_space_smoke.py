@@ -42,7 +42,7 @@ for direction in ("{radius,0}", "{-radius,0}", "{0,radius}", "{0,-radius}",
                   "{radius,radius}", "{radius,-radius}",
                   "{-radius,radius}", "{-radius,-radius}"):
     assert direction in space, f"missing safe sidestep direction: {direction}"
-assert "path!=null&&path.canReach()" in navigation
+assert "!path.canReach()" in navigation
 assert "boolean" not in space[space.index("private record Yield"):space.index("private static final Map")] or "placingWorker" in space
 assert "workDistance<=100" in build
 assert "BuilderPlacementSpace.approach(level,worker,pos)" in build
