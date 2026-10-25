@@ -2,6 +2,7 @@ package com.caszgamermd.golemsplus.crane;
 
 import java.util.*;
 import com.caszgamermd.golemsplus.builder.BuilderGolem;
+import com.caszgamermd.golemsplus.builder.BuilderChunkTickets;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import com.caszgamermd.golemsplus.worker.WorkerNavigation;
 import net.minecraft.core.*;
@@ -64,7 +65,8 @@ public final class BuildingCrane extends Entity implements Container {
     public boolean ownsWorker(BuilderGolem w){return w.getUUID().equals(operator)||destinations.containsKey(w.getUUID())||w.getVehicle()==this;}
     public void place(UUID owner,BlockPos anchor,Vec3 load){this.owner=owner;this.anchor=anchor.immutable();this.home=BlockPos.containing(load);anchorPoint(CraneMovement.anchorPoint((ServerLevel)level(),anchor));setPos(load);}
     public boolean link(WorkerStationBlockEntity s){
-        if(!Objects.equals(owner,s.owner())||s.activeOrder()==null||!builders().isEmpty())return false;
+        if(!parked()||!destinations.isEmpty()||!batch.isEmpty()
+                ||!Objects.equals(owner,s.owner())||s.activeOrder()==null||!builders().isEmpty())return false;
         table=s.getBlockPos().immutable();job=s.activeOrder();dispatch.clear();destinations.clear();batch.clear();status="Job linked; select a builder operator";return true;
     }
     public boolean assignOperator(BuilderGolem w){
@@ -84,7 +86,7 @@ public final class BuildingCrane extends Entity implements Container {
         return true;
     }
     public void requestSupplyStop(BlockPos p){if(supplyMode()&&operator!=null&&station()!=null){supplyStop=p.immutable();planAfter=0;}}
-    public void recall(){recalling=true;dispatch.clear();batch.clear();destinations.clear();path.clear();railPath.clear();destination=null;status="Recalling to safe home landing";}
+    public void recall(){recalling=true;dispatch.clear();batch.clear();destinations.clear();supplyStop=null;path.clear();railPath.clear();destination=null;status="Recalling to safe home landing";}
     private List<BuilderGolem> builders(){return getPassengers().stream().filter(e->e instanceof BuilderGolem&&!e.getUUID().equals(operator)).map(e->(BuilderGolem)e).toList();}
     @Override protected boolean canAddPassenger(Entity e){return e instanceof BuilderGolem&&(e.getUUID().equals(operator)||!supplyMode()&&builders().size()<4);}
     @Override protected void positionRider(Entity e,Entity.MoveFunction move){
@@ -180,7 +182,15 @@ public final class BuildingCrane extends Entity implements Container {
         }
         status="Landing occupied; waiting";return false;
     }
-    private void go(ServerLevel world,Vec3 at){destination=at;if(world.getGameTime()>=planAfter)plan(world,at);}
+    private void go(ServerLevel world,Vec3 at){
+        destination=at;
+        // Crane operators belong to the planner crew; use its bounded,
+        // temporary simulation tickets to load the destination ahead of
+        // path checks rather than treating distant chunks as solid walls.
+        if(world.getEntity(operator) instanceof BuilderGolem driver)
+            BuilderChunkTickets.destination(world,driver,BlockPos.containing(at));
+        if(world.getGameTime()>=planAfter)plan(world,at);
+    }
     private void plan(ServerLevel world,Vec3 at){
         planAfter=world.getGameTime()+40;
         List<Vec3> route=CraneMovement.loadPath(world,this,at);
