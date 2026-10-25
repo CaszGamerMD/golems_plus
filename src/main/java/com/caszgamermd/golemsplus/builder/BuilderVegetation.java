@@ -28,7 +28,6 @@ public final class BuilderVegetation {
         // otherwise cause infinite canSurvive() support retries.
         if(block.defaultBlockState().is(net.minecraft.tags.BlockTags.FLOWERS)
                 ||block.defaultBlockState().is(net.minecraft.tags.BlockTags.CROPS)
-                ||block.defaultBlockState().is(net.minecraft.tags.BlockTags.SAPLINGS)
                 ||block instanceof BushBlock)return true;
         String path=id.getPath();
         // Azalea and flowering azalea are non-full vegetation despite
