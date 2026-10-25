@@ -525,9 +525,23 @@ public final class BuilderScaffolding {
                     ||!level.getBlockState(feet).isAir()
                     ||!level.getBlockState(feet.above()).isAir())
                 return Result.NO_SAFE_TOWER;
+            // The default scaffold state has distance=7 (falling).
+            // A real horizontal span MUST inherit support distance from
+            // the adjacent placed piece, otherwise the server can
+            // immediately schedule it to fall before the next tick.
+            var prior=level.getBlockState(previous.below());
+            int nextDistance=prior.getValue(
+                    net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE)+1;
+            if(nextDistance>ScaffoldBridgeRoute.MAX_NEW_SCAFFOLDS)
+                return Result.NO_SAFE_TOWER;
+            var placed=Blocks.SCAFFOLDING.defaultBlockState()
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,
+                            nextDistance)
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM,
+                            level.getBlockState(block.below()).isAir());
             var receipt=BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING);
             if(receipt==null)return Result.NEED_MATERIALS;
-            if(!level.setBlock(block,Blocks.SCAFFOLDING.defaultBlockState(),3)){
+            if(!level.setBlock(block,placed,3)){
                 BuilderSupplyInventory.refund(table,receipt);
                 return Result.NO_SAFE_TOWER;
             }
