@@ -1672,8 +1672,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
             UUID id=uuid(in,"builder_claim_worker_"+j);
             int index=in.getIntOr("builder_claim_index_"+j,-1);
             if(id!=null&&index>=builderCursor&&index<builderBlocks
-                    &&index-builderCursor<32&&builderWorkerIds().contains(id))
+                    &&index-builderCursor<80&&builderWorkerIds().contains(id)){
                 builderClaims.put(id,index);
+                // Upgrade a previously running one-coordinate assignment
+                // to a real batch, or recover one missing from saved NBT.
+                var batch=builderWorkOrders.computeIfAbsent(id,
+                        k->new java.util.ArrayList<>());
+                if(!batch.contains(index))batch.add(0,index);
+            }
         }
         trackedScaffolds.clear();
         int scaffoldCount=Math.clamp(in.getIntOr("builder_scaffold_count",0),0,256);
