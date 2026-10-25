@@ -264,7 +264,8 @@ public final class BuilderBuildService {
         // Do not let a fresh route to supplies/work overwrite the last
         // meter of ascent, descent, or dismount. The per-entity-tick
         // scaffold controller alone owns movement until safe arrival.
-        if(BuilderScaffolding.isControllingMovement(worker))return;
+        if(BuilderScaffolding.isControllingMovement(worker)
+                ||BuilderTeamGroundTraffic.controlling(worker))return;
         int membership=table.builderWorkerIds().indexOf(worker.getUUID());
         if(membership>=table.crewTarget()&&table.claimedStep(worker.getUUID())<0
                 &&!worker.hasSupplyBox()){
