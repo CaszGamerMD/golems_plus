@@ -19,5 +19,12 @@
   "block.golems_plus.meal_counter": "Meal Pickup Counter",
   "block.golems_plus.fishing_spot": "Fishing Waypoint Flag / Buoy",
   "item.golems_plus.fishing_spot_marker": "Fishing Spot Marker",
-  "item.golems_plus.fishing_bait": "Fisherman's Bait"
+  "item.golems_plus.fishing_bait": "Fisherman's Bait",
+  "item.golems_plus.crane_chassis": "Operating Chassis",
+  "item.golems_plus.crane_boom_extension": "Boom Arm Extension (+30 blocks)",
+  "item.golems_plus.crane_builder_box": "Crane Builder Box",
+  "item.golems_plus.crane_supply_box": "Crane Supply Box",
+  "item.golems_plus.crane_controller": "Crane Controller",
+  "block.golems_plus.crane_rail": "Crane Rail",
+  "entity.golems_plus.building_crane": "Building Crane"
 }

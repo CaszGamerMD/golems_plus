@@ -366,6 +366,8 @@ public final class WorkerNavigation {
     }
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
+        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&com.caszgamermd.golemsplus.crane.CraneService.requestRide(level,builder,target))return true;
         Progress progress=state(mob);
         if(mob.tickCount<progress.yieldUntil)return true;
         if(progress.queuedDoor!=null&&target!=null
@@ -375,6 +377,8 @@ public final class WorkerNavigation {
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem)
             speed=1.0; // nominal 4 m/s from Builder movement attribute .40
         if(target==null||!level.hasChunkAt(target))return false;
+        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&com.caszgamermd.golemsplus.crane.CraneService.requestRide(level,builder,target))return true;
         Progress p=state(mob);
         boolean same=target.equals(p.requested)&&target.equals(p.approach);
         if(same&&!mob.getNavigation().isDone()
@@ -406,6 +410,8 @@ public final class WorkerNavigation {
             speed=1.0; // Builder target: 4 blocks/second on level ground
         }
         if(target==null||!level.hasChunkAt(target))return false;
+        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&com.caszgamermd.golemsplus.crane.CraneService.requestRide(level,builder,target))return true;
         Progress p=state(mob);
         if(mob.tickCount<p.yieldUntil)return true;
         if(p.queuedDoor!=null&&target!=null

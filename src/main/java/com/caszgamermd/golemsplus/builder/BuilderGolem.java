@@ -60,6 +60,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
      */
     @Override protected InteractionResult mobInteract(Player player,
             InteractionHand hand){
+        if(com.caszgamermd.golemsplus.crane.CraneService.operatorClick(this,player,hand))return InteractionResult.SUCCESS;
         if(player.isShiftKeyDown()){
             if(player instanceof net.minecraft.server.level.ServerPlayer recipient
                     &&level() instanceof ServerLevel world){
@@ -136,6 +137,11 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         super.travel(input);
     }
     @Override public void tick(){
+        if(getVehicle() instanceof com.caszgamermd.golemsplus.crane.BuildingCrane){
+            super.tick();
+            if(level() instanceof ServerLevel world)BuilderChunkTickets.track(world,this);
+            return;
+        }
         // Apply doorway clearance before vanilla movement/collision, even
         // while idle, rather than waiting until after a collision occurred.
         if(level() instanceof ServerLevel bodyWorld)

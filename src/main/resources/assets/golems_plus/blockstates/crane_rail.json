@@ -1,0 +1,30 @@
+{
+  "variants": {
+    "facing=up": {
+      "model": "golems_plus:block/crane_rail"
+    },
+    "facing=down": {
+      "model": "golems_plus:block/crane_rail",
+      "x": 180
+    },
+    "facing=north": {
+      "model": "golems_plus:block/crane_rail",
+      "x": 90
+    },
+    "facing=south": {
+      "model": "golems_plus:block/crane_rail",
+      "x": 90,
+      "y": 180
+    },
+    "facing=east": {
+      "model": "golems_plus:block/crane_rail",
+      "x": 90,
+      "y": 90
+    },
+    "facing=west": {
+      "model": "golems_plus:block/crane_rail",
+      "x": 90,
+      "y": 270
+    }
+  }
+}

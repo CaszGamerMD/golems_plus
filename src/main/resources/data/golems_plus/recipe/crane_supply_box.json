@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "B B",
+    "C C",
+    "III"
+  ],
+  "key": {
+    "B": "minecraft:iron_bars",
+    "C": "minecraft:chest",
+    "I": "minecraft:iron_ingot"
+  },
+  "result": {
+    "id": "golems_plus:crane_supply_box",
+    "count": 1
+  }
+}

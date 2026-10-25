@@ -29,6 +29,8 @@ public final class BuilderSupplyInventory {
         return slots;
     }
     public static Container selectedStorage(WorkerStationBlockEntity table){
+        var crane=com.caszgamermd.golemsplus.crane.CraneService.supply(table);
+        if(crane!=null)return crane.parked()?crane:null;
         BlockPos pos=table.builderUnloadingStorage();
         if(pos==null||!(table.getLevel() instanceof ServerLevel world)
                 ||!world.hasChunkAt(pos))return null;
@@ -63,7 +65,10 @@ public final class BuilderSupplyInventory {
     }
     public static Map<String,Integer> available(WorkerStationBlockEntity table){
         Map<String,Integer> stock=new LinkedHashMap<>();
-        for(Container store:sources(table)){
+        var stores=new java.util.ArrayList<Container>(sources(table));
+        var moving=com.caszgamermd.golemsplus.crane.CraneService.supply(table);
+        if(moving!=null&&!stores.contains(moving))stores.add(moving);
+        for(Container store:stores){
             int max=store.getContainerSize();
             for(int i=0;i<max;i++){
                 ItemStack source=store.getItem(i);
@@ -255,6 +260,7 @@ public final class BuilderSupplyInventory {
     public static LoadStatus prepareWorkOrder(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps){
+        if(com.caszgamermd.golemsplus.crane.CraneService.bringSupplies(table,worker))return LoadStatus.MOVING;
         var indices=table.builderWorkOrder(worker.getUUID());
         if(indices.isEmpty())return LoadStatus.MISSING;
         BlockPos depot=table.builderUnloadingStorage();
@@ -769,3 +775,4 @@ public final class BuilderSupplyInventory {
         receipt.source().setChanged();
     }
 }
+

@@ -180,6 +180,7 @@ public final class BuilderBuildService {
         // Wait for the player to craft and place builders beside the table.
     }
     public static void tick(ServerLevel level,BuilderGolem worker){
+        if(com.caszgamermd.golemsplus.crane.CraneService.controls(worker))return;
         BlockPos home=worker.home();
         if(worker.owner()==null||!level.hasChunkAt(home))return;
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)
@@ -466,6 +467,7 @@ public final class BuilderBuildService {
                 // when no walkable route can bring the worker into reach.
                 // Select a safe ascent beside the desired X/Z
                 // and travel to it on foot before placing scaffolding.
+                if(com.caszgamermd.golemsplus.crane.CraneService.requestRide(level,worker,pos))return;
                 var climbing=BuilderScaffolding.reach(level,worker,table,owner,pos,
                         plan.steps());
                 if(climbing==BuilderScaffolding.Result.NEED_MATERIALS){
