@@ -682,7 +682,9 @@ public final class BuilderBuildService {
                 return "CLEARING "+table.builderClearCursor()+"/"
                         +plan.clearing().size()
                         +" | worker claim="+claim+" target="+target
-                        +" | nav="+(worker.getNavigation().isDone()?"idle":"walking")
+                        +" | nav="+com.caszgamermd.golemsplus.worker
+                                .WorkerNavigation.debugStatus(worker)
+                        +" | scaffold="+BuilderScaffolding.debugClimb(worker)
                         +" | "+table.problem();
             }
             ScheduledZones schedule=zoneSchedule(table,plan);
@@ -692,6 +694,9 @@ public final class BuilderBuildService {
             String stage=action==null?"AWAITING TASK":action.phase.name();
             if(index<0)return stage+" | zone tasks="+zone.size()
                     +" | stage="+table.builderWorkOrder(worker.getUUID()).size()
+                    +" | nav="+com.caszgamermd.golemsplus.worker
+                            .WorkerNavigation.debugStatus(worker)
+                    +" | scaffold="+BuilderScaffolding.debugClimb(worker)
                     +" | "+table.problem();
             var current=plan.steps().get(index);
             BlockPos target=new BlockPos(current.x(),current.y(),current.z());
