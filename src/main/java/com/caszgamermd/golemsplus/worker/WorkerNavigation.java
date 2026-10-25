@@ -41,10 +41,10 @@ public final class WorkerNavigation {
     private static final int STALL_TICKS=40;
     // Cheap 5-tick waypoint inspection; full A* only when the goal changes,
     // the path becomes obstructed, or progress genuinely stops.
-    private static final int ROUTE_RETRY=10;
+    private static final int ROUTE_RETRY=20;
     private static final int CHECK_TICKS=5;
     private static final int LOOK_AHEAD=4;
-    private static final int MAX_DESTINATION_PATHS=12;
+    private static final int MAX_DESTINATION_PATHS=16;
     private WorkerNavigation(){}
 
     private static final class Progress {
@@ -167,9 +167,13 @@ public final class WorkerNavigation {
         double half=door?.35:mob.getBbWidth()*.5;
         AABB body=new AABB(x-half,y+.01,z-half,
                 x+half,y+mob.getBbHeight()-.025,z+half);
-        // Closed wooden doors along a route are opened on approach. They
-        // are permitted as *nodes*, but other obstructed samples are not.
-        return world.noCollision(mob,body)||door;
+        // Closed wooden doors are opened on approach. Verify the actual
+        // block collision separately from *other moving workers*. Calling
+        // noCollision alone rejects a valid route while another golem is
+        // standing at a waypoint and makes a flat site look impossible.
+        // Dynamic entities still yield to each other during movement.
+        if(door||world.noCollision(mob,body))return true;
+        return !world.getBlockCollisions(mob,body).iterator().hasNext();
     }
     private static boolean safePath(ServerLevel level,PathfinderMob mob,
                                     Path path,boolean lookAheadOnly){
@@ -182,7 +186,13 @@ public final class WorkerNavigation {
         for(int i=start;i<end;i++){
             Node node=path.getNode(i);
             BlockPos feet=new BlockPos(node.x,node.y,node.z);
-            if(!standingTile(level,mob,feet))return false;
+            // The first native path node can overlap the mover's current
+            // body on a slab/ledge. The worker is already physically there
+            // and needs to be able to step OUT, not fail all routes because
+            // the first sample slightly clips the block under its feet.
+            if(!(i==0&&path.getNodeCount()>1
+                    &&mob.blockPosition().equals(feet))
+                    &&!standingTile(level,mob,feet))return false;
             if(i==start)continue;
             Node previous=path.getNode(i-1);
             double a=floorAt(level,new BlockPos(previous.x,previous.y,previous.z));
@@ -208,6 +218,12 @@ public final class WorkerNavigation {
                         ||partialFloor(level.getBlockState(feet.below()));
                 double y=architecturalStep||Math.abs(a-b)>.60
                         ?Math.max(a,b):a+(b-a)*t;
+                // The game handles a one-block step as a hop, not a
+                // horizontal sweep through the vertical face of the step.
+                // Endpoints were checked for solid body/head collision;
+                // trusting this short native step avoids false rejection
+                // while retaining a <=1.05 block maximum climb.
+                if(Math.abs(a-b)>.60)continue;
                 if(!bodyClear(level,mob,x,y,z))return false;
             }
             if(++checked>120)break; // world chunks are never force-loaded
@@ -255,6 +271,14 @@ public final class WorkerNavigation {
      * navigation may stop two blocks short of the goal; doing that while
      * vacating a future solid block would leave the Builder in danger.
      */
+    /** Evaluate only the actual physical tile, not nearby transient
+     * crowd occupancy. Used to retain a stable Builder approach target
+     * without re-running pathfinding on every construction tick.
+     */
+    public static boolean canStandOn(ServerLevel level,PathfinderMob mob,
+                                     BlockPos target){
+        return target!=null&&standingTile(level,mob,target);
+    }
     public static boolean canReachExact(ServerLevel level,PathfinderMob mob,
                                         BlockPos target){
         if(target==null||!level.hasChunkAt(target))return false;
@@ -272,6 +296,13 @@ public final class WorkerNavigation {
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
             ground.setCanOpenDoors(true);
+        // If the exact safe standing tile was reached on the previous
+        // tick, do not reconstruct the same route and toggle navigation.
+        if(mob.blockPosition().equals(target)
+                &&standingTile(level,mob,target)){
+            p.requested=target.immutable();p.approach=target.immutable();
+            return true;
+        }
         Path path=mob.getNavigation().createPath(target,0);
         if(!safePath(level,mob,path,false)
                 ||!mob.getNavigation().moveTo(path,speed))return false;
@@ -304,7 +335,7 @@ public final class WorkerNavigation {
         if(p.wait>0)return true;
         if(!changed&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
-        if(!changed&&mob.tickCount<p.nextRoute)return false;
+        if(!changed&&mob.tickCount<p.nextRoute)return false; // retry scheduled, not a hard no-path
         // A temporary body-block or a closed door must not permanently
         // blacklist the only valid aisle. Expire bad waypoints after
         // roughly three seconds, then try the new world state.
@@ -319,15 +350,31 @@ public final class WorkerNavigation {
         if(p.weightedRoute.isEmpty()
                 &&mob.blockPosition().distSqr(target)<=20*20){
             Path best=null;BlockPos bestGoal=null;
-            int bestLength=Integer.MAX_VALUE,checked=0;
-            for(Candidate option:candidateGoals(level,mob,target,0)){
-                if(++checked>5)break;
+            double bestCost=Double.MAX_VALUE;
+            int checked=0;
+            // Inspect more than the old five nearest cells. A wall at the
+            // target can obstruct those five while a sixth (or tenth)
+            // position on the same flat surface is easily reachable.
+            for(Candidate option:candidateGoals(level,mob,target,
+                    p.attempts==0?0:(p.attempts%4)+1)){
+                if(++checked>MAX_DESTINATION_PATHS*2
+                        ||best!=null&&checked>8)break;
+                if(option.feet().equals(mob.blockPosition())){
+                    if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
+                            &&mob.distanceToSqr(target.getX()+.5,
+                                    target.getY()+.5,target.getZ()+.5)<=14)
+                        return true; // Already standing within build reach.
+                    continue;
+                }
                 Path candidate=mob.getNavigation().createPath(option.feet(),0);
                 if(!safePath(level,mob,candidate,false))continue;
-                int length=candidate.getNodeCount();
-                if(length<bestLength){
-                    best=candidate;bestGoal=option.feet();
-                    bestLength=length;
+                // Distances along the actual path, then distance from its
+                // reachable endpoint to the requested work location.
+                double cost=candidate.getNodeCount()*10
+                        +Math.sqrt(option.feet().distSqr(target))*4
+                        +(neighborOccupied(level,mob,option.feet())?20:0);
+                if(cost<bestCost){
+                    best=candidate;bestGoal=option.feet();bestCost=cost;
                 }
             }
             if(best!=null&&mob.getNavigation().moveTo(best,speed)){
@@ -364,6 +411,11 @@ public final class WorkerNavigation {
                     mob.blockPosition(),goals,
                     at->standingTile(level,mob,at),
                     at->floorAt(level,at),p.lastBad);
+            if(route!=null&&route.complete()&&route.steps().isEmpty()
+                    &&mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
+                    &&mob.distanceToSqr(target.getX()+.5,
+                            target.getY()+.5,target.getZ()+.5)<=14)
+                return true;
             if(route==null||route.steps().isEmpty()){
                 p.attempts++;
                 p.nextRoute=mob.tickCount+ROUTE_RETRY+Math.floorMod(mob.getId(),5);
@@ -397,6 +449,16 @@ public final class WorkerNavigation {
         p.attempts++;
         p.nextRoute=mob.tickCount+ROUTE_RETRY+Math.floorMod(mob.getId(),5);
         return false;
+    }
+
+    /** A route may legitimately be throttled while it re-plans; that is
+     * NOT proof that the visible terrain is unreachable. Used only for
+     * meaningful Builder Planner diagnostics.
+     */
+    public static boolean retryScheduled(PathfinderMob mob){
+        Progress p=states.get(mob);
+        return p!=null&&p.requested!=null
+                &&(mob.tickCount<p.nextRoute||!mob.getNavigation().isDone());
     }
 
     public static void stop(PathfinderMob mob){

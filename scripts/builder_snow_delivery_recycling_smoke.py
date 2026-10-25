@@ -34,5 +34,6 @@ assert "activeOrder=null;" in station[station.index("public void setPhase("):
                                         station.index("public void clearOrder()")]
 assert '"opaque_ground_base"' in model
 assert "Math.min(count-1,p.routeCursor+distance-1)" in nav
-assert "int length=candidate.getNodeCount();" in nav
+assert "candidate.getNodeCount()*10" in nav
+assert "double bestCost=Double.MAX_VALUE" in nav
 print("PASS: no snow/scaffold deadlock, full material order, courier ownership, job recycling and tooltip")

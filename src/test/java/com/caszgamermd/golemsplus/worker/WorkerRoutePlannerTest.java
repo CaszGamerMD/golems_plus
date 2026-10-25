@@ -82,4 +82,30 @@ final class WorkerRoutePlannerTest {
         assertNull(find(start,List.of(end),Set.of(
                 start,at(1,66,0),at(2,64,0),end)));
     }
+    @Test void flatBuildingWithSeveralValidSidesFindsWalkableApproach(){
+        // Future schematic block may not itself be a standable cell.
+        // A Builder must still find an approach ON the existing ground,
+        // without demanding the center of the future block be walkable.
+        BlockPos start=at(1,81,0);
+        Set<BlockPos> existingFloor=new HashSet<>();
+        for(int x=-6;x<=6;x++)for(int z=-6;z<=6;z++)
+            existingFloor.add(at(x,81,z));
+        BlockPos future=at(0,81,4);
+        existingFloor.remove(future);
+        var route=find(start,List.of(
+                future,at(1,81,4),at(-1,81,4),
+                at(0,81,3),at(0,81,5)),existingFloor);
+        assertNotNull(route);
+        assertTrue(route.complete());
+        assertTrue(existingFloor.contains(route.steps().getLast()));
+        assertTrue(route.steps().size()<=7);
+    }
+    @Test void existingPlatformAllowsAOneBlockStepDownAndBackUp(){
+        Set<BlockPos> surface=Set.of(
+                at(0,82,0),at(1,81,0),at(2,81,0),at(3,82,0));
+        var result=find(at(0,82,0),List.of(at(3,82,0)),surface);
+        assertNotNull(result);
+        assertTrue(result.complete());
+        assertEquals(at(3,82,0),result.steps().getLast());
+    }
 }

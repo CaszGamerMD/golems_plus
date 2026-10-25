@@ -36,13 +36,20 @@ public final class BuilderScaffolding {
         // Only route on real validated physical paths; never teleport.
         for(Direction side:Direction.Plane.HORIZONTAL){
             BlockPos landing=target.relative(side).below();
-            if(level.hasChunkAt(landing)
-                    &&com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .canReachExact(level,worker,landing)){
-                if(com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .routeToExact(level,worker,landing,1.0))
-                    return Result.CLIMBING;
+            if(!level.hasChunkAt(landing))continue;
+            if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .canReachExact(level,worker,landing))continue;
+            // When a Builder is already on a viable existing platform,
+            // it must continue to PLACE rather than re-requesting a route
+            // to its own feet and returning CLIMBING forever.
+            if(worker.distanceToSqr(landing.getX()+.5,
+                    landing.getY()+.5,landing.getZ()+.5)<2.25){
+                worker.setNoGravity(false);
+                return Result.NOT_NEEDED;
             }
+            if(com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeToExact(level,worker,landing,1.0))
+                return Result.CLIMBING;
         }
         var existing=table.scaffoldPositions(worker.getUUID());
         // Do not cling to a tower from a PREVIOUS work order. It can be
