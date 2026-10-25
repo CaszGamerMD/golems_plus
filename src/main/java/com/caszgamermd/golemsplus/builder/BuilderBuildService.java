@@ -317,26 +317,35 @@ public final class BuilderBuildService {
             // three-layer pouch, THEN walks to the construction site.
             // Never debit a remote chest while standing at the build.
             if(step.requiredItem()!=null
-                    &&worker.carriedCount(state.item())<=0
-                    &&!BuilderSupplyInventory.loadForLayer(
-                            level,worker,table,plan.steps(),index)){
-                // Release this assignment temporarily: another real block
-                // in the SAME layer may already be available. A missing
-                // material does not consume a step or skip to the next Y.
-                table.waitForBuilderMaterial(worker.getUUID(),index,
-                        level.getGameTime());
-                if(BuilderWarehouseCoordinator.request(level,worker,table,
-                        owner,plan.steps()))return;
-                // Do not hide a more useful warehouse diagnostic behind
-                // the generic "site storage is empty" warning. A courier
-                // request can be retried automatically when a PTP is freed.
-                String problem=table.problem();
-                if(problem.isBlank()||(!problem.contains("Warehouse")
-                        &&!problem.contains("output")&&!problem.contains("PTP")
-                        &&!problem.contains("shulker")))
-                    table.setProblem("Builder needs "+step.requiredItem()+
-                            " in on-site storage; waiting for warehouse delivery");
-                return;
+                    &&worker.carriedCount(state.item())<=0){
+                var loading=BuilderSupplyInventory.loadForLayerStatus(
+                        level,worker,table,plan.steps(),index);
+                if(loading==BuilderSupplyInventory.LoadStatus.MOVING)
+                    return; // KEEP this step while walking to real stock.
+                if(loading==BuilderSupplyInventory.LoadStatus.MISSING){
+                    // Only release for another worker when material is truly
+                    // unavailable to this worker. Releasing while moving
+                    // previously aborted navigation every 12 ticks.
+                    table.waitForBuilderMaterial(worker.getUUID(),index,
+                            level.getGameTime());
+                    int teammates=BuilderSupplyInventory.carriedByTeammates(
+                            level,worker,table,state.item());
+                    if(teammates>0){
+                        table.setProblem("Builder teammate is carrying "
+                                +teammates+" "+step.requiredItem()
+                                +"; reorganizing crew pickup");
+                        return;
+                    }
+                    if(BuilderWarehouseCoordinator.request(level,worker,table,
+                            owner,plan.steps()))return;
+                    String problem=table.problem();
+                    if(problem.isBlank()||(!problem.contains("Warehouse")
+                            &&!problem.contains("output")&&!problem.contains("PTP")
+                            &&!problem.contains("shulker")))
+                        table.setProblem("Builder needs "+step.requiredItem()
+                                +" in OnSite Storage or a crew pouch");
+                    return;
+                }
             }
             double horizontal=Math.pow(worker.getX()-(pos.getX()+.5),2)
                     +Math.pow(worker.getZ()-(pos.getZ()+.5),2);
