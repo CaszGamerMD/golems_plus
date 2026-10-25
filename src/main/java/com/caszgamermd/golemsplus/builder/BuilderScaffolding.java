@@ -90,6 +90,18 @@ public final class BuilderScaffolding {
      * the Builder, the job loop must NOT switch back to normal A* before
      * the scaffold's actual landing height is reached.
      */
+    /** Exclusive scaffold motion wins over the Planner's five-tick
+     * work/navigation decisions. Normal A* resumes automatically after
+     * a verified arrival/dismount (or after a safe abort).
+     */
+    public static boolean isControllingMovement(BuilderGolem worker){
+        return sessions.containsKey(worker)||exiting.containsKey(worker);
+    }
+    public static void cancel(BuilderGolem worker){
+        clearMotion(worker);
+        returning.remove(worker);
+        exiting.remove(worker);
+    }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
         ClimbSession session=sessions.get(worker);
         if(session==null||session.descending()
@@ -169,6 +181,11 @@ public final class BuilderScaffolding {
         if(!climbingNow(level,worker))return false;
         ClimbSession session=sessions.get(worker);
         if(session==null)return false;
+        // Refresh the active permit from actual controller ticks, not
+        // arbitrary Planner calls. A 200-block climb must never expire
+        // merely because a material check was offset by several ticks.
+        sessions.put(worker,new ClimbSession(session.column(),
+                session.stopY(),session.descending(),level.getGameTime()+30));
         double remain=session.stopY()-worker.getY();
         MotionWatch watch=progress.computeIfAbsent(worker,
                 ignored->new MotionWatch(session.column(),
@@ -359,6 +376,7 @@ public final class BuilderScaffolding {
         }
         for(Tower tower:found){
             BlockPos base=tower.base();
+            if(avoided(level,worker,base))continue;
             // Do not turn a normal ground trip into a journey to a tower.
             if(worker.getY()<=base.getY()+1.2)continue;
             if(worker.getY()>tower.topY()+3.5)continue;
@@ -512,9 +530,17 @@ public final class BuilderScaffolding {
             if(!level.hasChunkAt(p)||!level.mayInteract(player,p))
                 return Result.NO_SAFE_TOWER;
             if(level.getBlockState(p).is(Blocks.SCAFFOLDING)){
-                if(!table.isTrackedScaffold(p))return Result.NO_SAFE_TOWER;
+                if(!table.scaffoldPositions(worker.getUUID()).contains(p)){
+                    avoided.put(worker,new AvoidColumn(base.immutable(),
+                            level.getGameTime()+120));
+                    return Result.NO_SAFE_TOWER;
+                }
             }else if(level.getBlockState(p).isAir())needed++;
-            else return Result.NO_SAFE_TOWER;
+            else{
+                avoided.put(worker,new AvoidColumn(base.immutable(),
+                        level.getGameTime()+120));
+                return Result.NO_SAFE_TOWER;
+            }
         }
         var load=BuilderSupplyInventory.loadScaffold(level,worker,table,needed);
         if(load==BuilderSupplyInventory.ScaffoldLoad.MOVING)return Result.CLIMBING;
@@ -576,7 +602,13 @@ public final class BuilderScaffolding {
                 if(!level.getBlockState(base.below()).isFaceSturdy(level,
                         base.below(),Direction.UP))continue;
                 boolean clear=true;
-                for(int y=base.getY();y<target.getY();y++){
+                // Only probe the next material-backed extension. Later
+                // obstructions are reconsidered when the worker reaches
+                // that elevation rather than refusing a 200-block tower
+                // before its first sixteen blocks are built.
+                int previewTop=ScaffoldVerticalRoute.stageTop(base.getY(),
+                        base.getY()-1,target.getY()-1);
+                for(int y=base.getY();y<=previewTop;y++){
                     BlockPos at=new BlockPos(base.getX(),y,base.getZ());
                     if(!level.hasChunkAt(at)||!level.getBlockState(at).isAir()
                             ||table.isTrackedScaffold(at)){

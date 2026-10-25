@@ -251,9 +251,14 @@ public final class BuilderBuildService {
             return;
         }
         if(table.phase()==WorkerPhase.PAUSED){
+            BuilderScaffolding.cancel(worker);
             worker.getNavigation().stop();
             worker.setNoGravity(false);return;
         }
+        // Do not let a fresh route to supplies/work overwrite the last
+        // meter of ascent, descent, or dismount. The per-entity-tick
+        // scaffold controller alone owns movement until safe arrival.
+        if(BuilderScaffolding.isControllingMovement(worker))return;
         int membership=table.builderWorkerIds().indexOf(worker.getUUID());
         if(membership>=table.crewTarget()&&table.claimedStep(worker.getUUID())<0
                 &&!worker.hasSupplyBox()){
