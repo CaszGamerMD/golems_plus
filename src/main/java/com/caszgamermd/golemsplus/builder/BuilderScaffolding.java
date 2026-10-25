@@ -451,6 +451,7 @@ public final class BuilderScaffolding {
      */
     public static boolean descendForTravel(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
+        if(BuilderScaffoldBridge.returnToAnchor(level,worker,table))return true;
         // A long tower may require more than 30 ticks of descent.
         // Renew the permit while this worker's material/lower-floor task
         // still requests descent, without restarting the physics session.
