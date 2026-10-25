@@ -730,8 +730,13 @@ public final class WorkerNavigation {
         if(p.queuedDoor==null||p.requested==null
                 ||!WorkerDoorTraffic.owns(level,p.queuedDoor,mob))return false;
         BlockPos door=p.queuedDoor;
-        if(mob.distanceToSqr(door.getX()+.5,door.getY()+.5,
-                door.getZ()+.5)>3.0)return false;
+        // Start escorting at the near-side approach (up to four blocks
+        // away), not only once the Builder has already reached the
+        // doorway. Vanilla A* can report no path while an OPEN wooden
+        // door/fence gate is perfectly physically passable.
+        double dist=mob.distanceToSqr(door.getX()+.5,
+                mob.getY(),door.getZ()+.5);
+        if(dist>16.0)return false;
         if(!p.finishingDoor&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS)return false;
         BlockState gate=level.getBlockState(door);
@@ -741,6 +746,16 @@ public final class WorkerNavigation {
                 +(p.requested.getZ()-door.getZ())*facing.getStepZ();
         if(Math.abs(advance)<.5)return false;
         Direction out=advance>0?facing:facing.getOpposite();
+        // Only take the straight physical corridor when this worker is
+        // aligned with its real door opening. Others continue using A*
+        // to approach it, so we never steer through a wall at an angle.
+        double side=out.getStepX()==0
+                ?Math.abs(mob.getX()-door.getX()-.5)
+                :Math.abs(mob.getZ()-door.getZ()-.5);
+        if(side>.24)return false;
+        double before=(mob.getX()-door.getX()-.5)*out.getStepX()
+                +(mob.getZ()-door.getZ()-.5)*out.getStepZ();
+        if(before>2.75||before<-4.0)return false;
         BlockPos exit=null;
         // Prefer two blocks past the opening so the following worker has
         // room to enter; one-block fallback is used only when safe.
@@ -804,7 +819,7 @@ public final class WorkerNavigation {
                 p.doorLastDistance=doorDistance;
                 p.doorLastProgressTick=mob.tickCount;
             }else if(mob.tickCount-p.doorLastProgressTick>100
-                    &&doorDistance>1.8){
+                    &&doorDistance>16.0){
                 WorkerDoorTraffic.yieldStalled(level,p.queuedDoor,mob);
                 p.waitingDoor=true;
                 p.doorStandby=null;p.parkingAtDoor=false;
