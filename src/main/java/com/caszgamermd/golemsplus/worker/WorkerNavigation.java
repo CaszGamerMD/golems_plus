@@ -57,7 +57,7 @@ public final class WorkerNavigation {
         boolean narrowDoorway;
         // Per-door traffic reservation: one crossing at a time, but no
         // cross-door or cross-site global lock.
-        BlockPos queuedDoor,doorStandby;
+        BlockPos queuedDoor,doorStandby,doorExit;
         boolean waitingDoor,parkingAtDoor,finishingDoor;
         int doorLastProgressTick;
         double doorLastDistance=Double.POSITIVE_INFINITY;
@@ -341,7 +341,7 @@ public final class WorkerNavigation {
     }
     private static void clearDoor(ServerLevel level,PathfinderMob mob,Progress p){
         if(p.queuedDoor!=null)WorkerDoorTraffic.release(level,p.queuedDoor,mob);
-        p.queuedDoor=null;p.doorStandby=null;
+        p.queuedDoor=null;p.doorStandby=null;p.doorExit=null;
         p.waitingDoor=false;p.parkingAtDoor=false;p.finishingDoor=false;
         p.doorLastDistance=Double.POSITIVE_INFINITY;
         p.doorLastProgressTick=mob.tickCount;
@@ -729,6 +729,18 @@ public final class WorkerNavigation {
                                            Progress p){
         if(p.queuedDoor==null||p.requested==null
                 ||!WorkerDoorTraffic.owns(level,p.queuedDoor,mob))return false;
+        // Keep the same far-side landing until the entity is ACTUALLY
+        // there. Previously the queue released at 1.25 blocks from the
+        // door and vanilla A* could not restart from mid-crossing.
+        if(p.finishingDoor&&p.doorExit!=null
+                &&mob.distanceToSqr(p.doorExit.getX()+.5,
+                        p.doorExit.getY(),p.doorExit.getZ()+.5)<.65
+                &&mob.onGround()){
+            clearDoor(level,mob,p);
+            p.nextRoute=0;
+            mob.getNavigation().stop();
+            return true;
+        }
         BlockPos door=p.queuedDoor;
         // Start escorting at the near-side approach (up to four blocks
         // away), not only once the Builder has already reached the
@@ -756,16 +768,19 @@ public final class WorkerNavigation {
         double before=(mob.getX()-door.getX()-.5)*out.getStepX()
                 +(mob.getZ()-door.getZ()-.5)*out.getStepZ();
         if(before>2.75||before<-4.0)return false;
-        BlockPos exit=null;
-        // Prefer two blocks past the opening so the following worker has
-        // room to enter; one-block fallback is used only when safe.
-        for(int distance:new int[]{2,3,1}){
-            BlockPos candidate=door.relative(out,distance);
-            if(!standingTile(level,mob,candidate)
-                    ||neighborOccupied(level,mob,candidate))continue;
-            exit=candidate;break;
+        BlockPos exit=p.doorExit;
+        if(exit==null){
+            // Select once; don't swap exit targets as the worker crosses.
+            // Two blocks beyond the threshold avoids blocking next user.
+            for(int distance:new int[]{2,3,1}){
+                BlockPos candidate=door.relative(out,distance);
+                if(!standingTile(level,mob,candidate)
+                        ||neighborOccupied(level,mob,candidate))continue;
+                exit=candidate;break;
+            }
         }
         if(exit==null)return false; // no safe place; never push into a wall
+        p.doorExit=exit.immutable();
         if(!isOpenPassage(gate))setPassageOpen(level,mob,door,true);
         p.finishingDoor=true;
         p.waitingDoor=false;
@@ -805,13 +820,14 @@ public final class WorkerNavigation {
     private static boolean doorTrafficTick(ServerLevel level,PathfinderMob mob,Progress p){
         if(p.queuedDoor!=null){
             if(!handDoor(level,p.queuedDoor)
-                    ||WorkerDoorTraffic.crossed(level,p.queuedDoor,mob)
+                    ||!p.finishingDoor
+                        &&WorkerDoorTraffic.crossed(level,p.queuedDoor,mob)
                     ||mob.distanceToSqr(p.queuedDoor.getX()+.5,
                             p.queuedDoor.getY()+.5,p.queuedDoor.getZ()+.5)>64){
                 WorkerDoorTraffic.release(level,p.queuedDoor,mob);
                 p.queuedDoor=null;p.waitingDoor=false;
                 p.doorStandby=null;p.parkingAtDoor=false;p.finishingDoor=false;
-                p.nextRoute=0;
+                p.doorExit=null;p.nextRoute=0;
             }
         }
         if(p.queuedDoor==null&&p.requested!=null){
@@ -869,7 +885,7 @@ public final class WorkerNavigation {
                 return true; // one worker finishes its crossing at a time
             return false;
         }
-        p.finishingDoor=false;
+        p.finishingDoor=false;p.doorExit=null;
         if(!p.waitingDoor){
             p.waitingDoor=true;p.parkingAtDoor=false;p.doorStandby=null;
             mob.getNavigation().stop();
