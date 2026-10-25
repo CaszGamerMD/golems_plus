@@ -190,7 +190,8 @@ public final class BuilderScaffolding {
             for(Direction side:Direction.Plane.HORIZONTAL){
                 BlockPos p=new BlockPos(tower.base().getX(),worker.blockPosition().getY(),
                         tower.base().getZ()).relative(side).offset(0,dy,0);
-                if(Math.abs(p.getY()-tower.topY()-1)>2
+                if(p.getY()<tower.base().getY()
+                        ||p.getY()>tower.topY()+2
                         ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                                 .canStandOn(level,worker,p))continue;
                 choices.add(p);
@@ -318,14 +319,26 @@ public final class BuilderScaffolding {
         // tried to walk through buildings to reach it.
         if(approachX*approachX+approachZ*approachZ>1.20){
             clearMotion(worker);
-            // Existing scaffolding is not an ordinary walkable A* node.
-            // Approach its unobstructed side from genuine ground, then
-            // let the continuous climb session enter the column.
-            Direction side=Math.abs(approachX)>=Math.abs(approachZ)
-                    ?(approachX>=0?Direction.EAST:Direction.WEST)
-                    :(approachZ>=0?Direction.SOUTH:Direction.NORTH);
-            BlockPos approach=level.getBlockState(base).is(Blocks.SCAFFOLDING)
-                    ?base.relative(side).immutable():base;
+            // Existing scaffolding is not a walkable A* node. When a
+            // Builder is already on an upper platform it must return to
+            // that SAME elevation beside the tower, rather than walking
+            // to its ground-floor base through completed walls.
+            BlockPos approach=null;
+            if(level.getBlockState(base).is(Blocks.SCAFFOLDING)
+                    &&worker.getY()>base.getY()+1.2){
+                int high=existing.stream()
+                        .filter(at->at.getX()==base.getX()
+                                &&at.getZ()==base.getZ())
+                        .mapToInt(BlockPos::getY).max().orElse(base.getY());
+                approach=returnLanding(level,worker,new Tower(base,high));
+            }
+            if(approach==null){
+                Direction side=Math.abs(approachX)>=Math.abs(approachZ)
+                        ?(approachX>=0?Direction.EAST:Direction.WEST)
+                        :(approachZ>=0?Direction.SOUTH:Direction.NORTH);
+                approach=level.getBlockState(base).is(Blocks.SCAFFOLDING)
+                        ?base.relative(side).immutable():base;
+            }
             if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .routeToExact(level,worker,approach,1.0))
                 com.caszgamermd.golemsplus.worker.WorkerNavigation
