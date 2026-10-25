@@ -87,8 +87,14 @@ public final class BuilderWarehouseCoordinator {
             return;
         }
         if(BuilderMaterialDemand.outstandingRemaining(
-                table.builderRemaining(),staged,Map.of()).isEmpty())
+                table.builderRemaining(),staged,Map.of()).isEmpty()){
             table.requestBuilderShipmentCancellation();
+            if(table.supplyRunner()!=null
+                    &&level.getEntity(table.supplyRunner()) instanceof
+                            BuilderGolem courier
+                    &&!courier.hasSupplyBox())
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(courier);
+        }
     }
     /** Table-side inbound notification, including while no golem is near. */
     /** Cancel an outstanding ticket only after the warehouse confirms

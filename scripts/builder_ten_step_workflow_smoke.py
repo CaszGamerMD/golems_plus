@@ -29,7 +29,9 @@ assert "BuilderScaffolding.retrieve(level,worker,table,false);" in service
 assert "public static Map<String,Integer> outstanding(" in demand
 assert "for(int i=cursor;i<steps.size();i++)" in demand
 assert "manifest.size()>=16" in demand
-assert "BuilderMaterialDemand.outstanding(" in warehouse
+assert "BuilderMaterialDemand.outstandingRemaining(" in warehouse
+assert "table.builderRemaining()" in warehouse
+assert "reconcileTicket(" in warehouse
 assert "if(level.getGameTime()%80==0)" not in service  # compound condition, not standalone
 assert "&&level.getGameTime()%80==0)" in service
 assert "primeWarehouse(level,table);" in service

@@ -21,6 +21,8 @@ jobs:
         run: python3 scripts/builder_ignore_plants_smoke.py
       - name: Verify Builders vacate placement cells safely
         run: python3 scripts/builder_placement_space_smoke.py
+      - name: Verify Builder zoned scheduling and reconciled warehouse stock
+        run: python3 scripts/builder_zoned_workflow_smoke.py
       - name: Validate ten-coordinate Builder orders and whole-job warehouse supply
         run: python3 scripts/builder_ten_step_workflow_smoke.py
       - name: Verify Builder support deferral and connected-block safety

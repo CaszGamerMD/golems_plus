@@ -61,8 +61,15 @@ public final class BuilderScaffolding {
         if(approachX*approachX+approachZ*approachZ>1.20){
             worker.setNoGravity(false);
             if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeToExact(level,worker,base,1.0))
-                return Result.NO_SAFE_TOWER;
+                    .routeToExact(level,worker,base,1.0)){
+                // Vanilla exact-path range may be limited on a large
+                // schematic. Travel toward the X/Z first, then validate
+                // the exact foot position once within local navigation.
+                if(worker.blockPosition().distSqr(base)>16*16)
+                    com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .routeTo(level,worker,base,1.0);
+                else return Result.NO_SAFE_TOWER;
+            }
             return Result.CLIMBING;
         }
         int top=target.getY()-1;
@@ -148,8 +155,10 @@ public final class BuilderScaffolding {
                                 &&step.z()==at.getZ()){clear=false;break;}
                     if(!clear)break;
                 }
-                if(clear&&com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .canReachExact(level,worker,base))return base;
+                if(clear&&(worker.blockPosition().distSqr(base)>16*16
+                        ||com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .canReachExact(level,worker,base)))
+                    return base;
             }
         }
         return null;

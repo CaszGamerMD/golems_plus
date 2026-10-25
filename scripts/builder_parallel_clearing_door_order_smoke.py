@@ -23,12 +23,12 @@ assert 'table.completeBuilderClear(worker.getUUID(),index,false)' in site
 assert 'table.completeBuilderClear(worker.getUUID(),index,true)' in site
 assert "boolean courier=worker.getUUID().equals(table.supplyRunner());" in build
 assert 'if(!courier||table.builderWorkerIds().size()==1)' in build
-assert 'for(UUID id:table.builderWorkerIds())' not in build[build.index("if(table.builderClearCursor()<plan.clearing().size()){"):build.index("// All workers finish the current bottommost layer")]
+assert 'for(UUID id:table.builderWorkerIds())' not in build[build.index("if(table.builderClearCursor()<plan.clearing().size()){"):build.index("// Each assigned X/Z zone progresses")]
 assert "builderClearClaims=new HashMap" in table
 assert "builderClearVerified=new java.util.HashSet" in table
 assert "builder_clear_verified_count" in table
 assert "while(builderClearVerified.remove(builderClearCursor))" in table
-assert 'BuilderMaterialDemand.outstanding(' in warehouse
+assert 'BuilderMaterialDemand.outstandingRemaining(' in warehouse
 assert 'warehouseStock==null?Map.of():warehouseStock' in warehouse
 assert 'needed.replaceAll' not in warehouse[warehouse.index('public static boolean queueMaterials('):warehouse.index('public static boolean cancelShipment(')]
 assert 'BuilderWarehousePort.request(level,computer,table.getBlockPos(),' in warehouse

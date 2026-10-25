@@ -246,6 +246,8 @@ public final class BuilderBuildService {
         }
         try{
             Cache plan=cache(table,worker);
+            if(table.supplyRequest()!=null&&!worker.hasSupplyBox())
+                BuilderWarehouseCoordinator.reconcileTicket(level,table);
             // Reserve the next actual construction materials *before*
             // walking to a placement that would otherwise leave the crew
             // stalled waiting for a block. Warehouse golems can prepare a

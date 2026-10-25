@@ -263,6 +263,8 @@ public final class WorkerNavigation {
     }
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
+        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem)
+            speed=1.0; // nominal 4 m/s from Builder movement attribute .40
         if(target==null||!level.hasChunkAt(target))return false;
         Progress p=state(mob);
         boolean same=target.equals(p.requested)&&target.equals(p.approach);
@@ -282,9 +284,11 @@ public final class WorkerNavigation {
 
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
                                   double speed){
-        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder)
+        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder){
             com.caszgamermd.golemsplus.builder.BuilderChunkTickets
                     .destination(level,builder,target);
+            speed=1.0; // Builder target: 4 blocks/second on level ground
+        }
         if(target==null||!level.hasChunkAt(target))return false;
         Progress p=state(mob);
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
