@@ -73,6 +73,17 @@ public final class BuilderDoorwayGameTest {
                 helper.fail("Builder centered/stationary in "+(gate?"gate":"door")
                         +" pos="+worker.position()+" entered="+entered[0]
                         +" door="+world.getBlockState(door)
+                        +" bounds="+worker.getBoundingBox()
+                        +" width="+worker.getBbWidth()
+                        +" velocity="+worker.getDeltaMovement()
+                        +" grounded="+worker.onGround()
+                        +" aheadCollisionFree="+world.noCollision(worker,
+                                worker.getBoundingBox().move(.16,0,0))
+                        +" blockCollisions="+world.getBlockCollisions(worker,
+                                worker.getBoundingBox().move(.16,0,0))
+                                .iterator().hasNext()
+                        +" nextBlock="+world.getBlockState(
+                                worker.blockPosition().relative(Direction.EAST))
                         +" nav="+WorkerNavigation.debugStatus(worker));
                 return;
             }
