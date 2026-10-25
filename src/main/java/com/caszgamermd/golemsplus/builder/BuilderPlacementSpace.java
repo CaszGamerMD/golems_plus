@@ -152,7 +152,7 @@ public final class BuilderPlacementSpace {
         // Nearest cardinal cells first, including legal one-block steps,
         // then a two-block perimeter. These are work positions, not the
         // larger stand-clear buffer used when vacating a new solid block.
-        for(int radius=1;radius<=2;radius++)
+        for(int radius=1;radius<=3;radius++)
             for(int dx=-radius;dx<=radius;dx++)
                 for(int dz=-radius;dz<=radius;dz++){
                     if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)continue;
@@ -183,6 +183,16 @@ public final class BuilderPlacementSpace {
         }
         workApproaches.remove(worker);
         return null;
+    }
+
+    /** The physical position is not fixed forever: a player or teammate
+     * can obstruct it after path calculation. Drop ONLY this worker's
+     * approach and re-search without disturbing any other Builder.
+     */
+    public static void invalidateApproach(BuilderGolem worker,BlockPos target){
+        Approach approach=workApproaches.get(worker);
+        if(approach!=null&&approach.target().equals(target))
+            workApproaches.remove(worker);
     }
 
     /** @return true only when the future block volume is clear of workers. */
