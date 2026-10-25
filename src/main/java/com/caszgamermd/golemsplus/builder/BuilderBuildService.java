@@ -258,7 +258,19 @@ public final class BuilderBuildService {
             int limit=table.builderCursor()+1;
             while(limit<plan.steps().size()&&plan.steps().get(limit).y()==layer)
                 limit++;
-            int index=table.claimBuilderStep(worker.getUUID(),limit);
+            // Existing materials are REAL items in each Builder's pouch.
+            // Prioritize construction cells needing what this worker already
+            // carries, before assigning it work that another worker has
+            // 300+ of and incorrectly reporting a warehouse shortage.
+            java.util.Set<String> carriedItems=new java.util.HashSet<>();
+            for(int slot=0;slot<worker.getContainerSize();slot++){
+                var stack=worker.getItem(slot);
+                if(!stack.isEmpty())carriedItems.add(
+                        net.minecraft.core.registries.BuiltInRegistries.ITEM
+                            .getKey(stack.getItem()).toString());
+            }
+            int index=table.claimBuilderStep(worker.getUUID(),limit,
+                    plan.steps(),carriedItems);
             if(index<0)return; // wait for current layer assignments to finish
             var step=plan.steps().get(index);
             BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
