@@ -149,8 +149,16 @@ public final class CraneDomeCollisionGameTest {
                     boolean swept=CraneMovement.swept(world,crane,
                             prev.add(loadOffset),next.add(loadOffset),prev,next);
                     if(!supported||!swept){
+                        AABBDetails lastDetail=new AABBDetails(world,crane,
+                                prev,next,loadOffset);
                         firstBroken="from "+last+" to "+current+" support="+supported
-                                +" swept="+swept;
+                                +" swept="+swept+" startLoaded="+world.hasChunkAt(last)
+                                +" nextLoaded="+world.hasChunkAt(current)
+                                +" poseStart="+CraneMovement.pose(world,crane,
+                                        prev.add(loadOffset),prev)
+                                +" poseEnd="+CraneMovement.pose(world,crane,
+                                        next.add(loadOffset),next)
+                                +" reason="+lastDetail.inspect();
                         break;
                     }
                     validEdges++;
@@ -186,6 +194,27 @@ public final class CraneDomeCollisionGameTest {
         } finally {
             if(fixture!=null)try{Files.deleteIfExists(fixture);}
                 catch(Exception ignored){}
+        }
+    }
+    private record AABBDetails(net.minecraft.server.level.ServerLevel world,
+            BuildingCrane crane,Vec3 prev,Vec3 next,Vec3 offset){
+        String inspect(){
+            var anchor=prev.lerp(next,.5);
+            var load=anchor.add(offset);
+            var boxes=java.util.List.of(CraneMovement.chassis(anchor),
+                    CraneMovement.load(crane,load));
+            StringBuilder report=new StringBuilder();
+            for(var box:boxes){
+                boolean chunks=true;
+                for(BlockPos p:BlockPos.betweenClosed(
+                        BlockPos.containing(box.minX,box.minY,box.minZ),
+                        BlockPos.containing(box.maxX,box.maxY,box.maxZ)))
+                    if(!world.hasChunkAt(p))chunks=false;
+                report.append(" loaded=").append(chunks)
+                        .append(" clear=").append(CraneMovement.clear(world,crane,box))
+                        .append(" box=").append(box);
+            }
+            return report.toString();
         }
     }
 }
