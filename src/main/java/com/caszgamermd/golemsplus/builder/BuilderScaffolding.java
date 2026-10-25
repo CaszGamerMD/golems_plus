@@ -24,7 +24,7 @@ public final class BuilderScaffolding {
      * ordinary A* must not override it until the vertical job completes.
      */
     private record ClimbSession(BlockPos column,double stopY,
-                                boolean descending,long expires){}
+                                boolean descending,long expires,net.minecraft.world.phys.Vec3 lastProgress){}
     private static final java.util.Map<BuilderGolem,ClimbSession> sessions=
             new java.util.WeakHashMap<>();
     private BuilderScaffolding(){}
@@ -73,14 +73,19 @@ public final class BuilderScaffolding {
         if(session==null)return false;
         double remain=session.stopY()-worker.getY();
         if((session.descending()&&remain>=-.16)
-                ||(!session.descending()&&remain<=.16)){
+                ||(!session.descending()&&remain<=0)){
             clearMotion(worker);
             return false;
+        }
+        if(worker.position().distanceToSqr(session.lastProgress())>.01){
+            session=new ClimbSession(session.column(),session.stopY(),session.descending(),
+                    level.getGameTime()+60,worker.position());
+            sessions.put(worker,session);
         }
         worker.getNavigation().stop();
         double cx=session.column().getX()+.5,cz=session.column().getZ()+.5;
         double horizontal=Math.hypot(worker.getX()-cx,worker.getZ()-cz);
-        if(horizontal>.30){
+        if(horizontal>Math.max(.04,(1-worker.getBbWidth())*.5-.02)){
             // Physically enter the scaffold footprint. Never teleport and
             // never force vertical motion from alongside a solid wall.
             worker.setNoGravity(false);
@@ -109,8 +114,11 @@ public final class BuilderScaffolding {
                               BlockPos column,double stopY,boolean down){
         // A session is renewed by the owning Builder task, never shared
         // across colleagues or over a remote scaffold.
+        ClimbSession active=sessions.get(worker);
+        if(active!=null&&active.column().equals(column)
+                &&active.stopY()==stopY&&active.descending()==down)return;
         sessions.put(worker,new ClimbSession(column.immutable(),stopY,down,
-                level.getGameTime()+30));
+                level.getGameTime()+60,worker.position()));
         com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
         worker.getNavigation().stop();
     }
@@ -123,13 +131,15 @@ public final class BuilderScaffolding {
         var owned=table.scaffoldPositions(worker.getUUID());
         if(owned.isEmpty())return false;
         BlockPos column=owned.stream()
+                .filter(p->Math.abs(worker.getX()-p.getX()-.5)<=1.05
+                        &&Math.abs(worker.getZ()-p.getZ()-.5)<=1.05)
                 .min(Comparator.comparingInt(BlockPos::getY)).orElse(null);
         if(column==null||!level.getBlockState(column).is(Blocks.SCAFFOLDING))
             return false;
         double cx=column.getX()+.5,cz=column.getZ()+.5;
         if(Math.abs(worker.getX()-cx)>1.05
                 ||Math.abs(worker.getZ()-cz)>1.05)return false;
-        double bottom=column.getY()+1.0;
+        double bottom=column.getY();
         if(worker.getY()<=bottom+.16){
             clearMotion(worker);
             return false;
@@ -162,6 +172,7 @@ public final class BuilderScaffolding {
                     int dx=p.getX()-target.getX(),dz=p.getZ()-target.getZ();
                     return dx*dx+dz*dz<=5;
                 })
+                .filter(p->level.getBlockState(p).is(Blocks.SCAFFOLDING))
                 .min(Comparator.comparingInt(BlockPos::getY)).orElse(null);
         if(base==null)for(Direction side:Direction.Plane.HORIZONTAL){
             BlockPos landing=target.relative(side).below();
@@ -207,6 +218,11 @@ public final class BuilderScaffolding {
         }
         int top=target.getY()-1;
         if(top-base.getY()+1>MAX_HEIGHT)return Result.NO_SAFE_TOWER;
+        for(int y=top+1;y<top+1+Math.ceil(worker.getBbHeight());y++){
+            BlockPos head=new BlockPos(base.getX(),y,base.getZ());
+            if(!level.hasChunkAt(head)||!level.getBlockState(head)
+                    .getCollisionShape(level,head).isEmpty())return Result.NO_SAFE_TOWER;
+        }
         int needed=0;
         for(int y=base.getY();y<=top;y++){
             var p=new BlockPos(base.getX(),y,base.getZ());
@@ -333,3 +349,4 @@ public final class BuilderScaffolding {
         }
     }
 }
+
