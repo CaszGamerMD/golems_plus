@@ -28,8 +28,8 @@ import net.minecraft.world.level.block.Blocks;
  * the next. The Builder's inventory and its Planner still own every item.
  */
 public final class BuilderScaffoldBridge {
-    private static final int MAX_SPAN=12; // piers every five steps keep spans vanilla-supported
-    private static final int MAX_SEARCH=14;
+    private static final int MAX_SPAN=20; // real supported piers every five blocks
+    private static final int MAX_SEARCH=20;
     private static final int[][] DIRECTIONS={{1,0},{-1,0},{0,1},{0,-1}};
     private record Route(BlockPos target,List<BlockPos> cells,int next,long created){}
     private record Walk(BlockPos destination,long expires){}
