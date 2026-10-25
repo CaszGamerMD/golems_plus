@@ -545,8 +545,15 @@ public final class BuilderScaffolding {
             // the adjacent placed piece, otherwise the server can
             // immediately schedule it to fall before the next tick.
             var prior=level.getBlockState(previous.below());
-            int nextDistance=prior.getValue(
-                    net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE)+1;
+            BlockPos priorSupport=previous.below().below();
+            var belowPrior=level.getBlockState(priorSupport);
+            // A real vertical scaffold column is distance zero even if
+            // its cached block state has not yet received its next tick.
+            int parentDistance=belowPrior.is(Blocks.SCAFFOLDING)
+                    ||belowPrior.isFaceSturdy(level,priorSupport,Direction.UP)
+                    ?0:prior.getValue(
+                        net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE);
+            int nextDistance=parentDistance+1;
             if(nextDistance>ScaffoldBridgeRoute.MAX_NEW_SCAFFOLDS)
                 return Result.NO_SAFE_TOWER;
             var placed=Blocks.SCAFFOLDING.defaultBlockState()
