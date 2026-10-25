@@ -505,22 +505,10 @@ public final class BuilderBuildService {
                 &&previous.rotation()==table.builderRotation()
                 &&previous.mirror()==table.builderMirror()
                 &&previous.origin().equals(table.builderOrigin()))return previous;
-        if(!table.hasPlacedSchematic())throw new IllegalArgumentException("No placed schematic");
-        Path file=FabricLoader.getInstance().getConfigDir()
-                .resolve("golems_plus").resolve("schematics").resolve(table.builderFile());
-        if(!Files.isRegularFile(file))throw new IllegalArgumentException("Saved schematic missing");
-        var schematic=LitematicFileReader.read(file);
-        var site=new BuildSite(table.builderOrigin().getX(),table.builderOrigin().getY(),
-                table.builderOrigin().getZ(),
-                BuildSite.Rotation.values()[table.builderRotation()/90],
-                BuildSite.Mirror.values()[table.builderMirror()]);
-        var result=BuilderConstructionPlan.create(schematic,site);
-        // A job may start with unsupported blocks. It stops safely at any
-        // unresolvable step and reports the exact state instead of deleting
-        // blocks or fabricating missing materials.
-        Cache next=new Cache(table.builderFile(),table.builderRotation(),
-                table.builderMirror(),table.builderOrigin(),result.steps(),
-                BuilderSiteClearance.targets(schematic,site));
+        // Share the same immutable validated work plan among all eight
+        // Builders. A different Litematica parse per worker caused pauses
+        // when several workers started the job at once.
+        Cache next=jobCache(table);
         cached.put(worker,next);
         return next;
     }
