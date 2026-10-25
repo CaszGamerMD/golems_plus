@@ -604,7 +604,12 @@ public final class BuilderBuildService {
                     +" "+com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .debugStatus(worker)
                     +" | staged="+table.builderOrderPrepared(worker.getUUID())
-                    +" | stock="+(current.requiredItem()==null?"none":current.requiredItem());
+                    +" | stock="+(current.requiredItem()==null?"none":current.requiredItem())
+                    +" | tower="+table.scaffoldPositions(worker.getUUID()).size()
+                    +" | gravity="+(!worker.isNoGravity())
+                    +" | sneaking="+worker.isShiftKeyDown()
+                    +" | depot="+(table.builderUnloadingStorage()==null
+                            ?"unlinked":table.builderUnloadingStorage().toShortString());
         }catch(Exception error){
             return "Builder inspection failed: "+error.getClass().getSimpleName()
                     +" "+error.getMessage();
