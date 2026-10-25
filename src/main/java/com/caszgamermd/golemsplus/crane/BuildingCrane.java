@@ -149,20 +149,22 @@ public final class BuildingCrane extends Entity implements Container {
         List<BuilderGolem> current=builders().stream()
                 .filter(w->batch.contains(w.getUUID())).toList();
         if(current.isEmpty()){batch.clear();return;}
-        BuilderGolem rider=null;
-        BlockPos dock=null;
-        double closest=Double.POSITIVE_INFINITY;
+        Map<UUID,BlockPos> docks=new LinkedHashMap<>();
+        Map<UUID,Double> distances=new LinkedHashMap<>();
         for(BuilderGolem candidate:current){
             BlockPos target=destinations.getOrDefault(candidate.getUUID(),home);
             BlockPos safeDock=CraneMovement.landing(world,this,candidate,target);
             if(safeDock==null)continue;
-            double distance=safeDock.distSqr(blockPosition());
-            if(distance<closest){rider=candidate;dock=safeDock;closest=distance;}
+            docks.put(candidate.getUUID(),safeDock);
+            distances.put(candidate.getUUID(),safeDock.distSqr(blockPosition()));
         }
-        if(rider==null){
+        UUID next=CraneDispatch.nearestReachable(distances);
+        if(next==null){
             status="All passenger landings blocked; waiting for a safe platform or recall";
             return;
         }
+        BuilderGolem rider=current.stream().filter(w->next.equals(w.getUUID())).findFirst().orElseThrow();
+        BlockPos dock=docks.get(next);
         Vec3 at=Vec3.atBottomCenterOf(dock);
         if(position().distanceTo(at)>.15){go(world,at);return;}
         if(unload(world,rider,dock)){forget(rider.getUUID());status="Builder delivered";}
