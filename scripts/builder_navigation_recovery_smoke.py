@@ -15,8 +15,9 @@ assert "Math.abs(a-b)>.60)continue;" in navigation
 assert "&&mob.distanceToSqr(target.getX()+.5" in navigation
 assert "public static boolean retryScheduled(PathfinderMob mob)" in navigation
 assert 'WorkerNavigation' in building
-assert ".retryScheduled(worker);" in building
-assert '"Builder exploring alternate routes to "' in building
+assert "WorkerNavigation" in building
+assert "routeTo(level,worker,goal,.85)" in building
+assert '"Builder exploring alternate routes to "' not in building
 approaches=(root/"builder/BuilderPlacementSpace.java").read_text()
 assert "private static final Map<BuilderGolem,Approach> workApproaches" in approaches
 assert "cached.target().equals(target)" in approaches
