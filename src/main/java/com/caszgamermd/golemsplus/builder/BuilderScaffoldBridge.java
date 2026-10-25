@@ -244,12 +244,41 @@ public final class BuilderScaffoldBridge {
         // If returning from materials, physically climb the owned tower
         // before using the upper bridge. No remote item delivery.
         BlockPos anchor=path.get(0);
-        if(worker.getY()<anchor.getY()+.70
-                ||worker.distanceToSqr(anchor.getX()+.5,
-                        worker.getY(),anchor.getZ()+.5)>4.0
-                    &&worker.getY()<anchor.getY()+1.60){
-            return BuilderScaffolding.reach(level,worker,table,owner,
-                    anchor.above(),plan);
+        if(worker.getY()<anchor.getY()+.82){
+            // Re-enter the owned column even for the final ONE-block
+            // ascent. BuilderScaffolding.reach() intentionally considers
+            // 1.35 blocks "close enough" for placing, but a scaffold
+            // bridge requires feet on the exact top before walking.
+            double dx=worker.getX()-anchor.getX()-.5;
+            double dz=worker.getZ()-anchor.getZ()-.5;
+            if(dx*dx+dz*dz>1.2){
+                BlockPos approach=null;
+                double bestDistance=Double.POSITIVE_INFINITY;
+                for(Direction side:Direction.Plane.HORIZONTAL){
+                    BlockPos landing=new BlockPos(anchor.getX(),
+                            worker.blockPosition().getY(),anchor.getZ())
+                            .relative(side);
+                    if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .canReachExact(level,worker,landing))continue;
+                    double d=worker.distanceToSqr(landing.getX()+.5,
+                            landing.getY(),landing.getZ()+.5);
+                    if(d<bestDistance){bestDistance=d;approach=landing;}
+                }
+                if(approach!=null)
+                    com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .routeToExact(level,worker,approach,1.0);
+                else com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .routeTo(level,worker,anchor.below(),1.0);
+                return BuilderScaffolding.Result.CLIMBING;
+            }
+            BlockPos base=anchor;
+            for(BlockPos candidate:owned)
+                if(candidate.getX()==anchor.getX()
+                        &&candidate.getZ()==anchor.getZ()
+                        &&candidate.getY()<base.getY())base=candidate;
+            BuilderScaffolding.begin(level,worker,base,
+                    anchor.getY()+1.0,false);
+            return BuilderScaffolding.Result.CLIMBING;
         }
         int next=route.next();
         // A resume after server/path changes must never skip a real edge.
