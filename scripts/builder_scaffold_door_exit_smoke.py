@@ -9,7 +9,7 @@ queue=(root/"worker/WorkerDoorTraffic.java").read_text()
 assert "public static boolean finishActiveAscent(" in sc
 assert "BuilderScaffolding.finishActiveAscent(level,worker)" in build
 assert "active.stopY()>=target.getY()-.15" in sc
-assert "worker.getY()<active.stopY()-.10" in sc
+assert "ScaffoldVerticalRoute.reached(worker.getY(),active.stopY(),false)" in sc
 assert "session.descending()" in sc
 assert "level.getBlockState(columnLevel.below().below())" in sc
 assert "worker.setDeltaMovement(mx,Math.min(0,motion.y),mz)" in sc
