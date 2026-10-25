@@ -57,7 +57,7 @@ public final class WorkerNavigation {
         boolean narrowDoorway;
         // Per-door traffic reservation: one crossing at a time, but no
         // cross-door or cross-site global lock.
-        BlockPos queuedDoor,doorStandby;
+        BlockPos queuedDoor,doorStandby,doorExit;
         boolean waitingDoor,parkingAtDoor,finishingDoor;
         int doorLastProgressTick;
         double doorLastDistance=Double.POSITIVE_INFINITY;
@@ -341,7 +341,7 @@ public final class WorkerNavigation {
     }
     private static void clearDoor(ServerLevel level,PathfinderMob mob,Progress p){
         if(p.queuedDoor!=null)WorkerDoorTraffic.release(level,p.queuedDoor,mob);
-        p.queuedDoor=null;p.doorStandby=null;
+        p.queuedDoor=null;p.doorStandby=null;p.doorExit=null;
         p.waitingDoor=false;p.parkingAtDoor=false;p.finishingDoor=false;
         p.doorLastDistance=Double.POSITIVE_INFINITY;
         p.doorLastProgressTick=mob.tickCount;
@@ -432,13 +432,11 @@ public final class WorkerNavigation {
                     p.attempts==0?0:(p.attempts%4)+1)){
                 if(++checked>MAX_DESTINATION_PATHS*2
                         ||best!=null&&checked>8)break;
-                if(option.feet().equals(mob.blockPosition())){
-                    if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
-                            &&mob.distanceToSqr(target.getX()+.5,
-                                    target.getY()+.5,target.getZ()+.5)<=14)
-                        return true; // Already standing within build reach.
-                    continue;
-                }
+                // A Builder within placement reach has NOT necessarily
+                // arrived at a real movement target (door, depot, route
+                // waypoint). Only the job itself may skip walking if its
+                // placement is already within reach.
+                if(option.feet().equals(mob.blockPosition()))continue;
                 Path candidate=mob.getNavigation().createPath(option.feet(),0);
                 if(!safePath(level,mob,candidate,false))continue;
                 // Distances along the actual path, then distance from its
@@ -484,11 +482,10 @@ public final class WorkerNavigation {
                     mob.blockPosition(),goals,
                     at->standingTile(level,mob,at),
                     at->floorAt(level,at),p.lastBad);
-            if(route!=null&&route.complete()&&route.steps().isEmpty()
-                    &&mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
-                    &&mob.distanceToSqr(target.getX()+.5,
-                            target.getY()+.5,target.getZ()+.5)<=14)
-                return true;
+            // Never report an empty physical route as success solely
+            // because the Builder is within placement range of target.
+            // Storage, doorway and return-to-tower movements require
+            // reaching a valid walking tile.
             if(route==null||route.steps().isEmpty()){
                 p.attempts++;
                 p.nextRoute=mob.tickCount+ROUTE_RETRY+Math.floorMod(mob.getId(),5);
@@ -729,9 +726,26 @@ public final class WorkerNavigation {
                                            Progress p){
         if(p.queuedDoor==null||p.requested==null
                 ||!WorkerDoorTraffic.owns(level,p.queuedDoor,mob))return false;
+        // Keep the same far-side landing until the entity is ACTUALLY
+        // there. Previously the queue released at 1.25 blocks from the
+        // door and vanilla A* could not restart from mid-crossing.
+        if(p.finishingDoor&&p.doorExit!=null
+                &&mob.distanceToSqr(p.doorExit.getX()+.5,
+                        p.doorExit.getY(),p.doorExit.getZ()+.5)<.20
+                &&mob.onGround()){
+            clearDoor(level,mob,p);
+            p.nextRoute=0;
+            mob.getNavigation().stop();
+            return true;
+        }
         BlockPos door=p.queuedDoor;
-        if(mob.distanceToSqr(door.getX()+.5,door.getY()+.5,
-                door.getZ()+.5)>3.0)return false;
+        // Start escorting at the near-side approach (up to four blocks
+        // away), not only once the Builder has already reached the
+        // doorway. Vanilla A* can report no path while an OPEN wooden
+        // door/fence gate is perfectly physically passable.
+        double dist=mob.distanceToSqr(door.getX()+.5,
+                mob.getY(),door.getZ()+.5);
+        if(dist>16.0)return false;
         if(!p.finishingDoor&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS)return false;
         BlockState gate=level.getBlockState(door);
@@ -741,16 +755,29 @@ public final class WorkerNavigation {
                 +(p.requested.getZ()-door.getZ())*facing.getStepZ();
         if(Math.abs(advance)<.5)return false;
         Direction out=advance>0?facing:facing.getOpposite();
-        BlockPos exit=null;
-        // Prefer two blocks past the opening so the following worker has
-        // room to enter; one-block fallback is used only when safe.
-        for(int distance:new int[]{2,3,1}){
-            BlockPos candidate=door.relative(out,distance);
-            if(!standingTile(level,mob,candidate)
-                    ||neighborOccupied(level,mob,candidate))continue;
-            exit=candidate;break;
+        // Only take the straight physical corridor when this worker is
+        // aligned with its real door opening. Others continue using A*
+        // to approach it, so we never steer through a wall at an angle.
+        double side=out.getStepX()==0
+                ?Math.abs(mob.getX()-door.getX()-.5)
+                :Math.abs(mob.getZ()-door.getZ()-.5);
+        if(side>.24)return false;
+        double before=(mob.getX()-door.getX()-.5)*out.getStepX()
+                +(mob.getZ()-door.getZ()-.5)*out.getStepZ();
+        if(before>2.75||before<-4.0)return false;
+        BlockPos exit=p.doorExit;
+        if(exit==null){
+            // Select once; don't swap exit targets as the worker crosses.
+            // Two blocks beyond the threshold avoids blocking next user.
+            for(int distance:new int[]{2,3,1}){
+                BlockPos candidate=door.relative(out,distance);
+                if(!standingTile(level,mob,candidate)
+                        ||neighborOccupied(level,mob,candidate))continue;
+                exit=candidate;break;
+            }
         }
         if(exit==null)return false; // no safe place; never push into a wall
+        p.doorExit=exit.immutable();
         if(!isOpenPassage(gate))setPassageOpen(level,mob,door,true);
         p.finishingDoor=true;
         p.waitingDoor=false;
@@ -759,9 +786,30 @@ public final class WorkerNavigation {
         mob.getMoveControl().setWantedPosition(x,exit.getY(),z,1.0);
         double vx=Math.max(-.16,Math.min(.16,(x-mob.getX())*.25));
         double vz=Math.max(-.16,Math.min(.16,(z-mob.getZ())*.25));
-        if(level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz))){
+        AABB current=mob.getBoundingBox();
+        if(level.noCollision(mob,current.move(vx,0,vz))){
             var velocity=mob.getDeltaMovement();
             mob.setDeltaMovement(vx,Math.min(0,velocity.y),vz);
+        }else{
+            // An OPEN door still occupies a thin leaf of the 1-block
+            // passage. A centered 0.65-wide golem can hit that leaf:
+            // the free lane is offset towards the opposite jamb.
+            // Test BOTH directions against real world collision. Slide
+            // at most 0.15 sideways and continue forward once clear.
+            double perpX=-out.getStepZ(),perpZ=out.getStepX();
+            double deviation=(mob.getX()-door.getX()-.5)*perpX
+                    +(mob.getZ()-door.getZ()-.5)*perpZ;
+            double[] shifts={.13,-.13,.08,-.08};
+            for(double offset:shifts){
+                if(Math.abs(deviation+offset)>.17)continue;
+                if(!level.noCollision(mob,current.move(perpX*offset,0,
+                        perpZ*offset)))continue;
+                if(!level.noCollision(mob,current.move(
+                        vx+perpX*offset,0,vz+perpZ*offset)))continue;
+                double nudge=Math.max(-.07,Math.min(.07,offset));
+                mob.setDeltaMovement(perpX*nudge,0,perpZ*nudge);
+                break;
+            }
         }
         return true;
     }
@@ -769,13 +817,14 @@ public final class WorkerNavigation {
     private static boolean doorTrafficTick(ServerLevel level,PathfinderMob mob,Progress p){
         if(p.queuedDoor!=null){
             if(!handDoor(level,p.queuedDoor)
-                    ||WorkerDoorTraffic.crossed(level,p.queuedDoor,mob)
+                    ||!p.finishingDoor
+                        &&WorkerDoorTraffic.crossed(level,p.queuedDoor,mob)
                     ||mob.distanceToSqr(p.queuedDoor.getX()+.5,
                             p.queuedDoor.getY()+.5,p.queuedDoor.getZ()+.5)>64){
                 WorkerDoorTraffic.release(level,p.queuedDoor,mob);
                 p.queuedDoor=null;p.waitingDoor=false;
                 p.doorStandby=null;p.parkingAtDoor=false;p.finishingDoor=false;
-                p.nextRoute=0;
+                p.doorExit=null;p.nextRoute=0;
             }
         }
         if(p.queuedDoor==null&&p.requested!=null){
@@ -804,7 +853,7 @@ public final class WorkerNavigation {
                 p.doorLastDistance=doorDistance;
                 p.doorLastProgressTick=mob.tickCount;
             }else if(mob.tickCount-p.doorLastProgressTick>100
-                    &&doorDistance>1.8){
+                    &&doorDistance>16.0){
                 WorkerDoorTraffic.yieldStalled(level,p.queuedDoor,mob);
                 p.waitingDoor=true;
                 p.doorStandby=null;p.parkingAtDoor=false;
@@ -833,7 +882,7 @@ public final class WorkerNavigation {
                 return true; // one worker finishes its crossing at a time
             return false;
         }
-        p.finishingDoor=false;
+        p.finishingDoor=false;p.doorExit=null;
         if(!p.waitingDoor){
             p.waitingDoor=true;p.parkingAtDoor=false;p.doorStandby=null;
             mob.getNavigation().stop();
