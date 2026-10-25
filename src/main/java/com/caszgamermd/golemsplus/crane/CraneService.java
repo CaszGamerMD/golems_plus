@@ -25,6 +25,11 @@ public final class CraneService {
         cranes.values().removeIf(BuildingCrane::isRemoved);cranes.put(crane.getUUID(),crane);
     }
     private static List<BuildingCrane> cranes(ServerLevel level){return live.getOrDefault(level,Map.of()).values().stream().filter(c->!c.isRemoved()).toList();}
+    public static List<BlockPos> simulationPositions(WorkerStationBlockEntity table){
+        if(!(table.getLevel() instanceof ServerLevel level))return List.of();
+        return cranes(level).stream().filter(c->c.serves(table))
+                .flatMap(c->c.simulationPositions().stream()).distinct().limit(12).toList();
+    }
     public static void tell(Player player,String text){player.sendSystemMessage(Component.literal("Crane: "+text));}
     public static void selectJob(ServerPlayer player,WorkerStationBlockEntity table){
         if(table.activeOrder()==null){tell(player,"Start/select the construction job before linking its crane");return;}

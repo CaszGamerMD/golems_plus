@@ -149,6 +149,8 @@ public final class BuilderChunkTickets {
             if(previous!=null&&target!=null)
                 add(required,ahead(previous,target),home);
         }
+        for(BlockPos pos:com.caszgamermd.golemsplus.crane.CraneService.simulationPositions(table))
+            add(required,pos,home);
         for(ChunkPos key:required)if(!lease.held.contains(key))
             acquire(level,key);
         for(ChunkPos key:Set.copyOf(lease.held))if(!required.contains(key))
@@ -198,3 +200,4 @@ public final class BuilderChunkTickets {
         if(entries.isEmpty())jobs.remove(level);
     }
 }
+

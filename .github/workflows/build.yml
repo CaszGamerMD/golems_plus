@@ -1,7 +1,7 @@
 name: Build and test
 on:
   push:
-    branches: [main, feature/building-crane]
+    branches: [main]
   pull_request:
 jobs:
   build:
@@ -65,9 +65,16 @@ jobs:
         run: python3 scripts/builder_warehouse_queued_smoke.py
       - name: Verify Builder chunk ticket and worker persistence protections
         run: python3 scripts/builder_chunk_tickets_smoke.py
-      # The build task now runs a real dedicated Minecraft GameTest.
+      - run: gradle --no-daemon clean test build
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: golems-plus-dev
+          path: build/libs/*.jar
+          if-no-files-found: error
+      # Test the compiled artifact in a real dedicated Minecraft server.
       # A green JUnit run alone does not count as a movement pass.
-      - name: Run Minecraft server GameTests (scaffold route and framed doorway)
+      - name: Run Minecraft server GameTests (crane, Dome, scaffold and doorway)
         run: gradle --no-daemon runGameTest
       - name: Preserve Minecraft GameTest logs and reports
         if: always()
@@ -79,13 +86,6 @@ jobs:
             build/reports/
             build/test-results/
           if-no-files-found: ignore
-      - run: gradle --no-daemon clean test build
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: golems-plus-dev
-          path: build/libs/*.jar
-          if-no-files-found: error
       # Unlike Actions artifacts, release attachments have stable download
       # URLs and don't expire with GitHub's artifact retention window.
       - name: Publish stable JAR and mods-folder ZIP

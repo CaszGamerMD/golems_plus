@@ -66,6 +66,15 @@ public final class BuildingCrane extends Entity implements Container {
     public UUID operator(){return operator;}
     public String status(){return status+" | reach="+reach()+" | waiting="+destinations.size()+" | riders="+builders().size();}
     public boolean parked(){return supplyStop==null&&destination==null&&path.isEmpty()&&railPath.isEmpty();}
+    public List<BlockPos> simulationPositions(){
+        var positions=new ArrayList<BlockPos>(List.of(anchor,blockPosition()));
+        if(destination!=null)positions.add(BlockPos.containing(destination));
+        if(supplyStop!=null)positions.add(supplyStop);
+        if(level() instanceof ServerLevel world&&operator!=null
+                &&world.getEntity(operator) instanceof BuilderGolem driver)
+            positions.add(driver.blockPosition());
+        return positions;
+    }
     public boolean onsite(){return onsite;}
     public boolean serves(WorkerStationBlockEntity station){return table.equals(station.getBlockPos())&&Objects.equals(owner,station.owner())&&Objects.equals(job,station.activeOrder());}
     public WorkerStationBlockEntity station(){return level().getBlockEntity(table) instanceof WorkerStationBlockEntity s&&serves(s)?s:null;}
@@ -127,6 +136,13 @@ public final class BuildingCrane extends Entity implements Container {
             }
         }
         if(station()==null&&!recalling){recall();status="Job ended or unavailable; returning passengers";}
+        // A blocked pickup must not own the entire queue forever. Count
+        // lack of progress, not trip duration (a 90-block trip takes longer).
+        if(!delivering&&pickup!=null&&world.getGameTime()-pickupStarted>400
+                &&world.getEntity(pickup) instanceof BuilderGolem waiting
+                &&waiting.getVehicle()!=this){
+            path.clear();railPath.clear();destination=null;defer(pickup);pickup=null;
+        }
         if(!path.isEmpty()||!railPath.isEmpty()){moveAlong(world);return;}
         if(destination!=null){
             if(position().distanceTo(destination)<.12){destination=null;status="Parked";updateOnsite();}
@@ -206,11 +222,9 @@ public final class BuildingCrane extends Entity implements Container {
     }
     private void go(ServerLevel world,Vec3 at){
         destination=at;
-        // Crane operators belong to the planner crew; use its bounded,
-        // temporary simulation tickets to load the destination ahead of
-        // path checks rather than treating distant chunks as solid walls.
-        if(world.getEntity(operator) instanceof BuilderGolem driver)
-            BuilderChunkTickets.destination(world,driver,BlockPos.containing(at));
+        // Dedicated operators are not construction crew. Include the crane
+        // directly in the same bounded, temporary job simulation lease.
+        var table=station();if(table!=null)BuilderChunkTickets.prime(world,table);
         if(world.getGameTime()>=planAfter)plan(world,at);
     }
     private void plan(ServerLevel world,Vec3 at){
@@ -249,6 +263,7 @@ public final class BuildingCrane extends Entity implements Container {
         move(MoverType.SELF,next.subtract(old));setDeltaMovement(Vec3.ZERO);
         if(position().distanceTo(next)>.025){path.clear();railPath.clear();status="Load blocked by entity";return;}
         anchorPoint(nextA);
+        if(pickup!=null&&!delivering)pickupStarted=world.getGameTime();
         if(!railPath.isEmpty()){
             if(nextA.distanceTo(CraneMovement.anchorPoint(world,railPath.get(0)))<.02)anchor=railPath.remove(0);
         }else if(position().distanceTo(path.get(0))<.02)path.remove(0);
