@@ -98,20 +98,28 @@ public final class BuilderPlacementSpace {
         // Probe a compact, predictable set of cardinal/diagonal safe
         // standing locations instead of inspecting hundreds of cells on
         // every 12-tick build update (which itself caused visible freezes).
-        for(int radius=2;radius<=4;radius++)
-            for(int dx=-radius;dx<=radius;dx+=radius)
-                for(int dz=-radius;dz<=radius;dz+=radius){
-                    if(dx==0&&dz==0)continue;
-                    for(int dy:new int[]{0,1,-1}){
-                        BlockPos p=target.offset(dx,dy,dz);
-                        if(canStand(level,worker,p,target))choices.add(p);
-                    }
+        // Include straight aisle exits. The old corner-only scan tried
+        // (radius,radius) diagonals and missed open cardinal paths along a
+        // wall, leaving builders stalled despite clear floor two blocks away.
+        // Eight directions x three heights x three radii is bounded; only
+        // the best candidates below perform expensive navigation probes.
+        for(int radius=2;radius<=4;radius++){
+            int[][] offsets={
+                    {radius,0},{-radius,0},{0,radius},{0,-radius},
+                    {radius,radius},{radius,-radius},
+                    {-radius,radius},{-radius,-radius}
+            };
+            for(int[] direction:offsets)
+                for(int dy:new int[]{0,1,-1}){
+                    BlockPos p=target.offset(direction[0],dy,direction[1]);
+                    if(canStand(level,worker,p,target))choices.add(p);
                 }
+        }
         choices.sort(java.util.Comparator.comparingDouble(p->
                 p.distSqr(origin)+Math.abs(p.getY()-origin.getY())*2));
         int attempted=0;
         for(BlockPos p:choices){
-            if(++attempted>8)break; // bounded path work per worker tick
+            if(++attempted>16)break; // bounded path work; try more than one aisle side
             // Favor a physically reachable tile; don't assume an air
             // candidate is reachable around walls/stairs/racks.
             var path=worker.getNavigation().createPath(p,0);

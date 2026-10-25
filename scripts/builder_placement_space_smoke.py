@@ -24,7 +24,14 @@ assert "getGameTime()+60" in space
 assert "!level.getBlockState(hold.target()).isAir()" in space
 assert "hold.placingWorker()" in space
 assert "public static BlockPos approach(" in space
-assert "if(++attempted>8)break;" in space
+assert "if(++attempted>16)break;" in space
+# Every narrow aisle with usable straight ground must be considered, not
+# just diagonal tiles. Retain the blocked-entity and real-path safeguards.
+for direction in ("{radius,0}", "{-radius,0}", "{0,radius}", "{0,-radius}",
+                  "{radius,radius}", "{radius,-radius}",
+                  "{-radius,radius}", "{-radius,-radius}"):
+    assert direction in space, f"missing safe sidestep direction: {direction}"
+assert "path!=null&&path.canReach()" in space
 assert "boolean" not in space[space.index("private record Yield"):space.index("private static final Map")] or "placingWorker" in space
 assert "workDistance<=100" in build
 assert "BuilderPlacementSpace.approach(level,worker,pos)" in build

@@ -39,6 +39,26 @@ public final class BuilderVegetation {
                 ||path.equals("rose_bush")||path.equals("lilac")
                 ||path.equals("sunflower")||path.equals("pitcher_crop")
                 ||path.equals("torchflower_crop")
+                // Low-profile vegetation also blocks or changes schematic
+                // placement, even when its block class is not BushBlock.
+                // Preserve solid leaves, logs, moss blocks and other actual
+                // building materials.
+                ||path.equals("moss_carpet")
+                ||path.equals("pale_moss_carpet")
+                ||path.equals("hanging_roots")
+                ||path.equals("glow_lichen")
+                ||path.equals("spore_blossom")
+                ||path.equals("small_dripleaf")
+                ||path.equals("big_dripleaf")
+                ||path.equals("big_dripleaf_stem")
+                ||path.equals("sea_pickle")
+                ||path.equals("nether_sprouts")
+                ||path.equals("crimson_roots")
+                ||path.equals("warped_roots")
+                ||path.equals("dead_bush")
+                ||path.equals("short_dry_grass")
+                ||path.equals("tall_dry_grass")
+                ||path.equals("leaf_litter")
                 ||path.endsWith("_crop")||path.endsWith("_flower")
                 ||path.endsWith("_flower_bush")||path.endsWith("_flowerbed")
                 ||path.endsWith("_sapling")||path.endsWith("_sprouts")
