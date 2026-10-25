@@ -325,7 +325,7 @@ public final class WorkerNavigation {
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
         Progress progress=state(mob);
-        if(progress.waitingDoor&&target!=null
+        if(progress.queuedDoor!=null&&target!=null
                 &&progress.requested!=null&&!target.equals(progress.requested))
             clearDoor(level,mob,progress);
         if(progress.waitingDoor)return true; // keep original work target
@@ -364,7 +364,7 @@ public final class WorkerNavigation {
         }
         if(target==null||!level.hasChunkAt(target))return false;
         Progress p=state(mob);
-        if(p.waitingDoor&&target!=null
+        if(p.queuedDoor!=null&&target!=null
                 &&p.requested!=null&&!target.equals(p.requested))
             clearDoor(level,mob,p);
         if(p.waitingDoor)return true; // the door owns motion until released

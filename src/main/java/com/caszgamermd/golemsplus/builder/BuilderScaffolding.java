@@ -73,6 +73,10 @@ public final class BuilderScaffolding {
             climbing.remove(worker);
             worker.setShiftKeyDown(false);
             worker.setNoGravity(false);
+            // Stop residual downward momentum without interrupting the
+            // next independent navigation command.
+            var velocity=worker.getDeltaMovement();
+            worker.setDeltaMovement(velocity.x,0,velocity.z);
             return false;
         }
         BlockPos below=worker.blockPosition().below();
