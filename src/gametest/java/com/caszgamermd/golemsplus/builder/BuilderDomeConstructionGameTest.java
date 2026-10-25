@@ -65,12 +65,12 @@ public final class BuilderDomeConstructionGameTest {
         // This is well outside x=8..38 and z=8..41 Dome structure.
         var rail=CraneContent.RAIL.defaultBlockState()
                 .setValue(CraneRailBlock.FACING,Direction.UP);
-        for(int z=3;z<=24;z++){
+        for(int z=5;z<=24;z++){
             helper.getLevel().setBlock(helper.absolutePos(new BlockPos(3,2,z)),rail,2);
             helper.getLevel().setBlock(helper.absolutePos(new BlockPos(44,2,z)),rail,2);
         }
         for(int x=3;x<=44;x++)
-            helper.getLevel().setBlock(helper.absolutePos(new BlockPos(x,2,3)),rail,2);
+            helper.getLevel().setBlock(helper.absolutePos(new BlockPos(x,2,5)),rail,2);
         helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
         helper.setBlock(5,2,7,Blocks.CHEST);
         BlockPos plannerPos=helper.absolutePos(new BlockPos(4,2,7));
@@ -156,7 +156,7 @@ public final class BuilderDomeConstructionGameTest {
         var crane=new BuildingCrane(CraneContent.CRANE,level);
         BlockPos craneRail=helper.absolutePos(new BlockPos(3,2,24));
         // South-offset basket stays inside the arena throughout rail travel.
-        BlockPos craneBasket=helper.absolutePos(new BlockPos(3,2,27));
+        BlockPos craneBasket=helper.absolutePos(new BlockPos(3,2,21));
         crane.place(id,craneRail,Vec3.atBottomCenterOf(craneBasket));
         if(!level.addFreshEntity(crane)||!crane.link(table)
                 ||!crane.assignOperator(operator)){
@@ -208,8 +208,8 @@ public final class BuilderDomeConstructionGameTest {
                         +" operatorLoaded="+level.hasChunkAt(operator.blockPosition())
                         +" craneLoaded="+level.hasChunkAt(crane.blockPosition())
                         +" plannerLoaded="+level.hasChunkAt(plannerPos)
-                        +" craneInLevel="+crane.isAddedToLevel()
-                        +" operatorInLevel="+operator.isAddedToLevel());
+                        +" craneInLevel="+level.getEntity(crane.getUUID())==crane
+                        +" operatorInLevel="+level.getEntity(operator.getUUID())==operator);
                 return;
             }
             int riding=0;
