@@ -297,21 +297,43 @@ public final class BuilderBuildService {
                 table.setProblem("Unsupported block state: "+step.encodedState());return;
             }
             BlockState existing=level.getBlockState(pos);
-            if(existing.equals(state.state())){
+            if(BuilderPlacementState.matches(existing,state.state())){
+                // Auto-connected walls/fences/panes and stair corner shapes
+                // may differ from the saved palette after neighbouring
+                // blocks change. They ARE already built; never dismantle
+                // a correct block in pursuit of stale schematic geometry.
                 table.recordBuilderPlacement(step.requiredItem());
                 table.completeBuilderStep(worker.getUUID(),index);
                 BuilderScaffolding.retrieve(level,worker,table,false);
                 table.setProblem("");return;
             }
-            if(!existing.isAir()){
-                // A player may add a block after the initial site-clear
-                // phase. Safely clear only this exact schematic cell,
-                // retaining bottom-up ordering and normal protections.
-                BuilderClearance.clear(level,worker,table,owner,pos,existing);
+            // Check the replacement's survival BEFORE clearing an existing
+            // block. Clearing first destroyed a useful piece of completed
+            // cobblestone/support, then deadlocked on "Missing supporting
+            // blocks" after the now-unsupported target turned to air.
+            if(!state.state().canSurvive(level,pos)){
+                // A door, wall torch, rail or other dependent schematic
+                // cell may be queued before its supporting neighbour in
+                // this same layer. Yield the cell without consuming an
+                // item or advancing the layer; another Builder can fill
+                // the support, and the cell will be retried after 40 ticks.
+                table.waitForBuilderSupport(worker.getUUID(),index,
+                        level.getGameTime());
+                BlockPos underneath=pos.below();
+                String support=net.minecraft.core.registries.BuiltInRegistries
+                        .BLOCK.getKey(level.getBlockState(underneath).getBlock())
+                        .toString();
+                table.setProblem("Waiting for support: "+step.encodedState()
+                        +" at "+pos+"; below="+support
+                        +" (other Builders continuing this layer)");
                 return;
             }
-            if(!state.state().canSurvive(level,pos)){
-                table.setProblem("Missing supporting blocks at "+pos);return;
+            if(!existing.isAir()){
+                // A player may add a block after the initial site-clear
+                // phase. Never destroy it until its planned replacement
+                // has support. This protects physical build progress.
+                BuilderClearance.clear(level,worker,table,owner,pos,existing);
+                return;
             }
             // Every worker first visits actual staging storage, loads a
             // three-layer pouch, THEN walks to the construction site.

@@ -94,7 +94,10 @@ public final class BuilderSiteClearance {
                 }
                 expected=resolved.state();
             }
-            if(existing.equals(expected)){
+            if(BuilderPlacementState.matches(existing,expected)){
+                // A saved wall/stair shape may have recomputed when nearby
+                // blocks were placed. It is still an existing correct
+                // schematic block, never an obstruction to tear down.
                 table.completeBuilderClear(worker.getUUID(),index,false);
                 continue;
             }

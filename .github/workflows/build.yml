@@ -17,6 +17,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
+      - name: Verify Builder support deferral and connected-block safety
+        run: python3 scripts/builder_support_dependency_smoke.py
       - name: Verify Builder worker-carried material sharing and stable supply paths
         run: python3 scripts/builder_crew_materials_smoke.py
       - name: Validate worker stair and slab navigation geometry
