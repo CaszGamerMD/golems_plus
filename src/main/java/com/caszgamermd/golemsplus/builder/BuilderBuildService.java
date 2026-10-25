@@ -36,6 +36,11 @@ public final class BuilderBuildService {
                          List<BuilderConstructionPlan.Step> steps,
                          List<BuilderSiteClearance.Target> clearing){}
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
+    // Reuse the immutable server-side schematic work plan across queued
+    // warehouse retries. Parsing a 100k-block Litematica file every four
+    // seconds caused visible freezes while a PTP was temporarily busy.
+    private static final Map<WorkerStationBlockEntity,Cache>
+            cachedWarehousePlans=new WeakHashMap<>();
     private BuilderBuildService(){}
     /** Start the warehouse packing reservation as soon as the user
      * presses Start, before any Builder Golem has reached the first block.
@@ -49,21 +54,15 @@ public final class BuilderBuildService {
             return "Manual supply mode: link a Rack Computer with a Warehouse Scanner to enable warehouse deliveries";
         if(table.supplyRequest()!=null)return "Warehouse material request already active";
         try{
-            Path folder=FabricLoader.getInstance().getConfigDir()
-                    .resolve("golems_plus").resolve("schematics");
-            Path file=folder.resolve(table.builderFile()).normalize();
-            if(!file.startsWith(folder)||!Files.isRegularFile(file))
-                return "The uploaded build schematic is missing on the server";
-            var schematic=LitematicFileReader.read(file);
-            var origin=table.builderOrigin();
-            var site=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
-                    BuildSite.Rotation.values()[table.builderRotation()/90],
-                    BuildSite.Mirror.values()[table.builderMirror()]);
-            var plan=BuilderConstructionPlan.create(schematic,site);
+            var cache=jobCache(table);
+            var plan=cache.steps();
             if(table.builderRequired().isEmpty()&&table.activeOrder()!=null){
                 // Running legacy build: retain its current cursor and only
                 // backfill the static required-material checklist.
-                table.backfillBuilderMaterials(plan.required());
+                var required=new java.util.LinkedHashMap<String,Long>();
+                for(var step:plan)if(step.requiredItem()!=null)
+                    required.merge(step.requiredItem(),1L,Long::sum);
+                table.backfillBuilderMaterials(required);
             }
             var stock=BuilderSupplyInventory.available(table);
             var warehouse=table.warehouse();
@@ -72,11 +71,11 @@ public final class BuilderBuildService {
                         .stockSnapshot(level,new BlockPos(
                                 warehouse.x(),warehouse.y(),warehouse.z()),
                                 table.builderRemaining());
-            var materials=BuilderMaterialDemand.outstanding(plan.steps(),
+            var materials=BuilderMaterialDemand.outstanding(plan,
                     table.builderCursor(),stock,pickable==null?Map.of():pickable);
             if(materials.isEmpty())
                 return "All remaining construction materials are already staged OnSite or with the crew";
-            if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan.steps()))
+            if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan))
                 return table.problem().isBlank()?"Warehouse not ready":table.problem();
             if(table.supplyPtp().equals(BlockPos.ZERO))
                 return "Warehouse request saved; "+table.problem();
@@ -471,6 +470,34 @@ public final class BuilderBuildService {
             table.setProblem("Builder paused: "+exception.getMessage());
         }
     }
+    private static Cache jobCache(WorkerStationBlockEntity table)
+            throws Exception {
+        Cache previous=cachedWarehousePlans.get(table);
+        if(previous!=null&&previous.file().equals(table.builderFile())
+                &&previous.rotation()==table.builderRotation()
+                &&previous.mirror()==table.builderMirror()
+                &&previous.origin().equals(table.builderOrigin()))
+            return previous;
+        if(!table.hasPlacedSchematic())
+            throw new IllegalArgumentException("No placed schematic");
+        Path folder=FabricLoader.getInstance().getConfigDir()
+                .resolve("golems_plus").resolve("schematics");
+        Path file=folder.resolve(table.builderFile()).normalize();
+        if(!file.startsWith(folder)||!Files.isRegularFile(file))
+            throw new IllegalArgumentException("Saved schematic missing");
+        var schematic=LitematicFileReader.read(file);
+        var origin=table.builderOrigin();
+        var site=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                BuildSite.Rotation.values()[table.builderRotation()/90],
+                BuildSite.Mirror.values()[table.builderMirror()]);
+        var result=BuilderConstructionPlan.create(schematic,site);
+        Cache next=new Cache(table.builderFile(),table.builderRotation(),
+                table.builderMirror(),origin,result.steps(),
+                BuilderSiteClearance.targets(schematic,site));
+        cachedWarehousePlans.put(table,next);
+        return next;
+    }
+
     private static Cache cache(WorkerStationBlockEntity table,BuilderGolem worker)
             throws Exception {
         Cache previous=cached.get(worker);
