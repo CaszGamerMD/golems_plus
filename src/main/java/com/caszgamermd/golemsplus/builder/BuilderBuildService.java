@@ -507,8 +507,18 @@ public final class BuilderBuildService {
                         &&!table.scaffoldPositions(worker.getUUID()).isEmpty()
                         &&com.caszgamermd.golemsplus.worker.WorkerNavigation
                                 .repeatedlyUnreachable(worker,10)
-                        &&BuilderScaffolding.descendForTravel(level,worker,table))
-                    return;
+                        ){
+                    var bridge=BuilderScaffoldBridge.reach(level,worker,table,
+                            owner,pos,plan.steps());
+                    if(bridge==BuilderScaffolding.Result.CLIMBING)return;
+                    if(bridge==BuilderScaffolding.Result.NEED_MATERIALS){
+                        table.setProblem("Need scaffolding for ledge access at "+pos);
+                        return;
+                    }
+                    if(bridge==BuilderScaffolding.Result.NO_SAFE_TOWER
+                            &&BuilderScaffolding.descendForTravel(level,worker,table))
+                        return;
+                }
                 // Leave a completed scaffold onto an adjacent solid upper
                 // walkway BEFORE asking vanilla A* to path from its
                 // non-walkable scaffolding node. This is crucial for
