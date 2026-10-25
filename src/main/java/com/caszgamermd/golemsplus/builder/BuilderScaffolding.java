@@ -27,6 +27,9 @@ public final class BuilderScaffolding {
                                 boolean descending,long expires,net.minecraft.world.phys.Vec3 lastProgress){}
     private static final java.util.Map<BuilderGolem,ClimbSession> sessions=
             new java.util.WeakHashMap<>();
+    private record ReturnRoute(BlockPos column,BlockPos landing,long expires){}
+    private static final java.util.Map<BuilderGolem,ReturnRoute> returns=new java.util.WeakHashMap<>();
+    private static final java.util.Map<BuilderGolem,Long> returnRetry=new java.util.WeakHashMap<>();
     private BuilderScaffolding(){}
 
     private static void clearMotion(BuilderGolem worker){
@@ -85,8 +88,7 @@ public final class BuilderScaffolding {
         }
         worker.getNavigation().stop();
         double cx=session.column().getX()+.5,cz=session.column().getZ()+.5;
-        double horizontal=Math.hypot(worker.getX()-cx,worker.getZ()-cz);
-        if(horizontal>Math.max(.04,(1-worker.getBbWidth())*.5-.02)){
+        if(!BuilderScaffoldGeometry.centered(worker.getX()-cx,worker.getZ()-cz,worker.getBbWidth())){
             // Physically enter the scaffold footprint. Never teleport and
             // never force vertical motion from alongside a solid wall.
             worker.setNoGravity(false);
@@ -111,6 +113,25 @@ public final class BuilderScaffolding {
         }
         return true;
     }
+    public static boolean travelDown(ServerLevel level,BuilderGolem worker){
+        ClimbSession session=sessions.get(worker);
+        if(session==null||!session.descending()||!climbingNow(level,worker))return false;
+        double remaining=worker.getY()-session.stopY();
+        if(remaining<=.02||!BuilderScaffoldGeometry.centered(
+                worker.getX()-session.column().getX()-.5,
+                worker.getZ()-session.column().getZ()-.5,worker.getBbWidth()))return false;
+        worker.setShiftKeyDown(true);
+        worker.setJumping(false);
+        worker.setNoGravity(false);
+        // Entity.move resolves real scaffold/solid/entity collisions. No
+        // position overwrite, gravity disabling, or collision bypass.
+        worker.move(net.minecraft.world.entity.MoverType.SELF,
+                new net.minecraft.world.phys.Vec3(0,BuilderScaffoldGeometry.downStep(remaining),0));
+        worker.setDeltaMovement(0,0,0);
+        worker.resetFallDistance();
+        return true;
+    }
+
     /** Native ground-path validation rejects a starting scaffold cell.
      * Physically step out at the bottom before handing movement back to A*.
      */
@@ -161,27 +182,73 @@ public final class BuilderScaffolding {
      */
     public static boolean descendForTravel(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
-        var owned=table.scaffoldPositions(worker.getUUID());
-        if(owned.isEmpty())return false;
-        BlockPos column=owned.stream()
-                .filter(p->Math.abs(worker.getX()-p.getX()-.5)<=1.05
-                        &&Math.abs(worker.getZ()-p.getZ()-.5)<=1.05)
-                .min(Comparator.comparingInt(BlockPos::getY)).orElse(null);
-        if(column==null||!level.getBlockState(column).is(Blocks.SCAFFOLDING))
-            return false;
-        double cx=column.getX()+.5,cz=column.getZ()+.5;
-        if(Math.abs(worker.getX()-cx)>1.05
-                ||Math.abs(worker.getZ()-cz)>1.05)return false;
-        double bottom=column.getY();
-        if(worker.getY()<=bottom+.02){
-            ClimbSession active=sessions.get(worker);
-            if(active!=null&&active.descending())return exitAtGround(level,worker,active);
-            // Already off the scaffold: do not pull the worker back in.
-            if(Math.abs(worker.getX()-cx)>=.5+worker.getBbWidth()*.5
-                    ||Math.abs(worker.getZ()-cz)>=.5+worker.getBbWidth()*.5)return false;
+        if(climbingNow(level,worker))return true;
+        ReturnRoute cached=returns.get(worker);
+        if(cached!=null){
+            if(level.getGameTime()>cached.expires()
+                    ||!continuousColumn(level,cached.column(),worker.getY())){
+                returns.remove(worker);
+            }else if(nearColumn(worker,cached.column())){
+                returns.remove(worker);
+                begin(level,worker,cached.column(),cached.column().getY(),true);
+                return true;
+            }else if(com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeToExact(level,worker,cached.landing(),1.0))return true;
+            else returns.remove(worker);
         }
+        // Towers are a crew resource. Deduplicate their X/Z columns and
+        // keep the lowest surviving tracked block, never an untracked tower.
+        java.util.Map<Long,BlockPos> columns=new java.util.HashMap<>();
+        for(var id:table.builderWorkerIds())for(BlockPos p:table.scaffoldPositions(id)){
+            if(!level.hasChunkAt(p)||!level.getBlockState(p).is(Blocks.SCAFFOLDING))continue;
+            long key=((long)p.getX()<<32)^(p.getZ()&0xffffffffL);
+            columns.merge(key,p,(a,b)->a.getY()<b.getY()?a:b);
+        }
+        var candidates=new java.util.ArrayList<>(columns.values());
+        candidates.removeIf(p->worker.getY()<=p.getY()+.25
+                ||!continuousColumn(level,p,worker.getY()));
+        candidates.sort(Comparator.comparingDouble(p->
+                Math.pow(worker.getX()-p.getX()-.5,2)+Math.pow(worker.getZ()-p.getZ()-.5,2)));
+        BlockPos column=candidates.stream().filter(p->nearColumn(worker,p)).findFirst().orElse(null);
+        if(column==null){
+            if(level.getGameTime()<returnRetry.getOrDefault(worker,0L))return false;
+            returnRetry.put(worker,level.getGameTime()+40);
+            int paths=0;
+            for(BlockPos base:candidates){
+                int y=worker.blockPosition().getY();
+                for(int dy:new int[]{0,1,-1})for(Direction side:Direction.Plane.HORIZONTAL){
+                    BlockPos landing=new BlockPos(base.getX(),y+dy,base.getZ()).relative(side);
+                    if(!continuousColumn(level,base,landing.getY())
+                            ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                    .canStandOn(level,worker,landing))continue;
+                    if(++paths>16)return false;
+                    if(com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .routeToExact(level,worker,landing,1.0)){
+                        returns.put(worker,new ReturnRoute(base,landing,level.getGameTime()+200));
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        double bottom=column.getY();
         begin(level,worker,column,bottom,true);
         return true;
+    }
+
+    private static boolean nearColumn(BuilderGolem worker,BlockPos column){
+        return Math.abs(worker.getX()-column.getX()-.5)<=1.05
+                &&Math.abs(worker.getZ()-column.getZ()-.5)<=1.05;
+    }
+    private static boolean continuousColumn(ServerLevel level,BlockPos base,double feetY){
+        int last=(int)Math.ceil(feetY)-1;
+        if(last<base.getY()||last-base.getY()>=MAX_HEIGHT)return false;
+        if(!level.hasChunkAt(base.below())||!level.getBlockState(base.below())
+                .isFaceSturdy(level,base.below(),Direction.UP))return false;
+        return BuilderScaffoldGeometry.completeColumn(base.getY(),feetY,y->{
+            BlockPos at=new BlockPos(base.getX(),y,base.getZ());
+            return level.hasChunkAt(at)&&level.getBlockState(at).is(Blocks.SCAFFOLDING);
+        });
     }
 
     public static Result reach(ServerLevel level,BuilderGolem worker,
@@ -352,6 +419,11 @@ public final class BuilderScaffolding {
             WorkerStationBlockEntity table,boolean force){
         var positions=new java.util.ArrayList<>(table.scaffoldPositions(worker.getUUID()));
         if(positions.isEmpty())return;
+        for(BlockPos pos:positions)
+            if(!level.getEntitiesOfClass(net.minecraft.world.entity.Entity.class,
+                    new net.minecraft.world.phys.AABB(pos).inflate(.4,1.7,.4),
+                    entity->entity.isAlive()&&!(entity instanceof net.minecraft.world.entity.item.ItemEntity))
+                    .isEmpty())return;
         int minY=positions.stream().mapToInt(BlockPos::getY).min().orElse(0);
         if(!force){
             if(!worker.onGround()||worker.getY()>minY+2.1)return;

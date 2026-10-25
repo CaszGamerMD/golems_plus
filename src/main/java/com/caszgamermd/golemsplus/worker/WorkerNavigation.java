@@ -82,8 +82,8 @@ public final class WorkerNavigation {
     private static void updateDoorClearance(ServerLevel level,PathfinderMob mob,Progress progress){
         BlockPos pos=mob.blockPosition();
         boolean near=false;
-        if(progress.requested!=null||progress.openedDoor!=null)
-            for(int dx=-2;dx<=2&&!near;dx++)
+        // Idle or stalled builders also need clearance before their next move.
+        for(int dx=-2;dx<=2&&!near;dx++)
                 for(int dy=-1;dy<=1&&!near;dy++)
                     for(int dz=-2;dz<=2&&!near;dz++){
                         BlockPos probe=pos.offset(dx,dy,dz);
@@ -106,6 +106,10 @@ public final class WorkerNavigation {
             mob.setBoundingBox(new AABB(mob.getX()-half,mob.getY(),mob.getZ()-half,
                     mob.getX()+half,mob.getY()+mob.getBbHeight(),mob.getZ()+half));
         }
+    }
+
+    public static void prepareBody(ServerLevel level,PathfinderMob mob){
+        updateDoorClearance(level,mob,state(mob));
     }
 
     private static boolean handDoor(ServerLevel world,BlockPos pos){

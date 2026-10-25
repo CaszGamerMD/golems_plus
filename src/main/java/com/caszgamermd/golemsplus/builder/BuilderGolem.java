@@ -129,7 +129,17 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         for(ItemStack stack:materials)if(stack.is(item))n+=stack.getCount();
         return n;
     }
+    @Override public void travel(net.minecraft.world.phys.Vec3 input){
+        // Run controlled descent at the movement phase, after AI controls.
+        // Vanilla climbing/jumping must not turn a downward command upward.
+        if(level() instanceof ServerLevel world&&BuilderScaffolding.travelDown(world,this))return;
+        super.travel(input);
+    }
     @Override public void tick(){
+        // Apply doorway clearance before vanilla movement/collision, even
+        // while idle, rather than waiting until after a collision occurred.
+        if(level() instanceof ServerLevel bodyWorld)
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.prepareBody(bodyWorld,this);
         boolean climbing=level() instanceof ServerLevel climbWorld
                 &&BuilderScaffolding.tickMotion(climbWorld,this);
         // Never retain the old no-gravity state after switching jobs,
@@ -190,3 +200,4 @@ public final class BuilderGolem extends PathfinderMob implements Container {
                     .orElse(ItemStack.EMPTY));
     }
 }
+

@@ -60,24 +60,6 @@ jobs:
       - name: Verify Builder chunk ticket and worker persistence protections
         run: python3 scripts/builder_chunk_tickets_smoke.py
       - run: gradle --no-daemon clean test build
-      - name: Inspect scaffold collision and climb controls
-        run: |
-          python3 - <<'PYCODE'
-          import pathlib,zipfile,subprocess,re
-          wanted={'net.minecraft.world.phys.shapes.EntityCollisionContext':['EntityCollisionContext(', 'isDescending('], 'net.minecraft.world.level.block.ScaffoldingBlock':['getCollisionShape('], 'net.minecraft.world.entity.Entity':['isDescending('], 'net.minecraft.world.entity.LivingEntity':['handleOnClimbable(', 'isSuppressingSlidingDownLadder(', 'travelInAir(']}
-          for jar in pathlib.Path.home().joinpath('.gradle/caches').rglob('*.jar'):
-            try:
-              with zipfile.ZipFile(jar) as z:
-                if 'net/minecraft/world/phys/shapes/EntityCollisionContext.class' not in z.namelist(): continue
-              print('Minecraft jar:',jar)
-              for cls,methods in wanted.items():
-                data=subprocess.check_output(['javap','-c','-p','-classpath',str(jar),cls],text=True)
-                blocks=re.split(r'\n(?=  (?:public|protected|private))',data)
-                for b in blocks:
-                  if any(m in b.split('\n')[0] for m in methods): print(cls,b)
-              break
-            except zipfile.BadZipFile: pass
-          PYCODE
       - uses: actions/upload-artifact@v4
         if: success()
         with:
