@@ -455,9 +455,20 @@ public final class BuilderBuildService {
                 BlockPos approach=workDistance<=100
                         ?BuilderPlacementSpace.approach(level,worker,pos):null;
                 BlockPos goal=approach==null?pos:approach;
-                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .routeTo(level,worker,goal,.85))
-                    table.setProblem("Builder cannot path alongside "+pos);
+                boolean routed=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeTo(level,worker,goal,.85);
+                if(!routed){
+                    // A bounded A* retry is NOT an impassable site. Do not
+                    // freeze the task or claim an outright failure because
+                    // nearby workers briefly occupy the route's endpoint.
+                    boolean retry=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .retryScheduled(worker);
+                    table.setProblem(retry
+                            ?"Builder rerouting around moving workers at "
+                                    +pos.toShortString()
+                            :"Builder exploring alternate routes to "
+                                    +pos.toShortString());
+                }
                 return;
             }
             // Never place into any Builder's body. Check before spending
