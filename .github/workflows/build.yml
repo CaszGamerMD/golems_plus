@@ -65,6 +65,11 @@ jobs:
         run: python3 scripts/builder_warehouse_queued_smoke.py
       - name: Verify Builder chunk ticket and worker persistence protections
         run: python3 scripts/builder_chunk_tickets_smoke.py
+      # Check deterministic route/tower geometry even if the larger Dome
+      # server trial later stalls on crew traffic. Never treat this as
+      # a substitute for real-entity Minecraft GameTests.
+      - name: Run Builder navigation and two-block tower clearance JUnit tests
+        run: gradle --no-daemon test
       # The build task now runs a real dedicated Minecraft GameTest.
       # A green JUnit run alone does not count as a movement pass.
       - name: Run Minecraft server GameTests (scaffold route and framed doorway)
