@@ -47,4 +47,21 @@ class BuilderMaterialDemandTest {
                 BuilderMaterialDemand.batch(steps,0,Map.of("example:brick",130)));
     }
 
+    @Test void warehouseRequestsWholeBuildAndPrioritizesPickableStock(){
+        var steps=new ArrayList<BuilderConstructionPlan.Step>();
+        for(int i=0;i<20;i++)
+            for(int j=0;j<3;j++)
+                steps.add(new BuilderConstructionPlan.Step(i,j*10,0,
+                        "minecraft:stone","test:block"+i));
+        var manifest=BuilderMaterialDemand.outstanding(steps,0,
+                Map.of("test:block1",2),Map.of("test:block19",20));
+        assertEquals(16,manifest.size());
+        assertEquals(3,manifest.get("test:block19"));
+        assertEquals(1,manifest.get("test:block1"));
+        assertEquals("test:block19",manifest.keySet().iterator().next());
+        assertTrue(manifest.containsKey("test:block0"));
+        assertEquals(Map.of(),BuilderMaterialDemand.outstanding(steps,
+                steps.size(),Map.of(),Map.of()));
+    }
+
 }
