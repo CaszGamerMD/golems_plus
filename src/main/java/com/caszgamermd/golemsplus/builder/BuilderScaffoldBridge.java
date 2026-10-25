@@ -170,6 +170,58 @@ public final class BuilderScaffoldBridge {
         return false;
     }
 
+    /** Construct a real footing below every fifth suspended walkway node.
+     * One real material is transferred and placed per call; never create
+     * the pillar all at once at a distance from the Builder.
+     */
+    private static BuilderScaffolding.Result addPier(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            ServerPlayer owner,BlockPos at,
+            List<BuilderConstructionPlan.Step> plan){
+        Set<BlockPos> forbidden=new HashSet<>();
+        for(var step:plan)if(!step.ignorePlant())forbidden.add(
+                new BlockPos(step.x(),step.y(),step.z()));
+        Set<BlockPos> owned=new HashSet<>(table.scaffoldPositions(worker.getUUID()));
+        if(!pierFeasible(level,owner,at,forbidden,owned))
+            return BuilderScaffolding.Result.NO_SAFE_TOWER;
+        int footingY=at.getY()-9;
+        for(int depth=1;depth<=8;depth++){
+            BlockPos under=at.below(depth);
+            if(level.getBlockState(under).isFaceSturdy(level,under,
+                    Direction.UP)){
+                footingY=under.getY();break;
+            }
+        }
+        for(int y=footingY+1;y<at.getY();y++){
+            BlockPos segment=new BlockPos(at.getX(),y,at.getZ());
+            if(level.getBlockState(segment).is(Blocks.SCAFFOLDING)
+                    &&owned.contains(segment))continue;
+            if(!level.getBlockState(segment).isAir()
+                    ||forbidden.contains(segment)
+                    ||worker.distanceToSqr(segment.getX()+.5,
+                            segment.getY()+.5,segment.getZ()+.5)>14)
+                return BuilderScaffolding.Result.NO_SAFE_TOWER;
+            var stock=BuilderSupplyInventory.loadScaffold(level,worker,table,1);
+            if(stock==BuilderSupplyInventory.ScaffoldLoad.MOVING)
+                return BuilderScaffolding.Result.CLIMBING;
+            if(stock==BuilderSupplyInventory.ScaffoldLoad.MISSING)
+                return BuilderScaffolding.Result.NEED_MATERIALS;
+            var receipt=BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING);
+            if(receipt==null)return BuilderScaffolding.Result.NEED_MATERIALS;
+            if(!level.setBlock(segment,Blocks.SCAFFOLDING.defaultBlockState(),3)){
+                BuilderSupplyInventory.refund(table,receipt);
+                return BuilderScaffolding.Result.NO_SAFE_TOWER;
+            }
+            if(!table.trackScaffold(worker.getUUID(),segment)){
+                level.setBlock(segment,Blocks.AIR.defaultBlockState(),3);
+                BuilderSupplyInventory.refund(table,receipt);
+                return BuilderScaffolding.Result.NO_SAFE_TOWER;
+            }
+            return BuilderScaffolding.Result.CLIMBING;
+        }
+        return BuilderScaffolding.Result.NOT_NEEDED;
+    }
+
     private static List<BlockPos> search(ServerLevel level,ServerPlayer owner,
             WorkerStationBlockEntity table,BuilderGolem worker,
             BlockPos anchor,BlockPos target,Set<BlockPos> future,
@@ -334,6 +386,10 @@ public final class BuilderScaffoldBridge {
             return BuilderScaffolding.Result.NO_SAFE_TOWER;
         }
         if(!level.getBlockState(to).is(Blocks.SCAFFOLDING)){
+            if(next%5==0){
+                var support=addPier(level,worker,table,owner,to,plan);
+                if(support!=BuilderScaffolding.Result.NOT_NEEDED)return support;
+            }
             if(!level.getBlockState(to).isAir()||owned.contains(to)){
                 routes.remove(worker);
                 return BuilderScaffolding.Result.NO_SAFE_TOWER;
