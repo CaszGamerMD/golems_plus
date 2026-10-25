@@ -496,6 +496,12 @@ public final class BuilderBuildService {
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
             if(workDistance>14){
+                // Leave a completed scaffold onto an adjacent solid upper
+                // walkway BEFORE asking vanilla A* to path from its
+                // non-walkable scaffolding node. This is crucial for
+                // circling buildings after reaching the required height.
+                if(BuilderScaffolding.stepOffTowardWork(level,worker,table,pos))
+                    return;
                 // The NEXT job step is not in physical placing range yet.
                 // Regardless of the previous navigation state, continue
                 // approaching until the distance check genuinely passes.

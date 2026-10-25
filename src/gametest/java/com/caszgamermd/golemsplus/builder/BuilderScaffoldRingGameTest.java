@@ -66,11 +66,23 @@ public final class BuilderScaffoldRingGameTest {
             if (stage[0]==0) { // Physics-based ascent, not a teleport.
                 if (builder.getY()>=helper.absolutePos(
                         new BlockPos(1,7,3)).getY()-.16) {
+                    BlockPos platform=helper.absolutePos(new BlockPos(2,7,3));
+                    if(!BuilderScaffolding.stepToPlatform(level,builder,platform))
+                        helper.fail("Builder at top cannot enter adjacent ring platform");
                     stage[0]=1; since[0]=now;
                 }
-            }else if (stage[0]==1) { // Real native navigation around ring.
-                if (visited[0]==lap.length) {
+            }else if (stage[0]==1) { // Physically step onto top walkway.
+                BlockPos platform=helper.absolutePos(new BlockPos(2,7,3));
+                double dx=builder.getX()-(platform.getX()+.5);
+                double dz=builder.getZ()-(platform.getZ()+.5);
+                if(dx*dx+dz*dz<.55&&builder.onGround()
+                        &&Math.abs(builder.getY()-platform.getY())<.28){
                     stage[0]=2;since[0]=now;
+                    visited[0]=1; // the ring entry is first waypoint
+                }
+            }else if (stage[0]==2) { // Real native navigation around ring.
+                if (visited[0]==lap.length) {
+                    stage[0]=3;since[0]=now;
                     BuilderScaffolding.begin(level,builder,column,
                             column.getY()+1.0,true);
                     return;
@@ -84,13 +96,13 @@ public final class BuilderScaffoldRingGameTest {
                 }else{
                     WorkerNavigation.routeToExact(level,builder,destination,1.0);
                 }
-            }else if(stage[0]==2) { // Re-enter scaffold from the ring edge.
+            }else if(stage[0]==3) { // Re-enter scaffold from ring edge.
                 if(builder.getY()<=column.getY()+1.16) {
-                    stage[0]=3;since[0]=now;
+                    stage[0]=4;since[0]=now;
                     if(!BuilderScaffolding.dismountAtBase(level,builder,column))
                         helper.fail("No physically safe ground landing beside tower");
                 }
-            }else if(stage[0]==3) { // Feet must land on solid ground.
+            }else if(stage[0]==4) { // Feet must land on solid ground.
                 double dx=builder.getX()-(groundExit.getX()+.5);
                 double dz=builder.getZ()-(groundExit.getZ()+.5);
                 if(dx*dx+dz*dz<.55

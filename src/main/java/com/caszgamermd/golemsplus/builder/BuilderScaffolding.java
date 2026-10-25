@@ -381,6 +381,51 @@ public final class BuilderScaffolding {
         }
         return best;
     }
+    /** Real side exit at the top of a scaffold. Vanilla pathfinding
+     * cannot usually start from a scaffold node to an adjacent full-block
+     * walkway. Move physically to the supported landing first, then
+     * release the Builder back to normal A* navigation.
+     */
+    static boolean stepToPlatform(ServerLevel level,BuilderGolem worker,
+                                  BlockPos destination){
+        double dx=worker.getX()-(destination.getX()+.5);
+        double dz=worker.getZ()-(destination.getZ()+.5);
+        if(dx*dx+dz*dz>3.2
+                ||Math.abs(worker.getY()-destination.getY())>1.3
+                ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canStandOn(level,worker,destination))return false;
+        clearMotion(worker);
+        exiting.put(worker,new ExitRoute(destination.immutable(),
+                level.getGameTime()+140));
+        return true;
+    }
+
+    /** If the next schematic location is far from a Builder still on
+     * owned scaffolding, physically leave the tower onto a walkable
+     * upper platform BEFORE requesting a normal walking path.
+     */
+    public static boolean stepOffTowardWork(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,BlockPos target){
+        if(exiting.containsKey(worker))return true;
+        BlockPos feet=worker.blockPosition();
+        BlockPos under=feet.below();
+        if(!level.getBlockState(under).is(Blocks.SCAFFOLDING)
+                ||!table.scaffoldPositions(worker.getUUID()).contains(under))
+            return false;
+        BlockPos chosen=null;
+        double best=Double.POSITIVE_INFINITY;
+        for(Direction dir:Direction.Plane.HORIZONTAL){
+            for(int dy:new int[]{0,1,-1}){
+                BlockPos landing=feet.relative(dir).offset(0,dy,0);
+                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canStandOn(level,worker,landing))continue;
+                double score=landing.distSqr(target)+Math.abs(dy)*3;
+                if(score<best){best=score;chosen=landing;}
+            }
+        }
+        return chosen!=null&&stepToPlatform(level,worker,chosen);
+    }
+
     /** Shared real dismount operation for both Builder jobs and the
      * Minecraft movement GameTest. The landing must be solid and near the
      * bottom of the owned scaffold; never teleport a worker.
