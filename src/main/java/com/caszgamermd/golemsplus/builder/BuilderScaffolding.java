@@ -31,14 +31,40 @@ public final class BuilderScaffolding {
             return Result.NOT_NEEDED;
         }
         if(target.getY()-feet>MAX_HEIGHT)return Result.NO_SAFE_TOWER;
-        var existing=table.scaffoldPositions(worker.getUUID());
-        BlockPos base;
-        if(!existing.isEmpty()){
-            base=existing.stream().min(Comparator.comparingInt(BlockPos::getY)).orElseThrow();
-        }else{
-            base=findBase(level,target,feet,table,plan);
+        // Prefer an existing walkable staircase or completed platform at
+        // the target's exact X/Z before spending a single scaffold item.
+        // Only route on real validated physical paths; never teleport.
+        for(Direction side:Direction.Plane.HORIZONTAL){
+            BlockPos landing=target.relative(side).below();
+            if(level.hasChunkAt(landing)
+                    &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .canReachExact(level,worker,landing)){
+                if(com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeToExact(level,worker,landing,1.0))
+                    return Result.CLIMBING;
+            }
         }
+        var existing=table.scaffoldPositions(worker.getUUID());
+        // Do not cling to a tower from a PREVIOUS work order. It can be
+        // dozens of blocks away, provoking an endless move/climb loop.
+        BlockPos base=existing.stream()
+                .filter(p->Math.abs(p.getX()-target.getX())<=1
+                        &&Math.abs(p.getZ()-target.getZ())<=1)
+                .min(Comparator.comparingInt(BlockPos::getY)).orElse(null);
+        if(base==null)base=findBase(level,worker,target,feet,table,plan);
         if(base==null)return Result.NO_SAFE_TOWER;
+        double bx=base.getX()+.5,bz=base.getZ()+.5;
+        double approachX=worker.getX()-bx,approachZ=worker.getZ()-bz;
+        // Position at the foot of the selected column *first*. The old
+        // implementation placed its full 48-block tower remotely, then
+        // tried to walk through buildings to reach it.
+        if(approachX*approachX+approachZ*approachZ>1.20){
+            worker.setNoGravity(false);
+            if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeToExact(level,worker,base,1.0))
+                return Result.NO_SAFE_TOWER;
+            return Result.CLIMBING;
+        }
         int top=target.getY()-1;
         if(top-base.getY()+1>MAX_HEIGHT)return Result.NO_SAFE_TOWER;
         int needed=0;
@@ -76,7 +102,8 @@ public final class BuilderScaffolding {
         double dx=worker.getX()-cx,dz=worker.getZ()-cz;
         if(dx*dx+dz*dz>1.5){
             worker.setNoGravity(false);
-            worker.getNavigation().moveTo(cx,base.getY(),cz,.85);
+            com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeToExact(level,worker,base,1.0);
             return Result.CLIMBING;
         }
         if(worker.getY()<top+.1){
@@ -91,9 +118,18 @@ public final class BuilderScaffolding {
         worker.setNoGravity(false);
         return Result.NOT_NEEDED;
     }
-    private static BlockPos findBase(ServerLevel level,BlockPos target,int feet,
-            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> plan){
-        for(Direction side:Direction.Plane.HORIZONTAL){
+    private static BlockPos findBase(ServerLevel level,BuilderGolem worker,
+            BlockPos target,int feet,WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> plan){
+        java.util.List<Direction> sides=new java.util.ArrayList<>();
+        for(Direction side:Direction.Plane.HORIZONTAL)sides.add(side);
+        // Use the nearest adjacent X/Z to approach the future block and
+        // climb vertically. Other sides remain fallbacks around obstacles.
+        sides.sort(Comparator.comparingDouble(side->{
+            BlockPos p=target.relative(side);
+            return worker.distanceToSqr(p.getX()+.5,feet,p.getZ()+.5);
+        }));
+        for(Direction side:sides){
             BlockPos adjacent=target.relative(side);
             for(int dy=0;dy<=5;dy++){
                 BlockPos base=new BlockPos(adjacent.getX(),feet-dy,adjacent.getZ());
@@ -112,7 +148,8 @@ public final class BuilderScaffolding {
                                 &&step.z()==at.getZ()){clear=false;break;}
                     if(!clear)break;
                 }
-                if(clear)return base;
+                if(clear&&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canReachExact(level,worker,base))return base;
             }
         }
         return null;
