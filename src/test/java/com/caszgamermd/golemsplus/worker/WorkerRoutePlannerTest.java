@@ -100,6 +100,24 @@ final class WorkerRoutePlannerTest {
         assertTrue(existingFloor.contains(route.steps().getLast()));
         assertTrue(route.steps().size()<=7);
     }
+    @Test void fiveOrSixBlocksOutRequiresWalkingCloserToPlace(){
+        // A builder standing six blocks away must reach a valid exact
+        // work tile; the formerly accepted two-block-short endpoint is
+        // not proof that it can interact with the next assigned step.
+        BlockPos start=at(0,81,0),future=at(6,81,0);
+        Set<BlockPos> ground=new HashSet<>();
+        for(int x=0;x<=6;x++)for(int z=-3;z<=3;z++)
+            ground.add(at(x,81,z));
+        ground.remove(future);
+        var approach=at(5,81,0);
+        assertTrue(start.distSqr(future)>14);
+        assertTrue(approach.distSqr(future)<=9);
+        var route=find(start,List.of(approach),ground);
+        assertNotNull(route);
+        assertTrue(route.complete());
+        assertEquals(approach,route.steps().getLast(),
+                "Walking must continue until within work range");
+    }
     @Test void existingPlatformAllowsAOneBlockStepDownAndBackUp(){
         Set<BlockPos> surface=Set.of(
                 at(0,82,0),at(1,81,0),at(2,81,0),at(3,82,0));
