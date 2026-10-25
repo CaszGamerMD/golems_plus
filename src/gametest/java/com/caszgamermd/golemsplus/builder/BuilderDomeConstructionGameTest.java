@@ -69,8 +69,8 @@ public final class BuilderDomeConstructionGameTest {
             helper.fail("GameTest owner isn't registered as an online ServerPlayer");
             return;
         }
-        if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,2)){
-            helper.fail("Cannot claim Dome Planner or set two builders");return;
+        if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,4)){
+            helper.fail("Cannot claim Dome Planner or set four builders");return;
         }
         Path folder=FabricLoader.getInstance().getConfigDir()
                 .resolve("golems_plus").resolve("schematics");
@@ -100,9 +100,9 @@ public final class BuilderDomeConstructionGameTest {
                 level.dimension().identifier().toString(),
                 supplyPos.getX(),supplyPos.getY(),supplyPos.getZ()));
         final List<BuilderGolem> crew=new ArrayList<>();
-        for(int i=0;i<2;i++){
+        for(int i=0;i<4;i++){
             BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-            BlockPos pos=helper.absolutePos(new BlockPos(6,2,7+i));
+            BlockPos pos=helper.absolutePos(new BlockPos(6+i%2,2,5+i/2));
             worker.setPos(pos.getX()+.5,pos.getY(),pos.getZ()+.5);
             worker.assign(plannerPos,id);
             level.addFreshEntity(worker);
@@ -112,7 +112,7 @@ public final class BuilderDomeConstructionGameTest {
             crew.add(worker);
         }
         if(!table.startPlacedBuilder(id)){
-            helper.fail("Dome Planner rejected start with 2 registered builders");
+            helper.fail("Dome Planner rejected start with 4 registered builders");
             return;
         }
         final int[] lastCursor={-1},lastCleared={-1},lastCompleted={-1};
@@ -181,7 +181,7 @@ public final class BuilderDomeConstructionGameTest {
                         worker->table.scaffoldPositions(worker.getUUID()).isEmpty());
                 if(atGround&&scaffoldsGone){
                     System.out.println("[DOME E2E] PASS all 3537 blocks verified, "+
-                            "plant filter active, 2 workers grounded, scaffolding recovered");
+                            "plant filter active, 4 workers grounded, scaffolding recovered");
                     helper.succeed();
                 }
                 return;
