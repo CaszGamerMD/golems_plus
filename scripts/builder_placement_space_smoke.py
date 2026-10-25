@@ -10,7 +10,9 @@ assert "BuilderGolem.class,area" in space
 assert "table.builderWorkerIds().contains(g.getUUID())" in space
 assert "List<LivingEntity> others" in space
 assert "public static boolean yieldTick(" in space
-assert "WorkerNavigation.routeToExact(level,worker,hold.destination(),.9)" in space
+assert "WorkerNavigation.routeToExact(level,worker," in space
+assert "BuilderPlacementSpace.tickMotion(teamWorld,this)" in (root/"BuilderGolem.java").read_text()
+assert "level.noCollision(worker,worker.getBoundingBox().move(vx,0,vz))" in space
 assert "WorkerNavigation.routeToExact(level,blocker,destination,.9)" in space
 assert "WorkerNavigation.canReachExact(level,worker,p)" in space
 navigation=(root.parent/"worker/WorkerNavigation.java").read_text()
@@ -29,7 +31,8 @@ assert 'if(BuilderPlacementSpace.yieldTick(level,worker))return;' in build
 start=build.index("// Never place into any Builder's body.")
 payment=build.index("BuilderSupplyInventory.consume(worker,state.item())",start)
 placed=build.index("if(!level.setBlock(pos,state.state(),3))",payment)
-assert start < build.index("if(!BuilderPlacementSpace.ready(level,worker,table,pos))return;",start) < payment < placed
+assert start < build.index("if(!BuilderPlacementSpace.ready(level,worker,table,pos)){",start) < payment < placed
+assert "table.waitForBuilderTraffic(worker.getUUID(),index," in build
 assert "yielding.put(blocker,new Yield(target,destination," in space
 assert "getGameTime()+60" in space
 assert "!level.getBlockState(hold.target()).isAir()" in space
