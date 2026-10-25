@@ -49,9 +49,11 @@ public final class BuilderScaffoldBridge {
     public static boolean sidestep(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos feet){
         BlockPos support=feet.below();
-        if(!level.hasChunkAt(support)
-                ||!level.getBlockState(support).is(Blocks.SCAFFOLDING)
-                ||!table.scaffoldPositions(worker.getUUID()).contains(support)
+        boolean scaffold=level.getBlockState(support).is(Blocks.SCAFFOLDING)
+                &&table.scaffoldPositions(worker.getUUID()).contains(support);
+        boolean floor=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                .canStandOn(level,worker,feet);
+        if(!level.hasChunkAt(support)||!(scaffold||floor)
                 ||worker.distanceToSqr(feet.getX()+.5,
                         feet.getY(),feet.getZ()+.5)>4.2)
             return false;
@@ -120,6 +122,8 @@ public final class BuilderScaffoldBridge {
         if(level.getGameTime()>walk.expires()
                 ||!level.hasChunkAt(platform)
                 ||!level.getBlockState(platform).is(Blocks.SCAFFOLDING)
+                    &&!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .canStandOn(level,worker,platform.above())
                 ||worker.getY()<platform.getY()+.35
                 ||worker.getY()>platform.getY()+2){
             walking.remove(worker);
