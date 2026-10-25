@@ -703,13 +703,16 @@ public final class BuilderScaffolding {
         // Prefer the service side of the dome's X/Y or Z/Y section,
         // rather than picking the nearest column beneath a projecting lip.
         // Physical clearance and solid foundation are checked below.
-        var occupied=BuilderScaffoldSections.solids(plan);
+        var shell=BuilderScaffoldShell.forWorksite(table,plan);
         var preferred=new java.util.HashSet<Long>();
         for(int levelY:new int[]{target.getY()-1,target.getY()-2})
-            for(var station:BuilderScaffoldSections.stations(
-                    occupied,target,levelY))
-                preferred.add(BlockPos.asLong(station.scaffold().getX(),0,
-                        station.scaffold().getZ()));
+            for(BlockPos platform:shell.atHeight(levelY)){
+                int dx=platform.getX()-target.getX();
+                int dz=platform.getZ()-target.getZ();
+                if(dx*dx+dz*dz<=13)
+                    preferred.add(BlockPos.asLong(platform.getX(),0,
+                            platform.getZ()));
+            }
         offsets.sort(Comparator.comparingDouble(at->
                 (preferred.contains(BlockPos.asLong(at.getX(),0,at.getZ()))
                         ?-12:0)+at.distSqr(target)*2
