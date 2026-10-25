@@ -124,7 +124,8 @@ public final class BuilderPlacementSpace {
             // A player/other mob must also never be suffocated by placement.
             List<LivingEntity> others=level.getEntitiesOfClass(
                     LivingEntity.class,area,
-                    g->g.isAlive()&&!(g instanceof BuilderGolem));
+                    g->g.isAlive()&&!(g instanceof BuilderGolem builder
+                            &&table.builderWorkerIds().contains(builder.getUUID())));
             if(others.isEmpty())return true;
             table.setProblem("Waiting for entity to vacate construction space "
                     +target.toShortString());
