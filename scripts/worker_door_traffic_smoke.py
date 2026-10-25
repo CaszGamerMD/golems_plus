@@ -13,14 +13,15 @@ assert "users.keySet().iterator().next().equals(worker)" in queue
 assert "STALE_TICKS=100" in queue
 assert "Map<ServerLevel,Map<BlockPos,Lane>> doors" in traffic
 assert "public static boolean crossed(" in traffic
-assert "projected< -1.5" in traffic
+assert "projected< -1.25" in traffic
+assert "initial<.35" in traffic
 assert "new HashMap<>()" in traffic
 assert "queuedDoor,doorStandby" in nav
 assert "private static BlockPos imminentDoor(" in nav
 assert "private static BlockPos doorStandby(" in nav
 assert "radius<2||radius>3.35" in nav
 assert "if(doorTrafficTick(level,mob,p))" in nav
-assert "if(p.waitingDoor)return true" in nav
+assert "if(p.waitingDoor||p.finishingDoor)return true" in nav
 assert "WorkerDoorTraffic.request(level,local,mob)" in nav
 assert "if(WorkerDoorTraffic.count(level,door)>0)return;" in nav
 assert "1.5*1.5" in nav

@@ -364,6 +364,11 @@ public final class BuilderBuildService {
                 // dismantle the nearby scaffold to rebuild them.
                 return;
             }
+            // Finish the *actual* scaffold landing before a short
+            // remaining vertical distance causes the normal work route
+            // or depot order to cancel the last block of ascent.
+            if(BuilderScaffolding.finishActiveAscent(level,worker))
+                return;
             // Every real Builder goes to the chosen OnSite depot ONCE per
             // exclusive ten-coordinate batch, unloads other materials and
             // collects actual stock (including flowers within shulkers).

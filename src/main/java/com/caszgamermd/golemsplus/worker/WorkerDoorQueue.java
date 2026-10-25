@@ -16,6 +16,24 @@ public final class WorkerDoorQueue {
         users.put(worker,gameTime); // update does not move FIFO position
         return !users.isEmpty()&&users.keySet().iterator().next().equals(worker);
     }
+    /** A worker ALREADY occupying the threshold must be permitted to
+     * leave before queued arrivals. Never rotate two physical occupants
+     * back and forth; the traffic controller calls this only if the
+     * current head is outside the doorway.
+     */
+    public void prioritizeOccupant(UUID worker,long gameTime){
+        expire(gameTime);
+        var order=new LinkedHashMap<UUID,Long>();
+        order.put(worker,gameTime);
+        users.forEach((id,last)->{
+            if(!id.equals(worker))order.put(id,last);
+        });
+        users.clear();
+        users.putAll(order);
+    }
+    public UUID head(){
+        return users.isEmpty()?null:users.keySet().iterator().next();
+    }
     public void release(UUID worker){users.remove(worker);}
     public boolean owns(UUID worker){
         return !users.isEmpty()&&users.keySet().iterator().next().equals(worker);

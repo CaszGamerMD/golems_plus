@@ -58,7 +58,7 @@ public final class WorkerNavigation {
         // Per-door traffic reservation: one crossing at a time, but no
         // cross-door or cross-site global lock.
         BlockPos queuedDoor,doorStandby;
-        boolean waitingDoor,parkingAtDoor;
+        boolean waitingDoor,parkingAtDoor,finishingDoor;
         int doorLastProgressTick;
         double doorLastDistance=Double.POSITIVE_INFINITY;
         // Cached weighted route is transient: the actual job and cargo
@@ -342,7 +342,7 @@ public final class WorkerNavigation {
     private static void clearDoor(ServerLevel level,PathfinderMob mob,Progress p){
         if(p.queuedDoor!=null)WorkerDoorTraffic.release(level,p.queuedDoor,mob);
         p.queuedDoor=null;p.doorStandby=null;
-        p.waitingDoor=false;p.parkingAtDoor=false;
+        p.waitingDoor=false;p.parkingAtDoor=false;p.finishingDoor=false;
         p.doorLastDistance=Double.POSITIVE_INFINITY;
         p.doorLastProgressTick=mob.tickCount;
     }
@@ -352,7 +352,8 @@ public final class WorkerNavigation {
         if(progress.queuedDoor!=null&&target!=null
                 &&progress.requested!=null&&!target.equals(progress.requested))
             clearDoor(level,mob,progress);
-        if(progress.waitingDoor)return true; // keep original work target
+        if(progress.waitingDoor||progress.finishingDoor)return true;
+        // Retain original work target while this worker clears the door.
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem)
             speed=1.0; // nominal 4 m/s from Builder movement attribute .40
         if(target==null||!level.hasChunkAt(target))return false;
@@ -391,7 +392,8 @@ public final class WorkerNavigation {
         if(p.queuedDoor!=null&&target!=null
                 &&p.requested!=null&&!target.equals(p.requested))
             clearDoor(level,mob,p);
-        if(p.waitingDoor)return true; // the door owns motion until released
+        if(p.waitingDoor||p.finishingDoor)return true;
+        // Door crossing owns movement until the threshold is clear.
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
             ground.setCanOpenDoors(true);
         boolean changed=!target.equals(p.requested);
@@ -541,7 +543,8 @@ public final class WorkerNavigation {
                 +" retry="+remaining+"t attempts="+p.attempts
                 +" stalled="+p.stalled+" unsafe="+p.unsafeChecks
                 +(p.queuedDoor==null?"":" door="+p.queuedDoor.toShortString()
-                    +(p.waitingDoor?" WAIT":" CROSS")+" q#"+rank);
+                    +(p.waitingDoor?" WAIT":p.finishingDoor?" EXIT":" CROSS")
+                    +" q#"+rank);
     }
 
     public static boolean retryScheduled(PathfinderMob mob){
@@ -717,6 +720,52 @@ public final class WorkerNavigation {
         return best;
     }
 
+    /** The native path often ends INSIDE an open door rather than beyond
+     * its threshold. Do not mark that path completed and leave the owner
+     * blocking everyone behind it: escort it to safe ground on the far
+     * side, holding only this particular door's FIFO reservation.
+     */
+    private static boolean finishDoorExit(ServerLevel level,PathfinderMob mob,
+                                           Progress p){
+        if(p.queuedDoor==null||p.requested==null
+                ||!WorkerDoorTraffic.owns(level,p.queuedDoor,mob))return false;
+        BlockPos door=p.queuedDoor;
+        if(mob.distanceToSqr(door.getX()+.5,door.getY()+.5,
+                door.getZ()+.5)>3.0)return false;
+        if(!p.finishingDoor&&!mob.getNavigation().isDone()
+                &&p.stalled<STALL_TICKS)return false;
+        BlockState gate=level.getBlockState(door);
+        if(!handDoor(level,door))return false;
+        Direction facing=entranceFacing(gate);
+        double advance=(p.requested.getX()-door.getX())*facing.getStepX()
+                +(p.requested.getZ()-door.getZ())*facing.getStepZ();
+        if(Math.abs(advance)<.5)return false;
+        Direction out=advance>0?facing:facing.getOpposite();
+        BlockPos exit=null;
+        // Prefer two blocks past the opening so the following worker has
+        // room to enter; one-block fallback is used only when safe.
+        for(int distance:new int[]{2,3,1}){
+            BlockPos candidate=door.relative(out,distance);
+            if(!standingTile(level,mob,candidate)
+                    ||neighborOccupied(level,mob,candidate))continue;
+            exit=candidate;break;
+        }
+        if(exit==null)return false; // no safe place; never push into a wall
+        if(!isOpenPassage(gate))setPassageOpen(level,mob,door,true);
+        p.finishingDoor=true;
+        p.waitingDoor=false;
+        mob.getNavigation().stop();
+        double x=exit.getX()+.5,z=exit.getZ()+.5;
+        mob.getMoveControl().setWantedPosition(x,exit.getY(),z,1.0);
+        double vx=Math.max(-.16,Math.min(.16,(x-mob.getX())*.25));
+        double vz=Math.max(-.16,Math.min(.16,(z-mob.getZ())*.25));
+        if(level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz))){
+            var velocity=mob.getDeltaMovement();
+            mob.setDeltaMovement(vx,Math.min(0,velocity.y),vz);
+        }
+        return true;
+    }
+
     private static boolean doorTrafficTick(ServerLevel level,PathfinderMob mob,Progress p){
         if(p.queuedDoor!=null){
             if(!handDoor(level,p.queuedDoor)
@@ -725,12 +774,18 @@ public final class WorkerNavigation {
                             p.queuedDoor.getY()+.5,p.queuedDoor.getZ()+.5)>64){
                 WorkerDoorTraffic.release(level,p.queuedDoor,mob);
                 p.queuedDoor=null;p.waitingDoor=false;
-                p.doorStandby=null;p.parkingAtDoor=false;
+                p.doorStandby=null;p.parkingAtDoor=false;p.finishingDoor=false;
                 p.nextRoute=0;
             }
         }
         if(p.queuedDoor==null&&p.requested!=null){
-            BlockPos upcoming=imminentDoor(level,mob,p);
+            // Rescue a worker whose path stopped with its feet already
+            // INSIDE the gate. Dot-product crossing detection cannot
+            // discover it because its starting offset is near zero.
+            BlockPos inside=mob.blockPosition();
+            BlockPos upcoming=handDoor(level,inside)?inside
+                    :handDoor(level,inside.below())?inside.below()
+                    :imminentDoor(level,mob,p);
             if(upcoming!=null){
                 p.queuedDoor=upcoming;
                 p.doorLastProgressTick=mob.tickCount;
@@ -774,8 +829,11 @@ public final class WorkerNavigation {
                 p.nextRoute=0;p.stalled=0;p.unsafeChecks=0;
                 mob.getNavigation().stop(); // job loop resumes its own route
             }
+            if(finishDoorExit(level,mob,p))
+                return true; // one worker finishes its crossing at a time
             return false;
         }
+        p.finishingDoor=false;
         if(!p.waitingDoor){
             p.waitingDoor=true;p.parkingAtDoor=false;p.doorStandby=null;
             mob.getNavigation().stop();
