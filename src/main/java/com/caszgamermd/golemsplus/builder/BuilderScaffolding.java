@@ -540,7 +540,9 @@ public final class BuilderScaffolding {
         BlockPos base=existing.stream()
                 .filter(p->{
                     int dx=p.getX()-target.getX(),dz=p.getZ()-target.getZ();
-                    return dx*dx+dz*dz<=5&&!avoided(level,worker,p);
+                    // A three-block side offset is still within the
+                    // Builder's 14-squared-block real placement reach.
+                    return dx*dx+dz*dz<=13&&!avoided(level,worker,p);
                 })
                 .min(Comparator.comparingInt(BlockPos::getY)).orElse(null);
         if(base==null)for(Direction side:Direction.Plane.HORIZONTAL){
@@ -666,16 +668,26 @@ public final class BuilderScaffolding {
     private static BlockPos findBase(ServerLevel level,BuilderGolem worker,
             BlockPos target,int feet,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> plan){
-        // A completed wall can occupy every directly adjacent column.
-        // Search nearby 1-2 block offsets for an existing safe foundation.
-        // The farthest columns remain within the Builder's placing reach
-        // after it climbs to target Y-1.
+        // A partly built Dome can occupy every 1-2-block ring around a
+        // target. Explore ALL nearby foundations still inside the actual
+        // placing radius (distance^2 <= 14 with one block of vertical gap).
+        // The wider 3-block perimeter opens safe columns outside finished
+        // walls without extending physical placement reach or teleporting.
         java.util.List<BlockPos> offsets=new java.util.ArrayList<>();
-        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
             int distance=dx*dx+dz*dz;
-            if(distance<1||distance>5)continue;
+            if(distance<1||distance>13)continue;
             offsets.add(target.offset(dx,0,dz));
         }
+        // Each candidate column used to linearly rescan all 3,537
+        // schematic cells at every height. Preindex ONLY relevant solid
+        // planned positions once per search, ignoring vegetation filtered
+        // out of the selected job. Never scaffold on a future solid cell.
+        java.util.Set<BlockPos> planned=new java.util.HashSet<>();
+        for(var step:plan)
+            if(!step.ignorePlant()&&step.y()>=feet-5
+                    &&step.y()<target.getY())
+                planned.add(new BlockPos(step.x(),step.y(),step.z()));
         offsets.sort(Comparator.comparingDouble(at->
                 at.distSqr(target)*2
                 +worker.distanceToSqr(at.getX()+.5,feet,at.getZ()+.5)*.1));
@@ -700,10 +712,7 @@ public final class BuilderScaffolding {
                             ||table.isTrackedScaffold(at)){
                         clear=false;break;
                     }
-                    for(var step:plan)
-                        if(step.x()==at.getX()&&step.y()==at.getY()
-                                &&step.z()==at.getZ()){clear=false;break;}
-                    if(!clear)break;
+                    if(planned.contains(at)){clear=false;break;}
                 }
                 if(clear&&(worker.blockPosition().distSqr(base)>16*16
                         ||com.caszgamermd.golemsplus.worker.WorkerNavigation
