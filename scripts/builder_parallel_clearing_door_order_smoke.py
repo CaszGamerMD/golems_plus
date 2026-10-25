@@ -27,6 +27,8 @@ assert "builderClearClaims=new HashMap" in table
 assert "builderClearVerified=new java.util.HashSet" in table
 assert "builder_clear_verified_count" in table
 assert "while(builderClearVerified.remove(builderClearCursor))" in table
-assert 'BuilderWarehousePort.stockSnapshot(' not in warehouse[warehouse.index('public static boolean queueMaterials('):warehouse.index('public static boolean cancelShipment(')]
+assert 'BuilderMaterialDemand.outstanding(' in warehouse
+assert 'warehouseStock==null?Map.of():warehouseStock' in warehouse
+assert 'needed.replaceAll' not in warehouse[warehouse.index('public static boolean queueMaterials('):warehouse.index('public static boolean cancelShipment(')]
 assert 'BuilderWarehousePort.request(level,computer,table.getBlockPos(),' in warehouse
 print("PASS: 8 independent clearing claims, safe door halves, empty-first check, whole shortage order")
