@@ -215,7 +215,7 @@ public final class BuilderScaffoldBridge {
             Set<BlockPos> future=new HashSet<>();
             int bridgeY=target.getY()-1;
             for(var step:plan)if(!step.ignorePlant()
-                    &&step.y()==bridgeY)
+                    &&(step.y()==bridgeY||step.y()==bridgeY-1))
                 future.add(new BlockPos(step.x(),step.y(),step.z()));
             List<BlockPos> best=List.of();
             int matchingTops=0;
