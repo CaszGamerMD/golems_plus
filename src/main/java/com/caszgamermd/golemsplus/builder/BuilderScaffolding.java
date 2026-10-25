@@ -334,10 +334,12 @@ public final class BuilderScaffolding {
             BlockPos approach=null;
             if(level.getBlockState(base).is(Blocks.SCAFFOLDING)
                     &&worker.getY()>base.getY()+1.2){
+                final BlockPos selectedColumn=base;
                 int high=existing.stream()
-                        .filter(at->at.getX()==base.getX()
-                                &&at.getZ()==base.getZ())
-                        .mapToInt(BlockPos::getY).max().orElse(base.getY());
+                        .filter(at->at.getX()==selectedColumn.getX()
+                                &&at.getZ()==selectedColumn.getZ())
+                        .mapToInt(BlockPos::getY).max()
+                        .orElse(selectedColumn.getY());
                 approach=returnLanding(level,worker,new Tower(base,high));
             }
             if(approach==null){
