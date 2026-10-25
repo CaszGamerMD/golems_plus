@@ -210,10 +210,39 @@ public final class BuilderScaffolding {
             // forcing a stuck climb and let the Builder choose another
             // safe tower. Never remove the real column or teleport.
             if(watch.failures>=3){
-                avoided.put(worker,new AvoidColumn(session.column(),
-                        level.getGameTime()+120));
-                clearMotion(worker);
-                return false;
+                // Never strand an elevated Builder by cancelling gravity
+                // control above a drop. Try a genuine nearby platform
+                // exit; otherwise reverse a failed UP climb on the same
+                // real tower and return to solid ground first.
+                BlockPos atHeight=new BlockPos(session.column().getX(),
+                        worker.blockPosition().getY(),session.column().getZ());
+                BlockPos safe=exitGround(level,worker,atHeight);
+                if(safe!=null){
+                    clearMotion(worker);
+                    exiting.put(worker,new ExitRoute(safe,
+                            level.getGameTime()+140));
+                    return true;
+                }
+                if(!session.descending()
+                        &&worker.getY()>session.column().getY()+1.3){
+                    avoided.put(worker,new AvoidColumn(session.column(),
+                            level.getGameTime()+120));
+                    begin(level,worker,session.column(),
+                            session.column().getY()+1.0,true);
+                    return true;
+                }
+                if(!session.descending()){
+                    avoided.put(worker,new AvoidColumn(session.column(),
+                            level.getGameTime()+120));
+                    clearMotion(worker);
+                    return false;
+                }
+                // No safe intermediate exit during descent; keep using
+                // the actual owned scaffold. Never drop a worker from
+                // height merely because a watchdog fired.
+                watch.failures=0;
+                worker.setShiftKeyDown(true);
+                worker.setDeltaMovement(0,-.16,0);
             }
             worker.getNavigation().stop();
             worker.getMoveControl().setWantedPosition(
