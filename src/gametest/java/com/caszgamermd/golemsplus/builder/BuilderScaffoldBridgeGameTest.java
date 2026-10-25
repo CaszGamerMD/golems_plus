@@ -16,6 +16,28 @@ import net.minecraft.world.level.block.Blocks;
  * those segments instead of treating the obstacle as a second tower.
  */
 public final class BuilderScaffoldBridgeGameTest {
+    /** The GameTest must reject bridges that only LOOK built but whose
+     * unsupported spans have distance seven and will fall on block tick.
+     */
+    private static String unstableBridge(ServerLevel world,
+            java.util.Set<BlockPos> owned){
+        for(BlockPos at:owned){
+            if(!world.hasChunkAt(at)||!world.hasChunkAt(at.below()))
+                return "unloaded scaffold at "+at.toShortString();
+            var state=world.getBlockState(at);
+            if(!state.is(Blocks.SCAFFOLDING))
+                return "tracked scaffold missing at "+at.toShortString();
+            BlockPos under=at.below();
+            var below=world.getBlockState(under);
+            boolean verticalSupport=below.is(Blocks.SCAFFOLDING)
+                    ||below.isFaceSturdy(world,under,
+                            net.minecraft.core.Direction.UP);
+            if(!verticalSupport&&state.getValue(
+                    net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE)>=7)
+                return "unsupported span at "+at.toShortString();
+        }
+        return null;
+    }
     @GameTest(structure="golems_plus_gametest:dome_arena",
             maxTicks=1000,skyAccess=true)
     public void turnsAroundOverhangAndReturnsToItsTower(GameTestHelper helper){
@@ -66,6 +88,11 @@ public final class BuilderScaffoldBridgeGameTest {
                     var segments=table.scaffoldPositions(worker.getUUID());
                     if(segments.size()<7){
                         helper.fail("Reached overhang without a physical scaffold bridge");
+                        return;
+                    }
+                    String unstable=unstableBridge(level,segments);
+                    if(unstable!=null){
+                        helper.fail("Bridge crossed but physics support failed: "+unstable);
                         return;
                     }
                     if(!level.getBlockState(helper.absolutePos(
@@ -150,6 +177,12 @@ public final class BuilderScaffoldBridgeGameTest {
             if(helper.getTick()%5!=0)return;
             if(worker.distanceToSqr(goal.getX()+.5,goal.getY()+.5,
                     goal.getZ()+.5)<=12.5){
+                String unstable=unstableBridge(level,
+                        table.sharedScaffoldPositions());
+                if(unstable!=null){
+                    helper.fail("Long bridge is physically unstable: "+unstable);
+                    return;
+                }
                 int posts=0;
                 for(BlockPos p:table.scaffoldPositions(worker.getUUID()))
                     if(p.getY()==anchor.getY()-1&&p.getX()!=anchor.getX())
