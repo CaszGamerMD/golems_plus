@@ -135,7 +135,9 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         // Physical four-builder right-of-way: a worker waiting in a
         // teammate's future block can move one safe step EVERY entity tick,
         // independently of its slower construction task scheduler.
-        if(!climbing&&level() instanceof ServerLevel teamWorld)
+        boolean returning= !climbing&&level() instanceof ServerLevel floorWorld
+                &&BuilderTeamGroundTraffic.tickMotion(floorWorld,this);
+        if(!climbing&&!returning&&level() instanceof ServerLevel teamWorld)
             BuilderPlacementSpace.tickMotion(teamWorld,this);
         // Never retain the old no-gravity state after switching jobs,
         // unloading, leaving a tower, or reloading an entity from disk.
