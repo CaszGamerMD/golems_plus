@@ -25,7 +25,8 @@ assert "heldItems.contains(material)" in station
 assert "builderWorkOrders.put(worker,order)" in station
 assert "order.size()<10" in station
 assert "int chosen=preferred>=0?preferred:first;" in station
-assert "java.util.Set<String> carriedItems=new java.util.HashSet<>()" in build
+assert "var assigned=zoneSchedule(table,plan)" in build
+assert "var zone=assigned.tasks().steps(worker.getUUID())" in build
 assert "table.claimBuilderZoneStep(worker.getUUID()," in build
 assert "zone,plan.steps()" in build
 assert "Builder teammate is carrying " in build
