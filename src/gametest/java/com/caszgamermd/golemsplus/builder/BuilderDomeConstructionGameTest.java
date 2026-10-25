@@ -208,8 +208,8 @@ public final class BuilderDomeConstructionGameTest {
                         +" operatorLoaded="+level.hasChunkAt(operator.blockPosition())
                         +" craneLoaded="+level.hasChunkAt(crane.blockPosition())
                         +" plannerLoaded="+level.hasChunkAt(plannerPos)
-                        +" craneInLevel="+level.getEntity(crane.getUUID())==crane
-                        +" operatorInLevel="+level.getEntity(operator.getUUID())==operator);
+                        +" craneInLevel="+(level.getEntity(crane.getUUID())==crane)
+                        +" operatorInLevel="+(level.getEntity(operator.getUUID())==operator));
                 return;
             }
             int riding=0;
