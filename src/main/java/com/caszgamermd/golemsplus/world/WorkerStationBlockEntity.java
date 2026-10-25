@@ -1076,12 +1076,21 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public java.util.List<BlockPos> scaffoldPositions(UUID worker){
         return java.util.List.copyOf(trackedScaffolds.getOrDefault(worker,java.util.List.of()));
     }
+    /** Team-wide read-only scaffold graph. Placement/refunds still belong
+     * to the original worker, but ALL assigned Builders can use completed
+     * tower/catwalk nodes. Never duplicate an existing scaffold item.
+     */
+    public java.util.List<BlockPos> sharedScaffoldPositions(){
+        java.util.Set<BlockPos> positions=new java.util.HashSet<>();
+        for(var owned:trackedScaffolds.values())positions.addAll(owned);
+        return java.util.List.copyOf(positions);
+    }
     public boolean isTrackedScaffold(BlockPos pos){
         return trackedScaffolds.values().stream().anyMatch(list->list.contains(pos));
     }
     public boolean trackScaffold(UUID worker,BlockPos pos){
         if(!builderWorkerIds().contains(worker)||isTrackedScaffold(pos)
-                ||trackedScaffolds.values().stream().mapToInt(java.util.List::size).sum()>=256)
+                ||trackedScaffolds.values().stream().mapToInt(java.util.List::size).sum()>=1024)
             return false;
         trackedScaffolds.computeIfAbsent(worker,k->new java.util.ArrayList<>())
                 .add(pos.immutable());sync();return true;
