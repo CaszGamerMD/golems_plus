@@ -98,6 +98,29 @@ public final class BuilderDomeImportGameTest {
                     "Dome cross sections yielded no safe work platforms");
             System.out.println("[DOME E2E] section profiles X-lips="+xLips
                     +" Z-lips="+zLips+" platformTargets="+usable);
+            // Plan the entire shell, but do NOT place a single scaffold.
+            // The shell follows each course of the dome instead of using
+            // a static bounding-box cage that cannot reach upper rims.
+            var shell=BuilderScaffoldShell.fromSteps(plan.steps());
+            if(shell.shell().isEmpty()||shell.floors().size()<10)
+                throw new IllegalStateException("Dome exterior shell missing levels");
+            int eligible=0;
+            for(int index=0;index<plan.steps().size();index+=29){
+                var step=plan.steps().get(index);
+                if(!step.ignorePlant()&&shell.suggestedWorkPositions(
+                        new BlockPos(step.x(),step.y(),step.z()))>0)
+                    eligible++;
+            }
+            if(eligible<10)throw new IllegalStateException(
+                    "Dome shell cannot reach enough sampled placements: "+eligible);
+            for(BlockPos floor:shell.shell()){
+                if(solids.contains(floor)||solids.contains(floor.above())
+                        ||solids.contains(floor.above().above()))
+                    throw new IllegalStateException("Shell puts a Builder inside the dome");
+            }
+            System.out.println("[DOME E2E] virtual 1-block shell floorCells="
+                    +shell.shell().size()+" layers="+shell.floors().size()
+                    +" reachableSamples="+eligible);
             System.out.println("[DOME E2E] source=exact uploaded file blocks="
                     +plan.steps().size()+" ignoredPlants="+ignored
                     +" unsupported="+plan.unsupported().size());
