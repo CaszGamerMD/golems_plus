@@ -45,6 +45,19 @@ public final class BuilderZoneWorkPlan {
             int owner=footprint.zone(step.x(),step.z(),activeWorkers.size());
             data.get(activeWorkers.get(owner)).add(index);
         }
+        // Minimize travel within each independent Y layer. Build strips
+        // alternate Z direction as X advances instead of bouncing to
+        // arbitrary coordinates from the original litematic palette order.
+        // Steps retain their original indices for world/save progress.
+        for(var zone:data.values())zone.sort((left,right)->{
+            var a=steps.get(left);
+            var b=steps.get(right);
+            int height=Integer.compare(a.y(),b.y());
+            if(height!=0)return height;
+            int strip=Integer.compare(a.x(),b.x());
+            if(strip!=0)return strip;
+            return ((a.x()&1)==0?1:-1)*Integer.compare(a.z(),b.z());
+        });
         return new BuilderZoneWorkPlan(activeWorkers,data);
     }
 }

@@ -35,6 +35,30 @@ class BuilderZoneWorkPlanTest {
         assertEquals(steps.size(),total);
         assertEquals(steps.size(),seen.size());
     }
+    @Test void localRowsSnakeInsteadOfCrossingTheZoneRepeatedly(){
+        var steps=new ArrayList<BuilderConstructionPlan.Step>();
+        // Intentionally backwards and out of layer order.
+        for(int y=65;y>=64;y--)
+            for(int z=5;z>=0;z--)
+                for(int x=1;x>=0;x--)
+                    steps.add(new BuilderConstructionPlan.Step(x,y,z,"x","x"));
+        var id=UUID.randomUUID();
+        var plan=BuilderZoneWorkPlan.compile(
+                steps,BuilderZones.footprint(steps),List.of(id));
+        int lastY=Integer.MIN_VALUE,lastX=Integer.MIN_VALUE,lastZ=0;
+        for(int i:plan.steps(id)){
+            var step=steps.get(i);
+            assertTrue(step.y()>=lastY);
+            if(step.y()==lastY){
+                assertTrue(step.x()>=lastX);
+                if(step.x()==lastX)
+                    assertTrue((step.x()%2==0 ? step.z()>=lastZ :
+                            step.z()<=lastZ));
+            }
+            lastY=step.y();lastX=step.x();lastZ=step.z();
+            if(step.y()>lastY)lastX=Integer.MIN_VALUE;
+        }
+    }
     @Test void oneBuilderKeepsEveryTaskAndRejectsDuplicateCrew(){
         var steps=List.of(
                 new BuilderConstructionPlan.Step(1,64,1,"a","a"),

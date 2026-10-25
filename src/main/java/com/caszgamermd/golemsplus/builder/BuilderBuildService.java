@@ -486,6 +486,13 @@ public final class BuilderBuildService {
                 return;
             }
             activity.phase=Action.PLACE;
+            // Travel and placement are mutually exclusive for THIS worker:
+            // stop the previous A* path and horizontal momentum before a
+            // freshly placed block can appear in its upcoming route.
+            // Other Builders' independent paths are never interrupted.
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+            var velocity=worker.getDeltaMovement();
+            worker.setDeltaMovement(0,velocity.y,0);
             // Never place into any Builder's body. Check before spending
             // the item so waiting for a teammate to move consumes nothing.
             if(!BuilderPlacementSpace.ready(level,worker,table,pos))return;
