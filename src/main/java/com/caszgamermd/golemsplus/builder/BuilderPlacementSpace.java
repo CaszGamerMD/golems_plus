@@ -24,7 +24,8 @@ import net.minecraft.world.phys.AABB;
  */
 public final class BuilderPlacementSpace {
     private BuilderPlacementSpace(){}
-    private record Yield(BlockPos target,BlockPos destination,long until){}
+    private record Yield(BlockPos target,BlockPos destination,
+            long until,boolean placingWorker){}
     private static final Map<BuilderGolem,Yield> yielding=new WeakHashMap<>();
 
     private static AABB volume(BlockPos pos){
@@ -45,7 +46,8 @@ public final class BuilderPlacementSpace {
         if(hold==null)return false;
         if(!worker.isAlive()||level.getGameTime()>=hold.until()
                 ||!occupied(hold.target(),worker)
-                    &&!level.getBlockState(hold.target()).isAir()){
+                    &&(hold.placingWorker()
+                        ||!level.getBlockState(hold.target()).isAir())){
             // Once the placement exists, its physical collision prevents
             // anyone from walking back into the same block. Resume work
             // immediately instead of waiting out the full yield window.
@@ -142,7 +144,7 @@ public final class BuilderPlacementSpace {
                 continue;
             }
             yielding.put(blocker,new Yield(target,destination,
-                    level.getGameTime()+60));
+                    level.getGameTime()+60,blocker==placing));
             WorkerNavigation.routeTo(level,blocker,destination,.9);
         }
         table.setProblem(found
