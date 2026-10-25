@@ -544,6 +544,18 @@ public final class WorkerNavigation {
                     +" q#"+rank);
     }
 
+    /** A genuine repeated no-route failure, not a pause while another worker
+     * crosses a door or while a reachable path is still in progress.
+     * Builders use this to return down their OWN scaffold instead of retrying
+     * an unreachable upper-platform approach forever. No motion is forced.
+     */
+    public static boolean repeatedlyUnreachable(PathfinderMob mob,int retries){
+        Progress p=states.get(mob);
+        return p!=null&&p.requested!=null&&p.approach==null
+                &&p.attempts>=retries&&mob.getNavigation().isDone()
+                &&!p.waitingDoor&&!p.finishingDoor&&!p.parkingAtDoor;
+    }
+
     public static boolean retryScheduled(PathfinderMob mob){
         Progress p=states.get(mob);
         return p!=null&&p.requested!=null
