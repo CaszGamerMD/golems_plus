@@ -104,7 +104,7 @@ public final class BuildingCrane extends Entity implements Container {
         if(!(driver instanceof BuilderGolem builder)){status="Operator unloaded; waiting safely";return;}
         if(builder.getVehicle()!=this){
             Vec3 a=anchorPoint();
-            if(builder.position().distanceTo(a)<2.2){WorkerNavigation.stop(builder);builder.startRiding(this,true);}
+            if(builder.position().distanceTo(a)<2.2){WorkerNavigation.stop(builder);builder.startRiding(this);}
             else {CraneService.walk(world,builder,BlockPos.containing(a));return;}
         }
         if(station()==null&&!recalling){recall();status="Job ended or unavailable; returning passengers";}
@@ -144,7 +144,7 @@ public final class BuildingCrane extends Entity implements Container {
             Vec3 at=Vec3.atBottomCenterOf(dock);
             if(position().distanceTo(at)>.15){go(world,at);return;}
             if(w.distanceToSqr(getX(),getY(),getZ())>3.24){CraneService.walk(world,w,dock);return;}
-            WorkerNavigation.stop(w);w.startRiding(this,true);status="Boarding builders";return;
+            WorkerNavigation.stop(w);w.startRiding(this);status="Boarding builders";return;
         }
         // Finish the current direction before accepting another batch. One
         // unfinished/obstructed platform must not trap three other builders.
@@ -244,7 +244,7 @@ public final class BuildingCrane extends Entity implements Container {
         };
         player.openMenu(new SimpleMenuProvider((id,inv,p)->ChestMenu.sixRows(id,inv,view),Component.literal("Crane supplies — page "+(this.page+1)+"/8")));
     }
-    @Override public InteractionResult interact(Player player,InteractionHand hand){
+    public InteractionResult interact(Player player,InteractionHand hand){
         if(!(player instanceof ServerPlayer p))return InteractionResult.SUCCESS;
         if(!p.getUUID().equals(owner))return InteractionResult.FAIL;
         ItemStack held=p.getItemInHand(hand);
