@@ -21,6 +21,8 @@ jobs:
         run: python3 scripts/builder_ignore_plants_smoke.py
       - name: Verify Builders vacate placement cells safely
         run: python3 scripts/builder_placement_space_smoke.py
+      - name: Verify Builder warehouse isolation and in-game diagnostics
+        run: python3 scripts/builder_stall_diagnostics_smoke.py
       - name: Verify independent Builder zone execution and staggered scheduling
         run: python3 scripts/builder_independent_execution_smoke.py
       - name: Verify Builder zoned scheduling and reconciled warehouse stock

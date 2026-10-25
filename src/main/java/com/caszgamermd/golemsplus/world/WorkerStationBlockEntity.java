@@ -635,6 +635,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
      * A stalled claim expires after five seconds; a different Builder can
      * retry the same cell without any premature world modifications.
      */
+    /** Read-only inspection of an individual Builder's current clearing
+     * position; never grants or steals a clearance claim.
+     */
+    public int builderClearClaim(UUID worker){
+        return builderClearClaims.getOrDefault(worker,-1);
+    }
     public int claimBuilderClear(UUID worker,int limit){
         if(activeOrder==null||!builderWorkerIds().contains(worker))return -1;
         long now=level==null?0:level.getGameTime();

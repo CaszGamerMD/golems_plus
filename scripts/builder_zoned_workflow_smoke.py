@@ -32,5 +32,6 @@ assert "canReachExact(level,worker,landing)" in scaffold
 assert "routeToExact(level,worker,base,1.0)" in scaffold
 assert "BuilderMaterialDemand.outstandingRemaining(" in warehouse
 assert "table.requestBuilderShipmentCancellation();" in warehouse
-assert "if(table.supplyRequest()!=null&&!worker.hasSupplyBox())" in build
+assert "BuilderWarehouseCoordinator.reconcileTicket(level,table)" in build
+assert "if(table.warehouse()!=null && table.supplyRequest()==null" not in build
 print("PASS: zoned crews, independent Y, 4m/s walking, near-site ascent, no duplicate warehouse order")
