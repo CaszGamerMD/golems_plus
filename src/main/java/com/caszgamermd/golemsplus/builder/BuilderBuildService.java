@@ -523,6 +523,31 @@ public final class BuilderBuildService {
             }
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+            // A Dome tower now stands TWO empty blocks outside the
+            // structure. Crossing them is a separate travel operation,
+            // even if the builder could technically place a block from
+            // its tower within the 14-squared interaction radius.
+            BlockPos towerFloor=worker.blockPosition().below();
+            BlockPos towerUnder=towerFloor.below();
+            if(plan.steps().size()>=24
+                    &&table.sharedScaffoldPositions().contains(towerFloor)
+                    &&level.getBlockState(towerFloor).is(Blocks.SCAFFOLDING)
+                    &&level.getBlockState(towerUnder).is(Blocks.SCAFFOLDING)
+                    &&Math.abs(worker.getY()-pos.getY())<=1.4
+                    &&horizontal>=6.25){
+                var crossing=BuilderScaffoldBridge.reach(level,worker,table,
+                        owner,pos,plan.steps());
+                if(crossing==BuilderScaffolding.Result.CLIMBING)return;
+                if(crossing==BuilderScaffolding.Result.NEED_MATERIALS){
+                    table.setProblem("Needs scaffold bridge materials for "
+                            +pos.toShortString());
+                    BuilderWarehouseCoordinator.requestScaffolding(level,
+                            worker,table,owner,plan.steps());
+                    return;
+                }
+                // When an existing solid walkway suffices, the regular
+                // physical approach and place rules remain valid.
+            }
             if(workDistance>14){
                 if(!BuilderScaffolding.isControllingMovement(worker)
                         &&travelBlocked(level,worker,index)){
