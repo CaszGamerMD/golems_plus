@@ -21,7 +21,9 @@ assert "returnPouch(table,worker);" in supply
 assert "quota=capacity*(requested==target?2:1)" in supply
 assert "if(worker.carriedCount(target)==0&&requested!=target)continue;" in supply
 assert "public int claimBuilderStep(UUID worker,int layerExclusive," in station
-assert "heldItems.contains(needed)" in station
+assert "heldItems.contains(material)" in station
+assert "builderWorkOrders.put(worker,order)" in station
+assert "order.size()<10" in station
 assert "if(preferred>=0)next=preferred;" in station
 assert "java.util.Set<String> carriedItems=new java.util.HashSet<>()" in build
 assert "plan.steps(),carriedItems" in build
