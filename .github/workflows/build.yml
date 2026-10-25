@@ -45,6 +45,8 @@ jobs:
         run: python3 scripts/builder_scaffold_door_exit_smoke.py
       - name: Verify 0.65 worker collision, return-to-scaffold and safe exit
         run: python3 scripts/builder_scaffold_return_065_smoke.py
+      - name: Verify unlimited staged scaffold towers and exclusive movement
+        run: python3 scripts/builder_scaffold_vertical_v2_smoke.py
       - name: Verify continuous Builder scaffold ascent and descent
         run: python3 scripts/builder_scaffold_continuous_smoke.py
       - name: Verify per-door FIFO traffic and scaffold gravity recovery
