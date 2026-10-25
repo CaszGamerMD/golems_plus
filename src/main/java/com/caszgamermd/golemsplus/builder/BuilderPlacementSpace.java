@@ -95,18 +95,23 @@ public final class BuilderPlacementSpace {
             BlockPos target){
         BlockPos origin=worker.blockPosition();
         List<BlockPos> choices=new ArrayList<>();
+        // Probe a compact, predictable set of cardinal/diagonal safe
+        // standing locations instead of inspecting hundreds of cells on
+        // every 12-tick build update (which itself caused visible freezes).
         for(int radius=2;radius<=4;radius++)
-            for(int dx=-radius;dx<=radius;dx++)
-                for(int dz=-radius;dz<=radius;dz++){
-                    if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)continue;
-                    for(int dy=-1;dy<=1;dy++){
+            for(int dx=-radius;dx<=radius;dx+=radius)
+                for(int dz=-radius;dz<=radius;dz+=radius){
+                    if(dx==0&&dz==0)continue;
+                    for(int dy:new int[]{0,1,-1}){
                         BlockPos p=target.offset(dx,dy,dz);
                         if(canStand(level,worker,p,target))choices.add(p);
                     }
                 }
         choices.sort(java.util.Comparator.comparingDouble(p->
                 p.distSqr(origin)+Math.abs(p.getY()-origin.getY())*2));
+        int attempted=0;
         for(BlockPos p:choices){
+            if(++attempted>8)break; // bounded path work per worker tick
             // Favor a physically reachable tile; don't assume an air
             // candidate is reachable around walls/stairs/racks.
             var path=worker.getNavigation().createPath(p,0);
