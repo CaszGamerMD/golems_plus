@@ -14,6 +14,42 @@ public final class BuilderMaterialDemand {
      * golems crossing the warehouse for tiny repeated batches. Staged
      * OnSite and worker pouch stock is deducted before placing an order.
      */
+    /** Warehouse manifest is calculated for the whole unfinished job,
+     * NOT just the next placement or three layers. Prioritize lines with
+     * real pickable rack stock, while keeping zero-stock shortages visible.
+     * One persistent warehouse request can thus pack shulkers continuously
+     * while Builders work independently.
+     */
+    public static Map<String,Integer> outstanding(
+            List<BuilderConstructionPlan.Step> steps,int cursor,
+            Map<String,Integer> onsite,Map<String,Integer> warehouseStock){
+        if(cursor<0||cursor>=steps.size())return Map.of();
+        Map<String,Integer> needed=new LinkedHashMap<>();
+        for(int i=cursor;i<steps.size();i++){
+            String id=steps.get(i).requiredItem();
+            if(id!=null&&!id.isBlank())needed.merge(id,1,Integer::sum);
+        }
+        needed.replaceAll((id,count)->Math.min(4096,
+                Math.max(0,count-Math.max(0,onsite.getOrDefault(id,0)))));
+        needed.values().removeIf(v->v<=0);
+        var types=new java.util.ArrayList<>(needed.entrySet());
+        // The Shulker Station manifest currently supports 16 material
+        // types per order. Pick in-stock items first, but never use the
+        // warehouse snapshot to *erase* shortages from the request.
+        types.sort((a,b)->{
+            boolean left=warehouseStock.getOrDefault(a.getKey(),0)>0;
+            boolean right=warehouseStock.getOrDefault(b.getKey(),0)>0;
+            if(left!=right)return left?-1:1;
+            return Integer.compare(b.getValue(),a.getValue());
+        });
+        Map<String,Integer> manifest=new LinkedHashMap<>();
+        for(var e:types){
+            if(manifest.size()>=16)break;
+            manifest.put(e.getKey(),e.getValue());
+        }
+        return manifest;
+    }
+
     public static Map<String,Integer> batch(List<BuilderConstructionPlan.Step> steps,
             int cursor,Map<String,Integer> stocked){
         if(cursor<0||cursor>=steps.size())return Map.of();

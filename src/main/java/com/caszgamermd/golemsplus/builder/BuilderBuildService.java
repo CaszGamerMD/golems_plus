@@ -36,6 +36,11 @@ public final class BuilderBuildService {
                          List<BuilderConstructionPlan.Step> steps,
                          List<BuilderSiteClearance.Target> clearing){}
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
+    // Reuse the immutable server-side schematic work plan across queued
+    // warehouse retries. Parsing a 100k-block Litematica file every four
+    // seconds caused visible freezes while a PTP was temporarily busy.
+    private static final Map<WorkerStationBlockEntity,Cache>
+            cachedWarehousePlans=new WeakHashMap<>();
     private BuilderBuildService(){}
     /** Start the warehouse packing reservation as soon as the user
      * presses Start, before any Builder Golem has reached the first block.
@@ -49,26 +54,28 @@ public final class BuilderBuildService {
             return "Manual supply mode: link a Rack Computer with a Warehouse Scanner to enable warehouse deliveries";
         if(table.supplyRequest()!=null)return "Warehouse material request already active";
         try{
-            Path folder=FabricLoader.getInstance().getConfigDir()
-                    .resolve("golems_plus").resolve("schematics");
-            Path file=folder.resolve(table.builderFile()).normalize();
-            if(!file.startsWith(folder)||!Files.isRegularFile(file))
-                return "The uploaded build schematic is missing on the server";
-            var schematic=LitematicFileReader.read(file);
-            var origin=table.builderOrigin();
-            var site=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
-                    BuildSite.Rotation.values()[table.builderRotation()/90],
-                    BuildSite.Mirror.values()[table.builderMirror()]);
-            var plan=BuilderConstructionPlan.create(schematic,site);
+            var cache=jobCache(table);
+            var plan=cache.steps();
             if(table.builderRequired().isEmpty()&&table.activeOrder()!=null){
                 // Running legacy build: retain its current cursor and only
                 // backfill the static required-material checklist.
-                table.backfillBuilderMaterials(plan.required());
+                var required=new java.util.LinkedHashMap<String,Long>();
+                for(var step:plan)if(step.requiredItem()!=null)
+                    required.merge(step.requiredItem(),1L,Long::sum);
+                table.backfillBuilderMaterials(required);
             }
-            var materials=BuilderMaterialDemand.batch(plan.steps(),
-                    table.builderCursor(),BuilderSupplyInventory.available(table));
-            if(materials.isEmpty())return "Next construction batch already stocked in Planner";
-            if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan.steps()))
+            var stock=BuilderSupplyInventory.available(table);
+            var warehouse=table.warehouse();
+            var pickable=warehouse==null?null:
+                    com.caszgamermd.golemsplus.warehouse.BuilderWarehousePort
+                        .stockSnapshot(level,new BlockPos(
+                                warehouse.x(),warehouse.y(),warehouse.z()),
+                                table.builderRemaining());
+            var materials=BuilderMaterialDemand.outstanding(plan,
+                    table.builderCursor(),stock,pickable==null?Map.of():pickable);
+            if(materials.isEmpty())
+                return "All remaining construction materials are already staged OnSite or with the crew";
+            if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan))
                 return table.problem().isBlank()?"Warehouse not ready":table.problem();
             if(table.supplyPtp().equals(BlockPos.ZERO))
                 return "Warehouse request saved; "+table.problem();
@@ -111,6 +118,16 @@ public final class BuilderBuildService {
             }
         }
         BuilderWarehouseCoordinator.pollTable(level,table);
+        // Warehouse requests belong to the active JOB, not construction
+        // cursor progress or whichever Builder happens to be loaded.
+        // Retry the manifest from the Planner every four seconds while
+        // no order is active. Actual rack stock is prioritized, and the
+        // full remaining demand is never silently dropped.
+        if(table.isBuilder()&&table.activeOrder()!=null
+                &&table.warehouse()!=null&&table.supplyRequest()==null
+                &&!table.builderCancelShipment()
+                &&level.getGameTime()%80==0)
+            primeWarehouse(level,table);
         // Existing crafted crew members execute the job; the station never
         // materializes extra golems automatically.
         if(level.getGameTime()%20!=0 || !table.isBuilder()
@@ -269,10 +286,31 @@ public final class BuilderBuildService {
                         net.minecraft.core.registries.BuiltInRegistries.ITEM
                             .getKey(stack.getItem()).toString());
             }
+            // Retrieve temporary towers at a work-order boundary, never
+            // after each block: workers should complete all ten cells on
+            // their current scaffolding before returning for more stock.
+            if(table.builderWorkOrder(worker.getUUID()).isEmpty()
+                    &&!table.scaffoldPositions(worker.getUUID()).isEmpty())
+                BuilderScaffolding.retrieve(level,worker,table,false);
             int index=table.claimBuilderStep(worker.getUUID(),limit,
                     plan.steps(),carriedItems);
             if(index<0)return; // wait for current layer assignments to finish
             var step=plan.steps().get(index);
+            // Every real Builder goes to the chosen OnSite depot ONCE per
+            // exclusive ten-coordinate batch, unloads other materials and
+            // collects actual stock (including flowers within shulkers).
+            // It does not visit the Planning Table for assignments.
+            if(!table.builderOrderPrepared(worker.getUUID())){
+                var prep=BuilderSupplyInventory.prepareWorkOrder(
+                        level,worker,table,plan.steps());
+                if(prep==BuilderSupplyInventory.LoadStatus.MOVING)return;
+                if(prep==BuilderSupplyInventory.LoadStatus.MISSING){
+                    table.setProblem("Builder work order waiting for reachable "
+                            +"OnSite Storage (material staging not complete)");
+                    return;
+                }
+                table.prepareBuilderOrder(worker.getUUID());
+            }
             BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
             if(Math.abs((long)pos.getX()-home.getX())>256||
                     Math.abs((long)pos.getZ()-home.getZ())>256){
@@ -425,12 +463,41 @@ public final class BuilderBuildService {
             table.recordBuilderPlacement(step.requiredItem());
             table.completeBuilderStep(worker.getUUID(),index);
             BuilderSupplyInventory.recycleEmptyShulkers(table);
-            BuilderScaffolding.retrieve(level,worker,table,false);
+            // Keep any deployed scaffolding until this ten-block work order
+            // completes; retrieving per placed block caused route churn.
             table.setProblem("");
         }catch(Exception exception){
             table.setProblem("Builder paused: "+exception.getMessage());
         }
     }
+    private static Cache jobCache(WorkerStationBlockEntity table)
+            throws Exception {
+        Cache previous=cachedWarehousePlans.get(table);
+        if(previous!=null&&previous.file().equals(table.builderFile())
+                &&previous.rotation()==table.builderRotation()
+                &&previous.mirror()==table.builderMirror()
+                &&previous.origin().equals(table.builderOrigin()))
+            return previous;
+        if(!table.hasPlacedSchematic())
+            throw new IllegalArgumentException("No placed schematic");
+        Path folder=FabricLoader.getInstance().getConfigDir()
+                .resolve("golems_plus").resolve("schematics");
+        Path file=folder.resolve(table.builderFile()).normalize();
+        if(!file.startsWith(folder)||!Files.isRegularFile(file))
+            throw new IllegalArgumentException("Saved schematic missing");
+        var schematic=LitematicFileReader.read(file);
+        var origin=table.builderOrigin();
+        var site=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                BuildSite.Rotation.values()[table.builderRotation()/90],
+                BuildSite.Mirror.values()[table.builderMirror()]);
+        var result=BuilderConstructionPlan.create(schematic,site);
+        Cache next=new Cache(table.builderFile(),table.builderRotation(),
+                table.builderMirror(),origin,result.steps(),
+                BuilderSiteClearance.targets(schematic,site));
+        cachedWarehousePlans.put(table,next);
+        return next;
+    }
+
     private static Cache cache(WorkerStationBlockEntity table,BuilderGolem worker)
             throws Exception {
         Cache previous=cached.get(worker);
@@ -438,22 +505,10 @@ public final class BuilderBuildService {
                 &&previous.rotation()==table.builderRotation()
                 &&previous.mirror()==table.builderMirror()
                 &&previous.origin().equals(table.builderOrigin()))return previous;
-        if(!table.hasPlacedSchematic())throw new IllegalArgumentException("No placed schematic");
-        Path file=FabricLoader.getInstance().getConfigDir()
-                .resolve("golems_plus").resolve("schematics").resolve(table.builderFile());
-        if(!Files.isRegularFile(file))throw new IllegalArgumentException("Saved schematic missing");
-        var schematic=LitematicFileReader.read(file);
-        var site=new BuildSite(table.builderOrigin().getX(),table.builderOrigin().getY(),
-                table.builderOrigin().getZ(),
-                BuildSite.Rotation.values()[table.builderRotation()/90],
-                BuildSite.Mirror.values()[table.builderMirror()]);
-        var result=BuilderConstructionPlan.create(schematic,site);
-        // A job may start with unsupported blocks. It stops safely at any
-        // unresolvable step and reports the exact state instead of deleting
-        // blocks or fabricating missing materials.
-        Cache next=new Cache(table.builderFile(),table.builderRotation(),
-                table.builderMirror(),table.builderOrigin(),result.steps(),
-                BuilderSiteClearance.targets(schematic,site));
+        // Share the same immutable validated work plan among all eight
+        // Builders. A different Litematica parse per worker caused pauses
+        // when several workers started the job at once.
+        Cache next=jobCache(table);
         cached.put(worker,next);
         return next;
     }
