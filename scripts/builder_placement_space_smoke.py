@@ -20,7 +20,8 @@ payment=build.index("BuilderSupplyInventory.consume(worker,state.item())",start)
 placed=build.index("if(!level.setBlock(pos,state.state(),3))",payment)
 assert start < build.index("if(!BuilderPlacementSpace.ready(level,worker,table,pos))return;",start) < payment < placed
 assert "yielding.put(blocker,new Yield(target,destination," in space
-assert "getGameTime()+100" in space
+assert "getGameTime()+60" in space
+assert "!level.getBlockState(hold.target()).isAir()" in space
 assert "if(shifted.intersects(volume(obstructed))" in space
 assert 'Waiting for safe standing space' in space
 print("PASS: physically vacate prospective placement cell before payment, no forced relocation through obstacles")
