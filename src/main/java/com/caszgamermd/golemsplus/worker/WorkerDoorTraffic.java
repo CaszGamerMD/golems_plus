@@ -102,9 +102,15 @@ public final class WorkerDoorTraffic {
         double dx=worker.getX()-(door.getX()+.5);
         double dz=worker.getZ()-(door.getZ()+.5);
         double initial=Math.hypot(entry.fromX,entry.fromZ);
-        if(initial<.35)return false;
-        double projected=(dx*entry.fromX+dz*entry.fromZ)/initial;
-        if(projected< -1.5){
+        // Some workers first register while their center is already in
+        // the doorway. Their entry vector is almost zero and the old
+        // code could NEVER release them, trapping the entire queue.
+        double projected=initial<.35?Double.NaN:
+                (dx*entry.fromX+dz*entry.fromZ)/initial;
+        boolean leftOpening=initial<.35
+                ?Math.hypot(dx,dz)>1.6&&level.getGameTime()-entry.started()>8
+                :projected< -1.25;
+        if(leftOpening){
             release(level,door,worker);
             return true;
         }
