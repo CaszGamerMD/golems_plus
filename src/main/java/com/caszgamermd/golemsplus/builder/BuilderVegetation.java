@@ -22,7 +22,14 @@ public final class BuilderVegetation {
         Identifier id=Identifier.tryParse(name);
         if(id==null||!BuiltInRegistries.BLOCK.containsKey(id))return false;
         Block block=BuiltInRegistries.BLOCK.getValue(id);
-        if(block instanceof BushBlock)return true;
+        // Flowers and crops on modern Minecraft do not all inherit BushBlock.
+        // Rely on vanilla block tags before considering suffix fallbacks for
+        // other plants. The Dome contains pink tulips and azaleas which
+        // otherwise cause infinite canSurvive() support retries.
+        if(block.defaultBlockState().is(net.minecraft.tags.BlockTags.FLOWERS)
+                ||block.defaultBlockState().is(net.minecraft.tags.BlockTags.CROPS)
+                ||block.defaultBlockState().is(net.minecraft.tags.BlockTags.SAPLINGS)
+                ||block instanceof BushBlock)return true;
         String path=id.getPath();
         // Azalea and flowering azalea are non-full vegetation despite
         // not inheriting from BushBlock in this Minecraft version.
