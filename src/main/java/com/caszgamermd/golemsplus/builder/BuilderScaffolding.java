@@ -45,6 +45,20 @@ public final class BuilderScaffolding {
             new java.util.WeakHashMap<>();
     private static final java.util.Map<BuilderGolem,AvoidColumn> avoided=
             new java.util.WeakHashMap<>();
+    /** Watch the ACTUAL ground approach to a proposed scaffold tower.
+     * If a selected column is physically unreachable, use a different
+     * candidate instead of restarting the same A* request forever.
+     */
+    private static final class TowerApproach {
+        final BlockPos base;
+        double bestDistance;
+        int lastAdvance;
+        TowerApproach(BlockPos base,double distance,int tick){
+            this.base=base;bestDistance=distance;lastAdvance=tick;
+        }
+    }
+    private static final java.util.Map<BuilderGolem,TowerApproach> approaches=
+            new java.util.WeakHashMap<>();
     private static boolean avoided(ServerLevel level,BuilderGolem worker,
                                     BlockPos candidate){
         AvoidColumn bad=avoided.get(worker);
@@ -58,6 +72,30 @@ public final class BuilderScaffolding {
     private record ExitRoute(BlockPos ground,long expires){}
     private static final java.util.Map<BuilderGolem,ExitRoute> exiting=
             new java.util.WeakHashMap<>();
+    /** Real horizontal scaffold bridge movement is distinct from vanilla
+     * ground A* and from the vertical climb session.
+     */
+    private static final class BridgeMotion {
+        final java.util.List<BlockPos> waypoints;
+        final boolean returning;
+        int next,lastProgress;
+        double distance=Double.POSITIVE_INFINITY;
+        BridgeMotion(java.util.List<BlockPos> path,boolean back,int tick){
+            waypoints=java.util.List.copyOf(path);
+            returning=back;
+            lastProgress=tick;
+        }
+    }
+    private record BridgeTrail(BlockPos start,java.util.List<BlockPos> path){}
+    private static final java.util.Map<BuilderGolem,BridgeMotion> bridgeMotion=
+            new java.util.WeakHashMap<>();
+    private static final java.util.Map<BuilderGolem,BridgeTrail> bridgeTrails=
+            new java.util.WeakHashMap<>();
+    private static final java.util.Map<BuilderGolem,Long> bridgeCooldown=
+            new java.util.WeakHashMap<>();
+    /** Placement order is used to recover horizontal bridge supports safely. */
+    private static final java.util.Map<BuilderGolem,java.util.List<BlockPos>> bridgePlaced=
+            new java.util.WeakHashMap<>();
     private BuilderScaffolding(){}
 
     private static void clearMotion(BuilderGolem worker){
@@ -70,6 +108,10 @@ public final class BuilderScaffolding {
         worker.setDeltaMovement(velocity.x,Math.min(velocity.y,0),velocity.z);
     }
     public static String debugClimb(BuilderGolem worker){
+        BridgeMotion bridge=bridgeMotion.get(worker);
+        if(bridge!=null)return (bridge.returning?"BRIDGE RETURN":"BRIDGE OUT")
+                +" waypoint="+bridge.next+"/"+bridge.waypoints.size()
+                +" idle="+Math.max(0,worker.tickCount-bridge.lastProgress)+"t";
         ClimbSession session=sessions.get(worker);
         if(session!=null){
             MotionWatch watch=progress.get(worker);
@@ -95,12 +137,18 @@ public final class BuilderScaffolding {
      * a verified arrival/dismount (or after a safe abort).
      */
     public static boolean isControllingMovement(BuilderGolem worker){
-        return sessions.containsKey(worker)||exiting.containsKey(worker);
+        return sessions.containsKey(worker)||exiting.containsKey(worker)
+                ||bridgeMotion.containsKey(worker);
     }
     public static void cancel(BuilderGolem worker){
         clearMotion(worker);
         returning.remove(worker);
         exiting.remove(worker);
+        bridgeMotion.remove(worker);
+        bridgeTrails.remove(worker);
+        bridgeCooldown.remove(worker);
+        approaches.remove(worker);
+        // Motion cancellation must never delete unrecovered world supports.
     }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
         ClimbSession session=sessions.get(worker);
@@ -144,6 +192,7 @@ public final class BuilderScaffolding {
      * jump/sneak controls lets vanilla resolve scaffold collisions.
      */
     public static boolean tickMotion(ServerLevel level,BuilderGolem worker){
+        if(tickBridge(level,worker))return true;
         ExitRoute exit=exiting.get(worker);
         if(exit!=null){
             if(level.getGameTime()>exit.expires()
@@ -293,6 +342,246 @@ public final class BuilderScaffolding {
         }
         return true;
     }
+    /** Physically steer across real scaffold blocks one center at a time.
+     * Never move through a missing bridge piece or a world collision.
+     */
+    private static boolean tickBridge(ServerLevel level,BuilderGolem worker){
+        BridgeMotion motion=bridgeMotion.get(worker);
+        if(motion==null)return false;
+        if(motion.next>=motion.waypoints.size()){
+            bridgeMotion.remove(worker);
+            worker.getNavigation().stop();
+            worker.setDeltaMovement(0,Math.min(0,worker.getDeltaMovement().y),0);
+            return false;
+        }
+        BlockPos waypoint=motion.waypoints.get(motion.next);
+        boolean supported=level.hasChunkAt(waypoint)
+                &&(level.getBlockState(waypoint.below()).is(Blocks.SCAFFOLDING)
+                    ||com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .canStandOn(level,worker,waypoint));
+        if(!supported||Math.abs(worker.getY()-waypoint.getY())>.85
+                ||worker.tickCount-motion.lastProgress>120){
+            bridgeCooldown.put(worker,level.getGameTime()+100);
+            // If the next span disappears, retreat over the still-present
+            // visited sections rather than abandoning the golem over air.
+            BridgeTrail trail=bridgeTrails.get(worker);
+            if(!motion.returning&&motion.next>0&&trail!=null){
+                java.util.List<BlockPos> retreat=new java.util.ArrayList<>(
+                        motion.waypoints.subList(0,motion.next));
+                java.util.Collections.reverse(retreat);
+                retreat.add(trail.start());
+                bridgeMotion.put(worker,new BridgeMotion(retreat,true,
+                        worker.tickCount));
+                worker.getNavigation().stop();
+                return true;
+            }
+            bridgeMotion.remove(worker);
+            worker.getNavigation().stop();
+            worker.setDeltaMovement(0,Math.min(0,worker.getDeltaMovement().y),0);
+            return false;
+        }
+        double tx=waypoint.getX()+.5,tz=waypoint.getZ()+.5;
+        double dx=tx-worker.getX(),dz=tz-worker.getZ();
+        double distance=Math.hypot(dx,dz);
+        if(distance<.24){
+            motion.next++;
+            motion.distance=Double.POSITIVE_INFINITY;
+            motion.lastProgress=worker.tickCount;
+            if(motion.next==motion.waypoints.size()){
+                bridgeMotion.remove(worker);
+                worker.getNavigation().stop();
+                worker.setDeltaMovement(0,Math.min(0,
+                        worker.getDeltaMovement().y),0);
+                return false;
+            }
+            return true;
+        }
+        if(distance<motion.distance-.035){
+            motion.distance=distance;
+            motion.lastProgress=worker.tickCount;
+        }
+        worker.getNavigation().stop();
+        worker.setNoGravity(false);
+        worker.setShiftKeyDown(false);
+        worker.setJumping(false);
+        worker.getMoveControl().setWantedPosition(tx,waypoint.getY(),tz,1.0);
+        double vx=Math.max(-.13,Math.min(.13,dx*.26));
+        double vz=Math.max(-.13,Math.min(.13,dz*.26));
+        if(level.noCollision(worker,worker.getBoundingBox().move(vx,0,vz))){
+            var old=worker.getDeltaMovement();
+            worker.setDeltaMovement(vx,Math.min(0,old.y),vz);
+        }
+        return true;
+    }
+
+    private static boolean overBridgeForReturn(ServerLevel level,BuilderGolem worker){
+        BridgeTrail trail=bridgeTrails.get(worker);
+        if(trail==null)return false;
+        BlockPos start=trail.start();
+        double sx=worker.getX()-start.getX()-.5;
+        double sz=worker.getZ()-start.getZ()-.5;
+        if(sx*sx+sz*sz<.44
+                &&Math.abs(worker.getY()-start.getY())<.42){
+            bridgeTrails.remove(worker);
+            return false;
+        }
+        BlockPos landing=trail.path().getLast();
+        double dx=worker.getX()-landing.getX()-.5;
+        double dz=worker.getZ()-landing.getZ()-.5;
+        if(dx*dx+dz*dz>.36
+                ||Math.abs(worker.getY()-landing.getY())>.42){
+            return com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeToExact(level,worker,landing,1.0);
+        }
+        java.util.List<BlockPos> backwards=new java.util.ArrayList<>(
+                trail.path());
+        java.util.Collections.reverse(backwards);
+        backwards.remove(0); // already physically on the landing
+        backwards.add(start);
+        beginBridge(level,worker,backwards,true);
+        return true;
+    }
+
+    /** Package-private so real server GameTests can drive the identical
+     * physical bridge controller without faking an owning player.
+     */
+    static void beginBridge(ServerLevel level,BuilderGolem worker,
+            java.util.List<BlockPos> waypoints,boolean back){
+        clearMotion(worker);
+        exiting.remove(worker);
+        returning.remove(worker);
+        com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+        worker.getNavigation().stop();
+        bridgeMotion.put(worker,new BridgeMotion(waypoints,back,worker.tickCount));
+    }
+
+    /** Build a short, fully supported, permission-checked horizontal
+     * scaffold crossing from the top of an OWNED column to solid high
+     * ground within placement range of this work target.
+     *
+     * Long or unanchored spans are rejected: Minecraft scaffolding has a
+     * finite horizontal support distance. No floating scaffolds are placed.
+     */
+    public static Result bridgeTowardWork(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,ServerPlayer owner,BlockPos target,
+            List<BuilderConstructionPlan.Step> schematic){
+        if(bridgeMotion.containsKey(worker))return Result.CLIMBING;
+        if(level.getGameTime()<bridgeCooldown.getOrDefault(worker,0L))
+            return Result.NOT_NEEDED;
+        BlockPos start=worker.blockPosition();
+        if(!level.getBlockState(start.below()).is(Blocks.SCAFFOLDING)
+                ||!table.scaffoldPositions(worker.getUUID()).contains(start.below())
+                ||Math.abs(worker.getY()-start.getY())>.32)
+            return Result.NOT_NEEDED;
+        // Bridge support starts at a vertical column: extending from the
+        // free end of an existing over-air span could exceed vanilla's
+        // maximum horizontal scaffold distance and collapse the route.
+        BlockPos lower=start.below().below();
+        if(!level.getBlockState(lower).is(Blocks.SCAFFOLDING)
+                &&!level.getBlockState(lower).isFaceSturdy(
+                        level,lower,Direction.UP))
+            return Result.NOT_NEEDED;
+        var owned=table.scaffoldPositions(worker.getUUID());
+        ScaffoldBridgeRoute.Plan proposal=ScaffoldBridgeRoute.plan(start,
+            candidate->candidate.getY()==start.getY()
+                    &&owned.contains(candidate.below())
+                    &&level.hasChunkAt(candidate)
+                    &&level.getBlockState(candidate.below()).is(Blocks.SCAFFOLDING),
+            candidate->{
+                if(candidate.getY()!=start.getY()
+                        ||!level.hasChunkAt(candidate)
+                        ||!level.hasChunkAt(candidate.above())
+                        ||!level.hasChunkAt(candidate.below()))return false;
+                BlockPos floor=candidate.below();
+                if(!level.mayInteract(owner,floor)
+                        ||!level.getBlockState(floor).isAir()
+                        ||!level.getBlockState(candidate).isAir()
+                        ||!level.getBlockState(candidate.above()).isAir()
+                        ||table.isTrackedScaffold(floor))return false;
+                for(var step:schematic)
+                    if(step.x()==floor.getX()&&step.z()==floor.getZ()
+                            &&(step.y()==floor.getY()
+                                ||step.y()==candidate.getY()))return false;
+                return true;
+            },
+            candidate->candidate.getY()==start.getY()
+                    &&candidate.distSqr(target)<=14
+                    &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .canStandOn(level,worker,candidate),
+            candidate->candidate.getY()==start.getY()
+                    &&candidate.distSqr(target)<=14
+                    &&!owned.contains(candidate.below()));
+        if(proposal==null)return Result.NOT_NEEDED;
+        var load=BuilderSupplyInventory.loadScaffold(level,worker,table,
+                proposal.required());
+        if(load==BuilderSupplyInventory.ScaffoldLoad.MOVING)
+            return Result.CLIMBING;
+        if(load==BuilderSupplyInventory.ScaffoldLoad.MISSING)
+            return Result.NEED_MATERIALS;
+        BlockPos previous=start;
+        for(BlockPos feet:proposal.waypoints()){
+            if(com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .canStandOn(level,worker,feet)){
+                previous=feet;
+                continue;
+            }
+            BlockPos block=feet.below();
+            if(level.getBlockState(block).is(Blocks.SCAFFOLDING)
+                    &&owned.contains(block)){
+                previous=feet;
+                continue;
+            }
+            // Every freshly placed cell must attach to the preceding
+            // scaffold; no unsupported jump or disconnected platform.
+            if(!level.getBlockState(previous.below()).is(Blocks.SCAFFOLDING)
+                    ||!level.hasChunkAt(block)
+                    ||!level.mayInteract(owner,block)
+                    ||!level.getBlockState(block).isAir()
+                    ||!level.getBlockState(feet).isAir()
+                    ||!level.getBlockState(feet.above()).isAir())
+                return Result.NO_SAFE_TOWER;
+            // The default scaffold state has distance=7 (falling).
+            // A real horizontal span MUST inherit support distance from
+            // the adjacent placed piece, otherwise the server can
+            // immediately schedule it to fall before the next tick.
+            var prior=level.getBlockState(previous.below());
+            BlockPos priorSupport=previous.below().below();
+            var belowPrior=level.getBlockState(priorSupport);
+            // A real vertical scaffold column is distance zero even if
+            // its cached block state has not yet received its next tick.
+            int parentDistance=belowPrior.is(Blocks.SCAFFOLDING)
+                    ||belowPrior.isFaceSturdy(level,priorSupport,Direction.UP)
+                    ?0:prior.getValue(
+                        net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE);
+            int nextDistance=parentDistance+1;
+            if(nextDistance>ScaffoldBridgeRoute.MAX_NEW_SCAFFOLDS)
+                return Result.NO_SAFE_TOWER;
+            var placed=Blocks.SCAFFOLDING.defaultBlockState()
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,
+                            nextDistance)
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM,
+                            level.getBlockState(block.below()).isAir());
+            var receipt=BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING);
+            if(receipt==null)return Result.NEED_MATERIALS;
+            if(!level.setBlock(block,placed,3)){
+                BuilderSupplyInventory.refund(table,receipt);
+                return Result.NO_SAFE_TOWER;
+            }
+            if(!table.trackScaffold(worker.getUUID(),block)){
+                level.setBlock(block,Blocks.AIR.defaultBlockState(),3);
+                BuilderSupplyInventory.refund(table,receipt);
+                return Result.NO_SAFE_TOWER;
+            }
+            bridgePlaced.computeIfAbsent(worker,ignored->new java.util.ArrayList<>())
+                    .add(block.immutable());
+            previous=feet;
+        }
+        bridgeTrails.put(worker,new BridgeTrail(start.immutable(),
+                proposal.waypoints()));
+        beginBridge(level,worker,proposal.waypoints(),false);
+        return Result.CLIMBING;
+    }
+
     static void begin(ServerLevel level,BuilderGolem worker,
                               BlockPos column,double stopY,boolean down){
         // A session is renewed by the owning Builder task, never shared
@@ -446,6 +735,8 @@ public final class BuilderScaffolding {
      */
     public static boolean descendForTravel(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
+        if(bridgeMotion.containsKey(worker))return true;
+        if(overBridgeForReturn(level,worker))return true;
         // A long tower may require more than 30 ticks of descent.
         // Renew the permit while this worker's material/lower-floor task
         // still requests descent, without restarting the physics session.
@@ -571,6 +862,24 @@ public final class BuilderScaffolding {
         // tried to walk through buildings to reach it.
         if(approachX*approachX+approachZ*approachZ>1.20){
             clearMotion(worker);
+            TowerApproach watch=approaches.get(worker);
+            double remaining=Math.hypot(approachX,approachZ);
+            if(watch==null||!watch.base.equals(base)){
+                watch=new TowerApproach(base.immutable(),remaining,worker.tickCount);
+                approaches.put(worker,watch);
+            }else if(remaining<watch.bestDistance-.25){
+                watch.bestDistance=remaining;
+                watch.lastAdvance=worker.tickCount;
+            }else if(worker.tickCount-watch.lastAdvance>100){
+                // A column may have a perfect vertical shaft but an
+                // inaccessible base behind a completed wall or gap.
+                // Expire it and retry the next physically reachable one.
+                avoided.put(worker,new AvoidColumn(base.immutable(),
+                        level.getGameTime()+160));
+                approaches.remove(worker);
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                return Result.NO_SAFE_TOWER;
+            }
             // Existing scaffolding is not a walkable A* node. When a
             // Builder is already on an upper platform it must return to
             // that SAME elevation beside the tower, rather than walking
@@ -599,6 +908,7 @@ public final class BuilderScaffolding {
                         .routeTo(level,worker,approach,1.0);
             return Result.CLIMBING;
         }
+        approaches.remove(worker); // arrived at the chosen tower
         int wantedTop=target.getY()-1;
         final BlockPos column=base;
         int existingTop=existing.stream()
@@ -732,9 +1042,26 @@ public final class BuilderScaffolding {
                     return;
             }
         }
-        positions.sort(Comparator.comparingInt((BlockPos block)->block.getY()).reversed());
+        java.util.Map<BlockPos,Integer> supportOrder=new java.util.HashMap<>();
+        var bridges=bridgePlaced.get(worker);
+        if(bridges!=null)
+            for(int i=0;i<bridges.size();i++)
+                supportOrder.put(bridges.get(i),i);
+        positions.sort((a,b)->{
+            int ai=supportOrder.getOrDefault(a,-1);
+            int bi=supportOrder.getOrDefault(b,-1);
+            if(ai>=0&&bi>=0)return Integer.compare(bi,ai);
+            if(ai>=0)return -1;
+            if(bi>=0)return 1;
+            return Integer.compare(b.getY(),a.getY());
+        });
         for(BlockPos pos:positions){
             if(!level.hasChunkAt(pos))continue;
+            // Another builder may still be using a shared bridge or tower.
+            if(!level.getEntitiesOfClass(BuilderGolem.class,
+                    new net.minecraft.world.phys.AABB(pos).inflate(.65,1.2,.65),
+                    other->other!=worker&&other.isAlive()).isEmpty())
+                break;
             if(!level.getBlockState(pos).is(Blocks.SCAFFOLDING)){
                 table.untrackScaffold(worker.getUUID(),pos);continue;
             }
@@ -752,5 +1079,7 @@ public final class BuilderScaffolding {
             }
             table.untrackScaffold(worker.getUUID(),pos);
         }
+        if(table.scaffoldPositions(worker.getUUID()).isEmpty())
+            bridgePlaced.remove(worker);
     }
 }

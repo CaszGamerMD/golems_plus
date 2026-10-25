@@ -28,6 +28,7 @@ public final class BuilderCommands {
                         .executes(ctx->inspect(ctx.getSource().getPlayerOrException(),
                                 StringArgumentType.getString(ctx,"filename")))))
                 .then(Commands.literal("status").executes(ctx->status(ctx.getSource().getPlayerOrException())))
+                .then(Commands.literal("navdebug").executes(ctx->navdebug(ctx.getSource().getPlayerOrException())))
                 .then(Commands.literal("preview").executes(ctx->preview(ctx.getSource().getPlayerOrException())))
                 .then(Commands.literal("start").executes(ctx->start(ctx.getSource().getPlayerOrException())))
                 .then(Commands.literal("pause").executes(ctx->pause(ctx.getSource().getPlayerOrException())))
@@ -62,6 +63,30 @@ public final class BuilderCommands {
                         table=station;
                 }
         return table;
+    }
+    /** Read-only snapshot of the nearest Builder, even without an active job.
+     * Does not issue a path request, modify a task or tick movement.
+     */
+    private static int navdebug(ServerPlayer player){
+        var nearby=player.level().getEntitiesOfClass(BuilderGolem.class,
+                player.getBoundingBox().inflate(16.0),BuilderGolem::isAlive);
+        BuilderGolem nearest=nearby.stream()
+                .min(java.util.Comparator.comparingDouble(g->g.distanceToSqr(player)))
+                .orElse(null);
+        if(nearest==null){
+            player.sendSystemMessage(Component.literal(
+                    "[Nav trial] No Builder Golem within 16 blocks."));
+            return 0;
+        }
+        player.sendSystemMessage(Component.literal(
+                "[Nav trial] "+nearest.getName().getString()
+                +" pos="+nearest.position()
+                +" grounded="+nearest.onGround()
+                +" velocity="+nearest.getDeltaMovement()
+                +" | "+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .debugStatus(nearest)
+                +" | scaffold="+BuilderScaffolding.debugClimb(nearest)));
+        return 1;
     }
     private static int status(ServerPlayer player) {
         var table=nearest(player);
