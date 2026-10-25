@@ -20,7 +20,7 @@ public final class BuilderScaffoldBridgeGameTest {
      * unsupported spans have distance seven and will fall on block tick.
      */
     private static String unstableBridge(ServerLevel world,
-            java.util.Set<BlockPos> owned){
+            java.util.Collection<BlockPos> owned){
         for(BlockPos at:owned){
             if(!world.hasChunkAt(at)||!world.hasChunkAt(at.below()))
                 return "unloaded scaffold at "+at.toShortString();
