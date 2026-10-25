@@ -115,7 +115,7 @@ public final class BuilderDomeConstructionGameTest {
             helper.fail("Dome Planner rejected start with 2 registered builders");
             return;
         }
-        final int[] lastCursor={-1},lastCleared={-1};
+        final int[] lastCursor={-1},lastCleared={-1},lastCompleted={-1};
         final long[] lastProgress={helper.getTick()};
         final boolean[] inspected={false};
         helper.onEachTick(()->{
@@ -140,10 +140,15 @@ public final class BuilderDomeConstructionGameTest {
                             &&needs.size()<25;i++)
                 addItem(needs,steps.get(i));
             BuilderInfiniteOnsiteSupply.restock(level,supplyPos,needs);
+            // Independent Builder zones legitimately complete hundreds of
+            // out-of-order positions while the first unbuilt index remains
+            // pinned. Watching only builderCursor falsely calls that a stall.
             if(lastCursor[0]!=table.builderCursor()
-                    ||lastCleared[0]!=table.builderClearCursor()){
+                    ||lastCleared[0]!=table.builderClearCursor()
+                    ||lastCompleted[0]!=table.builderCompletedCount()){
                 lastCursor[0]=table.builderCursor();
                 lastCleared[0]=table.builderClearCursor();
+                lastCompleted[0]=table.builderCompletedCount();
                 lastProgress[0]=tick;
             }
             if(!inspected[0]&&table.builderClearCursor()>0){
@@ -184,7 +189,8 @@ public final class BuilderDomeConstructionGameTest {
             if(tick-lastProgress[0]>2400){
                 StringBuilder message=new StringBuilder(
                         "Dome stalled after "+tick+" ticks | clear="+
-                        table.builderClearCursor()+" | build="+table.builderCursor()
+                        table.builderClearCursor()+" | contiguous="+table.builderCursor()
+                        +" | totalCompleted="+table.builderCompletedCount()
                         +"/"+steps.size()+" | problem="+table.problem());
                 for(BuilderGolem worker:crew)
                     message.append(" | ").append(worker.getName().getString())
