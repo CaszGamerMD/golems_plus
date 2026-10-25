@@ -54,6 +54,10 @@ public final class WorkerNavigation {
         int unsafeChecks,avoidUntil;
         BlockPos lastBad;
         boolean narrowDoorway;
+        // Per-door traffic reservation: one crossing at a time, but no
+        // cross-door or cross-site global lock.
+        BlockPos queuedDoor,doorStandby;
+        boolean waitingDoor,parkingAtDoor;
         // Cached weighted route is transient: the actual job and cargo
         // remain persisted on the worker and may safely resume after reload.
         List<BlockPos> weightedRoute=List.of();
@@ -231,10 +235,25 @@ public final class WorkerNavigation {
         return true;
     }
 
+    private static boolean worker(PathfinderMob candidate){
+        return candidate instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
+            || candidate instanceof com.caszgamermd.golemsplus.trader.TraderGolem
+            || candidate instanceof com.caszgamermd.golemsplus.beekeeper.BeekeeperGolem
+            || candidate instanceof com.caszgamermd.golemsplus.cooking.ChefGolem
+            || candidate instanceof com.caszgamermd.golemsplus.fishing.FisherGolem;
+    }
+    /** Workers prefer >=1.5 blocks of personal space where ground allows.
+     * Do not invalidate an actual valid path just because a colleague will
+     * move; score and avoid crowded destinations instead.
+     */
     private static boolean neighborOccupied(ServerLevel world,PathfinderMob mover,BlockPos p){
+        double x=p.getX()+.5,z=p.getZ()+.5;
         return !world.getEntitiesOfClass(PathfinderMob.class,
-                new AABB(p).inflate(.10),
-                other->other!=mover&&other.isAlive()).isEmpty();
+                new AABB(p).inflate(1.0),
+                other->other!=mover&&other.isAlive()&&worker(other)
+                    &&Math.pow(other.getX()-x,2)
+                            +Math.pow(other.getZ()-z,2)<1.5*1.5
+                    &&Math.abs(other.getY()-p.getY())<1.6).isEmpty();
     }
     private record Candidate(BlockPos feet,double score){}
     private static List<Candidate> candidateGoals(ServerLevel level,PathfinderMob mob,
@@ -253,7 +272,7 @@ public final class WorkerNavigation {
                 // fallback candidates rather than reporting "no route".
                 double score=p.distSqr(requested)*2.5
                         +p.distSqr(origin)*.11+Math.abs(dy)*2
-                        +(neighborOccupied(level,mob,p)?14:0);
+                        +(neighborOccupied(level,mob,p)?90:0);
                 if(avoid!=0&&Math.floorMod(p.hashCode(),4)==avoid-1)
                     score+=10;
                 if(p.equals(requested))score-=6;
@@ -296,6 +315,7 @@ public final class WorkerNavigation {
     }
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
+        if(state(mob).waitingDoor)return true; // keep original work target
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem)
             speed=1.0; // nominal 4 m/s from Builder movement attribute .40
         if(target==null||!level.hasChunkAt(target))return false;
@@ -331,6 +351,7 @@ public final class WorkerNavigation {
         }
         if(target==null||!level.hasChunkAt(target))return false;
         Progress p=state(mob);
+        if(p.waitingDoor)return true; // the door owns motion until released
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
             ground.setCanOpenDoors(true);
         boolean changed=!target.equals(p.requested);
@@ -341,6 +362,7 @@ public final class WorkerNavigation {
         }
         updateDoorClearance(level,mob,p);
         if(p.openedDoor==null)openApproachDoor(level,mob,p);
+        if(p.waitingDoor)return true;
         if(p.wait>0)return true;
         if(!changed&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
@@ -381,7 +403,7 @@ public final class WorkerNavigation {
                 // reachable endpoint to the requested work location.
                 double cost=candidate.getNodeCount()*10
                         +Math.sqrt(option.feet().distSqr(target))*4
-                        +(neighborOccupied(level,mob,option.feet())?20:0);
+                        +(neighborOccupied(level,mob,option.feet())?90:0);
                 if(cost<bestCost){
                     best=candidate;bestGoal=option.feet();bestCost=cost;
                 }
@@ -475,7 +497,9 @@ public final class WorkerNavigation {
         int remaining=Math.max(0,p.nextRoute-mob.tickCount);
         return "goal="+requested+" via="+destination
                 +" retry="+remaining+"t attempts="+p.attempts
-                +" stalled="+p.stalled+" unsafe="+p.unsafeChecks;
+                +" stalled="+p.stalled+" unsafe="+p.unsafeChecks
+                +(p.queuedDoor==null?"":" door="+p.queuedDoor.toShortString()
+                    +(p.waitingDoor?" WAIT":" CROSS"));
     }
 
     public static boolean retryScheduled(PathfinderMob mob){
@@ -486,6 +510,10 @@ public final class WorkerNavigation {
 
     public static void stop(PathfinderMob mob){
         Progress p=state(mob);
+        if(p.queuedDoor!=null&&mob.level() instanceof ServerLevel level)
+            WorkerDoorTraffic.release(level,p.queuedDoor,mob);
+        p.queuedDoor=null;p.doorStandby=null;
+        p.waitingDoor=false;p.parkingAtDoor=false;
         p.requested=null;p.approach=null;p.stalled=0;p.unsafeChecks=0;
         p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
         mob.getNavigation().stop();
@@ -499,6 +527,11 @@ public final class WorkerNavigation {
             nav.setCanOpenDoors(true);
         if(mob.tickCount%CHECK_TICKS!=0)return;
         updateDoorClearance(level,mob,p);
+        if(doorTrafficTick(level,mob,p)){
+            p.previous=mob.position();
+            p.stalled=0;
+            return; // waiting workers keep their exact queued order
+        }
         if(p.previous==null)p.previous=mob.position();
         if(mob.position().distanceToSqr(p.previous)>.018){
             p.stalled=0;
@@ -544,6 +577,123 @@ public final class WorkerNavigation {
         closeClearedDoor(level,mob,p);
     }
 
+    /** Discover only doors on the imminent path or directly between the
+     * worker and its requested destination. The candidate must lead to
+     * the far side, so jobs ending beside a door do not queue unnecessarily.
+     */
+    private static BlockPos imminentDoor(ServerLevel world,PathfinderMob mob,Progress p){
+        if(p.requested==null)return null;
+        Path path=mob.getNavigation().getPath();
+        if(path!=null&&!mob.getNavigation().isDone()){
+            int end=Math.min(path.getNodeCount(),path.getNextNodeIndex()+9);
+            for(int i=path.getNextNodeIndex();i<end;i++){
+                Node node=path.getNode(i);
+                BlockPos at=new BlockPos(node.x,node.y,node.z);
+                for(int dy=-1;dy<=1;dy++){
+                    BlockPos door=at.offset(0,dy,0);
+                    if(handDoor(world,door)
+                            &&mob.distanceToSqr(door.getX()+.5,
+                                    door.getY()+.5,door.getZ()+.5)<=25)
+                        return WorkerDoorTraffic.canonical(world,door);
+                }
+            }
+        }
+        BlockPos closest=null;
+        double best=Double.MAX_VALUE;
+        Vec3 toGoal=new Vec3(p.requested.getX()+.5-mob.getX(),0,
+                p.requested.getZ()+.5-mob.getZ());
+        if(toGoal.lengthSqr()<.5)return null;
+        Vec3 ahead=toGoal.normalize();
+        BlockPos origin=mob.blockPosition();
+        for(int dx=-5;dx<=5;dx++)for(int dz=-5;dz<=5;dz++)
+            for(int dy=-1;dy<=1;dy++){
+                BlockPos candidate=origin.offset(dx,dy,dz);
+                if(!handDoor(world,candidate))continue;
+                Vec3 delta=new Vec3(candidate.getX()+.5-mob.getX(),0,
+                        candidate.getZ()+.5-mob.getZ());
+                double along=delta.dot(ahead);
+                double side=Math.abs(delta.x*ahead.z-delta.z*ahead.x);
+                double beyond=toGoal.dot(ahead)-along;
+                if(along<.1||along>5||side>1.0||beyond<.75)continue;
+                double score=delta.lengthSqr()+side*3;
+                if(score<best){best=score;closest=candidate;}
+            }
+        return closest==null?null:WorkerDoorTraffic.canonical(world,closest);
+    }
+
+    /** Wait at a real, same-side standing tile 2-3 blocks from this door.
+     * An unavailable parking tile does not justify teleporting or routing
+     * through a closed wall: pause and retry on the next evaluation.
+     */
+    private static BlockPos doorStandby(ServerLevel level,PathfinderMob mob,BlockPos door){
+        BlockPos best=null;double bestScore=Double.MAX_VALUE;
+        double entranceX=mob.getX()-(door.getX()+.5);
+        double entranceZ=mob.getZ()-(door.getZ()+.5);
+        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+            for(int dy=-1;dy<=1;dy++){
+                double radius=Math.hypot(dx,dz);
+                if(radius<2||radius>3.35)continue;
+                if(dx*entranceX+dz*entranceZ<.2)continue;
+                BlockPos tile=door.offset(dx,dy,dz);
+                if(!standingTile(level,mob,tile)||neighborOccupied(level,mob,tile))
+                    continue;
+                Path path=mob.getNavigation().createPath(tile,0);
+                if(!endsAtExactTile(path,tile)
+                        ||!safePath(level,mob,path,false))continue;
+                double score=tile.distSqr(mob.blockPosition())
+                        +Math.abs(dy)*2
+                        +Math.abs(radius-2.5)*2;
+                if(score<bestScore){best=tile;bestScore=score;}
+            }
+        return best;
+    }
+
+    private static boolean doorTrafficTick(ServerLevel level,PathfinderMob mob,Progress p){
+        if(p.queuedDoor!=null){
+            if(!handDoor(level,p.queuedDoor)
+                    ||WorkerDoorTraffic.crossed(level,p.queuedDoor,mob)
+                    ||mob.distanceToSqr(p.queuedDoor.getX()+.5,
+                            p.queuedDoor.getY()+.5,p.queuedDoor.getZ()+.5)>64){
+                WorkerDoorTraffic.release(level,p.queuedDoor,mob);
+                p.queuedDoor=null;p.waitingDoor=false;
+                p.doorStandby=null;p.parkingAtDoor=false;
+                p.nextRoute=0;
+            }
+        }
+        if(p.queuedDoor==null&&p.requested!=null){
+            BlockPos upcoming=imminentDoor(level,mob,p);
+            if(upcoming!=null)p.queuedDoor=upcoming;
+        }
+        if(p.queuedDoor==null)return false;
+        if(WorkerDoorTraffic.request(level,p.queuedDoor,mob)){
+            if(p.waitingDoor){
+                p.waitingDoor=false;p.parkingAtDoor=false;p.doorStandby=null;
+                p.nextRoute=0;p.stalled=0;p.unsafeChecks=0;
+                mob.getNavigation().stop(); // job loop resumes its own route
+            }
+            return false;
+        }
+        if(!p.waitingDoor){
+            p.waitingDoor=true;p.parkingAtDoor=false;p.doorStandby=null;
+            mob.getNavigation().stop();
+        }
+        if(p.doorStandby==null||!standingTile(level,mob,p.doorStandby))
+            p.doorStandby=doorStandby(level,mob,p.queuedDoor);
+        if(p.doorStandby!=null){
+            if(mob.blockPosition().distSqr(p.doorStandby)<=1){
+                mob.getNavigation().stop();
+                p.parkingAtDoor=false;
+            }else if(!p.parkingAtDoor||mob.getNavigation().isDone()){
+                Path park=mob.getNavigation().createPath(p.doorStandby,0);
+                if(endsAtExactTile(park,p.doorStandby)
+                        &&safePath(level,mob,park,false)
+                        &&mob.getNavigation().moveTo(park,1.0))
+                    p.parkingAtDoor=true;
+            }
+        }else mob.getNavigation().stop();
+        return true;
+    }
+
     private static boolean yieldToWorker(ServerLevel world,PathfinderMob mob,Progress p){
         if(p.requested==null)return false;
         Vec3 forward=new Vec3(p.requested.getX()+.5-mob.getX(),0,
@@ -551,7 +701,7 @@ public final class WorkerNavigation {
         if(forward.lengthSqr()<.3)return false;
         forward=forward.normalize();
         for(PathfinderMob other:world.getEntitiesOfClass(PathfinderMob.class,
-                mob.getBoundingBox().inflate(1.25),
+                mob.getBoundingBox().inflate(1.5),
                 ent->ent!=mob&&ent.isAlive()
                     &&(ent instanceof com.caszgamermd.golemsplus.trader.TraderGolem
                         ||ent instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
@@ -560,7 +710,7 @@ public final class WorkerNavigation {
                         ||ent instanceof com.caszgamermd.golemsplus.fishing.FisherGolem))){
             Vec3 delta=new Vec3(other.getX()-mob.getX(),0,other.getZ()-mob.getZ());
             double forwardDist=forward.dot(delta);
-            if(forwardDist<.15||forwardDist>1.5||delta.lengthSqr()>2.0)
+            if(forwardDist<.15||forwardDist>1.5||delta.lengthSqr()>1.5*1.5)
                 continue;
             if(other.getNavigation().isDone())continue;
             // An asymmetric tie break ensures both workers don't yield.
@@ -603,6 +753,12 @@ public final class WorkerNavigation {
                 if(score<closest){doorPos=probe;closest=score;}
             }
         if(doorPos!=null){
+            BlockPos local=WorkerDoorTraffic.canonical(level,doorPos);
+            p.queuedDoor=local;
+            if(!WorkerDoorTraffic.request(level,local,mob)){
+                p.waitingDoor=true;
+                return; // only the head of this door's queue can open it
+            }
             BlockState state=level.getBlockState(doorPos);
             ((DoorBlock)state.getBlock()).setOpen(mob,level,state,doorPos,true);
             p.openedDoor=doorPos.immutable();p.doorAge=0;
@@ -617,6 +773,7 @@ public final class WorkerNavigation {
         BlockPos door=p.openedDoor;
         if(door==null)return;
         p.doorAge+=CHECK_TICKS;
+        if(WorkerDoorTraffic.count(level,door)>0)return;
         if(p.doorAge<15||mob.distanceToSqr(door.getX()+.5,
                 door.getY()+.5,door.getZ()+.5)<6.3)return;
         // Don't slam a door into any mob or player; leave it open until
