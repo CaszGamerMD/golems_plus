@@ -115,6 +115,16 @@ public final class BuilderPlacementSpace {
         return null;
     }
 
+    /** Approach the SIDE of a soon-to-be-placed cell rather than asking
+     * vanilla to walk onto its center. Valid nearby ground and a real path
+     * are required. Call only within local approach distance; long-range
+     * WorkerNavigation still handles the route across the site.
+     */
+    public static BlockPos approach(ServerLevel level,BuilderGolem worker,
+            BlockPos target){
+        return escape(level,worker,target);
+    }
+
     /** @return true only when the future block volume is clear of workers. */
     public static boolean ready(ServerLevel level,BuilderGolem placing,
             WorkerStationBlockEntity table,BlockPos target){
