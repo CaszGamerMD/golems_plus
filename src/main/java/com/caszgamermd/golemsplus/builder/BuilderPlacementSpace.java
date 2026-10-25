@@ -27,6 +27,53 @@ public final class BuilderPlacementSpace {
     private record Yield(BlockPos target,BlockPos destination,
             long until,boolean placingWorker){}
     private static final Map<BuilderGolem,Yield> yielding=new WeakHashMap<>();
+    // Contention is attached to the CLAIMED placement, not the moving
+    // teammate. Repeatedly asking a blocked cell for help must not reset
+    // its timeout and starve every other task in the Builder's zone.
+    private record Contention(BlockPos target,long since){}
+    private static final Map<BuilderGolem,Contention> contention=new WeakHashMap<>();
+    private static final int MAX_BLOCKED_TICKS=100;
+
+    public static boolean blockedTooLong(ServerLevel level,BuilderGolem worker,
+            BlockPos target){
+        Contention wait=contention.get(worker);
+        return wait!=null&&wait.target().equals(target)
+                &&level.getGameTime()-wait.since()>=MAX_BLOCKED_TICKS;
+    }
+    public static void clearContention(BuilderGolem worker){
+        contention.remove(worker);
+    }
+
+    /** Every entity tick: gently step to a verified adjacent STANDING tile.
+     * A single side step avoids A* deadlocks when the golem starts inside
+     * another Builder's prospective block but a clear aisle is adjacent.
+     * Never teleport, ignore block collisions or leave solid footing.
+     */
+    public static boolean tickMotion(ServerLevel level,BuilderGolem worker){
+        Yield hold=yielding.get(worker);
+        if(hold==null||!occupied(hold.target(),worker)
+                ||level.getGameTime()>=hold.until())return false;
+        BlockPos at=hold.destination();
+        if(at.getY()!=worker.blockPosition().getY()
+                ||worker.distanceToSqr(at.getX()+.5,at.getY(),at.getZ()+.5)>3.8
+                ||!canStand(level,worker,at,hold.target()))return false;
+        double dx=at.getX()+.5-worker.getX();
+        double dz=at.getZ()+.5-worker.getZ();
+        if(dx*dx+dz*dz<.02)return false;
+        double length=Math.sqrt(dx*dx+dz*dz);
+        double vx=dx/length*Math.min(.12,length);
+        double vz=dz/length*Math.min(.12,length);
+        // Check the actual intermediate collision box. Full-block
+        // obstruction and other golems prevent moving through walls/bodies.
+        if(!level.noCollision(worker,worker.getBoundingBox().move(vx,0,vz)))
+            return false;
+        worker.getNavigation().stop();
+        worker.setNoGravity(false);
+        var velocity=worker.getDeltaMovement();
+        worker.setDeltaMovement(vx,velocity.y,vz);
+        return true;
+    }
+
     // A work target must keep the same approach position across successive
     // 12-tick updates. Recomputing the nearest spot from a moving golem
     // makes it switch sides every few steps and continually resets A*.
@@ -70,8 +117,17 @@ public final class BuilderPlacementSpace {
             var station=level.getBlockEntity(worker.home());
             if(!(station instanceof WorkerStationBlockEntity table)
                     ||!BuilderScaffoldBridge.sidestep(level,worker,table,
-                            hold.destination()))
-                WorkerNavigation.routeToExact(level,worker,hold.destination(),.9);
+                            hold.destination())){
+                // Direct local sidesteps are driven by the real entity
+                // tick. An A* route is needed only for longer detours;
+                // rebuilding a short route every work tick cancels motion.
+                if(hold.destination().getY()!=worker.blockPosition().getY()
+                        ||worker.distanceToSqr(hold.destination().getX()+.5,
+                                hold.destination().getY(),
+                                hold.destination().getZ()+.5)>3.8)
+                    WorkerNavigation.routeToExact(level,worker,
+                            hold.destination(),.9);
+            }
         }
         else if(!worker.getNavigation().isDone())
             worker.getNavigation().stop();
@@ -132,6 +188,19 @@ public final class BuilderPlacementSpace {
         }
         choices.sort(java.util.Comparator.comparingDouble(p->
                 p.distSqr(origin)+Math.abs(p.getY()-origin.getY())*2));
+        // A one-step move from the ACTUAL worker position takes priority
+        // over a distant route calculated from the future target's center.
+        // For four Builders, the latter often sent supply couriers through
+        // another colleague's placement cell or restarted an impossible A*.
+        for(BlockPos p:choices){
+            if(p.getY()!=origin.getY()
+                    ||Math.abs(p.getX()-origin.getX())>1
+                    ||Math.abs(p.getZ()-origin.getZ())>1)continue;
+            double vx=(p.getX()+.5-worker.getX())*.30;
+            double vz=(p.getZ()+.5-worker.getZ())*.30;
+            if(level.noCollision(worker,worker.getBoundingBox().move(vx,0,vz)))
+                return p.immutable();
+        }
         int attempted=0;
         for(BlockPos p:choices){
             if(++attempted>16)break; // bounded path work; try more than one aisle side
@@ -252,6 +321,7 @@ public final class BuilderPlacementSpace {
                 BuilderGolem.class,area,
                 g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID()));
         if(blockers.isEmpty()){
+            contention.remove(placing);
             // A player/other mob must also never be suffocated by placement.
             List<LivingEntity> others=level.getEntitiesOfClass(
                     LivingEntity.class,area,
@@ -262,6 +332,9 @@ public final class BuilderPlacementSpace {
                     +target.toShortString());
             return false;
         }
+        Contention previous=contention.get(placing);
+        if(previous==null||!previous.target().equals(target))
+            contention.put(placing,new Contention(target,level.getGameTime()));
         boolean found=true;
         for(BuilderGolem blocker:blockers){
             Yield old=yielding.get(blocker);
