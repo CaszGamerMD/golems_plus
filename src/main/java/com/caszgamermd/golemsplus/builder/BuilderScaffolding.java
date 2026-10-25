@@ -70,6 +70,8 @@ public final class BuilderScaffolding {
         worker.setDeltaMovement(velocity.x,Math.min(velocity.y,0),velocity.z);
     }
     public static String debugClimb(BuilderGolem worker){
+        String bridge=BuilderScaffoldBridge.debug(worker);
+        if(!"NONE".equals(bridge))return bridge;
         ClimbSession session=sessions.get(worker);
         if(session!=null){
             MotionWatch watch=progress.get(worker);
@@ -95,12 +97,14 @@ public final class BuilderScaffolding {
      * a verified arrival/dismount (or after a safe abort).
      */
     public static boolean isControllingMovement(BuilderGolem worker){
-        return sessions.containsKey(worker)||exiting.containsKey(worker);
+        return sessions.containsKey(worker)||exiting.containsKey(worker)
+                ||BuilderScaffoldBridge.moving(worker);
     }
     public static void cancel(BuilderGolem worker){
         clearMotion(worker);
         returning.remove(worker);
         exiting.remove(worker);
+        BuilderScaffoldBridge.cancel(worker);
     }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
         ClimbSession session=sessions.get(worker);
@@ -144,6 +148,7 @@ public final class BuilderScaffolding {
      * jump/sneak controls lets vanilla resolve scaffold collisions.
      */
     public static boolean tickMotion(ServerLevel level,BuilderGolem worker){
+        if(BuilderScaffoldBridge.tickMotion(level,worker))return true;
         ExitRoute exit=exiting.get(worker);
         if(exit!=null){
             if(level.getGameTime()>exit.expires()
@@ -325,7 +330,7 @@ public final class BuilderScaffolding {
             WorkerStationBlockEntity table,BuilderGolem worker){
         java.util.Map<Long,BlockPos> bottoms=new java.util.LinkedHashMap<>();
         java.util.Map<Long,Integer> tops=new java.util.HashMap<>();
-        for(BlockPos pos:table.scaffoldPositions(worker.getUUID())){
+        for(BlockPos pos:table.sharedScaffoldPositions()){
             if(!level.hasChunkAt(pos)
                     ||!level.getBlockState(pos).is(Blocks.SCAFFOLDING))continue;
             long key=BlockPos.asLong(pos.getX(),0,pos.getZ());
@@ -410,7 +415,7 @@ public final class BuilderScaffolding {
         BlockPos feet=worker.blockPosition();
         BlockPos under=feet.below();
         if(!level.getBlockState(under).is(Blocks.SCAFFOLDING)
-                ||!table.scaffoldPositions(worker.getUUID()).contains(under))
+                ||!table.isTrackedScaffold(under))
             return false;
         BlockPos chosen=null;
         double best=Double.POSITIVE_INFINITY;
@@ -446,6 +451,7 @@ public final class BuilderScaffolding {
      */
     public static boolean descendForTravel(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
+        if(BuilderScaffoldBridge.returnToAnchor(level,worker,table))return true;
         // A long tower may require more than 30 ticks of descent.
         // Renew the permit while this worker's material/lower-floor task
         // still requests descent, without restarting the physics session.
@@ -536,11 +542,15 @@ public final class BuilderScaffolding {
         // Reuse a real tracked tower FIRST. Its scaffold cells are not
         // valid vanilla walking nodes, so repeatedly reconsidering a
         // path to an upper platform can abandon an active ascent.
-        var existing=table.scaffoldPositions(worker.getUUID());
+        // Every registered Builder may climb a colleague's physical tower.
+        // Tracking/refunds still belong to the original Builder.
+        var existing=table.sharedScaffoldPositions();
         BlockPos base=existing.stream()
                 .filter(p->{
                     int dx=p.getX()-target.getX(),dz=p.getZ()-target.getZ();
-                    return dx*dx+dz*dz<=5&&!avoided(level,worker,p);
+                    // A three-block side offset is still within the
+                    // Builder's 14-squared-block real placement reach.
+                    return dx*dx+dz*dz<=13&&!avoided(level,worker,p);
                 })
                 .min(Comparator.comparingInt(BlockPos::getY)).orElse(null);
         if(base==null)for(Direction side:Direction.Plane.HORIZONTAL){
@@ -563,7 +573,13 @@ public final class BuilderScaffolding {
         // The complete 2-block perimeter (including diagonal offsets)
         // must match both selection AND reuse, or towers are forgotten.
         if(base==null)base=findBase(level,worker,target,feet,table,plan);
-        if(base==null)return Result.NO_SAFE_TOWER;
+        if(base==null){
+            // An overhang may cover every nearby vertical foundation.
+            // A physical, owned tower can still branch sideways and turn
+            // around the rim to bring a Builder into placement range.
+            return BuilderScaffoldBridge.reach(level,worker,table,player,
+                    target,plan);
+        }
         double bx=base.getX()+.5,bz=base.getZ()+.5;
         double approachX=worker.getX()-bx,approachZ=worker.getZ()-bz;
         // Position at the foot of the selected column *first*. The old
@@ -616,7 +632,7 @@ public final class BuilderScaffolding {
             if(!level.hasChunkAt(p)||!level.mayInteract(player,p))
                 return Result.NO_SAFE_TOWER;
             if(level.getBlockState(p).is(Blocks.SCAFFOLDING)){
-                if(!table.scaffoldPositions(worker.getUUID()).contains(p)){
+                if(!table.isTrackedScaffold(p)){
                     avoided.put(worker,new AvoidColumn(base.immutable(),
                             level.getGameTime()+120));
                     return Result.NO_SAFE_TOWER;
@@ -666,18 +682,73 @@ public final class BuilderScaffolding {
     private static BlockPos findBase(ServerLevel level,BuilderGolem worker,
             BlockPos target,int feet,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> plan){
-        // A completed wall can occupy every directly adjacent column.
-        // Search nearby 1-2 block offsets for an existing safe foundation.
-        // The farthest columns remain within the Builder's placing reach
-        // after it climbs to target Y-1.
+        // A partly built Dome can occupy every 1-2-block ring around a
+        // target. Explore ALL nearby foundations still inside the actual
+        // placing radius (distance^2 <= 14 with one block of vertical gap).
+        // The wider 3-block perimeter opens safe columns outside finished
+        // walls without extending physical placement reach or teleporting.
         java.util.List<BlockPos> offsets=new java.util.ArrayList<>();
-        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
             int distance=dx*dx+dz*dz;
-            if(distance<1||distance>5)continue;
+            if(distance<1||distance>13)continue;
             offsets.add(target.offset(dx,0,dz));
         }
+        // Each candidate column used to linearly rescan all 3,537
+        // schematic cells at every height. Preindex ONLY relevant solid
+        // planned positions once per search, ignoring vegetation filtered
+        // out of the selected job. Never scaffold on a future solid cell.
+        java.util.Set<BlockPos> planned=new java.util.HashSet<>();
+        for(var step:plan)
+            if(!step.ignorePlant()&&step.y()>=feet-5
+                    &&step.y()<target.getY())
+                planned.add(new BlockPos(step.x(),step.y(),step.z()));
+        // First try the FOUR preplanned cardinal tower foundations.
+        // Towers belong to the whole job, not a per-block ad-hoc column.
+        // An edge base can be far from the work block because the shell
+        // bridge will connect the tower to the dome as needed.
+        var shell=BuilderScaffoldShell.forWorksite(table,plan);
+        var anchors=new java.util.ArrayList<>(shell.towers());
+        anchors.sort(Comparator.comparingDouble(t->
+                t.base().distSqr(target)
+                +worker.distanceToSqr(t.base().getX()+.5,feet,
+                        t.base().getZ()+.5)*.10));
+        for(var tower:anchors){
+            BlockPos base=tower.base();
+            if(avoided(level,worker,base)||!level.hasChunkAt(base)
+                    ||!level.hasChunkAt(base.below())
+                    ||!level.getBlockState(base.below())
+                            .isFaceSturdy(level,base.below(),Direction.UP))continue;
+            boolean clear=true;
+            int top=ScaffoldVerticalRoute.stageTop(base.getY(),
+                    base.getY()-1,target.getY()-1);
+            for(int y=base.getY();y<=top;y++){
+                BlockPos at=new BlockPos(base.getX(),y,base.getZ());
+                if(!level.hasChunkAt(at)||planned.contains(at)
+                        ||!level.getBlockState(at).isAir()
+                            &&!(level.getBlockState(at).is(Blocks.SCAFFOLDING)
+                                    &&table.isTrackedScaffold(at))){
+                    clear=false;break;
+                }
+            }
+            if(clear&&(worker.blockPosition().distSqr(base)>16*16
+                    ||com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .canReachExact(level,worker,base)))return base;
+        }
+        // Prefer the service side of the dome's X/Y or Z/Y section,
+        // rather than picking the nearest column beneath a projecting lip.
+        // Physical clearance and solid foundation are checked below.
+        var preferred=new java.util.HashSet<Long>();
+        for(int levelY:new int[]{target.getY()-1,target.getY()-2})
+            for(BlockPos platform:shell.atHeight(levelY)){
+                int dx=platform.getX()-target.getX();
+                int dz=platform.getZ()-target.getZ();
+                if(dx*dx+dz*dz<=13)
+                    preferred.add(BlockPos.asLong(platform.getX(),0,
+                            platform.getZ()));
+            }
         offsets.sort(Comparator.comparingDouble(at->
-                at.distSqr(target)*2
+                (preferred.contains(BlockPos.asLong(at.getX(),0,at.getZ()))
+                        ?-12:0)+at.distSqr(target)*2
                 +worker.distanceToSqr(at.getX()+.5,feet,at.getZ()+.5)*.1));
         for(BlockPos adjacent:offsets)
             for(int dy=0;dy<=5;dy++){
@@ -700,10 +771,7 @@ public final class BuilderScaffolding {
                             ||table.isTrackedScaffold(at)){
                         clear=false;break;
                     }
-                    for(var step:plan)
-                        if(step.x()==at.getX()&&step.y()==at.getY()
-                                &&step.z()==at.getZ()){clear=false;break;}
-                    if(!clear)break;
+                    if(planned.contains(at)){clear=false;break;}
                 }
                 if(clear&&(worker.blockPosition().distSqr(base)>16*16
                         ||com.caszgamermd.golemsplus.worker.WorkerNavigation
@@ -723,6 +791,22 @@ public final class BuilderScaffolding {
         if(positions.isEmpty())return;
         int minY=positions.stream().mapToInt(BlockPos::getY).min().orElse(0);
         if(!force){
+            // Shared cardinal towers stay available until the entire
+            // multi-builder job is finished. Other workers may be away
+            // retrieving supplies while still intending to reuse them.
+            if(table.crewTarget()>1){
+                if(table.phase()!=com.caszgamermd.golemsplus.worker.WorkerPhase.COMPLETE)
+                    return;
+                // Do not pull the common tower from under another
+                // golem while the four crew members finish descending.
+                for(var id:table.builderWorkerIds()){
+                    if(id.equals(worker.getUUID()))continue;
+                    var entity=level.getEntity(id);
+                    if(entity instanceof BuilderGolem other
+                            &&(!other.onGround()||other.getY()>minY+2.1))
+                        return;
+                }
+            }
             if(!worker.onGround()||worker.getY()>minY+2.1)return;
             // Never reclaim a column from beneath a Builder that is
             // still standing on its bottom or top platform.
@@ -732,7 +816,26 @@ public final class BuilderScaffolding {
                     return;
             }
         }
-        positions.sort(Comparator.comparingInt((BlockPos block)->block.getY()).reversed());
+        // Remove single-level bridge tips before the multilevel towers
+        // supporting them. Within a branch, start farthest from any tower.
+        var counts=new java.util.HashMap<Long,Integer>();
+        for(BlockPos at:positions)counts.merge(
+                BlockPos.asLong(at.getX(),0,at.getZ()),1,Integer::sum);
+        var anchors=positions.stream().filter(at->counts.get(
+                BlockPos.asLong(at.getX(),0,at.getZ()))>1).toList();
+        positions.sort((a,b)->{
+            int ac=counts.get(BlockPos.asLong(a.getX(),0,a.getZ()));
+            int bc=counts.get(BlockPos.asLong(b.getX(),0,b.getZ()));
+            if(ac!=bc)return Integer.compare(ac,bc);
+            if(ac==1&&!anchors.isEmpty()){
+                int da=anchors.stream().mapToInt(at->Math.abs(a.getX()-at.getX())
+                        +Math.abs(a.getZ()-at.getZ())).min().orElse(0);
+                int db=anchors.stream().mapToInt(at->Math.abs(b.getX()-at.getX())
+                        +Math.abs(b.getZ()-at.getZ())).min().orElse(0);
+                if(da!=db)return Integer.compare(db,da);
+            }
+            return Integer.compare(b.getY(),a.getY());
+        });
         for(BlockPos pos:positions){
             if(!level.hasChunkAt(pos))continue;
             if(!level.getBlockState(pos).is(Blocks.SCAFFOLDING)){

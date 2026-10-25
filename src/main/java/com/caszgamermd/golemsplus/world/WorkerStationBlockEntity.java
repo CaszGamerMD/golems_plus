@@ -630,6 +630,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public BlockPos builderOrigin(){return builderOrigin;}
     public String placedSchematicName(){return placedSchematicName;}
     public int builderCursor(){return builderCursor;}
+    /** Includes verified construction steps beyond the contiguous cursor.
+     * Multiple Builders work in independent zones and can make genuine
+     * progress while an earlier dependency keeps builderCursor unchanged.
+     */
+    public int builderCompletedCount(){
+        return builderCursor+builderFinishedSteps.size();
+    }
     public int builderClearCursor(){return builderClearCursor;}
     /** The job block owns the clear cursor, verified cells and claims.
      * A stalled claim expires after five seconds; a different Builder can
@@ -702,6 +709,17 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClaims.remove(worker);
         builderMissingRetries.put(step,tick+40);
         sync();
+    }
+    /** Physical teammate traffic is temporary, NOT a missing material or
+     * schematic dependency. Keep the staged stock and exact zone intact,
+     * but let this worker choose another currently clear cell for 120 ticks.
+     */
+    public void waitForBuilderTraffic(UUID worker,int step,long tick){
+        if(builderClaims.getOrDefault(worker,-1)!=step)return;
+        builderClaims.remove(worker);
+        builderMissingRetries.put(step,tick+120);
+        // No inventory unload, no cross-zone reassignment, no lost work.
+        setChanged();
     }
     public UUID builderWorkerId(){return builderWorkerId;}
     public int crewTarget(){return crewTarget;}
@@ -976,13 +994,32 @@ public final class WorkerStationBlockEntity extends BlockEntity
             sync(); // Only on stage refresh, not on each coordinate.
         }
         long now=level==null?0:level.getGameTime();
+        // Within the SAME independently assigned layer, choose the closest
+        // unclaimed, non-deferred physical target. Index order made four
+        // workers repeatedly cross completed lanes and claim inaccessible
+        // rim cells while reachable nearby blocks sat in their own batch.
+        // The stage remains stable (no cross-zone stealing/overlap).
+        int selected=-1;
+        double best=Double.POSITIVE_INFINITY;
+        BlockPos currentPos=level instanceof net.minecraft.server.level.ServerLevel server
+                &&server.getEntity(worker) instanceof
+                    com.caszgamermd.golemsplus.builder.BuilderGolem golem
+                        ?golem.blockPosition():null;
         for(int idx:stage){
             if(builderFinishedSteps.contains(idx)
                     ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
-            builderClaims.put(worker,idx);
-            return idx;
+            var cell=steps.get(idx);
+            double cost=currentPos==null?idx:currentPos.distSqr(
+                    new BlockPos(cell.x(),cell.y(),cell.z()));
+            // Avoid any staging overlap, even on restored old saves.
+            if(builderClaims.containsValue(idx))continue;
+            if(cost<best){best=cost;selected=idx;}
         }
-        return -1; // deferred dependencies remain in this zone's layer
+        if(selected>=0){
+            builderClaims.put(worker,selected);
+            return selected;
+        }
+        return -1; // temporarily deferred cells remain in this zone's layer
     }
 
     /** Move one exact same-layer coordinate to a worker who already holds
@@ -1069,12 +1106,21 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public java.util.List<BlockPos> scaffoldPositions(UUID worker){
         return java.util.List.copyOf(trackedScaffolds.getOrDefault(worker,java.util.List.of()));
     }
+    /** Team-wide read-only scaffold graph. Placement/refunds still belong
+     * to the original worker, but ALL assigned Builders can use completed
+     * tower/catwalk nodes. Never duplicate an existing scaffold item.
+     */
+    public java.util.List<BlockPos> sharedScaffoldPositions(){
+        java.util.Set<BlockPos> positions=new java.util.HashSet<>();
+        for(var owned:trackedScaffolds.values())positions.addAll(owned);
+        return java.util.List.copyOf(positions);
+    }
     public boolean isTrackedScaffold(BlockPos pos){
         return trackedScaffolds.values().stream().anyMatch(list->list.contains(pos));
     }
     public boolean trackScaffold(UUID worker,BlockPos pos){
         if(!builderWorkerIds().contains(worker)||isTrackedScaffold(pos)
-                ||trackedScaffolds.values().stream().mapToInt(java.util.List::size).sum()>=256)
+                ||trackedScaffolds.values().stream().mapToInt(java.util.List::size).sum()>=1024)
             return false;
         trackedScaffolds.computeIfAbsent(worker,k->new java.util.ArrayList<>())
                 .add(pos.immutable());sync();return true;

@@ -544,6 +544,18 @@ public final class WorkerNavigation {
                     +" q#"+rank);
     }
 
+    /** A genuine repeated no-route failure, not a pause while another worker
+     * crosses a door or while a reachable path is still in progress.
+     * Builders use this to return down their OWN scaffold instead of retrying
+     * an unreachable upper-platform approach forever. No motion is forced.
+     */
+    public static boolean repeatedlyUnreachable(PathfinderMob mob,int retries){
+        Progress p=states.get(mob);
+        return p!=null&&p.requested!=null&&p.approach==null
+                &&p.attempts>=retries&&mob.getNavigation().isDone()
+                &&!p.waitingDoor&&!p.finishingDoor&&!p.parkingAtDoor;
+    }
+
     public static boolean retryScheduled(PathfinderMob mob){
         Progress p=states.get(mob);
         return p!=null&&p.requested!=null
@@ -628,6 +640,14 @@ public final class WorkerNavigation {
             PathfinderMob mob,Progress progress,BlockPos candidate){
         BlockPos door=WorkerDoorTraffic.canonical(level,candidate);
         if(!handDoor(level,door)||progress.requested==null)return false;
+        // On the Dome, a worker walking on the second-floor platform
+        // reserved a door two blocks BELOW its feet. It could never walk
+        // through that lower doorway and held the FIFO lane indefinitely.
+        // Only workers whose real collision box overlaps the doorway's
+        // vertical span may take a reservation. A ground-floor worker
+        // may still reserve its door from a few blocks horizontally away.
+        if(mob.getBoundingBox().minY>=door.getY()+1.95
+                ||mob.getBoundingBox().maxY<=door.getY())return false;
         BlockState state=level.getBlockState(door);
         Direction normal=entranceFacing(state);
         double ex=normal.getStepX(),ez=normal.getStepZ();
@@ -816,7 +836,13 @@ public final class WorkerNavigation {
 
     private static boolean doorTrafficTick(ServerLevel level,PathfinderMob mob,Progress p){
         if(p.queuedDoor!=null){
-            if(!handDoor(level,p.queuedDoor)
+            // A Builder can climb onto a completed dome platform while
+            // retaining a FIFO token for the lower door. It is physically
+            // outside the doorway and must release the lane for others.
+            boolean onDifferentFloor=mob.getBoundingBox().minY
+                    >=p.queuedDoor.getY()+1.95
+                    ||mob.getBoundingBox().maxY<=p.queuedDoor.getY();
+            if(onDifferentFloor||!handDoor(level,p.queuedDoor)
                     ||!p.finishingDoor
                         &&WorkerDoorTraffic.crossed(level,p.queuedDoor,mob)
                     ||mob.distanceToSqr(p.queuedDoor.getX()+.5,
@@ -852,14 +878,21 @@ public final class WorkerNavigation {
             if(doorDistance<p.doorLastDistance-.20){
                 p.doorLastDistance=doorDistance;
                 p.doorLastProgressTick=mob.tickCount;
-            }else if(mob.tickCount-p.doorLastProgressTick>100
-                    &&doorDistance>16.0){
-                WorkerDoorTraffic.yieldStalled(level,p.queuedDoor,mob);
-                p.waitingDoor=true;
-                p.doorStandby=null;p.parkingAtDoor=false;
-                p.doorLastProgressTick=mob.tickCount;
+            }else if(mob.tickCount-p.doorLastProgressTick>120){
+                // The owner may be right AT the gate with no valid floor
+                // behind it (an incomplete dome ledge). Distance alone is
+                // not progress. Release stalled reservations near the door
+                // too, so a colleague can use another route or displace it.
+                BlockPos blocked=p.queuedDoor;
+                WorkerDoorTraffic.yieldStalled(level,blocked,mob);
+                clearDoor(level,mob,p);
+                p.lastBad=blocked;
+                p.avoidUntil=mob.tickCount+120;
+                p.weightedRoute=List.of();p.routeCursor=0;
+                p.nextRoute=mob.tickCount+20;
+                p.attempts++;
                 mob.getNavigation().stop();
-                return true;
+                return false;
             }
         }
         if(WorkerDoorTraffic.request(level,p.queuedDoor,mob)){

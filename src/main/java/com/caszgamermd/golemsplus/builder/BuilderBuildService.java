@@ -56,6 +56,32 @@ public final class BuilderBuildService {
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
+    // Real-world navigation watchdog for FOUR independent Builders.
+    // A native route can say "walking" forever while standing at the
+    // same doorway/ledge as another worker; progress must be physical.
+    private static final class TravelWatch {
+        int step=-1;
+        net.minecraft.world.phys.Vec3 at;
+        long lastMove;
+    }
+    private static final Map<BuilderGolem,TravelWatch> travelWatch=
+            new WeakHashMap<>();
+    private static boolean travelBlocked(ServerLevel level,BuilderGolem worker,
+            int step){
+        var watch=travelWatch.computeIfAbsent(worker,k->new TravelWatch());
+        if(watch.step!=step||watch.at==null){
+            watch.step=step;watch.at=worker.position();
+            watch.lastMove=level.getGameTime();return false;
+        }
+        // Do not confuse a path taking a useful detour around a wall with
+        // a stuck golem. Actual displacement, not decreasing target range,
+        // is the right signal for physical work traffic.
+        if(worker.position().distanceToSqr(watch.at)>.36){
+            watch.at=worker.position();watch.lastMove=level.getGameTime();
+            return false;
+        }
+        return level.getGameTime()-watch.lastMove>=180;
+    }
     private static WorkerAction action(BuilderGolem worker,int index){
         var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
         activity.setStep(index);
@@ -264,7 +290,8 @@ public final class BuilderBuildService {
         // Do not let a fresh route to supplies/work overwrite the last
         // meter of ascent, descent, or dismount. The per-entity-tick
         // scaffold controller alone owns movement until safe arrival.
-        if(BuilderScaffolding.isControllingMovement(worker))return;
+        if(BuilderScaffolding.isControllingMovement(worker)
+                ||BuilderTeamGroundTraffic.controlling(worker))return;
         int membership=table.builderWorkerIds().indexOf(worker.getUUID());
         if(membership>=table.crewTarget()&&table.claimedStep(worker.getUUID())<0
                 &&!worker.hasSupplyBox()){
@@ -496,6 +523,41 @@ public final class BuilderBuildService {
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
             if(workDistance>14){
+                if(!BuilderScaffolding.isControllingMovement(worker)
+                        &&travelBlocked(level,worker,index)){
+                    // Do not hold a whole zoned crew hostage to one
+                    // unreachable cell. Keep the item pouch and future
+                    // schematic intact, but try another staged coordinate.
+                    table.waitForBuilderTraffic(worker.getUUID(),index,
+                            level.getGameTime());
+                    travelWatch.remove(worker);
+                    table.setProblem("Builder is detouring around team traffic "
+                            +"at "+pos.toShortString());
+                    return;
+                }
+                // A worker above ground may have crossed onto an isolated
+                // partial dome ledge. If repeated physical path searches have
+                // NO reachable waypoints, return to its OWN scaffold and
+                // descend before trying the work location from ground. The
+                // old loop only considered a descent for far LOWER targets,
+                // so it retried an impossible path over 150 times at y+1.
+                // Never initiate an unrequested jump/drop or teleport.
+                if(worker.getY()>table.builderOrigin().getY()+1.75
+                        &&!table.scaffoldPositions(worker.getUUID()).isEmpty()
+                        &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .repeatedlyUnreachable(worker,10)
+                        ){
+                    var bridge=BuilderScaffoldBridge.reach(level,worker,table,
+                            owner,pos,plan.steps());
+                    if(bridge==BuilderScaffolding.Result.CLIMBING)return;
+                    if(bridge==BuilderScaffolding.Result.NEED_MATERIALS){
+                        table.setProblem("Need scaffolding for ledge access at "+pos);
+                        return;
+                    }
+                    if(bridge==BuilderScaffolding.Result.NO_SAFE_TOWER
+                            &&BuilderScaffolding.descendForTravel(level,worker,table))
+                        return;
+                }
                 // Leave a completed scaffold onto an adjacent solid upper
                 // walkway BEFORE asking vanilla A* to path from its
                 // non-walkable scaffolding node. This is crucial for
@@ -545,7 +607,21 @@ public final class BuilderBuildService {
             worker.setDeltaMovement(0,velocity.y,0);
             // Never place into any Builder's body. Check before spending
             // the item so waiting for a teammate to move consumes nothing.
-            if(!BuilderPlacementSpace.ready(level,worker,table,pos))return;
+            if(!BuilderPlacementSpace.ready(level,worker,table,pos)){
+                // A four-worker crew must never freeze an entire zone just
+                // because a teammate on the way to OnSite is currently in
+                // its placement volume. After a bounded right-of-way
+                // attempt, defer THIS exact cell and place other staged
+                // blocks while traffic clears. No items are consumed.
+                if(BuilderPlacementSpace.blockedTooLong(level,worker,pos)){
+                    table.waitForBuilderTraffic(worker.getUUID(),index,
+                            level.getGameTime());
+                    BuilderPlacementSpace.clearContention(worker);
+                    table.setProblem("Reassigning nearby work around busy "
+                            +"crew traffic at "+pos.toShortString());
+                }
+                return;
+            }
             // Upper door halves do not consume another door item; the
             // lower half was already placed and paid for in the prior
             // layer. Keep refund logic for all ordinary materials.
@@ -671,8 +747,13 @@ public final class BuilderBuildService {
             return previous;
         if(!table.hasPlacedSchematic())
             throw new IllegalArgumentException("No placed schematic");
+        // Both values must share the SAME normalized absolute root.
+        // Fabric GameTest may return a config path beginning with "./".
+        // Previously normalize() removed that prefix from file but not
+        // folder: a valid saved schematic was falsely rejected as missing.
         Path folder=FabricLoader.getInstance().getConfigDir()
-                .resolve("golems_plus").resolve("schematics");
+                .resolve("golems_plus").resolve("schematics")
+                .toAbsolutePath().normalize();
         Path file=folder.resolve(table.builderFile()).normalize();
         if(!file.startsWith(folder)||!Files.isRegularFile(file))
             throw new IllegalArgumentException("Saved schematic missing");

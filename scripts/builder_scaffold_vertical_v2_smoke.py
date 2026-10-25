@@ -14,9 +14,12 @@ assert "return top<wantedTop?Result.CLIMBING:Result.NOT_NEEDED;" in sc
 assert "BuilderSupplyInventory.loadScaffold(level,worker,table,needed)" in sc
 assert "BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING)" in sc
 assert "table.trackScaffold(worker.getUUID(),at)" in sc
-assert "table.scaffoldPositions(worker.getUUID()).contains(p)" in sc
+assert "table.isTrackedScaffold(p)" in sc
+assert "table.sharedScaffoldPositions()" in sc
+assert "table.trackScaffold(worker.getUUID(),at)" in sc
 assert "isControllingMovement(BuilderGolem worker)" in sc
-assert "if(BuilderScaffolding.isControllingMovement(worker))return;" in build
+assert "if(BuilderScaffolding.isControllingMovement(worker)" in build
+assert "||BuilderTeamGroundTraffic.controlling(worker))return;" in build
 assert "BuilderScaffolding.cancel(worker);" in build
 assert "sessions.put(worker,new ClimbSession(session.column()," in sc
 assert "worker.setNoGravity(false);" in sc
@@ -29,4 +32,4 @@ assert "BuilderScaffolding.descendForTravel(level,worker,table))" in build
 assert "table.phase()==WorkerPhase.COMPLETE" in build
 assert "public static final int EXTENSION=16" in plan
 assert "public static int stageTop(" in plan
-print("PASS staged 16-block vertical routes, owned tower, restocks and exclusive motion")
+print("PASS staged 16-block vertical routes, shared tower navigation, original placement ownership and exclusive motion")
