@@ -32,3 +32,20 @@ Both boom and cargo paths check solids and loaded chunks. Paths are bounded, cac
 Automated coverage checks FIFO direction batching, the four-builder cap, upgrade limits, bounded routing around obstacles, vertical rail connectivity, and missing-rail rejection. The movement planner now checks all four stow directions if the first is blocked, and unloads passengers with reachable platforms before waiting for an obstructed passenger. The nearest standable landing is considered first to avoid unnecessarily evaluating expensive collision volumes. Actual entity motion, client rendering, loading/unloading, restart recovery, and cross-mod pallet interaction require in-game verification.
 
 Test one operator and four builders with jobs above and below ground level; a blocked doorway; an interrupted rail; all four riders dismounting onto a platform; save/reload mid-trip; two different jobs; two partially filled pallets; moving OnSite storage during restocking; cancellation/recall with passengers aboard. This is an experimental build, not a claimed end-to-end construction pass.
+
+
+## Exact Dome integration and test results (2026-10-25)
+
+The user-provided `Dome.litematic` has been carried into this branch **only as an isolated GameTest fixture**: nine base64 segments in `src/gametest/resources/golems_plus_dome/` unpacked and SHA-256 checked by `BuilderDomeFixture`. This data is not included in the shipping mod JAR.
+
+In a standalone pure-JavaScript geometric analysis using the decoded **actual NBT block palette and packed block arrays**, the fixture yielded a 31×39×34 bounding box, **3,537 non-air cells**, 118 palette entries, and 3,471 approximate collision-solids (plant/soft-material exclusions are approximations in this geometry-only run). The model included the production crane's 1.1-block builder basket radius, 0.65-block chassis radius, 2.7-block load height, 2.9-block boom root, and 0.13-block boom collision radius.
+
+With a west-side chassis 6 blocks outside the Dome and 16 blocks along its Z side:
+- Ground-level west pickup: **collision clear**.
+- West-side Y30 delivery with 30-block reach: **out of reach**.
+- West-side Y30/Y38 with 60-block reach: **collision clear**.
+- Far-east roof Y38 from that western location: **straight boom blocked by real Dome shell**, even with 90-block reach. The crane must physically move to the other side (rail movement or repositioning), never phase the load or boom through the building.
+
+`CraneDomeCollisionGameTest` now recreates the schematic as actual Minecraft block states on a full-sized test arena, then exercises real `CraneMovement.pose` against pickup, 30/60/90 upgrade ranges, blocked cross-Dome boom routing, and an east-side reposition. Configured with `gradle --no-daemon runGameTest` on branch CI.
+
+**Verification status:** The fixture decode and standalone geometry assertions were executed and matched the results above. The **in-game GameTest has NOT executed**, because all observed GitHub Actions attempts on this private branch fail **before any job steps begin**, with no usable job logs (e.g. [run 40204765021](https://github.com/CaszGamerMD/golems_plus/actions/runs/40204765021)). No successful Fabric build artifact or full 4-builder/3,537-block construction pass is claimed. Once Actions runners are available, first fix any compilation/GameTest failures, then run a separate actual four-builder crane dispatch + physical unload and end-to-end 3,537 placement test.
