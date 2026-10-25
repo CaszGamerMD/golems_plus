@@ -50,6 +50,36 @@ public final class BuilderMaterialDemand {
         return manifest;
     }
 
+    /** Outstanding stock against the actual job ledger. Unlike the
+     * global cursor, this excludes cells finished out-of-order in other
+     * X/Z zones and cannot request their materials twice.
+     */
+    public static Map<String,Integer> outstandingRemaining(
+            Map<String,Long> remaining,Map<String,Integer> onsite,
+            Map<String,Integer> warehouseStock){
+        Map<String,Integer> needed=new LinkedHashMap<>();
+        for(var row:remaining.entrySet()){
+            if(row.getValue()==null||row.getValue()<=0)continue;
+            long shortage=row.getValue()-
+                    Math.max(0,onsite.getOrDefault(row.getKey(),0));
+            if(shortage>0)
+                needed.put(row.getKey(),(int)Math.min(4096,shortage));
+        }
+        var ranked=new java.util.ArrayList<>(needed.entrySet());
+        ranked.sort((a,b)->{
+            boolean aStock=warehouseStock.getOrDefault(a.getKey(),0)>0;
+            boolean bStock=warehouseStock.getOrDefault(b.getKey(),0)>0;
+            if(aStock!=bStock)return aStock?-1:1;
+            return Integer.compare(b.getValue(),a.getValue());
+        });
+        Map<String,Integer> manifest=new LinkedHashMap<>();
+        for(var entry:ranked){
+            if(manifest.size()>=16)break;
+            manifest.put(entry.getKey(),entry.getValue());
+        }
+        return manifest;
+    }
+
     public static Map<String,Integer> batch(List<BuilderConstructionPlan.Step> steps,
             int cursor,Map<String,Integer> stocked){
         if(cursor<0||cursor>=steps.size())return Map.of();

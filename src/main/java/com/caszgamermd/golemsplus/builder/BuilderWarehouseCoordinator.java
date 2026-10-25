@@ -38,8 +38,9 @@ public final class BuilderWarehouseCoordinator {
         Map<String,Integer> warehouseStock=BuilderWarehousePort.stockSnapshot(
                 level,computer,table.builderRemaining());
         Map<String,Integer> needed=new java.util.LinkedHashMap<>(
-                BuilderMaterialDemand.outstanding(steps,table.builderCursor(),
-                        onsite,warehouseStock==null?Map.of():warehouseStock));
+                BuilderMaterialDemand.outstandingRemaining(
+                        table.builderRemaining(),onsite,
+                        warehouseStock==null?Map.of():warehouseStock));
         if(needed.isEmpty())return false;
         // Keep the ENTIRE remaining order at the Warehouse Computer,
         // including temporarily out-of-stock items. The old stockSnapshot
@@ -69,6 +70,26 @@ public final class BuilderWarehouseCoordinator {
         return false;
     }
 
+    /** The Planner and courier must not disagree about staged stock.
+     * Never delete a physical packed shulker or active picker reservation.
+     * Safe warehouse cancellation will retry while cargo is in flight.
+     */
+    public static void reconcileTicket(ServerLevel level,
+            WorkerStationBlockEntity table){
+        if(table.supplyRequest()==null||table.builderCancelShipment())return;
+        var staged=BuilderSupplyInventory.available(table);
+        // Explicit scaffolding requests are not in the normal schematic
+        // material ledger; don't cancel them on a false zero.
+        if(table.supplyManifest().containsKey("minecraft:scaffolding")){
+            if(table.supplyManifest().size()==1
+                    &&staged.getOrDefault("minecraft:scaffolding",0)>=48)
+                table.requestBuilderShipmentCancellation();
+            return;
+        }
+        if(BuilderMaterialDemand.outstandingRemaining(
+                table.builderRemaining(),staged,Map.of()).isEmpty())
+            table.requestBuilderShipmentCancellation();
+    }
     /** Table-side inbound notification, including while no golem is near. */
     /** Cancel an outstanding ticket only after the warehouse confirms
      * that no physical shipment, picker, or packing inventory can be lost.

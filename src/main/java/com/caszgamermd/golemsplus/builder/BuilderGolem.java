@@ -49,7 +49,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     public static AttributeSupplier.Builder attributes(){
         return PathfinderMob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH,20)
-                .add(Attributes.MOVEMENT_SPEED,.30)
+                .add(Attributes.MOVEMENT_SPEED,.40)
                 .add(Attributes.FOLLOW_RANGE,128);
     }
     @Override protected void registerGoals(){}
@@ -114,7 +114,13 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     @Override public void tick(){
         super.tick();
         // Also covers Golems created with a spawn egg, command or an older save.
-        if(tickCount==1)ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.BUILDER);
+        if(tickCount==1){
+            ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.BUILDER);
+            // Upgrade old saved workers to the new nominal 4 m/s
+            // ground-navigation movement attribute.
+            var movement=getAttribute(Attributes.MOVEMENT_SPEED);
+            if(movement!=null)movement.setBaseValue(.40);
+        }
         if(level() instanceof ServerLevel server){
             BuilderChunkTickets.track(server,this);
             com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
