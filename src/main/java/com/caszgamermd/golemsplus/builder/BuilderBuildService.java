@@ -204,6 +204,12 @@ public final class BuilderBuildService {
         // current 10-coordinate assignment or warehouse courier route.
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
+            // On job completion a Builder may still be on its LAST
+            // scaffold tower. It must return to ground and dismount
+            // BEFORE reclaiming blocks, delivering tools or going home.
+            if(BuilderScaffolding.isControllingMovement(worker)
+                    ||BuilderScaffolding.descendForTravel(level,worker,table))
+                return;
             worker.setNoGravity(false);
             BuilderScaffolding.retrieve(level,worker,table,false);
             // A completed/canceled plan may still own boxed warehouse stock.
@@ -251,9 +257,14 @@ public final class BuilderBuildService {
             return;
         }
         if(table.phase()==WorkerPhase.PAUSED){
+            BuilderScaffolding.cancel(worker);
             worker.getNavigation().stop();
             worker.setNoGravity(false);return;
         }
+        // Do not let a fresh route to supplies/work overwrite the last
+        // meter of ascent, descent, or dismount. The per-entity-tick
+        // scaffold controller alone owns movement until safe arrival.
+        if(BuilderScaffolding.isControllingMovement(worker))return;
         int membership=table.builderWorkerIds().indexOf(worker.getUUID());
         if(membership>=table.crewTarget()&&table.claimedStep(worker.getUUID())<0
                 &&!worker.hasSupplyBox()){
