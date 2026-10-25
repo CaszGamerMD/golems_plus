@@ -496,6 +496,19 @@ public final class BuilderBuildService {
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
             if(workDistance>14){
+                // A worker above ground may have crossed onto an isolated
+                // partial dome ledge. If repeated physical path searches have
+                // NO reachable waypoints, return to its OWN scaffold and
+                // descend before trying the work location from ground. The
+                // old loop only considered a descent for far LOWER targets,
+                // so it retried an impossible path over 150 times at y+1.
+                // Never initiate an unrequested jump/drop or teleport.
+                if(worker.getY()>table.builderOrigin().getY()+1.75
+                        &&!table.scaffoldPositions(worker.getUUID()).isEmpty()
+                        &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .repeatedlyUnreachable(worker,10)
+                        &&BuilderScaffolding.descendForTravel(level,worker,table))
+                    return;
                 // Leave a completed scaffold onto an adjacent solid upper
                 // walkway BEFORE asking vanilla A* to path from its
                 // non-walkable scaffolding node. This is crucial for
