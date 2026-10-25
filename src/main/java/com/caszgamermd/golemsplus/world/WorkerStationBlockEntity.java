@@ -91,6 +91,16 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.List<UUID> additionalBuilderWorkers=new java.util.ArrayList<>();
     private final java.util.List<UUID> additionalTraderWorkers=new java.util.ArrayList<>();
     private final java.util.Map<UUID,Integer> builderClaims=new java.util.LinkedHashMap<>();
+    /** Persistent, disjoint ten-coordinate work orders. No worker must
+     * walk to the Planning Table to request an order: the block entity
+     * assigns coordinates on the server when a Builder becomes available.
+     */
+    private final Map<UUID,java.util.List<Integer>> builderWorkOrders=new java.util.LinkedHashMap<>();
+    private final java.util.Set<UUID> builderPreparedOrders=new java.util.HashSet<>();
+    /** Out-of-order completion beyond the previous 32-step bit window.
+     * This permits eight distinct ten-coordinate crew assignments.
+     */
+    private final java.util.Set<Integer> builderFinishedSteps=new java.util.HashSet<>();
     private long completedAhead;
     private final java.util.Map<UUID,java.util.List<BlockPos>> trackedScaffolds=new java.util.LinkedHashMap<>();
     private boolean builderPlaced;
@@ -511,7 +521,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderRequired.clear();builderRequired.putAll(selected.required());
         builderRemaining.clear();builderRemaining.putAll(selected.remaining());
         warehouse=selected.warehouse();builderMaterialStorage=selected.storage();
-        builderPlaced=true;completedAhead=0;builderClaims.clear();
+        builderPlaced=true;completedAhead=0;builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         builderWarehouseStock.clear();builderStockChecked=false;builderWarehouseName="";
         try{phase=WorkerPhase.valueOf(selected.phase());}
         catch(IllegalArgumentException ex){phase=WorkerPhase.READY;}
@@ -545,7 +555,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderRequired.clear();builderRemaining.clear();
             builderWarehouseStock.clear();builderStagedStock.clear();
             builderStockChecked=false;builderWarehouseName="";
-            builderClaims.clear();completedAhead=0;phase=WorkerPhase.IDLE;
+            builderClaims.clear();completedAhead=0;phase=WorkerPhase.IDLE;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
             sync();return true;
         }
         // Selecting a saved job automatically persists its snapshot.
@@ -699,6 +709,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }else additionalBuilderWorkers.remove(worker);
         builderLastPositions.remove(worker);
         builderClaims.remove(worker);
+        builderWorkOrders.remove(worker);
+        builderPreparedOrders.remove(worker);
         releaseBuilderClear(worker);
         trackedScaffolds.remove(worker);
         if(worker.equals(supplyRunner))supplyRunner=null;
@@ -732,52 +744,92 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return claimBuilderStep(worker,layerExclusive,java.util.List.of(),
                 java.util.Set.of());
     }
-    /** Prefer steps already supplied in THIS worker's real pouch, then
-     * continue with the earliest unclaimed step. Eight crew members have
-     * independent inventories: assigning cobblestone tasks to a golem
-     * carrying only spruce while another has 300 cobblestone caused false
-     * "materials missing" messages and idle workers. Claims remain within
-     * the same layer and are never treated as completed until placed.
+    public java.util.List<Integer> builderWorkOrder(UUID worker){
+        return java.util.List.copyOf(builderWorkOrders.getOrDefault(worker,
+                java.util.List.of()));
+    }
+    public boolean builderOrderPrepared(UUID worker){
+        return builderPreparedOrders.contains(worker);
+    }
+    public void prepareBuilderOrder(UUID worker){
+        if(builderWorkOrders.containsKey(worker)){
+            builderPreparedOrders.add(worker);sync();
+        }
+    }
+    public void releaseBuilderWorkOrder(UUID worker){
+        builderClaims.remove(worker);
+        builderWorkOrders.remove(worker);
+        builderPreparedOrders.remove(worker);
+        sync();
+    }
+    /** Preserve existing single-step API for compatibility with old worlds.
+     * A worker now receives up to ten exclusive same-layer coordinates.
+     * Assignments are stable across ticks, saved/reloaded with the Planner,
+     * and fully separate from the physical Builder's nine-slot inventory.
      */
     public int claimBuilderStep(UUID worker,int layerExclusive,
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
             java.util.Set<String> heldItems){
         if(!builderWorkerIds().contains(worker)||activeOrder==null)return -1;
-        if(builderClaims.containsKey(worker)){
-            int existing=builderClaims.get(worker);
-            return existing<layerExclusive?existing:-1;
-        }
-        int upper=Math.min(Math.min(builderBlocks,layerExclusive),builderCursor+32);
         long now=level==null?0:level.getGameTime();
-        int next=-1,preferred=-1;
-        for(int i=builderCursor;i<upper;i++){
-            if(((completedAhead >>> (i-builderCursor))&1L)!=0
-                    ||builderClaims.containsValue(i)
+        var order=builderWorkOrders.get(worker);
+        if(order==null||order.isEmpty()){
+            order=new java.util.ArrayList<>(10);
+            int upper=Math.min(Math.min(builderBlocks,layerExclusive),
+                    builderCursor+80);
+            for(int i=builderCursor;i<upper&&order.size()<10;i++){
+                if(builderFinishedSteps.contains(i)
+                        ||builderClaims.containsValue(i)
+                        ||builderMissingRetries.getOrDefault(i,0L)>now)continue;
+                boolean reserved=false;
+                for(var assignment:builderWorkOrders.values())
+                    if(assignment.contains(i)){reserved=true;break;}
+                if(!reserved)order.add(i);
+            }
+            if(order.isEmpty())return -1;
+            builderWorkOrders.put(worker,order);
+            builderPreparedOrders.remove(worker);
+            sync();
+        }
+        int preferred=-1,first=-1;
+        for(int i:order){
+            if(i>=layerExclusive||builderFinishedSteps.contains(i)
                     ||builderMissingRetries.getOrDefault(i,0L)>now)continue;
-            if(next<0)next=i;
+            if(first<0)first=i;
             if(i<steps.size()){
-                String needed=steps.get(i).requiredItem();
-                if(needed==null||heldItems.contains(needed)){
+                String material=steps.get(i).requiredItem();
+                if(material==null||heldItems.contains(material)){
                     preferred=i;break;
                 }
             }
         }
-        if(preferred>=0)next=preferred;
-        if(next>=0){builderClaims.put(worker,next);sync();}
-        return next;
+        int chosen=preferred>=0?preferred:first;
+        if(chosen<0){
+            builderClaims.remove(worker);return -1;
+        }
+        builderClaims.put(worker,chosen);
+        return chosen;
     }
     public boolean completeBuilderStep(UUID worker,int index){
-        if(!builderClaims.containsKey(worker)||builderClaims.get(worker)!=index)
-            return false;
-        var updated=com.caszgamermd.golemsplus.builder.BuilderCrewSchedule.finish(
-                builderCursor,builderBlocks,completedAhead,index);
+        if(builderClaims.getOrDefault(worker,-1)!=index)return false;
         builderClaims.remove(worker);
         builderMissingRetries.remove(index);
-        builderCursor=updated.cursor();
-        completedAhead=updated.finishedAhead();
+        var order=builderWorkOrders.get(worker);
+        if(order!=null){
+            order.remove(Integer.valueOf(index));
+            if(order.isEmpty()){
+                builderWorkOrders.remove(worker);
+                builderPreparedOrders.remove(worker);
+            }
+        }
+        builderFinishedSteps.add(index);
+        while(builderFinishedSteps.remove(builderCursor))builderCursor++;
         if(builderCursor>=builderBlocks){
             phase=WorkerPhase.COMPLETE;activeOrder=null;builderClaims.clear();
+            builderWorkOrders.clear();builderPreparedOrders.clear();
+            builderFinishedSteps.clear();
         }
+        // One change notification per real completed coordinate.
         sync();return true;
     }
     public java.util.List<BlockPos> scaffoldPositions(UUID worker){
@@ -871,7 +923,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClearClaims.clear();builderClearClaimTick.clear();
         builderClearVerified.clear();
         builderMissingRetries.clear();
-        builderClaims.clear();builderPlaced=true;
+        builderClaims.clear();builderPlaced=true;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         builderRequired.clear();builderRemaining.clear();
         builderWarehouseStock.clear();builderStockChecked=false;
         builderWarehouseName="";
@@ -889,7 +941,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClearClaims.clear();builderClearClaimTick.clear();
         builderClearVerified.clear();
         builderMissingRetries.clear();
-        builderClaims.clear();builderRecallRequested=false;
+        builderClaims.clear();builderRecallRequested=false;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         phase=WorkerPhase.WORKING;sync();return true;
     }
     public void advanceBuilder(){
@@ -903,7 +955,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public void setBuilderWorkerId(UUID id){builderWorkerId=id;sync();}
     public boolean cancelBuilder(UUID actor){
         if(!canConfigure(actor)||!isBuilder())return false;
-        activeOrder=null;builderClaims.clear();completedAhead=0;
+        activeOrder=null;builderClaims.clear();completedAhead=0;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         builderRecallRequested=true;
         builderCancelShipment=supplyRequest!=null;
         phase=WorkerPhase.IDLE;sync();return true;
@@ -913,7 +965,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||blocks<0||unresolved<0||activeOrder!=null)return false;
         builderFile=filename;builderBlocks=blocks;builderUnresolved=unresolved;
         builderPlaced=false;placedSchematicName="";builderCursor=0;
-        completedAhead=0;builderClaims.clear();
+        completedAhead=0;builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         phase=WorkerPhase.PLANNING;sync();return true;
     }
     public boolean setBuilderRotation(UUID actor,int degrees) {
@@ -1312,6 +1364,28 @@ public final class WorkerStationBlockEntity extends BlockEntity
         for(int n=0;n<additionalBuilderWorkers.size()&&n<7;n++)
             out.putString("builder_extra_worker_"+n,additionalBuilderWorkers.get(n).toString());
         out.putLong("builder_ahead_bits",completedAhead);
+        out.putInt("builder_done_count",Math.min(80,builderFinishedSteps.size()));
+        int doneIndex=0;
+        for(int done:builderFinishedSteps){
+            if(doneIndex>=80)break;
+            out.putInt("builder_done_"+doneIndex++,done);
+        }
+        out.putInt("builder_batch_count",Math.min(8,builderWorkOrders.size()));
+        int batchIndex=0;
+        for(var entry:builderWorkOrders.entrySet()){
+            if(batchIndex>=8)break;
+            out.putString("builder_batch_uuid_"+batchIndex,
+                    entry.getKey().toString());
+            out.putBoolean("builder_batch_prepared_"+batchIndex,
+                    builderPreparedOrders.contains(entry.getKey()));
+            var steps=entry.getValue();
+            out.putInt("builder_batch_size_"+batchIndex,
+                    Math.min(10,steps.size()));
+            for(int j=0;j<steps.size()&&j<10;j++)
+                out.putInt("builder_batch_step_"+batchIndex+"_"+j,
+                        steps.get(j));
+            batchIndex++;
+        }
         out.putInt("builder_claim_count",Math.min(8,builderClaims.size()));
         int cix=0;
         for(var entry:builderClaims.entrySet()){
@@ -1558,6 +1632,38 @@ public final class WorkerStationBlockEntity extends BlockEntity
                     .orElse(null);
             if(id!=null&&pos!=null&&builderWorkerIds().contains(id))
                 builderLastPositions.put(id,pos.immutable());
+        }
+        builderFinishedSteps.clear();
+        for(int d=0,n=Math.clamp(in.getIntOr("builder_done_count",0),0,80);
+                d<n;d++){
+            int finished=in.getIntOr("builder_done_"+d,-1);
+            if(finished>=builderCursor&&finished<builderCursor+80)
+                builderFinishedSteps.add(finished);
+        }
+        // Migrates saved 0.3.40-era ahead bits without losing completed
+        // physical block placements when upgrading an active world.
+        long legacyAhead=in.getLongOr("builder_ahead_bits",0L);
+        for(int d=0;d<32;d++)
+            if(((legacyAhead>>>d)&1L)!=0)
+                builderFinishedSteps.add(builderCursor+d);
+        builderWorkOrders.clear();builderPreparedOrders.clear();
+        for(int bi=0,n=Math.clamp(in.getIntOr("builder_batch_count",0),0,8);
+                bi<n;bi++){
+            UUID id=uuid(in,"builder_batch_uuid_"+bi);
+            if(id==null)continue;
+            var list=new java.util.ArrayList<Integer>();
+            for(int j=0,k=Math.clamp(in.getIntOr("builder_batch_size_"+bi,0),0,10);
+                    j<k;j++){
+                int index=in.getIntOr("builder_batch_step_"+bi+"_"+j,-1);
+                if(index>=builderCursor&&index<builderCursor+80
+                        &&!builderFinishedSteps.contains(index)&&!list.contains(index))
+                    list.add(index);
+            }
+            if(!list.isEmpty()){
+                builderWorkOrders.put(id,list);
+                if(in.getBooleanOr("builder_batch_prepared_"+bi,false))
+                    builderPreparedOrders.add(id);
+            }
         }
         completedAhead=in.getLongOr("builder_ahead_bits",0);
         builderClaims.clear();
