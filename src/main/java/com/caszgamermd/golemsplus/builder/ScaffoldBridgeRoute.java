@@ -31,6 +31,15 @@ public final class ScaffoldBridgeRoute {
 
     public static Plan plan(BlockPos start,Predicate<BlockPos> owned,
             Predicate<BlockPos> canAdd,Predicate<BlockPos> landing){
+        return plan(start,owned,canAdd,landing,at->false);
+    }
+
+    /** Additional work-platform endpoints may be newly placed scaffolds;
+     * unlike a solid landing, their last block must be purchased.
+     */
+    public static Plan plan(BlockPos start,Predicate<BlockPos> owned,
+            Predicate<BlockPos> canAdd,Predicate<BlockPos> landing,
+            Predicate<BlockPos> workPlatform){
         if(start==null||!owned.test(start))return null;
         Key initial=new Key(start,0);
         PriorityQueue<Node> queue=new PriorityQueue<>(
@@ -46,7 +55,8 @@ public final class ScaffoldBridgeRoute {
             if(costs.getOrDefault(node.key(),Integer.MAX_VALUE)!=node.price())
                 continue;
             BlockPos position=node.key().pos();
-            if(node.steps()>0&&node.key().material()>0&&landing.test(position)){
+            if(node.steps()>0&&node.key().material()>0
+                    &&(landing.test(position)||workPlatform.test(position))){
                 List<BlockPos> route=new ArrayList<>();
                 for(Key at=node.key();!at.equals(initial);at=previous.get(at)){
                     if(at==null)return null;
@@ -55,16 +65,21 @@ public final class ScaffoldBridgeRoute {
                 Collections.reverse(route);
                 return new Plan(List.copyOf(route),node.key().material());
             }
+            // A solid landing is a terminal; never use one as the
+            // unanchored beginning of another over-air scaffold span.
+            if(node.steps()>0&&landing.test(position))continue;
             if(node.steps()>=MAX_STEPS)continue;
             for(Direction direction:Direction.Plane.HORIZONTAL){
                 BlockPos next=position.relative(direction);
                 if(Math.abs(next.getX()-start.getX())
                         +Math.abs(next.getZ()-start.getZ())>MAX_RADIUS)
                     continue;
-                boolean end=landing.test(next);
+                boolean solidEnd=landing.test(next);
                 boolean old=owned.test(next);
-                if(!end&&!old&&!canAdd.test(next))continue;
-                int material=node.key().material()+(end||old?0:1);
+                if(!solidEnd&&!old&&!canAdd.test(next))continue;
+                // A final scaffold WORK platform is still a real
+                // block, unlike a pre-existing solid landing.
+                int material=node.key().material()+(solidEnd||old?0:1);
                 if(material>MAX_NEW_SCAFFOLDS)continue;
                 Key nextKey=new Key(next,material);
                 int step=node.steps()+1;
