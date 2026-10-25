@@ -124,10 +124,17 @@ public final class BuilderScaffoldBridgeGameTest {
         if(!table.registerBuilderWorker(worker.getUUID())){
             helper.fail("Cannot register long bridge worker");return;
         }
+        // The scaffold MUST be directly below the spawned worker.
+        // Previously this fixture registered a tower at local (2,3),
+        // while its worker actually started at local (10,11).
+        // That made the test fail for an unrelated missing anchor.
         for(int y=2;y<=3;y++){
-            BlockPos p=helper.absolutePos(new BlockPos(2,y,3));
+            BlockPos p=helper.absolutePos(new BlockPos(10,y,11));
             level.setBlock(p,Blocks.SCAFFOLDING.defaultBlockState(),3);
-            table.trackScaffold(worker.getUUID(),p);
+            if(!table.trackScaffold(worker.getUUID(),p)){
+                helper.fail("Long bridge could not register its real tower");
+                return;
+            }
         }
         for(int x=11;x<=16;x++)helper.setBlock(x,3,11,Blocks.STONE);
         BlockPos goal=helper.absolutePos(new BlockPos(22,4,11));
