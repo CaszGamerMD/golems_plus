@@ -634,6 +634,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public BlockPos builderOrigin(){return builderOrigin;}
     public String placedSchematicName(){return placedSchematicName;}
     public int builderCursor(){return builderCursor;}
+    /** Total finished positions, including work by independent zone builders
+     * beyond the earliest unfinished schematic index. Used by test progress,
+     * not a substitute for physical block-state verification at completion.
+     */
+    public int builderCompletedCount(){
+        return Math.min(builderBlocks,builderCursor+builderFinishedSteps.size());
+    }
     public int builderClearCursor(){return builderClearCursor;}
     /** The job block owns the clear cursor, verified cells and claims.
      * A stalled claim expires after five seconds; a different Builder can
