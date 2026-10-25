@@ -67,7 +67,7 @@ jobs:
         run: python3 scripts/builder_chunk_tickets_smoke.py
       # The build task now runs a real dedicated Minecraft GameTest.
       # A green JUnit run alone does not count as a movement pass.
-      - name: Run Minecraft server GameTest (climb, ring, return, descend)
+      - name: Run Minecraft server GameTests (scaffold route and framed doorway)
         run: gradle --no-daemon runGameTest
       - name: Preserve Minecraft GameTest logs and reports
         if: always()
