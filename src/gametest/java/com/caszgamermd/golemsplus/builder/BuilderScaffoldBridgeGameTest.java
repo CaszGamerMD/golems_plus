@@ -16,6 +16,111 @@ import net.minecraft.world.level.block.Blocks;
  * those segments instead of treating the obstacle as a second tower.
  */
 public final class BuilderScaffoldBridgeGameTest {
+    /** Prove an actual Golem buys/builds an outside tower, climbs it,
+     * and places two real horizontal scaffolds across the reserved gap.
+     * No 3,537-block Dome workload or teammate doorway traffic involved.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=1100,skyAccess=true)
+    public void constructsOutsideTowerAndBridgesTwoClearCells(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=3;x<=25;x++)for(int z=3;z<=23;z++){
+            helper.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=8;y++)
+                helper.setBlock(x,y,z,Blocks.AIR);
+        }
+        helper.setBlock(3,2,4,WorksiteContent.BUILDER_TABLE);
+        BlockPos planner=helper.absolutePos(new BlockPos(3,2,4));
+        if(!(level.getBlockEntity(planner)
+                instanceof WorkerStationBlockEntity table)){
+            helper.fail("Two-gap test has no Planner");return;
+        }
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())){
+            helper.fail("Two-gap Planner permission denied");return;
+        }
+        java.util.List<BuilderConstructionPlan.Step> plan=
+                new java.util.ArrayList<>();
+        for(int x=10;x<=14;x++)
+            for(int z=8;z<=12;z++){
+                BlockPos cell=helper.absolutePos(new BlockPos(x,2,z));
+                plan.add(new BuilderConstructionPlan.Step(
+                        cell.getX(),cell.getY(),cell.getZ(),
+                        "minecraft:stone","minecraft:stone"));
+            }
+        BlockPos goal=helper.absolutePos(new BlockPos(12,6,10));
+        plan.add(new BuilderConstructionPlan.Step(
+                goal.getX(),goal.getY(),goal.getZ(),
+                "minecraft:stone","minecraft:stone"));
+        var shell=BuilderScaffoldShell.fromSteps(plan);
+        BlockPos base=shell.towers().stream()
+                .filter(t->t.side().equals("X-")).findFirst()
+                .orElseThrow().base();
+        BlockPos expected=helper.absolutePos(new BlockPos(7,2,10));
+        if(!base.equals(expected)||!shell.towerHasTwoBlockGap(base)){
+            helper.fail("Expected third-lane tower two blocks outside model: "
+                    +base+" expected "+expected);return;
+        }
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPersistenceRequired();
+        worker.setPos(base.getX()+.5,base.getY(),base.getZ()+.5);
+        worker.setItem(0,new ItemStack(Items.SCAFFOLDING,48));
+        level.addFreshEntity(worker);
+        if(!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Two-gap Builder registration failed");return;
+        }
+        final int[] stage={0};
+        final long[] stageStart={helper.getTick()};
+        helper.onEachTick(()->{
+            if(!worker.isAlive()){
+                helper.fail("Builder died constructing two-gap tower");return;
+            }
+            if(helper.getTick()%5!=0)return;
+            if(helper.getTick()-stageStart[0]>350){
+                helper.fail("Two-gap trial stalled stage="+stage[0]
+                        +" position="+worker.blockPosition()
+                        +" climb="+BuilderScaffolding.debugClimb(worker)
+                        +" bridge="+BuilderScaffoldBridge.debug(worker)
+                        +" tracked="+table.scaffoldPositions(worker.getUUID()).size());
+                return;
+            }
+            if(stage[0]==0){
+                if(worker.getY()>=goal.getY()-.22
+                        &&table.sharedScaffoldPositions().contains(
+                                new BlockPos(base.getX(),goal.getY()-1,
+                                        base.getZ()))){
+                    stage[0]=1;stageStart[0]=helper.getTick();
+                    return;
+                }
+                var result=BuilderScaffolding.reach(level,worker,table,
+                        owner,goal,plan);
+                if(result==BuilderScaffolding.Result.NO_SAFE_TOWER
+                        ||result==BuilderScaffolding.Result.NEED_MATERIALS)
+                    helper.fail("Cannot build remote two-gap tower: "+result
+                            +" from "+worker.blockPosition());
+                return;
+            }
+            BlockPos first=helper.absolutePos(new BlockPos(8,5,10));
+            BlockPos second=helper.absolutePos(new BlockPos(9,5,10));
+            var built=table.sharedScaffoldPositions();
+            if(built.contains(first)&&built.contains(second)
+                    &&level.getBlockState(first).is(Blocks.SCAFFOLDING)
+                    &&level.getBlockState(second).is(Blocks.SCAFFOLDING)
+                    &&worker.distanceToSqr(goal.getX()+.5,goal.getY(),
+                            goal.getZ()+.5)<=12.5){
+                helper.succeed();
+                return;
+            }
+            var result=BuilderScaffoldBridge.reach(level,worker,table,
+                    owner,goal,plan);
+            if(result==BuilderScaffolding.Result.NO_SAFE_TOWER
+                    ||result==BuilderScaffolding.Result.NEED_MATERIALS)
+                helper.fail("Cannot physically bridge two reserved air cells: "
+                        +result+" stage="+stage[0]
+                        +" bridge="+BuilderScaffoldBridge.debug(worker));
+        });
+    }
     /** The GameTest must reject bridges that only LOOK built but whose
      * unsupported spans have distance seven and will fall on block tick.
      */
