@@ -171,93 +171,164 @@ public final class BuilderSupplyInventory {
         }
         return false;
     }
-    /** Move real items into the Builder's persistent nine-slot pouch.
-     * No teleported consumption: the golem first has to reach the physical
-     * chest/Planner. We load up to one full stack of each type needed over
-     * the next three layers, limited by its pouch capacity.
+    /** Loads one physically carried pouch from the OnSite chest or another
+     * registered Builder. MOVING preserves the claimed construction step;
+     * MISSING lets another crew member try a stocked cell in this layer.
+     * Item ownership only changes when both Builder entities are nearby or
+     * the requesting Builder reaches the actual OnSite storage block.
      */
+    public enum LoadStatus { READY, MOVING, MISSING }
     public static boolean loadForLayer(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,
             int index){
-        if(index<0||index>=steps.size())return false;
+        return loadForLayerStatus(level,worker,table,steps,index)==LoadStatus.READY;
+    }
+    public static LoadStatus loadForLayerStatus(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,
+            int index){
+        if(index<0||index>=steps.size())return LoadStatus.MISSING;
         var current=steps.get(index);
         var id=net.minecraft.resources.Identifier.tryParse(current.requiredItem()==null?
                 "":current.requiredItem());
-        if(id==null||!BuiltInRegistries.ITEM.containsKey(id))return false;
+        if(id==null||!BuiltInRegistries.ITEM.containsKey(id))return LoadStatus.MISSING;
         Item target=BuiltInRegistries.ITEM.getValue(id);
-        if(worker.carriedCount(target)>0)return true;
+        if(worker.carriedCount(target)>0)return LoadStatus.READY;
+
+        // A full pouch of stone or other material cannot receive cobble.
+        // Walk to the depot and unload; NEVER teleport items from a remote
+        // Builder to the chest. This also frees stock for other crew.
+        if(room(worker,new ItemStack(target))<=0){
+            BlockPos depot=table.builderUnloadingStorage();
+            Container site=selectedStorage(table);
+            if(site==null||depot==null)return LoadStatus.MISSING;
+            if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                    depot.getZ()+.5)>12){
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                        level,worker,depot,.83);
+                return LoadStatus.MOVING;
+            }
+            returnPouch(table,worker);
+            if(room(worker,new ItemStack(target))<=0)return LoadStatus.MISSING;
+        }
+
         Map<String,Integer> wanted=BuilderMaterialDemand.batch(steps,index,Map.of());
         var selections=new ArrayList<>(wanted.entrySet());
         selections.sort((left,right)->{
-            boolean a=left.getKey().equals(current.requiredItem());
-            boolean c=right.getKey().equals(current.requiredItem());
-            return a==c?left.getKey().compareTo(right.getKey()):(a?-1:1);
+            boolean first=left.getKey().equals(current.requiredItem());
+            boolean second=right.getKey().equals(current.requiredItem());
+            return first==second?left.getKey().compareTo(right.getKey()):
+                    (first?-1:1);
         });
-        for(var row:selections){
-            var key=net.minecraft.resources.Identifier.tryParse(row.getKey());
-            if(key==null||!BuiltInRegistries.ITEM.containsKey(key))continue;
-            Item requested=BuiltInRegistries.ITEM.getValue(key);
-            int needed=Math.max(0,row.getValue()-worker.carriedCount(requested));
-            if(needed==0)continue;
-            Container source=null;
-            BlockPos location=null;
-            Container site=selectedStorage(table);
-            if(site!=null&&includesItem(site,site.getContainerSize(),requested)){
-                source=site;location=table.builderUnloadingStorage();
-            }
-            if(source==null)continue;
-            if(worker.distanceToSqr(location.getX()+.5,location.getY()+.5,
-                    location.getZ()+.5)>12){
-                com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                        level,worker,location,.83);
-                return false;
-            }
-            // When a nine-slot pouch contains leftovers from prior layers,
-            // unload them at the *physical* staging chest before trying the
-            // next recipe material. Never silently deadlock at pouch capacity.
-            if(room(worker,new ItemStack(target))<=0){
-                returnPouch(table,worker);
-                if(room(worker,new ItemStack(target))<=0)return false;
-            }
-            int limit=source.getContainerSize();
-            for(int i=0;i<limit&&needed>0;i++){
-                ItemStack original=source.getItem(i);
-                if(original.isEmpty())continue;
-                if(original.is(requested)){
-                    int n=Math.min(needed,Math.min(original.getCount(),
-                            room(worker,original)));
-                    if(n<=0)continue;
-                    int accepted=tryPocket(worker,original,n);
-                    if(accepted>0){
-                        source.setItem(i,original.copyWithCount(
-                                original.getCount()-accepted));
-                        source.setChanged();needed-=accepted;
-                    }
-                }else if(original.is(ItemTags.SHULKER_BOXES)
-                        &&original.has(DataComponents.CONTAINER)){
-                    var nested=contents(original);
-                    boolean changed=false;
-                    for(int j=0;j<nested.size()&&needed>0;j++){
-                        ItemStack stack=nested.get(j);
-                        if(!stack.is(requested))continue;
-                        int n=Math.min(needed,Math.min(stack.getCount(),
-                                room(worker,stack)));
-                        if(n<=0)continue;
-                        int accepted=tryPocket(worker,stack,n);
+        Container site=selectedStorage(table);
+        BlockPos depot=table.builderUnloadingStorage();
+        if(site!=null&&depot!=null){
+            for(var row:selections){
+                var key=net.minecraft.resources.Identifier.tryParse(row.getKey());
+                if(key==null||!BuiltInRegistries.ITEM.containsKey(key))continue;
+                Item requested=BuiltInRegistries.ITEM.getValue(key);
+                // Do not fill all nine slots with blocks for later layers
+                // before obtaining the material for this assigned step.
+                if(worker.carriedCount(target)==0&&requested!=target)continue;
+                int capacity=new ItemStack(requested).getMaxStackSize();
+                int quota=capacity*(requested==target?2:1);
+                int needed=Math.min(quota,Math.max(0,
+                        row.getValue()-worker.carriedCount(requested)));
+                if(needed==0||!includesItem(site,site.getContainerSize(),requested))
+                    continue;
+                if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                        depot.getZ()+.5)>12){
+                    com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                            level,worker,depot,.83);
+                    return LoadStatus.MOVING;
+                }
+                for(int i=0;i<site.getContainerSize()&&needed>0;i++){
+                    ItemStack original=site.getItem(i);
+                    if(original.isEmpty())continue;
+                    if(original.is(requested)){
+                        int amount=Math.min(needed,Math.min(original.getCount(),
+                                room(worker,original)));
+                        int accepted=tryPocket(worker,original,amount);
                         if(accepted>0){
-                            nested.set(j,stack.copyWithCount(stack.getCount()-accepted));
-                            needed-=accepted;changed=true;
+                            site.setItem(i,original.copyWithCount(
+                                    original.getCount()-accepted));
+                            site.setChanged();needed-=accepted;
                         }
-                    }
-                    if(changed){
-                        ItemStack packed=original.copy();
-                        packed.set(DataComponents.CONTAINER,ItemContainerContents.fromItems(nested));
-                        source.setItem(i,packed);source.setChanged();
+                    }else if(original.is(ItemTags.SHULKER_BOXES)
+                            &&original.has(DataComponents.CONTAINER)){
+                        var nested=contents(original);
+                        boolean changed=false;
+                        for(int j=0;j<nested.size()&&needed>0;j++){
+                            ItemStack stack=nested.get(j);
+                            if(!stack.is(requested))continue;
+                            int amount=Math.min(needed,Math.min(stack.getCount(),
+                                    room(worker,stack)));
+                            int accepted=tryPocket(worker,stack,amount);
+                            if(accepted>0){
+                                nested.set(j,stack.copyWithCount(
+                                        stack.getCount()-accepted));
+                                needed-=accepted;changed=true;
+                            }
+                        }
+                        if(changed){
+                            ItemStack packed=original.copy();
+                            packed.set(DataComponents.CONTAINER,
+                                    ItemContainerContents.fromItems(nested));
+                            site.setItem(i,packed);site.setChanged();
+                        }
                     }
                 }
             }
         }
-        return worker.carriedCount(target)>0;
+        if(worker.carriedCount(target)>0)return LoadStatus.READY;
+        // The Planner counts all crew pouches as job stock. Without an
+        // actual transfer that accounting made resources 'available' but
+        // impossible for a different Builder to place. Borrow one physical
+        // stack only when the crew are close enough to hand it over.
+        return borrowFromCrew(level,worker,table,target);
+    }
+    private static LoadStatus borrowFromCrew(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,Item target){
+        BuilderGolem donor=null;
+        double nearest=Double.MAX_VALUE;
+        for(var id:table.builderWorkerIds()){
+            if(id.equals(worker.getUUID()))continue;
+            if(!(level.getEntity(id) instanceof BuilderGolem teammate)
+                    ||!teammate.isAlive()||teammate.carriedCount(target)<=0)
+                continue;
+            double distance=worker.distanceToSqr(teammate);
+            if(distance<nearest){
+                nearest=distance;donor=teammate;
+            }
+        }
+        if(donor==null)return LoadStatus.MISSING;
+        if(nearest>12){
+            boolean route=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeTo(level,worker,donor.blockPosition(),.83);
+            return route?LoadStatus.MOVING:LoadStatus.MISSING;
+        }
+        for(int slot=0;slot<donor.getContainerSize();slot++){
+            ItemStack stack=donor.getItem(slot);
+            if(stack.isEmpty()||!stack.is(target))continue;
+            int quantity=Math.min(stack.getCount(),Math.min(
+                    stack.getMaxStackSize(),room(worker,stack)));
+            if(quantity<=0)return LoadStatus.MISSING;
+            int transferred=tryPocket(worker,stack,quantity);
+            if(transferred>0){
+                donor.setItem(slot,stack.copyWithCount(
+                        stack.getCount()-transferred));
+                return LoadStatus.READY;
+            }
+        }
+        return LoadStatus.MISSING;
+    }
+    public static int carriedByTeammates(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,Item item){
+        int total=0;
+        for(var id:table.builderWorkerIds())
+            if(!id.equals(worker.getUUID())
+                    &&level.getEntity(id) instanceof BuilderGolem teammate)
+                total+=teammate.carriedCount(item);
+        return total;
     }
     /** Store actual block drops in the designated on-site container. The
      * entire set is simulated before touching any slot; if storage lacks
