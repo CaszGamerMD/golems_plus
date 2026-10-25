@@ -50,7 +50,7 @@ public final class BuilderScaffoldBridge {
             WorkerStationBlockEntity table,BlockPos feet){
         BlockPos support=feet.below();
         boolean scaffold=level.getBlockState(support).is(Blocks.SCAFFOLDING)
-                &&table.scaffoldPositions(worker.getUUID()).contains(support);
+                &&table.sharedScaffoldPositions().contains(support);
         boolean floor=com.caszgamermd.golemsplus.worker.WorkerNavigation
                 .canStandOn(level,worker,feet);
         if(!level.hasChunkAt(support)||!(scaffold||floor)
@@ -81,7 +81,7 @@ public final class BuilderScaffoldBridge {
             BlockPos p=path.get(i);
             if(!level.hasChunkAt(p)
                     ||!level.getBlockState(p).is(Blocks.SCAFFOLDING)
-                    ||!table.scaffoldPositions(worker.getUUID()).contains(p))
+                    ||!table.sharedScaffoldPositions().contains(p))
                 continue;
             double dx=worker.getX()-p.getX()-.5;
             double dz=worker.getZ()-p.getZ()-.5;
@@ -201,7 +201,7 @@ public final class BuilderScaffoldBridge {
         Set<BlockPos> forbidden=new HashSet<>();
         for(var step:plan)if(!step.ignorePlant())forbidden.add(
                 new BlockPos(step.x(),step.y(),step.z()));
-        Set<BlockPos> owned=new HashSet<>(table.scaffoldPositions(worker.getUUID()));
+        Set<BlockPos> owned=new HashSet<>(table.sharedScaffoldPositions());
         if(!pierFeasible(level,owner,at,forbidden,owned))
             return BuilderScaffolding.Result.NO_SAFE_TOWER;
         int footingY=at.getY()-9;
@@ -333,7 +333,7 @@ public final class BuilderScaffoldBridge {
             List<BuilderConstructionPlan.Step> plan){
         if(walking.containsKey(worker))return BuilderScaffolding.Result.CLIMBING;
         Route route=routes.get(worker);
-        Set<BlockPos> owned=new HashSet<>(table.scaffoldPositions(worker.getUUID()));
+        Set<BlockPos> owned=new HashSet<>(table.sharedScaffoldPositions());
         if(route!=null&&(!route.target().equals(target)
                 ||level.getGameTime()-route.created()>1200
                 ||route.cells().stream().anyMatch(p->
@@ -366,6 +366,9 @@ public final class BuilderScaffoldBridge {
                 BlockPos previous=tops.get(key);
                 if(previous==null||previous.getY()<p.getY())tops.put(key,p);
             }
+            var cardinalBases=new HashSet<Long>();
+            for(var tower:shell.towers())cardinalBases.add(
+                    BlockPos.asLong(tower.base().getX(),0,tower.base().getZ()));
             for(BlockPos top:tops.values()){
                 if(top.getY()!=bridgeY&&top.getY()!=bridgeY-1)continue;
                 matchingTops++;
@@ -377,7 +380,13 @@ public final class BuilderScaffoldBridge {
                 // unrelated open ground.
                 int outside=0;
                 for(BlockPos node:candidate)if(!shell.isShell(node))outside++;
+                // Prefer a permanent extreme tower even when a nearby
+                // ad-hoc pillar would shorten the route slightly. Shared
+                // towers reduce scaffold rebuilding across four workers.
+                boolean cardinal=cardinalBases.contains(
+                        BlockPos.asLong(top.getX(),0,top.getZ()));
                 double cost=candidate.size()*10+outside*3
+                        +(cardinal?-14:0)
                         +Math.sqrt(worker.distanceToSqr(top.getX()+.5,
                                 top.getY()+1,top.getZ()+.5));
                 if(cost<score){score=cost;best=candidate;}
