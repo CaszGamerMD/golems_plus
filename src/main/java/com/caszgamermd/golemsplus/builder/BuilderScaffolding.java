@@ -749,6 +749,12 @@ public final class BuilderScaffolding {
                         t.base().getZ()+.5)*.10));
         for(var tower:anchors){
             BlockPos base=tower.base();
+            // The shared cardinal tower cannot serve a work target if
+            // even the shortest bridge would exceed our 20-cell plan.
+            // Permit two spare segments to navigate around overhangs.
+            int span=Math.abs(base.getX()-target.getX())
+                    +Math.abs(base.getZ()-target.getZ());
+            if(span>18)continue;
             if(avoided(level,worker,base)||!level.hasChunkAt(base)
                     ||!level.hasChunkAt(base.below())
                     ||!level.getBlockState(base.below())
@@ -759,6 +765,46 @@ public final class BuilderScaffolding {
             for(int y=base.getY();y<=top;y++){
                 BlockPos at=new BlockPos(base.getX(),y,base.getZ());
                 if(!level.hasChunkAt(at)||planned.contains(at)
+                        ||!level.getBlockState(at).isAir()
+                            &&!(level.getBlockState(at).is(Blocks.SCAFFOLDING)
+                                    &&table.isTrackedScaffold(at))){
+                    clear=false;break;
+                }
+            }
+            if(clear&&(worker.blockPosition().distSqr(base)>16*16
+                    ||com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .canReachExact(level,worker,base)))return base;
+        }
+        // Some parts of a big Dome are beyond 20 bridge steps from all
+        // four cardinal towers. Plan ADDITIONAL shared towers around the
+        // third exterior lane, still two clear cells outside EVERY future
+        // solid (including the high overhang). This keeps workers from
+        // repeatedly choosing a distant extreme they cannot bridge from.
+        var perimeter=new java.util.ArrayList<BlockPos>();
+        for(BlockPos floor:shell.atHeight(shell.lowY()-1)){
+            BlockPos candidate=floor.above();
+            if(!shell.towerHasTwoBlockGap(candidate))continue;
+            int span=Math.abs(candidate.getX()-target.getX())
+                    +Math.abs(candidate.getZ()-target.getZ());
+            if(span>=19)continue;
+            perimeter.add(candidate);
+        }
+        perimeter.sort(Comparator.comparingDouble(p->
+                p.distSqr(target)
+                +worker.distanceToSqr(p.getX()+.5,feet,p.getZ()+.5)*.08));
+        int examined=0;
+        for(BlockPos base:perimeter){
+            if(examined++>=40)break; // bounded world-query budget
+            if(avoided(level,worker,base)||!level.hasChunkAt(base)
+                    ||!level.hasChunkAt(base.below())
+                    ||!level.getBlockState(base.below()).isFaceSturdy(
+                            level,base.below(),Direction.UP))continue;
+            boolean clear=true;
+            int top=ScaffoldVerticalRoute.stageTop(base.getY(),
+                    base.getY()-1,target.getY()-1);
+            for(int y=base.getY();y<=top;y++){
+                BlockPos at=new BlockPos(base.getX(),y,base.getZ());
+                if(!level.hasChunkAt(at)
                         ||!level.getBlockState(at).isAir()
                             &&!(level.getBlockState(at).is(Blocks.SCAFFOLDING)
                                     &&table.isTrackedScaffold(at))){
