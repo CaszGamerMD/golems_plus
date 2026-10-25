@@ -568,7 +568,21 @@ public final class BuilderBuildService {
             worker.setDeltaMovement(0,velocity.y,0);
             // Never place into any Builder's body. Check before spending
             // the item so waiting for a teammate to move consumes nothing.
-            if(!BuilderPlacementSpace.ready(level,worker,table,pos))return;
+            if(!BuilderPlacementSpace.ready(level,worker,table,pos)){
+                // A four-worker crew must never freeze an entire zone just
+                // because a teammate on the way to OnSite is currently in
+                // its placement volume. After a bounded right-of-way
+                // attempt, defer THIS exact cell and place other staged
+                // blocks while traffic clears. No items are consumed.
+                if(BuilderPlacementSpace.blockedTooLong(level,worker,pos)){
+                    table.waitForBuilderTraffic(worker.getUUID(),index,
+                            level.getGameTime());
+                    BuilderPlacementSpace.clearContention(worker);
+                    table.setProblem("Reassigning nearby work around busy "
+                            +"crew traffic at "+pos.toShortString());
+                }
+                return;
+            }
             // Upper door halves do not consume another door item; the
             // lower half was already placed and paid for in the prior
             // layer. Keep refund logic for all ordinary materials.
