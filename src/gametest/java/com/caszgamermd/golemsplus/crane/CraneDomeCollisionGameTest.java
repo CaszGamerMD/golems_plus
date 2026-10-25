@@ -111,34 +111,34 @@ public final class CraneDomeCollisionGameTest {
             // swept collisions, not a fictitious straight-line teleport.
             var railState=CraneContent.RAIL.defaultBlockState()
                     .setValue(CraneRailBlock.FACING,Direction.UP);
-            for(int z=3;z<=24;z++){
+            for(int z=5;z<=24;z++){
                 world.setBlock(helper.absolutePos(new BlockPos(2,2,z)),railState,2);
                 world.setBlock(helper.absolutePos(new BlockPos(44,2,z)),railState,2);
             }
             for(int x=2;x<=44;x++)
-                world.setBlock(helper.absolutePos(new BlockPos(x,2,3)),railState,2);
+                world.setBlock(helper.absolutePos(new BlockPos(x,2,5)),railState,2);
             // Keep the basket on the *north* side of the rails. A fixed
             // eastward stow would cross the 48-block arena boundary when
             // the chassis reaches the far east edge.
             Vec3 stowed=CraneMovement.anchorPoint(world,westAnchor)
-                    .add(0,0,3);
+                    .add(0,0,-3);
             crane.place(owner.getUUID(),westAnchor,stowed);
             var detour=CraneMovement.railPath(world,crane,farY38);
             if(detour==null || detour.size()<20){
                 BlockPos north=westAnchor.north(),corner=
-                        helper.absolutePos(new BlockPos(2,2,3));
-                BlockPos east=helper.absolutePos(new BlockPos(44,2,3));
+                        helper.absolutePos(new BlockPos(2,2,5));
+                BlockPos east=helper.absolutePos(new BlockPos(44,2,5));
                 Vec3 a=CraneMovement.anchorPoint(world,westAnchor);
                 Vec3 b=CraneMovement.anchorPoint(world,north);
                 Vec3 loadOffset=crane.position().subtract(a);
                 String firstBroken="none";
                 int validEdges=0;
                 java.util.List<BlockPos> expectedRails=new java.util.ArrayList<>();
-                for(int z=23;z>=3;z--)
+                for(int z=23;z>=5;z--)
                     expectedRails.add(helper.absolutePos(new BlockPos(2,2,z)));
                 for(int x=3;x<=44;x++)
-                    expectedRails.add(helper.absolutePos(new BlockPos(x,2,3)));
-                for(int z=4;z<=24;z++)
+                    expectedRails.add(helper.absolutePos(new BlockPos(x,2,5)));
+                for(int z=6;z<=24;z++)
                     expectedRails.add(helper.absolutePos(new BlockPos(44,2,z)));
                 BlockPos last=westAnchor;
                 for(BlockPos current:expectedRails){
