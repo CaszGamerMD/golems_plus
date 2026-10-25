@@ -719,23 +719,40 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return claimBuilderStep(worker,Integer.MAX_VALUE);
     }
     public int claimBuilderStep(UUID worker,int layerExclusive){
+        return claimBuilderStep(worker,layerExclusive,java.util.List.of(),
+                java.util.Set.of());
+    }
+    /** Prefer steps already supplied in THIS worker's real pouch, then
+     * continue with the earliest unclaimed step. Eight crew members have
+     * independent inventories: assigning cobblestone tasks to a golem
+     * carrying only spruce while another has 300 cobblestone caused false
+     * "materials missing" messages and idle workers. Claims remain within
+     * the same layer and are never treated as completed until placed.
+     */
+    public int claimBuilderStep(UUID worker,int layerExclusive,
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
+            java.util.Set<String> heldItems){
         if(!builderWorkerIds().contains(worker)||activeOrder==null)return -1;
         if(builderClaims.containsKey(worker)){
             int existing=builderClaims.get(worker);
             return existing<layerExclusive?existing:-1;
         }
-        // One blocked/missing item must not monopolize every worker.
-        // Preserve ordered cursor/finishedAhead bits so no step can be
-        // wrongly counted completed or advance into the next layer.
         int upper=Math.min(Math.min(builderBlocks,layerExclusive),builderCursor+32);
         long now=level==null?0:level.getGameTime();
-        int next=-1;
+        int next=-1,preferred=-1;
         for(int i=builderCursor;i<upper;i++){
             if(((completedAhead >>> (i-builderCursor))&1L)!=0
                     ||builderClaims.containsValue(i)
                     ||builderMissingRetries.getOrDefault(i,0L)>now)continue;
-            next=i;break;
+            if(next<0)next=i;
+            if(i<steps.size()){
+                String needed=steps.get(i).requiredItem();
+                if(needed==null||heldItems.contains(needed)){
+                    preferred=i;break;
+                }
+            }
         }
+        if(preferred>=0)next=preferred;
         if(next>=0){builderClaims.put(worker,next);sync();}
         return next;
     }
