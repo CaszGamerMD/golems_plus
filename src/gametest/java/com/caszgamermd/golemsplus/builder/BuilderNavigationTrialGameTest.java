@@ -132,4 +132,77 @@ public final class BuilderNavigationTrialGameTest {
                 WorkerNavigation.routeToExact(helper.getLevel(),worker,destination,1.0);
         });
     }
+
+    @GameTest(maxTicks=1000,skyAccess=true)
+    public void twoBuildersShareOneDoorwayWithoutDeadlocking(GameTestHelper helper) {
+        floor(helper);
+        // A three-high divider prevents either worker from bypassing
+        // the door over the wall; only one physical doorway is available.
+        for(int y=2;y<=4;y++)for(int z=0;z<8;z++)
+            helper.setBlock(3,y,z,Blocks.COBBLESTONE);
+        helper.setBlock(3,2,3,Blocks.AIR);
+        helper.setBlock(3,3,3,Blocks.AIR);
+        var door=Blocks.OAK_DOOR.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.DoorBlock.FACING,
+                        net.minecraft.core.Direction.EAST)
+                .setValue(net.minecraft.world.level.block.DoorBlock.OPEN,false);
+        helper.setBlock(3,2,3,door.setValue(
+                net.minecraft.world.level.block.DoorBlock.HALF,
+                net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER));
+        helper.setBlock(3,3,3,door.setValue(
+                net.minecraft.world.level.block.DoorBlock.HALF,
+                net.minecraft.world.level.block.state.properties.DoubleBlockHalf.UPPER));
+
+        BuilderGolem first=spawn(helper,new BlockPos(1,2,2));
+        BuilderGolem second=spawn(helper,new BlockPos(1,2,4));
+        BuilderGolem[] workers={first,second};
+        BlockPos[] destinations={
+                helper.absolutePos(new BlockPos(6,2,2)),
+                helper.absolutePos(new BlockPos(6,2,4))
+        };
+        BlockPos doorway=helper.absolutePos(new BlockPos(3,2,3));
+        final boolean[] crossed={false,false},entered={false,false};
+        final double[] lastX={first.getX(),second.getX()};
+        final double[] lastZ={first.getZ(),second.getZ()};
+        final int[] idle={0,0};
+        helper.onEachTick(()->{
+            for(int i=0;i<workers.length;i++){
+                BuilderGolem worker=workers[i];
+                if(!worker.isAlive()){
+                    helper.fail("Builder "+i+" disappeared at shared door");
+                    return;
+                }
+                if(worker.getBoundingBox().intersects(
+                        new net.minecraft.world.phys.AABB(doorway)))
+                    entered[i]=true;
+                if(entered[i]&&worker.getX()>doorway.getX()+1.5
+                        &&worker.onGround())crossed[i]=true;
+                if(!crossed[i]){
+                    if(Math.abs(worker.getX()-lastX[i])+
+                            Math.abs(worker.getZ()-lastZ[i])>.07)
+                        idle[i]=0;
+                    else idle[i]++;
+                    if(idle[i]>220){
+                        helper.fail("Shared door stuck builder "+i
+                                +" entered="+entered[i]
+                                +" pos="+worker.position()
+                                +" other="+workers[1-i].position()
+                                +" nav="+WorkerNavigation.debugStatus(worker));
+                        return;
+                    }
+                }
+                lastX[i]=worker.getX();lastZ[i]=worker.getZ();
+            }
+            if(crossed[0]&&crossed[1]){
+                helper.succeed();
+                return;
+            }
+            if(helper.getTick()%5==0){
+                WorkerNavigation.routeTo(helper.getLevel(),first,
+                        destinations[0],1.0);
+                WorkerNavigation.routeTo(helper.getLevel(),second,
+                        destinations[1],1.0);
+            }
+        });
+    }
 }
