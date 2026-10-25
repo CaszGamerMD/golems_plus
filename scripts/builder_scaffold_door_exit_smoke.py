@@ -26,4 +26,8 @@ assert "mob.getMoveControl().setWantedPosition(x,exit.getY(),z,1.0)" in nav
 assert "if(initial<.35" not in queue
 assert "boolean leftOpening=initial<.35" in queue
 assert "projected< -1.25" in queue
+assert "prioritizeOccupant(id,level.getGameTime())" in queue
+assert "boolean headInside=" in queue
+assert "return first&&(!blocked||inside)" in queue
+assert "BlockPos upcoming=handDoor(level,inside)?inside" in nav
 print("PASS scaffold ascent completion, top-entry drop, grounded dismount and door exit")
