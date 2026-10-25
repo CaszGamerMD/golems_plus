@@ -28,7 +28,18 @@ public final class BuilderBlockResolver {
         if(identifier==null||!BuiltInRegistries.BLOCK.containsKey(identifier))return null;
         Block block=BuiltInRegistries.BLOCK.getValue(identifier);
         Item item=block.asItem();
-        if(item==Items.AIR || block instanceof EntityBlock)return null;
+        // Wall signs are alternate blockstates of an ordinary inventory
+        // sign item. They have a block entity for OPTIONAL text, but the
+        // schematic only supplies the block-state orientation. Construct
+        // a blank sign rather than rejecting an entire build over it.
+        boolean safeSign=block instanceof net.minecraft.world.level.block.SignBlock;
+        if(safeSign&&id.endsWith("_wall_sign")){
+            Identifier matchingItem=Identifier.tryParse(
+                    id.substring(0,id.length()-"_wall_sign".length())+"_sign");
+            if(matchingItem!=null&&BuiltInRegistries.ITEM.containsKey(matchingItem))
+                item=BuiltInRegistries.ITEM.getValue(matchingItem);
+        }
+        if(item==Items.AIR || block instanceof EntityBlock&&!safeSign)return null;
         // Door halves are represented by two successive schematic cells.
         // Lower block consumes the single physical door item; upper half
         // is placed after its lower support, without duplicating materials.
