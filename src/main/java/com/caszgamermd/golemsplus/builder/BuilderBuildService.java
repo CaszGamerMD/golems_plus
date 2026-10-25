@@ -671,8 +671,13 @@ public final class BuilderBuildService {
             return previous;
         if(!table.hasPlacedSchematic())
             throw new IllegalArgumentException("No placed schematic");
+        // Both values must share the SAME normalized absolute root.
+        // Fabric GameTest may return a config path beginning with "./".
+        // Previously normalize() removed that prefix from file but not
+        // folder: a valid saved schematic was falsely rejected as missing.
         Path folder=FabricLoader.getInstance().getConfigDir()
-                .resolve("golems_plus").resolve("schematics");
+                .resolve("golems_plus").resolve("schematics")
+                .toAbsolutePath().normalize();
         Path file=folder.resolve(table.builderFile()).normalize();
         if(!file.startsWith(folder)||!Files.isRegularFile(file))
             throw new IllegalArgumentException("Saved schematic missing");
