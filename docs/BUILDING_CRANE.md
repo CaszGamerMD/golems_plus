@@ -29,6 +29,6 @@ Both boom and cargo paths check solids and loaded chunks. Paths are bounded, cac
 
 ## Validation / playtest
 
-Automated coverage checks FIFO direction batching, the four-builder cap, upgrade limits, bounded routing around obstacles, vertical rail connectivity, and missing-rail rejection. Actual entity motion, client rendering, loading/unloading, restart recovery, and cross-mod pallet interaction require in-game verification.
+Automated coverage checks FIFO direction batching, the four-builder cap, upgrade limits, bounded routing around obstacles, vertical rail connectivity, and missing-rail rejection. The movement planner now checks all four stow directions if the first is blocked, and unloads passengers with reachable platforms before waiting for an obstructed passenger. The nearest standable landing is considered first to avoid unnecessarily evaluating expensive collision volumes. Actual entity motion, client rendering, loading/unloading, restart recovery, and cross-mod pallet interaction require in-game verification.
 
 Test one operator and four builders with jobs above and below ground level; a blocked doorway; an interrupted rail; all four riders dismounting onto a platform; save/reload mid-trip; two different jobs; two partially filled pallets; moving OnSite storage during restocking; cancellation/recall with passengers aboard. This is an experimental build, not a claimed end-to-end construction pass.
