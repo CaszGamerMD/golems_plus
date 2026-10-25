@@ -794,9 +794,19 @@ public final class BuilderScaffolding {
             // Shared cardinal towers stay available until the entire
             // multi-builder job is finished. Other workers may be away
             // retrieving supplies while still intending to reuse them.
-            if(table.crewTarget()>1
-                    &&table.phase()!=com.caszgamermd.golemsplus.worker.WorkerPhase.COMPLETE)
-                return;
+            if(table.crewTarget()>1){
+                if(table.phase()!=com.caszgamermd.golemsplus.worker.WorkerPhase.COMPLETE)
+                    return;
+                // Do not pull the common tower from under another
+                // golem while the four crew members finish descending.
+                for(var id:table.builderWorkerIds()){
+                    if(id.equals(worker.getUUID()))continue;
+                    var entity=level.getEntity(id);
+                    if(entity instanceof BuilderGolem other
+                            &&(!other.onGround()||other.getY()>minY+2.1))
+                        return;
+                }
+            }
             if(!worker.onGround()||worker.getY()>minY+2.1)return;
             // Never reclaim a column from beneath a Builder that is
             // still standing on its bottom or top platform.
