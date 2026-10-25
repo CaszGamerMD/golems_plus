@@ -56,6 +56,32 @@ public final class BuilderBuildService {
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
+    // Real-world navigation watchdog for FOUR independent Builders.
+    // A native route can say "walking" forever while standing at the
+    // same doorway/ledge as another worker; progress must be physical.
+    private static final class TravelWatch {
+        int step=-1;
+        net.minecraft.world.phys.Vec3 at;
+        long lastMove;
+    }
+    private static final Map<BuilderGolem,TravelWatch> travelWatch=
+            new WeakHashMap<>();
+    private static boolean travelBlocked(ServerLevel level,BuilderGolem worker,
+            int step){
+        var watch=travelWatch.computeIfAbsent(worker,k->new TravelWatch());
+        if(watch.step!=step||watch.at==null){
+            watch.step=step;watch.at=worker.position();
+            watch.lastMove=level.getGameTime();return false;
+        }
+        // Do not confuse a path taking a useful detour around a wall with
+        // a stuck golem. Actual displacement, not decreasing target range,
+        // is the right signal for physical work traffic.
+        if(worker.position().distanceToSqr(watch.at)>.36){
+            watch.at=worker.position();watch.lastMove=level.getGameTime();
+            return false;
+        }
+        return level.getGameTime()-watch.lastMove>=180;
+    }
     private static WorkerAction action(BuilderGolem worker,int index){
         var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
         activity.setStep(index);
@@ -497,6 +523,18 @@ public final class BuilderBuildService {
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
             if(workDistance>14){
+                if(!BuilderScaffolding.isControllingMovement(worker)
+                        &&travelBlocked(level,worker,index)){
+                    // Do not hold a whole zoned crew hostage to one
+                    // unreachable cell. Keep the item pouch and future
+                    // schematic intact, but try another staged coordinate.
+                    table.waitForBuilderTraffic(worker.getUUID(),index,
+                            level.getGameTime());
+                    travelWatch.remove(worker);
+                    table.setProblem("Builder is detouring around team traffic "
+                            +"at "+pos.toShortString());
+                    return;
+                }
                 // A worker above ground may have crossed onto an isolated
                 // partial dome ledge. If repeated physical path searches have
                 // NO reachable waypoints, return to its OWN scaffold and
