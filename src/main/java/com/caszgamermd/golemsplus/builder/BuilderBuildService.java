@@ -542,12 +542,17 @@ public final class BuilderBuildService {
         if(table.phase()==WorkerPhase.PAUSED)return "Build paused";
         try{
             Cache plan=cache(table,worker);
-            if(table.builderClearCursor()<plan.clearing().size())
+            if(table.builderClearCursor()<plan.clearing().size()){
+                int claim=table.builderClearClaim(worker.getUUID());
+                String target=claim>=0&&claim<plan.clearing().size()
+                        ?plan.clearing().get(claim).pos().toShortString()
+                        :"unassigned";
                 return "CLEARING "+table.builderClearCursor()+"/"
                         +plan.clearing().size()
+                        +" | worker claim="+claim+" target="+target
                         +" | nav="+(worker.getNavigation().isDone()?"idle":"walking")
-                        +" | nearest claim="+worker.blockPosition().toShortString()
                         +" | "+table.problem();
+            }
             ScheduledZones schedule=zoneSchedule(table,plan);
             var zone=schedule.tasks().steps(worker.getUUID());
             int index=table.claimedStep(worker.getUUID());

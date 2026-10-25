@@ -18,5 +18,7 @@ assert "BuilderMaterialDemand.batch(steps,index" not in supplies
 assert "mobInteract(Player player," in golem
 assert "BuilderBuildService.debugStatus(world,this)" in golem
 assert "builderClearCursor()<plan.clearing().size()" in build
+assert "builderClearClaim(worker.getUUID())" in build
+assert "claim> =0" not in build
 assert "BuilderZoneWorkPlan.compile(" in build
 print("PASS per-builder scheduling without synchronized warehouse rescans and live status inspection")
