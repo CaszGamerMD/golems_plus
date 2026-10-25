@@ -24,6 +24,9 @@ assert "private static final class MotionWatch" in sc
 assert "watch.failures>=3" in sc
 assert "avoided.put(worker,new AvoidColumn(" in sc
 assert "ScaffoldVerticalRoute.reached(" in sc
+assert "ScaffoldVerticalRoute.onBottomScaffold(" in sc
+assert "BuilderScaffolding.descendForTravel(level,worker,table))" in build
+assert "table.phase()==WorkerPhase.COMPLETE" in build
 assert "public static final int EXTENSION=16" in plan
 assert "public static int stageTop(" in plan
 print("PASS staged 16-block vertical routes, owned tower, restocks and exclusive motion")

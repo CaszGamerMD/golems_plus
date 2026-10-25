@@ -22,6 +22,14 @@ public final class ScaffoldVerticalRoute {
     public static boolean reached(double feetY,double stopY,boolean down){
         return down?feetY<=stopY+.10:feetY>=stopY-.10;
     }
+    /** Recognize feet on the bottom scaffold at baseY+1 as still
+     * needing a dismount even though no vertical descent remains.
+     */
+    public static boolean onBottomScaffold(double feetY,int baseY,
+                                            double dx,double dz){
+        return feetY>=baseY+.65&&feetY<=baseY+1.2
+                &&dx*dx+dz*dz<=.32;
+    }
     public static boolean needsDescent(double feetY,int baseY){
         return feetY>baseY+1.16;
     }

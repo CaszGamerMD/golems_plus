@@ -414,8 +414,8 @@ public final class BuilderScaffolding {
             // an exit tile. Previously this early skip made the lower
             // dismount branch unreachable for exactly that position.
             if(worker.getY()<=base.getY()+1.2
-                    &&(worker.getY()<base.getY()+.65
-                       ||dx*dx+dz*dz>.32))continue;
+                    &&!ScaffoldVerticalRoute.onBottomScaffold(
+                            worker.getY(),base.getY(),dx,dz))continue;
             if(dx*dx+dz*dz>20*20)continue;
             if(ScaffoldVerticalRoute.needsReturn(dx,dz)){
                 ReturnRoute cached=returning.get(worker);

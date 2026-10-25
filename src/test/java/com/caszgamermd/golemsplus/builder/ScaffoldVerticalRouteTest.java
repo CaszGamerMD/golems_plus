@@ -31,6 +31,12 @@ final class ScaffoldVerticalRouteTest {
         assertFalse(ScaffoldVerticalRoute.reached(65,64,true));
         assertTrue(ScaffoldVerticalRoute.reached(64.09,64,true));
     }
+    @Test void bottomScaffoldIsNotSafeGround(){
+        assertTrue(ScaffoldVerticalRoute.onBottomScaffold(65,64,.05,.05));
+        assertFalse(ScaffoldVerticalRoute.onBottomScaffold(64,64,0,0));
+        assertFalse(ScaffoldVerticalRoute.onBottomScaffold(65,64,1,0));
+        assertTrue(ScaffoldVerticalRoute.needsDescent(66,64));
+    }
     @Test void lowTowerStillRequiresDismount(){
         assertTrue(ScaffoldVerticalRoute.needsDescent(65,63));
         assertFalse(ScaffoldVerticalRoute.needsDescent(64.05,63));
