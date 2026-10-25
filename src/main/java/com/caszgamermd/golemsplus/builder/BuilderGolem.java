@@ -61,10 +61,11 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     @Override protected InteractionResult mobInteract(Player player,
             InteractionHand hand){
         if(player.isShiftKeyDown()){
-            if(level() instanceof ServerLevel world){
+            if(player instanceof net.minecraft.server.level.ServerPlayer recipient
+                    &&level() instanceof ServerLevel world){
                 String status=BuilderBuildService.debugStatus(world,this);
-                player.displayClientMessage(
-                        Component.literal("Builder "+getName().getString()+": "+status),false);
+                recipient.sendSystemMessage(
+                        Component.literal("Builder "+getName().getString()+": "+status));
             }
             return InteractionResult.SUCCESS;
         }
