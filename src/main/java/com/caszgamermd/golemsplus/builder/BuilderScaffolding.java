@@ -45,6 +45,18 @@ public final class BuilderScaffolding {
             new java.util.WeakHashMap<>();
     private static final java.util.Map<BuilderGolem,AvoidColumn> avoided=
             new java.util.WeakHashMap<>();
+    // A clear shaft is not a usable tower if the worker cannot reach
+    // its base. Measure genuine progress toward the chosen foundation.
+    private static final class ApproachWatch {
+        final BlockPos base;
+        double best;
+        int lastProgress;
+        ApproachWatch(BlockPos base,double distance,int tick){
+            this.base=base;best=distance;lastProgress=tick;
+        }
+    }
+    private static final java.util.Map<BuilderGolem,ApproachWatch> approaches=
+            new java.util.WeakHashMap<>();
     private static boolean avoided(ServerLevel level,BuilderGolem worker,
                                     BlockPos candidate){
         AvoidColumn bad=avoided.get(worker);
@@ -104,6 +116,7 @@ public final class BuilderScaffolding {
         clearMotion(worker);
         returning.remove(worker);
         exiting.remove(worker);
+        approaches.remove(worker);
         BuilderScaffoldBridge.cancel(worker);
     }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
@@ -570,8 +583,9 @@ public final class BuilderScaffolding {
                     .routeToExact(level,worker,landing,1.0))
                 return Result.CLIMBING;
         }
-        // The complete 2-block perimeter (including diagonal offsets)
-        // must match both selection AND reuse, or towers are forgotten.
+        // The cardinal tower foundations now stand behind two empty
+        // bridge cells. Any optional local fallback obeys that same
+        // separation from every full-height schematic solid.
         if(base==null)base=findBase(level,worker,target,feet,table,plan);
         if(base==null){
             // An overhang may cover every nearby vertical foundation.
@@ -587,6 +601,26 @@ public final class BuilderScaffolding {
         // tried to walk through buildings to reach it.
         if(approachX*approachX+approachZ*approachZ>1.20){
             clearMotion(worker);
+            double distance=Math.hypot(approachX,approachZ);
+            ApproachWatch watch=approaches.get(worker);
+            if(watch==null||!watch.base.equals(base)){
+                watch=new ApproachWatch(base.immutable(),distance,
+                        worker.tickCount);
+                approaches.put(worker,watch);
+            }else if(distance<watch.best-.25){
+                watch.best=distance;
+                watch.lastProgress=worker.tickCount;
+            }else if(worker.tickCount-watch.lastProgress>160){
+                // Allow legitimate detours; give up only after eight
+                // seconds with no closer physical approach. The next
+                // evaluation will try a different foundation/column.
+                avoided.put(worker,new AvoidColumn(base.immutable(),
+                        level.getGameTime()+200));
+                approaches.remove(worker);
+                com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .stop(worker);
+                return Result.NO_SAFE_TOWER;
+            }
             // Existing scaffolding is not a walkable A* node. When a
             // Builder is already on an upper platform it must return to
             // that SAME elevation beside the tower, rather than walking
@@ -615,6 +649,7 @@ public final class BuilderScaffolding {
                         .routeTo(level,worker,approach,1.0);
             return Result.CLIMBING;
         }
+        approaches.remove(worker); // the foundation was physically reached
         int wantedTop=target.getY()-1;
         final BlockPos column=base;
         int existingTop=existing.stream()
@@ -679,6 +714,15 @@ public final class BuilderScaffolding {
         // evaluation will extend the SAME owned tower, not walk away.
         return top<wantedTop?Result.CLIMBING:Result.NOT_NEEDED;
     }
+    /** Standing directly on a proposed tower foundation is successful
+     * physical arrival, even if vanilla A* returns no route to self.
+     */
+    private static boolean atTowerFoundation(BuilderGolem worker,BlockPos base){
+        double dx=worker.getX()-base.getX()-.5;
+        double dz=worker.getZ()-base.getZ()-.5;
+        return dx*dx+dz*dz<=1.2
+                &&Math.abs(worker.getY()-base.getY())<=1.35;
+    }
     private static BlockPos findBase(ServerLevel level,BuilderGolem worker,
             BlockPos target,int feet,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> plan){
@@ -730,7 +774,8 @@ public final class BuilderScaffolding {
                     clear=false;break;
                 }
             }
-            if(clear&&(worker.blockPosition().distSqr(base)>16*16
+            if(clear&&(atTowerFoundation(worker,base)
+                    ||worker.blockPosition().distSqr(base)>16*16
                     ||com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .canReachExact(level,worker,base)))return base;
         }
@@ -753,6 +798,9 @@ public final class BuilderScaffolding {
         for(BlockPos adjacent:offsets)
             for(int dy=0;dy<=5;dy++){
                 BlockPos base=new BlockPos(adjacent.getX(),feet-dy,adjacent.getZ());
+                // Fallback must obey the SAME two-block separation as
+                // shared cardinal towers. No hidden tower in the walls.
+                if(!shell.towerHasTwoBlockGap(base))continue;
                 if(avoided(level,worker,base)
                         ||!level.hasChunkAt(base)
                         ||!level.hasChunkAt(base.below()))continue;
@@ -773,7 +821,8 @@ public final class BuilderScaffolding {
                     }
                     if(planned.contains(at)){clear=false;break;}
                 }
-                if(clear&&(worker.blockPosition().distSqr(base)>16*16
+                if(clear&&(atTowerFoundation(worker,base)
+                        ||worker.blockPosition().distSqr(base)>16*16
                         ||com.caszgamermd.golemsplus.worker.WorkerNavigation
                                 .canReachExact(level,worker,base)))
                     return base;

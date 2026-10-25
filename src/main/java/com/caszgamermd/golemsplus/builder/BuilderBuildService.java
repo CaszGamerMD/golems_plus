@@ -14,6 +14,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
@@ -564,6 +565,28 @@ public final class BuilderBuildService {
                 // circling buildings after reaching the required height.
                 if(BuilderScaffolding.stepOffTowardWork(level,worker,table,pos))
                     return;
+                // Two empty blocks separate the shared tower from every
+                // planned Dome solid. Normal ground A* cannot travel over
+                // this elevated air gap. Hand control to the REAL paid
+                // scaffold bridge controller once the tower top is reached.
+                BlockPos support=worker.blockPosition().below();
+                if(table.sharedScaffoldPositions().contains(support)
+                        &&level.getBlockState(support).is(Blocks.SCAFFOLDING)
+                        &&Math.abs(worker.getY()-pos.getY())<=1.4){
+                    var crossing=BuilderScaffoldBridge.reach(level,worker,
+                            table,owner,pos,plan.steps());
+                    if(crossing==BuilderScaffolding.Result.CLIMBING)return;
+                    if(crossing==BuilderScaffolding.Result.NEED_MATERIALS){
+                        table.setProblem("Needs scaffolding to bridge from the "
+                                +"outer tower to "+pos.toShortString());
+                        BuilderWarehouseCoordinator.requestScaffolding(level,
+                                worker,table,owner,plan.steps());
+                        return;
+                    }
+                    // A solid walkway may exist despite a missing scaffold
+                    // bridge candidate. In that case retain ground A* as a
+                    // valid fallback, never hover or invent an air path.
+                }
                 // The NEXT job step is not in physical placing range yet.
                 // Regardless of the previous navigation state, continue
                 // approaching until the distance check genuinely passes.
@@ -682,7 +705,9 @@ public final class BuilderBuildService {
                 return "CLEARING "+table.builderClearCursor()+"/"
                         +plan.clearing().size()
                         +" | worker claim="+claim+" target="+target
-                        +" | nav="+(worker.getNavigation().isDone()?"idle":"walking")
+                        +" | nav="+com.caszgamermd.golemsplus.worker
+                                .WorkerNavigation.debugStatus(worker)
+                        +" | scaffold="+BuilderScaffolding.debugClimb(worker)
                         +" | "+table.problem();
             }
             ScheduledZones schedule=zoneSchedule(table,plan);
@@ -692,6 +717,9 @@ public final class BuilderBuildService {
             String stage=action==null?"AWAITING TASK":action.phase.name();
             if(index<0)return stage+" | zone tasks="+zone.size()
                     +" | stage="+table.builderWorkOrder(worker.getUUID()).size()
+                    +" | nav="+com.caszgamermd.golemsplus.worker
+                            .WorkerNavigation.debugStatus(worker)
+                    +" | scaffold="+BuilderScaffolding.debugClimb(worker)
                     +" | "+table.problem();
             var current=plan.steps().get(index);
             BlockPos target=new BlockPos(current.x(),current.y(),current.z());

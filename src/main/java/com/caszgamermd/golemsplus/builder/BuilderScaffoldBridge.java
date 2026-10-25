@@ -37,6 +37,37 @@ public final class BuilderScaffoldBridge {
     private static final Map<BuilderGolem,Walk> walking=new WeakHashMap<>();
     private static final Map<BuilderGolem,String> failures=new WeakHashMap<>();
 
+    /** Determine scaffold stability from REAL world supports before spending
+     * a worker's item. Vanilla scaffolds fall at unsupported distance seven.
+     * Cardinal detours and new pier columns must obey the same rule.
+     */
+    private static int supportedDistance(ServerLevel level,BlockPos at){
+        BlockPos beneath=at.below();
+        if(!level.hasChunkAt(at)||!level.hasChunkAt(beneath))
+            return 7; // never load another chunk merely to plan a bridge
+        var below=level.getBlockState(beneath);
+        if(below.is(Blocks.SCAFFOLDING)
+                ||below.isFaceSturdy(level,beneath,Direction.UP))return 0;
+        int distance=7;
+        for(Direction side:Direction.Plane.HORIZONTAL){
+            BlockPos adjacent=at.relative(side);
+            if(!level.hasChunkAt(adjacent))continue;
+            var state=level.getBlockState(adjacent);
+            if(state.is(Blocks.SCAFFOLDING)){
+                BlockPos underAdjacent=adjacent.below();
+                var support=level.getBlockState(underAdjacent);
+                // Freshly placed vertical towers may still have their
+                // default distance=7 before the next block update. Their
+                // actual physical footing makes them distance zero.
+                int neighboringDistance=support.is(Blocks.SCAFFOLDING)
+                        ||support.isFaceSturdy(level,underAdjacent,Direction.UP)
+                        ?0:state.getValue(
+                            net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE);
+                distance=Math.min(distance,1+neighboringDistance);
+            }
+        }
+        return distance;
+    }
     private BuilderScaffoldBridge(){}
 
     public static boolean moving(BuilderGolem worker){
@@ -121,6 +152,8 @@ public final class BuilderScaffoldBridge {
         BlockPos platform=walk.destination();
         if(level.getGameTime()>walk.expires()
                 ||!level.hasChunkAt(platform)
+                ||level.getBlockState(platform).is(Blocks.SCAFFOLDING)
+                    &&supportedDistance(level,platform)>=7
                 ||!level.getBlockState(platform).is(Blocks.SCAFFOLDING)
                     &&!com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .canStandOn(level,worker,platform.above())
@@ -158,9 +191,14 @@ public final class BuilderScaffoldBridge {
     private static boolean open(ServerLevel level,ServerPlayer owner,
             WorkerStationBlockEntity table,BuilderGolem worker,BlockPos p,
             Set<BlockPos> future,Set<BlockPos> owned){
-        if(!level.hasChunkAt(p)||!level.hasChunkAt(p.above())
+        if(!level.hasChunkAt(p)||!level.hasChunkAt(p.below())
+                ||!level.hasChunkAt(p.above())
                 ||!level.hasChunkAt(p.above().above())
-                ||!level.mayInteract(owner,p)||future.contains(p))return false;
+                ||!level.mayInteract(owner,p)
+                // Future schematic solid cannot occupy the temporary
+                // platform OR the Builder's body/head above it.
+                ||future.contains(p)||future.contains(p.above())
+                ||future.contains(p.above().above()))return false;
         if(level.getBlockState(p).is(Blocks.SCAFFOLDING)){
             if(!owned.contains(p))return false;
         }else if(!level.getBlockState(p).isAir())return false;
@@ -480,9 +518,21 @@ public final class BuilderScaffoldBridge {
             // place the entire remote bridge in one operation.
             if(worker.distanceToSqr(to.getX()+.5,to.getY()+.5,
                     to.getZ()+.5)>14)return BuilderScaffolding.Result.NO_SAFE_TOWER;
+            int stability=supportedDistance(level,to);
+            if(stability>=7){
+                // Do not consume an item to place a falling scaffold.
+                failures.put(worker,"Unsupported bridge at "+to.toShortString());
+                routes.remove(worker);
+                return BuilderScaffolding.Result.NO_SAFE_TOWER;
+            }
+            var scaffold=Blocks.SCAFFOLDING.defaultBlockState()
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,
+                            stability)
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM,
+                            level.getBlockState(to.below()).isAir());
             var receipt=BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING);
             if(receipt==null)return BuilderScaffolding.Result.NEED_MATERIALS;
-            if(!level.setBlock(to,Blocks.SCAFFOLDING.defaultBlockState(),3)){
+            if(!level.setBlock(to,scaffold,3)){
                 BuilderSupplyInventory.refund(table,receipt);
                 return BuilderScaffolding.Result.NO_SAFE_TOWER;
             }

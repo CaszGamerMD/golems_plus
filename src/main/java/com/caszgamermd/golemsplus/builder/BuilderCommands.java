@@ -28,6 +28,7 @@ public final class BuilderCommands {
                         .executes(ctx->inspect(ctx.getSource().getPlayerOrException(),
                                 StringArgumentType.getString(ctx,"filename")))))
                 .then(Commands.literal("status").executes(ctx->status(ctx.getSource().getPlayerOrException())))
+                .then(Commands.literal("navdebug").executes(ctx->navdebug(ctx.getSource().getPlayerOrException())))
                 .then(Commands.literal("preview").executes(ctx->preview(ctx.getSource().getPlayerOrException())))
                 .then(Commands.literal("start").executes(ctx->start(ctx.getSource().getPlayerOrException())))
                 .then(Commands.literal("pause").executes(ctx->pause(ctx.getSource().getPlayerOrException())))
@@ -62,6 +63,29 @@ public final class BuilderCommands {
                         table=station;
                 }
         return table;
+    }
+    /** Independent of a job's stage; usable when any Dome Builder stalls. */
+    private static int navdebug(ServerPlayer player) {
+        var crew=player.level().getEntitiesOfClass(BuilderGolem.class,
+                player.getBoundingBox().inflate(24.0),BuilderGolem::isAlive);
+        if(crew.isEmpty()){
+            player.sendSystemMessage(Component.literal(
+                    "[Dome navigation] No Builder within 24 blocks."));
+            return 0;
+        }
+        crew.sort(java.util.Comparator.comparingDouble(g->
+                g.distanceToSqr(player)));
+        for(BuilderGolem worker:crew.stream().limit(4).toList())
+            player.sendSystemMessage(Component.literal(
+                    "[Dome navigation] "+worker.getName().getString()
+                    +" @"+worker.blockPosition()
+                    +" speed="+worker.getDeltaMovement()
+                    +" grounded="+worker.onGround()
+                    +" | "+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .debugStatus(worker)
+                    +" | scaffold="+BuilderScaffolding.debugClimb(worker)
+                    +" | bridge="+BuilderScaffoldBridge.debug(worker)));
+        return 1;
     }
     private static int status(ServerPlayer player) {
         var table=nearest(player);
