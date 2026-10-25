@@ -80,8 +80,10 @@ public final class BuilderPlacementSpace {
 
     private static boolean canStand(ServerLevel level,BuilderGolem worker,
             BlockPos at,BlockPos obstructed){
-        if(at.closerThan(obstructed,1.8)
-                ||!level.hasChunkAt(at)||!level.hasChunkAt(at.above())
+        // The entity's real translated collision box below determines
+        // clearance, not an arbitrary 1.8-block exclusion. One-block
+        // cardinal sidesteps are essential in narrow dome ledges.
+        if(!level.hasChunkAt(at)||!level.hasChunkAt(at.above())
                 ||!level.hasChunkAt(at.below()))return false;
         BlockState feet=level.getBlockState(at);
         BlockState above=level.getBlockState(at.above());
@@ -116,7 +118,7 @@ public final class BuilderPlacementSpace {
         // wall, leaving builders stalled despite clear floor two blocks away.
         // Eight directions x three heights x three radii is bounded; only
         // the best candidates below perform expensive navigation probes.
-        for(int radius=2;radius<=4;radius++){
+        for(int radius=1;radius<=4;radius++){
             int[][] offsets={
                     {radius,0},{-radius,0},{0,radius},{0,-radius},
                     {radius,radius},{radius,-radius},
