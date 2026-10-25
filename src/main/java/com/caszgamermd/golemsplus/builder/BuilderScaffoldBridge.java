@@ -51,9 +51,18 @@ public final class BuilderScaffoldBridge {
             BlockPos adjacent=at.relative(side);
             if(!level.hasChunkAt(adjacent))continue;
             var state=level.getBlockState(adjacent);
-            if(state.is(Blocks.SCAFFOLDING))
-                distance=Math.min(distance,1+state.getValue(
-                        net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE));
+            if(state.is(Blocks.SCAFFOLDING)){
+                BlockPos underAdjacent=adjacent.below();
+                var support=level.getBlockState(underAdjacent);
+                // Freshly placed vertical towers may still have their
+                // default distance=7 before the next block update. Their
+                // actual physical footing makes them distance zero.
+                int neighboringDistance=support.is(Blocks.SCAFFOLDING)
+                        ||support.isFaceSturdy(level,underAdjacent,Direction.UP)
+                        ?0:state.getValue(
+                            net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE);
+                distance=Math.min(distance,1+neighboringDistance);
+            }
         }
         return distance;
     }
