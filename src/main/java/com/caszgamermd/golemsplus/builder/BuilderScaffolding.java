@@ -19,7 +19,32 @@ import net.minecraft.world.level.block.Blocks;
 public final class BuilderScaffolding {
     public enum Result { CLIMBING, NEED_MATERIALS, NO_SAFE_TOWER, NOT_NEEDED }
     private static final int MAX_HEIGHT=48;
+    // A climb permit must be renewed by real scaffolding at the worker's
+    // feet. On task change, tower destruction, or world reload gravity
+    // immediately returns; otherwise a Builder can hover indefinitely.
+    private record ClimbPermit(BlockPos column,long expires){}
+    private static final java.util.Map<BuilderGolem,ClimbPermit> climbing=
+            new java.util.WeakHashMap<>();
     private BuilderScaffolding(){}
+    public static boolean climbingNow(ServerLevel level,BuilderGolem worker){
+        ClimbPermit permit=climbing.get(worker);
+        if(permit==null||level.getGameTime()>permit.expires()){
+            climbing.remove(worker);
+            return false;
+        }
+        BlockPos at=worker.blockPosition();
+        if(Math.abs(worker.getX()-(permit.column().getX()+.5))>.65
+                ||Math.abs(worker.getZ()-(permit.column().getZ()+.5))>.65){
+            climbing.remove(worker);
+            return false;
+        }
+        // A real scaffold must still occupy the current climb column.
+        // Do not levitate over removed scaffolding or an unrelated build.
+        boolean support=level.getBlockState(at).is(Blocks.SCAFFOLDING)
+                ||level.getBlockState(at.below()).is(Blocks.SCAFFOLDING);
+        if(!support)climbing.remove(worker);
+        return support;
+    }
 
     public static Result reach(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,BlockPos target,
@@ -124,10 +149,13 @@ public final class BuilderScaffolding {
             worker.getNavigation().stop();
             // Gradual movement instead of teleporting. The tower is a real,
             // owned physical scaffold column; never climb without it.
+            climbing.put(worker,new ClimbPermit(base.immutable(),
+                    level.getGameTime()+7));
             worker.setNoGravity(true);
             worker.setDeltaMovement(0,Math.min(.12,(top+.15-worker.getY())/10),0);
             return Result.CLIMBING;
         }
+        climbing.remove(worker);
         worker.setDeltaMovement(0,0,0);
         worker.setNoGravity(false);
         return Result.NOT_NEEDED;
