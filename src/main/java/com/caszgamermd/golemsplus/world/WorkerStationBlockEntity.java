@@ -994,13 +994,32 @@ public final class WorkerStationBlockEntity extends BlockEntity
             sync(); // Only on stage refresh, not on each coordinate.
         }
         long now=level==null?0:level.getGameTime();
+        // Within the SAME independently assigned layer, choose the closest
+        // unclaimed, non-deferred physical target. Index order made four
+        // workers repeatedly cross completed lanes and claim inaccessible
+        // rim cells while reachable nearby blocks sat in their own batch.
+        // The stage remains stable (no cross-zone stealing/overlap).
+        int selected=-1;
+        double best=Double.POSITIVE_INFINITY;
+        BlockPos currentPos=level instanceof net.minecraft.server.level.ServerLevel server
+                &&server.getEntity(worker) instanceof
+                    com.caszgamermd.golemsplus.builder.BuilderGolem golem
+                        ?golem.blockPosition():null;
         for(int idx:stage){
             if(builderFinishedSteps.contains(idx)
                     ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
-            builderClaims.put(worker,idx);
-            return idx;
+            var cell=steps.get(idx);
+            double cost=currentPos==null?idx:currentPos.distSqr(
+                    new BlockPos(cell.x(),cell.y(),cell.z()));
+            // Avoid any staging overlap, even on restored old saves.
+            if(builderClaims.containsValue(idx))continue;
+            if(cost<best){best=cost;selected=idx;}
         }
-        return -1; // deferred dependencies remain in this zone's layer
+        if(selected>=0){
+            builderClaims.put(worker,selected);
+            return selected;
+        }
+        return -1; // temporarily deferred cells remain in this zone's layer
     }
 
     /** Move one exact same-layer coordinate to a worker who already holds
