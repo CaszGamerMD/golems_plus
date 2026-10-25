@@ -149,7 +149,7 @@ public final class BuilderDomeImportGameTest {
                         ||solids.contains(floor.above().above()))
                     throw new IllegalStateException("Shell puts a Builder inside the dome");
             }
-            System.out.println("[DOME E2E] virtual 1-block shell floorCells="
+            System.out.println("[DOME E2E] virtual 3-block shell floorCells="
                     +shell.shell().size()+" layers="+shell.floors().size()
                     +" reachableSamples="+eligible+" cardinalTowers="+shell.towers()
                     +" outerRingCells="+threeWide);
