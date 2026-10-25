@@ -406,11 +406,16 @@ public final class BuilderScaffolding {
         for(Tower tower:found){
             BlockPos base=tower.base();
             if(avoided(level,worker,base))continue;
-            // Do not turn a normal ground trip into a journey to a tower.
-            if(worker.getY()<=base.getY()+1.2)continue;
             if(worker.getY()>tower.topY()+3.5)continue;
             double dx=worker.getX()-(base.getX()+.5);
             double dz=worker.getZ()-(base.getZ()+.5);
+            // Standing on the BOTTOM scaffold means feet are at baseY+1.
+            // This is NOT "already on ground": the worker still needs
+            // an exit tile. Previously this early skip made the lower
+            // dismount branch unreachable for exactly that position.
+            if(worker.getY()<=base.getY()+1.2
+                    &&(worker.getY()<base.getY()+.65
+                       ||dx*dx+dz*dz>.32))continue;
             if(dx*dx+dz*dz>20*20)continue;
             if(ScaffoldVerticalRoute.needsReturn(dx,dz)){
                 ReturnRoute cached=returning.get(worker);

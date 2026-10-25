@@ -204,6 +204,12 @@ public final class BuilderBuildService {
         // current 10-coordinate assignment or warehouse courier route.
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
+            // On job completion a Builder may still be on its LAST
+            // scaffold tower. It must return to ground and dismount
+            // BEFORE reclaiming blocks, delivering tools or going home.
+            if(BuilderScaffolding.isControllingMovement(worker)
+                    ||BuilderScaffolding.descendForTravel(level,worker,table))
+                return;
             worker.setNoGravity(false);
             BuilderScaffolding.retrieve(level,worker,table,false);
             // A completed/canceled plan may still own boxed warehouse stock.
