@@ -72,8 +72,9 @@ public final class BuilderScaffolding {
         ClimbSession session=sessions.get(worker);
         if(session==null)return false;
         double remain=session.stopY()-worker.getY();
-        if((session.descending()&&remain>=-.16)
-                ||(!session.descending()&&remain<=0)){
+        if(session.descending()&&remain>=-.02)
+            return exitAtGround(level,worker,session);
+        if(!session.descending()&&remain<=0){
             clearMotion(worker);
             return false;
         }
@@ -110,10 +111,42 @@ public final class BuilderScaffolding {
         }
         return true;
     }
+    /** Native ground-path validation rejects a starting scaffold cell.
+     * Physically step out at the bottom before handing movement back to A*.
+     */
+    private static boolean exitAtGround(ServerLevel level,BuilderGolem worker,
+                                         ClimbSession session){
+        double cx=session.column().getX()+.5,cz=session.column().getZ()+.5;
+        double clearDistance=.5+worker.getBbWidth()*.5+.02;
+        if(Math.abs(worker.getX()-cx)>=clearDistance
+                ||Math.abs(worker.getZ()-cz)>=clearDistance){
+            clearMotion(worker);
+            return false;
+        }
+        BlockPos best=null;double distance=Double.MAX_VALUE;
+        for(Direction side:Direction.Plane.HORIZONTAL){
+            BlockPos at=session.column().relative(side);
+            if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .canStandOn(level,worker,at))continue;
+            double d=worker.distanceToSqr(at.getX()+.5,at.getY(),at.getZ()+.5);
+            if(d<distance){distance=d;best=at;}
+        }
+        worker.getNavigation().stop();
+        worker.setNoGravity(false);
+        worker.setJumping(false);
+        worker.setShiftKeyDown(false);
+        if(best!=null)
+            worker.getMoveControl().setWantedPosition(best.getX()+.5,
+                    best.getY(),best.getZ()+.5,1.0);
+        // Normal collision still applies, and the session's timeout bounds
+        // retries if another entity or a newly placed block closes the exit.
+        return true;
+    }
+
     private static void begin(ServerLevel level,BuilderGolem worker,
                               BlockPos column,double stopY,boolean down){
-        // A session is renewed by the owning Builder task, never shared
-        // across colleagues or over a remote scaffold.
+        // Progress renews a session; job reevaluation must not reset a stall
+        // timeout or steal the movement controller before reaching a platform.
         ClimbSession active=sessions.get(worker);
         if(active!=null&&active.column().equals(column)
                 &&active.stopY()==stopY&&active.descending()==down)return;
@@ -140,9 +173,12 @@ public final class BuilderScaffolding {
         if(Math.abs(worker.getX()-cx)>1.05
                 ||Math.abs(worker.getZ()-cz)>1.05)return false;
         double bottom=column.getY();
-        if(worker.getY()<=bottom+.16){
-            clearMotion(worker);
-            return false;
+        if(worker.getY()<=bottom+.02){
+            ClimbSession active=sessions.get(worker);
+            if(active!=null&&active.descending())return exitAtGround(level,worker,active);
+            // Already off the scaffold: do not pull the worker back in.
+            if(Math.abs(worker.getX()-cx)>=.5+worker.getBbWidth()*.5
+                    ||Math.abs(worker.getZ()-cz)>=.5+worker.getBbWidth()*.5)return false;
         }
         begin(level,worker,column,bottom,true);
         return true;
