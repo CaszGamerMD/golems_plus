@@ -132,9 +132,11 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     @Override public void tick(){
         // Never retain the old no-gravity state after switching jobs,
         // unloading, leaving a tower, or reloading an entity from disk.
-        if(level() instanceof ServerLevel server&&isNoGravity()
+        if(level() instanceof ServerLevel server
+                &&(isNoGravity()||isShiftKeyDown())
                 &&!BuilderScaffolding.climbingNow(server,this)){
             setNoGravity(false);
+            setShiftKeyDown(false);
             var velocity=getDeltaMovement();
             setDeltaMovement(velocity.x,Math.min(velocity.y,0),velocity.z);
         }

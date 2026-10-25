@@ -46,6 +46,55 @@ public final class BuilderScaffolding {
         return support;
     }
 
+    /** Safely climb DOWN an owned scaffold before traveling to a depot
+     * or lower schematic step. A* cannot route vertically downward
+     * through a scaffold column. This is the inverse of the existing
+     * gradual ascent and never moves a worker to a remote coordinate.
+     *
+     * @return true while descent is in progress; caller must not issue a
+     * competing navigation goal until the scaffold bottom is reached.
+     */
+    public static boolean descendForTravel(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table){
+        var owned=table.scaffoldPositions(worker.getUUID());
+        if(owned.isEmpty())return false;
+        BlockPos column=owned.getFirst();
+        for(BlockPos at:owned)
+            if(at.getY()<column.getY())column=at;
+        double cx=column.getX()+.5,cz=column.getZ()+.5;
+        if(Math.abs(worker.getX()-cx)>.65
+                ||Math.abs(worker.getZ()-cz)>.65)return false;
+        if(!level.getBlockState(column).is(Blocks.SCAFFOLDING))
+            return false;
+        // Once at the bottom-most platform, let normal ground navigation
+        // walk off it. Do not remove the platform from beneath the worker.
+        double bottom=column.getY()+1.03;
+        if(worker.getY()<=bottom+.17){
+            climbing.remove(worker);
+            worker.setShiftKeyDown(false);
+            worker.setNoGravity(false);
+            // Stop residual downward momentum without interrupting the
+            // next independent navigation command.
+            var velocity=worker.getDeltaMovement();
+            worker.setDeltaMovement(velocity.x,0,velocity.z);
+            return false;
+        }
+        BlockPos below=worker.blockPosition().below();
+        if(!level.getBlockState(worker.blockPosition()).is(Blocks.SCAFFOLDING)
+                &&!level.getBlockState(below).is(Blocks.SCAFFOLDING))
+            return false;
+        worker.getNavigation().stop();
+        climbing.put(worker,new ClimbPermit(column.immutable(),
+                level.getGameTime()+7));
+        worker.setNoGravity(true);
+        // Sneaking permits dropping THROUGH scaffold rather than remaining
+        // on top. Keep x/z fixed, gentle negative speed, no teleportation.
+        worker.setShiftKeyDown(true);
+        worker.setDeltaMovement(0,-Math.min(.12,
+                Math.max(.03,(worker.getY()-bottom)/5)),0);
+        return true;
+    }
+
     public static Result reach(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,BlockPos target,
             List<BuilderConstructionPlan.Step> plan){
@@ -151,11 +200,13 @@ public final class BuilderScaffolding {
             // owned physical scaffold column; never climb without it.
             climbing.put(worker,new ClimbPermit(base.immutable(),
                     level.getGameTime()+7));
+            worker.setShiftKeyDown(false);
             worker.setNoGravity(true);
             worker.setDeltaMovement(0,Math.min(.12,(top+.15-worker.getY())/10),0);
             return Result.CLIMBING;
         }
         climbing.remove(worker);
+        worker.setShiftKeyDown(false);
         worker.setDeltaMovement(0,0,0);
         worker.setNoGravity(false);
         return Result.NOT_NEEDED;

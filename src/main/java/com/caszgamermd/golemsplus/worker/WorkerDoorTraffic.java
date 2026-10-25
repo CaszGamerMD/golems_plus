@@ -21,6 +21,7 @@ public final class WorkerDoorTraffic {
     private static final class Lane {
         final WorkerDoorQueue queue=new WorkerDoorQueue();
         final Map<UUID,Entry> entry=new HashMap<>();
+        final Map<UUID,Long> cooldown=new HashMap<>();
     }
     private static final Map<ServerLevel,Map<BlockPos,Lane>> doors=
             new WeakHashMap<>();
@@ -52,6 +53,9 @@ public final class WorkerDoorTraffic {
                 worker.getX()-(door.getX()+.5),
                 worker.getZ()-(door.getZ()+.5),
                 level.getGameTime()));
+        lane.cooldown.entrySet().removeIf(row->row.getValue()<=level.getGameTime());
+        if(lane.cooldown.getOrDefault(id,0L)>level.getGameTime())
+            return false;
         boolean first=lane.queue.claim(id,level.getGameTime());
         // The reservation only grants entry if the physical doorway is
         // clear. This also protects against workers left inside a door by
@@ -106,6 +110,20 @@ public final class WorkerDoorTraffic {
         }
         return false;
     }
+    /** Deprioritize a stationary head without allowing it to cut back
+     * into the same FIFO on its next navigation tick.
+     */
+    public static void yieldStalled(ServerLevel level,BlockPos position,
+                                    PathfinderMob worker){
+        Map<BlockPos,Lane> map=doors.get(level);
+        if(map==null)return;
+        Lane lane=map.get(canonical(level,position));
+        if(lane==null)return;
+        UUID id=worker.getUUID();
+        lane.queue.release(id);
+        lane.entry.remove(id);
+        lane.cooldown.put(id,level.getGameTime()+60);
+    }
     public static void release(ServerLevel level,BlockPos position,PathfinderMob worker){
         Map<BlockPos,Lane> map=doors.get(level);
         if(map==null)return;
@@ -114,6 +132,6 @@ public final class WorkerDoorTraffic {
         if(lane==null)return;
         lane.queue.release(worker.getUUID());
         lane.entry.remove(worker.getUUID());
-        if(lane.queue.count()==0)map.remove(door);
+        if(lane.queue.count()==0&&lane.cooldown.isEmpty())map.remove(door);
     }
 }

@@ -187,6 +187,8 @@ public final class BuilderSupplyInventory {
         if(depot==null||storage==null)return LoadStatus.MISSING;
         if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                 depot.getZ()+.5)>12){
+            if(BuilderScaffolding.descendForTravel(level,worker,table))
+                return LoadStatus.MOVING;
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                     level,worker,depot,.83);
             return LoadStatus.MOVING;

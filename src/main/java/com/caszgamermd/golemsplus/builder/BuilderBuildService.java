@@ -370,6 +370,10 @@ public final class BuilderBuildService {
             // It does not visit the Planning Table for assignments.
             if(!table.builderOrderPrepared(worker.getUUID())){
                 activity.phase=Action.STAGE_MATERIALS;
+                // An A* route from the TOP of a temporary scaffold to
+                // OnSite Storage can never discover the vertical descent.
+                if(BuilderScaffolding.descendForTravel(level,worker,table))
+                    return;
                 var prep=BuilderSupplyInventory.prepareWorkOrder(
                         level,worker,table,plan.steps());
                 if(prep==BuilderSupplyInventory.LoadStatus.MOVING)return;
@@ -381,6 +385,11 @@ public final class BuilderBuildService {
                 table.prepareBuilderOrder(worker.getUUID());
             }
             activity.phase=Action.MOVE_TO_WORK;
+            // A newly assigned low cell may be underneath an old tower.
+            // Descent belongs to this worker, not a global path command.
+            if(step.y()+1.5<worker.getY()
+                    &&BuilderScaffolding.descendForTravel(level,worker,table))
+                return;
             // Check the replacement's survival BEFORE clearing an existing
             // block. Clearing first destroyed a useful piece of completed
             // cobblestone/support, then deadlocked on "Missing supporting
