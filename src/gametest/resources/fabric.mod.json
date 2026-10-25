@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "golems_plus_gametest",
   "version": "1.0.0",
-  "name": "Golems Plus crane Dome collision GameTests",
+  "name": "Golems Plus crane and exact Dome construction GameTests",
   "environment": "*",
   "depends": {
     "golems_plus": "*",
@@ -10,7 +10,9 @@
   },
   "entrypoints": {
     "fabric-gametest": [
-      "com.caszgamermd.golemsplus.crane.CraneDomeCollisionGameTest"
+      "com.caszgamermd.golemsplus.crane.CraneDomeCollisionGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderInfiniteOnsiteSupplyGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderDomeConstructionGameTest"
     ]
   }
 }
