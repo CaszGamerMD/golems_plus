@@ -42,6 +42,22 @@ public final class BuilderScaffoldBridge {
     public static boolean moving(BuilderGolem worker){
         return walking.containsKey(worker);
     }
+    /** Move one legal step along an already paid-for scaffold platform.
+     * Placement clearance uses this instead of vanilla ground navigation,
+     * which cannot recognize suspended scaffold tiles as standing floor.
+     */
+    public static boolean sidestep(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos feet){
+        BlockPos support=feet.below();
+        if(!level.hasChunkAt(support)
+                ||!level.getBlockState(support).is(Blocks.SCAFFOLDING)
+                ||!table.scaffoldPositions(worker.getUUID()).contains(support)
+                ||worker.distanceToSqr(feet.getX()+.5,
+                        feet.getY(),feet.getZ()+.5)>4.2)
+            return false;
+        walking.put(worker,new Walk(support,level.getGameTime()+100));
+        return true;
+    }
     public static void cancel(BuilderGolem worker){
         routes.remove(worker);
         walking.remove(worker);
