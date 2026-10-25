@@ -226,9 +226,11 @@ public final class BuilderDomeConstructionGameTest {
                 System.out.println("[DOME E2E] physical clearing started at tick="+tick);
             }
             if(table.phase()==WorkerPhase.COMPLETE){
-                int wrong=0;StringBuilder sample=new StringBuilder();
+                int wrong=0, checked=0, ignored=0;
+                StringBuilder sample=new StringBuilder();
                 for(var step:steps){
-                    if(step.ignorePlant())continue;
+                    if(step.ignorePlant()){ignored++;continue;}
+                    checked++;
                     var expected=BuilderBlockResolver.resolve(step.encodedState(),
                             BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
                     if(expected==null){wrong++;continue;}
@@ -254,10 +256,13 @@ public final class BuilderDomeConstructionGameTest {
                         helper.fail("Dome built but crane never physically carried "
                                 +"and unloaded a builder | "+crane.status());return;
                     }
-                    System.out.println("[DOME CRANE E2E] PASS 3537 blueprint "
-                            +"states verified, four actual builders grounded, "
-                            +"scaffolds reclaimed, physical crane boardings="
-                            +craneBoarded.size()+" delivered="+craneUnloaded.size()
+                    System.out.println("[DOME CRANE E2E] PASS "
+                            +steps.size()+" blueprint positions, "+checked
+                            +" required states matched and "+ignored
+                            +" vegetation steps intentionally ignored; "
+                            +"four actual builders grounded, scaffolds reclaimed, "
+                            +"physical crane boardings="+craneBoarded.size()
+                            +" delivered="+craneUnloaded.size()
                             +" maxSimultaneous="+maxRiders[0]);
                     helper.succeed();
                 }
