@@ -17,6 +17,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
+      - name: Verify per-job Ignore Crops/Plants keeps site clearing enabled
+        run: python3 scripts/builder_ignore_plants_smoke.py
       - name: Verify Builders vacate placement cells safely
         run: python3 scripts/builder_placement_space_smoke.py
       - name: Validate ten-coordinate Builder orders and whole-job warehouse supply
