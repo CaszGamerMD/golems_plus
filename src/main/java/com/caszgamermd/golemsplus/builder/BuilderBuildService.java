@@ -166,6 +166,10 @@ public final class BuilderBuildService {
             table.setProblem("Unrecognized Builder Golem near workstation");
             return;
         }
+        // A teammate may need the block space currently occupied by this
+        // Builder. Honor its short physical sidestep before resuming the
+        // current 10-coordinate assignment or warehouse courier route.
+        if(BuilderPlacementSpace.yieldTick(level,worker))return;
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
             worker.setNoGravity(false);
             BuilderScaffolding.retrieve(level,worker,table,false);
@@ -439,6 +443,9 @@ public final class BuilderBuildService {
                     table.setProblem("Builder cannot path to "+pos);
                 return;
             }
+            // Never place into any Builder's body. Check before spending
+            // the item so waiting for a teammate to move consumes nothing.
+            if(!BuilderPlacementSpace.ready(level,worker,table,pos))return;
             // Upper door halves do not consume another door item; the
             // lower half was already placed and paid for in the prior
             // layer. Keep refund logic for all ordinary materials.
@@ -453,6 +460,10 @@ public final class BuilderBuildService {
                 table.setProblem("Builder pouch missing "+step.requiredItem());
                 return;
             }
+            // Check the actual future collision volume before charging
+            // ANY real items. The placing Builder and nearby crew must
+            // physically step to safe adjacent ground; setBlock itself
+            // does not prevent burying entities in new solid blocks.
             // The real consumed stack is debited from either a loose slot
             // or its packed shulker box BEFORE the world changes.
             if(!level.setBlock(pos,state.state(),3)){
