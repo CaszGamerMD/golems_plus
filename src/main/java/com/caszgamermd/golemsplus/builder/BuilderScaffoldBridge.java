@@ -152,6 +152,8 @@ public final class BuilderScaffoldBridge {
         BlockPos platform=walk.destination();
         if(level.getGameTime()>walk.expires()
                 ||!level.hasChunkAt(platform)
+                ||level.getBlockState(platform).is(Blocks.SCAFFOLDING)
+                    &&supportedDistance(level,platform)>=7
                 ||!level.getBlockState(platform).is(Blocks.SCAFFOLDING)
                     &&!com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .canStandOn(level,worker,platform.above())
