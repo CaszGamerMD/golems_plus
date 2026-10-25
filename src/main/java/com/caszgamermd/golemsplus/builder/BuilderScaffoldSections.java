@@ -89,12 +89,16 @@ public final class BuilderScaffoldSections {
                             ||planned.contains(floor)
                             ||planned.contains(floor.above())
                             ||planned.contains(floor.above().above()))continue;
+                    // Score nearby build work with O(reach-volume)
+                    // lookups, never by rescanning the complete 3,537-step
+                    // Dome for every trial scaffold position.
                     int coverage=0;
-                    for(BlockPos block:planned){
-                        int dX=block.getX()-x,dZ=block.getZ()-z;
-                        int dY=block.getY()-(scaffoldY+1);
-                        if(dX*dX+dZ*dZ+dY*dY<=12)coverage++;
-                    }
+                    for(int ex=-3;ex<=3;ex++)for(int ez=-3;ez<=3;ez++)
+                        for(int ey=-3;ey<=3;ey++){
+                            if(ex*ex+ez*ez+ey*ey>12)continue;
+                            if(planned.contains(new BlockPos(x+ex,
+                                    scaffoldY+1+ey,z+ez)))coverage++;
+                        }
                     // The preferred staging side is OUTSIDE the edge of
                     // the wall at this course. An overhanging lip is
                     // detected by comparing the two consecutive profiles.
