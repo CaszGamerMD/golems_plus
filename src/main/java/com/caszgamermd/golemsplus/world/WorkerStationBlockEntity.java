@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 26477)
-Total output lines: 1999
-
 package com.caszgamermd.golemsplus.world;
 
 import com.caszgamermd.golemsplus.trader.VillageSearchArea;
