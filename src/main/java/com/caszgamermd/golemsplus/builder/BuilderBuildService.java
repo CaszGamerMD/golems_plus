@@ -466,17 +466,37 @@ public final class BuilderBuildService {
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
             if(workDistance>14){
+                // The NEXT job step is not in physical placing range yet.
+                // Regardless of the previous navigation state, continue
+                // approaching until the distance check genuinely passes.
+                // An idle vanilla path at five/six blocks is not arrival.
+                activity.phase=Action.MOVE_TO_WORK;
                 // Do not drive Builders into the center of their own
                 // future flower/cobblestone placement. Close approaches
                 // stop alongside an unoccupied, genuinely reachable tile.
                 BlockPos approach=workDistance<=100
                         ?BuilderPlacementSpace.approach(level,worker,pos):null;
-                BlockPos goal=approach==null?pos:approach;
-                // Retain the same target during path retries; don't
-                // replace a shared Planner problem every four ticks with
-                // another Builder's transient navigation state.
-                com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .routeTo(level,worker,goal,.85);
+                if(approach!=null){
+                    // A Builder must arrive at its exact reachable side
+                    // tile, NOT an approximate pathfinder endpoint that can
+                    // be too far away to place the block. This was why a
+                    // MOVE_TO_WORK Builder showed nav=idle at range=6.
+                    boolean moving=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .routeToExact(level,worker,approach,1.0);
+                    if(!moving){
+                        // The selected spot may have become unavailable;
+                        // immediately try moving toward the job and choose
+                        // another exact landing on the next evaluation.
+                        // Never count a stopped navigation as task progress.
+                        BuilderPlacementSpace.invalidateApproach(worker,pos);
+                        com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .routeTo(level,worker,pos,.85);
+                    }
+                }else{
+                    // Long-distance travel still uses bounded multi-leg A*.
+                    com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .routeTo(level,worker,pos,.85);
+                }
                 return;
             }
             activity.phase=Action.PLACE;
@@ -567,6 +587,8 @@ public final class BuilderBuildService {
                     +" | range="+(int)Math.sqrt(worker.distanceToSqr(
                             target.getX()+.5,target.getY()+.5,target.getZ()+.5))
                     +" | nav="+(worker.getNavigation().isDone()?"idle":"walking")
+                    +" "+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .debugStatus(worker)
                     +" | staged="+table.builderOrderPrepared(worker.getUUID())
                     +" | stock="+(current.requiredItem()==null?"none":current.requiredItem());
         }catch(Exception error){

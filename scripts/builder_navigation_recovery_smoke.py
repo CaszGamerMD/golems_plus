@@ -16,7 +16,10 @@ assert "&&mob.distanceToSqr(target.getX()+.5" in navigation
 assert "public static boolean retryScheduled(PathfinderMob mob)" in navigation
 assert 'WorkerNavigation' in building
 assert "WorkerNavigation" in building
-assert "routeTo(level,worker,goal,.85)" in building
+assert "routeToExact(level,worker,approach,1.0)" in building
+assert "if(workDistance>14)" in building
+assert "BuilderPlacementSpace.invalidateApproach(worker,pos)" in building
+assert "routeTo(level,worker,pos,.85)" in building
 assert '"Builder exploring alternate routes to "' not in building
 approaches=(root/"builder/BuilderPlacementSpace.java").read_text()
 assert "private static final Map<BuilderGolem,Approach> workApproaches" in approaches

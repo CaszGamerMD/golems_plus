@@ -33,6 +33,8 @@ jobs:
         run: python3 scripts/builder_support_dependency_smoke.py
       - name: Verify Builder worker-carried material sharing and stable supply paths
         run: python3 scripts/builder_crew_materials_smoke.py
+      - name: Verify Builder keeps approaching when next block is still out of reach
+        run: python3 scripts/builder_work_reach_smoke.py
       - name: Verify flat-site Builder route recovery and existing platform access
         run: python3 scripts/builder_navigation_recovery_smoke.py
       - name: Validate worker stair and slab navigation geometry

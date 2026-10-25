@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""A Builder outside reach keeps moving toward a physically reachable landing."""
+from pathlib import Path
+root=Path(__file__).resolve().parents[1]/"src/main/java/com/caszgamermd/golemsplus"
+service=(root/"builder/BuilderBuildService.java").read_text()
+space=(root/"builder/BuilderPlacementSpace.java").read_text()
+nav=(root/"worker/WorkerNavigation.java").read_text()
+work=service[service.index("double workDistance=worker.distanceToSqr("):
+             service.index("activity.phase=Action.PLACE;",service.index("double workDistance=worker.distanceToSqr("))]
+assert "if(workDistance>14)" in work
+assert "activity.phase=Action.MOVE_TO_WORK" in work
+assert "BuilderPlacementSpace.approach(level,worker,pos)" in work
+assert "routeToExact(level,worker,approach,1.0)" in work
+assert "if(!moving)" in work
+assert "BuilderPlacementSpace.invalidateApproach(worker,pos)" in work
+assert "routeTo(level,worker,pos,.85)" in work
+assert "return;" in work
+assert "for(int radius=1;radius<=3;radius++)" in space
+assert "p.distSqr(target)>9" in space
+assert "WorkerNavigation.canReachExact(level,worker,p)" in space
+assert "shifted.intersects(volume(target))" in space
+assert "public static void invalidateApproach(" in space
+assert "endsAtExactTile(Path path,BlockPos target)" in nav
+assert "last.x==target.getX()&&last.z==target.getZ()" in nav
+assert "return endsAtExactTile(path,target)&&safePath(level,mob,path,false)" in nav
+assert "if(!endsAtExactTile(path,target)||!safePath" in nav
+assert "public static String debugStatus(PathfinderMob mob)" in nav
+assert "debugStatus(worker)" in service
+print("PASS: builders outside five-to-six block placement range continue toward exact reachable standing tiles")

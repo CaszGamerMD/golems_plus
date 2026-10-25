@@ -279,11 +279,20 @@ public final class WorkerNavigation {
                                      BlockPos target){
         return target!=null&&standingTile(level,mob,target);
     }
+    private static boolean endsAtExactTile(Path path,BlockPos target){
+        if(path==null||path.getNodeCount()<1)return false;
+        Node last=path.getNode(path.getNodeCount()-1);
+        // canReach() may accept a waypoint near the requested cell.
+        // A Builder requiring actual interaction range cannot mistake
+        // that approximate endpoint for an exact standing destination.
+        return last.x==target.getX()&&last.z==target.getZ()
+                &&Math.abs(last.y-target.getY())<=1;
+    }
     public static boolean canReachExact(ServerLevel level,PathfinderMob mob,
                                         BlockPos target){
         if(target==null||!level.hasChunkAt(target))return false;
         Path path=mob.getNavigation().createPath(target,0);
-        return safePath(level,mob,path,false);
+        return endsAtExactTile(path,target)&&safePath(level,mob,path,false);
     }
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
@@ -304,7 +313,7 @@ public final class WorkerNavigation {
             return true;
         }
         Path path=mob.getNavigation().createPath(target,0);
-        if(!safePath(level,mob,path,false)
+        if(!endsAtExactTile(path,target)||!safePath(level,mob,path,false)
                 ||!mob.getNavigation().moveTo(path,speed))return false;
         p.requested=target.immutable();p.approach=target.immutable();
         p.weightedRoute=List.of();p.routeCursor=0;
@@ -455,6 +464,20 @@ public final class WorkerNavigation {
      * NOT proof that the visible terrain is unreachable. Used only for
      * meaningful Builder Planner diagnostics.
      */
+    /** Read-only navigation diagnostics; required to distinguish no
+     * candidate, cooldown, stalled path, and actual arrival in-game.
+     */
+    public static String debugStatus(PathfinderMob mob){
+        Progress p=states.get(mob);
+        if(p==null)return "uninitialized";
+        String destination=p.approach==null?"none":p.approach.toShortString();
+        String requested=p.requested==null?"none":p.requested.toShortString();
+        int remaining=Math.max(0,p.nextRoute-mob.tickCount);
+        return "goal="+requested+" via="+destination
+                +" retry="+remaining+"t attempts="+p.attempts
+                +" stalled="+p.stalled+" unsafe="+p.unsafeChecks;
+    }
+
     public static boolean retryScheduled(PathfinderMob mob){
         Progress p=states.get(mob);
         return p!=null&&p.requested!=null

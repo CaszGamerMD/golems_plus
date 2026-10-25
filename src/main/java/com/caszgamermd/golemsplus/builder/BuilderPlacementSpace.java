@@ -133,24 +133,66 @@ public final class BuilderPlacementSpace {
         return null;
     }
 
-    /** Approach the SIDE of a soon-to-be-placed cell rather than asking
-     * vanilla to walk onto its center. Valid nearby ground and a real path
-     * are required. Call only within local approach distance; long-range
-     * WorkerNavigation still handles the route across the site.
+    /** Find an EXACT reachable work position within placement reach.
+     * The evacuation method intentionally requires >=1.8 blocks from a
+     * target, and the general routeTo() accepts approximate arrival. Neither
+     * is valid for construction: stopping two blocks short of a distant
+     * "safe" escape cell leaves a Builder idle five blocks from its target.
+     * This probe is bounded and cached until target or terrain changes.
      */
     public static BlockPos approach(ServerLevel level,BuilderGolem worker,
             BlockPos target){
         Approach cached=workApproaches.get(worker);
         if(cached!=null&&cached.target().equals(target)
                 &&cached.until()>level.getGameTime()
+                &&cached.destination().distSqr(target)<=9
                 &&WorkerNavigation.canStandOn(level,worker,cached.destination()))
             return cached.destination();
-        BlockPos selected=escape(level,worker,target);
-        if(selected!=null)
-            workApproaches.put(worker,new Approach(target,selected,
+        List<BlockPos> candidates=new ArrayList<>();
+        // Nearest cardinal cells first, including legal one-block steps,
+        // then a two-block perimeter. These are work positions, not the
+        // larger stand-clear buffer used when vacating a new solid block.
+        for(int radius=1;radius<=3;radius++)
+            for(int dx=-radius;dx<=radius;dx++)
+                for(int dz=-radius;dz<=radius;dz++){
+                    if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)continue;
+                    for(int dy:new int[]{0,1,-1}){
+                        BlockPos p=target.offset(dx,dy,dz);
+                        if(p.distSqr(target)>9
+                                ||!WorkerNavigation.canStandOn(level,worker,p))
+                            continue;
+                        AABB shifted=worker.getBoundingBox().move(
+                                p.getX()+.5-worker.getX(),p.getY()-worker.getY(),
+                                p.getZ()+.5-worker.getZ());
+                        if(shifted.intersects(volume(target))
+                                ||!level.noCollision(worker,shifted))continue;
+                        candidates.add(p);
+                    }
+                }
+        candidates.sort(java.util.Comparator
+                .comparingDouble((BlockPos p)->p.distSqr(worker.blockPosition())
+                        +Math.abs(p.getY()-worker.blockPosition().getY())*2)
+                .thenComparingDouble(p->p.distSqr(target)));
+        int attempted=0;
+        for(BlockPos p:candidates){
+            if(++attempted>16)break;
+            if(!WorkerNavigation.canReachExact(level,worker,p))continue;
+            workApproaches.put(worker,new Approach(target,p.immutable(),
                     level.getGameTime()+100));
-        else workApproaches.remove(worker);
-        return selected;
+            return p.immutable();
+        }
+        workApproaches.remove(worker);
+        return null;
+    }
+
+    /** The physical position is not fixed forever: a player or teammate
+     * can obstruct it after path calculation. Drop ONLY this worker's
+     * approach and re-search without disturbing any other Builder.
+     */
+    public static void invalidateApproach(BuilderGolem worker,BlockPos target){
+        Approach approach=workApproaches.get(worker);
+        if(approach!=null&&approach.target().equals(target))
+            workApproaches.remove(worker);
     }
 
     /** @return true only when the future block volume is clear of workers. */
