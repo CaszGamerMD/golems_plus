@@ -259,7 +259,7 @@ public final class BuildingCrane extends Entity implements Container {
             Vec3 end=CraneMovement.anchorPoint(world,rail),delta=end.subtract(a);nextA=a.add(delta.length()>.1?delta.normalize().scale(.1):delta);next=old.add(nextA.subtract(a));
         }else{Vec3 delta=path.get(0).subtract(old);next=old.add(delta.length()>.12?delta.normalize().scale(.12):delta);}
         if(!CraneMovement.swept(world,this,old,next,a,nextA)){
-            path.clear();railPath.clear();planAfter=world.getGameTime()+40;status="Obstacle detected; stopped";return;}
+            path.clear();railPath.clear();planAfter=world.getGameTime()+40;status="Obstacle detected; stopped at "+position()+" toward "+next+" chassis="+a;return;}
         move(MoverType.SELF,next.subtract(old));setDeltaMovement(Vec3.ZERO);
         if(position().distanceTo(next)>.025){path.clear();railPath.clear();status="Load blocked by entity";return;}
         anchorPoint(nextA);
