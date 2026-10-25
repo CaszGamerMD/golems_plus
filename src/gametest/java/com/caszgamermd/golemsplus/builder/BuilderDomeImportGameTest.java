@@ -104,6 +104,37 @@ public final class BuilderDomeImportGameTest {
             var shell=BuilderScaffoldShell.fromSteps(plan.steps());
             if(shell.shell().isEmpty()||shell.floors().size()<10)
                 throw new IllegalStateException("Dome exterior shell missing levels");
+            if(shell.towers().size()!=4||shell.towers().stream()
+                    .map(BuilderScaffoldShell.TowerAnchor::side)
+                    .distinct().count()!=4)
+                throw new IllegalStateException("Expected X+/X-/Z+/Z- towers");
+            // Every recommended tower must stand OUTSIDE the finished
+            // model and have enough room for a worker's full body.
+            for(var tower:shell.towers()){
+                BlockPos base=tower.base();
+                for(int y=base.getY();y<=shell.highY()+1;y++){
+                    BlockPos at=new BlockPos(base.getX(),y,base.getZ());
+                    if(solids.contains(at)||solids.contains(at.above())
+                            ||solids.contains(at.above().above()))
+                        throw new IllegalStateException(
+                                "Shared cardinal tower would occupy the Dome: "+tower);
+                }
+            }
+            // There must be an accessible SECOND and THIRD ring beyond
+            // the original one-wide profile on the actual dome.
+            int threeWide=0;
+            for(var floor:shell.shell()){
+                boolean adjacent=false;
+                for(var direction:net.minecraft.core.Direction.Plane.HORIZONTAL)
+                    if(solids.contains(floor.relative(direction))
+                            ||solids.contains(floor.relative(direction).above())
+                            ||solids.contains(floor.relative(direction).above().above())){
+                        adjacent=true;break;
+                    }
+                if(!adjacent)threeWide++;
+            }
+            if(threeWide<50)throw new IllegalStateException(
+                    "Three-block shell did not extend beyond one-wide ring: "+threeWide);
             int eligible=0;
             for(int index=0;index<plan.steps().size();index+=29){
                 var step=plan.steps().get(index);
@@ -120,7 +151,8 @@ public final class BuilderDomeImportGameTest {
             }
             System.out.println("[DOME E2E] virtual 1-block shell floorCells="
                     +shell.shell().size()+" layers="+shell.floors().size()
-                    +" reachableSamples="+eligible);
+                    +" reachableSamples="+eligible+" cardinalTowers="+shell.towers()
+                    +" outerRingCells="+threeWide);
             System.out.println("[DOME E2E] source=exact uploaded file blocks="
                     +plan.steps().size()+" ignoredPlants="+ignored
                     +" unsupported="+plan.unsupported().size());
