@@ -59,6 +59,18 @@ jobs:
         run: python3 scripts/builder_warehouse_queued_smoke.py
       - name: Verify Builder chunk ticket and worker persistence protections
         run: python3 scripts/builder_chunk_tickets_smoke.py
+      - name: Run exact Dome crane collision GameTest
+        run: gradle --no-daemon runGameTest
+      - name: Preserve Minecraft GameTest diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crane-dome-gametest-report
+          path: |
+            build/gametest/
+            build/reports/
+            build/test-results/
+          if-no-files-found: ignore
       - run: gradle --no-daemon clean test build
       - uses: actions/upload-artifact@v4
         if: success()
