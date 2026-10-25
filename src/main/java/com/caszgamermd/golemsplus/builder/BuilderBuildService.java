@@ -454,8 +454,13 @@ public final class BuilderBuildService {
             }
             double horizontal=Math.pow(worker.getX()-(pos.getX()+.5),2)
                     +Math.pow(worker.getZ()-(pos.getZ()+.5),2);
-            if(pos.getY()-worker.getY()>2.5){
-                // Select a safe ascent directly beside the desired X/Z
+            double distToTarget=worker.distanceToSqr(
+                    pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+            if(pos.getY()-worker.getY()>2.5
+                    ||pos.getY()-worker.getY()>1.35&&distToTarget>14){
+                // Even targets only two blocks up may need scaffolding
+                // when no walkable route can bring the worker into reach.
+                // Select a safe ascent beside the desired X/Z
                 // and travel to it on foot before placing scaffolding.
                 var climbing=BuilderScaffolding.reach(level,worker,table,owner,pos,
                         plan.steps());

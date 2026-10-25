@@ -387,6 +387,8 @@ public final class BuilderSupplyInventory {
             if(site==null||depot==null)return LoadStatus.MISSING;
             if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                     depot.getZ()+.5)>12){
+                if(BuilderScaffolding.descendForTravel(level,worker,table))
+                    return LoadStatus.MOVING;
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                         level,worker,depot,.83);
                 return LoadStatus.MOVING;
@@ -426,6 +428,8 @@ public final class BuilderSupplyInventory {
                     continue;
                 if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                         depot.getZ()+.5)>12){
+                    if(BuilderScaffolding.descendForTravel(level,worker,table))
+                        return LoadStatus.MOVING;
                     com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                             level,worker,depot,.83);
                     return LoadStatus.MOVING;
@@ -636,6 +640,8 @@ public final class BuilderSupplyInventory {
         if(source==null)return ScaffoldLoad.MISSING;
         BlockPos pos=table.builderUnloadingStorage();
         if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>12){
+            if(BuilderScaffolding.descendForTravel(level,worker,table))
+                return ScaffoldLoad.MOVING;
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                     level,worker,pos,.82);
             return ScaffoldLoad.MOVING;
