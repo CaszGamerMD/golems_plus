@@ -455,6 +455,20 @@ public final class WorkerNavigation {
      * NOT proof that the visible terrain is unreachable. Used only for
      * meaningful Builder Planner diagnostics.
      */
+    /** Read-only navigation diagnostics; required to distinguish no
+     * candidate, cooldown, stalled path, and actual arrival in-game.
+     */
+    public static String debugStatus(PathfinderMob mob){
+        Progress p=states.get(mob);
+        if(p==null)return "uninitialized";
+        String destination=p.approach==null?"none":p.approach.toShortString();
+        String requested=p.requested==null?"none":p.requested.toShortString();
+        int remaining=Math.max(0,p.nextRoute-mob.tickCount);
+        return "goal="+requested+" via="+destination
+                +" retry="+remaining+"t attempts="+p.attempts
+                +" stalled="+p.stalled+" unsafe="+p.unsafeChecks;
+    }
+
     public static boolean retryScheduled(PathfinderMob mob){
         Progress p=states.get(mob);
         return p!=null&&p.requested!=null
