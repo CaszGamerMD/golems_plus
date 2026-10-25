@@ -779,7 +779,13 @@ public final class WorkerNavigation {
             }
         }
         if(p.queuedDoor==null&&p.requested!=null){
-            BlockPos upcoming=imminentDoor(level,mob,p);
+            // Rescue a worker whose path stopped with its feet already
+            // INSIDE the gate. Dot-product crossing detection cannot
+            // discover it because its starting offset is near zero.
+            BlockPos inside=mob.blockPosition();
+            BlockPos upcoming=handDoor(level,inside)?inside
+                    :handDoor(level,inside.below())?inside.below()
+                    :imminentDoor(level,mob,p);
             if(upcoming!=null){
                 p.queuedDoor=upcoming;
                 p.doorLastProgressTick=mob.tickCount;

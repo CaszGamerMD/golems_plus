@@ -56,15 +56,24 @@ public final class WorkerDoorTraffic {
         lane.cooldown.entrySet().removeIf(row->row.getValue()<=level.getGameTime());
         if(lane.cooldown.getOrDefault(id,0L)>level.getGameTime())
             return false;
+        var doorway=new AABB(door).inflate(.05);
+        boolean inside=worker.getBoundingBox().intersects(doorway);
+        UUID firstId=lane.queue.head();
+        var firstMob=firstId==null?null:level.getEntity(firstId);
+        boolean headInside=firstMob!=null
+                &&firstMob.getBoundingBox().intersects(doorway);
+        // A queued worker standing OUTSIDE must never prevent a worker
+        // stuck INSIDE from exiting. First inside worker receives the
+        // reservation; once it leaves the original FIFO resumes.
+        if(inside&&!headInside)
+            lane.queue.prioritizeOccupant(id,level.getGameTime());
         boolean first=lane.queue.claim(id,level.getGameTime());
-        // The reservation only grants entry if the physical doorway is
-        // clear. This also protects against workers left inside a door by
-        // an older save or entering while the queue was first initialized.
         boolean blocked=!level.getEntitiesOfClass(PathfinderMob.class,
-                new AABB(door).inflate(.05),
-                other->other!=worker&&other.isAlive()).isEmpty();
+                doorway,other->other!=worker&&other.isAlive()).isEmpty();
         lane.entry.keySet().removeIf(key->lane.queue.position(key)==0);
-        return first&&!blocked;
+        // An occupant can open and leave even if another body is partly
+        // in the doorway; actual movement still checks collision.
+        return first&&(!blocked||inside);
     }
     public static boolean owns(ServerLevel level,BlockPos position,PathfinderMob worker){
         Map<BlockPos,Lane> map=doors.get(level);
