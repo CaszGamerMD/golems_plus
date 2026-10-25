@@ -536,9 +536,26 @@ public final class WorkerNavigation {
         int remaining=Math.max(0,p.nextRoute-mob.tickCount);
         int rank=p.queuedDoor!=null&&mob.level() instanceof ServerLevel world
                 ?WorkerDoorTraffic.position(world,p.queuedDoor,mob):0;
+        // Snapshot-only telemetry: do not create/rewrite a path while
+        // collecting data from the four Dome Builder workers.
+        Path path=mob.getNavigation().getPath();
+        String nativeRoute="none";
+        if(path!=null){
+            int next=path.getNextNodeIndex();
+            String waypoint=next<path.getNodeCount()
+                    ?path.getNode(next).x+","+path.getNode(next).y+","
+                            +path.getNode(next).z:"end";
+            nativeRoute=next+"/"+path.getNodeCount()+" next="+waypoint
+                    +" done="+mob.getNavigation().isDone();
+        }
         return "goal="+requested+" via="+destination
                 +" retry="+remaining+"t attempts="+p.attempts
                 +" stalled="+p.stalled+" unsafe="+p.unsafeChecks
+                +" native=["+nativeRoute+"]"
+                +" weighted="+p.routeCursor+"/"+p.weightedRoute.size()
+                +(p.lastBad==null?"":" avoid="+p.lastBad.toShortString()
+                    +" until="+Math.max(0,p.avoidUntil-mob.tickCount)+"t")
+                +(p.wait>0?" yield="+p.wait+"t":"")
                 +(p.queuedDoor==null?"":" door="+p.queuedDoor.toShortString()
                     +(p.waitingDoor?" WAIT":p.finishingDoor?" EXIT":" CROSS")
                     +" q#"+rank);
