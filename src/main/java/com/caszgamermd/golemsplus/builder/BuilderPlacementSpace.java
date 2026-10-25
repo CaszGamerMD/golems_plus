@@ -137,6 +137,18 @@ public final class BuilderPlacementSpace {
             // candidate is reachable around walls/stairs/racks.
             if(WorkerNavigation.canReachExact(level,worker,p))return p.immutable();
         }
+        // A native path may not be able to START while the worker is on
+        // scaffolding. Adjacent supported solid tiles are still safe to
+        // traverse physically using the one-step placement escape motion.
+        for(BlockPos p:choices){
+            if(Math.abs(p.getX()-origin.getX())>1
+                    ||Math.abs(p.getZ()-origin.getZ())>1
+                    ||Math.abs(p.getY()-origin.getY())>1)continue;
+            double mx=(p.getX()+.5-worker.getX())*.5;
+            double mz=(p.getZ()+.5-worker.getZ())*.5;
+            if(level.noCollision(worker,worker.getBoundingBox().move(mx,0,mz)))
+                return p.immutable();
+        }
         // A suspended scaffold catwalk is a real floor for a Builder but
         // not an ordinary GroundPathNavigation node. It may be the ONLY
         // available safe sidestep along an unfinished dome overhang.
