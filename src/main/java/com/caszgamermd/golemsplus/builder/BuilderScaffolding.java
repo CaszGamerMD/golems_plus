@@ -293,7 +293,7 @@ public final class BuilderScaffolding {
         }
         return true;
     }
-    private static void begin(ServerLevel level,BuilderGolem worker,
+    static void begin(ServerLevel level,BuilderGolem worker,
                               BlockPos column,double stopY,boolean down){
         // A session is renewed by the owning Builder task, never shared
         // across colleagues or over a remote scaffold.
@@ -381,6 +381,19 @@ public final class BuilderScaffolding {
         }
         return best;
     }
+    /** Shared real dismount operation for both Builder jobs and the
+     * Minecraft movement GameTest. The landing must be solid and near the
+     * bottom of the owned scaffold; never teleport a worker.
+     */
+    static boolean dismountAtBase(ServerLevel level,BuilderGolem worker,
+                                   BlockPos column){
+        BlockPos exit=exitGround(level,worker,column);
+        if(exit==null)return false;
+        clearMotion(worker);
+        exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));
+        return true;
+    }
+
     /** Return physically to a worker's own upper scaffold landing,
      * descend through its column, then step off onto nearby solid ground.
      * A valid return route is kept while the golem travels; ordinary A*
@@ -440,13 +453,7 @@ public final class BuilderScaffolding {
             returning.remove(worker);
             double bottom=base.getY()+1.0;
             if(!ScaffoldVerticalRoute.needsDescent(worker.getY(),base.getY())){
-                clearMotion(worker);
-                BlockPos exit=exitGround(level,worker,base);
-                if(exit!=null){
-                    exiting.put(worker,new ExitRoute(exit,level.getGameTime()+100));
-                    return true;
-                }
-                return false;
+                return dismountAtBase(level,worker,base);
             }
             begin(level,worker,base,bottom,true);
             return true;
