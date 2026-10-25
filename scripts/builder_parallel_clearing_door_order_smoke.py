@@ -11,7 +11,8 @@ warehouse=(base/"builder/BuilderWarehouseCoordinator.java").read_text()
 assert 'if(id.endsWith("_bed")' in resolver
 assert 'id.endsWith("_door")' not in resolver
 assert 'b.state().contains("half=upper")' in plan
-assert "String item=resolved==null||upperDoor?null:" in plan
+assert "String item=resolved==null||upperDoor||ignored?null:" in plan
+assert "if(resolved==null&&!ignored)unsupported.add(b.state())" in plan
 assert "if(step.requiredItem()!=null" in build
 assert "boolean freeHalf=step.requiredItem()==null;" in build
 assert "if(payment!=null)BuilderSupplyInventory.refund" in build
