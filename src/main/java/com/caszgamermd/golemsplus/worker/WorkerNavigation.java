@@ -774,9 +774,30 @@ public final class WorkerNavigation {
         mob.getMoveControl().setWantedPosition(x,exit.getY(),z,1.0);
         double vx=Math.max(-.16,Math.min(.16,(x-mob.getX())*.25));
         double vz=Math.max(-.16,Math.min(.16,(z-mob.getZ())*.25));
-        if(level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz))){
+        AABB current=mob.getBoundingBox();
+        if(level.noCollision(mob,current.move(vx,0,vz))){
             var velocity=mob.getDeltaMovement();
             mob.setDeltaMovement(vx,Math.min(0,velocity.y),vz);
+        }else{
+            // An OPEN door still occupies a thin leaf of the 1-block
+            // passage. A centered 0.65-wide golem can hit that leaf:
+            // the free lane is offset towards the opposite jamb.
+            // Test BOTH directions against real world collision. Slide
+            // at most 0.15 sideways and continue forward once clear.
+            double perpX=-out.getStepZ(),perpZ=out.getStepX();
+            double deviation=(mob.getX()-door.getX()-.5)*perpX
+                    +(mob.getZ()-door.getZ()-.5)*perpZ;
+            double[] shifts={.13,-.13,.08,-.08};
+            for(double offset:shifts){
+                if(Math.abs(deviation+offset)>.17)continue;
+                if(!level.noCollision(mob,current.move(perpX*offset,0,
+                        perpZ*offset)))continue;
+                if(!level.noCollision(mob,current.move(
+                        vx+perpX*offset,0,vz+perpZ*offset)))continue;
+                double nudge=Math.max(-.07,Math.min(.07,offset));
+                mob.setDeltaMovement(perpX*nudge,0,perpZ*nudge);
+                break;
+            }
         }
         return true;
     }
