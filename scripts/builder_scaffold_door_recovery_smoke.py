@@ -29,5 +29,5 @@ assert "lane.cooldown.put(id,level.getGameTime()+60)" in traffic
 assert "mob.tickCount-p.doorLastProgressTick>100" in nav
 assert "WorkerDoorTraffic.yieldStalled(level,p.queuedDoor,mob)" in nav
 assert "doorLastDistance" in nav
-assert " q#"+ 'rank' in nav
+assert '" q#"+rank' in nav
 print("PASS scaffold descent / gravity reset, actual door crossing filter, stalled head rotation")
