@@ -4,6 +4,7 @@ import com.caszgamermd.golemsplus.warehouse.WarehouseAssignment;
 import com.caszgamermd.golemsplus.crane.BuildingCrane;
 import com.caszgamermd.golemsplus.crane.CraneContent;
 import com.caszgamermd.golemsplus.crane.CraneRailBlock;
+import com.caszgamermd.golemsplus.crane.CraneService;
 import net.minecraft.core.Direction;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import com.caszgamermd.golemsplus.world.WorksiteContent;
@@ -157,6 +158,10 @@ public final class BuilderDomeConstructionGameTest {
             helper.fail("Could not place and link physical crane or assign operator");
             return;
         }
+        // A player-placed crane is tracked immediately. Do the same here,
+        // before the first Builder tick, so the fifth operator is excluded
+        // from construction and courier tasks from its very first tick.
+        CraneService.track(level,crane);
         owner.setItemInHand(InteractionHand.MAIN_HAND,
                 new ItemStack(CraneContent.BUILDER_BOX));
         crane.interact(owner,InteractionHand.MAIN_HAND);
