@@ -14,7 +14,8 @@
       "com.caszgamermd.golemsplus.builder.BuilderDoorwayGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderInfiniteOnsiteSupplyGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderDomeArenaGameTest",
-      "com.caszgamermd.golemsplus.builder.BuilderDomeImportGameTest"
+      "com.caszgamermd.golemsplus.builder.BuilderDomeImportGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderDomeConstructionGameTest"
     ]
   }
 }
