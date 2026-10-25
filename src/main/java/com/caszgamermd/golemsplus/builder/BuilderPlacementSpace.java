@@ -98,7 +98,7 @@ public final class BuilderPlacementSpace {
     }
 
     private static BlockPos escape(ServerLevel level,BuilderGolem worker,
-            BlockPos target){
+            WorkerStationBlockEntity table,BlockPos target){
         BlockPos origin=worker.blockPosition();
         List<BlockPos> choices=new ArrayList<>();
         // Probe a compact, predictable set of cardinal/diagonal safe
@@ -130,7 +130,35 @@ public final class BuilderPlacementSpace {
             // candidate is reachable around walls/stairs/racks.
             if(WorkerNavigation.canReachExact(level,worker,p))return p.immutable();
         }
-        return null;
+        // A suspended scaffold catwalk is a real floor for a Builder but
+        // not an ordinary GroundPathNavigation node. It may be the ONLY
+        // available safe sidestep along an unfinished dome overhang.
+        BlockPos best=null;
+        double score=Double.POSITIVE_INFINITY;
+        for(BlockPos platform:table.scaffoldPositions(worker.getUUID())){
+            BlockPos candidate=platform.above();
+            if(!level.hasChunkAt(candidate)
+                    ||!level.getBlockState(platform).is(
+                            net.minecraft.world.level.block.Blocks.SCAFFOLDING)
+                    ||Math.abs(candidate.getY()-worker.getY())>1.1
+                    ||Math.abs(candidate.getX()-origin.getX())>1
+                    ||Math.abs(candidate.getZ()-origin.getZ())>1
+                    ||candidate.distSqr(target)<2.4
+                    ||!level.getBlockState(candidate).getCollisionShape(
+                            level,candidate).isEmpty()
+                    ||!level.getBlockState(candidate.above()).getCollisionShape(
+                            level,candidate.above()).isEmpty())continue;
+            AABB shifted=worker.getBoundingBox().move(
+                    candidate.getX()+.5-worker.getX(),
+                    candidate.getY()-worker.getY(),
+                    candidate.getZ()+.5-worker.getZ());
+            if(shifted.intersects(volume(target))
+                    ||!level.noCollision(worker,shifted))continue;
+            double d=worker.distanceToSqr(candidate.getX()+.5,
+                    candidate.getY(),candidate.getZ()+.5);
+            if(d<score){score=d;best=candidate;}
+        }
+        return best;
     }
 
     /** Find an EXACT reachable work position within placement reach.
@@ -218,14 +246,15 @@ public final class BuilderPlacementSpace {
             Yield old=yielding.get(blocker);
             if(old!=null&&old.target().equals(target)
                     &&old.until()>level.getGameTime())continue;
-            BlockPos destination=escape(level,blocker,target);
+            BlockPos destination=escape(level,blocker,table,target);
             if(destination==null){
                 found=false;
                 continue;
             }
             yielding.put(blocker,new Yield(target,destination,
                     level.getGameTime()+60,blocker==placing));
-            WorkerNavigation.routeToExact(level,blocker,destination,.9);
+            if(!BuilderScaffoldBridge.sidestep(level,blocker,table,destination))
+                WorkerNavigation.routeToExact(level,blocker,destination,.9);
         }
         table.setProblem(found
                 ?"Clearing placement space "+target.toShortString()
