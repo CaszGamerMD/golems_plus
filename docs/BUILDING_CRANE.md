@@ -49,3 +49,23 @@ With a west-side chassis 6 blocks outside the Dome and 16 blocks along its Z sid
 `CraneDomeCollisionGameTest` now recreates the schematic as actual Minecraft block states on a full-sized test arena, then exercises real `CraneMovement.pose` against pickup, 30/60/90 upgrade ranges, blocked cross-Dome boom routing, an east-side reposition, and a connected, physically supported crane-rail detour around the outside perimeter. Configured with `gradle --no-daemon runGameTest` on branch CI.
 
 **Verification status:** The fixture decode and standalone geometry assertions were executed and matched the results above. The **in-game GameTest has NOT executed**, because all observed GitHub Actions attempts on this private branch fail **before any job steps begin**, with no usable job logs (e.g. [run 40204765021](https://github.com/CaszGamerMD/golems_plus/actions/runs/40204765021)). No successful Fabric build artifact or full 4-builder/3,537-block construction pass is claimed. Once Actions runners are available, first fix any compilation/GameTest failures, then run a separate actual four-builder crane dispatch + physical unload and end-to-end 3,537 placement test.
+
+
+## Full Dome + crane construction GameTest (2026-10-25 continuation)
+
+`BuilderDomeConstructionGameTest.constructsExactDomeWithCraneAndFourBuilders` is now registered in the **test-only** `golems_plus_gametest` mod alongside the original fixture/collision test and `BuilderInfiniteOnsiteSupplyGameTest`. This is a real Minecraft server test, **not a mock-block builder simulation**.
+
+Test initialization:
+1. Decode checksum-verified original `Dome.litematic` and plan 3,537 non-air schematic positions with Ignore Crops/Plants enabled.
+2. Create a 48×48×48 arena, real Builder Planner, and ordinary OnSite chest. Set the test owner to an actual server player. Link a test-only warehouse assignment to satisfy the normal Planner start guard.
+3. Spawn and register **four** distinct builder entities plus a **fifth separate operator**. Configure `crewTarget=4` after registering the fifth builder so that only the first four receive actual construction zones.
+4. Place and link a real `BuildingCrane` chassis, equip builder box, consume two actual boom upgrades for 90-block reach, and assign the fifth golem to the operator seat.
+5. Replenish physical OnSite chest slots with materials for current work orders every five ticks. Workers must walk there and withdraw the real inventory. No direct gifts to worker pouches and no free block placements.
+6. Observe every rider who physically boards and exits; verify passenger cap, operator seat, the intermediate 1,700-block milestone, all **required** non-vegetation block states, four builders grounded and scaffolding recovered. A complete Dome with **zero actual crane boardings/unloadings is a failure**.
+7. Detect 2,400 ticks without clearing/placement progress and print planner cursors, all worker debugging status, and crane passenger/route status instead of reporting a false pass.
+
+A separate `CraneDomeCollisionGameTest` validates cross-Dome boom collision rejection and supported outside-rail bypass. All tests run under `gradle --no-daemon runGameTest`, with logs uploaded by CI.
+
+**Present status:** GitHub Actions for this private branch fails before launching a runner/job step (latest checks visible under [PR #79](https://github.com/CaszGamerMD/golems_plus/pull/79/checks)). No Java 25/Gradle build, actual Minecraft GameTest execution, or all-block construction result is available. The locally available environment has Java 21 but not Minecraft 26.2 Gradle dependencies or network access, so it cannot replace a real Fabric runtime. When Actions becomes runnable, inspect any compile or in-game failures first and iterate until the actual server test succeeds. The Caszual Additions JAR is only needed for a **separate**, complete warehouse pallet-transfer test, not for this isolated builder/crane/Dome construction test.
+
+**Source recovery:** The crane branch's `WorkerStationBlockEntity.java` had a literal truncated marker replacing about 27.5k of source code. Its intact corresponding code was restored from the separate Dome branch, retaining the crane's dedicated OnSite integration. This blocker was addressed before adding the full test.
