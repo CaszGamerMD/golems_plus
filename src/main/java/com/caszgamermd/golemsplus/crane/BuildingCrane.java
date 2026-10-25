@@ -144,13 +144,25 @@ public final class BuildingCrane extends Entity implements Container {
             if(w.distanceToSqr(getX(),getY(),getZ())>3.24){CraneService.walk(world,w,dock);return;}
             WorkerNavigation.stop(w);w.startRiding(this,true);status="Boarding builders";return;
         }
-        // Finish a same-direction batch before admitting another direction.
-        BuilderGolem rider=builders().stream().filter(w->batch.contains(w.getUUID()))
-                .min(Comparator.comparingDouble(w->destinations.getOrDefault(w.getUUID(),home).distSqr(blockPosition()))).orElse(null);
-        if(rider==null){batch.clear();return;}
-        BlockPos goal=destinations.getOrDefault(rider.getUUID(),home);
-        BlockPos dock=CraneMovement.landing(world,this,rider,goal);
-        if(dock==null){status="No safe builder landing near destination; recall or finish a platform";return;}
+        // Finish the current direction before accepting another batch. One
+        // unfinished/obstructed platform must not trap three other builders.
+        List<BuilderGolem> current=builders().stream()
+                .filter(w->batch.contains(w.getUUID())).toList();
+        if(current.isEmpty()){batch.clear();return;}
+        BuilderGolem rider=null;
+        BlockPos dock=null;
+        double closest=Double.POSITIVE_INFINITY;
+        for(BuilderGolem candidate:current){
+            BlockPos target=destinations.getOrDefault(candidate.getUUID(),home);
+            BlockPos safeDock=CraneMovement.landing(world,this,candidate,target);
+            if(safeDock==null)continue;
+            double distance=safeDock.distSqr(blockPosition());
+            if(distance<closest){rider=candidate;dock=safeDock;closest=distance;}
+        }
+        if(rider==null){
+            status="All passenger landings blocked; waiting for a safe platform or recall";
+            return;
+        }
         Vec3 at=Vec3.atBottomCenterOf(dock);
         if(position().distanceTo(at)>.15){go(world,at);return;}
         if(unload(world,rider,dock)){forget(rider.getUUID());status="Builder delivered";}
@@ -171,11 +183,20 @@ public final class BuildingCrane extends Entity implements Container {
         planAfter=world.getGameTime()+40;
         List<Vec3> route=CraneMovement.loadPath(world,this,at);
         if(route!=null){path=new ArrayList<>(route);status="Moving load";return;}
-        // Retract before travelling rails. The load keeps its relative offset while the chassis moves.
-        Vec3 stow=anchorPoint().add(3,0,0);
-        if(position().distanceTo(stow)>.2){
-            route=CraneMovement.loadPath(world,this,stow);
-            if(route!=null){path=new ArrayList<>(route);status="Retracting for rail travel";return;}
+        // Try all four stow directions so a wall on the east side cannot
+        // strand a crane whose north/south/west retract position is clear.
+        // Once already stowed, do not repeatedly switch between directions.
+        List<Vec3> stows=List.of(anchorPoint().add(3,0,0),
+                anchorPoint().add(-3,0,0),anchorPoint().add(0,0,3),
+                anchorPoint().add(0,0,-3));
+        boolean stowed=stows.stream().anyMatch(p->position().distanceTo(p)<=.2);
+        if(!stowed){
+            var ordered=new ArrayList<>(stows);
+            ordered.sort(Comparator.comparingDouble(p->p.distanceToSqr(position())));
+            for(Vec3 stow:ordered){
+                route=CraneMovement.loadPath(world,this,stow);
+                if(route!=null){path=new ArrayList<>(route);status="Retracting for rail travel";return;}
+            }
         }
         List<BlockPos> rails=CraneMovement.railPath(world,this,at);
         if(rails!=null&&!rails.isEmpty()){railPath=new ArrayList<>(rails);status="Travelling crane rails";return;}
