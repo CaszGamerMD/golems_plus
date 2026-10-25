@@ -45,6 +45,18 @@ public final class BuilderScaffolding {
             new java.util.WeakHashMap<>();
     private static final java.util.Map<BuilderGolem,AvoidColumn> avoided=
             new java.util.WeakHashMap<>();
+    // A clear shaft is not a usable tower if the worker cannot reach
+    // its base. Measure genuine progress toward the chosen foundation.
+    private static final class ApproachWatch {
+        final BlockPos base;
+        double best;
+        int lastProgress;
+        ApproachWatch(BlockPos base,double distance,int tick){
+            this.base=base;best=distance;lastProgress=tick;
+        }
+    }
+    private static final java.util.Map<BuilderGolem,ApproachWatch> approaches=
+            new java.util.WeakHashMap<>();
     private static boolean avoided(ServerLevel level,BuilderGolem worker,
                                     BlockPos candidate){
         AvoidColumn bad=avoided.get(worker);
@@ -104,6 +116,7 @@ public final class BuilderScaffolding {
         clearMotion(worker);
         returning.remove(worker);
         exiting.remove(worker);
+        approaches.remove(worker);
         BuilderScaffoldBridge.cancel(worker);
     }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
@@ -587,6 +600,26 @@ public final class BuilderScaffolding {
         // tried to walk through buildings to reach it.
         if(approachX*approachX+approachZ*approachZ>1.20){
             clearMotion(worker);
+            double distance=Math.hypot(approachX,approachZ);
+            ApproachWatch watch=approaches.get(worker);
+            if(watch==null||!watch.base.equals(base)){
+                watch=new ApproachWatch(base.immutable(),distance,
+                        worker.tickCount);
+                approaches.put(worker,watch);
+            }else if(distance<watch.best-.25){
+                watch.best=distance;
+                watch.lastProgress=worker.tickCount;
+            }else if(worker.tickCount-watch.lastProgress>160){
+                // Allow legitimate detours; give up only after eight
+                // seconds with no closer physical approach. The next
+                // evaluation will try a different foundation/column.
+                avoided.put(worker,new AvoidColumn(base.immutable(),
+                        level.getGameTime()+200));
+                approaches.remove(worker);
+                com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .stop(worker);
+                return Result.NO_SAFE_TOWER;
+            }
             // Existing scaffolding is not a walkable A* node. When a
             // Builder is already on an upper platform it must return to
             // that SAME elevation beside the tower, rather than walking
@@ -615,6 +648,7 @@ public final class BuilderScaffolding {
                         .routeTo(level,worker,approach,1.0);
             return Result.CLIMBING;
         }
+        approaches.remove(worker); // the foundation was physically reached
         int wantedTop=target.getY()-1;
         final BlockPos column=base;
         int existingTop=existing.stream()
