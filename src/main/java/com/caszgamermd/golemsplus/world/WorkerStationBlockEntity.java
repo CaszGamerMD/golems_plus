@@ -618,6 +618,16 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderMissingRetries.put(step,tick+60);
         sync();
     }
+    /** Support-dependent schematic cells must not hold a claim forever.
+     * Preserve the same layer and its completed bits, but allow OTHER
+     * Builders to finish available support cells before retrying.
+     */
+    public void waitForBuilderSupport(UUID worker,int step,long tick){
+        if(builderClaims.getOrDefault(worker,-1)!=step)return;
+        builderClaims.remove(worker);
+        builderMissingRetries.put(step,tick+40);
+        sync();
+    }
     public UUID builderWorkerId(){return builderWorkerId;}
     public int crewTarget(){return crewTarget;}
     /**
