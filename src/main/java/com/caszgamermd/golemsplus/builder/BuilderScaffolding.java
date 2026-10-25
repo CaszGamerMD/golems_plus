@@ -194,9 +194,11 @@ public final class BuilderScaffolding {
             // Existing scaffolding is not an ordinary walkable A* node.
             // Approach its unobstructed side from genuine ground, then
             // let the continuous climb session enter the column.
+            Direction side=Math.abs(approachX)>=Math.abs(approachZ)
+                    ?(approachX>=0?Direction.EAST:Direction.WEST)
+                    :(approachZ>=0?Direction.SOUTH:Direction.NORTH);
             BlockPos approach=level.getBlockState(base).is(Blocks.SCAFFOLDING)
-                    ?base.relative(Direction.getNearest(
-                            approachX,0,approachZ)).immutable():base;
+                    ?base.relative(side).immutable():base;
             if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .routeToExact(level,worker,approach,1.0))
                 com.caszgamermd.golemsplus.worker.WorkerNavigation
