@@ -79,6 +79,9 @@ public final class BuilderScaffolding {
             new java.util.WeakHashMap<>();
     private static final java.util.Map<BuilderGolem,Long> bridgeCooldown=
             new java.util.WeakHashMap<>();
+    /** Placement order is used to recover horizontal bridge supports safely. */
+    private static final java.util.Map<BuilderGolem,java.util.List<BlockPos>> bridgePlaced=
+            new java.util.WeakHashMap<>();
     private BuilderScaffolding(){}
 
     private static void clearMotion(BuilderGolem worker){
@@ -130,6 +133,7 @@ public final class BuilderScaffolding {
         bridgeMotion.remove(worker);
         bridgeTrails.remove(worker);
         bridgeCooldown.remove(worker);
+        // Motion cancellation must never delete unrecovered world supports.
     }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
         ClimbSession session=sessions.get(worker);
@@ -519,6 +523,8 @@ public final class BuilderScaffolding {
                 BuilderSupplyInventory.refund(table,receipt);
                 return Result.NO_SAFE_TOWER;
             }
+            bridgePlaced.computeIfAbsent(worker,ignored->new java.util.ArrayList<>())
+                    .add(block.immutable());
             previous=feet;
         }
         bridgeTrails.put(worker,new BridgeTrail(start.immutable(),
@@ -968,9 +974,26 @@ public final class BuilderScaffolding {
                     return;
             }
         }
-        positions.sort(Comparator.comparingInt((BlockPos block)->block.getY()).reversed());
+        java.util.Map<BlockPos,Integer> supportOrder=new java.util.HashMap<>();
+        var bridges=bridgePlaced.get(worker);
+        if(bridges!=null)
+            for(int i=0;i<bridges.size();i++)
+                supportOrder.put(bridges.get(i),i);
+        positions.sort((a,b)->{
+            int ai=supportOrder.getOrDefault(a,-1);
+            int bi=supportOrder.getOrDefault(b,-1);
+            if(ai>=0&&bi>=0)return Integer.compare(bi,ai);
+            if(ai>=0)return -1;
+            if(bi>=0)return 1;
+            return Integer.compare(b.getY(),a.getY());
+        });
         for(BlockPos pos:positions){
             if(!level.hasChunkAt(pos))continue;
+            // Another builder may still be using a shared bridge or tower.
+            if(!level.getEntitiesOfClass(BuilderGolem.class,
+                    new net.minecraft.world.phys.AABB(pos).inflate(.65,1.2,.65),
+                    other->other!=worker&&other.isAlive()).isEmpty())
+                break;
             if(!level.getBlockState(pos).is(Blocks.SCAFFOLDING)){
                 table.untrackScaffold(worker.getUUID(),pos);continue;
             }
@@ -988,5 +1011,7 @@ public final class BuilderScaffolding {
             }
             table.untrackScaffold(worker.getUUID(),pos);
         }
+        if(table.scaffoldPositions(worker.getUUID()).isEmpty())
+            bridgePlaced.remove(worker);
     }
 }
