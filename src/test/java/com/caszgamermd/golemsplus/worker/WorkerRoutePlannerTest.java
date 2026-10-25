@@ -126,4 +126,57 @@ final class WorkerRoutePlannerTest {
         assertTrue(result.complete());
         assertEquals(at(3,82,0),result.steps().getLast());
     }
+
+    @Test void reroutesAroundNewObstructionWithoutCrossingOccupiedCell(){
+        BlockPos start=at(0,64,1),end=at(5,64,1);
+        Set<BlockPos> floor=new HashSet<>();
+        for(int x=0;x<=5;x++)for(int z=0;z<=2;z++)
+            floor.add(at(x,64,z));
+        var straight=find(start,List.of(end),floor);
+        assertNotNull(straight);
+        assertTrue(straight.complete());
+        assertEquals(5,straight.steps().size());
+
+        BlockPos newObstacle=at(2,64,1);
+        floor.remove(newObstacle); // A player places a wall mid-job.
+        var recovered=find(start,List.of(end),floor);
+        assertNotNull(recovered);
+        assertTrue(recovered.complete());
+        assertEquals(end,recovered.steps().getLast());
+        assertEquals(7,recovered.steps().size());
+        assertFalse(recovered.steps().contains(newObstacle));
+        for(BlockPos step:recovered.steps())assertTrue(floor.contains(step));
+    }
+    @Test void reroutesAroundTemporarilyBlacklistedWaypoint(){
+        BlockPos start=at(0,64,1),end=at(5,64,1);
+        BlockPos jammed=at(2,64,1);
+        Set<BlockPos> floor=new HashSet<>();
+        for(int x=0;x<=5;x++)for(int z=0;z<=2;z++)
+            floor.add(at(x,64,z));
+        var route=WorkerRoutePlanner.plan(start,List.of(end),floor::contains,
+                BlockPos::getY,jammed);
+        assertNotNull(route);
+        assertTrue(route.complete());
+        assertFalse(route.steps().contains(jammed));
+        assertEquals(end,route.steps().getLast());
+    }
+    @Test void prioritizesReachablePathCostOverEuclideanGoalProximity(){
+        BlockPos start=at(0,64,0),far=at(0,64,5),near=at(3,64,0);
+        Set<BlockPos> available=new HashSet<>();
+        for(int z=0;z<=5;z++)available.add(at(0,64,z));
+        for(int x=1;x<=3;x++)available.add(at(x,64,5));
+        for(int z=0;z<=4;z++)available.add(at(3,64,z));
+        var route=find(start,List.of(near,far),available);
+        assertNotNull(route);
+        assertTrue(route.complete());
+        assertEquals(far,route.steps().getLast());
+        assertEquals(50,route.cost());
+    }
+    @Test void physicallyDisconnectedRouteNeverReportsArrival(){
+        BlockPos start=at(0,64,0),goal=at(5,64,0);
+        Set<BlockPos> floor=new HashSet<>();
+        for(int x=0;x<=2;x++)floor.add(at(x,64,0));
+        for(int x=4;x<=5;x++)floor.add(at(x,64,0));
+        assertNull(find(start,List.of(goal),floor));
+    }
 }
