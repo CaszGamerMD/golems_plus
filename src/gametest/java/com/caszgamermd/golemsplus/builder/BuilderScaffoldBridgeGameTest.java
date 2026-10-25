@@ -101,13 +101,13 @@ public final class BuilderScaffoldBridgeGameTest {
         // the structure boundary (observed in the 20-block test at
         // x=8,y=3,z=2). Explicitly clear only this controlled arena,
         // then create the intentional overhang obstruction below.
-        for(int x=0;x<=19;x++)for(int z=0;z<=8;z++){
+        for(int x=8;x<=27;x++)for(int z=8;z<=16;z++){
             helper.setBlock(x,1,z,Blocks.STONE);
             for(int y=2;y<=6;y++)
                 helper.setBlock(x,y,z,Blocks.AIR);
         }
-        helper.setBlock(1,2,1,WorksiteContent.BUILDER_TABLE);
-        BlockPos home=helper.absolutePos(new BlockPos(1,2,1));
+        helper.setBlock(9,2,9,WorksiteContent.BUILDER_TABLE);
+        BlockPos home=helper.absolutePos(new BlockPos(9,2,9));
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
             helper.fail("Long bridge has no Planner");return;
         }
@@ -115,7 +115,7 @@ public final class BuilderScaffoldBridgeGameTest {
         if(!table.claimIfUnowned(owner.getUUID())){
             helper.fail("Long bridge has no owner");return;
         }
-        BlockPos anchor=helper.absolutePos(new BlockPos(2,3,3));
+        BlockPos anchor=helper.absolutePos(new BlockPos(10,3,11));
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.setPersistenceRequired(); // keep focused physics tests deterministic
         worker.setPos(anchor.getX()+.5,anchor.getY()+1,anchor.getZ()+.5);
@@ -129,8 +129,8 @@ public final class BuilderScaffoldBridgeGameTest {
             level.setBlock(p,Blocks.SCAFFOLDING.defaultBlockState(),3);
             table.trackScaffold(worker.getUUID(),p);
         }
-        for(int x=3;x<=8;x++)helper.setBlock(x,3,3,Blocks.STONE);
-        BlockPos goal=helper.absolutePos(new BlockPos(14,4,3));
+        for(int x=11;x<=16;x++)helper.setBlock(x,3,11,Blocks.STONE);
+        BlockPos goal=helper.absolutePos(new BlockPos(22,4,11));
         var plan=List.of(new BuilderConstructionPlan.Step(
                 goal.getX(),goal.getY(),goal.getZ(),
                 "minecraft:stone","minecraft:stone"));
@@ -157,8 +157,8 @@ public final class BuilderScaffoldBridgeGameTest {
             if(state==BuilderScaffolding.Result.NO_SAFE_TOWER
                     ||state==BuilderScaffolding.Result.NEED_MATERIALS){
                 StringBuilder probe=new StringBuilder();
-                for(int x=3;x<=12;x++){
-                    BlockPos at=helper.absolutePos(new BlockPos(x,3,2));
+                for(int x=11;x<=20;x++){
+                    BlockPos at=helper.absolutePos(new BlockPos(x,3,10));
                     probe.append(" x").append(x).append(":")
                             .append(level.getBlockState(at))
                             .append("/floor=").append(level.getBlockState(at.below().below()))
