@@ -9,6 +9,8 @@ import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.world.item.*;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 
@@ -18,13 +20,19 @@ public final class CraneRenderer extends EntityRenderer<BuildingCrane,CraneRende
         Vec3 anchor=Vec3.ZERO;boolean supply,box;
         final ItemStackRenderState yellow=new ItemStackRenderState(),black=new ItemStackRenderState(),glass=new ItemStackRenderState(),iron=new ItemStackRenderState(),wood=new ItemStackRenderState();
     }
+    private static Item blockItem(String path){
+        // Minecraft 26.2 no longer exposes every colored block as a
+        // constant in Blocks/Items; resolve known vanilla block IDs.
+        return BuiltInRegistries.BLOCK.getValue(
+                Identifier.tryParse("minecraft:"+path)).asItem();
+    }
     private final ItemModelResolver resolver;
     public CraneRenderer(EntityRendererProvider.Context context){super(context);resolver=context.getItemModelResolver();}
     @Override public State createRenderState(){return new State();}
     @Override public void extractRenderState(BuildingCrane crane,State s,float partial){
         super.extractRenderState(crane,s,partial);s.anchor=crane.anchorPoint().subtract(crane.position());s.supply=crane.supplyMode();s.box=crane.hasBox();
         ItemStackRenderState[] states={s.yellow,s.black,s.glass,s.iron,s.wood};
-        Item[] items={Blocks.YELLOW_CONCRETE.asItem(),Blocks.BLACK_CONCRETE.asItem(),Blocks.CYAN_STAINED_GLASS.asItem(),Blocks.IRON_BLOCK.asItem(),Blocks.OAK_PLANKS.asItem()};
+        Item[] items={blockItem("yellow_concrete"),blockItem("black_concrete"),blockItem("cyan_stained_glass"),Blocks.IRON_BLOCK.asItem(),Blocks.OAK_PLANKS.asItem()};
         for(int i=0;i<items.length;i++)resolver.updateForTopItem(states[i],new ItemStack(items[i]),ItemDisplayContext.NONE,crane.level(),null,crane.getId());
     }
     private static void box(ItemStackRenderState material,State s,PoseStack pose,SubmitNodeCollector collector,double x,double y,double z,float w,float h,float d){
