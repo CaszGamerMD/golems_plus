@@ -18,7 +18,8 @@ assert "table.isTrackedScaffold(p)" in sc
 assert "table.sharedScaffoldPositions()" in sc
 assert "table.trackScaffold(worker.getUUID(),at)" in sc
 assert "isControllingMovement(BuilderGolem worker)" in sc
-assert "if(BuilderScaffolding.isControllingMovement(worker))return;" in build
+assert "if(BuilderScaffolding.isControllingMovement(worker)" in build
+assert "||BuilderTeamGroundTraffic.controlling(worker))return;" in build
 assert "BuilderScaffolding.cancel(worker);" in build
 assert "sessions.put(worker,new ClimbSession(session.column()," in sc
 assert "worker.setNoGravity(false);" in sc
