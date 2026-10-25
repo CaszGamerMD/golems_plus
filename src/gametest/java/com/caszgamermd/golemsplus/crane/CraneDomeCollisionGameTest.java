@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
@@ -103,9 +104,33 @@ public final class CraneDomeCollisionGameTest {
             crane.place(owner.getUUID(),eastAnchor,eastPickup);
             if(!CraneMovement.pose(world,crane,farY38,crane.anchorPoint()))
                 throw new IllegalStateException("Repositioned east crane still obstructed");
+
+            // A continuous supported detour travels outside the original
+            // Dome footprint: west side -> north perimeter -> east side.
+            // This specifically tests rail A* against real beam/load
+            // swept collisions, not a fictitious straight-line teleport.
+            var railState=CraneContent.RAIL.defaultBlockState()
+                    .setValue(CraneRailBlock.FACING,Direction.UP);
+            for(int z=3;z<=24;z++){
+                world.setBlock(helper.absolutePos(new BlockPos(2,2,z)),railState,2);
+                world.setBlock(helper.absolutePos(new BlockPos(44,2,z)),railState,2);
+            }
+            for(int x=2;x<=44;x++)
+                world.setBlock(helper.absolutePos(new BlockPos(x,2,3)),railState,2);
+            Vec3 stowed=CraneMovement.anchorPoint(world,westAnchor)
+                    .add(3,0,0);
+            crane.place(owner.getUUID(),westAnchor,stowed);
+            var detour=CraneMovement.railPath(world,crane,farY38);
+            if(detour==null || detour.size()<20)
+                throw new IllegalStateException(
+                        "Connected outside-Dome crane rails cannot bypass obstruction");
+            for(BlockPos rail:detour)
+                if(!world.getBlockState(rail).is(CraneContent.RAIL))
+                    throw new IllegalStateException("Crane path jumps an unplaced rail: "+rail);
             System.out.println("[DOME CRANE] PASS exact 3537-block Dome; "
-                    +"west pickup, 30/60/90 reach, obstruction and east reposition; "
-                    +"placed="+solid+" block states");
+                    +"west pickup, 30/60/90 reach, collision-safe roof, "
+                    +"east reposition and outside rail detour="+detour.size()
+                    +" segments; placed="+solid+" block states");
             helper.succeed();
         } catch(Exception error){
             helper.fail("Exact Dome crane regression failed: "+error);
