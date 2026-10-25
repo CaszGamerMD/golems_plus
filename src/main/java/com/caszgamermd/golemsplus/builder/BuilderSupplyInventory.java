@@ -222,17 +222,11 @@ public final class BuilderSupplyInventory {
             int keep=Math.min(held.getCount(),Math.max(0,needed));
             int giveBack=held.getCount()-keep;
             if(giveBack<=0)continue;
-            // Existing returnPouch handles shulkers and checked storage
-            // capacity without dropping any real items. Split the wanted
-            // pocket amount aside while returning only the surplus.
-            ItemStack reserve=held.copyWithCount(keep);
-            worker.setItem(slot,held.copyWithCount(giveBack));
-            returnPouch(table,worker);
-            // If storage filled, preserve the surplus and allow that real
-            // item to stay on this worker rather than disappearing.
-            ItemStack remainder=worker.getItem(slot);
-            worker.setItem(slot,reserve);
-            if(!remainder.isEmpty())tryPocket(worker,remainder,remainder.getCount());
+            // Deposit ONLY this slot's surplus. Calling returnPouch()
+            // here would empty previously staged assignment materials in
+            // OTHER slots and could repeat work forever.
+            int remainder=storeSurplus(storage,held,giveBack);
+            worker.setItem(slot,held.copyWithCount(keep+remainder));
         }
         for(var row:materials.entrySet()){
             var key=net.minecraft.resources.Identifier.tryParse(row.getKey());
@@ -276,6 +270,33 @@ public final class BuilderSupplyInventory {
             }
         }
         return LoadStatus.READY;
+    }
+
+    /** Return only surplus from one inventory slot; never touch another
+     * worker pocket or duplicate an item if the actual chest is full.
+     */
+    private static int storeSurplus(Container target,ItemStack sample,int left){
+        for(int pass=0;pass<2;pass++){
+            for(int i=0;i<target.getContainerSize()&&left>0;i++){
+                ItemStack previous=target.getItem(i);
+                if(pass==0&&(previous.isEmpty()
+                        ||!ItemStack.isSameItemSameComponents(previous,sample)))
+                    continue;
+                if(pass==1&&!previous.isEmpty())continue;
+                if(!target.canPlaceItem(i,sample))continue;
+                int room=previous.isEmpty()?sample.getMaxStackSize():
+                        previous.getMaxStackSize()-previous.getCount();
+                int moved=Math.min(room,left);
+                if(moved<=0)continue;
+                target.setItem(i,sample.copyWithCount(moved+
+                        (previous.isEmpty()?0:previous.getCount())));
+                left-=moved;target.setChanged();
+            }
+        }
+        for(int pass=0;pass<2&&left>0;pass++)
+            for(int i=0;i<target.getContainerSize()&&left>0;i++)
+                left=tuckIntoShulker(target,i,sample,left,pass==0);
+        return left;
     }
 
     /** Loads one physically carried pouch from the OnSite chest or another
