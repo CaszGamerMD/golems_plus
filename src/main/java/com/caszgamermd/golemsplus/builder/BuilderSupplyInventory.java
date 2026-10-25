@@ -95,33 +95,34 @@ public final class BuilderSupplyInventory {
     /** Keep empty delivered shulkers at the physical site, not in Planner slots. */
     public static int recycleEmptyShulkers(WorkerStationBlockEntity table){return 0;}
     public static boolean canStoreScaffolding(WorkerStationBlockEntity table){
-        Container site=selectedStorage(table);
-        if(site==null)return false;
         ItemStack sample=new ItemStack(net.minecraft.world.item.Items.SCAFFOLDING);
-        for(int i=0;i<site.getContainerSize();i++){
-            ItemStack stack=site.getItem(i);
-            if((stack.isEmpty()||ItemStack.isSameItemSameComponents(stack,sample)
-                    &&stack.getCount()<stack.getMaxStackSize())
-                    &&site.canPlaceItem(i,sample))return true;
+        for(Container site:sources(table)){
+            for(int i=0;i<site.getContainerSize();i++){
+                ItemStack stack=site.getItem(i);
+                if((stack.isEmpty()||ItemStack.isSameItemSameComponents(stack,sample)
+                        &&stack.getCount()<stack.getMaxStackSize())
+                        &&site.canPlaceItem(i,sample))return true;
+            }
         }
         return false;
     }
     /** Server-side exact single-block return into the OnSite chest. */
     public static boolean storeScaffolding(WorkerStationBlockEntity table,ItemStack sample){
-        Container site=selectedStorage(table);
-        if(site==null||sample.isEmpty())return false;
-        for(int pass=0;pass<2;pass++)
-            for(int i=0;i<site.getContainerSize();i++){
-                ItemStack old=site.getItem(i);
-                if(pass==0&&old.isEmpty()||pass==1&&!old.isEmpty()
-                        ||!site.canPlaceItem(i,sample))continue;
-                if(!old.isEmpty()&&!ItemStack.isSameItemSameComponents(old,sample))
-                    continue;
-                if(!old.isEmpty()&&old.getCount()>=old.getMaxStackSize())continue;
-                site.setItem(i,old.isEmpty()?sample.copyWithCount(1):
-                        old.copyWithCount(old.getCount()+1));
-                site.setChanged();return true;
-            }
+        if(sample.isEmpty())return false;
+        for(Container site:sources(table))
+            for(int pass=0;pass<2;pass++)
+                for(int i=0;i<site.getContainerSize();i++){
+                    ItemStack old=site.getItem(i);
+                    if((pass==0&&old.isEmpty())
+                            ||(pass==1&&!old.isEmpty())
+                            ||!site.canPlaceItem(i,sample))continue;
+                    if(!old.isEmpty()&&!ItemStack.isSameItemSameComponents(old,sample))
+                        continue;
+                    if(!old.isEmpty()&&old.getCount()>=old.getMaxStackSize())continue;
+                    site.setItem(i,old.isEmpty()?sample.copyWithCount(1):
+                            old.copyWithCount(old.getCount()+1));
+                    site.setChanged();return true;
+                }
         return false;
     }
     public static boolean hasRoomForBox(WorkerStationBlockEntity table){
