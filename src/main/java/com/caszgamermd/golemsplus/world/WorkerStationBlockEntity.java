@@ -107,6 +107,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
      * assigns coordinates on the server when a Builder becomes available.
      */
     private final Map<UUID,java.util.List<Integer>> builderWorkOrders=new java.util.LinkedHashMap<>();
+    // Work orders now stage up to 32 adjacent tasks out of each worker's
+    // COMPLETE precompiled zone plan. They do not create new assignments.
+    private static final int BUILDER_STAGE_SIZE=32;
+    private long builderProgressNotifyTick=-1;
     private final java.util.Set<UUID> builderPreparedOrders=new java.util.HashSet<>();
     // True once the current job has used strict X/Z crew ownership.
     private boolean builderZoned;
@@ -546,7 +550,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public void recordBuilderPlacement(String material){
         if(material==null||material.isBlank())return;
         builderRemaining.computeIfPresent(material,(key,v)->Math.max(0L,v-1));
-        sync();
+        // The step completion immediately following this writes and
+        // batches the Planner's progress. Avoid two full block-entity
+        // network updates for every single cobblestone placement.
+        setChanged();
     }
     private BuilderJob snapshotBuilderJob(){
         return new BuilderJob(builderFile,placedSchematicName,builderOrigin,
@@ -911,6 +918,67 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClaims.put(worker,chosen);
         return chosen;
     }
+    /** Switch a running job to immutable whole-zone worker schedules.
+     * Existing actual completed cells and physical pouch inventories are
+     * preserved; old per-ten-cell leases are only staging reservations.
+     * Called once when the roster/file changes, never on every worker tick.
+     */
+    public void beginBuilderZonePlan(){
+        if(!isBuilder()||activeOrder==null)return;
+        builderClaims.clear();
+        builderWorkOrders.clear();
+        builderPreparedOrders.clear();
+        builderZoned=true;
+        sync();
+    }
+
+    /** Each worker owns its entire zone in the compiled plan. Return the
+     * SAME claimed step until it is completed or deliberately deferred.
+     * Only visit the OnSite depot at the boundary of a physical staging
+     * window; every window is drawn in order from this fixed worker plan.
+     *
+     * No full-schematic scans, no assignment stealing, no crew-wide barrier.
+     */
+    public int claimBuilderZoneStep(UUID worker,java.util.List<Integer> fullZone,
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(activeOrder==null||!builderWorkerIds().contains(worker)
+                ||fullZone==null||fullZone.isEmpty())return -1;
+        int current=builderClaims.getOrDefault(worker,-1);
+        if(current>=0&&current<steps.size()
+                &&!builderFinishedSteps.contains(current))return current;
+        builderClaims.remove(worker);
+        var stage=builderWorkOrders.get(worker);
+        if(stage==null||stage.isEmpty()){
+            int lowest=Integer.MAX_VALUE;
+            for(int idx:fullZone){
+                if(idx>=0&&idx<steps.size()&&!builderFinishedSteps.contains(idx)){
+                    lowest=steps.get(idx).y();break;
+                }
+            }
+            if(lowest==Integer.MAX_VALUE)return -1;
+            var newStage=new java.util.ArrayList<Integer>(BUILDER_STAGE_SIZE);
+            for(int idx:fullZone){
+                if(idx<0||idx>=steps.size()||builderFinishedSteps.contains(idx))continue;
+                if(steps.get(idx).y()!=lowest)break;
+                newStage.add(idx);
+                if(newStage.size()>=BUILDER_STAGE_SIZE)break;
+            }
+            if(newStage.isEmpty())return -1;
+            builderWorkOrders.put(worker,newStage);
+            builderPreparedOrders.remove(worker);
+            stage=newStage;
+            sync(); // Only on stage refresh, not on each coordinate.
+        }
+        long now=level==null?0:level.getGameTime();
+        for(int idx:stage){
+            if(builderFinishedSteps.contains(idx)
+                    ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
+            builderClaims.put(worker,idx);
+            return idx;
+        }
+        return -1; // deferred dependencies remain in this zone's layer
+    }
+
     /** Move one exact same-layer coordinate to a worker who already holds
      * the material physically. Ten-coordinate work orders remain disjoint:
      * when the stocked worker already has ten cells, exchange an unfinished
@@ -974,8 +1042,23 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderWorkOrders.clear();builderPreparedOrders.clear();
             builderFinishedSteps.clear();
         }
-        // One change notification per real completed coordinate.
-        sync();return true;
+        // Persist every completed position immediately, but publish the
+        // huge job/staging inventory to the client at most once a second.
+        // Multiple independent Builders can now place without taking
+        // turns serializing the entire Planner on each worker's tick.
+        if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
+            builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
+        setChanged();
+        long now=level==null?0:level.getGameTime();
+        if(activeOrder==null||builderProgressNotifyTick<0
+                ||now-builderProgressNotifyTick>=20){
+            builderProgressNotifyTick=now;
+            if(level!=null){
+                BlockState block=getBlockState();
+                level.sendBlockUpdated(worldPosition,block,block,3);
+            }
+        }
+        return true;
     }
     public java.util.List<BlockPos> scaffoldPositions(UUID worker){
         return java.util.List.copyOf(trackedScaffolds.getOrDefault(worker,java.util.List.of()));
@@ -1537,8 +1620,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
                     builderPreparedOrders.contains(entry.getKey()));
             var steps=entry.getValue();
             out.putInt("builder_batch_size_"+batchIndex,
-                    Math.min(10,steps.size()));
-            for(int j=0;j<steps.size()&&j<10;j++)
+                    Math.min(BUILDER_STAGE_SIZE,steps.size()));
+            for(int j=0;j<steps.size()&&j<BUILDER_STAGE_SIZE;j++)
                 out.putInt("builder_batch_step_"+batchIndex+"_"+j,
                         steps.get(j));
             batchIndex++;
@@ -1820,7 +1903,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             UUID id=uuid(in,"builder_batch_uuid_"+bi);
             if(id==null)continue;
             var list=new java.util.ArrayList<Integer>();
-            for(int j=0,k=Math.clamp(in.getIntOr("builder_batch_size_"+bi,0),0,10);
+            for(int j=0,k=Math.clamp(in.getIntOr("builder_batch_size_"+bi,0),0,BUILDER_STAGE_SIZE);
                     j<k;j++){
                 int index=in.getIntOr("builder_batch_step_"+bi+"_"+j,-1);
                 if(index>=builderCursor&&index<builderBlocks

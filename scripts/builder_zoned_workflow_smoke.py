@@ -13,14 +13,19 @@ nav=(server/"worker/WorkerNavigation.java").read_text()
 assert "Math.abs(Math.log(" in zones
 assert "zi*columns+xi" in zones
 assert "int lowest=Integer.MAX_VALUE" in station
+assert "claimBuilderZoneStep(UUID worker" in station
+assert "BUILDER_STAGE_SIZE=32" in station
 assert "footprint.contains(step,workerZone,activeCount)" in station
 assert "step.y()" in station
 assert "order.size()<10" in station
 assert 'builder_finished_bits_v2' in station
 assert 'java.util.BitSet.valueOf(' in station
 assert "builderCursor+bit" in station
-assert "plan.steps(),carriedItems,plan.zones()" in build
-assert "int limit=plan.steps().size();" in build
+assert "var assigned=zoneSchedule(table,plan)" in build
+assert "assigned.tasks().steps(worker.getUUID())" in build
+assert "table.claimBuilderZoneStep(worker.getUUID()," in build
+assert "BuilderZoneWorkPlan.compile(cache.steps(),cache.zones(),roster)" in build
+assert "claimBuilderZoneStep(worker.getUUID()" in build
 assert ".add(Attributes.MOVEMENT_SPEED,.40)" in golem
 assert "speed=1.0; // Builder target:" in nav
 assert "canReachExact(level,worker,landing)" in scaffold

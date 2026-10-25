@@ -37,6 +37,30 @@ public final class BuilderBuildService {
                          List<BuilderSiteClearance.Target> clearing,
                          boolean ignorePlants,BuilderZones.Layout zones){}
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
+    /** One immutable COMPLETE job-zone plan per Planner/job/crew. Assignment
+     * work is never repeated on each Builder tick or after a placement.
+     */
+    private record ScheduledZones(UUID job,Cache cache,List<UUID> roster,
+            BuilderZoneWorkPlan tasks){}
+    private static final Map<WorkerStationBlockEntity,ScheduledZones>
+            schedules=new WeakHashMap<>();
+    private enum Action { STAGE_MATERIALS, MOVE_TO_WORK, PLACE, COMPLETE }
+    private static final class WorkerAction {
+        int index=-1;
+        Action phase=Action.STAGE_MATERIALS;
+        void setStep(int next){
+            if(index!=next){
+                index=next;phase=Action.STAGE_MATERIALS;
+            }
+        }
+    }
+    private static final Map<BuilderGolem,WorkerAction> workerActions=
+            new WeakHashMap<>();
+    private static WorkerAction action(BuilderGolem worker,int index){
+        var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
+        activity.setStep(index);
+        return activity;
+    }
     // Reuse the immutable server-side schematic work plan across queued
     // warehouse retries. Parsing a 100k-block Litematica file every four
     // seconds caused visible freezes while a PTP was temporarily busy.
@@ -283,52 +307,33 @@ public final class BuilderBuildService {
                             plan.clearing(),plan.steps());
                 return;
             }
-            // Each assigned X/Z zone progresses its own bottommost Y.
-            // Work in a separate zone cannot block this worker's floors.
-            int limit=plan.steps().size();
-            // Existing materials are REAL items in each Builder's pouch.
-            // Prioritize construction cells needing what this worker already
-            // carries, before assigning it work that another worker has
-            // 300+ of and incorrectly reporting a warehouse shortage.
-            java.util.Set<String> carriedItems=new java.util.HashSet<>();
-            for(int slot=0;slot<worker.getContainerSize();slot++){
-                var stack=worker.getItem(slot);
-                if(!stack.isEmpty())carriedItems.add(
-                        net.minecraft.core.registries.BuiltInRegistries.ITEM
-                            .getKey(stack.getItem()).toString());
-            }
+            // All positions for each X/Z zone were pre-assigned as one
+            // immutable ordered execution plan. The Planner does NOT
+            // arbitrate between Builders on each move or block placement.
+            var assigned=zoneSchedule(table,plan);
+            var zone=assigned.tasks().steps(worker.getUUID());
             // Retrieve temporary towers at a work-order boundary, never
             // after each block: workers should complete all ten cells on
             // their current scaffolding before returning for more stock.
             if(table.builderWorkOrder(worker.getUUID()).isEmpty()
                     &&!table.scaffoldPositions(worker.getUUID()).isEmpty())
                 BuilderScaffolding.retrieve(level,worker,table,false);
-            int index=table.claimBuilderStep(worker.getUUID(),limit,
-                    plan.steps(),carriedItems,plan.zones());
-            if(index<0)return; // wait for current layer assignments to finish
+            int index=table.claimBuilderZoneStep(worker.getUUID(),
+                    zone,plan.steps());
+            if(index<0)return; // only this zone's pending dependencies
+            var activity=action(worker,index);
             var step=plan.steps().get(index);
             if(step.ignorePlant()){
                 // The position stays in the saved indexed work order, but
                 // the requested crop/flower is never placed or debited.
                 // Site clearance already ran normally for this coordinate.
                 table.completeBuilderStep(worker.getUUID(),index);
+                activity.phase=Action.COMPLETE;
                 return;
             }
-            // Every real Builder goes to the chosen OnSite depot ONCE per
-            // exclusive ten-coordinate batch, unloads other materials and
-            // collects actual stock (including flowers within shulkers).
-            // It does not visit the Planning Table for assignments.
-            if(!table.builderOrderPrepared(worker.getUUID())){
-                var prep=BuilderSupplyInventory.prepareWorkOrder(
-                        level,worker,table,plan.steps());
-                if(prep==BuilderSupplyInventory.LoadStatus.MOVING)return;
-                if(prep==BuilderSupplyInventory.LoadStatus.MISSING){
-                    table.setProblem("Builder work order waiting for reachable "
-                            +"OnSite Storage (material staging not complete)");
-                    return;
-                }
-                table.prepareBuilderOrder(worker.getUUID());
-            }
+            // Read the actual world first. Already-correct positions are
+            // NO-OP assignments, not an excuse to walk all the way back to
+            // OnSite for materials that will never be consumed.
             BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
             if(Math.abs((long)pos.getX()-home.getX())>256||
                     Math.abs((long)pos.getZ()-home.getZ())>256){
@@ -360,10 +365,28 @@ public final class BuilderBuildService {
                 // a correct block in pursuit of stale schematic geometry.
                 table.recordBuilderPlacement(step.requiredItem());
                 table.completeBuilderStep(worker.getUUID(),index);
+                activity.phase=Action.COMPLETE;
                 // Already-correct positions are NO-OPs, never mine or
                 // dismantle the nearby scaffold to rebuild them.
-                table.setProblem("");return;
+                return;
             }
+            // Every real Builder goes to the chosen OnSite depot ONCE per
+            // exclusive ten-coordinate batch, unloads other materials and
+            // collects actual stock (including flowers within shulkers).
+            // It does not visit the Planning Table for assignments.
+            if(!table.builderOrderPrepared(worker.getUUID())){
+                activity.phase=Action.STAGE_MATERIALS;
+                var prep=BuilderSupplyInventory.prepareWorkOrder(
+                        level,worker,table,plan.steps());
+                if(prep==BuilderSupplyInventory.LoadStatus.MOVING)return;
+                if(prep==BuilderSupplyInventory.LoadStatus.MISSING){
+                    table.setProblem("Builder work order waiting for reachable "
+                            +"OnSite Storage (material staging not complete)");
+                    return;
+                }
+                table.prepareBuilderOrder(worker.getUUID());
+            }
+            activity.phase=Action.MOVE_TO_WORK;
             // Check the replacement's survival BEFORE clearing an existing
             // block. Clearing first destroyed a useful piece of completed
             // cobblestone/support, then deadlocked on "Missing supporting
@@ -455,22 +478,21 @@ public final class BuilderBuildService {
                 BlockPos approach=workDistance<=100
                         ?BuilderPlacementSpace.approach(level,worker,pos):null;
                 BlockPos goal=approach==null?pos:approach;
-                boolean routed=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                // Retain the same target during path retries; don't
+                // replace a shared Planner problem every four ticks with
+                // another Builder's transient navigation state.
+                com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .routeTo(level,worker,goal,.85);
-                if(!routed){
-                    // A bounded A* retry is NOT an impassable site. Do not
-                    // freeze the task or claim an outright failure because
-                    // nearby workers briefly occupy the route's endpoint.
-                    boolean retry=com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .retryScheduled(worker);
-                    table.setProblem(retry
-                            ?"Builder rerouting around moving workers at "
-                                    +pos.toShortString()
-                            :"Builder exploring alternate routes to "
-                                    +pos.toShortString());
-                }
                 return;
             }
+            activity.phase=Action.PLACE;
+            // Travel and placement are mutually exclusive for THIS worker:
+            // stop the previous A* path and horizontal momentum before a
+            // freshly placed block can appear in its upcoming route.
+            // Other Builders' independent paths are never interrupted.
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+            var velocity=worker.getDeltaMovement();
+            worker.setDeltaMovement(0,velocity.y,0);
             // Never place into any Builder's body. Check before spending
             // the item so waiting for a teammate to move consumes nothing.
             if(!BuilderPlacementSpace.ready(level,worker,table,pos))return;
@@ -501,10 +523,10 @@ public final class BuilderBuildService {
             }
             table.recordBuilderPlacement(step.requiredItem());
             table.completeBuilderStep(worker.getUUID(),index);
+            activity.phase=Action.COMPLETE;
             BuilderSupplyInventory.recycleEmptyShulkers(table);
             // Keep any deployed scaffolding until this ten-block work order
             // completes; retrieving per placed block caused route churn.
-            table.setProblem("");
         }catch(Exception exception){
             table.setProblem("Builder paused: "+exception.getMessage());
         }
@@ -564,6 +586,25 @@ public final class BuilderBuildService {
                 table.builderIgnorePlants(),BuilderZones.footprint(result.steps()));
         cachedWarehousePlans.put(table,next);
         return next;
+    }
+
+    private static ScheduledZones zoneSchedule(WorkerStationBlockEntity table,
+            Cache cache){
+        List<UUID> roster=table.builderWorkerIds();
+        if(roster.size()>table.crewTarget())
+            roster=roster.subList(0,table.crewTarget());
+        ScheduledZones found=schedules.get(table);
+        if(found!=null&&found.job().equals(table.activeOrder())
+                &&found.cache()==cache&&found.roster().equals(roster))
+            return found;
+        // Preserves completed cells and carried real items when adding or
+        // retiring a Builder. Only unfinished staging reservations change.
+        var tasks=BuilderZoneWorkPlan.compile(cache.steps(),cache.zones(),roster);
+        table.beginBuilderZonePlan();
+        ScheduledZones result=new ScheduledZones(table.activeOrder(),cache,
+                List.copyOf(roster),tasks);
+        schedules.put(table,result);
+        return result;
     }
 
     private static Cache cache(WorkerStationBlockEntity table,BuilderGolem worker)
