@@ -321,6 +321,19 @@ public final class BuilderSupplyInventory {
         if(id==null||!BuiltInRegistries.ITEM.containsKey(id))return LoadStatus.MISSING;
         Item target=BuiltInRegistries.ITEM.getValue(id);
         if(worker.carriedCount(target)>0)return LoadStatus.READY;
+        // The flower can already be in a different Builder's pouch. When
+        // the carrier is eligible to build, exchange an unstarted job cell
+        // rather than making the requester chase a constantly moving peer.
+        // The same block index remains owned by exactly one Builder.
+         for(var teammateId:table.builderWorkerIds()){
+            if(teammateId.equals(worker.getUUID()))continue;
+            if(table.builderWorkerIds().size()>1
+                    &&teammateId.equals(table.supplyRunner()))continue;
+            if(level.getEntity(teammateId) instanceof BuilderGolem carrier
+                    &&carrier.isAlive()&&carrier.carriedCount(target)>0
+                    &&table.reassignBuilderStep(worker.getUUID(),teammateId,index))
+                return LoadStatus.MOVING;
+        }
 
         // A full pouch of stone or other material cannot receive cobble.
         // Walk to the depot and unload; NEVER teleport items from a remote
