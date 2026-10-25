@@ -710,6 +710,17 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderMissingRetries.put(step,tick+40);
         sync();
     }
+    /** Physical teammate traffic is temporary, NOT a missing material or
+     * schematic dependency. Keep the staged stock and exact zone intact,
+     * but let this worker choose another currently clear cell for 120 ticks.
+     */
+    public void waitForBuilderTraffic(UUID worker,int step,long tick){
+        if(builderClaims.getOrDefault(worker,-1)!=step)return;
+        builderClaims.remove(worker);
+        builderMissingRetries.put(step,tick+120);
+        // No inventory unload, no cross-zone reassignment, no lost work.
+        setChanged();
+    }
     public UUID builderWorkerId(){return builderWorkerId;}
     public int crewTarget(){return crewTarget;}
     /**
