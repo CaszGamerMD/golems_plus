@@ -700,8 +700,19 @@ public final class BuilderScaffolding {
             if(!step.ignorePlant()&&step.y()>=feet-5
                     &&step.y()<target.getY())
                 planned.add(new BlockPos(step.x(),step.y(),step.z()));
+        // Prefer the service side of the dome's X/Y or Z/Y section,
+        // rather than picking the nearest column beneath a projecting lip.
+        // Physical clearance and solid foundation are checked below.
+        var occupied=BuilderScaffoldSections.solids(plan);
+        var preferred=new java.util.HashSet<Long>();
+        for(int levelY:new int[]{target.getY()-1,target.getY()-2})
+            for(var station:BuilderScaffoldSections.stations(
+                    occupied,target,levelY))
+                preferred.add(BlockPos.asLong(station.scaffold().getX(),0,
+                        station.scaffold().getZ()));
         offsets.sort(Comparator.comparingDouble(at->
-                at.distSqr(target)*2
+                (preferred.contains(BlockPos.asLong(at.getX(),0,at.getZ()))
+                        ?-12:0)+at.distSqr(target)*2
                 +worker.distanceToSqr(at.getX()+.5,feet,at.getZ()+.5)*.1));
         for(BlockPos adjacent:offsets)
             for(int dy=0;dy<=5;dy++){
