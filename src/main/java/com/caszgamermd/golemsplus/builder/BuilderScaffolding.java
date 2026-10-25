@@ -28,6 +28,30 @@ public final class BuilderScaffolding {
                                 boolean descending,long expires){}
     private static final java.util.Map<BuilderGolem,ClimbSession> sessions=
             new java.util.WeakHashMap<>();
+    // Progress is measured in vertical feet, not in repeated A* route
+    // submissions. A blocked tower is temporarily avoided after repeated
+    // genuine no-motion intervals, with no teleportation or block phasing.
+    private static final class MotionWatch {
+        BlockPos column;
+        boolean down;
+        double lastY;
+        int lastProgressTick,failures;
+        MotionWatch(BlockPos col,boolean descending,double y,int tick){
+            column=col;down=descending;lastY=y;lastProgressTick=tick;
+        }
+    }
+    private record AvoidColumn(BlockPos column,long until){}
+    private static final java.util.Map<BuilderGolem,MotionWatch> progress=
+            new java.util.WeakHashMap<>();
+    private static final java.util.Map<BuilderGolem,AvoidColumn> avoided=
+            new java.util.WeakHashMap<>();
+    private static boolean avoided(ServerLevel level,BuilderGolem worker,
+                                    BlockPos candidate){
+        AvoidColumn bad=avoided.get(worker);
+        if(bad==null||level.getGameTime()>=bad.until())return false;
+        return bad.column().getX()==candidate.getX()
+                &&bad.column().getZ()==candidate.getZ();
+    }
     private record ReturnRoute(BlockPos base,BlockPos landing,long expires){}
     private static final java.util.Map<BuilderGolem,ReturnRoute> returning=
             new java.util.WeakHashMap<>();
@@ -38,6 +62,7 @@ public final class BuilderScaffolding {
 
     private static void clearMotion(BuilderGolem worker){
         sessions.remove(worker);
+        progress.remove(worker);
         worker.setJumping(false);
         worker.setShiftKeyDown(false);
         worker.setNoGravity(false);
@@ -46,9 +71,14 @@ public final class BuilderScaffolding {
     }
     public static String debugClimb(BuilderGolem worker){
         ClimbSession session=sessions.get(worker);
-        if(session!=null)return (session.descending()?"DOWN":"UP")
+        if(session!=null){
+            MotionWatch watch=progress.get(worker);
+            return (session.descending()?"DOWN":"UP")
                 +" column="+session.column().toShortString()
-                +" stopY="+String.format(java.util.Locale.ROOT,"%.1f",session.stopY());
+                +" stopY="+String.format(java.util.Locale.ROOT,"%.1f",session.stopY())
+                +(watch==null?"":" idle="+Math.max(0,
+                        worker.tickCount-watch.lastProgressTick)+"t");
+        }
         ReturnRoute route=returning.get(worker);
         if(route!=null)return "RETURN column="+route.base().toShortString()
                 +" via="+route.landing().toShortString();
@@ -140,6 +170,39 @@ public final class BuilderScaffolding {
         ClimbSession session=sessions.get(worker);
         if(session==null)return false;
         double remain=session.stopY()-worker.getY();
+        MotionWatch watch=progress.computeIfAbsent(worker,
+                ignored->new MotionWatch(session.column(),
+                        session.descending(),worker.getY(),worker.tickCount));
+        if(!watch.column.equals(session.column())
+                ||watch.down!=session.descending()){
+            watch=new MotionWatch(session.column(),session.descending(),
+                    worker.getY(),worker.tickCount);
+            progress.put(worker,watch);
+        }
+        double progressed=session.descending()
+                ?watch.lastY-worker.getY():worker.getY()-watch.lastY;
+        if(progressed>.08){
+            watch.lastY=worker.getY();
+            watch.lastProgressTick=worker.tickCount;
+            watch.failures=0;
+        }else if(worker.tickCount-watch.lastProgressTick>55){
+            watch.failures++;
+            watch.lastProgressTick=worker.tickCount;
+            // First timeout recenters on the column below. Repeated
+            // timeouts indicate collision on this physical route: stop
+            // forcing a stuck climb and let the Builder choose another
+            // safe tower. Never remove the real column or teleport.
+            if(watch.failures>=3){
+                avoided.put(worker,new AvoidColumn(session.column(),
+                        level.getGameTime()+120));
+                clearMotion(worker);
+                return false;
+            }
+            worker.getNavigation().stop();
+            worker.getMoveControl().setWantedPosition(
+                    session.column().getX()+.5,worker.getY(),
+                    session.column().getZ()+.5,1.0);
+        }
         // Do not relinquish the session until the actual landing
         // elevation has been reached. The construction code checks target
         // proximity independently and must not cancel the ascent early.
@@ -200,6 +263,8 @@ public final class BuilderScaffolding {
         }
         sessions.put(worker,new ClimbSession(column.immutable(),stopY,down,
                 level.getGameTime()+30));
+        progress.put(worker,new MotionWatch(column.immutable(),down,
+                worker.getY(),worker.tickCount));
         com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
         worker.getNavigation().stop();
     }
@@ -371,7 +436,7 @@ public final class BuilderScaffolding {
         BlockPos base=existing.stream()
                 .filter(p->{
                     int dx=p.getX()-target.getX(),dz=p.getZ()-target.getZ();
-                    return dx*dx+dz*dz<=5;
+                    return dx*dx+dz*dz<=5&&!avoided(level,worker,p);
                 })
                 .min(Comparator.comparingInt(BlockPos::getY)).orElse(null);
         if(base==null)for(Direction side:Direction.Plane.HORIZONTAL){
@@ -505,7 +570,9 @@ public final class BuilderScaffolding {
         for(BlockPos adjacent:offsets)
             for(int dy=0;dy<=5;dy++){
                 BlockPos base=new BlockPos(adjacent.getX(),feet-dy,adjacent.getZ());
-                if(!level.hasChunkAt(base)||!level.hasChunkAt(base.below()))continue;
+                if(avoided(level,worker,base)
+                        ||!level.hasChunkAt(base)
+                        ||!level.hasChunkAt(base.below()))continue;
                 if(!level.getBlockState(base.below()).isFaceSturdy(level,
                         base.below(),Direction.UP))continue;
                 boolean clear=true;
