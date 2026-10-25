@@ -80,3 +80,7 @@ A separate `CraneDomeCollisionGameTest` validates cross-Dome boom collision reje
 - Standalone Java 21 test compiled the *unchanged production `CranePath` and `CraneDispatch` code* and passed **13 assertions**: connected 83-segment perimeter route, no clipping via rail nodes through the 31×34 Dome footprint, physically missing rail fails closed, denied swept edges fail closed, budget cutoff fails closed, direction batching/4-seat cap, request deduplication, reachable passenger preference, 30/60/90 upgrade limits.
 - Added `CraneDomeRouteTest` with these algorithm-level scenarios to permanent JUnit suite. The rail/path/dispatch checks **are not a Minecraft GameTest or a completed construction run**.
 - The latest Actions run still fails within seconds without executing steps ([CI](https://github.com/CaszGamerMD/golems_plus/actions/runs/40232539884)); no Minecraft 26.2 Fabric JAR or 3,537-block end-to-end pass can be verified yet. Keep this PR in draft.
+
+
+### Crew-isolation correction (2026-10-25)
+The crane operator is an independent fifth physical Builder entity linked to the same Planner and owner, **not** a fifth registered construction/courier worker. The Planner retains exactly four builder UUIDs and a crew target of four. `CraneService.track` is called immediately after placing the test crane to protect the operator on the first tick. This avoids operator UUIDs interfering with normal builder zoning, warehouse courier selection, and physical construction tests.
