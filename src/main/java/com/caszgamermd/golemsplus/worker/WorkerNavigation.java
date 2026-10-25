@@ -878,14 +878,21 @@ public final class WorkerNavigation {
             if(doorDistance<p.doorLastDistance-.20){
                 p.doorLastDistance=doorDistance;
                 p.doorLastProgressTick=mob.tickCount;
-            }else if(mob.tickCount-p.doorLastProgressTick>100
-                    &&doorDistance>16.0){
-                WorkerDoorTraffic.yieldStalled(level,p.queuedDoor,mob);
-                p.waitingDoor=true;
-                p.doorStandby=null;p.parkingAtDoor=false;
-                p.doorLastProgressTick=mob.tickCount;
+            }else if(mob.tickCount-p.doorLastProgressTick>120){
+                // The owner may be right AT the gate with no valid floor
+                // behind it (an incomplete dome ledge). Distance alone is
+                // not progress. Release stalled reservations near the door
+                // too, so a colleague can use another route or displace it.
+                BlockPos blocked=p.queuedDoor;
+                WorkerDoorTraffic.yieldStalled(level,blocked,mob);
+                clearDoor(level,mob,p);
+                p.lastBad=blocked;
+                p.avoidUntil=mob.tickCount+120;
+                p.weightedRoute=List.of();p.routeCursor=0;
+                p.nextRoute=mob.tickCount+20;
+                p.attempts++;
                 mob.getNavigation().stop();
-                return true;
+                return false;
             }
         }
         if(WorkerDoorTraffic.request(level,p.queuedDoor,mob)){
