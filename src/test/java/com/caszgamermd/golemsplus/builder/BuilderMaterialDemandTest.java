@@ -54,7 +54,7 @@ class BuilderMaterialDemandTest {
                 steps.add(new BuilderConstructionPlan.Step(i,j*10,0,
                         "minecraft:stone","test:block"+i));
         var manifest=BuilderMaterialDemand.outstanding(steps,0,
-                Map.of("test:block1",2),Map.of("test:block19",20));
+                Map.of("test:block1",2),Map.of("test:block19",20,"test:block1",2));
         assertEquals(16,manifest.size());
         assertEquals(3,manifest.get("test:block19"));
         assertEquals(1,manifest.get("test:block1"));
