@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Regression for persistent physical Builder scaffold climb.
-The previous 2-block-offset towers were forgotten after placement and
+The previous narrow-offset towers were forgotten after placement and
 upward motion was only refreshed every fifth tick, causing deadlock.
 """
 from pathlib import Path
@@ -20,7 +20,7 @@ assert "sessions.put(worker,new ClimbSession(" in sc
 assert "clearMotion(worker);" in sc
 assert "if(Math.abs(worker.getX()-cx)>1.15" in sc
 assert "target.getY()-worker.getY()<=1.35" in sc
-assert "dx*dx+dz*dz<=5&&!avoided(level,worker,p);" in sc
+assert "dx*dx+dz*dz<=13&&!avoided(level,worker,p);" in sc
 assert "if(base==null)for(Direction side:Direction.Plane.HORIZONTAL)" in sc
 assert "if(base==null)base=findBase(level,worker,target,feet,table,plan)" in sc
 assert "begin(level,worker,base,top+1.0,false)" in sc
