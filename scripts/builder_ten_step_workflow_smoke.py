@@ -26,6 +26,9 @@ assert "materials.merge(\"minecraft:scaffolding\"" in stock
 assert "if(!table.builderOrderPrepared(worker.getUUID()))" in service
 assert "table.prepareBuilderOrder(worker.getUUID());" in service
 assert "BuilderScaffolding.retrieve(level,worker,table,false);" in service
+assert "claimBuilderZoneStep(" in station
+assert "builder_batch_size_" in station
+assert "BUILDER_STAGE_SIZE" in station
 assert "public static Map<String,Integer> outstanding(" in demand
 assert "for(int i=cursor;i<steps.size();i++)" in demand
 assert "manifest.size()>=16" in demand
