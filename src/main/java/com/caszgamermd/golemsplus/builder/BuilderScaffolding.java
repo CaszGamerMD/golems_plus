@@ -219,8 +219,16 @@ public final class BuilderScaffolding {
      */
     public static boolean descendForTravel(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
+        // A long tower may require more than 30 ticks of descent.
+        // Renew the permit while this worker's material/lower-floor task
+        // still requests descent, without restarting the physics session.
         if(sessions.containsKey(worker)&&climbingNow(level,worker)
-                &&sessions.get(worker).descending())return true;
+                &&sessions.get(worker).descending()){
+            var active=sessions.get(worker);
+            sessions.put(worker,new ClimbSession(active.column(),
+                    active.stopY(),true,level.getGameTime()+30));
+            return true;
+        }
         if(exiting.containsKey(worker))return true;
         var found=towers(level,table,worker);
         if(found.isEmpty()){
