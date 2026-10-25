@@ -38,6 +38,12 @@ public final class BuilderDomeImportGameTest {
                 throw new IllegalStateException("Dark oak wall sign missing physical sign item");
             long ignored=plan.steps().stream().filter(
                     BuilderConstructionPlan.Step::ignorePlant).count();
+            if(ignored<43)
+                throw new IllegalStateException("Dome azaleas not ignored: "+ignored);
+            if(!plan.steps().stream().filter(s->s.encodedState()
+                    .contains("azalea")).allMatch(
+                    BuilderConstructionPlan.Step::ignorePlant))
+                throw new IllegalStateException("Azalea plant remained a construction task");
             if(ignored<20)
                 throw new IllegalStateException("Ignore Plants did not skip Dome grass and flowers: "+ignored);
             // Verify the ignored plant states still exist in the plan, so
