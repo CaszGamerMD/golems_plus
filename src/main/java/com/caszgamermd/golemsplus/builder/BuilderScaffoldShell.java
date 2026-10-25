@@ -12,7 +12,7 @@ import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 
 /**
- * The virtual, one-block-wide outer scaffold shell for a WHOLE schematic.
+ * The virtual, three-block-wide outer scaffold shell for a WHOLE schematic.
  *
  * Nothing is placed when this plan is made. Only the actual Builder later
  * acquires and spends materials for the portion of the shell it needs.
@@ -27,12 +27,20 @@ import net.minecraft.core.BlockPos;
 public final class BuilderScaffoldShell {
     private BuilderScaffoldShell(){}
 
+    /** Four cardinal, common-use tower foundations derived from the
+     * schematic EXTREMES, never from a single worker's temporary task.
+     * Base Y is the first scaffold block above the expected ground plane.
+     */
+    public record TowerAnchor(String side,BlockPos base){}
+
     public record Blueprint(Set<BlockPos> solids,Set<BlockPos> shell,
-            Map<Integer,Set<BlockPos>> floors,int lowY,int highY){
+            Map<Integer,Set<BlockPos>> floors,int lowY,int highY,
+            List<TowerAnchor> towers){
         public Blueprint {
             solids=Set.copyOf(solids);
             shell=Set.copyOf(shell);
             floors=Map.copyOf(floors);
+            towers=List.copyOf(towers);
         }
         public boolean isShell(BlockPos at){return shell.contains(at);}
         public Set<BlockPos> atHeight(int y){
@@ -67,8 +75,22 @@ public final class BuilderScaffoldShell {
     public static Blueprint fromSteps(List<BuilderConstructionPlan.Step> steps){
         return fromSolids(BuilderScaffoldSections.solids(steps));
     }
+    private static boolean validFloor(Set<BlockPos> solids,BlockPos p){
+        return !solids.contains(p)&&!solids.contains(p.above())
+                &&!solids.contains(p.above().above());
+    }
+
+    private static int medianEdge(Set<BlockPos> solids,boolean extremeX,int edge){
+        List<Integer> values=new ArrayList<>();
+        for(BlockPos p:solids)
+            if((extremeX?p.getX():p.getZ())==edge)
+                values.add(extremeX?p.getZ():p.getX());
+        values.sort(Integer::compareTo);
+        return values.get(values.size()/2);
+    }
+
     public static Blueprint fromSolids(Set<BlockPos> solids){
-        if(solids.isEmpty())return new Blueprint(Set.of(),Set.of(),Map.of(),0,0);
+        if(solids.isEmpty())return new Blueprint(Set.of(),Set.of(),Map.of(),0,0,List.of());
         int minX=Integer.MAX_VALUE,maxX=Integer.MIN_VALUE;
         int minZ=Integer.MAX_VALUE,maxZ=Integer.MIN_VALUE;
         int minY=Integer.MAX_VALUE,maxY=Integer.MIN_VALUE;
@@ -79,8 +101,8 @@ public final class BuilderScaffoldShell {
             minY=Math.min(minY,p.getY());maxY=Math.max(maxY,p.getY());
             byY.computeIfAbsent(p.getY(),k->new HashSet<>()).add(p);
         }
-        // One-block margin plus two cells to establish the OUTSIDE.
-        int xmin=minX-3,xmax=maxX+3,zmin=minZ-3,zmax=maxZ+3;
+        // Three-block SHELL plus two extra cells to establish the OUTSIDE.
+        int xmin=minX-5,xmax=maxX+5,zmin=minZ-5,zmax=maxZ+5;
         Map<Integer,Set<BlockPos>> floors=new HashMap<>();
         Set<BlockPos> all=new HashSet<>();
         int[][] sides={{1,0},{-1,0},{0,1},{0,-1}};
@@ -107,17 +129,25 @@ public final class BuilderScaffoldShell {
                     queue.addLast(next);
                 }
             }
+            // Flood three walkable OUTWARD rings from the actual
+            // silhouette, following overhangs and bends at every height.
+            // Never fill enclosed interior courtyards or roof cavities.
             Set<BlockPos> layer=new HashSet<>();
-            // A ring exactly one block out from the finished solid body.
-            // Include the wall and ledge at each Y but never the builder's
-            // body or scaffold inside any cell of the completed schematic.
+            Set<BlockPos> frontier=new HashSet<>();
             for(BlockPos p:occupied)for(int[] side:sides){
                 BlockPos next=p.offset(side[0],0,side[1]);
-                if(exterior.contains(next)
-                        &&!solids.contains(next)
-                        &&!solids.contains(next.above())
-                        &&!solids.contains(next.above().above()))
-                    layer.add(next);
+                if(exterior.contains(next)&&validFloor(solids,next)){
+                    layer.add(next);frontier.add(next);
+                }
+            }
+            for(int ring=2;ring<=3;ring++){
+                Set<BlockPos> following=new HashSet<>();
+                for(BlockPos p:frontier)for(int[] side:sides){
+                    BlockPos next=p.offset(side[0],0,side[1]);
+                    if(exterior.contains(next)&&validFloor(solids,next)
+                            &&layer.add(next))following.add(next);
+                }
+                frontier=following;
             }
             if(!layer.isEmpty()){
                 Set<BlockPos> immutable=Set.copyOf(layer);
@@ -125,6 +155,19 @@ public final class BuilderScaffoldShell {
                 all.addAll(immutable);
             }
         }
-        return new Blueprint(solids,all,floors,minY,maxY);
+        // The long-lived shared towers are fixed to the outer X+/X-/Z+/Z-
+        // extremes, with the other coordinate taken from the median of
+        // the matching outer edge's schematic cells. Use the second shell
+        // lane for a clear worker approach on either side of the tower.
+        List<TowerAnchor> anchors=new ArrayList<>();
+        anchors.add(new TowerAnchor("X+",new BlockPos(maxX+2,minY,
+                medianEdge(solids,true,maxX))));
+        anchors.add(new TowerAnchor("X-",new BlockPos(minX-2,minY,
+                medianEdge(solids,true,minX))));
+        anchors.add(new TowerAnchor("Z+",new BlockPos(
+                medianEdge(solids,false,maxZ),minY,maxZ+2)));
+        anchors.add(new TowerAnchor("Z-",new BlockPos(
+                medianEdge(solids,false,minZ),minY,minZ-2)));
+        return new Blueprint(solids,all,floors,minY,maxY,anchors);
     }
 }
