@@ -714,6 +714,15 @@ public final class BuilderScaffolding {
         // evaluation will extend the SAME owned tower, not walk away.
         return top<wantedTop?Result.CLIMBING:Result.NOT_NEEDED;
     }
+    /** Standing directly on a proposed tower foundation is successful
+     * physical arrival, even if vanilla A* returns no route to self.
+     */
+    private static boolean atTowerFoundation(BuilderGolem worker,BlockPos base){
+        double dx=worker.getX()-base.getX()-.5;
+        double dz=worker.getZ()-base.getZ()-.5;
+        return dx*dx+dz*dz<=1.2
+                &&Math.abs(worker.getY()-base.getY())<=1.35;
+    }
     private static BlockPos findBase(ServerLevel level,BuilderGolem worker,
             BlockPos target,int feet,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> plan){
@@ -765,7 +774,8 @@ public final class BuilderScaffolding {
                     clear=false;break;
                 }
             }
-            if(clear&&(worker.blockPosition().distSqr(base)>16*16
+            if(clear&&(atTowerFoundation(worker,base)
+                    ||worker.blockPosition().distSqr(base)>16*16
                     ||com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .canReachExact(level,worker,base)))return base;
         }
@@ -811,7 +821,8 @@ public final class BuilderScaffolding {
                     }
                     if(planned.contains(at)){clear=false;break;}
                 }
-                if(clear&&(worker.blockPosition().distSqr(base)>16*16
+                if(clear&&(atTowerFoundation(worker,base)
+                        ||worker.blockPosition().distSqr(base)>16*16
                         ||com.caszgamermd.golemsplus.worker.WorkerNavigation
                                 .canReachExact(level,worker,base)))
                     return base;
