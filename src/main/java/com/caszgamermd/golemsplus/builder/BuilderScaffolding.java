@@ -54,6 +54,21 @@ public final class BuilderScaffolding {
         ExitRoute exit=exiting.get(worker);
         return exit==null?"NONE":"EXIT via="+exit.ground().toShortString();
     }
+    /** Keep an in-progress upward movement exclusively owned by its
+     * builder task. Once the target becomes less than 1.35 blocks above
+     * the Builder, the job loop must NOT switch back to normal A* before
+     * the scaffold's actual landing height is reached.
+     */
+    public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
+        ClimbSession session=sessions.get(worker);
+        if(session==null||session.descending()
+                ||!climbingNow(level,worker))return false;
+        if(worker.getY()>=session.stopY()-.10)return false;
+        sessions.put(worker,new ClimbSession(session.column(),
+                session.stopY(),false,level.getGameTime()+30));
+        return true;
+    }
+
     public static boolean climbingNow(ServerLevel level,BuilderGolem worker){
         ClimbSession session=sessions.get(worker);
         if(session==null)return false;

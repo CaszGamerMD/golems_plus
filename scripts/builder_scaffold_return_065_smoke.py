@@ -21,7 +21,7 @@ assert "canReachExact(level,worker,p)" in sc
 assert "routeToExact(level,worker,landing,1.0)" in sc
 assert "BlockPos exit=exitGround(level,worker,base)" in sc
 assert "exiting.put(worker,new ExitRoute(" in sc
-assert "worker.getMoveControl().setWantedPosition(exit.ground().getX()+.5" in sc
+assert "worker.getMoveControl().setWantedPosition(tx," in sc
 assert "sessions.put(worker,new ClimbSession(active.column()," in sc
 assert "level.getGameTime()+30" in sc
 assert "if(!climbing)" in (src/"builder/BuilderGolem.java").read_text()
