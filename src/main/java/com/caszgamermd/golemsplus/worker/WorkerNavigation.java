@@ -251,6 +251,35 @@ public final class WorkerNavigation {
      * current validated vanilla A* route, except when five-tick inspection
      * detects a newly placed obstacle. All workers share this policy.
      */
+    /** Only placement evacuation requires an exact destination. Ordinary
+     * navigation may stop two blocks short of the goal; doing that while
+     * vacating a future solid block would leave the Builder in danger.
+     */
+    public static boolean canReachExact(ServerLevel level,PathfinderMob mob,
+                                        BlockPos target){
+        if(target==null||!level.hasChunkAt(target))return false;
+        Path path=mob.getNavigation().createPath(target,0);
+        return safePath(level,mob,path,false);
+    }
+    public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
+                                       BlockPos target,double speed){
+        if(target==null||!level.hasChunkAt(target))return false;
+        Progress p=state(mob);
+        boolean same=target.equals(p.requested)&&target.equals(p.approach);
+        if(same&&!mob.getNavigation().isDone()
+                &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
+        if(mob.getNavigation() instanceof GroundPathNavigation ground)
+            ground.setCanOpenDoors(true);
+        Path path=mob.getNavigation().createPath(target,0);
+        if(!safePath(level,mob,path,false)
+                ||!mob.getNavigation().moveTo(path,speed))return false;
+        p.requested=target.immutable();p.approach=target.immutable();
+        p.weightedRoute=List.of();p.routeCursor=0;
+        p.stalled=0;p.unsafeChecks=0;p.wait=0;p.lastBad=null;
+        p.nextRoute=mob.tickCount+CHECK_TICKS;
+        return true;
+    }
+
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
                                   double speed){
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder)

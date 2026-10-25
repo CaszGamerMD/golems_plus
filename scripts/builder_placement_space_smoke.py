@@ -10,7 +10,18 @@ assert "BuilderGolem.class,area" in space
 assert "table.builderWorkerIds().contains(g.getUUID())" in space
 assert "List<LivingEntity> others" in space
 assert "public static boolean yieldTick(" in space
-assert "WorkerNavigation.routeTo(level,worker,hold.destination(),.9)" in space
+assert "WorkerNavigation.routeToExact(level,worker,hold.destination(),.9)" in space
+assert "WorkerNavigation.routeToExact(level,blocker,destination,.9)" in space
+assert "WorkerNavigation.canReachExact(level,worker,p)" in space
+navigation=(root.parent/"worker/WorkerNavigation.java").read_text()
+assert "public static boolean routeToExact(" in navigation
+assert "public static boolean canReachExact(" in navigation
+exact=navigation[navigation.index("public static boolean routeToExact("):
+                 navigation.index("public static boolean routeTo(",navigation.index("public static boolean routeToExact("))]
+assert "createPath(target,0)" in exact
+assert "safePath(level,mob,path,false)" in exact
+assert "moveTo(path,speed)" in exact
+assert "candidateGoals(" not in exact
 assert "private static BlockPos escape(" in space
 assert "level.noCollision(worker,shifted)" in space
 assert "return false;" in space[space.index("public static boolean ready("):]

@@ -59,7 +59,7 @@ public final class BuilderPlacementSpace {
         if(occupied(hold.target(),worker)
                 ||worker.distanceToSqr(hold.destination().getX()+.5,
                         hold.destination().getY(),hold.destination().getZ()+.5)>2.25)
-            WorkerNavigation.routeTo(level,worker,hold.destination(),.9);
+            WorkerNavigation.routeToExact(level,worker,hold.destination(),.9);
         else if(!worker.getNavigation().isDone())
             worker.getNavigation().stop();
         return true;
@@ -122,8 +122,7 @@ public final class BuilderPlacementSpace {
             if(++attempted>16)break; // bounded path work; try more than one aisle side
             // Favor a physically reachable tile; don't assume an air
             // candidate is reachable around walls/stairs/racks.
-            var path=worker.getNavigation().createPath(p,0);
-            if(path!=null&&path.canReach())return p.immutable();
+            if(WorkerNavigation.canReachExact(level,worker,p))return p.immutable();
         }
         return null;
     }
@@ -168,7 +167,7 @@ public final class BuilderPlacementSpace {
             }
             yielding.put(blocker,new Yield(target,destination,
                     level.getGameTime()+60,blocker==placing));
-            WorkerNavigation.routeTo(level,blocker,destination,.9);
+            WorkerNavigation.routeToExact(level,blocker,destination,.9);
         }
         table.setProblem(found
                 ?"Clearing placement space "+target.toShortString()
