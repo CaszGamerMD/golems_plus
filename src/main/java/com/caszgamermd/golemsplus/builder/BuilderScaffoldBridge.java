@@ -248,6 +248,17 @@ public final class BuilderScaffoldBridge {
             Set<BlockPos> owned){
         if(!owned.contains(anchor)||Math.abs(anchor.getY()+1-target.getY())>1)
             return List.of();
+        // Profile the model in both vertical axes first. The search goal
+        // is a safe WORK PLATFORM outside the finished silhouette, not the
+        // placement cell itself (which would collide with the Builder).
+        var sectionStations=BuilderScaffoldSections.stations(
+                future,target,anchor.getY());
+        Set<BlockPos> workFloors=new HashSet<>();
+        for(var station:sectionStations)workFloors.add(station.scaffold());
+        if(workFloors.isEmpty()){
+            failures.put(worker,"No unobstructed X/Z section work platforms");
+            return List.of();
+        }
         ArrayDeque<BlockPos> queue=new ArrayDeque<>();
         Map<BlockPos,BlockPos> parent=new HashMap<>();
         queue.add(anchor);
@@ -260,8 +271,8 @@ public final class BuilderScaffoldBridge {
                 distance++;
             double dx=current.getX()-target.getX(),dz=current.getZ()-target.getZ();
             double dy=(current.getY()+1)-target.getY();
-            if(dx*dx+dz*dz+dy*dy<=12.5&&!current.equals(target)
-                    &&!future.contains(current)){
+            if(workFloors.contains(current)
+                    &&dx*dx+dz*dz+dy*dy<=12.5){
                 winner=current;
                 break;
             }
