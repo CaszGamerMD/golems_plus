@@ -250,10 +250,16 @@ public final class BuilderScaffolding {
                                 .canStandOn(level,worker,cached.landing())
                         ?cached.landing():returnLanding(level,worker,tower);
                 if(landing==null)continue; // try another owned tower
+                boolean underway=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeToExact(level,worker,landing,1.0);
+                if(!underway){
+                    // Do not strand this Builder indefinitely at an
+                    // obsolete landing when the platform changes.
+                    returning.remove(worker);
+                    continue; // try another owned tower, or normal A*
+                }
                 returning.put(worker,new ReturnRoute(base,landing,
                         level.getGameTime()+100));
-                com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .routeToExact(level,worker,landing,1.0);
                 return true;
             }
             returning.remove(worker);
