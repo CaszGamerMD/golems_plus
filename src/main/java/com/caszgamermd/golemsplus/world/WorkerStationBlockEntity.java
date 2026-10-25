@@ -1216,7 +1216,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClearVerified.clear();
         builderMissingRetries.clear();
         builderClaims.clear();builderRecallRequested=false;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
-        phase=WorkerPhase.WORKING;sync();return true;
+        phase=WorkerPhase.WORKING;sync();
+        if(level instanceof net.minecraft.server.level.ServerLevel server)
+            com.caszgamermd.golemsplus.builder.BuilderChunkTickets.prime(server,this);
+        return true;
     }
     public void advanceBuilder(){
         if(builderCursor<builderBlocks){
