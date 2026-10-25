@@ -8,6 +8,8 @@ import net.minecraft.core.NonNullList;
 import net.minecraft.world.Container;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -53,6 +55,21 @@ public final class BuilderGolem extends PathfinderMob implements Container {
                 .add(Attributes.FOLLOW_RANGE,128);
     }
     @Override protected void registerGoals(){}
+    /** Inspect a stationary Builder without commands or debug logging.
+     * This intentionally does not change its current path or assignment.
+     */
+    @Override protected InteractionResult mobInteract(Player player,
+            InteractionHand hand){
+        if(player.isShiftKeyDown()){
+            if(level() instanceof ServerLevel world){
+                String status=BuilderBuildService.debugStatus(world,this);
+                player.displayClientMessage(
+                        Component.literal("Builder "+getName().getString()+": "+status),false);
+            }
+            return InteractionResult.SUCCESS;
+        }
+        return super.mobInteract(player,hand);
+    }
     public void assign(BlockPos table,UUID player){
         home=table.immutable();owner=player;
         ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.BUILDER);

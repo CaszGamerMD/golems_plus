@@ -352,7 +352,12 @@ public final class BuilderSupplyInventory {
             if(room(worker,new ItemStack(target))<=0)return LoadStatus.MISSING;
         }
 
-        Map<String,Integer> wanted=BuilderMaterialDemand.batch(steps,index,Map.of());
+        // Runtime replenishment is for THIS Builder's claimed step,
+        // never a three-layer slice of the global schematic index (which
+        // can belong to several *other* X/Z zones). Prepared stage supplies
+        // already cover this worker's full 32-cell local window.
+        Map<String,Integer> wanted=Map.of(current.requiredItem(),
+                Math.max(1,new ItemStack(target).getMaxStackSize()));
         var selections=new ArrayList<>(wanted.entrySet());
         selections.sort((left,right)->{
             boolean first=left.getKey().equals(current.requiredItem());

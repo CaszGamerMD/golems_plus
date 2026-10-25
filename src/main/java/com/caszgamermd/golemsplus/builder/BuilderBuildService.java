@@ -270,17 +270,11 @@ public final class BuilderBuildService {
         }
         try{
             Cache plan=cache(table,worker);
-            if(table.supplyRequest()!=null&&!worker.hasSupplyBox())
-                BuilderWarehouseCoordinator.reconcileTicket(level,table);
-            // Reserve the next actual construction materials *before*
-            // walking to a placement that would otherwise leave the crew
-            // stalled waiting for a block. Warehouse golems can prepare a
-            // shulker while Builders continue working with existing stock.
-            // Only one linked worker can claim the courier ticket; other
-            // crew members may keep building.
-            if(table.warehouse()!=null && table.supplyRequest()==null
-                    &&table.builderCursor()<plan.steps().size())
-                BuilderWarehouseCoordinator.queueMaterials(level,table,plan.steps());
+            // Warehouse reconciliation and proactive orders are Planner-
+            // level jobs running from dispatch() every two/four seconds.
+            // Doing both here from EVERY Builder every five ticks generated
+            // dozens of redundant order/stock scans and starved navigation.
+            // Only the courier handles a physical shipment in its own tick.
             // The assigned courier keeps ownership of the whole ticket.
             // Only its actual carried box or a ready warehouse pickup
             // interrupts local Builder work; unassigned crew never waits
@@ -535,6 +529,46 @@ public final class BuilderBuildService {
      * changing its vegetation filter, including while construction runs.
      * Never reset the already-completed real block quantities.
      */
+    /** Shift-right-click a Builder to see what it is actually waiting on.
+     * Diagnostic state is derived directly from its individual task and
+     * the live station. No per-tick global Planner message spam.
+     */
+    public static String debugStatus(ServerLevel level,BuilderGolem worker){
+        BlockPos home=worker.home();
+        if(!level.hasChunkAt(home))return "Home Planner chunk unavailable";
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table))
+            return "Planner missing at "+home.toShortString();
+        if(table.activeOrder()==null)return "No active construction job";
+        if(table.phase()==WorkerPhase.PAUSED)return "Build paused";
+        try{
+            Cache plan=cache(table,worker);
+            if(table.builderClearCursor()<plan.clearing().size())
+                return "CLEARING "+table.builderClearCursor()+"/"
+                        +plan.clearing().size()
+                        +" | nav="+(worker.getNavigation().isDone()?"idle":"walking")
+                        +" | nearest claim="+worker.blockPosition().toShortString()
+                        +" | "+table.problem();
+            ScheduledZones schedule=zoneSchedule(table,plan);
+            var zone=schedule.tasks().steps(worker.getUUID());
+            int index=table.claimedStep(worker.getUUID());
+            var action=workerActions.get(worker);
+            String stage=action==null?"AWAITING TASK":action.phase.name();
+            if(index<0)return stage+" | zone tasks="+zone.size()
+                    +" | stage="+table.builderWorkOrder(worker.getUUID()).size()
+                    +" | "+table.problem();
+            var current=plan.steps().get(index);
+            BlockPos target=new BlockPos(current.x(),current.y(),current.z());
+            return stage+" step "+index+" at "+target.toShortString()
+                    +" | range="+(int)Math.sqrt(worker.distanceToSqr(
+                            target.getX()+.5,target.getY()+.5,target.getZ()+.5))
+                    +" | nav="+(worker.getNavigation().isDone()?"idle":"walking")
+                    +" | staged="+table.builderOrderPrepared(worker.getUUID())
+                    +" | stock="+(current.requiredItem()==null?"none":current.requiredItem());
+        }catch(Exception error){
+            return "Builder inspection failed: "+error.getClass().getSimpleName()
+                    +" "+error.getMessage();
+        }
+    }
     public static String refreshPlantFilter(ServerLevel level,
             WorkerStationBlockEntity table){
         try{
