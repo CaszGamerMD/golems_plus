@@ -131,6 +131,31 @@ public final class CraneDomeCollisionGameTest {
                 Vec3 a=CraneMovement.anchorPoint(world,westAnchor);
                 Vec3 b=CraneMovement.anchorPoint(world,north);
                 Vec3 loadOffset=crane.position().subtract(a);
+                String firstBroken="none";
+                int validEdges=0;
+                java.util.List<BlockPos> expectedRails=new java.util.ArrayList<>();
+                for(int z=23;z>=3;z--)
+                    expectedRails.add(helper.absolutePos(new BlockPos(2,2,z)));
+                for(int x=3;x<=44;x++)
+                    expectedRails.add(helper.absolutePos(new BlockPos(x,2,3)));
+                for(int z=4;z<=24;z++)
+                    expectedRails.add(helper.absolutePos(new BlockPos(44,2,z)));
+                BlockPos last=westAnchor;
+                for(BlockPos current:expectedRails){
+                    Vec3 prev=CraneMovement.anchorPoint(world,last);
+                    Vec3 next=CraneMovement.anchorPoint(world,current);
+                    boolean supported=world.getBlockState(current).is(CraneContent.RAIL)
+                            &&world.getBlockState(current).canSurvive(world,current);
+                    boolean swept=CraneMovement.swept(world,crane,
+                            prev.add(loadOffset),next.add(loadOffset),prev,next);
+                    if(!supported||!swept){
+                        firstBroken="from "+last+" to "+current+" support="+supported
+                                +" swept="+swept;
+                        break;
+                    }
+                    validEdges++;
+                    last=current;
+                }
                 throw new IllegalStateException(
                         "Connected outside-Dome crane rails cannot bypass obstruction"
                         +" path="+(detour==null?"null":detour.size())
@@ -138,6 +163,7 @@ public final class CraneDomeCollisionGameTest {
                         +" supported="+world.getBlockState(westAnchor).canSurvive(world,westAnchor)
                         +" north="+world.getBlockState(north)
                         +" northSupported="+world.getBlockState(north).canSurvive(world,north)
+                        +" manualEdges="+validEdges+" firstBroken="+firstBroken
                         +" firstSwept="+CraneMovement.swept(world,crane,
                                 a.add(loadOffset),b.add(loadOffset),a,b)
                         +" cornerLoaded="+world.hasChunkAt(corner)
