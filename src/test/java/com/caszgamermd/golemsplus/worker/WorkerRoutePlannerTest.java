@@ -179,4 +179,41 @@ final class WorkerRoutePlannerTest {
         for(int x=4;x<=5;x++)floor.add(at(x,64,0));
         assertNull(find(start,List.of(goal),floor));
     }
+
+    @Test void findsAlternativeRisingRouteWhenDirectYPlusApproachIsBlocked(){
+        BlockPos start=at(0,64,0),upper=at(5,67,0);
+        Set<BlockPos> safe=new HashSet<>();
+        safe.add(start);
+        safe.add(at(1,64,0));
+        safe.add(at(1,65,1));
+        safe.add(at(2,66,1));
+        safe.add(at(3,67,1));
+        safe.add(at(4,67,1));
+        safe.add(at(5,67,1));
+        safe.add(upper);
+        var route=find(start,List.of(upper),safe);
+        assertNotNull(route);
+        assertTrue(route.complete());
+        assertEquals(upper,route.steps().getLast());
+        assertEquals(7,route.steps().size());
+        BlockPos from=start;
+        for(BlockPos step:route.steps()){
+            assertTrue(Math.abs(step.getY()-from.getY())<=1,
+                    "An upward detour cannot climb multiple blocks in one move");
+            assertEquals(1,Math.abs(step.getX()-from.getX())
+                    +Math.abs(step.getZ()-from.getZ()),
+                    "The route may not cut diagonally through a corner");
+            from=step;
+        }
+    }
+    @Test void highTargetOutsideGroundWindowNeedsVerticalMovementController(){
+        BlockPos start=at(0,64,0),upper=at(2,75,0);
+        Set<BlockPos> fakeFreeSky=new HashSet<>();
+        fakeFreeSky.add(start);
+        // A flat-only navigation call must not declare a tower climb
+        // completed just because cells along a vertical wall exist.
+        for(int y=65;y<=75;y++)fakeFreeSky.add(at(1,y,0));
+        fakeFreeSky.add(upper);
+        assertNull(find(start,List.of(upper),fakeFreeSky));
+    }
 }
