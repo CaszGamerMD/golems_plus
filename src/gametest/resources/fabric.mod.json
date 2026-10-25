@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "golems_plus_gametest",
+  "version": "1.0.0",
+  "name": "Golems Plus crane Dome collision GameTests",
+  "environment": "*",
+  "depends": {
+    "golems_plus": "*",
+    "fabric-api": "*"
+  },
+  "entrypoints": {
+    "fabric-gametest": [
+      "com.caszgamermd.golemsplus.crane.CraneDomeCollisionGameTest"
+    ]
+  }
+}
