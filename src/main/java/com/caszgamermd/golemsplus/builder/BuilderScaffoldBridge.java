@@ -275,7 +275,14 @@ public final class BuilderScaffoldBridge {
                 queue.addLast(next);
             }
         }
-        if(winner==null||winner.equals(anchor))return List.of();
+        if(winner==null||winner.equals(anchor)){
+            double nearest=parent.keySet().stream().mapToDouble(p->
+                    Math.sqrt(p.distSqr(target))).min().orElse(-1);
+            failures.put(worker,"BFS nodes="+parent.size()
+                    +" nearest="+String.format(java.util.Locale.ROOT,"%.1f",nearest)
+                    +" anchor="+anchor.toShortString());
+            return List.of();
+        }
         List<BlockPos> result=new ArrayList<>();
         for(BlockPos p=winner;!p.equals(anchor);p=parent.get(p))
             result.add(p);
@@ -334,7 +341,8 @@ public final class BuilderScaffoldBridge {
             if(best.isEmpty()){
                 failures.put(worker,"NO_BRIDGE owned="+owned.size()
                         +" tops="+tops.size()+" compatible="+matchingTops
-                        +" targetY="+target.getY());
+                        +" targetY="+target.getY()+" "
+                        +failures.getOrDefault(worker,"no search"));
                 return BuilderScaffolding.Result.NO_SAFE_TOWER;
             }
             failures.remove(worker);
