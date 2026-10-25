@@ -132,50 +132,72 @@ public final class BuilderVerticalNavigationGameTest {
      * A failure tells us a horizontal scaffold bridge needs a special
      * movement handoff rather than blindly using vanilla ground A*.
      */
-    @GameTest(maxTicks=650,skyAccess=true)
+    @GameTest(maxTicks=1050,skyAccess=true)
     public void traversesPrebuiltTemporaryScaffoldBridge(GameTestHelper helper){
-        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
-            helper.setBlock(x,1,z,Blocks.STONE);
-        // Raise the entire bridge above the ground: walking underneath
-        // is not a legitimate alternative.
-        for(int x=0;x<=2;x++)for(int z=2;z<=4;z++)
+        // This fixture checks Minecraft's REAL physics with our custom
+        // bridge movement; vanilla ground A* does not support scaffold
+        // spans above open air as reliable walkable path nodes.
+        ground(helper);
+        for(int x=0;x<=1;x++)for(int z=2;z<=4;z++)
             helper.setBlock(x,6,z,Blocks.STONE);
         for(int x=5;x<8;x++)for(int z=2;z<=4;z++)
             helper.setBlock(x,6,z,Blocks.STONE);
-        // Scaffold approach anchors, then two horizontal bridge spans.
-        helper.setBlock(2,7,3,Blocks.SCAFFOLDING);
-        helper.setBlock(3,7,3,Blocks.SCAFFOLDING);
-        helper.setBlock(4,7,3,Blocks.SCAFFOLDING);
-        // Standing on scaffold at y=8; solid landing is intentionally
-        // one block lower. It must descend safely without falling.
-        BlockPos destination=helper.absolutePos(new BlockPos(6,7,3));
-        BuilderGolem builder=worker(helper,1,7,3);
-        final boolean[] crossed={false};
-        final double[] last={builder.getX()};
-        final int[] stuck={0};
+        for(int y=2;y<=6;y++)
+            helper.setBlock(2,y,3,Blocks.SCAFFOLDING);
+        helper.setBlock(3,6,3,Blocks.SCAFFOLDING);
+        helper.setBlock(4,6,3,Blocks.SCAFFOLDING);
+        BlockPos tower=helper.absolutePos(new BlockPos(2,2,3));
+        BlockPos top=helper.absolutePos(new BlockPos(2,7,3));
+        BlockPos far=helper.absolutePos(new BlockPos(5,7,3));
+        BuilderGolem builder=worker(helper,2,7,3);
+        java.util.List<BlockPos> forward=java.util.List.of(
+                helper.absolutePos(new BlockPos(3,7,3)),
+                helper.absolutePos(new BlockPos(4,7,3)),far);
+        java.util.List<BlockPos> reverse=java.util.List.of(
+                helper.absolutePos(new BlockPos(4,7,3)),
+                helper.absolutePos(new BlockPos(3,7,3)),top);
+        final int[] phase={0},since={(int)helper.getTick()};
+        final boolean[] crossed={false},returned={false};
+        BuilderScaffolding.beginBridge(helper.getLevel(),builder,forward,false);
         helper.onEachTick(()->{
             if(!builder.isAlive()){
-                helper.fail("Bridge Builder vanished");return;
+                helper.fail("Bridge builder vanished at phase "+phase[0]);return;
             }
-            if(builder.getX()>helper.absolutePos(
-                    new BlockPos(4,7,3)).getX()+.5
-                    &&builder.getY()>=destination.getY()-.8)
-                crossed[0]=true;
-            if(close(builder,destination,.70)&&builder.onGround()
-                    &&crossed[0]){
-                helper.succeed();return;
-            }
-            if(Math.abs(builder.getX()-last[0])>.06){
-                last[0]=builder.getX();stuck[0]=0;
-            }else stuck[0]++;
-            if(stuck[0]>180){
-                helper.fail("Scaffold bridge failed pos="+builder.position()
-                        +" nav="+WorkerNavigation.debugStatus(builder));
+            int now=(int)helper.getTick();
+            if(now-since[0]>220){
+                helper.fail("Bridge trial stalled phase="+phase[0]
+                        +" position="+builder.position()
+                        +" nav="+WorkerNavigation.debugStatus(builder)
+                        +" scaffold="+BuilderScaffolding.debugClimb(builder));
                 return;
             }
-            if(helper.getTick()%5==0)
-                WorkerNavigation.routeToExact(
-                        helper.getLevel(),builder,destination,1.0);
+            if(phase[0]==0&&close(builder,far,.32)&&builder.onGround()){
+                crossed[0]=true;
+                BuilderScaffolding.beginBridge(
+                        helper.getLevel(),builder,reverse,true);
+                phase[0]=1;since[0]=now;
+            }else if(phase[0]==1&&close(builder,top,.32)){
+                returned[0]=true;
+                BuilderScaffolding.begin(helper.getLevel(),builder,tower,
+                        tower.getY()+1.0,true);
+                phase[0]=2;since[0]=now;
+            }else if(phase[0]==2&&builder.getY()<=tower.getY()+1.16){
+                if(!BuilderScaffolding.dismountAtBase(
+                        helper.getLevel(),builder,tower)){
+                    helper.fail("Cannot dismount after scaffold bridge return");
+                    return;
+                }
+                phase[0]=3;since[0]=now;
+            }else if(phase[0]==3){
+                double dx=builder.getX()-tower.getX()-.5;
+                double dz=builder.getZ()-tower.getZ()-.5;
+                if(crossed[0]&&returned[0]&&builder.onGround()
+                        &&dx*dx+dz*dz>1.0
+                        &&Math.abs(builder.getY()-tower.getY())<.30
+                        &&helper.getLevel().getBlockState(
+                                builder.blockPosition().below()).is(Blocks.STONE))
+                    helper.succeed();
+            }
         });
     }
 }
