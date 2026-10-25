@@ -347,6 +347,19 @@ public final class BuilderScaffolding {
         if(!supported||Math.abs(worker.getY()-waypoint.getY())>.85
                 ||worker.tickCount-motion.lastProgress>120){
             bridgeCooldown.put(worker,level.getGameTime()+100);
+            // If the next span disappears, retreat over the still-present
+            // visited sections rather than abandoning the golem over air.
+            BridgeTrail trail=bridgeTrails.get(worker);
+            if(!motion.returning&&motion.next>0&&trail!=null){
+                java.util.List<BlockPos> retreat=new java.util.ArrayList<>(
+                        motion.waypoints.subList(0,motion.next));
+                java.util.Collections.reverse(retreat);
+                retreat.add(trail.start());
+                bridgeMotion.put(worker,new BridgeMotion(retreat,true,
+                        worker.tickCount));
+                worker.getNavigation().stop();
+                return true;
+            }
             bridgeMotion.remove(worker);
             worker.getNavigation().stop();
             worker.setDeltaMovement(0,Math.min(0,worker.getDeltaMovement().y),0);
