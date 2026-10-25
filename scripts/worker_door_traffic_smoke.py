@@ -25,10 +25,11 @@ assert "WorkerDoorTraffic.request(level,local,mob)" in nav
 assert "if(WorkerDoorTraffic.count(level,door)>0)return;" in nav
 assert "1.5*1.5" in nav
 assert "neighborOccupied(level,mob,p)?90:0" in nav
-assert "private record ClimbPermit(" in scaffold
+assert "private record ClimbSession(" in scaffold
 assert "public static boolean climbingNow(" in scaffold
-assert "level.getBlockState(at).is(Blocks.SCAFFOLDING)" in scaffold
-assert "climbing.put(worker,new ClimbPermit(" in scaffold
+assert "level.getBlockState(columnLevel).is(Blocks.SCAFFOLDING)" in scaffold
+assert "sessions.put(worker,new ClimbSession(" in scaffold
+assert "public static boolean tickMotion(" in scaffold
 assert "setNoGravity(false)" in builder
 assert "!BuilderScaffolding.climbingNow(server,this)" in builder
 print("PASS: independent FIFO doors, 2-3m safe queuing, spacing and gravity recovery")

@@ -29,7 +29,8 @@ assert "claimBuilderZoneStep(worker.getUUID()" in build
 assert ".add(Attributes.MOVEMENT_SPEED,.40)" in golem
 assert "speed=1.0; // Builder target:" in nav
 assert "canReachExact(level,worker,landing)" in scaffold
-assert "routeToExact(level,worker,base,1.0)" in scaffold
+assert "routeToExact(level,worker,approach,1.0)" in scaffold
+assert "begin(level,worker,base,top+1.0,false)" in scaffold
 assert "BuilderMaterialDemand.outstandingRemaining(" in warehouse
 assert "table.requestBuilderShipmentCancellation();" in warehouse
 assert "BuilderWarehouseCoordinator.reconcileTicket(level,table)" in build

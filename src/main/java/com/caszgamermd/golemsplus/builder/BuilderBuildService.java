@@ -608,6 +608,7 @@ public final class BuilderBuildService {
                     +" | tower="+table.scaffoldPositions(worker.getUUID()).size()
                     +" | gravity="+(!worker.isNoGravity())
                     +" | sneaking="+worker.isShiftKeyDown()
+                    +" | climb="+BuilderScaffolding.debugClimb(worker)
                     +" | depot="+(table.builderUnloadingStorage()==null
                             ?"unlinked":table.builderUnloadingStorage().toShortString());
         }catch(Exception error){
