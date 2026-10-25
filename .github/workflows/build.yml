@@ -65,7 +65,7 @@ jobs:
         run: python3 scripts/builder_warehouse_queued_smoke.py
       - name: Verify Builder chunk ticket and worker persistence protections
         run: python3 scripts/builder_chunk_tickets_smoke.py
-      - run: gradle --no-daemon clean test build
+      - run: gradle --no-daemon clean test assemble
       - uses: actions/upload-artifact@v4
         if: success()
         with:

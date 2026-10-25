@@ -801,6 +801,21 @@ public final class WorkerStationBlockEntity extends BlockEntity
         ids.addAll(additionalBuilderWorkers);
         return java.util.List.copyOf(ids);
     }
+    /** Transfer only the role; the physical entity keeps all of its cargo.
+     * A courier or scaffold owner must finish that work before operating.
+     */
+    public boolean detachBuilderForCrane(UUID worker){
+        if(worker==null||worker.equals(supplyRunner)
+                ||!scaffoldPositions(worker).isEmpty())return false;
+        if(!builderWorkerIds().contains(worker))return true;
+        if(worker.equals(builderWorkerId)){
+            builderWorkerId=additionalBuilderWorkers.isEmpty()?null:
+                    additionalBuilderWorkers.removeFirst();
+        }else additionalBuilderWorkers.remove(worker);
+        builderLastPositions.remove(worker);
+        releaseBuilderWorkOrder(worker);releaseBuilderClear(worker);
+        sync();return true;
+    }
     public boolean registerBuilderWorker(UUID id){
         if(id==null||builderWorkerIds().contains(id)
                 ||builderWorkerIds().size()>=crewTarget)return false;
@@ -2034,4 +2049,5 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return ClientboundBlockEntityDataPacket.create(this);
     }
 }
+
 

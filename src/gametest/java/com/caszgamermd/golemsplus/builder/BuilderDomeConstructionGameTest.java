@@ -197,6 +197,7 @@ public final class BuilderDomeConstructionGameTest {
         helper.onEachTick(()->{
             long tick=helper.getTick();
             if(tick%5!=0)return;
+            if(tick%200==0&&elevatedDeliveries.isEmpty())System.out.println("[DOME TRANSPORT] "+tick+" "+crane.status()+" at="+crane.position());
             if(tick==100 && (crane.tickCount==0||operator.tickCount==0)){
                 helper.fail("Crane/operator is not entity-ticking in Dome arena: "
                         +"craneTicks="+crane.tickCount
@@ -354,3 +355,4 @@ public final class BuilderDomeConstructionGameTest {
         if(item!=null&&item!=Items.AIR)requested.add(item);
     }
 }
+

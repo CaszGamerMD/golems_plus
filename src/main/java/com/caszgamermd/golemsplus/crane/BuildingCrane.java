@@ -86,8 +86,11 @@ public final class BuildingCrane extends Entity implements Container {
         table=s.getBlockPos().immutable();job=s.activeOrder();dispatch.clear();destinations.clear();batch.clear();status="Job linked; select a builder operator";return true;
     }
     public boolean assignOperator(BuilderGolem w){
-        if(!Objects.equals(owner,w.owner())||!w.home().equals(table)||operator!=null||w.isPassenger())return false;
-        operator=w.getUUID();var s=station();if(s!=null){s.releaseBuilderWorkOrder(operator);s.releaseBuilderClear(operator);}
+        var s=station();
+        if(s==null||!Objects.equals(owner,w.owner())||!w.home().equals(table)
+                ||operator!=null||w.isPassenger()||w.hasSupplyBox()
+                ||!s.detachBuilderForCrane(w.getUUID()))return false;
+        operator=w.getUUID();
         status="Operator approaching chassis";return true;
     }
     public boolean request(BuilderGolem w,BlockPos goal){
