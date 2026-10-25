@@ -22,6 +22,21 @@ assert start < build.index("if(!BuilderPlacementSpace.ready(level,worker,table,p
 assert "yielding.put(blocker,new Yield(target,destination," in space
 assert "getGameTime()+60" in space
 assert "!level.getBlockState(hold.target()).isAir()" in space
+assert "hold.placingWorker()" in space
+assert "public static BlockPos approach(" in space
+assert "if(++attempted>8)break;" in space
+assert "boolean" not in space[space.index("private record Yield"):space.index("private static final Map")] or "placingWorker" in space
+assert "workDistance<=100" in build
+assert "BuilderPlacementSpace.approach(level,worker,pos)" in build
+table=(root.parent/"world/WorkerStationBlockEntity.java").read_text()
+supplies=(root/"BuilderSupplyInventory.java").read_text()
+assert "public boolean reassignBuilderStep(UUID requester,UUID stocked,int index)" in table
+assert "if(destination.size()>=10)" in table
+assert "destination.remove(Integer.valueOf(exchange))" in table
+assert "destination.add(index)" in table
+assert "if(!reserved)order.add(i)" in table
+assert "table.reassignBuilderStep(worker.getUUID(),teammateId,index)" in supplies
+assert "carrier.carriedCount(target)>0" in supplies
 assert "if(shifted.intersects(volume(obstructed))" in space
 assert 'Waiting for safe standing space' in space
 print("PASS: physically vacate prospective placement cell before payment, no forced relocation through obstacles")
