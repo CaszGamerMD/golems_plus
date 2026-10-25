@@ -257,7 +257,11 @@ public final class BuilderScaffoldBridge {
         // The complete blueprint already contains a one-wide OUTER
         // walkway around every level, including overhangs and corners.
         // Favor that route instead of searching directly toward a wall.
-        for(BlockPos floor:shell.atHeight(anchor.getY())){
+        // A complete exterior shell is meaningful for a *structure*, not
+        // a single-block movement fixture. Preserve the proven local
+        // cross-section route for tiny jobs/isolated repair placements.
+        boolean wholeBuild=shell.solids().size()>=24;
+        if(wholeBuild)for(BlockPos floor:shell.atHeight(anchor.getY())){
             int dx=floor.getX()-target.getX(),dz=floor.getZ()-target.getZ();
             int dy=floor.getY()+1-target.getY();
             if(dx*dx+dz*dz+dy*dy<=12.5)workFloors.add(floor);
@@ -293,7 +297,7 @@ public final class BuilderScaffoldBridge {
             for(int[] dir:DIRECTIONS)
                 neighbors.add(current.offset(dir[0],0,dir[1]));
             neighbors.sort(Comparator
-                    .comparingInt((BlockPos node)->shell.isShell(node)?0:1)
+                    .comparingInt((BlockPos node)->wholeBuild&&shell.isShell(node)?0:1)
                     .thenComparingDouble(node->node.distSqr(target)));
             for(BlockPos next:neighbors){
                 if(parent.containsKey(next)
