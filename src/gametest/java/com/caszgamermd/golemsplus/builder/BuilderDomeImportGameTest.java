@@ -60,6 +60,40 @@ public final class BuilderDomeImportGameTest {
             if(plan.steps().stream().noneMatch(s->s.ignorePlant()
                     &&s.encodedState().contains("peony")))
                 throw new IllegalStateException("Missing ignored upper peony");
+            // Analyze the true schematic in both perpendicular vertical
+            // sections, including projections where a higher course has
+            // no supporting schematic block beneath it. Verify the
+            // profile's platforms remain outside the finished structure.
+            var solids=BuilderScaffoldSections.solids(plan.steps());
+            var xPlanes=new java.util.HashSet<Integer>();
+            var zPlanes=new java.util.HashSet<Integer>();
+            for(BlockPos block:solids){
+                xPlanes.add(block.getX());zPlanes.add(block.getZ());
+            }
+            long xLips=0,zLips=0;
+            for(int z:zPlanes)xLips+=BuilderScaffoldSections.slice(solids,
+                    BuilderScaffoldSections.Axis.X,z).overhangCount();
+            for(int x:xPlanes)zLips+=BuilderScaffoldSections.slice(solids,
+                    BuilderScaffoldSections.Axis.Z,x).overhangCount();
+            if(xLips==0||zLips==0)
+                throw new IllegalStateException("Dome section analyzer missed curved overhangs");
+            long usable=0;
+            for(var step:plan.steps()){
+                if(step.ignorePlant())continue;
+                BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+                var candidates=BuilderScaffoldSections.stations(
+                        solids,target,target.getY()-1);
+                if(candidates.isEmpty())continue;
+                for(var candidate:candidates)
+                    if(solids.contains(candidate.scaffold())
+                            ||solids.contains(candidate.scaffold().above()))
+                        throw new IllegalStateException("Scaffold profile overlaps finished Dome");
+                usable++;
+            }
+            if(usable==0)throw new IllegalStateException(
+                    "Dome cross sections yielded no safe work platforms");
+            System.out.println("[DOME E2E] section profiles X-lips="+xLips
+                    +" Z-lips="+zLips+" platformTargets="+usable);
             System.out.println("[DOME E2E] source=exact uploaded file blocks="
                     +plan.steps().size()+" ignoredPlants="+ignored
                     +" unsupported="+plan.unsupported().size());
