@@ -18,7 +18,8 @@ import net.minecraft.world.level.block.Blocks;
  */
 public final class BuilderScaffolding {
     public enum Result { CLIMBING, NEED_MATERIALS, NO_SAFE_TOWER, NOT_NEEDED }
-    private static final int MAX_HEIGHT=48;
+    // No arbitrary 48-block cap. Vertical routes extend a real scaffold
+    // by sixteen blocks per resupply cycle up to the schematic target.
     /** Construction climb and descent are continuous actions rather than
      * five-tick velocity impulses. Each entity has its own session, and
      * ordinary A* must not override it until the vertical job completes.
@@ -142,8 +143,8 @@ public final class BuilderScaffolding {
         // Do not relinquish the session until the actual landing
         // elevation has been reached. The construction code checks target
         // proximity independently and must not cancel the ascent early.
-        if((session.descending()&&remain>=-.10)
-                ||(!session.descending()&&remain<=.10)){
+        if(ScaffoldVerticalRoute.reached(worker.getY(),session.stopY(),
+                session.descending())){
             clearMotion(worker);
             return false;
         }
@@ -299,7 +300,7 @@ public final class BuilderScaffolding {
             double dx=worker.getX()-(base.getX()+.5);
             double dz=worker.getZ()-(base.getZ()+.5);
             if(dx*dx+dz*dz>20*20)continue;
-            if(dx*dx+dz*dz>1.35){
+            if(ScaffoldVerticalRoute.needsReturn(dx,dz)){
                 ReturnRoute cached=returning.get(worker);
                 BlockPos landing=cached!=null&&cached.base().equals(base)
                         &&cached.expires()>level.getGameTime()
@@ -321,7 +322,7 @@ public final class BuilderScaffolding {
             }
             returning.remove(worker);
             double bottom=base.getY()+1.0;
-            if(worker.getY()<=bottom+.16){
+            if(!ScaffoldVerticalRoute.needsDescent(worker.getY(),base.getY())){
                 clearMotion(worker);
                 BlockPos exit=exitGround(level,worker,base);
                 if(exit!=null){
@@ -349,7 +350,7 @@ public final class BuilderScaffolding {
         if(active!=null&&!active.descending()
                 &&active.stopY()>=target.getY()-.15
                 &&climbingNow(level,worker)){
-            if(worker.getY()<active.stopY()-.10){
+            if(!ScaffoldVerticalRoute.reached(worker.getY(),active.stopY(),false)){
                 sessions.put(worker,new ClimbSession(active.column(),
                         active.stopY(),false,level.getGameTime()+30));
                 return Result.CLIMBING;
@@ -359,7 +360,7 @@ public final class BuilderScaffolding {
         if(target.getY()-worker.getY()<=1.35){
             return Result.NOT_NEEDED;
         }
-        if(target.getY()-feet>MAX_HEIGHT)return Result.NO_SAFE_TOWER;
+        // Tall routes are divided into physical, inventory-bounded stages.
         // Prefer an existing walkable staircase or completed platform at
         // the target's exact X/Z before spending a single scaffold item.
         // Only route on real validated physical paths; never teleport.
@@ -429,8 +430,17 @@ public final class BuilderScaffolding {
                         .routeTo(level,worker,approach,1.0);
             return Result.CLIMBING;
         }
-        int top=target.getY()-1;
-        if(top-base.getY()+1>MAX_HEIGHT)return Result.NO_SAFE_TOWER;
+        int wantedTop=target.getY()-1;
+        final BlockPos column=base;
+        int existingTop=existing.stream()
+                .filter(at->at.getX()==column.getX()&&at.getZ()==column.getZ()
+                        &&level.getBlockState(at).is(Blocks.SCAFFOLDING))
+                .mapToInt(BlockPos::getY).max().orElse(base.getY()-1);
+        // Extend one vertical stage, spend only the scaffold items for
+        // that stage, then climb before considering the next extension.
+        // This supports builds far taller than the worker's inventory.
+        int top=ScaffoldVerticalRoute.stageTop(base.getY(),existingTop,wantedTop);
+        if(top<base.getY())return Result.NOT_NEEDED;
         int needed=0;
         for(int y=base.getY();y<=top;y++){
             var p=new BlockPos(base.getX(),y,base.getZ());
@@ -472,7 +482,9 @@ public final class BuilderScaffolding {
             return Result.CLIMBING;
         }
         clearMotion(worker);
-        return Result.NOT_NEEDED;
+        // This stage may end BELOW the ultimate target. The next work
+        // evaluation will extend the SAME owned tower, not walk away.
+        return top<wantedTop?Result.CLIMBING:Result.NOT_NEEDED;
     }
     private static BlockPos findBase(ServerLevel level,BuilderGolem worker,
             BlockPos target,int feet,WorkerStationBlockEntity table,
