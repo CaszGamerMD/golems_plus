@@ -244,6 +244,12 @@ public final class BuildingCrane extends Entity implements Container {
         };
         player.openMenu(new SimpleMenuProvider((id,inv,p)->ChestMenu.sixRows(id,inv,view),Component.literal("Crane supplies — page "+(this.page+1)+"/8")));
     }
+    // Minecraft 26.2 moved entity right-clicks to the location-aware
+    // interaction overload. Preserve the two-argument helper for GameTests.
+    @Override public InteractionResult interact(Player player,
+            InteractionHand hand,Vec3 location){
+        return interact(player,hand);
+    }
     public InteractionResult interact(Player player,InteractionHand hand){
         if(!(player instanceof ServerPlayer p))return InteractionResult.SUCCESS;
         if(!p.getUUID().equals(owner))return InteractionResult.FAIL;
