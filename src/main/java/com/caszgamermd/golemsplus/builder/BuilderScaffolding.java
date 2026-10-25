@@ -70,6 +70,8 @@ public final class BuilderScaffolding {
         worker.setDeltaMovement(velocity.x,Math.min(velocity.y,0),velocity.z);
     }
     public static String debugClimb(BuilderGolem worker){
+        String bridge=BuilderScaffoldBridge.debug(worker);
+        if(!"NONE".equals(bridge))return bridge;
         ClimbSession session=sessions.get(worker);
         if(session!=null){
             MotionWatch watch=progress.get(worker);
@@ -95,12 +97,14 @@ public final class BuilderScaffolding {
      * a verified arrival/dismount (or after a safe abort).
      */
     public static boolean isControllingMovement(BuilderGolem worker){
-        return sessions.containsKey(worker)||exiting.containsKey(worker);
+        return sessions.containsKey(worker)||exiting.containsKey(worker)
+                ||BuilderScaffoldBridge.moving(worker);
     }
     public static void cancel(BuilderGolem worker){
         clearMotion(worker);
         returning.remove(worker);
         exiting.remove(worker);
+        BuilderScaffoldBridge.cancel(worker);
     }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
         ClimbSession session=sessions.get(worker);
@@ -144,6 +148,7 @@ public final class BuilderScaffolding {
      * jump/sneak controls lets vanilla resolve scaffold collisions.
      */
     public static boolean tickMotion(ServerLevel level,BuilderGolem worker){
+        if(BuilderScaffoldBridge.tickMotion(level,worker))return true;
         ExitRoute exit=exiting.get(worker);
         if(exit!=null){
             if(level.getGameTime()>exit.expires()
@@ -565,7 +570,13 @@ public final class BuilderScaffolding {
         // The complete 2-block perimeter (including diagonal offsets)
         // must match both selection AND reuse, or towers are forgotten.
         if(base==null)base=findBase(level,worker,target,feet,table,plan);
-        if(base==null)return Result.NO_SAFE_TOWER;
+        if(base==null){
+            // An overhang may cover every nearby vertical foundation.
+            // A physical, owned tower can still branch sideways and turn
+            // around the rim to bring a Builder into placement range.
+            return BuilderScaffoldBridge.reach(level,worker,table,player,
+                    target,plan);
+        }
         double bx=base.getX()+.5,bz=base.getZ()+.5;
         double approachX=worker.getX()-bx,approachZ=worker.getZ()-bz;
         // Position at the foot of the selected column *first*. The old
