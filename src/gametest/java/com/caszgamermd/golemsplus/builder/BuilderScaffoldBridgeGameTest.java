@@ -97,8 +97,15 @@ public final class BuilderScaffoldBridgeGameTest {
             maxTicks=1400,skyAccess=true)
     public void extendsLongDetourOnRealGroundedPiers(GameTestHelper helper){
         ServerLevel level=helper.getLevel();
-        for(int x=0;x<=19;x++)for(int z=0;z<=8;z++)
+        // Fabric's test world can contain residual barrier cells from
+        // the structure boundary (observed in the 20-block test at
+        // x=8,y=3,z=2). Explicitly clear only this controlled arena,
+        // then create the intentional overhang obstruction below.
+        for(int x=0;x<=19;x++)for(int z=0;z<=8;z++){
             helper.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=6;y++)
+                helper.setBlock(x,y,z,Blocks.AIR);
+        }
         helper.setBlock(1,2,1,WorksiteContent.BUILDER_TABLE);
         BlockPos home=helper.absolutePos(new BlockPos(1,2,1));
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
