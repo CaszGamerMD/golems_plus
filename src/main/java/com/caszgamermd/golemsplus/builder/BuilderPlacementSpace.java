@@ -43,7 +43,12 @@ public final class BuilderPlacementSpace {
     public static boolean yieldTick(ServerLevel level,BuilderGolem worker){
         Yield hold=yielding.get(worker);
         if(hold==null)return false;
-        if(!worker.isAlive()||level.getGameTime()>=hold.until()){
+        if(!worker.isAlive()||level.getGameTime()>=hold.until()
+                ||!occupied(hold.target(),worker)
+                    &&!level.getBlockState(hold.target()).isAir()){
+            // Once the placement exists, its physical collision prevents
+            // anyone from walking back into the same block. Resume work
+            // immediately instead of waiting out the full yield window.
             yielding.remove(worker);
             return false;
         }
@@ -136,7 +141,7 @@ public final class BuilderPlacementSpace {
                 continue;
             }
             yielding.put(blocker,new Yield(target,destination,
-                    level.getGameTime()+100));
+                    level.getGameTime()+60));
             WorkerNavigation.routeTo(level,blocker,destination,.9);
         }
         table.setProblem(found
