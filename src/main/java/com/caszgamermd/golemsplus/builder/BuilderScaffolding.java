@@ -583,8 +583,9 @@ public final class BuilderScaffolding {
                     .routeToExact(level,worker,landing,1.0))
                 return Result.CLIMBING;
         }
-        // The complete 2-block perimeter (including diagonal offsets)
-        // must match both selection AND reuse, or towers are forgotten.
+        // The cardinal tower foundations now stand behind two empty
+        // bridge cells. Any optional local fallback obeys that same
+        // separation from every full-height schematic solid.
         if(base==null)base=findBase(level,worker,target,feet,table,plan);
         if(base==null){
             // An overhang may cover every nearby vertical foundation.
@@ -787,6 +788,9 @@ public final class BuilderScaffolding {
         for(BlockPos adjacent:offsets)
             for(int dy=0;dy<=5;dy++){
                 BlockPos base=new BlockPos(adjacent.getX(),feet-dy,adjacent.getZ());
+                // Fallback must obey the SAME two-block separation as
+                // shared cardinal towers. No hidden tower in the walls.
+                if(!shell.towerHasTwoBlockGap(base))continue;
                 if(avoided(level,worker,base)
                         ||!level.hasChunkAt(base)
                         ||!level.hasChunkAt(base.below()))continue;
