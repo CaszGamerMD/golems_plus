@@ -37,6 +37,8 @@ jobs:
         run: python3 scripts/builder_work_reach_smoke.py
       - name: Verify flat-site Builder route recovery and existing platform access
         run: python3 scripts/builder_navigation_recovery_smoke.py
+      - name: Verify per-door FIFO traffic and scaffold gravity recovery
+        run: python3 scripts/worker_door_traffic_smoke.py
       - name: Validate worker stair and slab navigation geometry
         run: python3 scripts/worker_stair_slab_navigation_smoke.py
       - name: Check parallel clearing, door placement and outstanding warehouse orders
