@@ -75,10 +75,15 @@ final class CraneMovement {
         var candidates=new ArrayList<BlockPos>();
         for(int dy=-2;dy<=1;dy++)for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
             BlockPos p=target.offset(dx,dy,dz);
-            if(p.distSqr(target)>12||!WorkerNavigation.canStandOn(world,worker,p))continue;
-            if(clear(world,crane,load(crane,Vec3.atBottomCenterOf(p))))candidates.add(p);
+            if(p.distSqr(target)<=12)candidates.add(p);
         }
-        return candidates.stream().min(Comparator.comparingDouble(p->p.distSqr(target))).orElse(null);
+        // Try near landings first. Collision checks on a full supply box are
+        // expensive, and the closest safe dock is the one builders should use.
+        candidates.sort(Comparator.comparingDouble(p->p.distSqr(target)));
+        for(BlockPos p:candidates)
+            if(WorkerNavigation.canStandOn(world,worker,p)
+                    &&clear(world,crane,load(crane,Vec3.atBottomCenterOf(p))))return p;
+        return null;
     }
     static CranePath.Cell cell(BlockPos p){return new CranePath.Cell(p.getX(),p.getY(),p.getZ());}
     static BlockPos pos(CranePath.Cell p){return new BlockPos(p.x(),p.y(),p.z());}
