@@ -68,7 +68,7 @@ replacing it. Check for:
   `BlockPos` and `Direction` stand-ins: **5/5 algorithm scenarios passed**
   (straight, new obstruction, blacklist, lower-cost destination, disconnected).
   This is **not** a Minecraft physics test or a full Gradle build.
-- The pull request's GitHub Actions jobs: **blocked at runner/setup level**;
+- The pull request's GitHub Actions jobs: **failed before recording any job steps (cause not yet identified)**;
   the first PR workflow ended in seconds with no recorded job steps. The same
   immediate behavior appears on unrelated PR branches. The three new in-game
   GameTests are **written but not yet executed**. Do not claim a physical pass
