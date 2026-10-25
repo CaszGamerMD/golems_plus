@@ -171,6 +171,113 @@ public final class BuilderSupplyInventory {
         }
         return false;
     }
+    /** Stage the exact ten-coordinate work order ONCE at its physical depot.
+     * All unrelated pouch materials are deposited before loading, never
+     * fabricated and never transferred from a distant chest. Unavailable
+     * items do not block ready construction cells; the missing step will
+     * wait and be requested from the warehouse separately.
+     */
+    public static LoadStatus prepareWorkOrder(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps){
+        var indices=table.builderWorkOrder(worker.getUUID());
+        if(indices.isEmpty())return LoadStatus.MISSING;
+        BlockPos depot=table.builderUnloadingStorage();
+        Container storage=selectedStorage(table);
+        if(depot==null||storage==null)return LoadStatus.MISSING;
+        if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                depot.getZ()+.5)>12){
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                    level,worker,depot,.83);
+            return LoadStatus.MOVING;
+        }
+        Map<String,Integer> materials=new LinkedHashMap<>();
+        int highest=worker.blockPosition().getY();
+        for(int index:indices){
+            if(index<0||index>=steps.size())continue;
+            var next=steps.get(index);
+            highest=Math.max(highest,next.y());
+            if(next.requiredItem()!=null)
+                materials.merge(next.requiredItem(),1,Integer::sum);
+        }
+        // A few scaffold blocks for elevated assignments; ordinary ground
+        // work has no reason to fill a worker's pouch with scaffolding.
+        if(highest-worker.getY()>2.5)
+            materials.merge("minecraft:scaffolding",Math.min(32,
+                    Math.max(4,highest-worker.blockPosition().getY()+2)),
+                    Math::max);
+        // Preserve enough actual items for the requested cells, unload the
+        // rest. A full OnSite Storage never deletes carried block inventory.
+        for(int slot=0;slot<worker.getContainerSize();slot++){
+            ItemStack held=worker.getItem(slot);
+            if(held.isEmpty())continue;
+            String id=BuiltInRegistries.ITEM.getKey(held.getItem()).toString();
+            int needed=Math.max(0,materials.getOrDefault(id,0));
+            // The same item may appear in several pockets; preserve up to
+            // this batch's amount across all slots, not per slot.
+            for(int earlier=0;earlier<slot;earlier++){
+                ItemStack before=worker.getItem(earlier);
+                if(before.is(held.getItem()))needed-=before.getCount();
+            }
+            int keep=Math.min(held.getCount(),Math.max(0,needed));
+            int giveBack=held.getCount()-keep;
+            if(giveBack<=0)continue;
+            // Existing returnPouch handles shulkers and checked storage
+            // capacity without dropping any real items. Split the wanted
+            // pocket amount aside while returning only the surplus.
+            ItemStack reserve=held.copyWithCount(keep);
+            worker.setItem(slot,held.copyWithCount(giveBack));
+            returnPouch(table,worker);
+            // If storage filled, preserve the surplus and allow that real
+            // item to stay on this worker rather than disappearing.
+            ItemStack remainder=worker.getItem(slot);
+            worker.setItem(slot,reserve);
+            if(!remainder.isEmpty())tryPocket(worker,remainder,remainder.getCount());
+        }
+        for(var row:materials.entrySet()){
+            var key=net.minecraft.resources.Identifier.tryParse(row.getKey());
+            if(key==null||!BuiltInRegistries.ITEM.containsKey(key))continue;
+            Item item=BuiltInRegistries.ITEM.getValue(key);
+            int needed=row.getValue()-worker.carriedCount(item);
+            if(needed<=0)continue;
+            for(int slot=0;slot<storage.getContainerSize()&&needed>0;slot++){
+                ItemStack existing=storage.getItem(slot);
+                if(existing.is(item)){
+                    int take=Math.min(needed,Math.min(existing.getCount(),
+                            room(worker,existing)));
+                    int moved=tryPocket(worker,existing,take);
+                    if(moved>0){
+                        storage.setItem(slot,existing.copyWithCount(
+                                existing.getCount()-moved));
+                        storage.setChanged();needed-=moved;
+                    }
+                }else if(existing.is(ItemTags.SHULKER_BOXES)
+                        &&existing.has(DataComponents.CONTAINER)){
+                    var nested=contents(existing);
+                    boolean changed=false;
+                    for(int j=0;j<nested.size()&&needed>0;j++){
+                        ItemStack inside=nested.get(j);
+                        if(!inside.is(item))continue;
+                        int take=Math.min(needed,Math.min(inside.getCount(),
+                                room(worker,inside)));
+                        int moved=tryPocket(worker,inside,take);
+                        if(moved>0){
+                            nested.set(j,inside.copyWithCount(inside.getCount()-moved));
+                            needed-=moved;changed=true;
+                        }
+                    }
+                    if(changed){
+                        ItemStack box=existing.copy();
+                        box.set(DataComponents.CONTAINER,
+                                ItemContainerContents.fromItems(nested));
+                        storage.setItem(slot,box);storage.setChanged();
+                    }
+                }
+            }
+        }
+        return LoadStatus.READY;
+    }
+
     /** Loads one physically carried pouch from the OnSite chest or another
      * registered Builder. MOVING preserves the claimed construction step;
      * MISSING lets another crew member try a stocked cell in this layer.
