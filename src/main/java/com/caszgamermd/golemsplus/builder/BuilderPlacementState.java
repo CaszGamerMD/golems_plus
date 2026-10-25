@@ -5,6 +5,8 @@ import net.minecraft.world.level.block.IronBarsBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.WallBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.level.block.Blocks;
 
 /** World block states may change their neighbour-derived connection/shape
  * after an otherwise correct schematic placement. Treating those mutations
@@ -39,6 +41,28 @@ public final class BuilderPlacementState {
             return !actual.getFluidState().isSource()
                     &&!schematic.getFluidState().isSource();
         }
-        return false;
+        // Derived neighbours/weather states are not a reason to mine an
+        // otherwise already-placed block. Keep critical properties (facing,
+        // axis, slab type, waterlogging) exact.
+        String id=BuiltInRegistries.BLOCK.getKey(actual.getBlock()).getPath();
+        for(var property:actual.getProperties()){
+            if(actual.getValue(property).equals(schematic.getValue(property)))
+                continue;
+            String name=property.getName();
+            boolean dynamic=(id.endsWith("_leaves")&&name.equals("distance"))
+                    ||(name.equals("snowy")
+                        &&(id.equals("grass_block")||id.equals("mycelium")
+                            ||id.equals("podzol")))
+                    ||(actual.is(Blocks.REDSTONE_WIRE)
+                        &&(name.equals("power")||name.equals("north")
+                            ||name.equals("south")||name.equals("east")
+                            ||name.equals("west")))
+                    ||(id.endsWith("_door")
+                        &&(name.equals("powered")||name.equals("open")))
+                    ||((id.endsWith("_repeater")||id.endsWith("_comparator"))
+                        &&(name.equals("powered")||name.equals("locked")));
+            if(!dynamic)return false;
+        }
+        return true;
     }
 }

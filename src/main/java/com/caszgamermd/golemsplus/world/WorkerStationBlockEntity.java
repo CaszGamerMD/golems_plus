@@ -108,6 +108,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
      */
     private final Map<UUID,java.util.List<Integer>> builderWorkOrders=new java.util.LinkedHashMap<>();
     private final java.util.Set<UUID> builderPreparedOrders=new java.util.HashSet<>();
+    // True once the current job has used strict X/Z crew ownership.
+    private boolean builderZoned;
     /** Out-of-order completion beyond the previous 32-step bit window.
      * This permits eight distinct ten-coordinate crew assignments.
      */
@@ -820,21 +822,70 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public int claimBuilderStep(UUID worker,int layerExclusive,
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
             java.util.Set<String> heldItems){
+        return claimBuilderStep(worker,layerExclusive,steps,heldItems,null);
+    }
+    /** A Builder owns one rectangular X/Z zone. Each zone works upward
+     * from its own lowest unfinished Y, without waiting for another zone.
+     * Old ten-position orders remain valid after loading an existing save.
+     */
+    public int claimBuilderStep(UUID worker,int layerExclusive,
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
+            java.util.Set<String> heldItems,
+            com.caszgamermd.golemsplus.builder.BuilderZones.Layout footprint){
         if(!builderWorkerIds().contains(worker)||activeOrder==null)return -1;
         long now=level==null?0:level.getGameTime();
+        int workerZone=-1,activeCount=0;
+        if(footprint!=null&&level instanceof net.minecraft.server.level.ServerLevel world){
+            for(UUID id:builderWorkerIds()){
+                if(activeCount>=crewTarget)break;
+                if(!(world.getEntity(id) instanceof
+                        com.caszgamermd.golemsplus.builder.BuilderGolem golem)
+                        ||!golem.isAlive())continue;
+                if(id.equals(worker))workerZone=activeCount;
+                activeCount++;
+            }
+        }
+        boolean zoned=workerZone>=0;
+        if(zoned)builderZoned=true;
         var order=builderWorkOrders.get(worker);
         if(order==null||order.isEmpty()){
             order=new java.util.ArrayList<>(10);
-            int upper=Math.min(Math.min(builderBlocks,layerExclusive),
-                    builderCursor+80);
-            for(int i=builderCursor;i<upper&&order.size()<10;i++){
-                if(builderFinishedSteps.contains(i)
-                        ||builderClaims.containsValue(i)
-                        ||builderMissingRetries.getOrDefault(i,0L)>now)continue;
-                boolean reserved=false;
-                for(var assignment:builderWorkOrders.values())
-                    if(assignment.contains(i)){reserved=true;break;}
-                if(!reserved)order.add(i);
+            if(zoned){
+                int lowest=Integer.MAX_VALUE;
+                // Locate the lowest outstanding layer IN THIS ZONE, not
+                // the lowest layer in the entire schematic.
+                for(int i=builderCursor;i<steps.size();i++){
+                    if(builderFinishedSteps.contains(i))continue;
+                    var step=steps.get(i);
+                    if(footprint.contains(step,workerZone,activeCount))
+                        lowest=Math.min(lowest,step.y());
+                }
+                if(lowest==Integer.MAX_VALUE)return -1;
+                for(int i=builderCursor;i<steps.size()&&order.size()<10;i++){
+                    if(steps.get(i).y()!=lowest
+                            ||!footprint.contains(steps.get(i),workerZone,activeCount)
+                            ||builderFinishedSteps.contains(i)
+                            ||builderClaims.containsValue(i)
+                            ||builderMissingRetries.getOrDefault(i,0L)>now)continue;
+                    boolean reserved=false;
+                    for(var assignment:builderWorkOrders.values())
+                        if(assignment.contains(i)){reserved=true;break;}
+                    if(!reserved)order.add(i);
+                }
+            }else{
+                // Legacy direct callers without a footprint retain bounded,
+                // serial-layer assignment behavior.
+                int upper=Math.min(Math.min(builderBlocks,layerExclusive),
+                        builderCursor+80);
+                for(int i=builderCursor;i<upper&&order.size()<10;i++){
+                    if(builderFinishedSteps.contains(i)
+                            ||builderClaims.containsValue(i)
+                            ||builderMissingRetries.getOrDefault(i,0L)>now)continue;
+                    boolean reserved=false;
+                    for(var assignment:builderWorkOrders.values())
+                        if(assignment.contains(i)){reserved=true;break;}
+                    if(!reserved)order.add(i);
+                }
             }
             if(order.isEmpty())return -1;
             builderWorkOrders.put(worker,order);
@@ -843,7 +894,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         int preferred=-1,first=-1;
         for(int i:order){
-            if(i>=layerExclusive||builderFinishedSteps.contains(i)
+            if((!zoned&&i>=layerExclusive)||builderFinishedSteps.contains(i)
                     ||builderMissingRetries.getOrDefault(i,0L)>now)continue;
             if(first<0)first=i;
             if(i<steps.size()){
@@ -866,6 +917,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
      * non-active cell back to the original worker. No item moves remotely.
      */
     public boolean reassignBuilderStep(UUID requester,UUID stocked,int index){
+        if(builderZoned)return false; // Never transfer a cell across strict X/Z zones.
         if(requester.equals(stocked)||!builderWorkerIds().contains(requester)
                 ||!builderWorkerIds().contains(stocked)||activeOrder==null)
             return false;
@@ -1460,6 +1512,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
         for(int n=0;n<additionalBuilderWorkers.size()&&n<7;n++)
             out.putString("builder_extra_worker_"+n,additionalBuilderWorkers.get(n).toString());
         out.putLong("builder_ahead_bits",completedAhead);
+        // Compressed finished positions: zones may advance thousands of
+        // sorted indices ahead of the global cursor. The former 80-index
+        // save limit caused already-built cells to be repeated after reload.
+        var finishedBits=new java.util.BitSet();
+        for(int done:builderFinishedSteps)
+            if(done>=builderCursor&&done<builderBlocks)
+                finishedBits.set(done-builderCursor);
+        out.putString("builder_finished_bits_v2",java.util.Base64.getEncoder()
+                .encodeToString(finishedBits.toByteArray()));
         out.putInt("builder_done_count",Math.min(80,builderFinishedSteps.size()));
         int doneIndex=0;
         for(int done:builderFinishedSteps){
@@ -1739,6 +1800,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
             if(finished>=builderCursor&&finished<builderCursor+80)
                 builderFinishedSteps.add(finished);
         }
+        String encodedFinished=in.getStringOr("builder_finished_bits_v2","");
+        if(!encodedFinished.isBlank()&&encodedFinished.length()<=18000)try{
+            var bits=java.util.BitSet.valueOf(
+                    java.util.Base64.getDecoder().decode(encodedFinished));
+            for(int bit=bits.nextSetBit(0);bit>=0&&
+                    bit<builderBlocks-builderCursor;bit=bits.nextSetBit(bit+1))
+                builderFinishedSteps.add(builderCursor+bit);
+        }catch(IllegalArgumentException ignored){}
         // Migrates saved 0.3.40-era ahead bits without losing completed
         // physical block placements when upgrading an active world.
         long legacyAhead=in.getLongOr("builder_ahead_bits",0L);
@@ -1754,7 +1823,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             for(int j=0,k=Math.clamp(in.getIntOr("builder_batch_size_"+bi,0),0,10);
                     j<k;j++){
                 int index=in.getIntOr("builder_batch_step_"+bi+"_"+j,-1);
-                if(index>=builderCursor&&index<builderCursor+80
+                if(index>=builderCursor&&index<builderBlocks
                         &&!builderFinishedSteps.contains(index)&&!list.contains(index))
                     list.add(index);
             }
@@ -1771,7 +1840,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             UUID id=uuid(in,"builder_claim_worker_"+j);
             int index=in.getIntOr("builder_claim_index_"+j,-1);
             if(id!=null&&index>=builderCursor&&index<builderBlocks
-                    &&index-builderCursor<80&&builderWorkerIds().contains(id)){
+                    &&builderWorkerIds().contains(id)){
                 builderClaims.put(id,index);
                 // Upgrade a previously running one-coordinate assignment
                 // to a real batch, or recover one missing from saved NBT.

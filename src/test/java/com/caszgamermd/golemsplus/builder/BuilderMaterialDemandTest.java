@@ -64,4 +64,19 @@ class BuilderMaterialDemandTest {
                 steps.size(),Map.of(),Map.of()));
     }
 
+    @Test void zonedProgressNeverOrdersAlreadyBuiltOrAlreadyStaged(){
+        assertEquals(Map.of(),BuilderMaterialDemand.outstandingRemaining(
+                Map.of("minecraft:stone",40L),
+                Map.of("minecraft:stone",40),Map.of()));
+        assertEquals(Map.of("minecraft:stone",12),
+                BuilderMaterialDemand.outstandingRemaining(
+                    Map.of("minecraft:stone",30L),
+                    Map.of("minecraft:stone",18),Map.of()));
+        // Independent zones may complete 1,000 higher-index blocks first.
+        // The ledger now contains only actual outstanding quantities.
+        assertEquals(Map.of("minecraft:stone",5),
+                BuilderMaterialDemand.outstandingRemaining(
+                    Map.of("minecraft:stone",105L),
+                    Map.of("minecraft:stone",100),Map.of()));
+    }
 }
