@@ -25,6 +25,24 @@ final class WorkerDoorQueueTest {
         door.release(third);
         assertEquals(0,door.count());
     }
+    @Test void anOccupantCanLeaveAheadOfAnOutsideQueue(){
+        var door=new WorkerDoorQueue();
+        UUID outside=UUID.randomUUID(),inside=UUID.randomUUID(),third=UUID.randomUUID();
+        assertTrue(door.claim(outside,10));
+        assertFalse(door.claim(inside,11));
+        assertFalse(door.claim(third,12));
+        // Only the actual doorway traffic controller may promote someone
+        // already in the physical opening. Other waiting workers retain
+        // their original relative order.
+        door.prioritizeOccupant(inside,13);
+        assertEquals(inside,door.head());
+        assertEquals(1,door.position(inside));
+        assertEquals(2,door.position(outside));
+        assertEquals(3,door.position(third));
+        door.release(inside);
+        assertEquals(outside,door.head());
+        assertEquals(1,door.position(outside));
+    }
     @Test void inactiveWorkersExpireWithoutBlockingDoorForever(){
         var door=new WorkerDoorQueue();
         UUID disconnected=UUID.randomUUID(),active=UUID.randomUUID();
@@ -43,3 +61,4 @@ final class WorkerDoorQueueTest {
         assertTrue(b.claim(workerB,2));
     }
 }
+

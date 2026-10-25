@@ -9,7 +9,7 @@ builder=(r/"builder/BuilderGolem.java").read_text()
 job=(r/"builder/BuilderBuildService.java").read_text()
 supply=(r/"builder/BuilderSupplyInventory.java").read_text()
 assert "public static boolean descendForTravel(" in scaff
-assert "begin(level,worker,column,bottom,true);" in scaff
+assert "begin(level,worker,base,bottom,true);" in scaff
 assert "worker.setShiftKeyDown(true)" in scaff
 assert "worker.setDeltaMovement(0,-Math.min(.16" in scaff
 assert "worker.setShiftKeyDown(false)" in scaff
@@ -31,3 +31,4 @@ assert "WorkerDoorTraffic.yieldStalled(level,p.queuedDoor,mob)" in nav
 assert "doorLastDistance" in nav
 assert '" q#"+rank' in nav
 print("PASS scaffold descent / gravity reset, actual door crossing filter, stalled head rotation")
+

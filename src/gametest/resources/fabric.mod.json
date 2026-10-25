@@ -12,7 +12,9 @@
     "fabric-gametest": [
       "com.caszgamermd.golemsplus.crane.CraneDomeCollisionGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderInfiniteOnsiteSupplyGameTest",
-      "com.caszgamermd.golemsplus.builder.BuilderDomeConstructionGameTest"
+      "com.caszgamermd.golemsplus.builder.BuilderDomeConstructionGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderDoorwayGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderScaffoldRingGameTest"
     ]
   }
 }

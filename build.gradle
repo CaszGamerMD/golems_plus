@@ -11,7 +11,8 @@ loom {
         }
     }
 }
-// Kept outside the shipping mod. Uses real Minecraft server collisions.
+// This source set is a separate test-only mod. It is not packaged in the
+// playable Golems Plus JAR. It runs a real server with Minecraft physics.
 fabricApi {
     configureTests {
         createSourceSet = true
@@ -21,6 +22,7 @@ fabricApi {
         eula = true
     }
 }
+
 group = project.maven_group
 version = project.mod_version
 base { archivesName = project.archives_base_name }
@@ -100,3 +102,4 @@ tasks.named('processResources') {
         }
     }
 }
+

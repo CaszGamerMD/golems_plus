@@ -7,6 +7,7 @@ import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 
@@ -48,25 +49,31 @@ public final class WorkerDoorTraffic {
         BlockPos door=canonical(level,position);
         Lane lane=lane(level,door);
         UUID id=worker.getUUID();
-        lane.entry.computeIfAbsent(id,ignored->{
-            var state=level.getBlockState(door);
-            var facing=state.getBlock() instanceof net.minecraft.world.level.block.FenceGateBlock
-                    ?state.getValue(net.minecraft.world.level.block.FenceGateBlock.FACING)
-                    :state.getValue(DoorBlock.FACING);
-            double from=(worker.getX()-door.getX()-.5)*facing.getStepX()
-                    +(worker.getZ()-door.getZ()-.5)*facing.getStepZ();
-            double sign=from<0?-1:1;
-            return new Entry(sign*facing.getStepX(),sign*facing.getStepZ(),level.getGameTime());
-        });
+        lane.entry.computeIfAbsent(id,ignored->new Entry(
+                worker.getX()-(door.getX()+.5),
+                worker.getZ()-(door.getZ()+.5),
+                level.getGameTime()));
         lane.cooldown.entrySet().removeIf(row->row.getValue()<=level.getGameTime());
         if(lane.cooldown.getOrDefault(id,0L)>level.getGameTime())
             return false;
+        var doorway=new AABB(door).inflate(.05);
+        boolean inside=worker.getBoundingBox().intersects(doorway);
+        UUID firstId=lane.queue.head();
+        var firstMob=firstId==null?null:level.getEntity(firstId);
+        boolean headInside=firstMob!=null
+                &&firstMob.getBoundingBox().intersects(doorway);
+        // A queued worker standing OUTSIDE must never prevent a worker
+        // stuck INSIDE from exiting. First inside worker receives the
+        // reservation; once it leaves the original FIFO resumes.
+        if(inside&&!headInside)
+            lane.queue.prioritizeOccupant(id,level.getGameTime());
         boolean first=lane.queue.claim(id,level.getGameTime());
-        // The FIFO grants right of way, not collision immunity. The head
-        // must keep moving while waiting workers clear the threshold;
-        // parking the head too creates a circular wait with an occupant.
+        boolean blocked=!level.getEntitiesOfClass(PathfinderMob.class,
+                doorway,other->other!=worker&&other.isAlive()).isEmpty();
         lane.entry.keySet().removeIf(key->lane.queue.position(key)==0);
-        return first;
+        // An occupant can open and leave even if another body is partly
+        // in the doorway; actual movement still checks collision.
+        return first&&(!blocked||inside);
     }
     public static boolean owns(ServerLevel level,BlockPos position,PathfinderMob worker){
         Map<BlockPos,Lane> map=doors.get(level);
@@ -104,9 +111,15 @@ public final class WorkerDoorTraffic {
         double dx=worker.getX()-(door.getX()+.5);
         double dz=worker.getZ()-(door.getZ()+.5);
         double initial=Math.hypot(entry.fromX,entry.fromZ);
-        if(initial<.35)return false;
-        double projected=(dx*entry.fromX+dz*entry.fromZ)/initial;
-        if(projected< -1.5){
+        // Some workers first register while their center is already in
+        // the doorway. Their entry vector is almost zero and the old
+        // code could NEVER release them, trapping the entire queue.
+        double projected=initial<.35?Double.NaN:
+                (dx*entry.fromX+dz*entry.fromZ)/initial;
+        boolean leftOpening=initial<.35
+                ?Math.hypot(dx,dz)>1.6&&level.getGameTime()-entry.started()>8
+                :projected< -1.25;
+        if(leftOpening){
             release(level,door,worker);
             return true;
         }

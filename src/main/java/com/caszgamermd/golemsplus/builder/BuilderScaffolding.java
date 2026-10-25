@@ -18,22 +18,51 @@ import net.minecraft.world.level.block.Blocks;
  */
 public final class BuilderScaffolding {
     public enum Result { CLIMBING, NEED_MATERIALS, NO_SAFE_TOWER, NOT_NEEDED }
-    private static final int MAX_HEIGHT=48;
+    // No arbitrary 48-block cap. Vertical routes extend a real scaffold
+    // by sixteen blocks per resupply cycle up to the schematic target.
     /** Construction climb and descent are continuous actions rather than
      * five-tick velocity impulses. Each entity has its own session, and
      * ordinary A* must not override it until the vertical job completes.
      */
     private record ClimbSession(BlockPos column,double stopY,
-                                boolean descending,long expires,net.minecraft.world.phys.Vec3 lastProgress){}
+                                boolean descending,long expires){}
     private static final java.util.Map<BuilderGolem,ClimbSession> sessions=
             new java.util.WeakHashMap<>();
-    private record ReturnRoute(BlockPos column,BlockPos landing,long expires){}
-    private static final java.util.Map<BuilderGolem,ReturnRoute> returns=new java.util.WeakHashMap<>();
-    private static final java.util.Map<BuilderGolem,Long> returnRetry=new java.util.WeakHashMap<>();
+    // Progress is measured in vertical feet, not in repeated A* route
+    // submissions. A blocked tower is temporarily avoided after repeated
+    // genuine no-motion intervals, with no teleportation or block phasing.
+    private static final class MotionWatch {
+        BlockPos column;
+        boolean down;
+        double lastY;
+        int lastProgressTick,failures;
+        MotionWatch(BlockPos col,boolean descending,double y,int tick){
+            column=col;down=descending;lastY=y;lastProgressTick=tick;
+        }
+    }
+    private record AvoidColumn(BlockPos column,long until){}
+    private static final java.util.Map<BuilderGolem,MotionWatch> progress=
+            new java.util.WeakHashMap<>();
+    private static final java.util.Map<BuilderGolem,AvoidColumn> avoided=
+            new java.util.WeakHashMap<>();
+    private static boolean avoided(ServerLevel level,BuilderGolem worker,
+                                    BlockPos candidate){
+        AvoidColumn bad=avoided.get(worker);
+        if(bad==null||level.getGameTime()>=bad.until())return false;
+        return bad.column().getX()==candidate.getX()
+                &&bad.column().getZ()==candidate.getZ();
+    }
+    private record ReturnRoute(BlockPos base,BlockPos landing,long expires){}
+    private static final java.util.Map<BuilderGolem,ReturnRoute> returning=
+            new java.util.WeakHashMap<>();
+    private record ExitRoute(BlockPos ground,long expires){}
+    private static final java.util.Map<BuilderGolem,ExitRoute> exiting=
+            new java.util.WeakHashMap<>();
     private BuilderScaffolding(){}
 
     private static void clearMotion(BuilderGolem worker){
         sessions.remove(worker);
+        progress.remove(worker);
         worker.setJumping(false);
         worker.setShiftKeyDown(false);
         worker.setNoGravity(false);
@@ -42,10 +71,47 @@ public final class BuilderScaffolding {
     }
     public static String debugClimb(BuilderGolem worker){
         ClimbSession session=sessions.get(worker);
-        return session==null?"NONE":(session.descending()?"DOWN":"UP")
+        if(session!=null){
+            MotionWatch watch=progress.get(worker);
+            return (session.descending()?"DOWN":"UP")
                 +" column="+session.column().toShortString()
-                +" stopY="+String.format(java.util.Locale.ROOT,"%.1f",session.stopY());
+                +" stopY="+String.format(java.util.Locale.ROOT,"%.1f",session.stopY())
+                +(watch==null?"":" idle="+Math.max(0,
+                        worker.tickCount-watch.lastProgressTick)+"t");
+        }
+        ReturnRoute route=returning.get(worker);
+        if(route!=null)return "RETURN column="+route.base().toShortString()
+                +" via="+route.landing().toShortString();
+        ExitRoute exit=exiting.get(worker);
+        return exit==null?"NONE":"EXIT via="+exit.ground().toShortString();
     }
+    /** Keep an in-progress upward movement exclusively owned by its
+     * builder task. Once the target becomes less than 1.35 blocks above
+     * the Builder, the job loop must NOT switch back to normal A* before
+     * the scaffold's actual landing height is reached.
+     */
+    /** Exclusive scaffold motion wins over the Planner's five-tick
+     * work/navigation decisions. Normal A* resumes automatically after
+     * a verified arrival/dismount (or after a safe abort).
+     */
+    public static boolean isControllingMovement(BuilderGolem worker){
+        return sessions.containsKey(worker)||exiting.containsKey(worker);
+    }
+    public static void cancel(BuilderGolem worker){
+        clearMotion(worker);
+        returning.remove(worker);
+        exiting.remove(worker);
+    }
+    public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
+        ClimbSession session=sessions.get(worker);
+        if(session==null||session.descending()
+                ||!climbingNow(level,worker))return false;
+        if(worker.getY()>=session.stopY()-.10)return false;
+        sessions.put(worker,new ClimbSession(session.column(),
+                session.stopY(),false,level.getGameTime()+30));
+        return true;
+    }
+
     public static boolean climbingNow(ServerLevel level,BuilderGolem worker){
         ClimbSession session=sessions.get(worker);
         if(session==null)return false;
@@ -59,9 +125,16 @@ public final class BuilderScaffolding {
         }
         BlockPos columnLevel=new BlockPos(session.column().getX(),
                 pos.getY(),session.column().getZ());
+        // The top scaffold is one block BELOW the Builder's feet.
+        // During an approach from a platform one block higher, it can
+        // temporarily be TWO blocks below. Accept that entry height,
+        // but never accept a missing/distant column as support.
         boolean onScaffold=level.getBlockState(columnLevel).is(Blocks.SCAFFOLDING)
                 ||level.getBlockState(columnLevel.below()).is(Blocks.SCAFFOLDING)
-                ||level.getBlockState(columnLevel.above()).is(Blocks.SCAFFOLDING);
+                ||level.getBlockState(columnLevel.above()).is(Blocks.SCAFFOLDING)
+                ||session.descending()
+                    &&level.getBlockState(columnLevel.below().below())
+                            .is(Blocks.SCAFFOLDING);
         if(!onScaffold){clearMotion(worker);return false;}
         return true;
     }
@@ -71,30 +144,137 @@ public final class BuilderScaffolding {
      * jump/sneak controls lets vanilla resolve scaffold collisions.
      */
     public static boolean tickMotion(ServerLevel level,BuilderGolem worker){
+        ExitRoute exit=exiting.get(worker);
+        if(exit!=null){
+            if(level.getGameTime()>exit.expires()
+                    ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .canStandOn(level,worker,exit.ground())){
+                exiting.remove(worker);
+            }else if(Math.abs(worker.getX()-exit.ground().getX()-.5)<.35
+                    &&Math.abs(worker.getZ()-exit.ground().getZ()-.5)<.35
+                    &&Math.abs(worker.getY()-exit.ground().getY())<.32
+                    &&worker.onGround()){
+                exiting.remove(worker);
+                worker.getNavigation().stop();
+                return false;
+            }else{
+                // Do not declare exit complete because the worker is only
+                // horizontally close while still one block ABOVE the
+                // ground. Steer off the scaffold with ordinary gravity
+                // until the feet actually touch the selected safe floor.
+                worker.getNavigation().stop();
+                worker.setNoGravity(false);
+                worker.setShiftKeyDown(false);
+                double tx=exit.ground().getX()+.5;
+                double tz=exit.ground().getZ()+.5;
+                worker.getMoveControl().setWantedPosition(tx,
+                        exit.ground().getY(),tz,1.0);
+                double vx=Math.max(-.15,Math.min(.15,(tx-worker.getX())*.28));
+                double vz=Math.max(-.15,Math.min(.15,(tz-worker.getZ())*.28));
+                if(level.noCollision(worker,worker.getBoundingBox().move(vx,0,vz))){
+                    var velocity=worker.getDeltaMovement();
+                    worker.setDeltaMovement(vx,Math.min(velocity.y,0),vz);
+                }
+                return true;
+            }
+        }
         if(!climbingNow(level,worker))return false;
         ClimbSession session=sessions.get(worker);
         if(session==null)return false;
+        // Refresh the active permit from actual controller ticks, not
+        // arbitrary Planner calls. A 200-block climb must never expire
+        // merely because a material check was offset by several ticks.
+        sessions.put(worker,new ClimbSession(session.column(),
+                session.stopY(),session.descending(),level.getGameTime()+30));
         double remain=session.stopY()-worker.getY();
-        if(session.descending()&&remain>=-.02)
-            return exitAtGround(level,worker,session);
-        if(!session.descending()&&remain<=0){
+        MotionWatch watch=progress.computeIfAbsent(worker,
+                ignored->new MotionWatch(session.column(),
+                        session.descending(),worker.getY(),worker.tickCount));
+        if(!watch.column.equals(session.column())
+                ||watch.down!=session.descending()){
+            watch=new MotionWatch(session.column(),session.descending(),
+                    worker.getY(),worker.tickCount);
+            progress.put(worker,watch);
+        }
+        double progressed=session.descending()
+                ?watch.lastY-worker.getY():worker.getY()-watch.lastY;
+        if(progressed>.08){
+            watch.lastY=worker.getY();
+            watch.lastProgressTick=worker.tickCount;
+            watch.failures=0;
+        }else if(worker.tickCount-watch.lastProgressTick>55){
+            watch.failures++;
+            watch.lastProgressTick=worker.tickCount;
+            // First timeout recenters on the column below. Repeated
+            // timeouts indicate collision on this physical route: stop
+            // forcing a stuck climb and let the Builder choose another
+            // safe tower. Never remove the real column or teleport.
+            if(watch.failures>=3){
+                // Never strand an elevated Builder by cancelling gravity
+                // control above a drop. Try a genuine nearby platform
+                // exit; otherwise reverse a failed UP climb on the same
+                // real tower and return to solid ground first.
+                BlockPos atHeight=new BlockPos(session.column().getX(),
+                        worker.blockPosition().getY(),session.column().getZ());
+                BlockPos safe=exitGround(level,worker,atHeight);
+                if(safe!=null){
+                    clearMotion(worker);
+                    exiting.put(worker,new ExitRoute(safe,
+                            level.getGameTime()+140));
+                    return true;
+                }
+                if(!session.descending()
+                        &&worker.getY()>session.column().getY()+1.3){
+                    avoided.put(worker,new AvoidColumn(session.column(),
+                            level.getGameTime()+120));
+                    begin(level,worker,session.column(),
+                            session.column().getY()+1.0,true);
+                    return true;
+                }
+                if(!session.descending()){
+                    avoided.put(worker,new AvoidColumn(session.column(),
+                            level.getGameTime()+120));
+                    clearMotion(worker);
+                    return false;
+                }
+                // No safe intermediate exit during descent; keep using
+                // the actual owned scaffold. Never drop a worker from
+                // height merely because a watchdog fired.
+                watch.failures=0;
+                worker.setShiftKeyDown(true);
+                worker.setDeltaMovement(0,-.16,0);
+            }
+            worker.getNavigation().stop();
+            worker.getMoveControl().setWantedPosition(
+                    session.column().getX()+.5,worker.getY(),
+                    session.column().getZ()+.5,1.0);
+        }
+        // Do not relinquish the session until the actual landing
+        // elevation has been reached. The construction code checks target
+        // proximity independently and must not cancel the ascent early.
+        if(ScaffoldVerticalRoute.reached(worker.getY(),session.stopY(),
+                session.descending())){
             clearMotion(worker);
             return false;
         }
-        if(worker.position().distanceToSqr(session.lastProgress())>.01){
-            session=new ClimbSession(session.column(),session.stopY(),session.descending(),
-                    level.getGameTime()+60,worker.position());
-            sessions.put(worker,session);
-        }
         worker.getNavigation().stop();
         double cx=session.column().getX()+.5,cz=session.column().getZ()+.5;
-        if(!BuilderScaffoldGeometry.centered(worker.getX()-cx,worker.getZ()-cz,worker.getBbWidth())){
-            // Physically enter the scaffold footprint. Never teleport and
-            // never force vertical motion from alongside a solid wall.
+        double horizontal=Math.hypot(worker.getX()-cx,worker.getZ()-cz);
+        if(horizontal>.25){
+            // Re-enter the physical column even from an upper ledge one
+            // block above the scaffold. Moving off that ledge lets gravity
+            // land the Builder on the top scaffold before descent starts.
             worker.setNoGravity(false);
             worker.setJumping(false);
             worker.setShiftKeyDown(false);
             worker.getMoveControl().setWantedPosition(cx,worker.getY(),cz,1.0);
+            double mx=Math.max(-.13,Math.min(.13,(cx-worker.getX())*.25));
+            double mz=Math.max(-.13,Math.min(.13,(cz-worker.getZ())*.25));
+            var tryBox=worker.getBoundingBox().move(mx,0,mz);
+            if(level.noCollision(worker,tryBox)){
+                var motion=worker.getDeltaMovement();
+                worker.setDeltaMovement(mx,Math.min(0,motion.y),mz);
+            }
             return true;
         }
         worker.setNoGravity(false);
@@ -113,156 +293,243 @@ public final class BuilderScaffolding {
         }
         return true;
     }
-    public static boolean travelDown(ServerLevel level,BuilderGolem worker){
-        ClimbSession session=sessions.get(worker);
-        if(session==null||!session.descending()||!climbingNow(level,worker))return false;
-        double remaining=worker.getY()-session.stopY();
-        if(remaining<=.02||!BuilderScaffoldGeometry.centered(
-                worker.getX()-session.column().getX()-.5,
-                worker.getZ()-session.column().getZ()-.5,worker.getBbWidth()))return false;
-        worker.setShiftKeyDown(true);
-        worker.setJumping(false);
-        worker.setNoGravity(false);
-        // Entity.move resolves real scaffold/solid/entity collisions. No
-        // position overwrite, gravity disabling, or collision bypass.
-        worker.move(net.minecraft.world.entity.MoverType.SELF,
-                new net.minecraft.world.phys.Vec3(0,BuilderScaffoldGeometry.downStep(remaining),0));
-        worker.setDeltaMovement(0,0,0);
-        worker.resetFallDistance();
-        return true;
-    }
-
-    /** Native ground-path validation rejects a starting scaffold cell.
-     * Physically step out at the bottom before handing movement back to A*.
-     */
-    private static boolean exitAtGround(ServerLevel level,BuilderGolem worker,
-                                         ClimbSession session){
-        double cx=session.column().getX()+.5,cz=session.column().getZ()+.5;
-        double clearDistance=.5+worker.getBbWidth()*.5+.02;
-        if(Math.abs(worker.getX()-cx)>=clearDistance
-                ||Math.abs(worker.getZ()-cz)>=clearDistance){
-            clearMotion(worker);
-            return false;
-        }
-        BlockPos best=null;double distance=Double.MAX_VALUE;
-        for(Direction side:Direction.Plane.HORIZONTAL){
-            BlockPos at=session.column().relative(side);
-            if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .canStandOn(level,worker,at))continue;
-            double d=worker.distanceToSqr(at.getX()+.5,at.getY(),at.getZ()+.5);
-            if(d<distance){distance=d;best=at;}
-        }
-        worker.getNavigation().stop();
-        worker.setNoGravity(false);
-        worker.setJumping(false);
-        worker.setShiftKeyDown(false);
-        if(best!=null)
-            worker.getMoveControl().setWantedPosition(best.getX()+.5,
-                    best.getY(),best.getZ()+.5,1.0);
-        // Normal collision still applies, and the session's timeout bounds
-        // retries if another entity or a newly placed block closes the exit.
-        return true;
-    }
-
-    private static void begin(ServerLevel level,BuilderGolem worker,
+    static void begin(ServerLevel level,BuilderGolem worker,
                               BlockPos column,double stopY,boolean down){
-        // Progress renews a session; job reevaluation must not reset a stall
-        // timeout or steal the movement controller before reaching a platform.
-        ClimbSession active=sessions.get(worker);
-        if(active!=null&&active.column().equals(column)
-                &&active.stopY()==stopY&&active.descending()==down)return;
+        // A session is renewed by the owning Builder task, never shared
+        // across colleagues or over a remote scaffold.
+        returning.remove(worker);
+        exiting.remove(worker);
+        ClimbSession current=sessions.get(worker);
+        if(current!=null&&current.column().equals(column)
+                &&current.descending()==down
+                &&Math.abs(current.stopY()-stopY)<.15){
+            sessions.put(worker,new ClimbSession(column.immutable(),stopY,down,
+                    level.getGameTime()+30));
+            return; // do not reset A* or velocity five times a second
+        }
         sessions.put(worker,new ClimbSession(column.immutable(),stopY,down,
-                level.getGameTime()+60,worker.position()));
+                level.getGameTime()+30));
+        progress.put(worker,new MotionWatch(column.immutable(),down,
+                worker.getY(),worker.tickCount));
         com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
         worker.getNavigation().stop();
     }
 
-    /** Continue down a tracked column until feet reach its lowest safe
-     * scaffold platform. The Builder must then walk away before cleanup.
+    /** A tracked tower has a base and a top; all cells are physical and
+     * already registered by their owning Planner. A worker may have
+     * several old towers but only the nearest reachable *upper* one
+     * qualifies as an elevator for its current position.
      */
-    public static boolean descendForTravel(ServerLevel level,BuilderGolem worker,
-            WorkerStationBlockEntity table){
-        if(climbingNow(level,worker))return true;
-        ReturnRoute cached=returns.get(worker);
-        if(cached!=null){
-            if(level.getGameTime()>cached.expires()
-                    ||!continuousColumn(level,cached.column(),worker.getY())){
-                returns.remove(worker);
-            }else if(nearColumn(worker,cached.column())){
-                returns.remove(worker);
-                begin(level,worker,cached.column(),cached.column().getY(),true);
-                return true;
-            }else if(com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeToExact(level,worker,cached.landing(),1.0))return true;
-            else returns.remove(worker);
+    private record Tower(BlockPos base,int topY){}
+    private static java.util.List<Tower> towers(ServerLevel level,
+            WorkerStationBlockEntity table,BuilderGolem worker){
+        java.util.Map<Long,BlockPos> bottoms=new java.util.LinkedHashMap<>();
+        java.util.Map<Long,Integer> tops=new java.util.HashMap<>();
+        for(BlockPos pos:table.scaffoldPositions(worker.getUUID())){
+            if(!level.hasChunkAt(pos)
+                    ||!level.getBlockState(pos).is(Blocks.SCAFFOLDING))continue;
+            long key=BlockPos.asLong(pos.getX(),0,pos.getZ());
+            BlockPos former=bottoms.get(key);
+            if(former==null||former.getY()>pos.getY())
+                bottoms.put(key,pos.immutable());
+            tops.merge(key,pos.getY(),Math::max);
         }
-        // Towers are a crew resource. Deduplicate their X/Z columns and
-        // keep the lowest surviving tracked block, never an untracked tower.
-        java.util.Map<Long,BlockPos> columns=new java.util.HashMap<>();
-        for(var id:table.builderWorkerIds())for(BlockPos p:table.scaffoldPositions(id)){
-            if(!level.hasChunkAt(p)||!level.getBlockState(p).is(Blocks.SCAFFOLDING))continue;
-            long key=((long)p.getX()<<32)^(p.getZ()&0xffffffffL);
-            columns.merge(key,p,(a,b)->a.getY()<b.getY()?a:b);
-        }
-        var candidates=new java.util.ArrayList<>(columns.values());
-        candidates.removeIf(p->worker.getY()<=p.getY()+.25
-                ||!continuousColumn(level,p,worker.getY()));
-        candidates.sort(Comparator.comparingDouble(p->
-                Math.pow(worker.getX()-p.getX()-.5,2)+Math.pow(worker.getZ()-p.getZ()-.5,2)));
-        BlockPos column=candidates.stream().filter(p->nearColumn(worker,p)).findFirst().orElse(null);
-        if(column==null){
-            if(level.getGameTime()<returnRetry.getOrDefault(worker,0L))return false;
-            returnRetry.put(worker,level.getGameTime()+40);
-            int paths=0;
-            for(BlockPos base:candidates){
-                int y=worker.blockPosition().getY();
-                for(int dy:new int[]{0,1,-1})for(Direction side:Direction.Plane.HORIZONTAL){
-                    BlockPos landing=new BlockPos(base.getX(),y+dy,base.getZ()).relative(side);
-                    if(!continuousColumn(level,base,landing.getY())
-                            ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                    .canStandOn(level,worker,landing))continue;
-                    if(++paths>16)return false;
-                    if(com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .routeToExact(level,worker,landing,1.0)){
-                        returns.put(worker,new ReturnRoute(base,landing,level.getGameTime()+200));
-                        return true;
-                    }
-                }
+        java.util.List<Tower> result=new java.util.ArrayList<>();
+        bottoms.forEach((key,base)->result.add(new Tower(base,tops.get(key))));
+        result.sort(Comparator.comparingDouble(t->
+                worker.distanceToSqr(t.base().getX()+.5,worker.getY(),
+                        t.base().getZ()+.5)
+                        +Math.abs(worker.getY()-(t.topY()+1))*.5));
+        return result;
+    }
+    private static BlockPos returnLanding(ServerLevel level,BuilderGolem worker,
+                                           Tower tower){
+        java.util.List<BlockPos> choices=new java.util.ArrayList<>();
+        for(int dy:new int[]{0,-1,1})
+            for(Direction side:Direction.Plane.HORIZONTAL){
+                BlockPos p=new BlockPos(tower.base().getX(),worker.blockPosition().getY(),
+                        tower.base().getZ()).relative(side).offset(0,dy,0);
+                if(p.getY()<tower.base().getY()
+                        ||p.getY()>tower.topY()+2
+                        ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .canStandOn(level,worker,p))continue;
+                choices.add(p);
             }
-            return false;
+        choices.sort(Comparator.comparingDouble(p->
+                p.distSqr(worker.blockPosition())));
+        for(BlockPos p:choices)
+            if(com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .canReachExact(level,worker,p))return p;
+        return null;
+    }
+    private static BlockPos exitGround(ServerLevel level,BuilderGolem worker,
+                                        BlockPos base){
+        BlockPos best=null;
+        double cost=Double.POSITIVE_INFINITY;
+        for(Direction side:Direction.Plane.HORIZONTAL){
+            // An adjacent safe floor may be one block LOWER than the
+            // scaffold's supporting terrain; a Builder must be willing
+            // to take this ordinary one-block drop to dismount.
+            for(int dy:new int[]{0,-1}){
+                BlockPos p=base.relative(side).offset(0,dy,0);
+                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canStandOn(level,worker,p))continue;
+                double score=worker.distanceToSqr(p.getX()+.5,worker.getY(),
+                        p.getZ()+.5)+Math.abs(dy)*2;
+                if(score<cost){cost=score;best=p;}
+            }
         }
-        double bottom=column.getY();
-        begin(level,worker,column,bottom,true);
+        return best;
+    }
+    /** Real side exit at the top of a scaffold. Vanilla pathfinding
+     * cannot usually start from a scaffold node to an adjacent full-block
+     * walkway. Move physically to the supported landing first, then
+     * release the Builder back to normal A* navigation.
+     */
+    static boolean stepToPlatform(ServerLevel level,BuilderGolem worker,
+                                  BlockPos destination){
+        double dx=worker.getX()-(destination.getX()+.5);
+        double dz=worker.getZ()-(destination.getZ()+.5);
+        if(dx*dx+dz*dz>3.2
+                ||Math.abs(worker.getY()-destination.getY())>1.3
+                ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canStandOn(level,worker,destination))return false;
+        clearMotion(worker);
+        exiting.put(worker,new ExitRoute(destination.immutable(),
+                level.getGameTime()+140));
         return true;
     }
 
-    private static boolean nearColumn(BuilderGolem worker,BlockPos column){
-        return Math.abs(worker.getX()-column.getX()-.5)<=1.05
-                &&Math.abs(worker.getZ()-column.getZ()-.5)<=1.05;
+    /** If the next schematic location is far from a Builder still on
+     * owned scaffolding, physically leave the tower onto a walkable
+     * upper platform BEFORE requesting a normal walking path.
+     */
+    public static boolean stepOffTowardWork(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,BlockPos target){
+        if(exiting.containsKey(worker))return true;
+        BlockPos feet=worker.blockPosition();
+        BlockPos under=feet.below();
+        if(!level.getBlockState(under).is(Blocks.SCAFFOLDING)
+                ||!table.scaffoldPositions(worker.getUUID()).contains(under))
+            return false;
+        BlockPos chosen=null;
+        double best=Double.POSITIVE_INFINITY;
+        for(Direction dir:Direction.Plane.HORIZONTAL){
+            for(int dy:new int[]{0,1,-1}){
+                BlockPos landing=feet.relative(dir).offset(0,dy,0);
+                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canStandOn(level,worker,landing))continue;
+                double score=landing.distSqr(target)+Math.abs(dy)*3;
+                if(score<best){best=score;chosen=landing;}
+            }
+        }
+        return chosen!=null&&stepToPlatform(level,worker,chosen);
     }
-    private static boolean continuousColumn(ServerLevel level,BlockPos base,double feetY){
-        int last=(int)Math.ceil(feetY)-1;
-        if(last<base.getY()||last-base.getY()>=MAX_HEIGHT)return false;
-        if(!level.hasChunkAt(base.below())||!level.getBlockState(base.below())
-                .isFaceSturdy(level,base.below(),Direction.UP))return false;
-        return BuilderScaffoldGeometry.completeColumn(base.getY(),feetY,y->{
-            BlockPos at=new BlockPos(base.getX(),y,base.getZ());
-            return level.hasChunkAt(at)&&level.getBlockState(at).is(Blocks.SCAFFOLDING);
-        });
+
+    /** Shared real dismount operation for both Builder jobs and the
+     * Minecraft movement GameTest. The landing must be solid and near the
+     * bottom of the owned scaffold; never teleport a worker.
+     */
+    static boolean dismountAtBase(ServerLevel level,BuilderGolem worker,
+                                   BlockPos column){
+        BlockPos exit=exitGround(level,worker,column);
+        if(exit==null)return false;
+        clearMotion(worker);
+        exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));
+        return true;
+    }
+
+    /** Return physically to a worker's own upper scaffold landing,
+     * descend through its column, then step off onto nearby solid ground.
+     * A valid return route is kept while the golem travels; ordinary A*
+     * must never take over a vertical climb.
+     */
+    public static boolean descendForTravel(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table){
+        // A long tower may require more than 30 ticks of descent.
+        // Renew the permit while this worker's material/lower-floor task
+        // still requests descent, without restarting the physics session.
+        if(sessions.containsKey(worker)&&climbingNow(level,worker)
+                &&sessions.get(worker).descending()){
+            var active=sessions.get(worker);
+            sessions.put(worker,new ClimbSession(active.column(),
+                    active.stopY(),true,level.getGameTime()+30));
+            return true;
+        }
+        if(exiting.containsKey(worker))return true;
+        var found=towers(level,table,worker);
+        if(found.isEmpty()){
+            returning.remove(worker);return false;
+        }
+        for(Tower tower:found){
+            BlockPos base=tower.base();
+            if(avoided(level,worker,base))continue;
+            if(worker.getY()>tower.topY()+3.5)continue;
+            double dx=worker.getX()-(base.getX()+.5);
+            double dz=worker.getZ()-(base.getZ()+.5);
+            // Standing on the BOTTOM scaffold means feet are at baseY+1.
+            // This is NOT "already on ground": the worker still needs
+            // an exit tile. Previously this early skip made the lower
+            // dismount branch unreachable for exactly that position.
+            if(worker.getY()<=base.getY()+1.2
+                    &&!ScaffoldVerticalRoute.onBottomScaffold(
+                            worker.getY(),base.getY(),dx,dz))continue;
+            if(dx*dx+dz*dz>20*20)continue;
+            if(ScaffoldVerticalRoute.needsReturn(dx,dz)){
+                ReturnRoute cached=returning.get(worker);
+                BlockPos landing=cached!=null&&cached.base().equals(base)
+                        &&cached.expires()>level.getGameTime()
+                        &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .canStandOn(level,worker,cached.landing())
+                        ?cached.landing():returnLanding(level,worker,tower);
+                if(landing==null)continue; // try another owned tower
+                boolean underway=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeToExact(level,worker,landing,1.0);
+                if(!underway){
+                    // Do not strand this Builder indefinitely at an
+                    // obsolete landing when the platform changes.
+                    returning.remove(worker);
+                    continue; // try another owned tower, or normal A*
+                }
+                returning.put(worker,new ReturnRoute(base,landing,
+                        level.getGameTime()+100));
+                return true;
+            }
+            returning.remove(worker);
+            double bottom=base.getY()+1.0;
+            if(!ScaffoldVerticalRoute.needsDescent(worker.getY(),base.getY())){
+                return dismountAtBase(level,worker,base);
+            }
+            begin(level,worker,base,bottom,true);
+            return true;
+        }
+        returning.remove(worker);
+        return false;
     }
 
     public static Result reach(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,BlockPos target,
             List<BuilderConstructionPlan.Step> plan){
         int feet=worker.blockPosition().getY();
-        // A block two levels up can still be unreachable from the
-        // current X/Z. The caller enters this mode only when the
-        // destination is genuinely above AND outside working reach.
-        if(target.getY()-worker.getY()<=1.35){
+        // A Builder could previously abort its climb one block early:
+        // as soon as the desired work Y was within 1.35 blocks,
+        // clearMotion() erased an UP session even if its stopY had NOT
+        // been reached. Respect the physical climb target instead.
+        ClimbSession active=sessions.get(worker);
+        if(active!=null&&!active.descending()
+                &&active.stopY()>=target.getY()-.15
+                &&climbingNow(level,worker)){
+            if(!ScaffoldVerticalRoute.reached(worker.getY(),active.stopY(),false)){
+                sessions.put(worker,new ClimbSession(active.column(),
+                        active.stopY(),false,level.getGameTime()+30));
+                return Result.CLIMBING;
+            }
             clearMotion(worker);
+        }
+        if(target.getY()-worker.getY()<=1.35){
             return Result.NOT_NEEDED;
         }
-        if(target.getY()-feet>MAX_HEIGHT)return Result.NO_SAFE_TOWER;
+        // Tall routes are divided into physical, inventory-bounded stages.
         // Prefer an existing walkable staircase or completed platform at
         // the target's exact X/Z before spending a single scaffold item.
         // Only route on real validated physical paths; never teleport.
@@ -273,9 +540,8 @@ public final class BuilderScaffolding {
         BlockPos base=existing.stream()
                 .filter(p->{
                     int dx=p.getX()-target.getX(),dz=p.getZ()-target.getZ();
-                    return dx*dx+dz*dz<=5;
+                    return dx*dx+dz*dz<=5&&!avoided(level,worker,p);
                 })
-                .filter(p->level.getBlockState(p).is(Blocks.SCAFFOLDING))
                 .min(Comparator.comparingInt(BlockPos::getY)).orElse(null);
         if(base==null)for(Direction side:Direction.Plane.HORIZONTAL){
             BlockPos landing=target.relative(side).below();
@@ -305,36 +571,62 @@ public final class BuilderScaffolding {
         // tried to walk through buildings to reach it.
         if(approachX*approachX+approachZ*approachZ>1.20){
             clearMotion(worker);
-            // Existing scaffolding is not an ordinary walkable A* node.
-            // Approach its unobstructed side from genuine ground, then
-            // let the continuous climb session enter the column.
-            Direction side=Math.abs(approachX)>=Math.abs(approachZ)
-                    ?(approachX>=0?Direction.EAST:Direction.WEST)
-                    :(approachZ>=0?Direction.SOUTH:Direction.NORTH);
-            BlockPos approach=level.getBlockState(base).is(Blocks.SCAFFOLDING)
-                    ?base.relative(side).immutable():base;
+            // Existing scaffolding is not a walkable A* node. When a
+            // Builder is already on an upper platform it must return to
+            // that SAME elevation beside the tower, rather than walking
+            // to its ground-floor base through completed walls.
+            BlockPos approach=null;
+            if(level.getBlockState(base).is(Blocks.SCAFFOLDING)
+                    &&worker.getY()>base.getY()+1.2){
+                final BlockPos selectedColumn=base;
+                int high=existing.stream()
+                        .filter(at->at.getX()==selectedColumn.getX()
+                                &&at.getZ()==selectedColumn.getZ())
+                        .mapToInt(BlockPos::getY).max()
+                        .orElse(selectedColumn.getY());
+                approach=returnLanding(level,worker,new Tower(base,high));
+            }
+            if(approach==null){
+                Direction side=Math.abs(approachX)>=Math.abs(approachZ)
+                        ?(approachX>=0?Direction.EAST:Direction.WEST)
+                        :(approachZ>=0?Direction.SOUTH:Direction.NORTH);
+                approach=level.getBlockState(base).is(Blocks.SCAFFOLDING)
+                        ?base.relative(side).immutable():base;
+            }
             if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .routeToExact(level,worker,approach,1.0))
                 com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .routeTo(level,worker,approach,1.0);
             return Result.CLIMBING;
         }
-        int top=target.getY()-1;
-        if(top-base.getY()+1>MAX_HEIGHT)return Result.NO_SAFE_TOWER;
-        for(int y=top+1;y<top+1+Math.ceil(worker.getBbHeight());y++){
-            BlockPos head=new BlockPos(base.getX(),y,base.getZ());
-            if(!level.hasChunkAt(head)||!level.getBlockState(head)
-                    .getCollisionShape(level,head).isEmpty())return Result.NO_SAFE_TOWER;
-        }
+        int wantedTop=target.getY()-1;
+        final BlockPos column=base;
+        int existingTop=existing.stream()
+                .filter(at->at.getX()==column.getX()&&at.getZ()==column.getZ()
+                        &&level.getBlockState(at).is(Blocks.SCAFFOLDING))
+                .mapToInt(BlockPos::getY).max().orElse(base.getY()-1);
+        // Extend one vertical stage, spend only the scaffold items for
+        // that stage, then climb before considering the next extension.
+        // This supports builds far taller than the worker's inventory.
+        int top=ScaffoldVerticalRoute.stageTop(base.getY(),existingTop,wantedTop);
+        if(top<base.getY())return Result.NOT_NEEDED;
         int needed=0;
         for(int y=base.getY();y<=top;y++){
             var p=new BlockPos(base.getX(),y,base.getZ());
             if(!level.hasChunkAt(p)||!level.mayInteract(player,p))
                 return Result.NO_SAFE_TOWER;
             if(level.getBlockState(p).is(Blocks.SCAFFOLDING)){
-                if(!table.isTrackedScaffold(p))return Result.NO_SAFE_TOWER;
+                if(!table.scaffoldPositions(worker.getUUID()).contains(p)){
+                    avoided.put(worker,new AvoidColumn(base.immutable(),
+                            level.getGameTime()+120));
+                    return Result.NO_SAFE_TOWER;
+                }
             }else if(level.getBlockState(p).isAir())needed++;
-            else return Result.NO_SAFE_TOWER;
+            else{
+                avoided.put(worker,new AvoidColumn(base.immutable(),
+                        level.getGameTime()+120));
+                return Result.NO_SAFE_TOWER;
+            }
         }
         var load=BuilderSupplyInventory.loadScaffold(level,worker,table,needed);
         if(load==BuilderSupplyInventory.ScaffoldLoad.MOVING)return Result.CLIMBING;
@@ -367,7 +659,9 @@ public final class BuilderScaffolding {
             return Result.CLIMBING;
         }
         clearMotion(worker);
-        return Result.NOT_NEEDED;
+        // This stage may end BELOW the ultimate target. The next work
+        // evaluation will extend the SAME owned tower, not walk away.
+        return top<wantedTop?Result.CLIMBING:Result.NOT_NEEDED;
     }
     private static BlockPos findBase(ServerLevel level,BuilderGolem worker,
             BlockPos target,int feet,WorkerStationBlockEntity table,
@@ -388,11 +682,19 @@ public final class BuilderScaffolding {
         for(BlockPos adjacent:offsets)
             for(int dy=0;dy<=5;dy++){
                 BlockPos base=new BlockPos(adjacent.getX(),feet-dy,adjacent.getZ());
-                if(!level.hasChunkAt(base)||!level.hasChunkAt(base.below()))continue;
+                if(avoided(level,worker,base)
+                        ||!level.hasChunkAt(base)
+                        ||!level.hasChunkAt(base.below()))continue;
                 if(!level.getBlockState(base.below()).isFaceSturdy(level,
                         base.below(),Direction.UP))continue;
                 boolean clear=true;
-                for(int y=base.getY();y<target.getY();y++){
+                // Only probe the next material-backed extension. Later
+                // obstructions are reconsidered when the worker reaches
+                // that elevation rather than refusing a 200-block tower
+                // before its first sixteen blocks are built.
+                int previewTop=ScaffoldVerticalRoute.stageTop(base.getY(),
+                        base.getY()-1,target.getY()-1);
+                for(int y=base.getY();y<=previewTop;y++){
                     BlockPos at=new BlockPos(base.getX(),y,base.getZ());
                     if(!level.hasChunkAt(at)||!level.getBlockState(at).isAir()
                             ||table.isTrackedScaffold(at)){
@@ -419,11 +721,6 @@ public final class BuilderScaffolding {
             WorkerStationBlockEntity table,boolean force){
         var positions=new java.util.ArrayList<>(table.scaffoldPositions(worker.getUUID()));
         if(positions.isEmpty())return;
-        for(BlockPos pos:positions)
-            if(!level.getEntitiesOfClass(net.minecraft.world.entity.Entity.class,
-                    new net.minecraft.world.phys.AABB(pos).inflate(.4,1.7,.4),
-                    entity->entity.isAlive()&&!(entity instanceof net.minecraft.world.entity.item.ItemEntity))
-                    .isEmpty())return;
         int minY=positions.stream().mapToInt(BlockPos::getY).min().orElse(0);
         if(!force){
             if(!worker.onGround()||worker.getY()>minY+2.1)return;

@@ -12,7 +12,9 @@ assert "MAX_DESTINATION_PATHS*2" in navigation
 assert "best!=null&&checked>8" in navigation
 assert "mob.blockPosition().equals(feet)" in navigation
 assert "Math.abs(a-b)>.60)continue;" in navigation
-assert "&&mob.distanceToSqr(target.getX()+.5" in navigation
+# Walking to a depot/doorway must NEVER be short-circuited by placing reach.
+assert "if(option.feet().equals(mob.blockPosition()))continue;" in navigation
+assert "&&mob.distanceToSqr(target.getX()+.5" not in navigation
 assert "public static boolean retryScheduled(PathfinderMob mob)" in navigation
 assert 'WorkerNavigation' in building
 assert "WorkerNavigation" in building
@@ -33,3 +35,4 @@ assert "return Result.NOT_NEEDED;" in scaffolds
 assert "routeToExact(level,worker,landing,1.0)" in scaffolds
 print("PASS: crowd-tolerant block-collision routes, broader route candidates, "
       "retry diagnostics and no platform climbing loop")
+

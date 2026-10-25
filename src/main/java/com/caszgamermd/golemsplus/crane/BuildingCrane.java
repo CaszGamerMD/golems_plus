@@ -25,6 +25,7 @@ import net.minecraft.world.phys.*;
 public final class BuildingCrane extends Entity implements Container {
     private static final EntityDataAccessor<Integer> MODE=SynchedEntityData.defineId(BuildingCrane.class,EntityDataSerializers.INT);
     private static final EntityDataAccessor<Integer> UPGRADES=SynchedEntityData.defineId(BuildingCrane.class,EntityDataSerializers.INT);
+    private static final EntityDataAccessor<BlockPos> ANCHOR_ORIGIN=SynchedEntityData.defineId(BuildingCrane.class,EntityDataSerializers.BLOCK_POS);
     private static final EntityDataAccessor<Float> AX=SynchedEntityData.defineId(BuildingCrane.class,EntityDataSerializers.FLOAT);
     private static final EntityDataAccessor<Float> AY=SynchedEntityData.defineId(BuildingCrane.class,EntityDataSerializers.FLOAT);
     private static final EntityDataAccessor<Float> AZ=SynchedEntityData.defineId(BuildingCrane.class,EntityDataSerializers.FLOAT);
@@ -48,17 +49,23 @@ public final class BuildingCrane extends Entity implements Container {
     private long planAfter,pickupStarted;
     private int page;
     public BuildingCrane(EntityType<? extends BuildingCrane> type,Level level){super(type,level);setNoGravity(true);}
-    @Override protected void defineSynchedData(SynchedEntityData.Builder b){b.define(MODE,-1);b.define(UPGRADES,0);b.define(AX,0f);b.define(AY,0f);b.define(AZ,0f);}
+    @Override protected void defineSynchedData(SynchedEntityData.Builder b){b.define(ANCHOR_ORIGIN,BlockPos.ZERO);b.define(MODE,-1);b.define(UPGRADES,0);b.define(AX,0f);b.define(AY,0f);b.define(AZ,0f);}
     public boolean hasBox(){return entityData.get(MODE)>=0;}
     public boolean supplyMode(){return entityData.get(MODE)==1;}
     public int reach(){return CraneDispatch.reach(entityData.get(UPGRADES));}
     public BlockPos anchor(){return anchor;}
-    public Vec3 anchorPoint(){return new Vec3(entityData.get(AX),entityData.get(AY),entityData.get(AZ));}
-    private void anchorPoint(Vec3 p){entityData.set(AX,(float)p.x);entityData.set(AY,(float)p.y);entityData.set(AZ,(float)p.z);}
+    public Vec3 anchorPoint(){return Vec3.atLowerCornerOf(entityData.get(ANCHOR_ORIGIN)).add(entityData.get(AX),entityData.get(AY),entityData.get(AZ));}
+    private void anchorPoint(Vec3 p){
+        // Fractional offsets retain sub-block precision at the world border.
+        BlockPos origin=BlockPos.containing(p);entityData.set(ANCHOR_ORIGIN,origin);
+        entityData.set(AX,(float)(p.x-origin.getX()));
+        entityData.set(AY,(float)(p.y-origin.getY()));
+        entityData.set(AZ,(float)(p.z-origin.getZ()));
+    }
     public UUID owner(){return owner;}
     public UUID operator(){return operator;}
     public String status(){return status+" | reach="+reach()+" | waiting="+destinations.size()+" | riders="+builders().size();}
-    public boolean parked(){return destination==null&&path.isEmpty()&&railPath.isEmpty();}
+    public boolean parked(){return supplyStop==null&&destination==null&&path.isEmpty()&&railPath.isEmpty();}
     public boolean onsite(){return onsite;}
     public boolean serves(WorkerStationBlockEntity station){return table.equals(station.getBlockPos())&&Objects.equals(owner,station.owner())&&Objects.equals(job,station.activeOrder());}
     public WorkerStationBlockEntity station(){return level().getBlockEntity(table) instanceof WorkerStationBlockEntity s&&serves(s)?s:null;}
@@ -106,8 +113,9 @@ public final class BuildingCrane extends Entity implements Container {
             Vec3 a=anchorPoint();
             if(builder.position().distanceTo(a)<2.2){
                 WorkerNavigation.stop(builder);
-                if(!builder.startRiding(this,true,true))
-                    status="Operator boarding rejected at "+builder.blockPosition();
+                if(!builder.startRiding(this,true,true)){
+                    status="Operator boarding rejected at "+builder.blockPosition();return;
+                }
             }
             else {
                 status="Operator approaching chassis; distance="
@@ -324,3 +332,4 @@ public final class BuildingCrane extends Entity implements Container {
     }
     private static UUID uuid(String text){try{return UUID.fromString(text);}catch(IllegalArgumentException e){return null;}}
 }
+

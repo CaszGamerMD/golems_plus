@@ -41,6 +41,12 @@ jobs:
         run: python3 scripts/builder_gate_scaffold_shulker_smoke.py
       - name: Verify active Builder scaffold descent and door deadlock recovery
         run: python3 scripts/builder_scaffold_door_recovery_smoke.py
+      - name: Verify doorway clearance and complete scaffold up/down movement
+        run: python3 scripts/builder_scaffold_door_exit_smoke.py
+      - name: Verify 0.65 worker collision, return-to-scaffold and safe exit
+        run: python3 scripts/builder_scaffold_return_065_smoke.py
+      - name: Verify unlimited staged scaffold towers and exclusive movement
+        run: python3 scripts/builder_scaffold_vertical_v2_smoke.py
       - name: Verify continuous Builder scaffold ascent and descent
         run: python3 scripts/builder_scaffold_continuous_smoke.py
       - name: Verify per-door FIFO traffic and scaffold gravity recovery
@@ -59,13 +65,15 @@ jobs:
         run: python3 scripts/builder_warehouse_queued_smoke.py
       - name: Verify Builder chunk ticket and worker persistence protections
         run: python3 scripts/builder_chunk_tickets_smoke.py
-      - name: Run exact Dome crane collision GameTest
+      # The build task now runs a real dedicated Minecraft GameTest.
+      # A green JUnit run alone does not count as a movement pass.
+      - name: Run Minecraft server GameTests (scaffold route and framed doorway)
         run: gradle --no-daemon runGameTest
-      - name: Preserve Minecraft GameTest diagnostics
+      - name: Preserve Minecraft GameTest logs and reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: crane-dome-gametest-report
+          name: builder-scaffold-ring-gametest
           path: |
             build/gametest/
             build/reports/

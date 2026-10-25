@@ -1,7 +1,8 @@
 {
   DataVersion:4526,
-  size:[I;48,48,48],
+  size:[48,48,48],
   palette:[],
   blocks:[],
   entities:[]
 }
+

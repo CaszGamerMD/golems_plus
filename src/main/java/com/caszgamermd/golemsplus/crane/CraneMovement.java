@@ -26,7 +26,7 @@ final class CraneMovement {
     }
     static AABB chassis(Vec3 p){return new AABB(p.x-.65,p.y,p.z-.65,p.x+.65,p.y+2.8,p.z+.65);}
     static AABB load(BuildingCrane crane,Vec3 p){double h=crane.supplyMode()?2.05:1.1;
-        return new AABB(p.x-h,p.y+.02,p.z-h,p.x+h,p.y+2.7,p.z+h);}
+        return new AABB(p.x-h,p.y,p.z-h,p.x+h,p.y+2.7,p.z+h);}
     static boolean pose(ServerLevel world,BuildingCrane crane,Vec3 load,Vec3 anchor){
         Vec3 root=anchor.add(0,2.9,0),tip=load.add(0,2.8,0);
         if(root.distanceTo(tip)>crane.reach()||!clear(world,crane,chassis(anchor))
@@ -89,3 +89,4 @@ final class CraneMovement {
     static BlockPos pos(CranePath.Cell p){return new BlockPos(p.x(),p.y(),p.z());}
     static Vec3 point(CranePath.Cell p){return new Vec3(p.x()+.5,p.y(),p.z()+.5);}
 }
+

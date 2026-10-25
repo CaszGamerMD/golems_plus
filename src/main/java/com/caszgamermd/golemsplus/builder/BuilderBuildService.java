@@ -205,8 +205,13 @@ public final class BuilderBuildService {
         // current 10-coordinate assignment or warehouse courier route.
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
+            // On job completion a Builder may still be on its LAST
+            // scaffold tower. It must return to ground and dismount
+            // BEFORE reclaiming blocks, delivering tools or going home.
+            if(BuilderScaffolding.isControllingMovement(worker)
+                    ||BuilderScaffolding.descendForTravel(level,worker,table))
+                return;
             worker.setNoGravity(false);
-            if(BuilderScaffolding.descendForTravel(level,worker,table))return;
             BuilderScaffolding.retrieve(level,worker,table,false);
             // A completed/canceled plan may still own boxed warehouse stock.
             // Recover real cargo first rather than losing it on job end.
@@ -253,12 +258,14 @@ public final class BuilderBuildService {
             return;
         }
         if(table.phase()==WorkerPhase.PAUSED){
+            BuilderScaffolding.cancel(worker);
             worker.getNavigation().stop();
             worker.setNoGravity(false);return;
         }
-        // Finish entering/climbing/descending before work-range checks can
-        // redirect movement halfway up a tower. Motion has its own timeout.
-        if(BuilderScaffolding.climbingNow(level,worker))return;
+        // Do not let a fresh route to supplies/work overwrite the last
+        // meter of ascent, descent, or dismount. The per-entity-tick
+        // scaffold controller alone owns movement until safe arrival.
+        if(BuilderScaffolding.isControllingMovement(worker))return;
         int membership=table.builderWorkerIds().indexOf(worker.getUUID());
         if(membership>=table.crewTarget()&&table.claimedStep(worker.getUUID())<0
                 &&!worker.hasSupplyBox()){
@@ -369,6 +376,11 @@ public final class BuilderBuildService {
                 // dismantle the nearby scaffold to rebuild them.
                 return;
             }
+            // Finish the *actual* scaffold landing before a short
+            // remaining vertical distance causes the normal work route
+            // or depot order to cancel the last block of ascent.
+            if(BuilderScaffolding.finishActiveAscent(level,worker))
+                return;
             // Every real Builder goes to the chosen OnSite depot ONCE per
             // exclusive ten-coordinate batch, unloads other materials and
             // collects actual stock (including flowers within shulkers).
@@ -486,6 +498,12 @@ public final class BuilderBuildService {
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
             if(workDistance>14){
+                // Leave a completed scaffold onto an adjacent solid upper
+                // walkway BEFORE asking vanilla A* to path from its
+                // non-walkable scaffolding node. This is crucial for
+                // circling buildings after reaching the required height.
+                if(BuilderScaffolding.stepOffTowardWork(level,worker,table,pos))
+                    return;
                 // The NEXT job step is not in physical placing range yet.
                 // Regardless of the previous navigation state, continue
                 // approaching until the distance check genuinely passes.
