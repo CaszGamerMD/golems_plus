@@ -10,7 +10,18 @@ assert "BuilderGolem.class,area" in space
 assert "table.builderWorkerIds().contains(g.getUUID())" in space
 assert "List<LivingEntity> others" in space
 assert "public static boolean yieldTick(" in space
-assert "WorkerNavigation.routeTo(level,worker,hold.destination(),.9)" in space
+assert "WorkerNavigation.routeToExact(level,worker,hold.destination(),.9)" in space
+assert "WorkerNavigation.routeToExact(level,blocker,destination,.9)" in space
+assert "WorkerNavigation.canReachExact(level,worker,p)" in space
+navigation=(root.parent/"worker/WorkerNavigation.java").read_text()
+assert "public static boolean routeToExact(" in navigation
+assert "public static boolean canReachExact(" in navigation
+exact=navigation[navigation.index("public static boolean routeToExact("):
+                 navigation.index("public static boolean routeTo(",navigation.index("public static boolean routeToExact("))]
+assert "createPath(target,0)" in exact
+assert "safePath(level,mob,path,false)" in exact
+assert "moveTo(path,speed)" in exact
+assert "candidateGoals(" not in exact
 assert "private static BlockPos escape(" in space
 assert "level.noCollision(worker,shifted)" in space
 assert "return false;" in space[space.index("public static boolean ready("):]
@@ -24,7 +35,14 @@ assert "getGameTime()+60" in space
 assert "!level.getBlockState(hold.target()).isAir()" in space
 assert "hold.placingWorker()" in space
 assert "public static BlockPos approach(" in space
-assert "if(++attempted>8)break;" in space
+assert "if(++attempted>16)break;" in space
+# Every narrow aisle with usable straight ground must be considered, not
+# just diagonal tiles. Retain the blocked-entity and real-path safeguards.
+for direction in ("{radius,0}", "{-radius,0}", "{0,radius}", "{0,-radius}",
+                  "{radius,radius}", "{radius,-radius}",
+                  "{-radius,radius}", "{-radius,-radius}"):
+    assert direction in space, f"missing safe sidestep direction: {direction}"
+assert "!path.canReach()" in navigation
 assert "boolean" not in space[space.index("private record Yield"):space.index("private static final Map")] or "placingWorker" in space
 assert "workDistance<=100" in build
 assert "BuilderPlacementSpace.approach(level,worker,pos)" in build
