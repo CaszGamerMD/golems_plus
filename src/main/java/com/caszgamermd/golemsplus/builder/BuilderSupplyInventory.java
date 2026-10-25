@@ -264,6 +264,15 @@ public final class BuilderSupplyInventory {
                 depot.getZ()+.5)>12){
             if(BuilderScaffolding.descendForTravel(level,worker,table))
                 return LoadStatus.MOVING;
+            // A finished wall can strand a supply runner one block above
+            // the OnSite floor. When native pathfinding has rejected its
+            // return repeatedly, step physically down to safe adjacent
+            // ground and give the other three workers the corridor.
+            if(worker.getY()>depot.getY()+.65
+                    &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .repeatedlyUnreachable(worker,8)
+                    &&BuilderTeamGroundTraffic.recover(level,worker,depot))
+                return LoadStatus.MOVING;
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                     level,worker,depot,.83);
             return LoadStatus.MOVING;
