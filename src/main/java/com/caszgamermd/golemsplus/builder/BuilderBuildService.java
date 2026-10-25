@@ -269,10 +269,31 @@ public final class BuilderBuildService {
                         net.minecraft.core.registries.BuiltInRegistries.ITEM
                             .getKey(stack.getItem()).toString());
             }
+            // Retrieve temporary towers at a work-order boundary, never
+            // after each block: workers should complete all ten cells on
+            // their current scaffolding before returning for more stock.
+            if(table.builderWorkOrder(worker.getUUID()).isEmpty()
+                    &&!table.scaffoldPositions(worker.getUUID()).isEmpty())
+                BuilderScaffolding.retrieve(level,worker,table,false);
             int index=table.claimBuilderStep(worker.getUUID(),limit,
                     plan.steps(),carriedItems);
             if(index<0)return; // wait for current layer assignments to finish
             var step=plan.steps().get(index);
+            // Every real Builder goes to the chosen OnSite depot ONCE per
+            // exclusive ten-coordinate batch, unloads other materials and
+            // collects actual stock (including flowers within shulkers).
+            // It does not visit the Planning Table for assignments.
+            if(!table.builderOrderPrepared(worker.getUUID())){
+                var prep=BuilderSupplyInventory.prepareWorkOrder(
+                        level,worker,table,plan.steps());
+                if(prep==BuilderSupplyInventory.LoadStatus.MOVING)return;
+                if(prep==BuilderSupplyInventory.LoadStatus.MISSING){
+                    table.setProblem("Builder work order waiting for reachable "
+                            +"OnSite Storage (material staging not complete)");
+                    return;
+                }
+                table.prepareBuilderOrder(worker.getUUID());
+            }
             BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
             if(Math.abs((long)pos.getX()-home.getX())>256||
                     Math.abs((long)pos.getZ()-home.getZ())>256){
@@ -425,7 +446,8 @@ public final class BuilderBuildService {
             table.recordBuilderPlacement(step.requiredItem());
             table.completeBuilderStep(worker.getUUID(),index);
             BuilderSupplyInventory.recycleEmptyShulkers(table);
-            BuilderScaffolding.retrieve(level,worker,table,false);
+            // Keep any deployed scaffolding until this ten-block work order
+            // completes; retrieving per placed block caused route churn.
             table.setProblem("");
         }catch(Exception exception){
             table.setProblem("Builder paused: "+exception.getMessage());
