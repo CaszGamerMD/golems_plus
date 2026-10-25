@@ -147,6 +147,7 @@ public final class BuilderScaffoldBridgeGameTest {
             if(state==BuilderScaffolding.Result.NO_SAFE_TOWER
                     ||state==BuilderScaffolding.Result.NEED_MATERIALS)
                 helper.fail("Long bridge denied physical detour: "+state
+                        +" "+BuilderScaffoldBridge.debug(worker)
                         +" at "+worker.blockPosition());
         });
     }
