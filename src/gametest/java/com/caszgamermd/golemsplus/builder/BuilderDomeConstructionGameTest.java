@@ -1,6 +1,8 @@
 package com.caszgamermd.golemsplus.builder;
 
 import com.caszgamermd.golemsplus.warehouse.WarehouseAssignment;
+import com.caszgamermd.golemsplus.crane.BuildingCrane;
+import com.caszgamermd.golemsplus.crane.CraneContent;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import com.caszgamermd.golemsplus.world.WorksiteContent;
 import com.caszgamermd.golemsplus.worker.WorkerPhase;
@@ -19,7 +21,10 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 
@@ -32,7 +37,7 @@ public final class BuilderDomeConstructionGameTest {
     @SuppressWarnings("removal")
     @GameTest(structure="golems_plus_gametest:dome_arena",
             maxTicks=90000,skyAccess=true)
-    public void constructsExactDomeWithRealBuilders(GameTestHelper helper){
+    public void constructsExactDomeWithCraneAndFourBuilders(GameTestHelper helper){
         ServerLevel level=helper.getLevel();
         final Path source;
         try{
@@ -111,16 +116,69 @@ public final class BuilderDomeConstructionGameTest {
             }
             crew.add(worker);
         }
+        // The crane requires a *fifth* independently crafted physical
+        // operator. Keep four actual builders assigned to construction.
+        if(!table.setCrewTarget(id,5)){
+            helper.fail("Cannot temporarily register the fifth crane operator");return;
+        }
+        BuilderGolem operator=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos operatorSpawn=helper.absolutePos(new BlockPos(3,2,25));
+        operator.setPos(operatorSpawn.getX()+.5,operatorSpawn.getY(),
+                operatorSpawn.getZ()+.5);
+        operator.assign(plannerPos,id);
+        if(!level.addFreshEntity(operator)
+                ||!table.registerBuilderWorker(operator.getUUID())
+                ||!table.setCrewTarget(id,4)){
+            helper.fail("Could not register fifth dedicated crane operator");return;
+        }
         if(!table.startPlacedBuilder(id)){
-            helper.fail("Dome Planner rejected start with 4 registered builders");
+            helper.fail("Dome Planner rejected start with 4 workers and 1 operator");
             return;
         }
+        var crane=new BuildingCrane(CraneContent.CRANE,level);
+        BlockPos craneRail=helper.absolutePos(new BlockPos(3,2,24));
+        BlockPos craneBasket=helper.absolutePos(new BlockPos(6,2,24));
+        crane.place(id,craneRail,Vec3.atBottomCenterOf(craneBasket));
+        if(!level.addFreshEntity(crane)||!crane.link(table)
+                ||!crane.assignOperator(operator)){
+            helper.fail("Could not place and link physical crane or assign operator");
+            return;
+        }
+        owner.setItemInHand(InteractionHand.MAIN_HAND,
+                new ItemStack(CraneContent.BUILDER_BOX));
+        crane.interact(owner,InteractionHand.MAIN_HAND);
+        owner.setItemInHand(InteractionHand.MAIN_HAND,
+                new ItemStack(CraneContent.BOOM,2));
+        crane.interact(owner,InteractionHand.MAIN_HAND);
+        crane.interact(owner,InteractionHand.MAIN_HAND);
+        if(crane.reach()!=90){
+            helper.fail("Two physical boom upgrades were not consumed");return;
+        }
+        final Set<UUID> craneBoarded=new LinkedHashSet<>();
+        final Set<UUID> craneUnloaded=new LinkedHashSet<>();
+        final int[] maxRiders={0};
         final int[] lastCursor={-1},lastCleared={-1},lastCompleted={-1};
         final long[] lastProgress={helper.getTick()};
         final boolean[] inspected={false},checkpoint={false};
         helper.onEachTick(()->{
             long tick=helper.getTick();
             if(tick%5!=0)return;
+            int riding=0;
+            for(BuilderGolem worker:crew){
+                if(worker.getVehicle()==crane){
+                    riding++;
+                    craneBoarded.add(worker.getUUID());
+                } else if(craneBoarded.contains(worker.getUUID()))
+                    craneUnloaded.add(worker.getUUID());
+            }
+            maxRiders[0]=Math.max(maxRiders[0],riding);
+            if(riding>4){
+                helper.fail("Crane exceeded four worker passenger seats");return;
+            }
+            if(tick>400&&(operator.isRemoved()||operator.getVehicle()!=crane)){
+                helper.fail("Dedicated builder crane operator did not remain seated: "
+                        +crane.status());return;
+            }
             // Replenish the 27-slot CHEST, never worker inventories.
             Set<Item> needs=new LinkedHashSet<>();
             needs.add(Items.SCAFFOLDING);
@@ -192,15 +250,24 @@ public final class BuilderDomeConstructionGameTest {
                 boolean scaffoldsGone=crew.stream().allMatch(
                         worker->table.scaffoldPositions(worker.getUUID()).isEmpty());
                 if(atGround&&scaffoldsGone){
-                    System.out.println("[DOME E2E] PASS all 3537 blocks verified, "+
-                            "plant filter active, 4 workers grounded, scaffolding recovered");
+                    if(craneUnloaded.isEmpty()){
+                        helper.fail("Dome built but crane never physically carried "
+                                +"and unloaded a builder | "+crane.status());return;
+                    }
+                    System.out.println("[DOME CRANE E2E] PASS 3537 blueprint "
+                            +"states verified, four actual builders grounded, "
+                            +"scaffolds reclaimed, physical crane boardings="
+                            +craneBoarded.size()+" delivered="+craneUnloaded.size()
+                            +" maxSimultaneous="+maxRiders[0]);
                     helper.succeed();
                 }
                 return;
             }
             if(tick-lastProgress[0]>2400){
                 StringBuilder message=new StringBuilder(
-                        "Dome stalled after "+tick+" ticks | clear="+
+                        "Dome stalled after "+tick+" ticks | crane="+crane.status()
+                        +" | mounted="+craneBoarded.size()+" unloaded="+craneUnloaded.size()
+                        +" | clear="+
                         table.builderClearCursor()+" | contiguous="+table.builderCursor()
                         +" | totalCompleted="+table.builderCompletedCount()
                         +"/"+steps.size()+" | problem="+table.problem());
