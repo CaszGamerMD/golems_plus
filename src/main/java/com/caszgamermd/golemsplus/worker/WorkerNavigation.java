@@ -41,7 +41,7 @@ public final class WorkerNavigation {
     private static final int STALL_TICKS=40;
     // Cheap 5-tick waypoint inspection; full A* only when the goal changes,
     // the path becomes obstructed, or progress genuinely stops.
-    private static final int ROUTE_RETRY=10;
+    private static final int ROUTE_RETRY=20;
     private static final int CHECK_TICKS=5;
     private static final int LOOK_AHEAD=4;
     private static final int MAX_DESTINATION_PATHS=16;
@@ -349,7 +349,8 @@ public final class WorkerNavigation {
             // position on the same flat surface is easily reachable.
             for(Candidate option:candidateGoals(level,mob,target,
                     p.attempts==0?0:(p.attempts%4)+1)){
-                if(++checked>MAX_DESTINATION_PATHS)break;
+                if(++checked>MAX_DESTINATION_PATHS*2
+                        ||best!=null&&checked>8)break;
                 if(option.feet().equals(mob.blockPosition())){
                     if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
                             &&mob.distanceToSqr(target.getX()+.5,

@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+"""Regression for false 'cannot path' reports on flat construction sites."""
+from pathlib import Path
+root=Path(__file__).resolve().parents[1]/"src/main/java/com/caszgamermd/golemsplus"
+navigation=(root/"worker/WorkerNavigation.java").read_text()
+building=(root/"builder/BuilderBuildService.java").read_text()
+scaffolds=(root/"builder/BuilderScaffolding.java").read_text()
+assert "getBlockCollisions(mob,body).iterator().hasNext()" in navigation
+assert "world.noCollision(mob,body)" in navigation
+assert "world.getBlockCollisions" in navigation
+assert "MAX_DESTINATION_PATHS*2" in navigation
+assert "best!=null&&checked>8" in navigation
+assert "mob.blockPosition().equals(feet)" in navigation
+assert "Math.abs(a-b)>.60)continue;" in navigation
+assert "&&mob.distanceToSqr(target.getX()+.5" in navigation
+assert "public static boolean retryScheduled(PathfinderMob mob)" in navigation
+assert 'WorkerNavigation' in building
+assert ".retryScheduled(worker);" in building
+assert '"Builder exploring alternate routes to "' in building
+assert "worker.distanceToSqr(landing.getX()+.5" in scaffolds
+assert "return Result.NOT_NEEDED;" in scaffolds
+assert "routeToExact(level,worker,landing,1.0)" in scaffolds
+print("PASS: crowd-tolerant block-collision routes, broader route candidates, "
+      "retry diagnostics and no platform climbing loop")
