@@ -630,6 +630,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public BlockPos builderOrigin(){return builderOrigin;}
     public String placedSchematicName(){return placedSchematicName;}
     public int builderCursor(){return builderCursor;}
+    /** Includes verified construction steps beyond the contiguous cursor.
+     * Multiple Builders work in independent zones and can make genuine
+     * progress while an earlier dependency keeps builderCursor unchanged.
+     */
+    public int builderCompletedCount(){
+        return builderCursor+builderFinishedSteps.size();
+    }
     public int builderClearCursor(){return builderClearCursor;}
     /** The job block owns the clear cursor, verified cells and claims.
      * A stalled claim expires after five seconds; a different Builder can
