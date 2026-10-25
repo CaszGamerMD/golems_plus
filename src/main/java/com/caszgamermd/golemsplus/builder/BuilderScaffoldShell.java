@@ -35,12 +35,21 @@ public final class BuilderScaffoldShell {
 
     public record Blueprint(Set<BlockPos> solids,Set<BlockPos> shell,
             Map<Integer,Set<BlockPos>> floors,int lowY,int highY,
-            List<TowerAnchor> towers){
+            List<TowerAnchor> towers,Set<Long> towerExclusion){
         public Blueprint {
             solids=Set.copyOf(solids);
             shell=Set.copyOf(shell);
             floors=Map.copyOf(floors);
             towers=List.copyOf(towers);
+            towerExclusion=Set.copyOf(towerExclusion);
+        }
+        /** Tower x/z must have two FULL empty columns between it and
+         * every block in the schematic, regardless of the block height.
+         * This includes future overhangs and prevents inner-dome towers.
+         */
+        public boolean towerHasTwoBlockGap(BlockPos at){
+            return !towerExclusion.contains(BlockPos.asLong(
+                    at.getX(),0,at.getZ()));
         }
         public boolean isShell(BlockPos at){return shell.contains(at);}
         public Set<BlockPos> atHeight(int y){
@@ -90,7 +99,7 @@ public final class BuilderScaffoldShell {
     }
 
     public static Blueprint fromSolids(Set<BlockPos> solids){
-        if(solids.isEmpty())return new Blueprint(Set.of(),Set.of(),Map.of(),0,0,List.of());
+        if(solids.isEmpty())return new Blueprint(Set.of(),Set.of(),Map.of(),0,0,List.of(),Set.of());
         int minX=Integer.MAX_VALUE,maxX=Integer.MIN_VALUE;
         int minZ=Integer.MAX_VALUE,maxZ=Integer.MIN_VALUE;
         int minY=Integer.MAX_VALUE,maxY=Integer.MIN_VALUE;
@@ -155,19 +164,30 @@ public final class BuilderScaffoldShell {
                 all.addAll(immutable);
             }
         }
-        // The long-lived shared towers are fixed to the outer X+/X-/Z+/Z-
-        // extremes, with the other coordinate taken from the median of
-        // the matching outer edge's schematic cells. Use the second shell
-        // lane for a clear worker approach on either side of the tower.
+        // The long-lived shared towers stand outside the entire future
+        // silhouette: a two-block AIR gap is preserved between the tower
+        // and the nearest schematic solid, including future overhangs.
+        // This uses the THIRD outer shell lane, and requires horizontal
+        // scaffold bridges for the last approach instead of building
+        // towers directly against the structure.
         List<TowerAnchor> anchors=new ArrayList<>();
-        anchors.add(new TowerAnchor("X+",new BlockPos(maxX+2,minY,
+        anchors.add(new TowerAnchor("X+",new BlockPos(maxX+3,minY,
                 medianEdge(solids,true,maxX))));
-        anchors.add(new TowerAnchor("X-",new BlockPos(minX-2,minY,
+        anchors.add(new TowerAnchor("X-",new BlockPos(minX-3,minY,
                 medianEdge(solids,true,minX))));
         anchors.add(new TowerAnchor("Z+",new BlockPos(
-                medianEdge(solids,false,maxZ),minY,maxZ+2)));
+                medianEdge(solids,false,maxZ),minY,maxZ+3)));
         anchors.add(new TowerAnchor("Z-",new BlockPos(
-                medianEdge(solids,false,minZ),minY,minZ-2)));
-        return new Blueprint(solids,all,floors,minY,maxY,anchors);
+                medianEdge(solids,false,minZ),minY,minZ-3)));
+        // Precompute prohibited foundation X/Z columns ONCE per job.
+        // A five-by-five footprint around every schematic X/Z reserves
+        // the nearest two empty cells for bridging and head clearance.
+        Set<Long> excluded=new HashSet<>();
+        for(BlockPos solid:solids)
+            for(int dx=-2;dx<=2;dx++)
+                for(int dz=-2;dz<=2;dz++)
+                    excluded.add(BlockPos.asLong(solid.getX()+dx,0,
+                            solid.getZ()+dz));
+        return new Blueprint(solids,all,floors,minY,maxY,anchors,excluded);
     }
 }
