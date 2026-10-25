@@ -104,8 +104,19 @@ public final class BuildingCrane extends Entity implements Container {
         if(!(driver instanceof BuilderGolem builder)){status="Operator unloaded; waiting safely";return;}
         if(builder.getVehicle()!=this){
             Vec3 a=anchorPoint();
-            if(builder.position().distanceTo(a)<2.2){WorkerNavigation.stop(builder);builder.startRiding(this);}
-            else {CraneService.walk(world,builder,BlockPos.containing(a));return;}
+            if(builder.position().distanceTo(a)<2.2){
+                WorkerNavigation.stop(builder);
+                if(!builder.startRiding(this,true,true))
+                    status="Operator boarding rejected at "+builder.blockPosition();
+            }
+            else {
+                status="Operator approaching chassis; distance="
+                        +String.format(java.util.Locale.ROOT,"%.1f",
+                                builder.position().distanceTo(a))
+                        +" at "+builder.blockPosition();
+                CraneService.walk(world,builder,BlockPos.containing(a));
+                return;
+            }
         }
         if(station()==null&&!recalling){recall();status="Job ended or unavailable; returning passengers";}
         if(!path.isEmpty()||!railPath.isEmpty()){moveAlong(world);return;}
@@ -144,7 +155,10 @@ public final class BuildingCrane extends Entity implements Container {
             Vec3 at=Vec3.atBottomCenterOf(dock);
             if(position().distanceTo(at)>.15){go(world,at);return;}
             if(w.distanceToSqr(getX(),getY(),getZ())>3.24){CraneService.walk(world,w,dock);return;}
-            WorkerNavigation.stop(w);w.startRiding(this);status="Boarding builders";return;
+            WorkerNavigation.stop(w);
+            if(w.startRiding(this,true,true))status="Boarding builders";
+            else status="Builder mount refused: "+w.blockPosition();
+            return;
         }
         // Finish the current direction before accepting another batch. One
         // unfinished/obstructed platform must not trap three other builders.
@@ -291,7 +305,8 @@ public final class BuildingCrane extends Entity implements Container {
         out.store("table",BlockPos.CODEC,table);out.store("anchor",BlockPos.CODEC,anchor);out.store("home",BlockPos.CODEC,home);
         out.putDouble("ax",anchorPoint().x);out.putDouble("ay",anchorPoint().y);out.putDouble("az",anchorPoint().z);
         out.putInt("mode",entityData.get(MODE));out.putInt("upgrades",entityData.get(UPGRADES));out.putBoolean("onsite",onsite);out.putBoolean("recall",recalling);
-        for(int i=0;i<2;i++)out.store("pallet"+i,ItemStack.CODEC,packed(i));
+        for(int i=0;i<2;i++)if(!pallets.get(i).isEmpty())
+            out.store("pallet"+i,ItemStack.CODEC,packed(i));
         out.putInt("requests",destinations.size());int i=0;for(var row:destinations.entrySet()){
             out.putString("worker"+i,row.getKey().toString());out.store("goal"+i,BlockPos.CODEC,row.getValue());i++;}
         if(supplyStop!=null)out.store("supply_stop",BlockPos.CODEC,supplyStop);
