@@ -53,6 +53,7 @@ public final class WorkerNavigation {
         Vec3 previous;
         int stalled,attempts,wait,doorAge,nextRoute;
         int unsafeChecks,avoidUntil;
+        int yieldUntil;
         BlockPos lastBad;
         boolean narrowDoorway;
         // Per-door traffic reservation: one crossing at a time, but no
@@ -71,7 +72,7 @@ public final class WorkerNavigation {
     }
     /** Open wooden doors leave only 13/16 of a block of width. A .85
      * worker is physically too wide, so while it is *crossing a doorway*
-     * its real collision box briefly narrows to .70. Away from a doorway
+     * its real collision box briefly narrows to .60. Away from a doorway
      * it resumes its normal .85 width. The visible model never changes.
      */
     public static boolean inDoorway(PathfinderMob mob){
@@ -101,7 +102,7 @@ public final class WorkerNavigation {
             // while leaving the entity's registered .85 dimensions and
             // visible rendering completely unchanged. The normal box
             // returns immediately once the doorway has been cleared.
-            double half=.35;
+            double half=WorkerPassageGeometry.HALF_WIDTH;
             mob.setBoundingBox(new AABB(mob.getX()-half,mob.getY(),mob.getZ()-half,
                     mob.getX()+half,mob.getY()+mob.getBbHeight(),mob.getZ()+half));
         }
@@ -193,8 +194,8 @@ public final class WorkerNavigation {
         BlockPos feet=BlockPos.containing(x,y+.02,z);
         boolean door=handDoor(world,feet)||handDoor(world,feet.above());
         // A hand-openable door temporarily narrows the worker from .85 to
-        // .70 blocks only while passing through its doorway.
-        double half=door?.35:mob.getBbWidth()*.5;
+        // .60 blocks only while passing through its doorway.
+        double half=door?WorkerPassageGeometry.HALF_WIDTH:mob.getBbWidth()*.5;
         AABB body=new AABB(x-half,y+.01,z-half,
                 x+half,y+mob.getBbHeight()-.025,z+half);
         // Closed wooden doors are opened on approach. Verify the actual
@@ -202,7 +203,20 @@ public final class WorkerNavigation {
         // noCollision alone rejects a valid route while another golem is
         // standing at a waypoint and makes a flat site look impossible.
         // Dynamic entities still yield to each other during movement.
-        if(door||world.noCollision(mob,body))return true;
+        if(door){
+            // Ignore ONLY the passage we can open, not the ceiling, wall,
+            // or other solid blocks intersecting the worker's body.
+            for(BlockPos at:BlockPos.betweenClosed(
+                    BlockPos.containing(body.minX,body.minY,body.minZ),
+                    BlockPos.containing(body.maxX,body.maxY,body.maxZ))){
+                if(!world.hasChunkAt(at))return false;
+                if(handDoor(world,at))continue;
+                for(AABB box:world.getBlockState(at).getCollisionShape(world,at).toAabbs())
+                    if(box.move(at).intersects(body))return false;
+            }
+            return true;
+        }
+        if(world.noCollision(mob,body))return true;
         return !world.getBlockCollisions(mob,body).iterator().hasNext();
     }
     private static boolean safePath(ServerLevel level,PathfinderMob mob,
@@ -349,6 +363,7 @@ public final class WorkerNavigation {
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
         Progress progress=state(mob);
+        if(mob.tickCount<progress.yieldUntil)return true;
         if(progress.queuedDoor!=null&&target!=null
                 &&progress.requested!=null&&!target.equals(progress.requested))
             clearDoor(level,mob,progress);
@@ -388,6 +403,7 @@ public final class WorkerNavigation {
         }
         if(target==null||!level.hasChunkAt(target))return false;
         Progress p=state(mob);
+        if(mob.tickCount<p.yieldUntil)return true;
         if(p.queuedDoor!=null&&target!=null
                 &&p.requested!=null&&!target.equals(p.requested))
             clearDoor(level,mob,p);
@@ -564,8 +580,13 @@ public final class WorkerNavigation {
         Progress p=state(mob);
         if(mob.getNavigation() instanceof GroundPathNavigation nav)
             nav.setCanOpenDoors(true);
-        if(mob.tickCount%CHECK_TICKS!=0)return;
         updateDoorClearance(level,mob,p);
+        if(mob.tickCount%CHECK_TICKS!=0)return;
+        if(mob.tickCount<p.yieldUntil)return;
+        if(p.yieldUntil!=0){
+            p.yieldUntil=0;p.nextRoute=0;p.stalled=0;
+            mob.getNavigation().stop();
+        }
         if(doorTrafficTick(level,mob,p)){
             p.previous=mob.position();
             p.stalled=0;
@@ -749,7 +770,7 @@ public final class WorkerNavigation {
                 p.doorLastDistance=doorDistance;
                 p.doorLastProgressTick=mob.tickCount;
             }else if(mob.tickCount-p.doorLastProgressTick>100
-                    &&doorDistance>1.8){
+                    ){
                 WorkerDoorTraffic.yieldStalled(level,p.queuedDoor,mob);
                 p.waitingDoor=true;
                 p.doorStandby=null;p.parkingAtDoor=false;
@@ -799,6 +820,9 @@ public final class WorkerNavigation {
 
     private static boolean yieldToWorker(ServerLevel world,PathfinderMob mob,Progress p){
         if(p.requested==null)return false;
+        // Door owners must not yield to their own waiting queue.
+        boolean passageOwner=p.queuedDoor!=null
+                &&WorkerDoorTraffic.owns(world,p.queuedDoor,mob);
         Vec3 forward=new Vec3(p.requested.getX()+.5-mob.getX(),0,
                 p.requested.getZ()+.5-mob.getZ());
         if(forward.lengthSqr()<.3)return false;
@@ -815,12 +839,55 @@ public final class WorkerNavigation {
             double forwardDist=forward.dot(delta);
             if(forwardDist<.15||forwardDist>1.5||delta.lengthSqr()>1.5*1.5)
                 continue;
-            if(other.getNavigation().isDone())continue;
-            // An asymmetric tie break ensures both workers don't yield.
-            if(mob.getUUID().compareTo(other.getUUID())>0)
+            Progress peer=state(other);
+            if(other.tickCount<peer.yieldUntil)continue;
+            boolean peerOwner=peer.queuedDoor!=null
+                    &&WorkerDoorTraffic.owns(world,peer.queuedDoor,other);
+            // Move the lower-priority worker sideways, including idle
+            // workers. Merely stopping it leaves the same body in the aisle.
+            if(!peerOwner&&(passageOwner||other.getNavigation().isDone()
+                    ||mob.getUUID().compareTo(other.getUUID())<0)){
+                sidestep(world,other,mob,forward);
+            }else if(!passageOwner){
+                if(sidestep(world,mob,other,forward))return false;
                 return true;
+            }
         }
         return false;
+    }
+    private static boolean sidestep(ServerLevel level,PathfinderMob yielding,
+                                     PathfinderMob passing,Vec3 forward){
+        if(yielding instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&com.caszgamermd.golemsplus.builder.BuilderScaffolding.climbingNow(level,builder))
+            return false;
+        Path best=null;double score=Double.MAX_VALUE;
+        BlockPos origin=yielding.blockPosition();
+        // A bounded local search; never phase through entities or walls.
+        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+            if(dx==0&&dz==0)continue;
+            double lateral=Math.abs(dx*forward.z-dz*forward.x);
+            if(lateral<.9)continue;
+            BlockPos tile=origin.offset(dx,0,dz);
+            if(!standingTile(level,yielding,tile)||neighborOccupied(level,yielding,tile)
+                    ||handDoor(level,tile))continue;
+            Path path=yielding.getNavigation().createPath(tile,0);
+            if(!endsAtExactTile(path,tile)||!safePath(level,yielding,path,false))continue;
+            boolean crosses=false;
+            for(int i=0;i<path.getNodeCount();i++){
+                Node n=path.getNode(i);
+                if(handDoor(level,new BlockPos(n.x,n.y,n.z))
+                        ||passing.distanceToSqr(n.x+.5,n.y,n.z+.5)<.81){
+                    crosses=true;break;
+                }
+            }
+            double cost=path.getNodeCount()+Math.abs(dx*forward.x+dz*forward.z)*2;
+            if(!crosses&&cost<score){best=path;score=cost;}
+        }
+        if(best==null||!yielding.getNavigation().moveTo(best,1.0))return false;
+        Progress p=state(yielding);
+        p.yieldUntil=yielding.tickCount+30;
+        p.weightedRoute=List.of();p.routeCursor=0;
+        return true;
     }
     private static void openApproachDoor(ServerLevel level,PathfinderMob mob,Progress p){
         // Follow the *next actual path node*, not a straight line drawn
@@ -891,3 +958,4 @@ public final class WorkerNavigation {
         p.openedDoor=null;
     }
 }
+

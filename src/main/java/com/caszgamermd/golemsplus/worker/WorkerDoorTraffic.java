@@ -7,7 +7,6 @@ import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.PathfinderMob;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 
@@ -49,22 +48,25 @@ public final class WorkerDoorTraffic {
         BlockPos door=canonical(level,position);
         Lane lane=lane(level,door);
         UUID id=worker.getUUID();
-        lane.entry.computeIfAbsent(id,ignored->new Entry(
-                worker.getX()-(door.getX()+.5),
-                worker.getZ()-(door.getZ()+.5),
-                level.getGameTime()));
+        lane.entry.computeIfAbsent(id,ignored->{
+            var state=level.getBlockState(door);
+            var facing=state.getBlock() instanceof net.minecraft.world.level.block.FenceGateBlock
+                    ?state.getValue(net.minecraft.world.level.block.FenceGateBlock.FACING)
+                    :state.getValue(DoorBlock.FACING);
+            double from=(worker.getX()-door.getX()-.5)*facing.getStepX()
+                    +(worker.getZ()-door.getZ()-.5)*facing.getStepZ();
+            double sign=from<0?-1:1;
+            return new Entry(sign*facing.getStepX(),sign*facing.getStepZ(),level.getGameTime());
+        });
         lane.cooldown.entrySet().removeIf(row->row.getValue()<=level.getGameTime());
         if(lane.cooldown.getOrDefault(id,0L)>level.getGameTime())
             return false;
         boolean first=lane.queue.claim(id,level.getGameTime());
-        // The reservation only grants entry if the physical doorway is
-        // clear. This also protects against workers left inside a door by
-        // an older save or entering while the queue was first initialized.
-        boolean blocked=!level.getEntitiesOfClass(PathfinderMob.class,
-                new AABB(door).inflate(.05),
-                other->other!=worker&&other.isAlive()).isEmpty();
+        // The FIFO grants right of way, not collision immunity. The head
+        // must keep moving while waiting workers clear the threshold;
+        // parking the head too creates a circular wait with an occupant.
         lane.entry.keySet().removeIf(key->lane.queue.position(key)==0);
-        return first&&!blocked;
+        return first;
     }
     public static boolean owns(ServerLevel level,BlockPos position,PathfinderMob worker){
         Map<BlockPos,Lane> map=doors.get(level);
@@ -135,3 +137,4 @@ public final class WorkerDoorTraffic {
         if(lane.queue.count()==0&&lane.cooldown.isEmpty())map.remove(door);
     }
 }
+

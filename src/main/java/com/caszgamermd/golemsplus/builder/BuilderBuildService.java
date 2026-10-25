@@ -205,6 +205,7 @@ public final class BuilderBuildService {
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
             worker.setNoGravity(false);
+            if(BuilderScaffolding.descendForTravel(level,worker,table))return;
             BuilderScaffolding.retrieve(level,worker,table,false);
             // A completed/canceled plan may still own boxed warehouse stock.
             // Recover real cargo first rather than losing it on job end.
@@ -254,6 +255,9 @@ public final class BuilderBuildService {
             worker.getNavigation().stop();
             worker.setNoGravity(false);return;
         }
+        // Finish entering/climbing/descending before work-range checks can
+        // redirect movement halfway up a tower. Motion has its own timeout.
+        if(BuilderScaffolding.climbingNow(level,worker))return;
         int membership=table.builderWorkerIds().indexOf(worker.getUUID());
         if(membership>=table.crewTarget()&&table.claimedStep(worker.getUUID())<0
                 &&!worker.hasSupplyBox()){
@@ -705,3 +709,4 @@ public final class BuilderBuildService {
         return next;
     }
 }
+
