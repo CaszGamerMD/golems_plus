@@ -432,13 +432,11 @@ public final class WorkerNavigation {
                     p.attempts==0?0:(p.attempts%4)+1)){
                 if(++checked>MAX_DESTINATION_PATHS*2
                         ||best!=null&&checked>8)break;
-                if(option.feet().equals(mob.blockPosition())){
-                    if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
-                            &&mob.distanceToSqr(target.getX()+.5,
-                                    target.getY()+.5,target.getZ()+.5)<=14)
-                        return true; // Already standing within build reach.
-                    continue;
-                }
+                // A Builder within placement reach has NOT necessarily
+                // arrived at a real movement target (door, depot, route
+                // waypoint). Only the job itself may skip walking if its
+                // placement is already within reach.
+                if(option.feet().equals(mob.blockPosition()))continue;
                 Path candidate=mob.getNavigation().createPath(option.feet(),0);
                 if(!safePath(level,mob,candidate,false))continue;
                 // Distances along the actual path, then distance from its
@@ -484,11 +482,10 @@ public final class WorkerNavigation {
                     mob.blockPosition(),goals,
                     at->standingTile(level,mob,at),
                     at->floorAt(level,at),p.lastBad);
-            if(route!=null&&route.complete()&&route.steps().isEmpty()
-                    &&mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
-                    &&mob.distanceToSqr(target.getX()+.5,
-                            target.getY()+.5,target.getZ()+.5)<=14)
-                return true;
+            // Never report an empty physical route as success solely
+            // because the Builder is within placement range of target.
+            // Storage, doorway and return-to-tower movements require
+            // reaching a valid walking tile.
             if(route==null||route.steps().isEmpty()){
                 p.attempts++;
                 p.nextRoute=mob.tickCount+ROUTE_RETRY+Math.floorMod(mob.getId(),5);
@@ -734,7 +731,7 @@ public final class WorkerNavigation {
         // door and vanilla A* could not restart from mid-crossing.
         if(p.finishingDoor&&p.doorExit!=null
                 &&mob.distanceToSqr(p.doorExit.getX()+.5,
-                        p.doorExit.getY(),p.doorExit.getZ()+.5)<.65
+                        p.doorExit.getY(),p.doorExit.getZ()+.5)<.20
                 &&mob.onGround()){
             clearDoor(level,mob,p);
             p.nextRoute=0;
