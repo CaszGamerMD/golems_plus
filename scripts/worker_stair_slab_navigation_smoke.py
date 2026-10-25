@@ -12,7 +12,13 @@ assert "if(partialFloor(state)&&!inside.isEmpty())" in s
 assert "if(height>.6001)return Double.NaN;" in s
 assert "boolean architecturalStep=partialFloor(" in s
 assert "?Math.max(a,b):a+(b-a)*t" in s
-assert "if(!standingTile(level,mob,feet))return false;" in s
+assert "&& !standingTile(" not in s  # use the exact no-whitespace code convention
+assert "&& !standingTile(level,mob,feet)" not in s
+assert "&& !standingTile" not in s
+assert "&& !standingTile" not in s
+assert "&& !standingTile" not in s
+assert "&&!standingTile(level,mob,feet))return false;" in s
+assert "mob.blockPosition().equals(feet)" in s
 assert "world.noCollision(mob,body)" in s
 assert "||b-a>1.05||a-b>1.50" in s
 assert "getCollisionShape(level,feet)" in s
