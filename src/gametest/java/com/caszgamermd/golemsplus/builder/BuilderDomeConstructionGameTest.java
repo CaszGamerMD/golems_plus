@@ -3,6 +3,8 @@ package com.caszgamermd.golemsplus.builder;
 import com.caszgamermd.golemsplus.warehouse.WarehouseAssignment;
 import com.caszgamermd.golemsplus.crane.BuildingCrane;
 import com.caszgamermd.golemsplus.crane.CraneContent;
+import com.caszgamermd.golemsplus.crane.CraneRailBlock;
+import net.minecraft.core.Direction;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import com.caszgamermd.golemsplus.world.WorksiteContent;
 import com.caszgamermd.golemsplus.worker.WorkerPhase;
@@ -56,8 +58,18 @@ public final class BuilderDomeConstructionGameTest {
         }catch(Exception e){helper.fail("Could not plan Dome "+e);return;}
         // A full size test structure is essential. The default 8x8
         // GameTest room causes invisible barrier-block path failures.
-        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+        for(int x=1;x<=45;x++)for(int z=1;z<=45;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
+        // Connected and physically supported outer-perimeter rail detour.
+        // This is well outside x=8..38 and z=8..41 Dome structure.
+        var rail=CraneContent.RAIL.defaultBlockState()
+                .setValue(CraneRailBlock.FACING,Direction.UP);
+        for(int z=3;z<=24;z++){
+            helper.getLevel().setBlock(helper.absolutePos(new BlockPos(3,2,z)),rail,2);
+            helper.getLevel().setBlock(helper.absolutePos(new BlockPos(44,2,z)),rail,2);
+        }
+        for(int x=3;x<=44;x++)
+            helper.getLevel().setBlock(helper.absolutePos(new BlockPos(x,2,3)),rail,2);
         helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
         helper.setBlock(5,2,7,Blocks.CHEST);
         BlockPos plannerPos=helper.absolutePos(new BlockPos(4,2,7));
@@ -137,7 +149,8 @@ public final class BuilderDomeConstructionGameTest {
         }
         var crane=new BuildingCrane(CraneContent.CRANE,level);
         BlockPos craneRail=helper.absolutePos(new BlockPos(3,2,24));
-        BlockPos craneBasket=helper.absolutePos(new BlockPos(6,2,24));
+        // South-offset basket stays inside the arena throughout rail travel.
+        BlockPos craneBasket=helper.absolutePos(new BlockPos(3,2,27));
         crane.place(id,craneRail,Vec3.atBottomCenterOf(craneBasket));
         if(!level.addFreshEntity(crane)||!crane.link(table)
                 ||!crane.assignOperator(operator)){
@@ -154,7 +167,18 @@ public final class BuilderDomeConstructionGameTest {
         if(crane.reach()!=90){
             helper.fail("Two physical boom upgrades were not consumed");return;
         }
+        // Give the crane a real requested upper landing on an exterior
+        // platform. No builder is teleported or granted free items; the
+        // same worker resumes its construction zone after unloading.
+        for(int x=5;x<=7;x++)for(int z=24;z<=26;z++)
+            helper.setBlock(x,16,z,Blocks.STONE);
+        BlockPos elevatedDock=helper.absolutePos(new BlockPos(6,17,25));
+        if(!crane.request(crew.get(0),elevatedDock)){
+            helper.fail("Crane rejected real first builder's elevated ride");return;
+        }
         final Set<UUID> craneBoarded=new LinkedHashSet<>();
+        final java.util.Map<UUID,Integer> craneBoardingY=new java.util.HashMap<>();
+        final Set<UUID> elevatedDeliveries=new LinkedHashSet<>();
         final Set<UUID> craneUnloaded=new LinkedHashSet<>();
         final int[] maxRiders={0};
         final int[] lastCursor={-1},lastCleared={-1},lastCompleted={-1};
@@ -168,8 +192,15 @@ public final class BuilderDomeConstructionGameTest {
                 if(worker.getVehicle()==crane){
                     riding++;
                     craneBoarded.add(worker.getUUID());
-                } else if(craneBoarded.contains(worker.getUUID()))
+                    craneBoardingY.putIfAbsent(worker.getUUID(),
+                            worker.blockPosition().getY());
+                } else if(craneBoarded.contains(worker.getUUID())){
                     craneUnloaded.add(worker.getUUID());
+                    int initialY=craneBoardingY.getOrDefault(worker.getUUID(),
+                            worker.blockPosition().getY());
+                    if(worker.blockPosition().getY()>=initialY+6)
+                        elevatedDeliveries.add(worker.getUUID());
+                }
             }
             maxRiders[0]=Math.max(maxRiders[0],riding);
             if(riding>4){
@@ -252,9 +283,12 @@ public final class BuilderDomeConstructionGameTest {
                 boolean scaffoldsGone=crew.stream().allMatch(
                         worker->table.scaffoldPositions(worker.getUUID()).isEmpty());
                 if(atGround&&scaffoldsGone){
-                    if(craneUnloaded.isEmpty()){
-                        helper.fail("Dome built but crane never physically carried "
-                                +"and unloaded a builder | "+crane.status());return;
+                    if(elevatedDeliveries.isEmpty()){
+                        helper.fail("Dome built but crane never physically delivered "
+                                +"a builder six blocks above its boarding elevation"
+                                +" | boarded="+craneBoarded.size()
+                                +" unloaded="+craneUnloaded.size()
+                                +" | "+crane.status());return;
                     }
                     System.out.println("[DOME CRANE E2E] PASS "
                             +steps.size()+" blueprint positions, "+checked
@@ -263,6 +297,7 @@ public final class BuilderDomeConstructionGameTest {
                             +"four actual builders grounded, scaffolds reclaimed, "
                             +"physical crane boardings="+craneBoarded.size()
                             +" delivered="+craneUnloaded.size()
+                            +" elevatedDeliveries="+elevatedDeliveries.size()
                             +" maxSimultaneous="+maxRiders[0]);
                     helper.succeed();
                 }
@@ -272,6 +307,7 @@ public final class BuilderDomeConstructionGameTest {
                 StringBuilder message=new StringBuilder(
                         "Dome stalled after "+tick+" ticks | crane="+crane.status()
                         +" | mounted="+craneBoarded.size()+" unloaded="+craneUnloaded.size()
+                        +" elevated="+elevatedDeliveries.size()
                         +" | clear="+
                         table.builderClearCursor()+" | contiguous="+table.builderCursor()
                         +" | totalCompleted="+table.builderCompletedCount()
