@@ -17,4 +17,24 @@ final class CraneDispatchTest {
         assertEquals(1,d.size());d.remove(id);assertTrue(d.batch().isEmpty());
     }
     @Test void boomStopsAtNinety(){assertEquals(30,CraneDispatch.reach(0));assertEquals(60,CraneDispatch.reach(1));assertEquals(90,CraneDispatch.reach(2));assertEquals(90,CraneDispatch.reach(20));}
+    @Test void blockedFirstRiderDoesNotStarveReachablePassengers(){
+        UUID blocked=UUID.randomUUID(),ready=UUID.randomUUID(),far=UUID.randomUUID();
+        var docks=new LinkedHashMap<UUID,Double>();
+        docks.put(blocked,Double.POSITIVE_INFINITY);
+        docks.put(far,100.0);
+        docks.put(ready,16.0);
+        assertEquals(ready,CraneDispatch.nearestReachable(docks));
+        docks.remove(ready);
+        assertEquals(far,CraneDispatch.nearestReachable(docks));
+        docks.remove(far);
+        assertNull(CraneDispatch.nearestReachable(docks));
+    }
+    @Test void nearestReachableKeepsStableOrderOnEqualDistances(){
+        UUID first=UUID.randomUUID(),second=UUID.randomUUID();
+        var docks=new LinkedHashMap<UUID,Double>();
+        docks.put(first,9.0);docks.put(second,9.0);
+        assertEquals(first,CraneDispatch.nearestReachable(docks));
+        docks.clear();docks.put(first,Double.NaN);docks.put(second,-1.0);
+        assertNull(CraneDispatch.nearestReachable(docks));
+    }
 }
