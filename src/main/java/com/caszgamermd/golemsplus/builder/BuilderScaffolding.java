@@ -753,7 +753,26 @@ public final class BuilderScaffolding {
                     return;
             }
         }
-        positions.sort(Comparator.comparingInt((BlockPos block)->block.getY()).reversed());
+        // Remove single-level bridge tips before the multilevel towers
+        // supporting them. Within a branch, start farthest from any tower.
+        var counts=new java.util.HashMap<Long,Integer>();
+        for(BlockPos at:positions)counts.merge(
+                BlockPos.asLong(at.getX(),0,at.getZ()),1,Integer::sum);
+        var anchors=positions.stream().filter(at->counts.get(
+                BlockPos.asLong(at.getX(),0,at.getZ()))>1).toList();
+        positions.sort((a,b)->{
+            int ac=counts.get(BlockPos.asLong(a.getX(),0,a.getZ()));
+            int bc=counts.get(BlockPos.asLong(b.getX(),0,b.getZ()));
+            if(ac!=bc)return Integer.compare(ac,bc);
+            if(ac==1&&!anchors.isEmpty()){
+                int da=anchors.stream().mapToInt(at->Math.abs(a.getX()-at.getX())
+                        +Math.abs(a.getZ()-at.getZ())).min().orElse(0);
+                int db=anchors.stream().mapToInt(at->Math.abs(b.getX()-at.getX())
+                        +Math.abs(b.getZ()-at.getZ())).min().orElse(0);
+                if(da!=db)return Integer.compare(db,da);
+            }
+            return Integer.compare(b.getY(),a.getY());
+        });
         for(BlockPos pos:positions){
             if(!level.hasChunkAt(pos))continue;
             if(!level.getBlockState(pos).is(Blocks.SCAFFOLDING)){
