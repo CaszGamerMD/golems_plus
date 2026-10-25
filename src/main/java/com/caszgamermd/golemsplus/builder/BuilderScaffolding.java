@@ -86,12 +86,13 @@ public final class BuilderScaffolding {
         worker.getNavigation().stop();
         climbing.put(worker,new ClimbPermit(column.immutable(),
                 level.getGameTime()+7));
-        worker.setNoGravity(true);
-        // Sneaking permits dropping THROUGH scaffold rather than remaining
-        // on top. Keep x/z fixed, gentle negative speed, no teleportation.
+        // Vanilla scaffold descent needs actual gravity plus sneaking.
+        // A no-gravity mob with forced downward velocity can remain held
+        // on a scaffold collision plane indefinitely.
+        worker.setNoGravity(false);
         worker.setShiftKeyDown(true);
         worker.setDeltaMovement(0,-Math.min(.12,
-                Math.max(.03,(worker.getY()-bottom)/5)),0);
+                Math.max(.04,(worker.getY()-bottom)/5)),0);
         return true;
     }
 
@@ -265,8 +266,17 @@ public final class BuilderScaffolding {
             WorkerStationBlockEntity table,boolean force){
         var positions=new java.util.ArrayList<>(table.scaffoldPositions(worker.getUUID()));
         if(positions.isEmpty())return;
-        if(!force &&(!worker.onGround()||worker.getY()>positions.getFirst().getY()+2))
-            return;
+        int minY=positions.stream().mapToInt(BlockPos::getY).min().orElse(0);
+        if(!force){
+            if(!worker.onGround()||worker.getY()>minY+2.1)return;
+            // Never reclaim a column from beneath a Builder that is
+            // still standing on its bottom or top platform.
+            for(BlockPos scaffold:positions){
+                if(Math.abs(scaffold.getX()+.5-worker.getX())<.9
+                        &&Math.abs(scaffold.getZ()+.5-worker.getZ())<.9)
+                    return;
+            }
+        }
         positions.sort(Comparator.comparingInt((BlockPos block)->block.getY()).reversed());
         for(BlockPos pos:positions){
             if(!level.hasChunkAt(pos))continue;
