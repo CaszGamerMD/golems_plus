@@ -245,7 +245,7 @@ public final class BuilderScaffoldBridge {
     private static List<BlockPos> search(ServerLevel level,ServerPlayer owner,
             WorkerStationBlockEntity table,BuilderGolem worker,
             BlockPos anchor,BlockPos target,Set<BlockPos> future,
-            Set<BlockPos> owned){
+            Set<BlockPos> owned,BuilderScaffoldShell.Blueprint shell){
         if(!owned.contains(anchor)||Math.abs(anchor.getY()+1-target.getY())>1)
             return List.of();
         // Profile the model in both vertical axes first. The search goal
@@ -254,7 +254,16 @@ public final class BuilderScaffoldBridge {
         var sectionStations=BuilderScaffoldSections.stations(
                 future,target,anchor.getY());
         Set<BlockPos> workFloors=new HashSet<>();
-        for(var station:sectionStations)workFloors.add(station.scaffold());
+        // The complete blueprint already contains a one-wide OUTER
+        // walkway around every level, including overhangs and corners.
+        // Favor that route instead of searching directly toward a wall.
+        for(BlockPos floor:shell.atHeight(anchor.getY())){
+            int dx=floor.getX()-target.getX(),dz=floor.getZ()-target.getZ();
+            int dy=floor.getY()+1-target.getY();
+            if(dx*dx+dz*dz+dy*dy<=12.5)workFloors.add(floor);
+        }
+        if(workFloors.isEmpty())
+            for(var station:sectionStations)workFloors.add(station.scaffold());
         if(workFloors.isEmpty()){
             failures.put(worker,"No unobstructed X/Z section work platforms");
             return List.of();
@@ -287,7 +296,11 @@ public final class BuilderScaffoldBridge {
                             &&!pierFeasible(level,owner,next,future,owned))
                     continue;
                 parent.put(next,current);
-                queue.addLast(next);
+                // The shell is a virtual corridor around the whole build.
+                // Search shell continuations first, while keeping nearby
+                // off-shell connectors for access from a preexisting tower.
+                if(shell.isShell(next))queue.addFirst(next);
+                else queue.addLast(next);
             }
         }
         if(winner==null||winner.equals(anchor)){
@@ -329,6 +342,9 @@ public final class BuilderScaffoldBridge {
             // stabilizing support post must never overwrite later walls.
             for(var step:plan)if(!step.ignorePlant())
                 future.add(new BlockPos(step.x(),step.y(),step.z()));
+            // Build the virtual entire-height shell ONCE per Planner
+            // plan. No materials are spent just to compute the graph.
+            var shell=BuilderScaffoldShell.forWorksite(table,plan);
             List<BlockPos> best=List.of();
             int matchingTops=0;
             double score=Double.POSITIVE_INFINITY;
@@ -346,9 +362,14 @@ public final class BuilderScaffoldBridge {
                 if(top.getY()!=bridgeY&&top.getY()!=bridgeY-1)continue;
                 matchingTops++;
                 List<BlockPos> candidate=search(level,owner,table,worker,
-                        top,target,future,owned);
+                        top,target,future,owned,shell);
                 if(candidate.isEmpty())continue;
-                double cost=candidate.size()*10
+                // Prefer a short, physical route that stays on the
+                // planned exterior shell; penalize needless detours across
+                // unrelated open ground.
+                int outside=0;
+                for(BlockPos node:candidate)if(!shell.isShell(node))outside++;
+                double cost=candidate.size()*10+outside*3
                         +Math.sqrt(worker.distanceToSqr(top.getX()+.5,
                                 top.getY()+1,top.getZ()+.5));
                 if(cost<score){score=cost;best=candidate;}
