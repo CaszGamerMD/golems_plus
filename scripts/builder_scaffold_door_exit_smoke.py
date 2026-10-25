@@ -10,7 +10,8 @@ assert "public static boolean finishActiveAscent(" in sc
 assert "BuilderScaffolding.finishActiveAscent(level,worker)" in build
 assert "active.stopY()>=target.getY()-.15" in sc
 assert "worker.getY()<active.stopY()-.10" in sc
-assert "session.descending()&&level.getBlockState(columnLevel.below().below())" in sc
+assert "session.descending()" in sc
+assert "level.getBlockState(columnLevel.below().below())" in sc
 assert "worker.setDeltaMovement(mx,Math.min(0,motion.y),mz)" in sc
 assert "for(int dy:new int[]{0,-1})" in sc
 assert "Math.abs(worker.getY()-exit.ground().getY())<.32" in sc
