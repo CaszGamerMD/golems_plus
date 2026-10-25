@@ -502,6 +502,22 @@ public final class BuilderBuildService {
                 // circling buildings after reaching the required height.
                 if(BuilderScaffolding.stepOffTowardWork(level,worker,table,pos))
                     return;
+                // Vanilla ground A* cannot traverse horizontal scaffolding
+                // suspended across air. Prefer a short, real material-backed
+                // bridge from this owned tower to a solid upper landing.
+                var bridge=BuilderScaffolding.bridgeTowardWork(level,worker,
+                        table,owner,pos,plan.steps());
+                if(bridge==BuilderScaffolding.Result.CLIMBING)return;
+                if(bridge==BuilderScaffolding.Result.NEED_MATERIALS){
+                    table.setProblem("Needs scaffolding for safe bridge to "+pos);
+                    BuilderWarehouseCoordinator.requestScaffolding(level,worker,
+                            table,owner,plan.steps());
+                    return;
+                }
+                if(bridge==BuilderScaffolding.Result.NO_SAFE_TOWER){
+                    table.setProblem("Bridge blocked or unsupported near "+pos);
+                    return;
+                }
                 // The NEXT job step is not in physical placing range yet.
                 // Regardless of the previous navigation state, continue
                 // approaching until the distance check genuinely passes.
