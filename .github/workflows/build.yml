@@ -37,6 +37,8 @@ jobs:
         run: python3 scripts/builder_work_reach_smoke.py
       - name: Verify flat-site Builder route recovery and existing platform access
         run: python3 scripts/builder_navigation_recovery_smoke.py
+      - name: Verify builder fence gate, elevated target and shulker recovery
+        run: python3 scripts/builder_gate_scaffold_shulker_smoke.py
       - name: Verify active Builder scaffold descent and door deadlock recovery
         run: python3 scripts/builder_scaffold_door_recovery_smoke.py
       - name: Verify per-door FIFO traffic and scaffold gravity recovery

@@ -21,7 +21,9 @@ assert 'builder_claim_count",Math.min(8,builderClaims.size())' in entity
 assert "enum Sort { ALPHABETICAL, VOLUME, LEFT }" in screen
 assert 'SORT: LEFT' in screen
 assert "public static Container selectedStorage(" in inventory
-assert "selected==null?java.util.List.of():java.util.List.of(selected)" in inventory
+assert "if(selected==null)return java.util.List.of();" in inventory
+assert "result.add(selected);" in inventory
+assert "instanceof ShulkerBoxBlock" in inventory
 assert "Container destination=selectedStorage(table);" in inventory
 assert "Container target=selectedStorage(table);" in inventory
 assert "BuilderSupplyInventory.ready(table)" in net

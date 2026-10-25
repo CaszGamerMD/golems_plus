@@ -12,6 +12,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.properties.SlabType;
@@ -109,8 +110,31 @@ public final class WorkerNavigation {
     private static boolean handDoor(ServerLevel world,BlockPos pos){
         if(!world.hasChunkAt(pos))return false;
         BlockState block=world.getBlockState(pos);
-        return block.getBlock() instanceof DoorBlock door
-                &&door.type().canOpenByHand();
+        // Schematics commonly use a fence GATE as the entrance. Previous
+        // logic recognized only vanilla DoorBlock, so every Builder kept
+        // pathing toward an impassable closed gate forever.
+        return block.getBlock() instanceof FenceGateBlock
+                ||block.getBlock() instanceof DoorBlock door
+                    &&door.type().canOpenByHand();
+    }
+    private static Direction entranceFacing(BlockState state){
+        if(state.getBlock() instanceof FenceGateBlock)
+            return state.getValue(FenceGateBlock.FACING);
+        return state.getValue(DoorBlock.FACING);
+    }
+    private static boolean isOpenPassage(BlockState state){
+        if(state.getBlock() instanceof FenceGateBlock)
+            return state.getValue(FenceGateBlock.OPEN);
+        return state.getValue(DoorBlock.OPEN);
+    }
+    private static void setPassageOpen(ServerLevel world,PathfinderMob mob,
+                                       BlockPos door,boolean opened){
+        BlockState state=world.getBlockState(door);
+        if(state.getBlock() instanceof FenceGateBlock){
+            if(state.getValue(FenceGateBlock.OPEN)!=opened)
+                world.setBlock(door,state.setValue(FenceGateBlock.OPEN,opened),3);
+        }else if(state.getBlock() instanceof DoorBlock block)
+            block.setOpen(mob,world,state,door,opened);
     }
 
     /** Check the floor and the full body clearance, not just whether the
@@ -605,7 +629,7 @@ public final class WorkerNavigation {
         BlockPos door=WorkerDoorTraffic.canonical(level,candidate);
         if(!handDoor(level,door)||progress.requested==null)return false;
         BlockState state=level.getBlockState(door);
-        Direction normal=state.getValue(DoorBlock.FACING);
+        Direction normal=entranceFacing(state);
         double ex=normal.getStepX(),ez=normal.getStepZ();
         double from=(mob.getX()-door.getX()-.5)*ex
                 +(mob.getZ()-door.getZ()-.5)*ez;
@@ -735,6 +759,16 @@ public final class WorkerNavigation {
             }
         }
         if(WorkerDoorTraffic.request(level,p.queuedDoor,mob)){
+            // The head must open the passage BEFORE native A* can find
+            // a route. This is essential for fence gates, which vanilla
+            // ground navigation does not automatically open.
+            BlockState entrance=level.getBlockState(p.queuedDoor);
+            if(!isOpenPassage(entrance)){
+                setPassageOpen(level,mob,p.queuedDoor,true);
+                p.openedDoor=p.queuedDoor.immutable();p.doorAge=0;
+                p.nextRoute=0;p.attempts=0;
+                p.weightedRoute=List.of();p.routeCursor=0;
+            }
             if(p.waitingDoor){
                 p.waitingDoor=false;p.parkingAtDoor=false;p.doorStandby=null;
                 p.nextRoute=0;p.stalled=0;p.unsafeChecks=0;
@@ -812,7 +846,7 @@ public final class WorkerNavigation {
                 BlockPos probe=origin.offset(dx,dy,dz);
                 if(!handDoor(level,probe))continue;
                 BlockState state=level.getBlockState(probe);
-                if(state.getValue(DoorBlock.OPEN))continue;
+                if(isOpenPassage(state))continue;
                 Vec3 delta=new Vec3(probe.getX()+.5-mob.getX(),0,
                         probe.getZ()+.5-mob.getZ());
                 double along=delta.dot(ahead);
@@ -829,8 +863,7 @@ public final class WorkerNavigation {
                 p.waitingDoor=true;
                 return; // only the head of this door's queue can open it
             }
-            BlockState state=level.getBlockState(doorPos);
-            ((DoorBlock)state.getBlock()).setOpen(mob,level,state,doorPos,true);
+            setPassageOpen(level,mob,doorPos,true);
             p.openedDoor=doorPos.immutable();p.doorAge=0;
             updateDoorClearance(level,mob,p);
             // Path planned while the door was closed may be impossible.
@@ -852,8 +885,8 @@ public final class WorkerNavigation {
                 ent->ent!=mob&&ent.isAlive()).isEmpty())return;
         if(level.hasChunkAt(door)&&handDoor(level,door)){
             BlockState state=level.getBlockState(door);
-            if(state.getValue(DoorBlock.OPEN))
-                ((DoorBlock)state.getBlock()).setOpen(mob,level,state,door,false);
+            if(isOpenPassage(state))
+                setPassageOpen(level,mob,door,false);
         }
         p.openedDoor=null;
     }

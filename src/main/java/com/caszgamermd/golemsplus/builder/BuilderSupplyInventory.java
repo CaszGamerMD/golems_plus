@@ -15,6 +15,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.ShulkerBoxBlock;
 
 /** Real, component-preserving materials in the depot and supplied shulkers. */
 public final class BuilderSupplyInventory {
@@ -35,9 +37,26 @@ public final class BuilderSupplyInventory {
                 &&table.builderOrigin().distSqr(pos)>128L*128L)return null;
         return world.getBlockEntity(pos) instanceof Container storage?storage:null;
     }
+    /** Supplies physically accessible at the selected OnSite container.
+     * Warehouse shulkers may be stored as items INSIDE this container or
+     * placed as real shulker blocks immediately next to it.
+     */
     private static java.util.List<Container> sources(WorkerStationBlockEntity table){
         Container selected=selectedStorage(table);
-        return selected==null?java.util.List.of():java.util.List.of(selected);
+        if(selected==null)return java.util.List.of();
+        java.util.List<Container> result=new java.util.ArrayList<>();
+        result.add(selected);
+        if(table.getLevel() instanceof ServerLevel world){
+            BlockPos depot=table.builderUnloadingStorage();
+            for(Direction side:Direction.values()){
+                BlockPos at=depot.relative(side);
+                if(world.hasChunkAt(at)
+                        &&world.getBlockState(at).getBlock() instanceof ShulkerBoxBlock
+                        &&world.getBlockEntity(at) instanceof Container box)
+                    result.add(box);
+            }
+        }
+        return result;
     }
     public static boolean ready(WorkerStationBlockEntity table){
         return selectedStorage(table)!=null;
@@ -76,33 +95,34 @@ public final class BuilderSupplyInventory {
     /** Keep empty delivered shulkers at the physical site, not in Planner slots. */
     public static int recycleEmptyShulkers(WorkerStationBlockEntity table){return 0;}
     public static boolean canStoreScaffolding(WorkerStationBlockEntity table){
-        Container site=selectedStorage(table);
-        if(site==null)return false;
         ItemStack sample=new ItemStack(net.minecraft.world.item.Items.SCAFFOLDING);
-        for(int i=0;i<site.getContainerSize();i++){
-            ItemStack stack=site.getItem(i);
-            if((stack.isEmpty()||ItemStack.isSameItemSameComponents(stack,sample)
-                    &&stack.getCount()<stack.getMaxStackSize())
-                    &&site.canPlaceItem(i,sample))return true;
+        for(Container site:sources(table)){
+            for(int i=0;i<site.getContainerSize();i++){
+                ItemStack stack=site.getItem(i);
+                if((stack.isEmpty()||ItemStack.isSameItemSameComponents(stack,sample)
+                        &&stack.getCount()<stack.getMaxStackSize())
+                        &&site.canPlaceItem(i,sample))return true;
+            }
         }
         return false;
     }
     /** Server-side exact single-block return into the OnSite chest. */
     public static boolean storeScaffolding(WorkerStationBlockEntity table,ItemStack sample){
-        Container site=selectedStorage(table);
-        if(site==null||sample.isEmpty())return false;
-        for(int pass=0;pass<2;pass++)
-            for(int i=0;i<site.getContainerSize();i++){
-                ItemStack old=site.getItem(i);
-                if(pass==0&&old.isEmpty()||pass==1&&!old.isEmpty()
-                        ||!site.canPlaceItem(i,sample))continue;
-                if(!old.isEmpty()&&!ItemStack.isSameItemSameComponents(old,sample))
-                    continue;
-                if(!old.isEmpty()&&old.getCount()>=old.getMaxStackSize())continue;
-                site.setItem(i,old.isEmpty()?sample.copyWithCount(1):
-                        old.copyWithCount(old.getCount()+1));
-                site.setChanged();return true;
-            }
+        if(sample.isEmpty())return false;
+        for(Container site:sources(table))
+            for(int pass=0;pass<2;pass++)
+                for(int i=0;i<site.getContainerSize();i++){
+                    ItemStack old=site.getItem(i);
+                    if((pass==0&&old.isEmpty())
+                            ||(pass==1&&!old.isEmpty())
+                            ||!site.canPlaceItem(i,sample))continue;
+                    if(!old.isEmpty()&&!ItemStack.isSameItemSameComponents(old,sample))
+                        continue;
+                    if(!old.isEmpty()&&old.getCount()>=old.getMaxStackSize())continue;
+                    site.setItem(i,old.isEmpty()?sample.copyWithCount(1):
+                            old.copyWithCount(old.getCount()+1));
+                    site.setChanged();return true;
+                }
         return false;
     }
     public static boolean hasRoomForBox(WorkerStationBlockEntity table){
@@ -161,6 +181,61 @@ public final class BuilderSupplyInventory {
         }
         return space;
     }
+    /** Read physical loose stacks, placed shulker inventories and
+     * container components inside item-form shulkers. Each transfer
+     * updates both inventories on the server thread; never duplicate.
+     */
+    private static int drawFromStorage(Container storage,BuilderGolem worker,
+                                       Item material,int amount){
+        int remaining=amount;
+        for(int slot=0;slot<storage.getContainerSize()&&remaining>0;slot++){
+            ItemStack held=storage.getItem(slot);
+            if(held.is(material)){
+                int pull=Math.min(remaining,Math.min(held.getCount(),room(worker,held)));
+                int moved=tryPocket(worker,held,pull);
+                if(moved>0){
+                    storage.setItem(slot,held.copyWithCount(held.getCount()-moved));
+                    storage.setChanged();remaining-=moved;
+                }
+            }else if(held.is(ItemTags.SHULKER_BOXES)
+                    &&held.has(DataComponents.CONTAINER)){
+                var nested=contents(held);
+                boolean changed=false;
+                for(int inner=0;inner<nested.size()&&remaining>0;inner++){
+                    ItemStack item=nested.get(inner);
+                    if(!item.is(material))continue;
+                    int pull=Math.min(remaining,Math.min(item.getCount(),
+                            room(worker,item)));
+                    int moved=tryPocket(worker,item,pull);
+                    if(moved<=0)continue;
+                    nested.set(inner,item.copyWithCount(item.getCount()-moved));
+                    changed=true;remaining-=moved;
+                }
+                if(changed){
+                    ItemStack box=held.copy();
+                    box.set(DataComponents.CONTAINER,
+                            ItemContainerContents.fromItems(nested));
+                    storage.setItem(slot,box);storage.setChanged();
+                }
+            }
+        }
+        return amount-remaining;
+    }
+    private static int drawFromSources(WorkerStationBlockEntity table,
+                                       BuilderGolem worker,Item item,int amount){
+        int remaining=amount;
+        for(Container source:sources(table)){
+            if(remaining<=0)break;
+            remaining-=drawFromStorage(source,worker,item,remaining);
+        }
+        return amount-remaining;
+    }
+    private static boolean containsInSources(WorkerStationBlockEntity table,Item item){
+        for(Container source:sources(table))
+            if(includesItem(source,source.getContainerSize(),item))return true;
+        return false;
+    }
+
     private static boolean includesItem(Container container,int limit,Item item){
         for(int i=0;i<limit;i++){
             ItemStack stack=container.getItem(i);
@@ -236,40 +311,7 @@ public final class BuilderSupplyInventory {
             Item item=BuiltInRegistries.ITEM.getValue(key);
             int needed=row.getValue()-worker.carriedCount(item);
             if(needed<=0)continue;
-            for(int slot=0;slot<storage.getContainerSize()&&needed>0;slot++){
-                ItemStack existing=storage.getItem(slot);
-                if(existing.is(item)){
-                    int take=Math.min(needed,Math.min(existing.getCount(),
-                            room(worker,existing)));
-                    int moved=tryPocket(worker,existing,take);
-                    if(moved>0){
-                        storage.setItem(slot,existing.copyWithCount(
-                                existing.getCount()-moved));
-                        storage.setChanged();needed-=moved;
-                    }
-                }else if(existing.is(ItemTags.SHULKER_BOXES)
-                        &&existing.has(DataComponents.CONTAINER)){
-                    var nested=contents(existing);
-                    boolean changed=false;
-                    for(int j=0;j<nested.size()&&needed>0;j++){
-                        ItemStack inside=nested.get(j);
-                        if(!inside.is(item))continue;
-                        int take=Math.min(needed,Math.min(inside.getCount(),
-                                room(worker,inside)));
-                        int moved=tryPocket(worker,inside,take);
-                        if(moved>0){
-                            nested.set(j,inside.copyWithCount(inside.getCount()-moved));
-                            needed-=moved;changed=true;
-                        }
-                    }
-                    if(changed){
-                        ItemStack box=existing.copy();
-                        box.set(DataComponents.CONTAINER,
-                                ItemContainerContents.fromItems(nested));
-                        storage.setItem(slot,box);storage.setChanged();
-                    }
-                }
-            }
+            drawFromSources(table,worker,item,needed);
         }
         return LoadStatus.READY;
     }
@@ -346,6 +388,8 @@ public final class BuilderSupplyInventory {
             if(site==null||depot==null)return LoadStatus.MISSING;
             if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                     depot.getZ()+.5)>12){
+                if(BuilderScaffolding.descendForTravel(level,worker,table))
+                    return LoadStatus.MOVING;
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                         level,worker,depot,.83);
                 return LoadStatus.MOVING;
@@ -381,50 +425,17 @@ public final class BuilderSupplyInventory {
                 int quota=capacity*(requested==target?2:1);
                 int needed=Math.min(quota,Math.max(0,
                         row.getValue()-worker.carriedCount(requested)));
-                if(needed==0||!includesItem(site,site.getContainerSize(),requested))
+                if(needed==0||!containsInSources(table,requested))
                     continue;
                 if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                         depot.getZ()+.5)>12){
+                    if(BuilderScaffolding.descendForTravel(level,worker,table))
+                        return LoadStatus.MOVING;
                     com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                             level,worker,depot,.83);
                     return LoadStatus.MOVING;
                 }
-                for(int i=0;i<site.getContainerSize()&&needed>0;i++){
-                    ItemStack original=site.getItem(i);
-                    if(original.isEmpty())continue;
-                    if(original.is(requested)){
-                        int amount=Math.min(needed,Math.min(original.getCount(),
-                                room(worker,original)));
-                        int accepted=tryPocket(worker,original,amount);
-                        if(accepted>0){
-                            site.setItem(i,original.copyWithCount(
-                                    original.getCount()-accepted));
-                            site.setChanged();needed-=accepted;
-                        }
-                    }else if(original.is(ItemTags.SHULKER_BOXES)
-                            &&original.has(DataComponents.CONTAINER)){
-                        var nested=contents(original);
-                        boolean changed=false;
-                        for(int j=0;j<nested.size()&&needed>0;j++){
-                            ItemStack stack=nested.get(j);
-                            if(!stack.is(requested))continue;
-                            int amount=Math.min(needed,Math.min(stack.getCount(),
-                                    room(worker,stack)));
-                            int accepted=tryPocket(worker,stack,amount);
-                            if(accepted>0){
-                                nested.set(j,stack.copyWithCount(
-                                        stack.getCount()-accepted));
-                                needed-=accepted;changed=true;
-                            }
-                        }
-                        if(changed){
-                            ItemStack packed=original.copy();
-                            packed.set(DataComponents.CONTAINER,
-                                    ItemContainerContents.fromItems(nested));
-                            site.setItem(i,packed);site.setChanged();
-                        }
-                    }
-                }
+                drawFromSources(table,worker,requested,needed);
             }
         }
         if(worker.carriedCount(target)>0)return LoadStatus.READY;
@@ -626,48 +637,17 @@ public final class BuilderSupplyInventory {
         Item item=net.minecraft.world.item.Items.SCAFFOLDING;
         if(worker.carriedCount(item)>=required)return ScaffoldLoad.READY;
         Container site=selectedStorage(table);
-        Container source=site!=null&&includesItem(site,site.getContainerSize(),item)
-                ?site:null;
+        Container source=site!=null&&containsInSources(table,item)?site:null;
         if(source==null)return ScaffoldLoad.MISSING;
         BlockPos pos=table.builderUnloadingStorage();
         if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>12){
+            if(BuilderScaffolding.descendForTravel(level,worker,table))
+                return ScaffoldLoad.MOVING;
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                     level,worker,pos,.82);
             return ScaffoldLoad.MOVING;
         }
-        int stillNeeded=required-worker.carriedCount(item);
-        int limit=source.getContainerSize();
-        for(int slot=0;slot<limit&&stillNeeded>0;slot++){
-            ItemStack container=source.getItem(slot);
-            if(container.is(item)){
-                int requested=Math.min(stillNeeded,Math.min(container.getCount(),
-                        room(worker,container)));
-                int moved=tryPocket(worker,container,Math.max(0,requested));
-                if(moved>0){
-                    source.setItem(slot,container.copyWithCount(container.getCount()-moved));
-                    source.setChanged();stillNeeded-=moved;
-                }
-            }else if(container.is(ItemTags.SHULKER_BOXES)
-                    &&container.has(DataComponents.CONTAINER)){
-                var nested=contents(container);
-                boolean changed=false;
-                for(int inner=0;inner<nested.size()&&stillNeeded>0;inner++){
-                    ItemStack stack=nested.get(inner);
-                    if(!stack.is(item))continue;
-                    int wanted=Math.min(stillNeeded,Math.min(stack.getCount(),room(worker,stack)));
-                    int moved=tryPocket(worker,stack,Math.max(0,wanted));
-                    if(moved>0){
-                        nested.set(inner,stack.copyWithCount(stack.getCount()-moved));
-                        stillNeeded-=moved;changed=true;
-                    }
-                }
-                if(changed){
-                    ItemStack replaced=container.copy();
-                    replaced.set(DataComponents.CONTAINER,ItemContainerContents.fromItems(nested));
-                    source.setItem(slot,replaced);source.setChanged();
-                }
-            }
-        }
+        drawFromSources(table,worker,item,required-worker.carriedCount(item));
         return worker.carriedCount(item)>=required?
                 ScaffoldLoad.READY:ScaffoldLoad.MISSING;
     }

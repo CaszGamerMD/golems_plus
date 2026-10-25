@@ -86,12 +86,13 @@ public final class BuilderScaffolding {
         worker.getNavigation().stop();
         climbing.put(worker,new ClimbPermit(column.immutable(),
                 level.getGameTime()+7));
-        worker.setNoGravity(true);
-        // Sneaking permits dropping THROUGH scaffold rather than remaining
-        // on top. Keep x/z fixed, gentle negative speed, no teleportation.
+        // Vanilla scaffold descent needs actual gravity plus sneaking.
+        // A no-gravity mob with forced downward velocity can remain held
+        // on a scaffold collision plane indefinitely.
+        worker.setNoGravity(false);
         worker.setShiftKeyDown(true);
         worker.setDeltaMovement(0,-Math.min(.12,
-                Math.max(.03,(worker.getY()-bottom)/5)),0);
+                Math.max(.04,(worker.getY()-bottom)/5)),0);
         return true;
     }
 
@@ -99,8 +100,12 @@ public final class BuilderScaffolding {
             WorkerStationBlockEntity table,ServerPlayer player,BlockPos target,
             List<BuilderConstructionPlan.Step> plan){
         int feet=worker.blockPosition().getY();
-        // Short climbs require no scaffold; vanilla walking remains preferred.
-        if(target.getY()-feet<=2){
+        // A block two levels up can still be unreachable from the
+        // current X/Z. The caller enters this mode only when the
+        // destination is genuinely above AND outside working reach.
+        if(target.getY()-worker.getY()<=1.35){
+            climbing.remove(worker);
+            worker.setShiftKeyDown(false);
             worker.setNoGravity(false);
             return Result.NOT_NEEDED;
         }
@@ -214,16 +219,20 @@ public final class BuilderScaffolding {
     private static BlockPos findBase(ServerLevel level,BuilderGolem worker,
             BlockPos target,int feet,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> plan){
-        java.util.List<Direction> sides=new java.util.ArrayList<>();
-        for(Direction side:Direction.Plane.HORIZONTAL)sides.add(side);
-        // Use the nearest adjacent X/Z to approach the future block and
-        // climb vertically. Other sides remain fallbacks around obstacles.
-        sides.sort(Comparator.comparingDouble(side->{
-            BlockPos p=target.relative(side);
-            return worker.distanceToSqr(p.getX()+.5,feet,p.getZ()+.5);
-        }));
-        for(Direction side:sides){
-            BlockPos adjacent=target.relative(side);
+        // A completed wall can occupy every directly adjacent column.
+        // Search nearby 1-2 block offsets for an existing safe foundation.
+        // The farthest columns remain within the Builder's placing reach
+        // after it climbs to target Y-1.
+        java.util.List<BlockPos> offsets=new java.util.ArrayList<>();
+        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+            int distance=dx*dx+dz*dz;
+            if(distance<1||distance>5)continue;
+            offsets.add(target.offset(dx,0,dz));
+        }
+        offsets.sort(Comparator.comparingDouble(at->
+                at.distSqr(target)*2
+                +worker.distanceToSqr(at.getX()+.5,feet,at.getZ()+.5)*.1));
+        for(BlockPos adjacent:offsets)
             for(int dy=0;dy<=5;dy++){
                 BlockPos base=new BlockPos(adjacent.getX(),feet-dy,adjacent.getZ());
                 if(!level.hasChunkAt(base)||!level.hasChunkAt(base.below()))continue;
@@ -246,7 +255,6 @@ public final class BuilderScaffolding {
                                 .canReachExact(level,worker,base)))
                     return base;
             }
-        }
         return null;
     }
     /**
@@ -258,8 +266,17 @@ public final class BuilderScaffolding {
             WorkerStationBlockEntity table,boolean force){
         var positions=new java.util.ArrayList<>(table.scaffoldPositions(worker.getUUID()));
         if(positions.isEmpty())return;
-        if(!force &&(!worker.onGround()||worker.getY()>positions.getFirst().getY()+2))
-            return;
+        int minY=positions.stream().mapToInt(BlockPos::getY).min().orElse(0);
+        if(!force){
+            if(!worker.onGround()||worker.getY()>minY+2.1)return;
+            // Never reclaim a column from beneath a Builder that is
+            // still standing on its bottom or top platform.
+            for(BlockPos scaffold:positions){
+                if(Math.abs(scaffold.getX()+.5-worker.getX())<.9
+                        &&Math.abs(scaffold.getZ()+.5-worker.getZ())<.9)
+                    return;
+            }
+        }
         positions.sort(Comparator.comparingInt((BlockPos block)->block.getY()).reversed());
         for(BlockPos pos:positions){
             if(!level.hasChunkAt(pos))continue;
