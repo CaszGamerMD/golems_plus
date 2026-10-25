@@ -124,9 +124,29 @@ public final class CraneDomeCollisionGameTest {
                     .add(0,0,3);
             crane.place(owner.getUUID(),westAnchor,stowed);
             var detour=CraneMovement.railPath(world,crane,farY38);
-            if(detour==null || detour.size()<20)
+            if(detour==null || detour.size()<20){
+                BlockPos north=westAnchor.north(),corner=
+                        helper.absolutePos(new BlockPos(2,2,3));
+                BlockPos east=helper.absolutePos(new BlockPos(44,2,3));
+                Vec3 a=CraneMovement.anchorPoint(world,westAnchor);
+                Vec3 b=CraneMovement.anchorPoint(world,north);
+                Vec3 loadOffset=crane.position().subtract(a);
                 throw new IllegalStateException(
-                        "Connected outside-Dome crane rails cannot bypass obstruction");
+                        "Connected outside-Dome crane rails cannot bypass obstruction"
+                        +" path="+(detour==null?"null":detour.size())
+                        +" start="+world.getBlockState(westAnchor)
+                        +" supported="+world.getBlockState(westAnchor).canSurvive(world,westAnchor)
+                        +" north="+world.getBlockState(north)
+                        +" northSupported="+world.getBlockState(north).canSurvive(world,north)
+                        +" firstSwept="+CraneMovement.swept(world,crane,
+                                a.add(loadOffset),b.add(loadOffset),a,b)
+                        +" cornerLoaded="+world.hasChunkAt(corner)
+                        +" eastLoaded="+world.hasChunkAt(east)
+                        +" nearEastPose="+CraneMovement.pose(world,crane,farY38,
+                                CraneMovement.anchorPoint(world,east))
+                        +" goalPose="+CraneMovement.pose(world,crane,farY38,
+                                CraneMovement.anchorPoint(world,eastAnchor)));
+            }
             for(BlockPos rail:detour)
                 if(!world.getBlockState(rail).is(CraneContent.RAIL))
                     throw new IllegalStateException("Crane path jumps an unplaced rail: "+rail);
