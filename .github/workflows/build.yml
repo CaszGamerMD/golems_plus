@@ -17,6 +17,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
+      - name: Validate worker stair and slab navigation geometry
+        run: python3 scripts/worker_stair_slab_navigation_smoke.py
       - name: Check parallel clearing, door placement and outstanding warehouse orders
         run: python3 scripts/builder_parallel_clearing_door_order_smoke.py
       - name: Check Builder clearing and courier recovery
