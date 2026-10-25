@@ -93,4 +93,62 @@ public final class BuilderScaffoldBridgeGameTest {
                 helper.fail("Lost physical return route to tower");
         });
     }
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=1400,skyAccess=true)
+    public void extendsLongDetourOnRealGroundedPiers(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<=19;x++)for(int z=0;z<=8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        helper.setBlock(1,2,1,WorksiteContent.BUILDER_TABLE);
+        BlockPos home=helper.absolutePos(new BlockPos(1,2,1));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            helper.fail("Long bridge has no Planner");return;
+        }
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())){
+            helper.fail("Long bridge has no owner");return;
+        }
+        BlockPos anchor=helper.absolutePos(new BlockPos(2,3,3));
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(anchor.getX()+.5,anchor.getY()+1,anchor.getZ()+.5);
+        worker.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
+        level.addFreshEntity(worker);
+        if(!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Cannot register long bridge worker");return;
+        }
+        for(int y=2;y<=3;y++){
+            BlockPos p=helper.absolutePos(new BlockPos(2,y,3));
+            level.setBlock(p,Blocks.SCAFFOLDING.defaultBlockState(),3);
+            table.trackScaffold(worker.getUUID(),p);
+        }
+        for(int x=3;x<=8;x++)helper.setBlock(x,3,3,Blocks.STONE);
+        BlockPos goal=helper.absolutePos(new BlockPos(14,4,3));
+        var plan=List.of(new BuilderConstructionPlan.Step(
+                goal.getX(),goal.getY(),goal.getZ(),
+                "minecraft:stone","minecraft:stone"));
+        helper.onEachTick(()->{
+            if(!worker.isAlive()){
+                helper.fail("Long bridge worker disappeared");return;
+            }
+            if(helper.getTick()%5!=0)return;
+            if(worker.distanceToSqr(goal.getX()+.5,goal.getY()+.5,
+                    goal.getZ()+.5)<=12.5){
+                int posts=0;
+                for(BlockPos p:table.scaffoldPositions(worker.getUUID()))
+                    if(p.getY()==anchor.getY()-1&&p.getX()!=anchor.getX())
+                        posts++;
+                if(posts==0)
+                    helper.fail("Long unsupported bridge missed its footing posts");
+                else helper.succeed();
+                return;
+            }
+            var state=BuilderScaffoldBridge.reach(level,worker,table,owner,
+                    goal,plan);
+            if(state==BuilderScaffolding.Result.NO_SAFE_TOWER
+                    ||state==BuilderScaffolding.Result.NEED_MATERIALS)
+                helper.fail("Long bridge denied physical detour: "+state
+                        +" at "+worker.blockPosition());
+        });
+    }
+
 }
