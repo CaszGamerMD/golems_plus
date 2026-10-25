@@ -117,7 +117,7 @@ public final class BuilderDomeConstructionGameTest {
         }
         final int[] lastCursor={-1},lastCleared={-1},lastCompleted={-1};
         final long[] lastProgress={helper.getTick()};
-        final boolean[] inspected={false};
+        final boolean[] inspected={false},checkpoint={false};
         helper.onEachTick(()->{
             long tick=helper.getTick();
             if(tick%5!=0)return;
@@ -150,6 +150,18 @@ public final class BuilderDomeConstructionGameTest {
                 lastCleared[0]=table.builderClearCursor();
                 lastCompleted[0]=table.builderCompletedCount();
                 lastProgress[0]=tick;
+            }
+            if(!checkpoint[0]&&table.builderCompletedCount()>=1700){
+                // This intermediate acceptance checkpoint is independent
+                // of eventual 3537/3537 completion. It must verify all
+                // four actual entities are alive (not merely scheduled).
+                if(crew.size()!=4||crew.stream().anyMatch(w->!w.isAlive())){
+                    helper.fail("Reached 1700 but four real Builders not alive");
+                    return;
+                }
+                checkpoint[0]=true;
+                System.out.println("[DOME TEAMWORK] PASS 1700 placed-block "
+                        +"milestone with FOUR real Builders at tick="+tick);
             }
             if(!inspected[0]&&table.builderClearCursor()>0){
                 inspected[0]=true;
