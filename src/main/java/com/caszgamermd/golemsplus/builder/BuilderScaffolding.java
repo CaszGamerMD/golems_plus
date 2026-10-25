@@ -435,6 +435,14 @@ public final class BuilderScaffolding {
                 ||!table.scaffoldPositions(worker.getUUID()).contains(start.below())
                 ||Math.abs(worker.getY()-start.getY())>.32)
             return Result.NOT_NEEDED;
+        // Bridge support starts at a vertical column: extending from the
+        // free end of an existing over-air span could exceed vanilla's
+        // maximum horizontal scaffold distance and collapse the route.
+        BlockPos lower=start.below().below();
+        if(!level.getBlockState(lower).is(Blocks.SCAFFOLDING)
+                &&!level.getBlockState(lower).isFaceSturdy(
+                        level,lower,Direction.UP))
+            return Result.NOT_NEEDED;
         var owned=table.scaffoldPositions(worker.getUUID());
         ScaffoldBridgeRoute.Plan proposal=ScaffoldBridgeRoute.plan(start,
             candidate->candidate.getY()==start.getY()
@@ -461,7 +469,10 @@ public final class BuilderScaffolding {
             candidate->candidate.getY()==start.getY()
                     &&candidate.distSqr(target)<=14
                     &&com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .canStandOn(level,worker,candidate));
+                            .canStandOn(level,worker,candidate),
+            candidate->candidate.getY()==start.getY()
+                    &&candidate.distSqr(target)<=14
+                    &&!owned.contains(candidate.below()));
         if(proposal==null)return Result.NOT_NEEDED;
         var load=BuilderSupplyInventory.loadScaffold(level,worker,table,
                 proposal.required());
