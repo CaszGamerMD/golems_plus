@@ -33,16 +33,19 @@ public final class BuilderWarehouseCoordinator {
             table.setProblem("Install Caszual Additions with Builder warehouse support");
             return false;
         }
+        BlockPos computer=new BlockPos(warehouse.x(),warehouse.y(),warehouse.z());
+        Map<String,Integer> onsite=BuilderSupplyInventory.available(table);
+        Map<String,Integer> warehouseStock=BuilderWarehousePort.stockSnapshot(
+                level,computer,table.builderRemaining());
         Map<String,Integer> needed=new java.util.LinkedHashMap<>(
-                BuilderMaterialDemand.batch(steps,table.builderCursor(),
-                        BuilderSupplyInventory.available(table)));
+                BuilderMaterialDemand.outstanding(steps,table.builderCursor(),
+                        onsite,warehouseStock==null?Map.of():warehouseStock));
         if(needed.isEmpty())return false;
         // Keep the ENTIRE remaining order at the Warehouse Computer,
         // including temporarily out-of-stock items. The old stockSnapshot
         // clamp reduced every zero-stock item to 0 and could result in no
         // order ever appearing in the warehouse UI. Actual pickers still
         // require real rack stock before reserving or removing items.
-        BlockPos computer=new BlockPos(warehouse.x(),warehouse.y(),warehouse.z());
         // The warehouse accepts the request FIRST, persisting its UUID at
         // the computer. An unavailable pallet is NOT locked; this same
         // ticket will later claim a prepared OUTPUT PTP without duplication.
