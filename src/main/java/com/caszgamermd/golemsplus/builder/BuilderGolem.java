@@ -130,6 +130,8 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         return n;
     }
     @Override public void tick(){
+        boolean climbing=level() instanceof ServerLevel climbWorld
+                &&BuilderScaffolding.tickMotion(climbWorld,this);
         // Never retain the old no-gravity state after switching jobs,
         // unloading, leaving a tower, or reloading an entity from disk.
         if(level() instanceof ServerLevel server
@@ -151,7 +153,10 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         }
         if(level() instanceof ServerLevel server){
             BuilderChunkTickets.track(server,this);
-            com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
+            // A physical scaffold climb owns this worker's movement.
+            // Normal A* anti-stall checks may not stop or redirect it.
+            if(!climbing)
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
         }
         // Each Builder evaluates its own long-lived task state four times
         // per second. Offset different entities across server ticks: a

@@ -54,9 +54,11 @@ public final class BuilderScaffolding {
         if(Math.abs(worker.getX()-cx)>1.15||Math.abs(worker.getZ()-cz)>1.15){
             clearMotion(worker);return false;
         }
-        boolean onScaffold=level.getBlockState(pos).is(Blocks.SCAFFOLDING)
-                ||level.getBlockState(pos.below()).is(Blocks.SCAFFOLDING)
-                ||level.getBlockState(pos.above()).is(Blocks.SCAFFOLDING);
+        BlockPos columnLevel=new BlockPos(session.column().getX(),
+                pos.getY(),session.column().getZ());
+        boolean onScaffold=level.getBlockState(columnLevel).is(Blocks.SCAFFOLDING)
+                ||level.getBlockState(columnLevel.below()).is(Blocks.SCAFFOLDING)
+                ||level.getBlockState(columnLevel.above()).is(Blocks.SCAFFOLDING);
         if(!onScaffold){clearMotion(worker);return false;}
         return true;
     }
