@@ -28,8 +28,8 @@ import net.minecraft.world.level.block.Blocks;
  * the next. The Builder's inventory and its Planner still own every item.
  */
 public final class BuilderScaffoldBridge {
-    private static final int MAX_SPAN=6; // vanilla unsupported horizontal scaffold limit
-    private static final int MAX_SEARCH=11;
+    private static final int MAX_SPAN=12; // piers every five steps keep spans vanilla-supported
+    private static final int MAX_SEARCH=14;
     private static final int[][] DIRECTIONS={{1,0},{-1,0},{0,1},{0,-1}};
     private record Route(BlockPos target,List<BlockPos> cells,int next,long created){}
     private record Walk(BlockPos destination,long expires){}
@@ -151,6 +151,25 @@ public final class BuilderScaffoldBridge {
         return true;
     }
 
+    /** Can this particular bridge node receive a real vertical support
+     * within eight blocks, without taking space reserved by the schematic?
+     * A horizontal span longer than vanilla's limit needs a new foundation.
+     */
+    private static boolean pierFeasible(ServerLevel level,ServerPlayer owner,
+            BlockPos platform,Set<BlockPos> future,Set<BlockPos> owned){
+        for(int depth=1;depth<=8;depth++){
+            BlockPos below=platform.below(depth);
+            if(!level.hasChunkAt(below)||future.contains(below)
+                    ||!level.mayInteract(owner,below))return false;
+            var state=level.getBlockState(below);
+            if(state.isFaceSturdy(level,below,Direction.UP))return true;
+            if(!state.isAir()&&!state.is(Blocks.SCAFFOLDING))return false;
+            if(state.is(Blocks.SCAFFOLDING)&&!owned.contains(below))
+                return false;
+        }
+        return false;
+    }
+
     private static List<BlockPos> search(ServerLevel level,ServerPlayer owner,
             WorkerStationBlockEntity table,BuilderGolem worker,
             BlockPos anchor,BlockPos target,Set<BlockPos> future,
@@ -180,7 +199,9 @@ public final class BuilderScaffoldBridge {
                 if(parent.containsKey(next)
                         ||Math.abs(next.getX()-anchor.getX())>MAX_SEARCH
                         ||Math.abs(next.getZ()-anchor.getZ())>MAX_SEARCH
-                        ||!open(level,owner,table,worker,next,future,owned))
+                        ||!open(level,owner,table,worker,next,future,owned)
+                        ||(distance+1)%5==0
+                            &&!pierFeasible(level,owner,next,future,owned))
                     continue;
                 parent.put(next,current);
                 queue.addLast(next);
@@ -214,8 +235,9 @@ public final class BuilderScaffoldBridge {
         if(route==null){
             Set<BlockPos> future=new HashSet<>();
             int bridgeY=target.getY()-1;
-            for(var step:plan)if(!step.ignorePlant()
-                    &&(step.y()==bridgeY||step.y()==bridgeY-1))
+            // Every planned solid cell, not just the bridge layer: a
+            // stabilizing support post must never overwrite later walls.
+            for(var step:plan)if(!step.ignorePlant())
                 future.add(new BlockPos(step.x(),step.y(),step.z()));
             List<BlockPos> best=List.of();
             int matchingTops=0;
