@@ -128,23 +128,23 @@ public final class BuilderDomeConstructionGameTest {
             }
             crew.add(worker);
         }
-        // The crane requires a *fifth* independently crafted physical
-        // operator. Keep four actual builders assigned to construction.
-        if(!table.setCrewTarget(id,5)){
-            helper.fail("Cannot temporarily register the fifth crane operator");return;
-        }
+        // Four registered Builders remain the ONLY construction crew.
+        // A fifth physical Builder entity belongs to the same owner and
+        // planner, but is dedicated to crane operation and must not occupy
+        // a work-order/courier slot. CraneService.controls() isolates it.
         BuilderGolem operator=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         BlockPos operatorSpawn=helper.absolutePos(new BlockPos(3,2,25));
         operator.setPos(operatorSpawn.getX()+.5,operatorSpawn.getY(),
                 operatorSpawn.getZ()+.5);
         operator.assign(plannerPos,id);
         if(!level.addFreshEntity(operator)
-                ||!table.registerBuilderWorker(operator.getUUID())
-                ||!table.setCrewTarget(id,4)){
-            helper.fail("Could not register fifth dedicated crane operator");return;
+                ||table.builderWorkerIds().size()!=4
+                ||table.builderWorkerIds().contains(operator.getUUID())){
+            helper.fail("Crane operator must be a fifth independent entity, "
+                    +"not one of the four scheduled builders");return;
         }
         if(!table.startPlacedBuilder(id)){
-            helper.fail("Dome Planner rejected start with 4 workers and 1 operator");
+            helper.fail("Dome Planner rejected start with four registered builders");
             return;
         }
         var crane=new BuildingCrane(CraneContent.CRANE,level);
