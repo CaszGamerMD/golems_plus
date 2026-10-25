@@ -810,6 +810,49 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClaims.put(worker,chosen);
         return chosen;
     }
+    /** Move one exact same-layer coordinate to a worker who already holds
+     * the material physically. Ten-coordinate work orders remain disjoint:
+     * when the stocked worker already has ten cells, exchange an unfinished
+     * non-active cell back to the original worker. No item moves remotely.
+     */
+    public boolean reassignBuilderStep(UUID requester,UUID stocked,int index){
+        if(requester.equals(stocked)||!builderWorkerIds().contains(requester)
+                ||!builderWorkerIds().contains(stocked)||activeOrder==null)
+            return false;
+        var waiting=builderWorkOrders.get(requester);
+        if(waiting==null||!waiting.contains(index)
+                ||builderFinishedSteps.contains(index))return false;
+        var destination=builderWorkOrders.computeIfAbsent(stocked,
+                k->new java.util.ArrayList<>(10));
+        if(destination.contains(index))return false;
+        int exchange=-1;
+        if(destination.size()>=10){
+            for(int j=destination.size()-1;j>=0;j--){
+                int candidate=destination.get(j);
+                if(builderClaims.getOrDefault(stocked,-1)!=candidate
+                        &&!builderFinishedSteps.contains(candidate)){
+                    exchange=candidate;break;
+                }
+            }
+            if(exchange<0)return false;
+            destination.remove(Integer.valueOf(exchange));
+        }
+        waiting.remove(Integer.valueOf(index));
+        if(exchange>=0)waiting.add(exchange);
+        destination.add(index);
+        builderClaims.remove(requester);
+        // The swapped-in coordinate may require different physical stock.
+        builderPreparedOrders.remove(requester);
+        if(waiting.isEmpty()){
+            builderWorkOrders.remove(requester);
+            builderPreparedOrders.remove(requester);
+        }
+        // An already prepared, stocked Builder may begin its new assigned
+        // cell immediately. The claim will be selected on its next tick.
+        sync();
+        return true;
+    }
+
     public boolean completeBuilderStep(UUID worker,int index){
         if(builderClaims.getOrDefault(worker,-1)!=index)return false;
         builderClaims.remove(worker);

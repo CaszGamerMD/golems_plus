@@ -17,6 +17,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
+      - name: Verify Builders vacate placement cells safely
+        run: python3 scripts/builder_placement_space_smoke.py
       - name: Validate ten-coordinate Builder orders and whole-job warehouse supply
         run: python3 scripts/builder_ten_step_workflow_smoke.py
       - name: Verify Builder support deferral and connected-block safety
