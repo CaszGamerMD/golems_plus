@@ -16,6 +16,15 @@ assert 'path.equals("peony")' in classifier
 assert 'path.equals("wheat")' in classifier
 assert 'path.equals("carrots")' in classifier
 assert 'path.equals("tall_grass")' in classifier
+# Non-solid plants should include low-height decor and vines without
+# accidentally removing full building blocks from material plans.
+for path in ("moss_carpet", "pale_moss_carpet", "hanging_roots",
+             "glow_lichen", "spore_blossom", "small_dripleaf",
+             "big_dripleaf", "big_dripleaf_stem", "sea_pickle",
+             "nether_sprouts", "crimson_roots", "warped_roots",
+             "dead_bush", "short_dry_grass", "tall_dry_grass",
+             "leaf_litter"):
+    assert f'path.equals("{path}")' in classifier, path
 assert 'path.startsWith("potted_")' in classifier
 assert 'path.equals("grass_block")' not in classifier
 assert 'path.equals("moss_block")' not in classifier
