@@ -29,6 +29,13 @@ public final class BuilderDomeImportGameTest {
             var plan=BuilderConstructionPlan.create(schematic,site,true);
             if(plan.steps().size()!=3537)
                 throw new IllegalStateException("Dome plan steps="+plan.steps().size());
+            if(!plan.unsupported().isEmpty())
+                throw new IllegalStateException("Dome cannot build unsupported blocks: "+plan.unsupported());
+            boolean wallSign=plan.steps().stream().anyMatch(step->
+                    step.encodedState().startsWith("minecraft:dark_oak_wall_sign")
+                    &&"minecraft:dark_oak_sign".equals(step.requiredItem()));
+            if(!wallSign)
+                throw new IllegalStateException("Dark oak wall sign missing physical sign item");
             long ignored=plan.steps().stream().filter(
                     BuilderConstructionPlan.Step::ignorePlant).count();
             if(ignored<20)
