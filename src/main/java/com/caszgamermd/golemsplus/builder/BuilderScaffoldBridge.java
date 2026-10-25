@@ -322,14 +322,7 @@ public final class BuilderScaffoldBridge {
                 distance++;
             double dx=current.getX()-target.getX(),dz=current.getZ()-target.getZ();
             double dy=(current.getY()+1)-target.getY();
-            // On a full build, being able to PLACE directly from the
-            // remote tower does not mean the two-block air gap has been
-            // bridged. Extend at least two physically supported cells
-            // toward the actual model before calling the route complete.
-            // Tiny repair fixtures may use a single short crossing.
-            boolean advanced=distance>=(wholeBuild?2:1)
-                    &&current.distSqr(target)<anchor.distSqr(target);
-            if(advanced&&workFloors.contains(current)
+            if(workFloors.contains(current)
                     &&dx*dx+dz*dz+dy*dy<=12.5){
                 winner=current;
                 break;
