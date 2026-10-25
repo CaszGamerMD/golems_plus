@@ -202,7 +202,14 @@ public final class BuilderDomeConstructionGameTest {
                         +"craneTicks="+crane.tickCount
                         +" operatorTicks="+operator.tickCount
                         +" owner="+owner.blockPosition()
-                        +" crane="+crane.blockPosition());
+                        +" crane="+crane.blockPosition()
+                        +" gameTime="+level.getGameTime()
+                        +" ownerLoaded="+level.hasChunkAt(owner.blockPosition())
+                        +" operatorLoaded="+level.hasChunkAt(operator.blockPosition())
+                        +" craneLoaded="+level.hasChunkAt(crane.blockPosition())
+                        +" plannerLoaded="+level.hasChunkAt(plannerPos)
+                        +" craneInLevel="+crane.isAddedToLevel()
+                        +" operatorInLevel="+operator.isAddedToLevel());
                 return;
             }
             int riding=0;
