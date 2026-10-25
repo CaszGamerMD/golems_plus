@@ -45,6 +45,44 @@ public final class BuilderScaffoldBridge {
         routes.remove(worker);
         walking.remove(worker);
     }
+    /** Retrace an already built bridge in reverse before descending a
+     * tower or returning to the real OnSite chest. No aerial shortcuts:
+     * every step is an existing, owner-tracked scaffold under the feet.
+     */
+    public static boolean returnToAnchor(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table){
+        if(walking.containsKey(worker))return true;
+        Route route=routes.get(worker);
+        if(route==null)return false;
+        List<BlockPos> path=route.cells();
+        int nearest=-1;
+        double best=1.75;
+        for(int i=0;i<path.size();i++){
+            BlockPos p=path.get(i);
+            if(!level.hasChunkAt(p)
+                    ||!level.getBlockState(p).is(Blocks.SCAFFOLDING)
+                    ||!table.scaffoldPositions(worker.getUUID()).contains(p))
+                continue;
+            double dx=worker.getX()-p.getX()-.5;
+            double dz=worker.getZ()-p.getZ()-.5;
+            double dy=worker.getY()-(p.getY()+1);
+            double score=dx*dx+dz*dz+dy*dy;
+            if(score<best){best=score;nearest=i;}
+        }
+        if(nearest<0)return false;
+        if(nearest==0){
+            routes.remove(worker);
+            return false;
+        }
+        BlockPos previous=path.get(nearest-1);
+        if(!level.getBlockState(previous).is(Blocks.SCAFFOLDING)){
+            routes.remove(worker);
+            return false;
+        }
+        walking.put(worker,new Walk(previous,level.getGameTime()+100));
+        return true;
+    }
+
     public static String debug(BuilderGolem worker){
         Walk moving=walking.get(worker);
         Route route=routes.get(worker);
