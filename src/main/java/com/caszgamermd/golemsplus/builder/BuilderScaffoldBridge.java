@@ -286,8 +286,16 @@ public final class BuilderScaffoldBridge {
                 break;
             }
             if(distance>=MAX_SPAN)continue;
-            for(int[] dir:DIRECTIONS){
-                BlockPos next=current.offset(dir[0],0,dir[1]);
+            // Keep true breadth-first order; addFirst(shell) caused a
+            // depth-first bias, marking nodes reached by long winding
+            // routes before their short approaches. Sort ONLY siblings.
+            List<BlockPos> neighbors=new ArrayList<>(4);
+            for(int[] dir:DIRECTIONS)
+                neighbors.add(current.offset(dir[0],0,dir[1]));
+            neighbors.sort(Comparator
+                    .comparingInt((BlockPos node)->shell.isShell(node)?0:1)
+                    .thenComparingDouble(node->node.distSqr(target)));
+            for(BlockPos next:neighbors){
                 if(parent.containsKey(next)
                         ||Math.abs(next.getX()-anchor.getX())>MAX_SEARCH
                         ||Math.abs(next.getZ()-anchor.getZ())>MAX_SEARCH
@@ -296,11 +304,7 @@ public final class BuilderScaffoldBridge {
                             &&!pierFeasible(level,owner,next,future,owned))
                     continue;
                 parent.put(next,current);
-                // The shell is a virtual corridor around the whole build.
-                // Search shell continuations first, while keeping nearby
-                // off-shell connectors for access from a preexisting tower.
-                if(shell.isShell(next))queue.addFirst(next);
-                else queue.addLast(next);
+                queue.addLast(next);
             }
         }
         if(winner==null||winner.equals(anchor)){
