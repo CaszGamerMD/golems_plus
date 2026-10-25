@@ -19,7 +19,8 @@ assert "returnLanding(level,worker,new Tower(base,high))" in sc
 assert "worker.blockPosition().getY()" in sc
 assert "canReachExact(level,worker,p)" in sc
 assert "routeToExact(level,worker,landing,1.0)" in sc
-assert "BlockPos exit=exitGround(level,worker,base)" in sc
+assert "return dismountAtBase(level,worker,base);" in sc
+assert "BlockPos exit=exitGround(level,worker,column)" in sc
 assert "exiting.put(worker,new ExitRoute(" in sc
 assert "worker.getMoveControl().setWantedPosition(tx," in sc
 assert "sessions.put(worker,new ClimbSession(active.column()," in sc

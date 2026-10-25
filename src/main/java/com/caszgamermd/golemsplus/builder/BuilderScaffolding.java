@@ -293,7 +293,7 @@ public final class BuilderScaffolding {
         }
         return true;
     }
-    private static void begin(ServerLevel level,BuilderGolem worker,
+    static void begin(ServerLevel level,BuilderGolem worker,
                               BlockPos column,double stopY,boolean down){
         // A session is renewed by the owning Builder task, never shared
         // across colleagues or over a remote scaffold.
@@ -381,6 +381,64 @@ public final class BuilderScaffolding {
         }
         return best;
     }
+    /** Real side exit at the top of a scaffold. Vanilla pathfinding
+     * cannot usually start from a scaffold node to an adjacent full-block
+     * walkway. Move physically to the supported landing first, then
+     * release the Builder back to normal A* navigation.
+     */
+    static boolean stepToPlatform(ServerLevel level,BuilderGolem worker,
+                                  BlockPos destination){
+        double dx=worker.getX()-(destination.getX()+.5);
+        double dz=worker.getZ()-(destination.getZ()+.5);
+        if(dx*dx+dz*dz>3.2
+                ||Math.abs(worker.getY()-destination.getY())>1.3
+                ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canStandOn(level,worker,destination))return false;
+        clearMotion(worker);
+        exiting.put(worker,new ExitRoute(destination.immutable(),
+                level.getGameTime()+140));
+        return true;
+    }
+
+    /** If the next schematic location is far from a Builder still on
+     * owned scaffolding, physically leave the tower onto a walkable
+     * upper platform BEFORE requesting a normal walking path.
+     */
+    public static boolean stepOffTowardWork(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,BlockPos target){
+        if(exiting.containsKey(worker))return true;
+        BlockPos feet=worker.blockPosition();
+        BlockPos under=feet.below();
+        if(!level.getBlockState(under).is(Blocks.SCAFFOLDING)
+                ||!table.scaffoldPositions(worker.getUUID()).contains(under))
+            return false;
+        BlockPos chosen=null;
+        double best=Double.POSITIVE_INFINITY;
+        for(Direction dir:Direction.Plane.HORIZONTAL){
+            for(int dy:new int[]{0,1,-1}){
+                BlockPos landing=feet.relative(dir).offset(0,dy,0);
+                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canStandOn(level,worker,landing))continue;
+                double score=landing.distSqr(target)+Math.abs(dy)*3;
+                if(score<best){best=score;chosen=landing;}
+            }
+        }
+        return chosen!=null&&stepToPlatform(level,worker,chosen);
+    }
+
+    /** Shared real dismount operation for both Builder jobs and the
+     * Minecraft movement GameTest. The landing must be solid and near the
+     * bottom of the owned scaffold; never teleport a worker.
+     */
+    static boolean dismountAtBase(ServerLevel level,BuilderGolem worker,
+                                   BlockPos column){
+        BlockPos exit=exitGround(level,worker,column);
+        if(exit==null)return false;
+        clearMotion(worker);
+        exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));
+        return true;
+    }
+
     /** Return physically to a worker's own upper scaffold landing,
      * descend through its column, then step off onto nearby solid ground.
      * A valid return route is kept while the golem travels; ordinary A*
@@ -440,13 +498,7 @@ public final class BuilderScaffolding {
             returning.remove(worker);
             double bottom=base.getY()+1.0;
             if(!ScaffoldVerticalRoute.needsDescent(worker.getY(),base.getY())){
-                clearMotion(worker);
-                BlockPos exit=exitGround(level,worker,base);
-                if(exit!=null){
-                    exiting.put(worker,new ExitRoute(exit,level.getGameTime()+100));
-                    return true;
-                }
-                return false;
+                return dismountAtBase(level,worker,base);
             }
             begin(level,worker,base,bottom,true);
             return true;

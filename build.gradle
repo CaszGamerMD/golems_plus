@@ -11,6 +11,18 @@ loom {
         }
     }
 }
+// This source set is a separate test-only mod. It is not packaged in the
+// playable Golems Plus JAR. It runs a real server with Minecraft physics.
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = "golems_plus_gametest"
+        enableGameTests = true
+        enableClientGameTests = false
+        eula = true
+    }
+}
+
 group = project.maven_group
 version = project.mod_version
 base { archivesName = project.archives_base_name }
