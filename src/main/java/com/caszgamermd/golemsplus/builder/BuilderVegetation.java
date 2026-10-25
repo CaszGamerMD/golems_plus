@@ -27,7 +27,6 @@ public final class BuilderVegetation {
         // other plants. The Dome contains pink tulips and azaleas which
         // otherwise cause infinite canSurvive() support retries.
         if(block.defaultBlockState().is(net.minecraft.tags.BlockTags.FLOWERS)
-                ||block.defaultBlockState().is(net.minecraft.tags.BlockTags.CROPS)
                 ||block instanceof BushBlock)return true;
         String path=id.getPath();
         // Azalea and flowering azalea are non-full vegetation despite
@@ -68,6 +67,7 @@ public final class BuilderVegetation {
                 ||path.equals("short_dry_grass")
                 ||path.equals("tall_dry_grass")
                 ||path.equals("leaf_litter")
+                ||path.endsWith("_tulip")
                 ||path.endsWith("_crop")||path.endsWith("_flower")
                 ||path.endsWith("_flower_bush")||path.endsWith("_flowerbed")
                 ||path.endsWith("_sapling")||path.endsWith("_sprouts")
