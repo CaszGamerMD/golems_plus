@@ -7,6 +7,7 @@ import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 
@@ -51,7 +52,15 @@ public final class WorkerDoorTraffic {
                 worker.getX()-(door.getX()+.5),
                 worker.getZ()-(door.getZ()+.5),
                 level.getGameTime()));
-        return lane.queue.claim(id,level.getGameTime());
+        boolean first=lane.queue.claim(id,level.getGameTime());
+        // The reservation only grants entry if the physical doorway is
+        // clear. This also protects against workers left inside a door by
+        // an older save or entering while the queue was first initialized.
+        boolean blocked=!level.getEntitiesOfClass(PathfinderMob.class,
+                new AABB(door).inflate(.05),
+                other->other!=worker&&other.isAlive()).isEmpty();
+        lane.entry.keySet().removeIf(key->lane.queue.position(key)==0);
+        return first&&!blocked;
     }
     public static boolean owns(ServerLevel level,BlockPos position,PathfinderMob worker){
         Map<BlockPos,Lane> map=doors.get(level);

@@ -640,6 +640,16 @@ public final class WorkerNavigation {
                 Path path=mob.getNavigation().createPath(tile,0);
                 if(!endsAtExactTile(path,tile)
                         ||!safePath(level,mob,path,false))continue;
+                // A queue position is on the ENTRANCE side. Do not send
+                // somebody through the busy door simply to get in line.
+                boolean crosses=false;
+                for(int i=0;i<path.getNodeCount();i++){
+                    Node node=path.getNode(i);
+                    BlockPos at=new BlockPos(node.x,node.y,node.z);
+                    if(WorkerDoorTraffic.canonical(level,at).equals(door)
+                            ||handDoor(level,at)){crosses=true;break;}
+                }
+                if(crosses)continue;
                 double score=tile.distSqr(mob.blockPosition())
                         +Math.abs(dy)*2
                         +Math.abs(radius-2.5)*2;
