@@ -297,7 +297,11 @@ public final class BuilderBuildService {
                 table.setProblem("Unsupported block state: "+step.encodedState());return;
             }
             BlockState existing=level.getBlockState(pos);
-            if(existing.equals(state.state())){
+            if(BuilderPlacementState.matches(existing,state.state())){
+                // Auto-connected walls/fences/panes and stair corner shapes
+                // may differ from the saved palette after neighbouring
+                // blocks change. They ARE already built; never dismantle
+                // a correct block in pursuit of stale schematic geometry.
                 table.recordBuilderPlacement(step.requiredItem());
                 table.completeBuilderStep(worker.getUUID(),index);
                 BuilderScaffolding.retrieve(level,worker,table,false);
@@ -311,7 +315,21 @@ public final class BuilderBuildService {
                 return;
             }
             if(!state.state().canSurvive(level,pos)){
-                table.setProblem("Missing supporting blocks at "+pos);return;
+                // Support-dependent blocks (door halves, torches, rails,
+                // flowers, etc.) can be ordered ahead of their supports
+                // in the same schematic layer. Releasing THIS claim for
+                // a short retry lets the rest of the crew place the actual
+                // support. Never charge or place an unsupported block.
+                table.waitForBuilderSupport(worker.getUUID(),index,
+                        level.getGameTime());
+                BlockPos underneath=pos.below();
+                String support=net.minecraft.core.registries.BuiltInRegistries
+                        .BLOCK.getKey(level.getBlockState(underneath).getBlock())
+                        .toString();
+                table.setProblem("Waiting for support: "+step.encodedState()
+                        +" at "+pos+"; below="+support
+                        +" (other Builders continuing this layer)");
+                return;
             }
             // Every worker first visits actual staging storage, loads a
             // three-layer pouch, THEN walks to the construction site.
