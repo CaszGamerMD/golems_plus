@@ -87,6 +87,11 @@ public final class BuilderDomeConstructionGameTest {
             helper.fail("GameTest owner isn't registered as an online ServerPlayer");
             return;
         }
+        // GameTest mock players spawn at world 0,0,0, while isolated
+        // structures are placed millions of blocks away. Locate the online
+        // job owner near the test site so worker/crane chunks actually tick.
+        BlockPos witness=helper.absolutePos(new BlockPos(4,3,4));
+        owner.setPos(witness.getX()+.5,witness.getY(),witness.getZ()+.5);
         if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,4)){
             helper.fail("Cannot claim Dome Planner or set four builders");return;
         }
@@ -192,6 +197,14 @@ public final class BuilderDomeConstructionGameTest {
         helper.onEachTick(()->{
             long tick=helper.getTick();
             if(tick%5!=0)return;
+            if(tick==100 && (crane.tickCount==0||operator.tickCount==0)){
+                helper.fail("Crane/operator is not entity-ticking in Dome arena: "
+                        +"craneTicks="+crane.tickCount
+                        +" operatorTicks="+operator.tickCount
+                        +" owner="+owner.blockPosition()
+                        +" crane="+crane.blockPosition());
+                return;
+            }
             int riding=0;
             for(BuilderGolem worker:crew){
                 if(worker.getVehicle()==crane){
