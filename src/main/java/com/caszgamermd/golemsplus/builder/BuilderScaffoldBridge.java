@@ -194,7 +194,11 @@ public final class BuilderScaffoldBridge {
         if(!level.hasChunkAt(p)||!level.hasChunkAt(p.below())
                 ||!level.hasChunkAt(p.above())
                 ||!level.hasChunkAt(p.above().above())
-                ||!level.mayInteract(owner,p)||future.contains(p))return false;
+                ||!level.mayInteract(owner,p)
+                // Future schematic solid cannot occupy the temporary
+                // platform OR the Builder's body/head above it.
+                ||future.contains(p)||future.contains(p.above())
+                ||future.contains(p.above().above()))return false;
         if(level.getBlockState(p).is(Blocks.SCAFFOLDING)){
             if(!owned.contains(p))return false;
         }else if(!level.getBlockState(p).isAir())return false;
