@@ -43,6 +43,8 @@ public final class BuilderScaffoldBridge {
      */
     private static int supportedDistance(ServerLevel level,BlockPos at){
         BlockPos beneath=at.below();
+        if(!level.hasChunkAt(at)||!level.hasChunkAt(beneath))
+            return 7; // never load another chunk merely to plan a bridge
         var below=level.getBlockState(beneath);
         if(below.is(Blocks.SCAFFOLDING)
                 ||below.isFaceSturdy(level,beneath,Direction.UP))return 0;
@@ -187,7 +189,8 @@ public final class BuilderScaffoldBridge {
     private static boolean open(ServerLevel level,ServerPlayer owner,
             WorkerStationBlockEntity table,BuilderGolem worker,BlockPos p,
             Set<BlockPos> future,Set<BlockPos> owned){
-        if(!level.hasChunkAt(p)||!level.hasChunkAt(p.above())
+        if(!level.hasChunkAt(p)||!level.hasChunkAt(p.below())
+                ||!level.hasChunkAt(p.above())
                 ||!level.hasChunkAt(p.above().above())
                 ||!level.mayInteract(owner,p)||future.contains(p))return false;
         if(level.getBlockState(p).is(Blocks.SCAFFOLDING)){
