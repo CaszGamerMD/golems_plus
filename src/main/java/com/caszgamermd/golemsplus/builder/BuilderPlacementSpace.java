@@ -60,12 +60,19 @@ public final class BuilderPlacementSpace {
             yielding.remove(worker);
             return false;
         }
-        // Yielded Builders keep walking away even when their assigned
-        // construction task would otherwise repeatedly override the path.
+        // The scaffold controller owns lateral movement when a Builder
+        // must vacate a block on a suspended catwalk. Do not replace its
+        // physical sidestep with an impossible vanilla ground A* route.
+        if(BuilderScaffoldBridge.moving(worker))return true;
         if(occupied(hold.target(),worker)
                 ||worker.distanceToSqr(hold.destination().getX()+.5,
-                        hold.destination().getY(),hold.destination().getZ()+.5)>2.25)
-            WorkerNavigation.routeToExact(level,worker,hold.destination(),.9);
+                        hold.destination().getY(),hold.destination().getZ()+.5)>2.25){
+            var station=level.getBlockEntity(worker.home());
+            if(!(station instanceof WorkerStationBlockEntity table)
+                    ||!BuilderScaffoldBridge.sidestep(level,worker,table,
+                            hold.destination()))
+                WorkerNavigation.routeToExact(level,worker,hold.destination(),.9);
+        }
         else if(!worker.getNavigation().isDone())
             worker.getNavigation().stop();
         return true;
