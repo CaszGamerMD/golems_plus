@@ -219,7 +219,8 @@ def convert(data: bytes, name: str = "timetrial") -> dict:
                         if "slab" in state:
                             rejected_slabs.append((x, z))
                         char = "#"
-                        break
+                        # Keep examining upper layers so all unsafe
+                        # slab positions are retained in diagnostics.
             result += char
         rows.append(result)
     document = {
