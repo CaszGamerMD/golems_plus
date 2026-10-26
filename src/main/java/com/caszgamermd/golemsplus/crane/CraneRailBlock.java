@@ -204,7 +204,7 @@ public final class CraneRailBlock extends Block {
             case DOWN->switch(direction){
                 case NORTH->Block.box(6,14,0,10,16,8);
                 case SOUTH->Block.box(6,14,8,10,16,16);
-                case EAST->Block.box(8,14,6,16,10);
+                case EAST->Block.box(8,14,6,16,16,10);
                 case WEST->Block.box(0,14,6,8,16,10);
                 default->Shapes.empty();
             };
