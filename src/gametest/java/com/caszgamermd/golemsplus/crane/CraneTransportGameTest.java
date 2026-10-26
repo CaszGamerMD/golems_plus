@@ -52,7 +52,15 @@ public final class CraneTransportGameTest {
         Set<UUID> boardedUp=new HashSet<>(),arrivedUp=new HashSet<>(),boardedDown=new HashSet<>(),arrivedDown=new HashSet<>();
         boolean[] descending={false};
         h.onEachTick(()->{
-            if(h.getTick()%200==0)System.out.println("[CRANE ROUNDTRIP] "+h.getTick()+" "+crane.status()+" at="+crane.position());
+            if(h.getTick()%200==0){
+                var driver=world.getEntity(crane.operator());
+                System.out.println("[CRANE ROUNDTRIP] "+h.getTick()
+                        +" craneTicks="+crane.tickCount
+                        +" worldEntity="+(world.getEntity(crane.getUUID())==crane)
+                        +" driver="+(driver==null?"missing":driver.position())
+                        +" anchor="+crane.anchorPoint()
+                        +" "+crane.status()+" at="+crane.position());
+            }
             for(var worker:crew){
                 if(worker.getVehicle()==crane){
                     (descending[0]?boardedDown:boardedUp).add(worker.getUUID());
