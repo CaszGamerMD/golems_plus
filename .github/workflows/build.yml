@@ -27,9 +27,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t candidates < <(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' ! -name '*-javadoc.jar' | sort)
+          mapfile -t candidates < <(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | sort)
           if [ "${#candidates[@]}" -ne 1 ]; then
-            printf 'Expected exactly one playable remapped JAR; found %s\n' "${#candidates[@]}"
+            printf 'Expected exactly one playable Fabric JAR; found %s\n' "${#candidates[@]}"
             printf '%s\n' "${candidates[@]}"
             exit 1
           fi
