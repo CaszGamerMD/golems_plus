@@ -710,6 +710,71 @@ public final class BuilderEvolutionTimeTrialGameTest {
         }
     }
 
+    /**
+     * Separate REAL-ENTITY physics regression: a Builder must travel
+     * diagonally while the native collision solver steps up a bottom
+     * half-slab (0.5 blocks), WITHOUT receiving any jump command.
+     * An ordinary full-height block behind the slab remains untouched.
+     */
+    @GameTest(maxTicks=160,padding=12,skyAccess=true)
+    public void realBuilderWalksDiagonallyOntoHalfSlabWithoutJump(
+            GameTestHelper helper){
+        for(int x=1;x<=9;x++)for(int z=1;z<=9;z++){
+            helper.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=5;y++)helper.setBlock(x,y,z,Blocks.AIR);
+        }
+        helper.setBlock(6,2,6,Blocks.OAK_SLAB.defaultBlockState()
+                .setValue(SlabBlock.TYPE,SlabType.BOTTOM));
+        // This wall ensures we're not simply relying on a blanket
+        // collision bypass to walk through full-height geometry.
+        helper.setBlock(8,2,8,Blocks.OAK_PLANKS);
+        helper.setBlock(8,3,8,Blocks.OAK_PLANKS);
+        ServerLevel world=helper.getLevel();
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos spawn=helper.absolutePos(new BlockPos(3,2,3));
+        BlockPos goal=helper.absolutePos(new BlockPos(6,2,6));
+        mob.setPos(spawn.getX()+.5,spawn.getY(),spawn.getZ()+.5);
+        mob.setNoGravity(false);
+        world.addFreshEntity(mob);
+        if(Math.abs(mob.maxUpStep()-.6)>.0001){
+            helper.fail("Builder auto-step must be 0.6 blocks, got "
+                    +mob.maxUpStep());
+            return;
+        }
+        final int[] diagonalMoves={0};
+        helper.onEachTick(()->{
+            if(!mob.isAlive()){
+                helper.fail("Diagonal ground trial golem disappeared");
+                return;
+            }
+            double dx=goal.getX()+.5-mob.getX();
+            double dz=goal.getZ()+.5-mob.getZ();
+            double distance=Math.hypot(dx,dz);
+            if(distance<.16&&mob.getY()>=goal.getY()+.45){
+                if(diagonalMoves[0]<6)
+                    helper.fail("Golem did not really traverse diagonally");
+                else helper.succeed();
+                mob.discard();
+                return;
+            }
+            if(helper.getTick()>100){
+                helper.fail("Actual Builder could not auto-step .5-high slab"
+                        +" after "+diagonalMoves[0]+" diagonal moves"
+                        +" position="+mob.position());
+                mob.discard();
+                return;
+            }
+            double vx=Math.min(.2,distance)*dx/Math.max(.000001,distance);
+            double vz=Math.min(.2,distance)*dz/Math.max(.000001,distance);
+            Vec3 before=mob.position();
+            mob.getNavigation().stop();
+            mob.move(MoverType.SELF,new Vec3(vx,0,vz));
+            if(Math.abs(mob.getX()-before.x)>.05
+                    &&Math.abs(mob.getZ()-before.z)>.05)
+                diagonalMoves[0]++;
+        });
+    }
+
     @GameTest(maxTicks=8950,padding=64,skyAccess=true)
     public void realBuildersEvolveOnUserMazeInEighteenSeconds(
             GameTestHelper helper){
