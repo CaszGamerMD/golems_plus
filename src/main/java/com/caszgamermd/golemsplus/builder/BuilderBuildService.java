@@ -381,8 +381,6 @@ public final class BuilderBuildService {
             // in-world, and large 41k-cell Domes are scanned incrementally.
             if(!BuilderSiteReconciliation.tick(level,table,plan.clearing()))
                 return;
-            if(BuilderProgressRecovery.tick(level,worker,table,plan.steps()))
-                return;
             // Warehouse reconciliation and proactive orders are Planner-
             // level jobs running from dispatch() every two/four seconds.
             // Doing both here from EVERY Builder every five ticks generated
@@ -414,6 +412,11 @@ public final class BuilderBuildService {
                             plan.clearing(),plan.steps());
                 return;
             }
+            // Periodic mid-build reconciliation begins ONLY after the
+            // protected clearing pass finishes. It must not mark a
+            // construction step finished while obstructions remain.
+            if(BuilderProgressRecovery.tick(level,worker,table,plan.steps()))
+                return;
             // All positions for each X/Z zone were pre-assigned as one
             // immutable ordered execution plan. The Planner does NOT
             // arbitrate between Builders on each move or block placement.
