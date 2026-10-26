@@ -271,9 +271,11 @@ public final class BuilderScaffoldBridge {
         double vy=worker.getDeltaMovement().y;
         if(supported&&close){
             if(deltaY>.16){
-                // Rise above the previous scaffold before crossing onto
-                // the next one-block-higher footprint.
-                vx=0;vz=0;
+                // A true 1-block ascent must gain clearance before moving
+                // sideways. But a 0.2-0.5-height lip correction must NOT
+                // freeze X/Z, otherwise a Builder perpetually bobs at the
+                // edge of a perfectly good scaffold bridge.
+                if(deltaY>.80){vx=0;vz=0;}
                 vy=Math.min(.16,Math.max(.06,deltaY*.30));
             }else if(deltaY<-.16){
                 // Correct small altitude errors WHILE crossing: a worker
