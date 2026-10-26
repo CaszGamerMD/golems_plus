@@ -1,0 +1,67 @@
+name: Uploaded Schematic - 20-second evolutionary time trial
+
+on:
+  push:
+    branches:
+      - feature/builder-evolutionary-navigation-trainer-262
+  pull_request:
+    paths:
+      - scripts/builder_nav_evolution.py
+      - scripts/schem_course_import.py
+      - scripts/train_schem_timetrial.py
+      - scripts/tests/test_schem_timetrial_training.py
+      - training/courses/**
+      - .github/workflows/builder-schematic-timetrial.yml
+
+jobs:
+  train-uploaded-course:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check uploaded schem and strict physical constraints
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_*nav_evolution.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_schem_timetrial_training.py' -v
+      - name: Generate JSON course from original Sponge schematic
+        run: |
+          python3 scripts/schem_course_import.py \
+            training/courses/timetrial.schem.base64 \
+            --out build/timetrial-training/imported_course.json
+      - name: Mutate and select 20 running ground bots - 400 ticks each
+        run: |
+          python3 scripts/train_schem_timetrial.py \
+            training/courses/timetrial.schem.base64 \
+            --generations 300 --wall-seconds 150 --seed 42 \
+            --out build/timetrial-training
+      - name: Validate generation-wide result, not only best candidate
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path("build/timetrial-training/results.json").read_text())
+          assert data["simulated_only"] is True
+          assert data["minecraft_entity_game_test_passed"] is False
+          assert data["course_dimensions"] == [27,6,12]
+          assert len(data["starts_covered"]) == 20
+          assert data["bots_per_generation"] == 20
+          assert data["generation_duration_ticks"] == 400
+          assert data["collision_box"] == [.65,.65,1.6]
+          assert data["speed_cap_m_per_s"] == 4.0
+          assert not data["accepted"] or data["history"][-1]["finished_by_20s"] == 20
+          assert data["history"]
+          assert Path("build/timetrial-training/history.csv").is_file()
+          print("All-generation acceptance rigor confirmed:",
+                data["accepted"],"best",data["best_finished_count"],"/20")
+          PY
+      - name: Upload replay and fitness archive (whether or not target met)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schematic-timetrial-generation-replays
+          path: build/timetrial-training/
+          if-no-files-found: ignore
+          retention-days: 30
