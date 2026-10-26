@@ -10,6 +10,7 @@
   },
   "entrypoints": {
     "fabric-gametest": [
+      "com.caszgamermd.golemsplus.builder.BuilderNavigationRequirementsGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderScaffoldRingGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderScaffoldBridgeGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderSharedTowerGameTest",
