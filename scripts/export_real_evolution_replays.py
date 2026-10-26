@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Embed all ACTUAL physical Minecraft generation traces for the last 3 CI trials.
+"""Embed ALL captured ACTUAL physical Minecraft generation traces in one offline viewer.
 
 Never synthesize or interpolate physical coordinates. The files originate solely
 from BuilderGolem.move(MoverType.SELF) in Minecraft GameTest.
@@ -30,7 +30,9 @@ def export(directory: Path, viewer: Path, prefix: str):
             raise ValueError(f"Unrecorded entity positions in {path}")
         grouped.setdefault(trial, []).append(data)
     trials = []
-    for name in sorted(grouped, key=lambda x: int(x.rsplit("-", 1)[-1])):
+    for name in sorted(grouped, key=lambda x: (
+            x.rsplit("-", 1)[0], int(x.rsplit("-", 1)[-1])
+            if x.rsplit("-", 1)[-1].isdigit() else 0)):
         generations = sorted(grouped[name], key=lambda g: g["completedGeneration"])
         trials.append({"trial": name, "generations": generations})
     payload = json.dumps({"format": FORMAT, "tests": trials},
@@ -48,8 +50,8 @@ def export(directory: Path, viewer: Path, prefix: str):
     print(f"Embedded {len(trials)} REAL Minecraft trials, "
           f"{sum(len(t['generations']) for t in trials)} generations "
           f"(all 10 entity routes per generation).")
-    if len(trials) != 3:
-        raise ValueError(f"Expected three real test sessions, got {len(trials)}")
+    if len(trials) < 3:
+        raise ValueError(f"Expected at least three real test sessions, got {len(trials)}")
 
 
 if __name__ == "__main__":

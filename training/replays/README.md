@@ -32,7 +32,17 @@ selector and replays all 10 actual physical entity positions per tick, even for
 generations where zero bots finish. Select a golem to inspect its real measured
 speed, stationary time, recovery/backoff, door alignment, and collisions.
 
-The viewer is regenerated directly in GitHub after each three-trial workflow.
+The viewer is regenerated directly in GitHub after each three-trial workflow
+and collects **all recorded generations across every retained physical
+trial session**, not merely the most recent winners or three sessions.
+GitHub's push workflow runs the three scored trials exactly once; an
+independent pull-request build does not duplicate those training runs.
+
+To prevent failure streaks from losing the proven baseline, the trainer
+physically revalidates its full saved champion DNA every seventh
+generation if no earlier offspring population has finished 10/10.
+Those ten real entities are scored using the same 360-tick rule; no
+pre-recorded route is accepted in place of live movement.
 During a running workflow or until the first new replay is published, it
 continues to show the original archived dataset (which never contained real
 per-tick movement). Fresh captures are also retained as individual

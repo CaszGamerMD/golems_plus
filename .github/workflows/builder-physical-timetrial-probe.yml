@@ -4,14 +4,6 @@ on:
   push:
     branches:
       - feature/builder-evolutionary-navigation-trainer-262
-  pull_request:
-    paths:
-      - src/gametest/**
-      - src/main/java/com/caszgamermd/golemsplus/**
-      - scripts/merge_real_evolution_state.py
-      - scripts/tests/test_merge_real_evolution_state.py
-      - training/**
-      - .github/workflows/builder-physical-timetrial-probe.yml
   workflow_dispatch:
 
 permissions:
@@ -105,7 +97,7 @@ jobs:
           exit "${failures}"
       - name: Generate offline HTML with every physical generation
         if: always()
-        run: python3 scripts/export_real_evolution_replays.py --session-prefix "${GITHUB_RUN_ID:-local}-" --viewer training/replays/route-viewer.html
+        run: python3 scripts/export_real_evolution_replays.py --session-prefix "" --viewer training/replays/route-viewer.html
       - name: Commit learned real-entity genes, EVEN IF the trial fails
         if: always() && (github.head_ref == 'feature/builder-evolutionary-navigation-trainer-262' || github.ref == 'refs/heads/feature/builder-evolutionary-navigation-trainer-262') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         shell: bash
@@ -138,6 +130,9 @@ jobs:
             mkdir -p training/replays/live
             cp -an "$replay_backup/." training/replays/live/
             cp "$viewer_backup" training/replays/route-viewer.html
+            # Rebuild using BOTH locally captured and remotely published
+            # generations. CI runs must not hide older test routes.
+            python3 scripts/export_real_evolution_replays.py --session-prefix "" --viewer training/replays/route-viewer.html
             git add -- training/state/ training/replays/live/ training/replays/route-viewer.html
             if git diff --cached --quiet; then
               echo 'No improved state over current remote.'

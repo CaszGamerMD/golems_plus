@@ -1126,7 +1126,20 @@ public final class BuilderEvolutionTimeTrialGameTest {
                         +"checkpoint saved for future runs; "+blockers);
                 return;
             }
-            generationGenes=offspring;
+            // Learning should keep exploring, but never forget a genuine
+            // complete 10/10 lineage. Periodically place all ten
+            // physically proven chromosomes back into a full REAL-ENTITY
+            // reference generation. The other generations still breed
+            // from mutations, and the champion itself is not a saved route.
+            // A reference does not earn credit unless all 10 live golems
+            // physically complete THIS run under the same time limit.
+            if((generation+1)%7==0
+                    &&verifiedChampion.size()==SELECTED_BOTS.length){
+                generationGenes=new ArrayList<>(verifiedChampion);
+                System.out.println("[TIMETRIAL REAL GENETICS] Revalidating "
+                        +"protected full champion DNA with 10 real golems "
+                        +"after 7 exploratory generations");
+            }else generationGenes=offspring;
             generation++;
             generationStart=absoluteTick+1;
             bots=spawnGeneration(helper,generationGenes,collisionMemory);
