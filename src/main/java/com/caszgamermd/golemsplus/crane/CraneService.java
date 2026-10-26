@@ -31,16 +31,47 @@ public final class CraneService {
                 .flatMap(c->c.simulationPositions().stream()).distinct().limit(12).toList();
     }
     public static void tell(Player player,String text){player.sendSystemMessage(Component.literal("Crane: "+text));}
+    /** A Planner connection is backed by the crane's persisted
+     * exact job UUID, not proximity or the player's last selection.
+     */
+    public static BuildingCrane linked(WorkerStationBlockEntity table){
+        if(!(table.getLevel() instanceof ServerLevel level))return null;
+        return cranes(level).stream().filter(c->c.serves(table))
+                .findFirst().orElse(null);
+    }
+    public static String connectionStatus(WorkerStationBlockEntity table){
+        var crane=linked(table);
+        if(crane==null)return "NOT LINKED";
+        return crane.operator()==null?"LINKED / NEEDS OPERATOR":
+                "LINKED / OPERATOR "+crane.operator().toString().substring(0,8);
+    }
     public static void selectJob(ServerPlayer player,WorkerStationBlockEntity table){
         if(table.activeOrder()==null){tell(player,"Start/select the construction job before linking its crane");return;}
         selected.put(player.getUUID(),new Selection(player.level(),null,table.getBlockPos(),player.level().getGameTime()+1200));
         tell(player,"Now right-click the crane with the controller to link this job");
+    }
+    private static boolean autoAssignOperator(ServerLevel world,
+            BuildingCrane crane,WorkerStationBlockEntity table){
+        if(crane.operator()!=null)return true;
+        // Prefer an already-registered idle worker with no scaffolding
+        // or shulker cargo. Actual removal from the Builder roster is
+        // performed atomically by BuildingCrane.assignOperator().
+        for(UUID id:table.builderWorkerIds()){
+            if(world.getEntity(id) instanceof BuilderGolem worker
+                    &&!worker.isPassenger()&&!worker.hasSupplyBox()
+                    &&table.scaffoldPositions(id).isEmpty()
+                    &&crane.assignOperator(worker))return true;
+        }
+        return false;
     }
     public static void selectCrane(ServerPlayer player,BuildingCrane crane){
         Selection old=selected.get(player.getUUID());
         if(old!=null&&old.world()==player.level()&&old.expires()>=player.level().getGameTime()&&old.table()!=null
                 &&player.level().getBlockEntity(old.table()) instanceof WorkerStationBlockEntity table){
             if(!crane.link(table)){tell(player,"Cannot link: job ownership or passenger check failed");return;}
+            if(autoAssignOperator(player.level(),crane,table))
+                tell(player,"Crane linked: one Builder permanently assigned as operator until the job ends or is cancelled.");
+            else tell(player,"Crane linked, but no available Builder can operate it. Add a Builder with no cargo/scaffold or assign one using the controller.");
         }
         selected.put(player.getUUID(),new Selection(player.level(),crane.getUUID(),null,player.level().getGameTime()+1200));
         tell(player,crane.status()+". Right-click a builder with controller to assign operator; /buildingcrane for commands");
@@ -77,8 +108,18 @@ public final class CraneService {
     }
     public static boolean requestRide(ServerLevel level,BuilderGolem worker,BlockPos goal){
         if(walking||goal==null||Math.abs(goal.getY()-worker.getY())<2)return false;
-        if(!(level.getBlockEntity(worker.home()) instanceof WorkerStationBlockEntity table))return false;
-        for(BuildingCrane c:cranes(level))if(c.serves(table)&&c.request(worker,goal))return true;
+        if(!(level.getBlockEntity(worker.home()) instanceof WorkerStationBlockEntity table)
+                ||table.activeOrder()==null)return false;
+        Integer bottom=com.caszgamermd.golemsplus.builder.BuilderBuildService
+                .lowestBuildY(table);
+        // Crane movement is for genuine tall construction elevations.
+        // Below 15 blocks above the LOWEST planned block, Builders use
+        // the improved walk/solid-step/scaffold controller, even if a
+        // powered crane happens to be parked alongside them.
+        if(bottom==null||Math.max(goal.getY(),worker.blockPosition().getY())
+                <bottom+15)return false;
+        BuildingCrane crane=linked(table);
+        return crane!=null&&crane.operator()!=null&&crane.request(worker,goal);
         return false;
     }
     static boolean walk(ServerLevel level,BuilderGolem worker,BlockPos at){
