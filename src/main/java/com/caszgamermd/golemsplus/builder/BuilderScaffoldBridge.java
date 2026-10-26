@@ -397,8 +397,9 @@ public final class BuilderScaffoldBridge {
     private static List<BlockPos> search(ServerLevel level,ServerPlayer owner,
             WorkerStationBlockEntity table,BuilderGolem worker,
             BlockPos anchor,BlockPos target,Set<BlockPos> future,
-            Set<BlockPos> owned,BuilderScaffoldShell.Blueprint shell){
-        if(!owned.contains(anchor)||Math.abs(anchor.getY()+1-target.getY())>1)
+            Set<BlockPos> owned,BuilderScaffoldShell.Blueprint shell,
+            boolean allowVertical){
+        if(!owned.contains(anchor)||Math.abs(anchor.getY()+1-target.getY())>2)
             return List.of();
         // GHOST-FLIGHT PLAN: survey up to two levels either side of the
         // existing real tower. This is a VIRTUAL route through clear air,
@@ -448,7 +449,7 @@ public final class BuilderScaffoldBridge {
             // south, east and west, including one-level changes. The
             // real-world execution below constructs actual scaffold
             // stairs/piers and follows the resulting collision-safe path.
-            for(int heightStep:new int[]{0,1,-1})
+            for(int heightStep:allowVertical?new int[]{0,1,-1}:new int[]{0})
                 for(int[] dir:DIRECTIONS)
                     neighbors.add(current.offset(dir[0],heightStep,dir[1]));
             neighbors.sort(Comparator
@@ -535,8 +536,14 @@ public final class BuilderScaffoldBridge {
             for(BlockPos top:tops.values()){
                 if(Math.abs(top.getY()-bridgeY)>2)continue;
                 matchingTops++;
+                // Prefer the physically simpler, constant-height scaffold
+                // corridor. Only train a 3D ghost-flight path if every flat
+                // candidate is blocked, out of reach or too long.
                 List<BlockPos> candidate=search(level,owner,table,worker,
-                        top,target,future,owned,shell);
+                        top,target,future,owned,shell,false);
+                if(candidate.isEmpty())
+                    candidate=search(level,owner,table,worker,
+                            top,target,future,owned,shell,true);
                 if(candidate.isEmpty())continue;
                 // Prefer a short, physical route that stays on the
                 // planned exterior shell; penalize needless detours across
