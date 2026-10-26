@@ -58,7 +58,7 @@ public final class BuilderEvolutionAltCourseGameTest {
     private static final double SPEED_CAP=0.2;
     // Five bots from each green-wool column, spaced through all ten rows.
     // Keep both columns and the same maze: only concurrent entity count changes.
-    private static final int[] SELECTED_BOTS={0,1,2,3,4,5,6,7,8,9};
+    private static final int[] SELECTED_BOTS={0,2,4,6,8,11,13,15,17,19};
     private static Block block(String name){
         return BuiltInRegistries.BLOCK.getValue(
                 Identifier.tryParse("minecraft:"+name));
@@ -68,94 +68,121 @@ public final class BuilderEvolutionAltCourseGameTest {
     private static final Block GRAY=block("light_gray_concrete");
     private static final int X_OFFSET=4,Z_OFFSET=4;
 
-    // The exact uploaded Sponge v3 course; 19 wide x 10 long x 4 high.
-    // The source schematic lacks start/finish wool. ONLY external wool pads
-    // are added at x=0 red and x=20 green, leaving source geometry untouched.
+    // Exact vanilla Sponge v3 timetrial_alt(2).schem, SHA-256:
+    // b8a216c4b1a91359c044fa20546b214670b8431991d305fd47f4e2c8a72d1ea4
+    // 27 X, 12 Z, 10 Y; GREEN start, RED goal. Everything from source.
     private static final String[] MAZE={
-        "G...........#.....#.S",
-        "G..^^^......#..#..#.S",
-        "G#.^^^.#.####..#..#.S",
-        "G#.^^^.#.#..^..#..#.S",
-        "G#.^^^.#.#..^..#....S",
-        "G#.^^^.#.#..^..#....S",
-        "G#.^^^...#..#..#..#.S",
-        "G#.###...#..#..#..#.S",
-        "G#....##....#..#..#.S",
-        "GD.....#....#.#...#.S"
+        "###########################",
+        "#GG............#.....#.#SS#",
+        "#GG...^^^......#..#..#..SS#",
+        "#GG.#.^^^.#.####..#..#.#SS#",
+        "#GG.#.^^^.#.#..^..#..#.#SS#",
+        "#GG.#.^^^.#.#..^..#....#SS#",
+        "#GG.#.^^^.#.#..^..#....#SS#",
+        "#GG.#.^^^...#..#..#..#.#SS#",
+        "#GG.#.###...#..#..#..#.#SS#",
+        "#GG.#....##....#..#..#..SS#",
+        "#GG.D.....#....#.#...#.#SS#",
+        "###########################"
     };
+    // Sponge palette/block indices; y=4..9 are identical, so repeat
+    // the final stored layer. No collision shape or door is invented.
     private static final String[][] COURSE_LAYERS={
       {
-        "0000000000010000010",
-        "0022200000010010010",
-        "1022201011110010010",
-        "1022201010020010010",
-        "1022201000020010000",
-        "1022201000020010000",
-        "1022200000010010010",
-        "1011100010010010010",
-        "1000011000010010010",
-        "3000001000010100010"
-      },{
-        "0000000000010000010",
-        "0000000000010040010",
-        "1000001015510060010",
-        "1000001010000060010",
-        "1000001070000060000",
-        "1000001070000060000",
-        "1000000070010060010",
-        "1011100010010060010",
-        "1000011000010080010",
-        "9000001000010100010"
-      },{
-        "0000000000060000000",
-        "0000000000060000000",
-        "00000000155A0000000",
-        "0000000010000000000",
-        "0000000010000000000",
-        "0000000010000000000",
-        "0000000010000000000",
-        "0000000010000000000",
-        "0000000000000000000",
-        "0000000000000100000"
-      },{
-        "0000000000000000000",
-        "0000000000000000000",
-        "0000000000000000000",
-        "0000000000000000000",
-        "0000000000000000000",
-        "0000000000000000000",
-        "0000000000000000000",
-        "0000000000000000000",
-        "0000000000000000000",
-        "0000000000000000000"
+        "000000000000000000000000000",
+        "011222222222222222222222330",
+        "011222222222222222222222330",
+        "011222222222222222222222330",
+        "011222222222222222222222330",
+        "011222222222222222222222330",
+        "011222222222222222222222330",
+        "011222222222222222222222330",
+        "011222222222222222222222330",
+        "011222222222222222222222330",
+        "011222222222222222222222330",
+        "000000000000000000000000000"
+      },
+      {
+        "444444444444444444444444444",
+        "455555555555555655555656554",
+        "455555777555555655655655554",
+        "455565777565666655655656554",
+        "455565777565655755655656554",
+        "455565777565555755655556554",
+        "455565777565555755655556554",
+        "455565777555555655655656554",
+        "455565666555655655655656554",
+        "455565555665555655655655554",
+        "455585555565555656555656554",
+        "444444444444444444444444444"
+      },
+      {
+        "444444444444444444444444444",
+        "455555555555555655555656554",
+        "455555555555555655955655554",
+        "4555655555656aa655b55656554",
+        "455565555565655555b55656554",
+        "455565555565c55555b55556554",
+        "455565555565c55555b55556554",
+        "455565555555c55655b55656554",
+        "455565666555655655b55656554",
+        "455565555665555655d55655554",
+        "4555e5555565555656555656554",
+        "444444444444444444444444444"
+      },
+      {
+        "444444444444444444444444444",
+        "455555555555555b55555555554",
+        "455555555555555b55555555554",
+        "4555555555556aaf55555555554",
+        "455555555555655555555555554",
+        "455555555555655555555555554",
+        "455555555555655555555555554",
+        "455555555555655555555555554",
+        "455555555555655555555555554",
+        "455555555555555555555555554",
+        "455555555555555556555555554",
+        "444444444444444444444444444"
+      },
+      {
+        "444444444444444444444444444",
+        "455555555555555555555555554",
+        "455555555555555555555555554",
+        "455555555555555555555555554",
+        "455555555555555555555555554",
+        "455555555555555555555555554",
+        "455555555555555555555555554",
+        "455555555555555555555555554",
+        "455555555555555555555555554",
+        "455555555555555555555555554",
+        "455555555555555555555555554",
+        "444444444444444444444444444"
       }
     };
     private static final String[] COURSE_PALETTE={
+        "minecraft:light_gray_concrete",
+        "minecraft:red_wool",
+        "minecraft:stone",
+        "minecraft:green_wool",
+        "minecraft:glass",
         "minecraft:air",
         "minecraft:birch_log[axis=y]",
         "minecraft:birch_slab[type=bottom,waterlogged=false]",
         "minecraft:birch_door[facing=east,half=lower,hinge=left,open=true,powered=false]",
-        "diagonalfences:minecraft/birch_fence[east=false,north=false,north_east=false,north_west=false,south=true,south_east=false,south_west=false,waterlogged=false,west=false]",
-        "diagonalfences:minecraft/birch_fence[east=true,north=false,north_east=false,north_west=false,south=false,south_east=false,south_west=false,waterlogged=false,west=true]",
-        "diagonalfences:minecraft/birch_fence[east=false,north=true,north_east=false,north_west=false,south=true,south_east=false,south_west=false,waterlogged=false,west=false]",
+        "minecraft:birch_fence[east=false,north=false,south=true,waterlogged=false,west=false]",
+        "minecraft:birch_fence[east=true,north=false,south=false,waterlogged=false,west=true]",
+        "minecraft:birch_fence[east=false,north=true,south=true,waterlogged=false,west=false]",
         "minecraft:birch_slab[type=top,waterlogged=false]",
-        "diagonalfences:minecraft/birch_fence[east=false,north=true,north_east=false,north_west=false,south=false,south_east=false,south_west=false,waterlogged=false,west=false]",
+        "minecraft:birch_fence[east=false,north=true,south=false,waterlogged=false,west=false]",
         "minecraft:birch_door[facing=east,half=upper,hinge=left,open=true,powered=false]",
-        "diagonalfences:minecraft/birch_fence[east=false,north=true,north_east=false,north_west=false,south=false,south_east=false,south_west=false,waterlogged=false,west=true]"
+        "minecraft:birch_fence[east=false,north=true,south=false,waterlogged=false,west=true]"
     };
     private static final int[][] STARTS={
-        {20,0},
-        {20,1},
-        {20,2},
-        {20,3},
-        {20,4},
-        {20,5},
-        {20,6},
-        {20,7},
-        {20,8},
-        {20,9}
+        {24,1},{24,2},{24,3},{24,4},{24,5},
+        {24,6},{24,7},{24,8},{24,9},{24,10},
+        {25,1},{25,2},{25,3},{25,4},{25,5},
+        {25,6},{25,7},{25,8},{25,9},{25,10}
     };
-
     // The prior simulator's hard-coded routes have been removed.
     // Each genotype selects its own route, but only REAL Minecraft
     // BuilderGolem movement can earn fitness or pass the GameTest.
@@ -360,33 +387,27 @@ public final class BuilderEvolutionAltCourseGameTest {
         return state;
     }
     private static void fillOriginalCourse(GameTestHelper h){
-        // Resolve all 11 palette entries BEFORE starting physical trials.
+        // All sixteen palette blockstates are vanilla. Fail immediately
+        // if any is missing or properties differ from the upload.
         BlockState[] palette=new BlockState[COURSE_PALETTE.length];
         for(int i=0;i<palette.length;i++)
             palette[i]=parsePaletteState(COURSE_PALETTE[i]);
-        if(MAZE.length!=10 || STARTS.length!=10 || COURSE_LAYERS.length!=4)
-            throw new IllegalStateException("Unexpected alternative schematic dimensions");
-        for(int z=0;z<10;z++)for(int x=0;x<21;x++){
-            h.setBlock(X_OFFSET+x,1,Z_OFFSET+z,
-                    x==0?RED:x==20?GREEN:Blocks.STONE);
-            for(int y=2;y<=6;y++)h.setBlock(X_OFFSET+x,y,Z_OFFSET+z,Blocks.AIR);
-        }
-        for(int layer=0;layer<COURSE_LAYERS.length;layer++)
-            for(int z=0;z<10;z++){
-                String row=COURSE_LAYERS[layer][z];
-                if(row.length()!=19)throw new IllegalStateException(
-                        "Schematic row has wrong width");
-                for(int x=0;x<19;x++){
-                    int paletteIndex=Character.digit(row.charAt(x),36);
+        if(MAZE.length!=12||STARTS.length!=20||COURSE_LAYERS.length!=5)
+            throw new IllegalStateException("Wrong corrected schematic dimensions");
+        for(int y=0;y<10;y++)
+            for(int z=0;z<12;z++){
+                String row=COURSE_LAYERS[Math.min(y,4)][z];
+                if(row.length()!=27)throw new IllegalStateException(
+                        "Expected exact 27-block schematic row");
+                for(int x=0;x<27;x++){
+                    int paletteIndex=Character.digit(row.charAt(x),16);
                     if(paletteIndex<0||paletteIndex>=palette.length)
-                        throw new IllegalStateException("Bad schematic palette index");
-                    if(paletteIndex!=0)
-                        h.setBlock(X_OFFSET+x+1,2+layer,Z_OFFSET+z,
-                                palette[paletteIndex]);
+                        throw new IllegalStateException("Invalid schematic palette index");
+                    h.setBlock(X_OFFSET+x,1+y,Z_OFFSET+z,palette[paletteIndex]);
                 }
             }
-        System.out.println("[ALT COURSE] Loaded complete 19x10x4 schematic with "
-                +"exact diagonal-fence blockstates and two external wool pads");
+        System.out.println("[ALT COURSE] Restored exact VANILLA 27x10x12 track; "
+                +"10 real golems race from green wool to red wool in 260 ticks.");
     }
 
     private static int[] next(int x,int z,char step){
@@ -780,7 +801,7 @@ public final class BuilderEvolutionAltCourseGameTest {
      */
     private static final class TrainingMemory {
         private static final String FORMAT="golems-plus-physical-genes-v1";
-        private static final String COURSE="timetrial-alt-10-builders-260-ticks-v1-diagonal-fences";
+        private static final String COURSE="timetrial-alt-vanilla-10-builders-260-ticks-v2";
         private static final Gson JSON=new GsonBuilder()
                 .setPrettyPrinting().disableHtmlEscaping().create();
         private static final Path DIRECTORY=Path.of(
@@ -1296,7 +1317,7 @@ public final class BuilderEvolutionAltCourseGameTest {
     public void realBuildersEvolveOnAltMazeInThirteenSeconds(
             GameTestHelper helper){
         fillOriginalCourse(helper);
-        if(STARTS.length!=10||SELECTED_BOTS.length!=10){
+        if(STARTS.length!=20||SELECTED_BOTS.length!=10){
             helper.fail("Expected exactly 10 live Builder Golem entrants");
             return;
         }

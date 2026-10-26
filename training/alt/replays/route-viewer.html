@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Golems Plus | Real-Entity Trial Route Viewer</title>
+<style>
+:root{color-scheme:dark;font:15px/1.45 system-ui,Segoe UI,Roboto,sans-serif;background:#0c1421;color:#e8edf6}
+*{box-sizing:border-box} body{max-width:1200px;margin:auto;padding:24px 16px 48px}h1{font-size:26px;margin:0 0 6px}h2{font-size:17px;margin:0 0 12px}.muted{color:#b6c4d8}a{color:#87caff}p{margin:9px 0}button,select,input{font:inherit}button,select{background:#22344b;border:1px solid #526780;color:#edf5fc;border-radius:8px;padding:8px 12px;cursor:pointer}button:hover{background:#344d6c}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #80cbfd}select{min-width:140px}.panel{background:#152235;border:1px solid #324560;padding:16px;border-radius:14px;margin-top:16px}.control{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px}.control label{display:flex;align-items:center;gap:6px}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,310px);gap:16px;margin-top:14px}canvas#maze{width:100%;height:auto;image-rendering:pixelated;border-radius:8px;background:#0c1626;display:block}input[type=range]{flex:1;min-width:160px;accent-color:#36c6df}.numbers{display:flex;gap:12px;flex-wrap:wrap;font-weight:700}.chip{background:#24354b;border-radius:6px;padding:4px 8px}.danger{color:#ffb0ad}.pass{color:#6ee7a6}.warning{color:#ffd389}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #30435a;text-align:left;padding:6px}th{color:#b6c4d8}.bar{background:#24344b;border-radius:6px;height:15px;overflow:hidden}.bar>span{height:100%;display:block;background:#31c7ae}code{font-size:12px;overflow-wrap:anywhere}#history{max-height:290px;overflow:auto}#routeDetails{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.5}.legend{display:flex;gap:11px;flex-wrap:wrap;margin-top:8px;font-size:12px}.legend span:before{content:"";display:inline-block;background:var(--color);width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}.important{border-left:3px solid #dfad4e;padding-left:12px}.small{font-size:12px}@media(max-width:800px){.layout{grid-template-columns:1fr}h1{font-size:22px}}
+</style></head>
+<body>
+<h1>Builder Golem time trial — route viewer</h1>
+<p class="muted">Corrected vanilla Sponge schematic · 10 real Builder Golem entities · 13-second deadline</p>
+<div class="panel important"><strong>What this animation represents:</strong> new test runs record <strong>actual per-tick Minecraft coordinates</strong> for every real golem, including failed generations. Planned routes are kept separately for analysis.</div>
+<section class="panel">
+  <p class="muted" id="modeNotice">Archived trials have approximate planned-route animation; newly recorded generations replay actual entity positions.</p>
+  <div class="control">
+    <label>Test <select id="test"><option value="0">1 — strict pass</option><option value="1">2 — 1 tick late</option><option value="2">3 — 8/10 best</option></select></label>
+    <label>Generation <select id="generation" aria-label="Choose physical generation"></select></label>
+    <label>Display <select id="bot"><option value="all">All 10 bots</option></select></label>
+    <label>Speed <select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="0.5">0.5×</option></select></label>
+    <button id="play">▶ Play</button><button id="reset">Reset</button>
+  </div>
+  <div class="control"><input aria-label="Time position in Minecraft ticks" type="range" id="tick" min="0" max="260" step="1" value="0"><strong id="clock">0 ticks</strong></div>
+  <div class="numbers" id="metrics"></div>
+  <div class="layout">
+    <div><canvas id="maze" width="756" height="336" aria-label="Course map with planned routes"></canvas>
+      <div class="legend"><span style="--color:#46c374">Green wool: start</span><span style="--color:#ef5961">Red wool: finish</span><span style="--color:#a36b49">Doors</span><span style="--color:#e5bd5e">Half-slabs</span></div>
+    </div>
+    <section><h2>Golem details</h2><div id="details"></div><div id="routeDetails"></div></section>
+  </div>
+</section>
+<section class="panel"><h2>Generation results (real game entities)</h2><div id="history"></div></section>
+<section class="panel small muted"><p>Each test was run in Minecraft GameTest, not the earlier headless simulator. Job IDs: 121568761499, 121569521421, 121570342298. Saved JSON and sources are available in the same GitHub directory.</p><p><strong>Opening:</strong> This is a standalone offline HTML file with data embedded. Save it to your computer and double-click it. It does not need internet or a Minecraft installation.</p></section>
+<!-- The following payload is updated by the real-entity CI job after all 3 tests. -->
+<!-- LIVE_GENERATIONS_BEGIN -->
+<script id="current-replays" type="application/json">{"tests":[]}</script>
+<!-- LIVE_GENERATIONS_END -->
+<script>
+"use strict";
+const DATA={"courseRows":["###########################","#GG............#.....#.#SS#","#GG...^^^......#..#..#..SS#","#GG.#.^^^.#.####..#..#.#SS#","#GG.#.^^^.#.#..^..#..#.#SS#","#GG.#.^^^.#.#..^..#....#SS#","#GG.#.^^^.#.#..^..#....#SS#","#GG.#.^^^...#..#..#..#.#SS#","#GG.#.###...#..#..#..#.#SS#","#GG.#....##....#..#..#..SS#","#GG.D.....#....#.#...#.#SS#","###########################"],"tests":[]};
+const T=id=>document.getElementById(id);
+const ARCHIVE=DATA;
+const embedded=T("current-replays");
+let LIVE=embedded?JSON.parse(embedded.textContent):{tests:[]};
+let current=LIVE.tests.length?LIVE:ARCHIVE;
+const map=ARCHIVE.courseRows,canvas=T("maze"),ctx=canvas.getContext("2d");
+const tile=28,COLORS=Array.from({length:10},(_,i)=>"hsl("+Math.round(i*360/10)+" 85% 66%)");
+let playing=false,prev=null,shownTick=0;
+const test=()=>current.tests[Number(T("test").value)];
+const generation=()=>test().generations[Number(T("generation").value)];
+const physical=()=>current===LIVE;
+const bots=()=>physical()?(generation()?.bots||[]):(test()?.champions||[]);
+const selected=()=>T("bot").value;
+const visible=()=>bots().filter(b=>selected()==="all"||String(b.slot)===selected());
+function nextFrame(bot,t){
+  if(physical()){
+    const samples=bot.positions||[];
+    if(!samples.length)return null;
+    const i=Math.max(0,Math.min(samples.length-1,Math.floor(t)));
+    const j=Math.min(samples.length-1,i+1);
+    const a=samples[i],b=samples[j],f=t-Math.floor(t);
+    return [(a[1]+(b[1]-a[1])*f)/1000,(a[2]+(b[2]-a[2])*f)/1000,a[3]];
+  }
+  const points=bot.plannedWaypoints||[];
+  if(!points.length)return null;
+  const fraction=Math.max(0,Math.min(1,t/Math.max(1,bot.arrivalTicks)));
+  const idx=fraction*(points.length-1),a=points[Math.floor(idx)],b=points[Math.ceil(idx)],f=idx-Math.floor(idx);
+  return [a[0]*(1-f)+b[0]*f+.5,a[1]*(1-f)+b[1]*f+.5,"planned"];
+}
+function routePoints(bot){
+  if(physical())return (bot.positions||[]).map(p=>[p[1]/1000,p[2]/1000]);
+  return (bot.plannedWaypoints||[]).map(p=>[p[0]+.5,p[1]+.5]);
+}
+function renderMap(){
+  canvas.width=map[0].length*tile;canvas.height=map.length*tile;
+  const tiles={"#":"#2c415c",".":"#b5b6b0","S":"#46c374","G":"#ef5961","D":"#a36b49","^":"#e5bd5e"};
+  for(let z=0;z<map.length;z++)for(let x=0;x<map[z].length;x++){
+    const cell=map[z][x];
+    ctx.fillStyle=tiles[cell]||"#9299a5";ctx.fillRect(x*tile,z*tile,tile,tile);
+    ctx.strokeStyle="rgba(12,24,36,.25)";ctx.strokeRect(x*tile+.5,z*tile+.5,tile-1,tile-1);
+    if(cell==="D"||cell==="^"){
+      ctx.fillStyle="#182535";ctx.textAlign="center";ctx.font="13px sans-serif";
+      ctx.fillText(cell==="D"?"D":"½",(x+.5)*tile,(z+.68)*tile);
+    }
+  }
+  for(const bot of visible()){
+    const pts=routePoints(bot);if(!pts.length)continue;
+    ctx.beginPath();pts.forEach(([x,z],i)=>i?ctx.lineTo(x*tile,z*tile):ctx.moveTo(x*tile,z*tile));
+    ctx.strokeStyle=COLORS[bot.slot];ctx.globalAlpha=selected()==="all"?.28:.8;
+    ctx.lineWidth=selected()==="all"?2.5:4;ctx.stroke();ctx.globalAlpha=1;
+  }
+  for(const bot of visible()){
+    const point=nextFrame(bot,shownTick);if(!point)continue;
+    const x=point[0]*tile,z=point[1]*tile;
+    ctx.beginPath();ctx.arc(x,z,selected()==="all"?7:10,0,Math.PI*2);
+    ctx.fillStyle=COLORS[bot.slot];ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#162538";ctx.stroke();
+    ctx.fillStyle="#102032";ctx.font="bold 11px sans-serif";ctx.textAlign="center";
+    ctx.fillText(bot.slot,x,z+4);
+  }
+}
+function render(){
+  const g=generation(),t=test();
+  if(!t||!g){T("metrics").textContent="Waiting for first physical 13-second trials.";T("details").textContent="No scored entities yet.";return;}
+  T("clock").textContent=shownTick+" ticks / "+(shownTick/20).toFixed(2)+"s";
+  T("tick").value=String(Math.round(shownTick));
+  const finish=physical()?g.finished:g.finished;
+  const maxFinished=Math.max(0,...t.generations.map(x=>x.finished));
+  const won=physical()?g.finished===10:(!!t.strictSuccess&&g.generation===t.generations.at(-1).generation);
+  T("metrics").innerHTML='<span class="chip">Generation: '+g.generation+'</span><span class="chip">Finished: '+finish+'/10</span><span class="chip">Trial best: '+maxFinished+'/10</span><span class="chip '+(won?"pass":"warning")+'">'+(won?"10/10 completed":"Deadline not met")+'</span>';
+  const shown=visible();
+  if(!shown.length){
+    T("details").textContent="No paths were logged for this historical generation.";
+    T("routeDetails").textContent="Only winner planned routes were saved in the older tests. New training runs record every real golem at every tick.";
+  }else{
+    const html=shown.map(b=>'<tr><td style="color:'+COLORS[b.slot]+'">'+b.slot+'</td><td>'+(physical()?b.arrivedTicks:b.arrivalTicks)+'</td><td>'+(physical()?b.collisions:"—")+'</td><td>'+(physical()?b.stationaryTicks:"—")+'</td><td>'+(physical()?b.reverseTicks:"—")+'</td></tr>').join("");
+    T("details").innerHTML='<table><thead><tr><th>Bot</th><th>Finish tick</th><th>Contacts</th><th>Still ticks</th><th>Backoff</th></tr></thead><tbody>'+html+'</tbody></table>';
+    if(selected()==="all")T("routeDetails").textContent="Choose a golem to inspect speed losses, backoff and route decisions.";
+    else{
+      const b=shown[0],sample=physical()?b.positions[Math.min(b.positions.length-1,Math.floor(shownTick))]:null;
+      const distance=physical()?(b.distanceMeters||0).toFixed(2):"not logged";
+      const stepSpeed=physical()&&sample&&shownTick>0?(()=>{
+        const prev=b.positions[Math.max(0,Math.floor(shownTick)-1)];
+        return (20*Math.hypot(sample[1]-prev[1],sample[2]-prev[2])/1000).toFixed(2)+" m/s";
+      })():"not logged";
+      const reasons={w:"Walking",d:"Door alignment",j:"Jump",b:"Stuck recovery / reversing",c:"Collision / no displacement",f:"Finished"};
+      T("routeDetails").textContent="Mode at tick: "+(sample?(reasons[sample[3]]||sample[3]):"planned only")+
+        "\nMeasured instantaneous speed: "+stepSpeed+
+        "\nPhysical distance traveled: "+distance+" m"+
+        "\nSlow ticks (<3 m/s): "+(b.reducedSpeedTicks??"not logged")+
+        "\nStationary ticks: "+(b.stationaryTicks??"not logged")+
+        "\nRecovery backoff ticks: "+(b.reverseTicks??"not logged")+
+        "\nDoor ticks: "+(b.doorTicks??"not logged")+
+        "\nActual blocked ticks: "+(b.blockedTicks??"not logged")+
+        "\nPlanned route (separate from actual trace): "+(b.plannedRoute||b.route)+
+        "\nLearned genes: "+JSON.stringify(b.genes);
+    }
+  }
+  T("history").innerHTML=t.generations.map((row,i)=>
+    '<div style="display:grid;grid-template-columns:58px 1fr 100px;gap:9px;align-items:center;padding:5px 0"><span>Gen '+row.generation+'</span><div class="bar"><span style="width:'+(row.finished*10)+'%"></span></div><span>'+row.finished+'/10 finished</span></div>').join("");
+  renderMap();
+}
+function reloadGenerations(){
+  const t=test(),sel=T("generation");
+  sel.innerHTML="";
+  if(!t){T("bot").innerHTML='<option value="all">All 10 bots</option>';shownTick=0;render();return;}
+  t.generations.forEach((g,i)=>{
+    const o=document.createElement("option");o.value=i;
+    o.textContent="Gen "+g.generation+" — "+g.finished+"/10";sel.append(o);
+  });
+  // A winning generation is the default, but EVERY failed generation is selectable.
+  sel.value=String(Math.max(0,t.generations.findIndex(g=>g.finished===10)));
+  const choices=bots();
+  T("bot").innerHTML='<option value="all">All 10 bots</option>'+
+      choices.map(b=>'<option value="'+b.slot+'">Bot '+b.slot+'</option>').join("");
+  shownTick=0;playing=false;T("play").textContent="▶ Play";render();
+}
+function reloadTests(){
+  T("test").innerHTML=current.tests.map((t,i)=>'<option value="'+i+'">'+
+      (physical()?"Run "+t.trial:"Archived Test "+t.test)+
+      " — "+Math.max(0,...t.generations.map(g=>g.finished))+"/10</option>").join("");
+  T("modeNotice").textContent=physical()?
+      "ACTUAL per-tick Minecraft Builder Golem coordinates. Choose any generation, even failures. Paths, pauses, contact events and backoff are measured, not interpolated guesses.":
+      "Awaiting the first Minecraft GameTest. This new vanilla course will replay real positions for every generation."
+  T("test").value="0";reloadGenerations();
+}
+T("test").addEventListener("change",reloadGenerations);
+T("generation").addEventListener("change",()=>{
+  T("bot").value="all";shownTick=0;playing=false;render();
+});
+T("bot").addEventListener("change",render);
+T("tick").addEventListener("input",()=>{shownTick=Number(T("tick").value);render()});
+T("play").addEventListener("click",()=>{if(!bots().length)return;playing=!playing;prev=null;T("play").textContent=playing?"Ⅱ Pause":"▶ Play"});
+T("reset").addEventListener("click",()=>{playing=false;shownTick=0;prev=null;T("play").textContent="▶ Play";render()});
+function frame(timestamp){
+  if(playing&&bots().length){
+    if(prev!==null)shownTick+=Math.min(100,timestamp-prev)/1000*20*Number(T("speed").value);
+    prev=timestamp;
+    if(shownTick>=260){shownTick=260;playing=false;T("play").textContent="▶ Play";}
+    render();
+  }else prev=null;
+  requestAnimationFrame(frame);
+}
+reloadTests();requestAnimationFrame(frame);
+</script></body></html>
