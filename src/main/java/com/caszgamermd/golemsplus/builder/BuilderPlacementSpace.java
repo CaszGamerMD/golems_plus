@@ -34,6 +34,13 @@ public final class BuilderPlacementSpace {
     private static final Map<BuilderGolem,Contention> contention=new WeakHashMap<>();
     private static final int MAX_BLOCKED_TICKS=100;
 
+    /** Pending placement evacuation owns its worker before general
+     * clockwise crowd negotiation can be scheduled.
+     */
+    public static boolean controlling(BuilderGolem worker){
+        return yielding.containsKey(worker);
+    }
+
     public static boolean blockedTooLong(ServerLevel level,BuilderGolem worker,
             BlockPos target){
         Contention wait=contention.get(worker);
