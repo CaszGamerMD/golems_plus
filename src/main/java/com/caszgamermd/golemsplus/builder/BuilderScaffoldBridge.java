@@ -19,8 +19,8 @@ import net.minecraft.world.level.block.Blocks;
 
 /**
  * Physical temporary catwalks for a Builder blocked by an overhang.
- * A route is a chain of real, owned scaffold blocks at one elevation,
- * beginning at the top of an EXISTING owned tower. Four-way BFS permits
+ * A route is a chain of real, owned scaffold blocks across adjacent elevations,
+ * beginning at the top of an EXISTING owned tower. 3D BFS permits
  * turns around protruding walls; no teleport or imaginary walk nodes.
  *
  * Only one scaffold is placed from within interaction range at a time.
@@ -205,7 +205,7 @@ public final class BuilderScaffoldBridge {
                 ||!level.getBlockState(platform).is(Blocks.SCAFFOLDING)
                     &&!com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .canStandOn(level,worker,platform.above())
-                ||worker.getY()<platform.getY()+.35
+                ||worker.getY()<platform.getY()-.25
                 ||worker.getY()>platform.getY()+2){
             walking.remove(worker);
             routes.remove(worker);
@@ -215,7 +215,7 @@ public final class BuilderScaffoldBridge {
         double tx=platform.getX()+.5,tz=platform.getZ()+.5;
         double dx=tx-worker.getX(),dz=tz-worker.getZ();
         if(dx*dx+dz*dz<.10
-                &&Math.abs(worker.getY()-platform.getY()-1)<.55){
+                &&Math.abs(worker.getY()-platform.getY()-1)<.22){
             walking.remove(worker);
             walkMonitors.remove(worker);
             worker.getNavigation().stop();
