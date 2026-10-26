@@ -7,7 +7,7 @@ space=(root/"builder/BuilderPlacementSpace.java").read_text()
 nav=(root/"worker/WorkerNavigation.java").read_text()
 work=service[service.index("double workDistance=worker.distanceToSqr("):
              service.index("activity.phase=Action.PLACE;",service.index("double workDistance=worker.distanceToSqr("))]
-assert "if(workDistance>14)" in work
+assert "if(workDistance>4.5*4.5)" in work
 assert "activity.phase=Action.MOVE_TO_WORK" in work
 assert "BuilderPlacementSpace.approach(level,worker,pos)" in work
 assert "routeToExact(level,worker,approach,1.0)" in work
@@ -26,4 +26,4 @@ assert "return endsAtExactTile(path,target)&&safePath(level,mob,path,false)" in 
 assert "if(!endsAtExactTile(path,target)||!safePath" in nav
 assert "public static String debugStatus(PathfinderMob mob)" in nav
 assert "debugStatus(worker)" in service
-print("PASS: builders outside five-to-six block placement range continue toward exact reachable standing tiles")
+print("PASS: builders outside survival 4.5-block placement range continue toward exact reachable standing tiles")
