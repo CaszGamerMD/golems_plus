@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.AABB;
@@ -19,7 +20,7 @@ import net.minecraft.world.phys.Vec3;
  * Every node requires a real loaded chunk and a collision-free mob AABB.
  */
 public final class BuilderCreativeAirRoute {
-    private static final int LIMIT=6500;
+    private static final int LIMIT=13000;
     private static final int MAX_HORIZONTAL=28;
     private static final int MAX_VERTICAL=25;
     private static final int[][] DIRECTIONS={
@@ -34,16 +35,35 @@ public final class BuilderCreativeAirRoute {
                 p.getZ()+.5-worker.getZ());
     }
 
+    private record Candidate(BlockPos pos,int steps,double estimate){}
+    private static double estimate(BlockPos node,BlockPos target){
+        double dx=node.getX()-target.getX();
+        double dy=node.getY()-(target.getY()+.5);
+        double dz=node.getZ()-target.getZ();
+        return Math.max(0,Math.sqrt(dx*dx+dy*dy+dz*dz)-3.4);
+    }
+
     public static List<Vec3> plan(ServerLevel level,BuilderGolem worker,
                                   BlockPos target){
         BlockPos start=worker.blockPosition();
         AABB goalBox=new AABB(target);
-        ArrayDeque<BlockPos> queue=new ArrayDeque<>();
+        // A* prefers air corridors going TOWARD the needed placement,
+        // rather than spending thousands of BFS nodes in irrelevant
+        // side corridors before reaching a work zone 20+ blocks away.
+        PriorityQueue<Candidate> open=new PriorityQueue<>(
+                Comparator.comparingDouble(Candidate::estimate));
         Map<BlockPos,BlockPos> parent=new HashMap<>();
-        queue.add(start);parent.put(start,start);
+        Map<BlockPos,Integer> distances=new HashMap<>();
+        open.add(new Candidate(start,0,estimate(start,target)));
+        parent.put(start,start);
+        distances.put(start,0);
         BlockPos found=null;
-        while(!queue.isEmpty()&&parent.size()<LIMIT){
-            BlockPos at=queue.removeFirst();
+        int expanded=0;
+        while(!open.isEmpty()&&expanded++<LIMIT){
+            Candidate current=open.poll();
+            BlockPos at=current.pos();
+            if(current.steps()>distances.getOrDefault(at,Integer.MAX_VALUE))
+                continue;
             AABB body=bodyAt(worker,at);
             double dx=at.getX()+.5-target.getX()-.5;
             double dz=at.getZ()+.5-target.getZ()-.5;
@@ -56,19 +76,22 @@ public final class BuilderCreativeAirRoute {
             List<BlockPos> options=new ArrayList<>(6);
             for(int[] d:DIRECTIONS)
                 options.add(at.offset(d[0],d[1],d[2]));
-            // Expand closer legal air cells first, preserving BFS depth.
             options.sort(Comparator.comparingDouble(p->p.distSqr(target)));
             for(BlockPos next:options){
-                if(parent.containsKey(next)
-                        ||Math.abs(next.getX()-start.getX())>MAX_HORIZONTAL
+                if(Math.abs(next.getX()-start.getX())>MAX_HORIZONTAL
                         ||Math.abs(next.getZ()-start.getZ())>MAX_HORIZONTAL
                         ||Math.abs(next.getY()-start.getY())>MAX_VERTICAL
                         ||!level.hasChunkAt(next)
                         ||!level.hasChunkAt(next.above())
                         ||!level.noCollision(worker,bodyAt(worker,next)))
                     continue;
+                int steps=current.steps()+1;
+                if(steps>=distances.getOrDefault(next,Integer.MAX_VALUE))
+                    continue;
+                distances.put(next,steps);
                 parent.put(next,at);
-                queue.addLast(next);
+                open.add(new Candidate(next,steps,
+                        steps+estimate(next,target)*1.30));
             }
         }
         if(found==null||found.equals(start))return List.of();
