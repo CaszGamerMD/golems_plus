@@ -212,7 +212,12 @@ public final class BuilderScaffoldBridgeGameTest {
             }
         }
         if(!BuilderScaffoldBridge.sidestep(level,worker,table,landing.above())){
-            helper.fail("Ghost-flight refused an existing supported ascent");
+            helper.fail("Ghost-flight refused supported ascent: state="
+                    +level.getBlockState(landing)+" owned="
+                    +table.sharedScaffoldPositions().contains(landing)
+                    +" loaded="+level.hasChunkAt(landing)
+                    +" rangeSq="+worker.distanceToSqr(landing.getX()+.5,
+                            landing.getY()+1,landing.getZ()+.5));
             return;
         }
         final Runnable simulation=BuilderChunkTickets.holdGameTestSimulation(level,
