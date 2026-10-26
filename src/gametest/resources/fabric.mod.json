@@ -25,7 +25,8 @@
       "com.caszgamermd.golemsplus.builder.BuilderEscapeScaffoldGameTest",
       "com.caszgamermd.golemsplus.crane.CraneRailWalkGameTest",
       "com.caszgamermd.golemsplus.crane.CranePlannerConnectionsGameTest",
-      "com.caszgamermd.golemsplus.crane.CraneRailVisualConnectionsGameTest"
+      "com.caszgamermd.golemsplus.crane.CraneRailVisualConnectionsGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderClockwiseTrafficGameTest"
     ]
   }
 }
