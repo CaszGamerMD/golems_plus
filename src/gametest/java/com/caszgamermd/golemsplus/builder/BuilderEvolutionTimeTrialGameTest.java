@@ -200,6 +200,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         }
         helper.onEachTick(()->{
             long tick=helper.getTick();
+            if(tick>DEADLINE)return; // GameTest may tick once after reporting failure.
             for(Candidate b:bots){
                 if(b.reached>=0)continue;
                 if(!b.mob.isAlive()){
@@ -210,7 +211,10 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 if(world.getBlockState(under).is(RED)){
                     b.reached=tick;
                     b.mob.getNavigation().stop();
-                    b.mob.setDeltaMovement(Vec3.ZERO);
+                    // The BOT has reached the finish; remove it from
+                    // contention immediately rather than parking at the
+                    // narrow doorway and blocking everyone still racing.
+                    b.mob.discard();
                     continue;
                 }
                 if(tick>DEADLINE||b.cursor>=b.route.length())
