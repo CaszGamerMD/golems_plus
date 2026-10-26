@@ -51,6 +51,7 @@ class Course:
     clearances: tuple[tuple[float, ...], ...]
     start: tuple[int, int]
     goal: tuple[int, int]
+    goals: tuple[tuple[int, int], ...]
     sha256: str
 
     @classmethod
@@ -69,8 +70,8 @@ class Course:
                   for x, char in enumerate(row) if char == "S"]
         goals = [(x, z) for z, row in enumerate(rows)
                  for x, char in enumerate(row) if char == "G"]
-        if len(starts) != 1 or len(goals) != 1:
-            raise ValueError("Each course must contain exactly one S and one G")
+        if len(starts) != 1 or not goals:
+            raise ValueError("Each training run needs one S and at least one G")
         if len(rows) > 128 or len(rows[0]) > 128:
             raise ValueError("Initial training arena cannot exceed 128 x 128")
         def profile(key: str, default: float) -> tuple[tuple[float, ...], ...]:
@@ -97,7 +98,7 @@ class Course:
                                 "clearances": clearances}, sort_keys=True)
         fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         return cls(str(name), tuple(rows), widths, clearances,
-                   starts[0], goals[0], fingerprint)
+                   starts[0], goals[0], tuple(goals), fingerprint)
 
     @classmethod
     def from_path(cls, path: Path) -> "Course":
@@ -171,7 +172,7 @@ class Course:
         seen = {position}
         while queue:
             at, distance = queue.popleft()
-            if at == self.goal:
+            if at in self.goals:
                 return distance
             for dx, dz in DIRECTIONS:
                 next_pos = (at[0] + dx, at[1] + dz)
@@ -269,8 +270,8 @@ def _plan(course: Course, position: tuple[int, int], genome: Genome,
     Only the true-world physics adapter below is allowed to move the bot.
     """
     def heuristic(point: tuple[int, int]) -> float:
-        return (abs(point[0] - course.goal[0])
-                + abs(point[1] - course.goal[1])) * genome.goal_weight
+        return min(abs(point[0] - x) + abs(point[1] - z)
+                   for x, z in course.goals) * genome.goal_weight
 
     serial = 0
     heap: list[tuple[float, int, tuple[int, int]]] = [
@@ -283,7 +284,7 @@ def _plan(course: Course, position: tuple[int, int], genome: Genome,
         if point in settled:
             continue
         settled.add(point)
-        if point == course.goal:
+        if point in course.goals:
             node = point
             while parent.get(node) is not None and parent[node] != position:
                 node = parent[node]
@@ -341,8 +342,9 @@ def _plan(course: Course, position: tuple[int, int], genome: Genome,
     if not frontiers:
         return None
     closest = min(frontiers, key=lambda cell: (
-        visits.get(cell, 0) * 5 + abs(cell[0] - course.goal[0])
-        + abs(cell[1] - course.goal[1])))
+        visits.get(cell, 0) * 5
+        + min(abs(cell[0] - x) + abs(cell[1] - z)
+              for x, z in course.goals)))
     # Do not teleport to a frontier; plan the next safe ground movement.
     if closest == position:
         return None
@@ -386,7 +388,7 @@ def simulate(course: Course, genome: Genome, *, timeout: int,
     if initial_distance is None:
         raise ValueError(f"Course {course.name!r} has no legal ground route")
     best_remaining = initial_distance
-    while ticks < timeout and bot != course.goal:
+    while ticks < timeout and bot not in course.goals:
         _observe(course, bot, known)
         move = _plan(course, bot, genome, known, visited,
                      previous_direction, open_doors, rng)
@@ -422,7 +424,7 @@ def simulate(course: Course, genome: Genome, *, timeout: int,
         remaining = course.oracle_distance(bot)
         if remaining is not None:
             best_remaining = min(best_remaining, remaining)
-    finished = bot == course.goal
+    finished = bot in course.goals
     progress = 1.0 if finished else (
         (initial_distance - best_remaining) / max(1, initial_distance))
     # A completed course always wins. Partial progress rewards genuinely
