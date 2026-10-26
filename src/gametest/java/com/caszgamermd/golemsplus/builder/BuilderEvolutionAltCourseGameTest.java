@@ -1314,6 +1314,82 @@ public final class BuilderEvolutionAltCourseGameTest {
     }
 
     /**
+     * Physically validate the corridor that trapped most previous runners.
+     * At x=15,z=4 there is an exposed bottom slab (legal 0.5 rise).
+     * At x=15,z=5/6 a second top slab leaves only 1 block of headroom
+     * and no legal 1.6-tall Builder can enter, even on a short route.
+     */
+    @GameTest(maxTicks=120,padding=64,skyAccess=true)
+    public void realBuilderRejectsLowCeilingSlabButCanUseOpenHalfSlab(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel level=helper.getLevel();
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos spawn=pos(helper,16,2,4);
+        mob.setPos(spawn.getX()+.5,spawn.getY(),spawn.getZ()+.5);
+        level.addFreshEntity(mob);
+        boolean open=physicalCellOpen(helper,level,mob,15,4);
+        boolean closed5=physicalCellOpen(helper,level,mob,15,5);
+        boolean closed6=physicalCellOpen(helper,level,mob,15,6);
+        System.out.println("[ALT SLAB REGRESSION] exposed="+open
+                +" lowHeadroom5="+closed5+" lowHeadroom6="+closed6);
+        if(!open||closed5||closed6){
+            helper.fail("Real Builder AABB must admit raised open slab and"
+                +" reject 1-block-headroom slabs: "+open+"/"+closed5+"/"+closed6);
+        }else helper.succeed();
+        mob.discard();
+    }
+
+    /**
+     * Standalone single-open-birch-door crossing with the physical Builder
+     * body. No teleport, player-like privileges, breaking or flight.
+     */
+    @GameTest(maxTicks=140,padding=64,skyAccess=true)
+    public void realBuilderCrossesExistingSingleOpenBirchDoor(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel level=helper.getLevel();
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos start=pos(helper,5,2,10);
+        BlockPos door=pos(helper,4,2,10);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        mob.setNoGravity(false);
+        level.addFreshEntity(mob);
+        double shift=safeDoorLane(level,mob,door,
+                SAVED_PHYSICAL_CHAMPIONS[0],false);
+        final int[] attempts={0};
+        helper.onEachTick(()->{
+            if(!mob.isAlive()){
+                helper.fail("Live Builder disappeared while crossing birch door");
+                return;
+            }
+            if(level.getBlockState(mob.blockPosition().below()).is(RED)){
+                System.out.println("[ALT DOOR REGRESSION] physical open door"
+                    +" passed in "+attempts[0]+" ticks offset="+shift);
+                mob.discard();
+                helper.succeed();
+                return;
+            }
+            if(attempts[0]++>95){
+                helper.fail("Single birch door blocked physical Builder at "
+                    +mob.position()+" shift="+shift);
+                mob.discard();
+                return;
+            }
+            // Preserve the chosen lane through BOTH faces of the door.
+            double tx=pos(helper,2,2,10).getX()+.5;
+            double tz=door.getZ()+.5+shift;
+            double dx=tx-mob.getX(),dz=tz-mob.getZ();
+            double distance=Math.hypot(dx,dz);
+            double step=Math.min(.2,distance);
+            mob.getNavigation().stop();
+            mob.move(MoverType.SELF,new Vec3(
+                    step*dx/Math.max(.00001,distance),0,
+                    step*dz/Math.max(.00001,distance)));
+        });
+    }
+
+    /**
      * Separate REAL-ENTITY physics regression: a Builder must travel
      * diagonally while the native collision solver steps up a bottom
      * half-slab (0.5 blocks), WITHOUT receiving any jump command.
