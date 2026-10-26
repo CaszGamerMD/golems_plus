@@ -12,3 +12,17 @@ This folder contains the NEW upload **timetrial_alt(2).schem**, SHA-256 `b8a216c
 - [Offline route viewer](replays/route-viewer.html). Save its raw HTML and open locally; the server workflow embeds all real recorded generations.
 
 Run through `.github/workflows/builder-alt-physical-timetrial.yml`. The GitHub workflow runs three sequential physical Minecraft tests. Failures still save mutations and physical traces. Do not consider a headless simulation a successful test.
+
+## First three REAL-entity tests on corrected vanilla schematic
+
+| Test | Outcome within 260 ticks | Best physical generation | Notes |
+|---|---|---|---|
+| 1 | FAIL, best 5/10 | 5/10 of 10 | Several physical finishers; mutation and progress saved |
+| 2 | FAIL, best 0/10 | 0/10 | Frequent collision/stuck recovery around the 0.5-block slab entries |
+| 3 | FAIL, best 0/10 | 0/10 | Same 13-second rule; no complete generation |
+
+All three Minecraft server trials are verified in [the original Actions job](https://github.com/CaszGamerMD/golems_plus/actions/runs/40337985923). The previous trial artifact was recovered and committed: **75 generations of actual per-tick coordinates**, with ten physical entity routes per generation, plus a 75-generation checkpoint and fitness history. There is **no local 10/10 champion** yet, so the separate old-course champion is not misrepresented as a win.
+
+**Training observation:** collision observations around floor half-slabs accumulated strongly (near x16→15 and x9→8), and later populations consistently stalled. Those observations and learned genes are retained for analysis; these results do not justify claiming reliable cross-course generalization.
+
+Further test batches require manual GitHub Actions dispatch so a code or documentation edit does not silently launch another 3 tests.
