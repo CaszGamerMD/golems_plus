@@ -110,8 +110,20 @@ public final class BuilderNavigationRequirementsGameTest {
                 helper.fail("Scaffold navigation: Builder missing");return;
             }
             if(helper.getTick()-phaseStart[0]>340){
+                BlockPos towerFeet=new BlockPos(base.getX(),
+                        builder.blockPosition().getY(),base.getZ());
+                double mx=Math.max(-.13,Math.min(.13,
+                        (base.getX()+.5-builder.getX())*.25));
+                double mz=Math.max(-.13,Math.min(.13,
+                        (base.getZ()+.5-builder.getZ())*.25));
                 helper.fail("Scaffold navigation stage="+phase[0]
                         +" feet="+builder.blockPosition()
+                        +" exact="+builder.position()
+                        +" delta="+builder.getDeltaMovement()
+                        +" ground="+builder.onGround()
+                        +" oneStepClear="+world.noCollision(builder,
+                                builder.getBoundingBox().move(mx,0,mz))
+                        +" towerUnder="+world.getBlockState(towerFeet.below())
                         +" scaffold="+BuilderScaffolding.debugClimb(builder)
                         +" nav="+WorkerNavigation.debugStatus(builder));return;
             }
