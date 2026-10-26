@@ -19,6 +19,7 @@
       "com.caszgamermd.golemsplus.builder.BuilderInfiniteOnsiteSupplyGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderDomeArenaGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderDomeImportGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderCreativeEscapeGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderDomeConstructionGameTest",
       "com.caszgamermd.golemsplus.crane.CraneDomeCollisionGameTest",
       "com.caszgamermd.golemsplus.crane.CraneRailConnectionsGameTest",
