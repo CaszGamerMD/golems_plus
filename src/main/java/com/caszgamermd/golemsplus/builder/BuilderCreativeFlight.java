@@ -29,6 +29,7 @@ public final class BuilderCreativeFlight {
         Vec3 last;
         long lastCloser;
         double best;
+        long escapingUntil;
         Flight(BlockPos goal,Vec3 destination,boolean depot,
                 BuilderGolem worker,ServerLevel level){
             this.goal=goal.immutable();
@@ -183,9 +184,18 @@ public final class BuilderCreativeFlight {
             return true;
         }
         Flight old=flights.get(worker);
-        if(old==null||!old.goal.equals(target)||old.depot){
+        if(old!=null&&old.escapingUntil>level.getGameTime())return false;
+        if(old==null||!old.goal.equals(target)||old.depot
+                ||old.destination.distanceToSqr(worker.position())<.16
+                        &&old.destination.distanceToSqr(
+                                target.getX()+.5,target.getY()+.5,
+                                target.getZ()+.5)<11.0){
             Vec3 destination=chooseWorkPosition(level,worker,target);
-            if(destination==null)return false;
+            if(destination==null){
+                // Try to clear the target's own body volume, even when
+                // its ideal work-radius candidates have become blocked.
+                return !requestClearance(level,worker,target);
+            }
             navigate(level,worker,target,destination,false);
         }
         return false;
@@ -228,10 +238,45 @@ public final class BuilderCreativeFlight {
         return best;
     }
 
+    /** A Builder's collision body may overlap a future placement, even
+     * after it has reached the 14-squared-block placing radius. Fly out
+     * of the volume; never let a ground-only pathfinder steal this motion.
+     */
+    public static boolean requestClearance(ServerLevel level,
+                                           BuilderGolem worker,BlockPos target){
+        Flight old=flights.get(worker);
+        if(old!=null&&old.escapingUntil>level.getGameTime())return true;
+        Vec3 candidate=null;
+        double score=Double.POSITIVE_INFINITY;
+        AABB forbidden=new AABB(target).inflate(.15);
+        for(int y:new int[]{2,3,1,0,-1}){
+            for(Direction side:Direction.Plane.HORIZONTAL){
+                for(int radius:new int[]{2,3}){
+                    double x=target.getX()+.5+side.getStepX()*radius;
+                    double z=target.getZ()+.5+side.getStepZ()*radius;
+                    double py=target.getY()+y;
+                    AABB dest=worker.getBoundingBox().move(
+                            x-worker.getX(),py-worker.getY(),z-worker.getZ());
+                    BlockPos cell=BlockPos.containing(x,py,z);
+                    if(!level.hasChunkAt(cell)||dest.intersects(forbidden)
+                            ||!level.noCollision(worker,dest))continue;
+                    double cost=worker.distanceToSqr(x,py,z);
+                    if(cost<score){score=cost;candidate=new Vec3(x,py,z);}
+                }
+            }
+        }
+        if(candidate==null)return false;
+        navigate(level,worker,target,candidate,false);
+        Flight now=flights.get(worker);
+        if(now!=null)now.escapingUntil=level.getGameTime()+45;
+        return true;
+    }
+
     public static String debug(BuilderGolem worker){
         Flight flight=flights.get(worker);
         if(flight==null)return "OFF";
         return (flight.depot?"DEPOT":"BUILD")+" destination="+flight.destination
-                +" cruiseY="+flight.cruiseY+" bestSq="+flight.best;
+                +" cruiseY="+flight.cruiseY+" bestSq="+flight.best
+                +" escaping="+flight.escapingUntil;
     }
 }
