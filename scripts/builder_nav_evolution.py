@@ -23,6 +23,9 @@ from pathlib import Path
 
 TICKS_PER_SECOND = 20
 METERS_PER_SECOND = 4.0
+BODY_WIDTH_BLOCKS = 0.65
+BODY_HEIGHT_BLOCKS = 1.6
+HALF_WIDTH = BODY_WIDTH_BLOCKS / 2
 TICKS_PER_BLOCK = math.ceil(TICKS_PER_SECOND / METERS_PER_SECOND)  # 5
 DOOR_OPEN_TICKS = 8
 JUMP_TICKS = 5
@@ -44,6 +47,8 @@ GENES = {
 class Course:
     name: str
     rows: tuple[str, ...]
+    widths: tuple[tuple[float, ...], ...]
+    clearances: tuple[tuple[float, ...], ...]
     start: tuple[int, int]
     goal: tuple[int, int]
     sha256: str
@@ -68,8 +73,31 @@ class Course:
             raise ValueError("Each course must contain exactly one S and one G")
         if len(rows) > 128 or len(rows[0]) > 128:
             raise ValueError("Initial training arena cannot exceed 128 x 128")
-        fingerprint = hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest()
-        return cls(str(name), tuple(rows), starts[0], goals[0], fingerprint)
+        def profile(key: str, default: float) -> tuple[tuple[float, ...], ...]:
+            raw = data.get(key)
+            if raw is None:
+                return tuple(tuple(default for _ in row) for row in rows)
+            if (not isinstance(raw, list) or len(raw) != len(rows)
+                    or not all(isinstance(line, list)
+                               and len(line) == len(rows[0]) for line in raw)):
+                raise ValueError(f"{key} must match the course's rows and columns")
+            result = []
+            for line in raw:
+                values = []
+                for n in line:
+                    if (isinstance(n, bool) or not isinstance(n, (int, float))
+                            or not math.isfinite(n) or n <= 0):
+                        raise ValueError(f"{key} requires positive finite numbers")
+                    values.append(float(n))
+                result.append(tuple(values))
+            return tuple(result)
+        widths = profile("widths", 1.0)
+        clearances = profile("clearances", 3.0)
+        canonical = json.dumps({"rows": rows, "widths": widths,
+                                "clearances": clearances}, sort_keys=True)
+        fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return cls(str(name), tuple(rows), widths, clearances,
+                   starts[0], goals[0], fingerprint)
 
     @classmethod
     def from_path(cls, path: Path) -> "Course":
@@ -93,14 +121,49 @@ class Course:
         tile = self.tile(point)
         return int(tile) if tile.isdigit() else 0
 
+    def can_occupy(self, point: tuple[int, int]) -> bool:
+        """Static full-body fit at a cell center, not just feet occupancy."""
+        x, z = point
+        if self.tile(point) == "#":
+            return False
+        return (self.widths[z][x] + 1e-8 >= BODY_WIDTH_BLOCKS
+                and self.clearances[z][x] + 1e-8 >= BODY_HEIGHT_BLOCKS)
+
+    def segment_clear(self, a: tuple[int, int],
+                      b: tuple[int, int]) -> bool:
+        """Sweep the 0.65-wide footprint between centers.
+
+        This checks solid full blocks in the 2D course at 0.05-block
+        intervals and declared narrow-gap/low-ceiling profiles. Minecraft
+        jump arcs and partial block shapes need later live integration.
+        """
+        for sample in range(21):
+            t = sample / 20
+            x = a[0] + .5 + (b[0] - a[0]) * t
+            z = a[1] + .5 + (b[1] - a[1]) * t
+            left = math.floor(x - HALF_WIDTH + 1e-8)
+            right = math.floor(x + HALF_WIDTH - 1e-8)
+            top = math.floor(z - HALF_WIDTH + 1e-8)
+            bottom = math.floor(z + HALF_WIDTH - 1e-8)
+            for cx in range(left, right + 1):
+                for cz in range(top, bottom + 1):
+                    if not self.can_occupy((cx, cz)):
+                        return False
+        return True
+
     def legal_step(self, a: tuple[int, int], b: tuple[int, int]) -> bool:
         """Strict cardinal movement; can jump up 1, drop up to 2."""
         if abs(a[0] - b[0]) + abs(a[1] - b[1]) != 1:
             return False
-        if self.tile(a) == "#" or self.tile(b) == "#":
+        if not self.can_occupy(a) or not self.can_occupy(b):
             return False
         change = self.height(b) - self.height(a)
-        return -2 <= change <= 1
+        if not -2 <= change <= 1:
+            return False
+        # A jump also requires some headroom above the departure surface.
+        if change > 0 and self.clearances[a[1]][a[0]] < BODY_HEIGHT_BLOCKS + .4:
+            return False
+        return self.segment_clear(a, b)
 
     def oracle_distance(self, position: tuple[int, int]) -> int | None:
         """Score-only shortest path; never given to the simulated bot."""
@@ -463,7 +526,9 @@ def main() -> None:
         "physics": {"speed_m_per_s": METERS_PER_SECOND,
                     "ticks_per_block": TICKS_PER_BLOCK,
                     "breaking": False, "scaffolding": False,
-                    "flying": False, "diagonal": False},
+                    "flying": False, "diagonal": False,
+                    "collision_width_blocks": BODY_WIDTH_BLOCKS,
+                    "collision_height_blocks": BODY_HEIGHT_BLOCKS},
         "course_hashes": {c.name: c.sha256 for c in courses},
         "genome": asdict(champion),
         "runs": [{**asdict(run), "path": list(run.path)} for run in runs],
