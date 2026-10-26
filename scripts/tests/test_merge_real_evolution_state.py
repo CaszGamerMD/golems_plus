@@ -23,9 +23,11 @@ def header():
 
 
 def champion(slowest, mean):
-    times = [slowest] * 10
-    # Keep the arithmetic exactly consistent with scoring.
-    times[0] = int(round(mean * 10 - slowest * 9))
+    # Generate plausible 10-bot arrivals whose real arithmetic mean
+    # exactly matches the saved score, including one slowest finisher.
+    remaining = int(round(mean * 10 - slowest))
+    times = [slowest] + [remaining // 9] * 9
+    times[1] += remaining - sum(times[1:])
     assert min(times) >= 0 and max(times) == slowest
     return {**header(), "slowestTicks": slowest, "meanTicks": sum(times)/10,
             "winningGenomes": [genome(i) for i in range(10)],
