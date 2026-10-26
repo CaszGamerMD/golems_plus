@@ -66,7 +66,20 @@ public final class CraneTransportGameTest {
             if(arrivedDown.size()==4){
                 System.out.println("[CRANE ROUNDTRIP] PASS four real builders boarded, delivered up, boarded and returned down");h.succeed();
             }
-            if(h.getTick()==2900)h.fail("Round trip stalled: "+crane.status()+" up="+arrivedUp.size()+" down="+arrivedDown.size());
+            if(h.getTick()==2900){
+                StringBuilder missing=new StringBuilder();
+                for(var worker:crew)missing.append(" | ")
+                        .append(worker.getUUID().toString(),0,8)
+                        .append(" @ ").append(worker.blockPosition())
+                        .append(" alive=").append(worker.isAlive())
+                        .append(" riding=").append(worker.getVehicle()==crane)
+                        .append(" up=").append(arrivedUp.contains(worker.getUUID()))
+                        .append(" downBoard=").append(boardedDown.contains(worker.getUUID()))
+                        .append(" downArrival=").append(arrivedDown.contains(worker.getUUID()));
+                h.fail("Round trip stalled: "+crane.status()
+                        +" up="+arrivedUp.size()+" down="+arrivedDown.size()
+                        +" | "+missing);
+            }
         });
     }
 }
