@@ -76,31 +76,9 @@ public final class BuilderEvolutionTimeTrialGameTest {
         {25,1},{25,2},{25,3},{25,4},{25,5},
         {25,6},{25,7},{25,8},{25,9},{25,10}
     };
-    // Headless time-trial's *winning generation 2*, seed=42.
-    // All chosen routes completed its own 360-tick simulated deadline.
-    // Movement here is authoritative Minecraft collision-aware movement.
-    private static final String[] REPLAYS={
-        "WWWSSSSSSSSWWWNNNNNNWWWSSSSWWNNNWWSSSWWSSSWWWNENNNNNNWWWSSWW",
-        "WSWWNSSSSSSSWWWNNNNNWNWWSSSSWWSSSWWNNNNNWWNNSSSSSSSWWWENNNNNNNWWWSSWW",
-        "WWWNSSSSSSSWWWNNNNNNWWWSSSSSNWWNNNWWSSSWWSSSWWWNENNNNNNWWWSSSWW",
-        "WSWWNNNSSSSSSSWWWNNNNNWNWWSSSSWWNNNWWSSWWSSSSWWWENNNNNNNWWWSSWW",
-        "WWWSSSSWWWNNNNNNWWWSSSSWWNNNWWSSSWWSSSWWWNENNNNNNWWWSSWW",
-        "WNWWNNNSSSSSSWSWWNNNNNWNWWSSSSWWSSSWWNNNWWNNNNSSSSSSSWWWNENNNNNNWWWSSWW",
-        "WWWSSWWWNNNNNNWWWSSSSWWSSSWWNNNNNWWNNSSSSSSSWWWNENNNNNNWWWSSSWW",
-        "NWWWSSWWWNNNNNNWWWSSSSWWSSSWWNNNNNNNNWWSSSSSSSSWWWNENNNNNNWWWSSSWW",
-        "WWWWWWNNNNNWNWWSSSSWWSSSWWNNNWWNNNNSSSSSSSWWWNENNNNNNWWWSSWW",
-        "WNWWWWWNNNNNWNWWSSSSWWNNNWWSWWSSSSSWWWNENNNNNNWWWSSWW",
-        "WWWWSSSSSSSSWWWNNNNNWNWWSSSSWWSSSWWNNNNWWNNNSSSSSSSWWWNENNNNNNWWWSSWW",
-        "WWSWWNSSSSSSSWWWNNNNNNWWWSSSSWWSSSWWNNNNNWWNNSSSSSSSWWWNENNNNNNWWWSSWW",
-        "WWWWNSSSSSSSWWWNNNNNWNWWSSSSWWNNNWWSSSWWSSSWWWENNNNNNNWWWSSSWW",
-        "WWNNNWWSSSSSSSSWWWNNNNNNWWWSSSSWWNNNWWNNWWSSSSSSSSWWWNENNNNNNWWWSSSWW",
-        "WWWWNNNSSSSSSSWWWNNNNNNWWWSSSSWWNNNWWSSSWWSSSWWWNENNNNNNWWWSSWW",
-        "WWNWWSSSSWWWNNNNNWNWWSSSSWWSSSWWNNNWWNNNNSSSSSSSWWWENNNNNNWWWSSWW",
-        "WWWWSSWWWNNNNNWNWWSSSSWWNNNWWSWWSSSSSWWWNENNNNNNWWWSSWW",
-        "WWSWWWWWNNNNNNWWWSSSSSNWWNNNWWSSSWWSSSWWWNENNNNNNWWWSSWW",
-        "WWWWWWWNNNNNNWWWSSSSWWNNNWWSSSWWSSSWWWNENNNNNNWWWSSWW",
-        "WWNWWWWWNNNNNNWWWSSSSWWNNNWWSSSWWSSSWWWNENNNNNNWWWSSWW"
-    };
+    // The prior simulator's hard-coded routes have been removed.
+    // Each genotype selects its own route, but only REAL Minecraft
+    // BuilderGolem movement can earn fitness or pass the GameTest.
 
     /**
      * Chromosome for ACTUAL entity walking. Each numeric gene affects
@@ -565,12 +543,16 @@ public final class BuilderEvolutionTimeTrialGameTest {
             int finished=0;
             double mean=0;
             int collisions=0,jumps=0;
+            int fastest=DEADLINE+1,slowest=0;
             List<Candidate> ranked=new ArrayList<>(bots);
             ranked.sort(Comparator.comparingDouble(Candidate::fitness).reversed());
             StringBuilder blockers=new StringBuilder();
             for(Candidate b:bots){
-                if(b.arrivedTick>=0)finished++;
-                else if(blockers.length()<550)
+                if(b.arrivedTick>=0){
+                    finished++;
+                    fastest=Math.min(fastest,b.arrivedTick);
+                    slowest=Math.max(slowest,b.arrivedTick);
+                }else if(blockers.length()<550)
                     blockers.append(" #").append(b.index)
                             .append(" step=").append(b.cursor)
                             .append("/").append(b.route.length())
@@ -594,10 +576,19 @@ public final class BuilderEvolutionTimeTrialGameTest {
                     +" meanFitness="+Math.round(mean/bots.size())
                     +" collisions="+collisions+" jumps="+jumps
                     +" learnedBlockEdges="+collisionMemory.size()
+                    +" fastestTicks="+(finished>0?fastest:-1)
+                    +" slowestTicks="+(finished>0?slowest:-1)
                     +" stalled="+blockers);
             // Always discard all physical entities, even winners.
             for(Candidate b:bots)if(b.mob.isAlive())b.mob.discard();
             if(finished==bots.size()){
+                // Preserve the actual physical winners so their route and
+                // tested DNA can later be promoted to a production AI.
+                for(Candidate b:bots)
+                    System.out.println("[TIMETRIAL REAL CHAMPION] slot="+b.index
+                            +" arrivedTicks="+b.arrivedTick
+                            +" route="+b.route
+                            +" genes="+b.dna);
                 helper.succeed();return;
             }
             if(generation+1>=GENERATIONS){
@@ -638,8 +629,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
     public void realBuildersEvolveOnUserMazeInEighteenSeconds(
             GameTestHelper helper){
         fillOriginalCourse(helper);
-        if(STARTS.length!=20||REPLAYS.length!=20
-                ||SELECTED_BOTS.length!=10){
+        if(STARTS.length!=20||SELECTED_BOTS.length!=10){
             helper.fail("Expected exactly 10 live Builder Golem entrants");
             return;
         }
