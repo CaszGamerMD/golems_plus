@@ -376,6 +376,13 @@ public final class BuilderBuildService {
         }
         try{
             Cache plan=cache(table,worker);
+            // One shared, bounded pre-build comparison BEFORE any
+            // clearing/destructive action. Correct original blocks remain
+            // in-world, and large 41k-cell Domes are scanned incrementally.
+            if(!BuilderSiteReconciliation.tick(level,table,plan.clearing()))
+                return;
+            if(BuilderProgressRecovery.tick(level,worker,table,plan.steps()))
+                return;
             // Warehouse reconciliation and proactive orders are Planner-
             // level jobs running from dispatch() every two/four seconds.
             // Doing both here from EVERY Builder every five ticks generated
@@ -842,6 +849,8 @@ public final class BuilderBuildService {
                     +" | nav="+(worker.getNavigation().isDone()?"idle":"walking")
                     +" "+com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .debugStatus(worker)
+                    +" | preflight="+BuilderSiteReconciliation.status(table)
+                    +" | recovery="+BuilderProgressRecovery.debug(worker)
                     +" | staged="+table.builderOrderPrepared(worker.getUUID())
                     +" | stock="+(current.requiredItem()==null?"none":current.requiredItem())
                     +" | tower="+table.scaffoldPositions(worker.getUUID()).size()
