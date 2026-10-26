@@ -174,6 +174,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         int immobile;
         int backoffTicks;
         int ticksSinceJump;
+        double doorLaneShift;
         double lastDistance=Double.POSITIVE_INFINITY;
         Candidate(int index,BuilderGolem mob,String route,int x,int z,
                   Genome dna){
@@ -372,6 +373,38 @@ public final class BuilderEvolutionTimeTrialGameTest {
         return bots;
     }
 
+    /** Choose a clear corridor through REAL open-door collision shapes.
+     * A 0.65-wide mob only has 0.175 blocks of side clearance in a
+     * one-block doorway, so the center of the vanilla door block is not
+     * always its safe centerline.
+     */
+    private static double safeDoorLane(ServerLevel world,BuilderGolem mob,
+                                       BlockPos door,Genome dna){
+        double[] candidates={0,.08,-.08,.12,-.12,.16,-.16};
+        double best=Double.POSITIVE_INFINITY;
+        double chosen=0;
+        for(double offset:candidates){
+            // Test the full live golem body at several real positions
+            // along its approach to the existing door. Never remove
+            // blocks or disable collision.
+            boolean clear=true;
+            for(double t:new double[]{.65,.82,1.0}){
+                double x=mob.getX()+(door.getX()+.5-mob.getX())*t;
+                double z=mob.getZ()+(door.getZ()+.5+offset-mob.getZ())*t;
+                var box=mob.getBoundingBox().move(
+                        x-mob.getX(),0,z-mob.getZ());
+                if(world.getBlockCollisions(mob,box).iterator().hasNext()){
+                    clear=false;break;
+                }
+            }
+            if(!clear)continue;
+            double penalty=Math.abs(offset)+(1-dna.align())*
+                    Math.abs(offset)*.2;
+            if(penalty<best){best=penalty;chosen=offset;}
+        }
+        return chosen;
+    }
+
     /** Controller uses real Minecraft entity move + collisions; only
      * genes controlling WALK / JUMP / alignment can be selected.
      */
@@ -395,8 +428,18 @@ public final class BuilderEvolutionTimeTrialGameTest {
         while(b.cursor<b.route.length()){
             ahead=next(b.x,b.z,b.route.charAt(b.cursor));
             target=pos(helper,ahead[0],2,ahead[1]);
+            double centerShift=0;
+            boolean enteringDoor=MAZE[ahead[1]].charAt(ahead[0])=='D';
+            boolean leavingDoor=MAZE[b.z].charAt(b.x)=='D';
+            if(enteringDoor){
+                if(Math.abs(mob.getX()-target.getX()-.5)<1.75)
+                    b.doorLaneShift=safeDoorLane(world,mob,target,b.dna);
+                centerShift=b.doorLaneShift;
+            }else if(leavingDoor){
+                centerShift=b.doorLaneShift;
+            }
             dx=target.getX()+.5-mob.getX();
-            dz=target.getZ()+.5-mob.getZ();
+            dz=target.getZ()+.5+centerShift-mob.getZ();
             distance=Math.hypot(dx,dz);
             if(distance>=b.dna.tolerance())break;
             b.x=ahead[0];
