@@ -34,3 +34,4 @@ assert "public static boolean tickMotion(" in scaffold
 assert "setNoGravity(false)" in builder
 assert "!BuilderScaffolding.climbingNow(server,this)" in builder
 print("PASS: independent FIFO doors, 2-3m safe queuing, spacing and gravity recovery")
+

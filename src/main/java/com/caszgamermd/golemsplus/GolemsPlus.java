@@ -12,6 +12,7 @@ public final class GolemsPlus implements ModInitializer {
     @Override public void onInitialize() {
         com.caszgamermd.golemsplus.builder.BuilderChunkTickets.initialize();
         WorksiteContent.initialize();
+        com.caszgamermd.golemsplus.crane.CraneContent.initialize();
         com.caszgamermd.golemsplus.world.StationSettingsNetworking.initialize();
         com.caszgamermd.golemsplus.world.OutputChestSelection.initialize();
         com.caszgamermd.golemsplus.builder.BuilderUploadNetworking.initialize();
@@ -19,3 +20,4 @@ public final class GolemsPlus implements ModInitializer {
         com.caszgamermd.golemsplus.builder.BuilderCommands.register();
     }
 }
+

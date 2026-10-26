@@ -31,3 +31,4 @@ assert "boolean headInside=" in queue
 assert "return first&&(!blocked||inside)" in queue
 assert "BlockPos upcoming=handDoor(level,inside)?inside" in nav
 print("PASS scaffold ascent completion, top-entry drop, grounded dismount and door exit")
+

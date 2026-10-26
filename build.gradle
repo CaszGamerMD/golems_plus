@@ -102,3 +102,4 @@ tasks.named('processResources') {
         }
     }
 }
+

@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "III",
+    "RCR",
+    "III"
+  ],
+  "key": {
+    "I": "minecraft:iron_block",
+    "R": "minecraft:redstone",
+    "C": "minecraft:minecart"
+  },
+  "result": {
+    "id": "golems_plus:crane_chassis",
+    "count": 1
+  }
+}
