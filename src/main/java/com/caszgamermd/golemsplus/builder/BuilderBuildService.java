@@ -110,6 +110,21 @@ public final class BuilderBuildService {
      * Only the server's already-imported schematic is read; this never
      * creates materials or pulls from the player's inventory.
      */
+    /** Exact minimum Y of every placed schematic block, including
+     * rotated/mirrored placements. Calculated from the already-cached
+     * immutable plan, never from the Planner block's own Y.
+     * A missing schematic is NOT permission to dispatch a crane early.
+     */
+    public static Integer lowestBuildY(WorkerStationBlockEntity table){
+        try{
+            var steps=jobCache(table).steps();
+            if(steps.isEmpty())return null;
+            return steps.stream().mapToInt(BuilderConstructionPlan.Step::y)
+                    .min().orElseThrow();
+        }catch(Exception failure){
+            return null;
+        }
+    }
     public static String primeWarehouse(ServerLevel level,
             WorkerStationBlockEntity table){
         if(!table.isBuilder()||table.activeOrder()==null)return "No active Builder job";
