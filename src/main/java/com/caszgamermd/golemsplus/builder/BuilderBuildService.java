@@ -359,6 +359,11 @@ public final class BuilderBuildService {
             worker.getNavigation().stop();
             worker.setNoGravity(false);return;
         }
+        // A blocked flying Builder must finish a REAL route to OnSite
+        // before its usual job tick can overwrite the escape with another
+        // construction or supply destination. Preserve its claimed step.
+        if(BuilderCreativeFlight.ENABLED
+                &&BuilderCreativeFlight.recovering(worker))return;
         // Do not let a fresh route to supplies/work overwrite the last
         // meter of ascent, descent, or dismount. The per-entity-tick
         // scaffold controller alone owns movement until safe arrival.
