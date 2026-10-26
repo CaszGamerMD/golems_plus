@@ -30,7 +30,7 @@ import net.minecraft.world.level.block.Blocks;
  */
 public final class BuilderDomeConstructionGameTest {
     @SuppressWarnings("removal")
-    @GameTest(structure="golems_plus_gametest:dome_arena",
+    @GameTest(structure="golems_plus_gametest:dome_arena",padding=64,
             maxTicks=90000,skyAccess=true)
     public void constructsExactDomeWithRealBuilders(GameTestHelper helper){
         ServerLevel level=helper.getLevel();
