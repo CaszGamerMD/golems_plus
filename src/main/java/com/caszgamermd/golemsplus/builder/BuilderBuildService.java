@@ -292,6 +292,10 @@ public final class BuilderBuildService {
         // A teammate may need the block space currently occupied by this
         // Builder. Honor its short physical sidestep before resuming the
         // current 10-coordinate assignment or warehouse courier route.
+        // While stepping CLOCKWISE around a colleague, do not issue
+        // fresh A* routes, switch work assignments or override the
+        // random stagger timer. One physical controller owns the worker.
+        if(BuilderClockwiseTraffic.controlling(worker))return;
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
             // On job completion a Builder may still be on its LAST
