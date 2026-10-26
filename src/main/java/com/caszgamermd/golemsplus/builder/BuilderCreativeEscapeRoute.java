@@ -65,6 +65,41 @@ public final class BuilderCreativeEscapeRoute {
 
     public static List<Vec3> toDepot(ServerLevel level,BuilderGolem worker,
                                      BlockPos depot){
+        var direct=search(level,worker,depot,false);
+        if(!direct.isEmpty())return direct;
+        if(depot==null)return List.of();
+
+        // A nearly finished Dome can wrap its living Builders inside a
+        // roofed wall. Guide the first escape leg TOWARD an actual ground
+        // door if the direct depot search exhausted its node budget.
+        // Once physically at that doorway, a fresh search can continue
+        // to the real onsite chest, without teleporting or mining.
+        var doors=new ArrayList<BlockPos>();
+        for(int x=depot.getX()-40;x<=depot.getX()+40;x++)
+            for(int z=depot.getZ()-40;z<=depot.getZ()+40;z++){
+                BlockPos low=new BlockPos(x,depot.getY()-1,z);
+                if(!level.hasChunkAt(low))continue;
+                for(int y=depot.getY()-1;y<=depot.getY()+6;y++){
+                    BlockPos possible=new BlockPos(x,y,z);
+                    BlockPos lower=doorBottom(level,possible);
+                    if(lower!=null&&lower.equals(possible))
+                        doors.add(possible);
+                }
+            }
+        doors.sort(Comparator.comparingDouble(d->
+                worker.blockPosition().distSqr(d)+d.distSqr(depot)));
+        int attempts=0;
+        for(BlockPos door:doors){
+            if(++attempts>8)break;
+            var route=search(level,worker,door,true);
+            if(!route.isEmpty())return route;
+        }
+        return List.of();
+    }
+
+    /** Search for a real OnSite arrival or a physically traversed door. */
+    private static List<Vec3> search(ServerLevel level,BuilderGolem worker,
+                                      BlockPos depot,boolean doorLeg){
         if(depot==null||!level.hasChunkAt(depot))return List.of();
         BlockPos start=worker.blockPosition();
         PriorityQueue<Candidate> frontier=new PriorityQueue<>(
@@ -85,9 +120,9 @@ public final class BuilderCreativeEscapeRoute {
             double dx=at.getX()+.5-(depot.getX()+.5);
             double dy=at.getY()-(depot.getY()+.5);
             double dz=at.getZ()+.5-(depot.getZ()+.5);
-            if(dx*dx+dy*dy+dz*dz<=8.0
-                    &&clearIncludingOpenableDoors(level,worker,body)
-                    &&!body.intersects(new AABB(depot))){
+            if((doorLeg?at.equals(depot):dx*dx+dy*dy+dz*dz<=8.0
+                    &&!body.intersects(new AABB(depot)))
+                    &&clearIncludingOpenableDoors(level,worker,body)){
                 found=at;break;
             }
             for(int[] direction:DIRECTIONS){
