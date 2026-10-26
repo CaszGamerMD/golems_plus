@@ -17,8 +17,13 @@ public final class CraneRailConnectionsGameTest {
     @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=400)
     public void redstoneLikeCrossesWallsAndCornerClimbs(GameTestHelper h){
         var world=h.getLevel();
-        for(int x=6;x<=22;x++)for(int z=6;z<=22;z++)
+        // Dedicated GameTest arenas can contain residual test boundary
+        // collision cells even though the source structure looks empty.
+        // Clear this controlled fixture before asserting real crane pose.
+        for(int x=5;x<=23;x++)for(int z=5;z<=23;z++){
             h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=12;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
         BlockState floor=CraneContent.RAIL.defaultBlockState()
                 .setValue(CraneRailBlock.FACING,Direction.UP);
         BlockPos center=h.absolutePos(new BlockPos(10,2,10));
