@@ -104,10 +104,23 @@ final class CraneMovement {
         // Try near landings first. Collision checks on a full supply box are
         // expensive, and the closest safe dock is the one builders should use.
         candidates.sort(Comparator.comparingDouble(p->p.distSqr(target)));
-        for(BlockPos p:candidates)
-            if(WorkerNavigation.canStandOn(world,worker,p)
-                    &&clear(world,crane,load(crane,Vec3.atBottomCenterOf(p))))return p;
-        return null;
+        BlockPos railFallback=null;
+        for(BlockPos p:candidates){
+            if(!WorkerNavigation.canStandOn(world,worker,p)
+                    ||!clear(world,crane,load(crane,Vec3.atBottomCenterOf(p))))
+                continue;
+            if(railFallback==null)railFallback=p;
+            // An otherwise clear basket spot can still be unreachable
+            // because the boom clips a raised platform on its way there.
+            // Prefer another safe spot nearby that the actual current
+            // chassis can reach before requiring rail repositioning.
+            if(pose(world,crane,Vec3.atBottomCenterOf(p),crane.anchorPoint()))
+                return p;
+        }
+        // No dock is reachable from this chassis. Rail planning may move
+        // to a different anchor; do not invent an inaccessible straight
+        // boom route, and retain the safe dock for that fallback.
+        return railFallback;
     }
     static CranePath.Cell cell(BlockPos p){return new CranePath.Cell(p.getX(),p.getY(),p.getZ());}
     static BlockPos pos(CranePath.Cell p){return new BlockPos(p.x(),p.y(),p.z());}
