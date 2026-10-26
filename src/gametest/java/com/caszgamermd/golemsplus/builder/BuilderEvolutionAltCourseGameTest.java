@@ -1132,8 +1132,55 @@ public final class BuilderEvolutionAltCourseGameTest {
             JsonObject checkpoint=read(checkpoint());
             JsonObject champion=read(champion());
             if(checkpoint!=null){
-                run.generationGenes=decodePopulation(
+                // Exploration genomes are untested offspring and must
+                // NEVER displace a real complete 10/10 team for the
+                // next round's generation-zero reliability check.
+                run.pendingExploration=decodePopulation(
                         checkpoint.getAsJsonArray("nextPopulation"));
+                run.generationGenes=new ArrayList<>(run.pendingExploration);
+                if(checkpoint.has("lastSuccessfulPopulation")){
+                    List<Genome> fullTeam=decodePopulation(checkpoint
+                            .getAsJsonArray("lastSuccessfulPopulation"));
+                    JsonArray arrivals=checkpoint
+                            .getAsJsonArray("lastSuccessfulArrivalTicks");
+                    int generation=checkpoint.get(
+                            "lastSuccessfulGeneration").getAsInt();
+                    if(arrivals.size()!=SELECTED_BOTS.length
+                            ||generation<1
+                            ||generation>checkpoint.get(
+                                "completedGenerations").getAsInt())
+                        throw new IllegalStateException(
+                                "Invalid verified full-crew checkpoint");
+                    List<Integer> ticks=new ArrayList<>();
+                    for(JsonElement arrival:arrivals){
+                        int tick=arrival.getAsInt();
+                        if(tick<0||tick>DEADLINE)
+                            throw new IllegalStateException(
+                                    "Last successful full crew was late");
+                        ticks.add(tick);
+                    }
+                    int maximum=ticks.stream().mapToInt(Integer::intValue)
+                            .max().orElse(Integer.MAX_VALUE);
+                    if(maximum!=checkpoint.get(
+                            "lastSuccessfulSlowestTicks").getAsInt())
+                        throw new IllegalStateException(
+                                "Winning cohort arrival proof mismatched");
+                    run.lastSuccessfulPopulation=new ArrayList<>(fullTeam);
+                    run.lastSuccessfulArrivalTicks=ticks;
+                    run.lastSuccessfulGeneration=generation;
+                    // Default three-test suite is a repeated real
+                    // PHYSICAL qualification of the latest winning
+                    // chromosomes, not a replay of a stored route.
+                    // Run GOLEMS_EVOLUTION_MODE=explore to start with
+                    // the distinct mutated offspring pool instead.
+                    if(!run.exploreMode){
+                        run.generationGenes=new ArrayList<>(fullTeam);
+                        System.out.println("[TIMETRIAL MEMORY] GEN0 "
+                            +"restoring latest VERIFIED 10/10 cohort from "
+                            +"generation "+generation+" (not offspring)");
+                    }else System.out.println("[TIMETRIAL MEMORY] GEN0 "
+                            +"exploration mode uses saved mutated offspring");
+                }
                 JsonArray a=checkpoint.getAsJsonArray("personalBests");
                 JsonArray scores=checkpoint.getAsJsonArray("personalScores");
                 if(a.size()!=SELECTED_BOTS.length
@@ -1192,7 +1239,23 @@ public final class BuilderEvolutionAltCourseGameTest {
             obj.addProperty("lastSlowestTicks",finished==10?slowest:-1);
             obj.addProperty("lastMeanFitness",mean);
             obj.addProperty("lastGenerationIndex",run.generation);
+            // Both lineages are retained separately: nextPopulation
+            // contains new untested genetic offspring, while the last
+            // full-crew 10/10 winner is always saved unchanged until a
+            // NEW complete physical success replaces it.
             obj.add("nextPopulation",encodePopulation(nextPopulation));
+            if(run.lastSuccessfulPopulation.size()==SELECTED_BOTS.length){
+                obj.add("lastSuccessfulPopulation",
+                        encodePopulation(run.lastSuccessfulPopulation));
+                JsonArray arrivals=new JsonArray();
+                for(int tick:run.lastSuccessfulArrivalTicks)arrivals.add(tick);
+                obj.add("lastSuccessfulArrivalTicks",arrivals);
+                obj.addProperty("lastSuccessfulGeneration",
+                        run.lastSuccessfulGeneration);
+                obj.addProperty("lastSuccessfulSlowestTicks",arrivals.size()==0
+                        ?-1:run.lastSuccessfulArrivalTicks.stream()
+                            .mapToInt(Integer::intValue).max().orElse(-1));
+            }
             JsonArray personal=new JsonArray(),scores=new JsonArray();
             for(int i=0;i<SELECTED_BOTS.length;i++){
                 if(run.champions[i]==null)personal.add(com.google.gson.JsonNull.INSTANCE);
@@ -1328,7 +1391,10 @@ public final class BuilderEvolutionAltCourseGameTest {
 
     private static final class Tournament {
         final GameTestHelper helper;
-        final Random rng=new Random(TRAINING_SEED);
+        // Fixed seed for each PROCESS used to repeat the same crossover
+        // sequence every session. Include the persisted generation
+        // counter to make new exploratory mutations diverge across runs.
+        final Random rng;
         final Map<Edge,Integer> collisionMemory=new HashMap<>();
         final Genome[] champions=new Genome[SELECTED_BOTS.length];
         final double[] championScores=new double[SELECTED_BOTS.length];
@@ -1341,6 +1407,12 @@ public final class BuilderEvolutionAltCourseGameTest {
         int bestChampionSlowest=Integer.MAX_VALUE;
         double bestChampionAverage=Double.POSITIVE_INFINITY;
         List<Genome> verifiedChampion=List.of();
+        List<Genome> lastSuccessfulPopulation=List.of();
+        List<Integer> lastSuccessfulArrivalTicks=List.of();
+        List<Genome> pendingExploration=List.of();
+        int lastSuccessfulGeneration;
+        final boolean exploreMode="explore".equalsIgnoreCase(
+                System.getenv("GOLEMS_EVOLUTION_MODE"));
         Tournament(GameTestHelper helper){
             this.helper=helper;
             for(int i=0;i<SELECTED_BOTS.length;i++){
@@ -1349,6 +1421,8 @@ public final class BuilderEvolutionAltCourseGameTest {
             // Preserve real progress from PREVIOUS GitHub Actions runs.
             // No headless scores may seed or qualify the physical test.
             TrainingMemory.restore(this);
+            rng=new Random(TRAINING_SEED
+                    +1000003L*(long)completedGenerations);
             bots=spawnGeneration(helper,generationGenes,collisionMemory);
         }
         void tick(){
@@ -1430,6 +1504,22 @@ public final class BuilderEvolutionAltCourseGameTest {
                     offspring.add(Genome.cross(a,b,rng).mutate(rng));
                 }
             }
+            // The complete 10/10 TEAM must survive intact, whether or
+            // not it beats the protected historical speed record.
+            // Crossing ten individually successful genes can produce a
+            // very different, unsuccessful ensemble.
+            if(finished==bots.size()){
+                lastSuccessfulPopulation=new ArrayList<>();
+                lastSuccessfulArrivalTicks=new ArrayList<>();
+                for(Candidate b:bots){
+                    lastSuccessfulPopulation.add(b.dna);
+                    lastSuccessfulArrivalTicks.add(b.arrivedTick);
+                }
+                lastSuccessfulGeneration=completedGenerations+1;
+                System.out.println("[TIMETRIAL MEMORY] Retained entire "
+                        +"latest VERIFIED 10/10 team independently of"
+                        +" best-ever champion and mutated offspring");
+            }
             // Data durability is NOT conditional on success. Even a
             // failed 24-generation experiment contributes nextPopulation,
             // the best motor genes per starting lane and observed
@@ -1447,8 +1537,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                             +" arrivedTicks="+b.arrivedTick
                             +" route="+b.route
                             +" genes="+b.dna);
-                System.out.println("[TIMETRIAL MEMORY] Future run will "
-                        +"resume from MUTATED offspring of this 10/10 result");
+                System.out.println("[TIMETRIAL MEMORY] Next validation "
+                        +"run will START with all ten verified winning "
+                        +"genes; exploratory offspring saved separately");
                 helper.succeed();return;
             }
             if(generation+1>=GENERATIONS){
@@ -1472,6 +1563,13 @@ public final class BuilderEvolutionAltCourseGameTest {
                 System.out.println("[TIMETRIAL REAL GENETICS] Revalidating "
                         +"protected full champion DNA with 10 real golems "
                         +"after 7 exploratory generations");
+            }else if(generation==0&&!exploreMode
+                    &&pendingExploration.size()==SELECTED_BOTS.length){
+                // If qualification failed, resume the mutations saved
+                // BEFORE this run, instead of trying to rediscover the
+                // same team repeatedly. Never throw away exploring.
+                generationGenes=new ArrayList<>(pendingExploration);
+                pendingExploration=List.of();
             }else generationGenes=offspring;
             generation++;
             generationStart=absoluteTick+1;

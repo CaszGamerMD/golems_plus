@@ -57,6 +57,19 @@ def validate_checkpoint(c):
     if c is None:
         return
     genetic_population(c["nextPopulation"])
+    keys = ("lastSuccessfulPopulation", "lastSuccessfulArrivalTicks",
+            "lastSuccessfulGeneration", "lastSuccessfulSlowestTicks")
+    if any(k in c for k in keys):
+        if not all(k in c for k in keys):
+            raise ValueError("Partial verified whole-crew winning checkpoint")
+        genetic_population(c["lastSuccessfulPopulation"])
+        ticks = c["lastSuccessfulArrivalTicks"]
+        if (not isinstance(ticks, list) or len(ticks) != POPULATION
+                or any(not isinstance(t, int) or isinstance(t, bool)
+                       or t < 0 or t > 260 for t in ticks)
+                or max(ticks) != c["lastSuccessfulSlowestTicks"]
+                or not 1 <= c["lastSuccessfulGeneration"] <= c["completedGenerations"]):
+            raise ValueError("Winning team must have 10 timely real arrivals")
     if not 0 <= c["bestFinishedEver"] <= POPULATION:
         raise ValueError("Bad best-finished count")
     if c["completedGenerations"] < 0:
@@ -101,6 +114,18 @@ def merge_checkpoint(old, new, protected):
         personal.append(choice["personalBests"][index])
         scores.append(choice["personalScores"][index])
     merged["personalBests"], merged["personalScores"] = personal, scores
+    # Independently preserve the MOST RECENT successful 10/10 team.
+    # A later failed checkout can never erase its full ten genes, and
+    # the faster historical best remains separately in champion.json.
+    proven = [c for c in (old, new) if "lastSuccessfulPopulation" in c]
+    if proven:
+        latest = max(proven, key=lambda c: (
+            c["lastSuccessfulGeneration"], -c["lastSuccessfulSlowestTicks"]))
+        for field in ("lastSuccessfulPopulation",
+                      "lastSuccessfulArrivalTicks",
+                      "lastSuccessfulGeneration",
+                      "lastSuccessfulSlowestTicks"):
+            merged[field] = latest[field]
     edges = {}
     for c in (old, new):
         for edge in c.get("blockedEdges", []):

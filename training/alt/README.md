@@ -1,3 +1,14 @@
+## Why a 10/10 team was lost between tests — retained-cohort fix
+
+Previous test sessions resumed `checkpoint.nextPopulation` (mutated offspring), not the last physically winning ten-genome cohort. A slower 10/10 also did not replace `champion.json` (correct for speed ranking), but the complete slower winning team wasn't retained independently. Thus test 2 could achieve 10/10 and test 3 would begin with a different, untested team.
+
+**New checkpoint fields:** `lastSuccessfulPopulation` (the exact ten 12-gene chromosomes, not waypoint routes), `lastSuccessfulArrivalTicks`, `lastSuccessfulGeneration`, and `lastSuccessfulSlowestTicks`. Real successes refresh this entire crew even if their times are slower than the protected fastest champion. A failure never erases the crew; CI merges select the latest complete result. The migrated source was **actual Minecraft physical replay generation 336**, with 10/10 golems finishing by 260 ticks, not headless simulation.
+
+By default generation 0 **revalidates the last winning crew physically**, while `nextPopulation` continues preserving mutated offspring for exploration. Set `GOLEMS_EVOLUTION_MODE=explore` for a separate training run that starts generation 0 from those mutants, then use the usual three-trial validation mode to assess reliability. After failed validation generation 0, the saved exploratory offspring are used for generation 1.
+
+A preserved winning genome combination does not ensure identical outcomes if golem interactions, physics, collision-memory weights or the movement logic differ; a repeat pass must still be actually scored. Saved gene logic is never a memorized route.
+
+---
 ## October 26: More accurate half-slab and top-slab navigation
 
 The course is unchanged. We continue to use exactly **10 real Builder Golems**, **260 ticks / 13 seconds**, native 0.6 step-up, and 4m/s max.

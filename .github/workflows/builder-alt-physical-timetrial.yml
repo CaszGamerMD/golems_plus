@@ -36,6 +36,7 @@ jobs:
       - name: Test gene persistence and no-regression champion merging
         run: |
           python3 -m unittest discover -s scripts/tests -p test_merge_real_evolution_state.py -v
+          python3 -m unittest discover -s scripts/tests -p test_merge_alt_evolution_state.py -v
           python3 -m unittest discover -s scripts/tests -p test_export_real_evolution_replays.py -v
       - name: Isolate the real-entity training course from other GameTest arenas
         run: |
