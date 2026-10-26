@@ -348,6 +348,13 @@ public final class WorkerNavigation {
     }
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
+        // A booked crane must not cancel an active scaffold or temporary
+        // right-of-way movement during a five-tick A* route retry.
+        if(target!=null&&mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&!com.caszgamermd.golemsplus.builder.BuilderScaffolding
+                        .isControllingMovement(builder)
+                &&com.caszgamermd.golemsplus.crane.CraneService
+                        .requestRide(level,builder,target))return true;
         Progress progress=state(mob);
         if(progress.queuedDoor!=null&&target!=null
                 &&progress.requested!=null&&!target.equals(progress.requested))
@@ -382,6 +389,11 @@ public final class WorkerNavigation {
 
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
                                   double speed){
+        if(target!=null&&mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&!com.caszgamermd.golemsplus.builder.BuilderScaffolding
+                        .isControllingMovement(builder)
+                &&com.caszgamermd.golemsplus.crane.CraneService
+                        .requestRide(level,builder,target))return true;
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder){
             com.caszgamermd.golemsplus.builder.BuilderChunkTickets
                     .destination(level,builder,target);
