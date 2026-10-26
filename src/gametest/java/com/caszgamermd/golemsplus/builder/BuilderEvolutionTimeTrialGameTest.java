@@ -4,6 +4,9 @@ import com.caszgamermd.golemsplus.world.WorksiteContent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.PriorityQueue;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
@@ -37,7 +40,7 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class BuilderEvolutionTimeTrialGameTest {
     private static final int DEADLINE=360;
-    private static final int GENERATIONS=12;
+    private static final int GENERATIONS=24;
     private static final long TRAINING_SEED=20261026L;
     private static final double SPEED_CAP=0.2;
     // Five bots from each green-wool column, spaced through all ten rows.
@@ -108,16 +111,20 @@ public final class BuilderEvolutionTimeTrialGameTest {
     private record Genome(double drive,double align,double tolerance,
                           double jumpLead,double jumpPower,
                           int jumpCooldown,int stuckTimeout,
-                          double backoff) {
+                          double backoff,double slabAvoid,
+                          double turnBias,double routeJitter) {
         static Genome random(Random rng){
-            return new Genome(.78+rng.nextDouble()*.22,
-                    .60+rng.nextDouble()*.40,
-                    .07+rng.nextDouble()*.13,
+            return new Genome(.90+rng.nextDouble()*.10,
+                    .65+rng.nextDouble()*.35,
+                    .09+rng.nextDouble()*.12,
                     .36+rng.nextDouble()*.95,
                     .36+rng.nextDouble()*.08,
                     7+rng.nextInt(17),
                     9+rng.nextInt(27),
-                    .06+rng.nextDouble()*.14);
+                    .06+rng.nextDouble()*.14,
+                    rng.nextDouble()*2.0,
+                    rng.nextDouble()*.65,
+                    rng.nextDouble()*.50);
         }
         static Genome cross(Genome a,Genome b,Random rng){
             return new Genome(
@@ -128,7 +135,10 @@ public final class BuilderEvolutionTimeTrialGameTest {
                     rng.nextBoolean()?a.jumpPower:b.jumpPower,
                     rng.nextBoolean()?a.jumpCooldown:b.jumpCooldown,
                     rng.nextBoolean()?a.stuckTimeout:b.stuckTimeout,
-                    rng.nextBoolean()?a.backoff:b.backoff);
+                    rng.nextBoolean()?a.backoff:b.backoff,
+                    rng.nextBoolean()?a.slabAvoid:b.slabAvoid,
+                    rng.nextBoolean()?a.turnBias:b.turnBias,
+                    rng.nextBoolean()?a.routeJitter:b.routeJitter);
         }
         Genome mutate(Random rng){
             return new Genome(
@@ -139,7 +149,10 @@ public final class BuilderEvolutionTimeTrialGameTest {
                     clamp(jumpPower+rng.nextGaussian()*.02,.34,.46),
                     (int)clamp(jumpCooldown+rng.nextGaussian()*4,4,32),
                     (int)clamp(stuckTimeout+rng.nextGaussian()*7,5,45),
-                    clamp(backoff+rng.nextGaussian()*.055,.03,.27));
+                    clamp(backoff+rng.nextGaussian()*.055,.03,.27),
+                    clamp(slabAvoid+rng.nextGaussian()*.45,0,5),
+                    clamp(turnBias+rng.nextGaussian()*.2,0,1.8),
+                    clamp(routeJitter+rng.nextGaussian()*.20,0,1.5));
         }
         private static double clamp(double value,double lo,double hi){
             return Math.max(lo,Math.min(hi,value));
@@ -182,7 +195,9 @@ public final class BuilderEvolutionTimeTrialGameTest {
                         +Math.pow((next[1]+.5)-(mob.getZ()-originZ),2));
                 fraction=Math.max(0,1-Math.min(1,remaining));
             }
-            return Math.max(0,bestCursor+fraction)*100
+            double progress=(bestCursor+fraction)
+                    /Math.max(1,route.length());
+            return Math.max(0,progress)*10000
                     -collisions*3;
         }
         // Absolute positions of the GameTest arena origin, only used to
@@ -256,6 +271,66 @@ public final class BuilderEvolutionTimeTrialGameTest {
         };
     }
 
+    private record RouteNode(int x,int z,char heading){}
+    private record Frontier(RouteNode node,double cost){}
+
+    /** This is only an initial PLAN against the known schematic blocks.
+     * No movement is simulated here and no route can be declared a winner.
+     * Actual movement/fitness is measured from living Minecraft golems.
+     *
+     * Route genes allow evolution to prefer shorter paths, fewer turns,
+     * avoiding risky slabs or exploring different legal corridors.
+     */
+    private static String planRoute(int startX,int startZ,Genome dna){
+        RouteNode start=new RouteNode(startX,startZ,'?');
+        PriorityQueue<Frontier> open=new PriorityQueue<>(
+                Comparator.comparingDouble(Frontier::cost));
+        Map<RouteNode,Double> best=new HashMap<>();
+        Map<RouteNode,RouteNode> parents=new HashMap<>();
+        Map<RouteNode,Character> directions=new HashMap<>();
+        open.add(new Frontier(start,0));best.put(start,0.0);
+        RouteNode finish=null;
+        while(!open.isEmpty()){
+            Frontier current=open.poll();
+            RouteNode node=current.node();
+            if(current.cost()>best.getOrDefault(node,Double.POSITIVE_INFINITY))
+                continue;
+            if(MAZE[node.z()].charAt(node.x())=='G'){
+                finish=node;break;
+            }
+            for(char direction:new char[]{'N','E','S','W'}){
+                int[] p=next(node.x(),node.z(),direction);
+                int x=p[0],z=p[1];
+                if(z<0||z>=MAZE.length||x<0||x>=MAZE[0].length()
+                        ||MAZE[z].charAt(x)=='#')continue;
+                char tile=MAZE[z].charAt(x);
+                double weight=1.0+(tile=='^'?dna.slabAvoid():0)
+                        +(node.heading()!='?'&&node.heading()!=direction
+                                ?dna.turnBias():0);
+                // Deterministic genetic corridor preferences. Small
+                // positive perturbations prevent repeatedly selecting
+                // exactly the same equally costly route across a crew.
+                int hash=Math.floorMod(x*31873+z*19009
+                        +direction*7919,1000);
+                weight+=dna.routeJitter()*hash/1000.0;
+                RouteNode nextNode=new RouteNode(x,z,direction);
+                double cost=current.cost()+weight;
+                if(cost>=best.getOrDefault(nextNode,Double.POSITIVE_INFINITY))
+                    continue;
+                best.put(nextNode,cost);
+                parents.put(nextNode,node);
+                directions.put(nextNode,direction);
+                open.add(new Frontier(nextNode,cost));
+            }
+        }
+        if(finish==null)throw new IllegalStateException(
+                "No reachable red-wool tile from "+startX+","+startZ);
+        StringBuilder route=new StringBuilder();
+        for(RouteNode at=finish;!at.equals(start);at=parents.get(at))
+            route.append(directions.get(at));
+        return route.reverse().toString();
+    }
+
     private static List<Candidate> spawnGeneration(GameTestHelper helper,
             List<Genome> genomes){
         ServerLevel world=helper.getLevel();
@@ -277,8 +352,9 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 throw new IllegalStateException(
                         "Wrong real BuilderGolem body: "+mob.getBbWidth()
                         +" x "+mob.getBbHeight());
-            Candidate b=new Candidate(slot,mob,REPLAYS[index],
-                    start[0],start[1],genomes.get(slot));
+            Genome genome=genomes.get(slot);
+            Candidate b=new Candidate(slot,mob,planRoute(start[0],
+                    start[1],genome),start[0],start[1],genome);
             BlockPos origin=pos(helper,0,2,0);
             b.originX=origin.getX();
             b.originZ=origin.getZ();
