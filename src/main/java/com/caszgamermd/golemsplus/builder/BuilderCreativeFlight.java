@@ -2,8 +2,10 @@ package com.caszgamermd.golemsplus.builder;
 
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import com.caszgamermd.golemsplus.worker.WorkerPhase;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -22,10 +24,25 @@ import net.minecraft.world.phys.Vec3;
 public final class BuilderCreativeFlight {
     public static final boolean ENABLED=true;
     private static final Map<BuilderGolem,Flight> flights=new WeakHashMap<>();
+    private static final Map<BuilderGolem,WorkWatch> workWatches=new WeakHashMap<>();
+    private static final int WORK_STALL_TICKS=220;
+    private static final class WorkWatch {
+        BlockPos goal;
+        double closest;
+        long progressTick;
+        WorkWatch(BlockPos goal,double closest,long now){
+            this.goal=goal.immutable();
+            this.closest=closest;
+            this.progressTick=now;
+        }
+    }
     private static final class Flight {
         BlockPos goal;
         Vec3 destination;
         boolean depot;
+        boolean returningHome;
+        long nextEscapePlan;
+        final Set<BlockPos> openedDoors=new HashSet<>();
         double cruiseY=Double.NaN;
         Vec3 last;
         long lastCloser;
@@ -49,9 +66,30 @@ public final class BuilderCreativeFlight {
     public static boolean moving(BuilderGolem worker){
         return flights.containsKey(worker);
     }
+    public static boolean recovering(BuilderGolem worker){
+        Flight flight=flights.get(worker);
+        return flight!=null&&flight.returningHome;
+    }
+
+    /** Begin a real physical return, keeping the same construction claim
+     * and carried materials. No teleports or block changes except doors. */
+    private static void startEscape(ServerLevel level,BuilderGolem worker,
+                                    BlockPos depot){
+        if(depot==null||recovering(worker))return;
+        Flight escape=new Flight(depot,new Vec3(depot.getX()+.5,
+                depot.getY()+1,depot.getZ()+.5),true,worker,level);
+        escape.returningHome=true;
+        flights.put(worker,escape);
+        worker.getNavigation().stop();
+        worker.setDeltaMovement(0,0,0);
+        workWatches.remove(worker);
+    }
 
     public static void stop(BuilderGolem worker){
-        flights.remove(worker);
+        Flight old=flights.remove(worker);
+        workWatches.remove(worker);
+        if(old!=null&&worker.level() instanceof ServerLevel server)
+            closePassedDoors(server,worker,old);
         worker.setNoGravity(false);
         worker.setDeltaMovement(0,Math.min(0,worker.getDeltaMovement().y),0);
     }
@@ -75,18 +113,58 @@ public final class BuilderCreativeFlight {
         worker.setJumping(false);
         worker.getNavigation().stop();
 
+        if(flight.returningHome){
+            BlockPos depot=flight.goal;
+            if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                    depot.getZ()+.5)<8.0
+                    &&!worker.getBoundingBox().intersects(new AABB(depot))){
+                closePassedDoors(level,worker,flight);
+                flights.remove(worker);
+                workWatches.remove(worker);
+                table.resetBuilderPrepared(worker.getUUID());
+                worker.setDeltaMovement(0,0,0);
+                // The next Builder tick restages physical stock at OnSite,
+                // then retries the very same claimed schematic cell.
+                return true;
+            }
+            closePassedDoors(level,worker,flight);
+            if(flight.airRoute.isEmpty()
+                    &&level.getGameTime()>=flight.nextEscapePlan){
+                flight.nextEscapePlan=level.getGameTime()+120;
+                var route=BuilderCreativeEscapeRoute.toDepot(
+                        level,worker,depot);
+                if(!route.isEmpty()){
+                    flight.airRoute=route;
+                    flight.routeIndex=0;
+                    flight.destination=route.get(route.size()-1);
+                    flight.cruiseY=Double.NaN;
+                    flight.lastCloser=level.getGameTime();
+                    flight.best=worker.distanceToSqr(flight.destination);
+                }else{
+                    table.setProblem("Flying Builder cannot find an unobstructed "
+                            +"exit to OnSite Storage; waiting to replan");
+                }
+            }
+            if(flight.airRoute.isEmpty()){
+                worker.setDeltaMovement(0,0,0);
+                return true;
+            }
+            openNextDoor(level,worker,flight);
+        }
         Vec3 finalPosition=flight.destination;
         double distance=worker.distanceToSqr(finalPosition);
         // Stalled flight inside a closed Dome must find a real air
         // corridor to ANY legal placement tile, not keep pressing its
         // head against the same roof or wall.
         if(!flight.airRoute.isEmpty()
-                &&level.getGameTime()-flight.lastCloser>70){
+                &&level.getGameTime()-flight.lastCloser>110){
             // Another worker may have placed a wall across our planned
             // air corridor. Release that obsolete leg and BFS again.
             flight.airRoute=List.of();
             flight.routeIndex=0;
             flight.cruiseY=Double.NaN;
+            if(flight.returningHome)
+                flight.nextEscapePlan=level.getGameTime()+35;
         }
         if(!flight.depot&&flight.escapingUntil<=level.getGameTime()
                 &&flight.airRoute.isEmpty()
@@ -132,7 +210,8 @@ public final class BuilderCreativeFlight {
         // "Creative fly" is a recovery option as well as the primary
         // movement type. Fly over obstructions instead of repeatedly
         // walking into the same wall.
-        if(level.getGameTime()-flight.lastCloser>28
+        if(!flight.returningHome
+                &&level.getGameTime()-flight.lastCloser>28
                 &&Double.isNaN(flight.cruiseY)){
             flight.cruiseY=Math.max(worker.getY(),finalPosition.y)
                     +3.5+Math.floorMod(worker.getId(),4)*1.5;
@@ -235,7 +314,25 @@ public final class BuilderCreativeFlight {
             worker.setDeltaMovement(0,0,0);
             return true;
         }
+        long now=level.getGameTime();
+        WorkWatch watch=workWatches.get(worker);
+        double range=worker.distanceToSqr(target.getX()+.5,
+                target.getY()+.5,target.getZ()+.5);
+        if(watch==null||!watch.goal.equals(target)){
+            watch=new WorkWatch(target,range,now);
+            workWatches.put(worker,watch);
+        }else if(range<watch.closest-.28){
+            watch.closest=range;
+            watch.progressTick=now;
+        }else if(now-watch.progressTick>=WORK_STALL_TICKS){
+            if(level.getBlockEntity(worker.home())
+                    instanceof WorkerStationBlockEntity station){
+                startEscape(level,worker,station.builderUnloadingStorage());
+                return false;
+            }
+        }
         Flight old=flights.get(worker);
+        if(old!=null&&old.returningHome)return false;
         if(old!=null&&old.escapingUntil>level.getGameTime())return false;
         boolean expired=old!=null&&!old.depot
                 &&old.airRoute.isEmpty()
@@ -340,10 +437,49 @@ public final class BuilderCreativeFlight {
         return true;
     }
 
+    private static void openNextDoor(ServerLevel level,BuilderGolem worker,
+                                      Flight flight){
+        int end=Math.min(flight.airRoute.size(),flight.routeIndex+4);
+        for(int i=flight.routeIndex;i<end;i++){
+            Vec3 step=flight.airRoute.get(i);
+            BlockPos cell=BlockPos.containing(step);
+            if(worker.distanceToSqr(step)>12.0)continue;
+            for(int y=0;y<=1;y++){
+                BlockPos bottom=BuilderCreativeEscapeRoute.doorBottom(
+                        level,cell.above(y));
+                if(bottom==null)continue;
+                var door=level.getBlockState(bottom);
+                if(!door.getValue(
+                        net.minecraft.world.level.block.DoorBlock.OPEN)
+                        &&BuilderCreativeEscapeRoute.openDoor(level,bottom))
+                    flight.openedDoors.add(bottom);
+            }
+        }
+    }
+
+    private static void closePassedDoors(ServerLevel level,BuilderGolem worker,
+                                         Flight flight){
+        var it=flight.openedDoors.iterator();
+        while(it.hasNext()){
+            BlockPos door=it.next();
+            if(worker.distanceToSqr(door.getX()+.5,door.getY()+.5,
+                    door.getZ()+.5)>12.0){
+                // Leave the door open while ANY Builder is in the passage.
+                var body=new AABB(door).inflate(.8,1.0,.8);
+                if(level.getEntitiesOfClass(BuilderGolem.class,body,
+                        g->g.isAlive()).isEmpty()){
+                    BuilderCreativeEscapeRoute.closeDoor(level,door);
+                    it.remove();
+                }
+            }
+        }
+    }
+
     public static String debug(BuilderGolem worker){
         Flight flight=flights.get(worker);
         if(flight==null)return "OFF";
-        return (flight.depot?"DEPOT":"BUILD")+" feet="+worker.position()
+        return (flight.returningHome?"ESCAPE_HOME":
+                flight.depot?"DEPOT":"BUILD")+" feet="+worker.position()
                 +" destination="+flight.destination
                 +" cruiseY="+flight.cruiseY+" bestSq="+flight.best
                 +" escaping="+flight.escapingUntil
