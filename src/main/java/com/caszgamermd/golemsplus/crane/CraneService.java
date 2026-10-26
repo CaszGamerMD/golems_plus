@@ -21,6 +21,7 @@ public final class CraneService {
     private static final Map<UUID,Selection> selected=new HashMap<>();
     private static boolean walking;
     public static void track(ServerLevel level,BuildingCrane crane){
+        crane.activatePreparedJob();
         var cranes=live.computeIfAbsent(level,l->new HashMap<>());
         cranes.values().removeIf(BuildingCrane::isRemoved);cranes.put(crane.getUUID(),crane);
     }
@@ -46,7 +47,9 @@ public final class CraneService {
                 "LINKED / OPERATOR "+crane.operator().toString().substring(0,8);
     }
     public static void selectJob(ServerPlayer player,WorkerStationBlockEntity table){
-        if(table.activeOrder()==null){tell(player,"Start/select the construction job before linking its crane");return;}
+        if(!table.hasPlacedSchematic()){
+            tell(player,"Select a saved schematic before linking a crane");return;
+        }
         selected.put(player.getUUID(),new Selection(player.level(),null,table.getBlockPos(),player.level().getGameTime()+1200));
         tell(player,"Now right-click the crane with the controller to link this job");
     }
@@ -56,6 +59,7 @@ public final class CraneService {
         // Prefer an already-registered idle worker with no scaffolding
         // or shulker cargo. Actual removal from the Builder roster is
         // performed atomically by BuildingCrane.assignOperator().
+        if(table.builderWorkerIds().size()<2)return false;
         for(UUID id:table.builderWorkerIds()){
             if(world.getEntity(id) instanceof BuilderGolem worker
                     &&!worker.isPassenger()&&!worker.hasSupplyBox()
