@@ -137,7 +137,17 @@ public final class BuilderScaffolding {
         }
         BlockPos pos=worker.blockPosition();
         double cx=session.column().getX()+.5,cz=session.column().getZ()+.5;
-        if(Math.abs(worker.getX()-cx)>1.15||Math.abs(worker.getZ()-cz)>1.15){
+        // A Builder returning from a SOLID tile adjacent to the
+        // scaffold can stop as much as ~1.25 blocks from the column
+        // center when native A* declares that tile reached. If the
+        // DOWN session is rejected at 1.15, the next Planner tick
+        // recreates it forever and the Builder never re-enters the
+        // real tower. Permit a short physical side entry on DESCENT.
+        // World collisions and the real scaffold-support check below
+        // still apply; this grants no teleport, flight or remote climb.
+        double entryLimit=session.descending()?1.55:1.15;
+        if(Math.abs(worker.getX()-cx)>entryLimit
+                ||Math.abs(worker.getZ()-cz)>entryLimit){
             clearMotion(worker);return false;
         }
         BlockPos columnLevel=new BlockPos(session.column().getX(),
