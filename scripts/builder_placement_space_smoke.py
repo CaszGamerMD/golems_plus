@@ -13,7 +13,12 @@ assert "public static boolean yieldTick(" in space
 assert "WorkerNavigation.routeToExact(level,worker," in space
 assert "BuilderPlacementSpace.tickMotion(teamWorld,this)" in (root/"BuilderGolem.java").read_text()
 assert "level.noCollision(worker,worker.getBoundingBox().move(vx,0,vz))" in space
-assert "WorkerNavigation.routeToExact(level,blocker,destination,.9)" in space
+# Evacuation is now staggered per participant: never restart both paths
+# synchronously inside the same placement callback.
+assert "BuilderClockwiseTraffic.staggerTicks(" in space
+assert "level.getGameTime()+delay" in space
+assert "WorkerNavigation.stop(blocker);" in space
+assert "level.getGameTime()<hold.notBefore()" in space
 assert "WorkerNavigation.canReachExact(level,worker,p)" in space
 navigation=(root.parent/"worker/WorkerNavigation.java").read_text()
 assert "public static boolean routeToExact(" in navigation
