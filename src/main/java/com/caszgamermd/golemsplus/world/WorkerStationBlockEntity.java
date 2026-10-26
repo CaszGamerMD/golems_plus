@@ -50,6 +50,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private int builderMirror;
     private BlockPos builderOrigin=BlockPos.ZERO;
     private BlockPos builderMaterialStorage;
+    private UUID builderCraneId;
     // Keep the deleted job's physical chest available for unloading the
     // departing crew, even after its saved job entry is gone.
     private BlockPos builderRetirementStorage;
@@ -429,6 +430,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public String problem() { return problem; }
     public String builderFile() { return builderFile; }
     public BlockPos builderMaterialStorage(){return builderMaterialStorage;}
+    public UUID builderCraneId(){return builderCraneId;}
+    /** Only a crane owned by this job may be recorded as a connection. */
+    public boolean setBuilderCraneLink(UUID actor,UUID job,UUID crane){
+        if(!isBuilder()||!canConfigure(actor)||!hasPlacedSchematic()
+                ||!java.util.Objects.equals(activeOrder,job)
+                ||crane==null)return false;
+        builderCraneId=crane;sync();return true;
+    }
     public BlockPos builderUnloadingStorage(){
         return builderRecallRequested&&builderRetirementStorage!=null
                 ?builderRetirementStorage:builderMaterialStorage;
@@ -1239,6 +1248,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(!canConfigure(actor)||!isBuilder()||!hasPlacedSchematic()
                 ||activeOrder!=null||warehouse==null
                 ||builderWorkerIds().isEmpty()||builderBlocks<1)return false;
+        // Preserve a crane attached through Connections before START;
+        // the crane binds to the newly issued job UUID on its next tick.
         activeOrder=UUID.randomUUID();builderCursor=0;completedAhead=0;
         builderClearCursor=0;builderClearByFile.put(builderFile,0);
         builderClearClaims.clear();builderClearClaimTick.clear();
@@ -1258,7 +1269,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public void setBuilderWorkerId(UUID id){builderWorkerId=id;sync();}
     public boolean cancelBuilder(UUID actor){
         if(!canConfigure(actor)||!isBuilder())return false;
-        activeOrder=null;builderClaims.clear();completedAhead=0;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
+        activeOrder=null;builderCraneId=null;builderClaims.clear();completedAhead=0;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         builderRecallRequested=true;
         builderCancelShipment=supplyRequest!=null;
         phase=WorkerPhase.IDLE;sync();return true;
@@ -1630,6 +1641,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             }
         }
         out.putString("builder_schematic",builderFile);
+        if(builderCraneId!=null)out.putString("builder_crane_link",builderCraneId.toString());
         out.putBoolean("builder_ignore_plants",builderIgnorePlants);
         out.putInt("builder_clear_cursor",builderClearCursor);
         int vix=0;
@@ -1881,6 +1893,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         selectedBuilderJob=Math.clamp(in.getIntOr("builder_selected_job",-1),-1,
                 Math.max(-1,builderJobs.size()-1));
         builderFile=in.getStringOr("builder_schematic","");
+        builderCraneId=uuid(in,"builder_crane_link");
         builderBlocks=Math.max(0,in.getIntOr("builder_blocks",0));
         builderUnresolved=Math.max(0,in.getIntOr("builder_unresolved",0));
         builderRotation=in.getIntOr("builder_rotation",0);

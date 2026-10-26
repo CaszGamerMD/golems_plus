@@ -30,7 +30,7 @@ import net.minecraft.world.item.ItemStack;
  * cache keeps only presentation state when the player closes/reopens.
  */
 public final class BuilderPlannerScreen extends WorkerStationScreen {
-    private enum Page { JOB, PLACEMENTS }
+    private enum Page { JOB, PLACEMENTS, CONNECTIONS }
     private enum Sort { ALPHABETICAL, VOLUME, LEFT }
     private record Memory(Page page,Sort sort,int scroll,int placementPage,
                           int jobPage,String search){}
@@ -183,6 +183,9 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             show(page);
         });
         button("+ NEW JOB",panelWidth-134,39,118,this::placements);
+        button(page==Page.CONNECTIONS?"BACK TO JOB":"CONNECTIONS",
+                18,112,184,()->show(page==Page.CONNECTIONS
+                        ?Page.JOB:Page.CONNECTIONS));
 
         if(page==Page.PLACEMENTS){
             button("REFRESH",SIDE+12,92,100,this::placements);
@@ -214,6 +217,26 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             button("NEXT",SIDE+110,panelHeight-43,85,()->{
                 placementPage=Math.min(max,placementPage+1);show(Page.PLACEMENTS);
             });
+            return;
+        }
+        if(page==Page.CONNECTIONS){
+            int w=Math.min(materialWidth()-32,panelWidth-SIDE-36);
+            button("LINK ONSITE STORAGE",SIDE+18,135,Math.min(198,w),
+                    ()->{
+                        send("builder_storage",0);
+                        notice="Close this screen and right-click the real storage chest.";
+                    });
+            button("LINK BUILDING CRANE",SIDE+18,207,Math.min(198,w),
+                    ()->{
+                        send("builder_crane",0);
+                        notice="Close screen; use Crane Controller to right-click your crane.";
+                    });
+            button("CHECK CRANE STATUS",SIDE+18,237,Math.min(198,w),
+                    ()->send("builder_crane_status",0));
+            button("RECALL CRANE",SIDE+18,267,Math.min(198,w),
+                    ()->send("builder_crane_recall",0));
+            button("SCAN WAREHOUSE",SIDE+18,327,Math.min(198,w),
+                    ()->send("builder_refresh",0));
             return;
         }
         button(sort==Sort.ALPHABETICAL?"SORT: A-Z":sort==Sort.VOLUME?"SORT: QTY":"SORT: LEFT",SIDE+14,94,116,()->{
@@ -367,9 +390,11 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         g.text(font,"CASZUAL BUILDERS  /  JOB PLANNER",16,14,0xffeff6eb,false);
         g.text(font,"ACTIVE / SAVED JOBS",16,73,MUTED,false);
         g.text(font,"PLANNER: TOOLS / BLOCKS / SCAFFOLD",18,85,TEXT,false);
-        g.text(font,"PLAYER INVENTORY",18,188,TEXT,false);
-        g.text(font,"Schematic placement only; clearing stays ON",
-                18,258,MUTED,false);
+        if(page!=Page.CONNECTIONS)
+            g.text(font,"PLAYER INVENTORY",18,188,TEXT,false);
+        if(page!=Page.CONNECTIONS)
+            g.text(font,"Schematic placement only; clearing stays ON",
+                    18,258,MUTED,false);
         if(t!=null){
             g.text(font,"CREW "+t.builderWorkerIds().size()+"/"+t.crewTarget(),18,274,
                     TEXT,false);
@@ -385,6 +410,23 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             g.text(font,"SITE CONTAINER",18,374,MUTED,false);
             g.text(font,t.builderMaterialStorage()==null?"NOT SELECTED":
                     t.builderMaterialStorage().toShortString(),18,388,TEXT,false);
+        }
+        if(page==Page.CONNECTIONS){
+            g.text(font,"CONNECTIONS / STORAGE + CRANE",SIDE+15,80,TEXT,false);
+            g.text(font,"ONSITE STORAGE",SIDE+18,112,MUTED,false);
+            g.text(font,shorten(t.builderMaterialStorage()==null
+                    ?"Not connected":t.builderMaterialStorage().toShortString(),60),
+                    SIDE+18,166,t.builderMaterialStorage()==null?RED:GREEN,false);
+            g.text(font,"CRANE",SIDE+18,184,MUTED,false);
+            g.text(font,shorten(t.builderCraneId()==null
+                    ?"Not connected":t.builderCraneId().toString(),60),
+                    SIDE+18,298,t.builderCraneId()==null?RED:GREEN,false);
+            g.text(font,"Crane for Y >= schematic minimum + 15",SIDE+18,314,MUTED,false);
+            g.text(font,"WAREHOUSE: Link scanner at Planner block",
+                    SIDE+18,356,MUTED,false);
+            if(!notice.isBlank())g.text(font,shorten(notice,82),
+                    SIDE+18,panelHeight-16,YELLOW,false);
+            return;
         }
         if(page==Page.PLACEMENTS){
             g.text(font,"SELECT AN ACTIVE LITEMATICA PLACEMENT",SIDE+15,80,TEXT,false);

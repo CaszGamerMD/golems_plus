@@ -125,6 +125,32 @@ public final class StationSettingsNetworking {
             case "builder_storage" -> {
                 if(!table.isBuilder())return;
                 OutputChestSelection.beginBuilder(player,table);
+                reply(player,"Storage link selected: close Planner and right-click the staging container");
+                return;
+            }
+            case "builder_crane" -> {
+                if(!table.isBuilder())return;
+                if(!table.hasPlacedSchematic()){
+                    reply(player,"Import/select your schematic before linking a crane.");
+                    return;
+                }
+                com.caszgamermd.golemsplus.crane.CraneService.selectJob(player,table);
+                reply(player,"Close Planner, hold the Crane Controller and right-click the crane. With 2+ registered Builders, one free Builder becomes the permanent operator. You can link before starting the build.");
+                return;
+            }
+            case "builder_crane_status" -> {
+                if(!table.isBuilder())return;
+                reply(player,"Crane: "+com.caszgamermd.golemsplus.crane.CraneService
+                        .connectionStatus(table));
+                reply(player,"Crane lifts begin at 15 blocks above the lowest schematic Y. Below that, Builders use stairs, walking and scaffolding.");
+                return;
+            }
+            case "builder_crane_recall" -> {
+                if(!table.isBuilder())return;
+                var crane=com.caszgamermd.golemsplus.crane.CraneService.linked(table);
+                if(crane==null){reply(player,"No active crane linked");return;}
+                crane.recall();
+                reply(player,"Linked crane returning home. The dedicated operator remains assigned until job completion or cancellation.");
                 return;
             }
             case "builder_refresh" -> {

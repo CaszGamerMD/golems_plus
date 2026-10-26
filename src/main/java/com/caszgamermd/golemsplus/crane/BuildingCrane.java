@@ -81,13 +81,30 @@ public final class BuildingCrane extends Entity implements Container {
         return positions;
     }
     public boolean onsite(){return onsite;}
-    public boolean serves(WorkerStationBlockEntity station){return table.equals(station.getBlockPos())&&Objects.equals(owner,station.owner())&&Objects.equals(job,station.activeOrder());}
+    /** An orphaned/completed job must retain temporary simulation
+     * tickets until the crane safely returns and releases its driver.
+     * This doesn't authorize service to a DIFFERENT construction job.
+     */
+    boolean returningOperatorFor(WorkerStationBlockEntity station){
+        return operator!=null&&job!=null&&table.equals(station.getBlockPos())
+                &&Objects.equals(owner,station.owner())
+                &&(!Objects.equals(job,station.activeOrder())
+                    ||station.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.COMPLETE);
+    }
+    public boolean serves(WorkerStationBlockEntity station){
+        return table.equals(station.getBlockPos())
+                &&Objects.equals(owner,station.owner())
+                &&Objects.equals(job,station.activeOrder())
+                &&getUUID().equals(station.builderCraneId());
+    }
     public WorkerStationBlockEntity station(){return level().getBlockEntity(table) instanceof WorkerStationBlockEntity s&&serves(s)?s:null;}
     public boolean ownsWorker(BuilderGolem w){return w.getUUID().equals(operator)||destinations.containsKey(w.getUUID())||w.getVehicle()==this;}
     public void place(UUID owner,BlockPos anchor,Vec3 load){this.owner=owner;this.anchor=anchor.immutable();this.home=BlockPos.containing(load);anchorPoint(CraneMovement.anchorPoint((ServerLevel)level(),anchor));setPos(load);}
     public boolean link(WorkerStationBlockEntity s){
         if(!parked()||!destinations.isEmpty()||!batch.isEmpty()
-                ||!Objects.equals(owner,s.owner())||s.activeOrder()==null||!builders().isEmpty())return false;
+                ||!Objects.equals(owner,s.owner())||!s.hasPlacedSchematic()
+                ||!builders().isEmpty())return false;
+        if(!s.setBuilderCraneLink(owner,s.activeOrder(),getUUID()))return false;
         table=s.getBlockPos().immutable();job=s.activeOrder();
         dispatch.clear();destinations.clear();batch.clear();
         status="Job linked; select a builder operator";
@@ -96,6 +113,19 @@ public final class BuildingCrane extends Entity implements Container {
             BuilderChunkTickets.prime(world,s);
         }
         return true;
+    }
+    /** Prepare crane through the Planner Connections menu before Start.
+     * Once the Planner issues the active job UUID, bind the previously
+     * linked vehicle without replacing its operator or cargo.
+     */
+    void activatePreparedJob(){
+        if(job!=null||!(level() instanceof ServerLevel world)
+                ||!(world.getBlockEntity(table) instanceof WorkerStationBlockEntity s)
+                ||s.activeOrder()==null||!Objects.equals(owner,s.owner())
+                ||!getUUID().equals(s.builderCraneId()))return;
+        job=s.activeOrder();
+        BuilderChunkTickets.prime(world,s);
+        status="Construction job active; operator retained";
     }
     public boolean assignOperator(BuilderGolem w){
         var s=station();
@@ -150,7 +180,11 @@ public final class BuildingCrane extends Entity implements Container {
                 return;
             }
         }
-        if(station()==null&&!recalling){recall();status="Job ended or unavailable; returning passengers";}
+        var linked=station();
+        if((linked==null||linked.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.COMPLETE)
+                &&!recalling){
+            recall();status="Job ended or unavailable; returning passengers and operator";
+        }
         // A blocked pickup must not own the entire queue forever. Count
         // lack of progress, not trip duration (a 90-block trip takes longer).
         if(!delivering&&pickup!=null&&world.getGameTime()-pickupStarted>400
@@ -168,7 +202,29 @@ public final class BuildingCrane extends Entity implements Container {
             Vec3 end=Vec3.atBottomCenterOf(home);
             if(position().distanceTo(end)>.15){go(world,end);return;}
             boolean all=true;for(BuilderGolem rider:builders())all&=unload(world,rider,home);
-            if(all){recalling=false;status="Home";}return;
+            if(all){
+                // Keep the dedicated operator aboard for the entire job.
+                // On cancellation/completion, unboard ONLY at a verified
+                // solid, unobstructed tile near the crane's home dock.
+                BuilderGolem driverGolem=world.getEntity(operator)
+                        instanceof BuilderGolem d?d:null;
+                if(driverGolem==null){
+                    status="Job finished; operator entity unloaded, retaining reservation";
+                    return;
+                }
+                if(driverGolem!=null){
+                    BlockPos safe=CraneMovement.landing(world,this,driverGolem,home);
+                    if(safe==null||!unload(world,driverGolem,safe)){
+                        status="Job finished; awaiting safe operator dismount";
+                        return;
+                    }
+                    if(world.getBlockEntity(table) instanceof WorkerStationBlockEntity former)
+                        former.registerBuilderWorker(driverGolem.getUUID());
+                }
+                operator=null;
+                recalling=false;status="Home; operator released";
+            }
+            return;
         }
         if(supplyMode()){
             if(supplyStop!=null){Vec3 end=Vec3.atBottomCenterOf(supplyStop);

@@ -230,6 +230,16 @@ public final class CraneRailBlock extends Block {
             }
         };
     }
+    /** Crane rails are surface-mounted guidance, not trip hazards.
+     * Keep the thin selection/rendered outline while permitting workers
+     * and players to walk across floor-mounted rails normally.
+     * Chassis / basket still run their separate full swept collision
+     * checks against every SOLID environmental block.
+     */
+    @Override protected VoxelShape getCollisionShape(BlockState state,
+            BlockGetter world,BlockPos position,CollisionContext context){
+        return Shapes.empty();
+    }
     @Override protected VoxelShape getShape(BlockState s,BlockGetter w,
             BlockPos p,CollisionContext c){
         VoxelShape result=Shapes.empty();
