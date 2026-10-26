@@ -127,7 +127,7 @@ course variations and an **unseen validation course**, and the full
 Minecraft server GameTest must prove all forbidden actions remain
 unavailable. Do not conflate headless success with live game performance.
 
-## Your uploaded timetrial.schem — strict 20-second generations
+## Your uploaded timetrial.schem — strict 18-second generations
 
 The exact uploaded Sponge v3 schematic has been preserved as
 `training/courses/timetrial.schem.base64` (lossless; SHA-256:
@@ -140,7 +140,7 @@ The exact uploaded Sponge v3 schematic has been preserved as
 - Original geometry, solids, and markers are parsed from compressed NBT.
 - One competing ground bot starts on **each distinct green tile**. All
   red tiles are valid goals.
-- Every generation ends at precisely **400 game ticks (20 seconds)**.
+- Every generation ends at precisely **360 game ticks (18 seconds)**.
   All unfinished bots are reset; successful genomes survive, and new
   genomes inherit, cross, or mutate traits.
 - **Stop only when all 20 bots complete in the same generation**. There
@@ -158,23 +158,26 @@ python3 scripts/train_schem_timetrial.py \
 ```
 
 Use your original uploaded `.schem` directly instead of the archived
-`.base64` path if desired. The game-tick limit remains 400 even when
+`.base64` path if desired. The game-tick limit remains 360 even when
 the compute budget differs. Replays, full generation fitness,
 uncompleted runners, winner genes and the original schematic source
 hash are saved to `results.json` and `history.csv`.
 
 ### Current acceptance findings
 
-- **Headless genetics (seed 42):** first generation **19/20**, next
-  generation **20/20** within 400 ticks, last finisher **370 ticks
-  (18.5 seconds)**. This is repeatable offline and **NOT a physical
-  Minecraft validation**.
+- **Headless genetics, previous 20-second limit (seed 42):** first
+  generation **19/20**, second generation **20/20** within **400 ticks**.
+  The slowest bot took **370 ticks (18.5 seconds)**, which **fails**
+  the new stricter 360-tick limit. New 18-second training results
+  are generated separately by the CI training workflow. **Neither
+  headless result is a physical Minecraft validation.**
 - **Real Minecraft physics:** an opt-in GameTest spawns all 20 actual
   Builder Golems onto green wool and drives the headless-generated
   routes through the reconstructed original blocks. Their footprint
   is 0.65 x 0.65 blocks, height 1.6 blocks, horizontal motion is
   capped at 0.2 blocks/tick, and all test entities are removed at tick
-  400. It currently **FAILS** (9/20, with another diagnostic run 0/20)
+  **360**. Previous 400-tick Minecraft probes **FAILED** (9/20,
+  with another diagnostic run 0/20)
   because the headless simulator did not model the detailed collision
   of half slabs and open door panels. Actual GameTest success MUST be
   established before treating the evolved policy as usable in-game.
@@ -190,4 +193,4 @@ back into the fitness function. Evolution must choose and refine
 real walking primitives—**jump, align with doorway, yield to other
 bots, back up and retry**—rather than merely a top-down route weight.
 Re-run both the offline competition and the opt-in Minecraft trial
-until *both* demonstrate every bot arriving by 400 ticks.
+until *both* demonstrate every bot arriving by 360 ticks.
