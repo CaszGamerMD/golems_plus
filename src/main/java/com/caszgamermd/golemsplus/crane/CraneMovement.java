@@ -46,7 +46,31 @@ final class CraneMovement {
     static List<Vec3> loadPath(ServerLevel world,BuildingCrane crane,Vec3 target){
         Vec3 anchor=crane.anchorPoint();
         if(anchor.distanceTo(target)>crane.reach()+1)return null;
-        if(swept(world,crane,crane.position(),target,anchor,anchor))return new ArrayList<>(List.of(target));
+        Vec3 from=crane.position();
+        if(swept(world,crane,from,target,anchor,anchor))
+            return new ArrayList<>(List.of(target));
+        // A raised basket must approach an elevated platform from ABOVE:
+        // a direct diagonal can tunnel into the platform underside even
+        // though an unobstructed overhead route exists. Every full swept
+        // segment is collision-tested against the real world and boom.
+        // Include a brief horizontal departure for a basket initially
+        // under a roof or upper landing before lifting past the platform.
+        double clearanceY=Math.max(from.y,target.y)+3.5;
+        for(Vec3 side:List.of(Vec3.ZERO,
+                new Vec3(0,0,-4),new Vec3(0,0,4),
+                new Vec3(-4,0,0),new Vec3(4,0,0))){
+            Vec3 offset=from.add(side);
+            Vec3 highFrom=new Vec3(offset.x,clearanceY,offset.z);
+            Vec3 highTo=new Vec3(target.x,clearanceY,target.z);
+            if(!swept(world,crane,from,offset,anchor,anchor)
+                    ||!swept(world,crane,offset,highFrom,anchor,anchor)
+                    ||!swept(world,crane,highFrom,highTo,anchor,anchor)
+                    ||!swept(world,crane,highTo,target,anchor,anchor))continue;
+            var route=new ArrayList<Vec3>();
+            if(from.distanceTo(offset)>.01)route.add(offset);
+            route.add(highFrom);route.add(highTo);route.add(target);
+            return route;
+        }
         var start=cell(crane.blockPosition());var goal=cell(BlockPos.containing(target));
         var valid=new HashMap<CranePath.Cell,Boolean>();
         List<CranePath.Cell> path=CranePath.find(start,goal::equals,p->p.distance(goal),
