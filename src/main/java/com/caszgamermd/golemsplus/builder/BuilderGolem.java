@@ -140,21 +140,24 @@ public final class BuilderGolem extends PathfinderMob implements Container {
                 BuilderChunkTickets.track(world,this);
             return;
         }
-        boolean climbing=level() instanceof ServerLevel climbWorld
+        boolean flying=BuilderCreativeFlight.ENABLED
+                &&level() instanceof ServerLevel flyWorld
+                &&BuilderCreativeFlight.tickMotion(flyWorld,this);
+        boolean climbing=!flying&&level() instanceof ServerLevel climbWorld
                 &&BuilderScaffolding.tickMotion(climbWorld,this);
         // Physical four-builder right-of-way: a worker waiting in a
         // teammate's future block can move one safe step EVERY entity tick,
         // independently of its slower construction task scheduler.
-        boolean returning= !climbing&&level() instanceof ServerLevel floorWorld
+        boolean returning= !flying&&!climbing&&level() instanceof ServerLevel floorWorld
                 &&BuilderTeamGroundTraffic.tickMotion(floorWorld,this);
         boolean placing=false;
-        if(!climbing&&!returning&&level() instanceof ServerLevel teamWorld)
+        if(!flying&&!climbing&&!returning&&level() instanceof ServerLevel teamWorld)
             placing=BuilderPlacementSpace.tickMotion(teamWorld,this);
         // Separate physical movement owner for face-to-face worker traffic.
         // It must NEVER fight an existing scaffold, bridge, transport,
         // ledge descent or placement escape session.
         boolean clockwise=false;
-        if(!climbing&&!returning&&!placing
+        if(!flying&&!climbing&&!returning&&!placing
                 &&level() instanceof ServerLevel trafficWorld)
             clockwise=BuilderClockwiseTraffic.tickMotion(trafficWorld,this);
         // Never retain the old no-gravity state after switching jobs,
@@ -164,7 +167,8 @@ public final class BuilderGolem extends PathfinderMob implements Container {
                 &&!BuilderScaffolding.climbingNow(server,this)
                 // The paid scaffold bridge controls temporary creative-style
                 // hover only while a real supported walking tile exists.
-                &&!BuilderScaffoldBridge.moving(this)){
+                &&!BuilderScaffoldBridge.moving(this)
+                &&!flying){
             setNoGravity(false);
             setShiftKeyDown(false);
             var velocity=getDeltaMovement();
@@ -183,7 +187,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
             BuilderChunkTickets.track(server,this);
             // A physical scaffold climb owns this worker's movement.
             // Normal A* anti-stall checks may not stop or redirect it.
-            if(!climbing&&!clockwise)
+            if(!flying&&!climbing&&!clockwise)
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
         }
         // Each Builder evaluates its own long-lived task state four times
