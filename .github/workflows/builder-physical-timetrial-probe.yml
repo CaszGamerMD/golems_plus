@@ -4,12 +4,6 @@ on:
   push:
     branches:
       - feature/builder-evolutionary-navigation-trainer-262
-  pull_request:
-    paths:
-      - src/gametest/**
-      - src/main/java/com/caszgamermd/golemsplus/**
-      - training/**
-      - .github/workflows/builder-physical-timetrial-probe.yml
   workflow_dispatch:
 
 permissions:
@@ -81,7 +75,7 @@ jobs:
           mkdir -p build/timetrial-training
           gradle --no-daemon runGameTest 2>&1 | tee build/timetrial-training/real-builder-genetics.log
       - name: Commit learned real-entity genes, EVEN IF the trial fails
-        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/feature/builder-evolutionary-navigation-trainer-262'
+        if: always() && github.ref == 'refs/heads/feature/builder-evolutionary-navigation-trainer-262'
         shell: bash
         run: |
           if [[ ! -s training/state/checkpoint.json ]]; then
@@ -90,16 +84,28 @@ jobs:
           fi
           git config user.name 'golems-evolution[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- training/state/
-          if git diff --cached --quiet; then
-            echo 'No changes in saved physical genes.'
-            exit 0
-          fi
-          git commit -m 'Save verified Builder Golem mutation checkpoint [skip ci]'
-          # The branch itself is the long-term memory between CI servers.
-          # Avoid force pushes; every unique generation remains in the
-          # tracked history.jsonl as well as the latest checkpoint.
-          git push origin HEAD:"${GITHUB_REF_NAME}"
+          # Protect new genetic improvements from stale CI checkouts:
+          # merge results with LATEST remote champion/state before commit.
+          local_state="$(mktemp -d)"
+          cp -a training/state/. "$local_state/"
+          for attempt in 1 2 3; do
+            git fetch origin "${GITHUB_REF_NAME}"
+            git checkout -B physical-training-publish "origin/${GITHUB_REF_NAME}"
+            python3 scripts/merge_real_evolution_state.py "$local_state" training/state
+            git add -- training/state/
+            if git diff --cached --quiet; then
+              echo 'No improved state over current remote.'
+              exit 0
+            fi
+            git commit -m 'Preserve real Builder Golem mutations and best 10-of-10 champion [skip ci]'
+            if git push origin HEAD:"${GITHUB_REF_NAME}"; then
+              echo 'Checkpoint, champion, and history are durable on GitHub.'
+              exit 0
+            fi
+            echo "Remote updated concurrently; remerging fresh state (attempt $attempt)"
+          done
+          echo 'Failed to save learned state: refusing to claim persistence.'
+          exit 1
       - name: Preserve movement collision and timeout diagnostics
         if: always()
         uses: actions/upload-artifact@v4
