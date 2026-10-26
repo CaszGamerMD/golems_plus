@@ -22,7 +22,7 @@ jobs:
         with:
           gradle-version: '9.7.0'
       - name: Compile, run unit tests, and build playable remapped JAR
-        run: gradle --no-daemon clean test remapJar
+        run: gradle --no-daemon clean test build
       - name: Check actual Fabric classes and freeze one playable JAR
         shell: bash
         run: |
