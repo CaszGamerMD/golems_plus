@@ -15,7 +15,7 @@ import net.minecraft.world.phys.Vec3;
 
 /** Actual entity ticks and passenger transitions; no manual tick or teleport. */
 public final class CraneTransportGameTest {
-    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=3000,skyAccess=true)
+    @GameTest(structure="golems_plus_gametest:dome_arena",padding=64,maxTicks=3000,skyAccess=true)
     public void fourBuildersRideUpAndBackDown(GameTestHelper h){
         var world=h.getLevel();
         for(int x=1;x<46;x++)for(int z=1;z<46;z++){
