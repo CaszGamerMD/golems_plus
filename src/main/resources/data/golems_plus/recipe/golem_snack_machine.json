@@ -1,13 +1,13 @@
 {
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    "PPP",
-    " I ",
-    "I I"
+    "III",
+    "IAI",
+    "III"
   ],
   "key": {
-    "P": "minecraft:oak_planks",
-    "I": "minecraft:iron_ingot"
+    "I": "minecraft:iron_ingot",
+    "A": "minecraft:apple"
   },
   "result": {
     "id": "golems_plus:golem_snack_machine",

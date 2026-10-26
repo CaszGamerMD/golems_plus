@@ -1,13 +1,14 @@
 {
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    "PPP",
-    " I ",
-    "I I"
+    "III",
+    "GRG",
+    "III"
   ],
   "key": {
-    "P": "minecraft:oak_planks",
-    "I": "minecraft:iron_ingot"
+    "I": "minecraft:iron_ingot",
+    "G": "minecraft:glass",
+    "R": "minecraft:redstone"
   },
   "result": {
     "id": "golems_plus:golem_arcade",
