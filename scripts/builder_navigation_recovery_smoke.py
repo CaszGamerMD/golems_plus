@@ -19,7 +19,7 @@ assert "public static boolean retryScheduled(PathfinderMob mob)" in navigation
 assert 'WorkerNavigation' in building
 assert "WorkerNavigation" in building
 assert "routeToExact(level,worker,approach,1.0)" in building
-assert "if(workDistance>14)" in building
+assert "if(workDistance>4.5*4.5)" in building
 assert "BuilderPlacementSpace.invalidateApproach(worker,pos)" in building
 assert "routeTo(level,worker,pos,.85)" in building
 assert '"Builder exploring alternate routes to "' not in building
