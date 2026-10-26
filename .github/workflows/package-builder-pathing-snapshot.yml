@@ -1,0 +1,80 @@
+name: Package Builder Pathing Fabric 26.2 Test JAR
+
+on:
+  push:
+    branches:
+      - snapshot/builder-pathing-fabric262-20261026
+  pull_request:
+
+jobs:
+  package-jar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Compile, unit test, and assemble playable Fabric jar
+        run: gradle --no-daemon clean test assemble
+      - name: Validate remapped mod jar and package exact snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t jars < <(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*javadoc*' | sort)
+          if [ "${#jars[@]}" -ne 1 ]; then
+            printf 'Expected one playable jar but found %s\n' "${#jars[@]}"
+            printf '%s\n' "${jars[@]}"
+            exit 1
+          fi
+          unzip -Z1 "${jars[0]}" > "$RUNNER_TEMP/contents.txt"
+          for entry in fabric.mod.json com/caszgamermd/golemsplus/builder/BuilderGolem.class com/caszgamermd/golemsplus/builder/BuilderScaffoldBridge.class com/caszgamermd/golemsplus/worker/WorkerNavigation.class; do
+            grep -Fxq "$entry" "$RUNNER_TEMP/contents.txt" || { echo "Missing $entry in remapped jar"; exit 1; }
+          done
+          mkdir -p package
+          cp "${jars[0]}" package/golems-plus-builder-pathing-26.2-e29379d.jar
+          (cd package && sha256sum *.jar > SHA256SUMS.txt)
+          cat package/SHA256SUMS.txt
+      - name: Upload playable JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: golems-plus-builder-pathing-26.2-e29379d
+          path: package/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish direct-download test prerelease
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          **Experimental Golems Plus Fabric 26.2 builder-pathing test snapshot.**
+          
+          Frozen from the pathfinding integration branch at source commit
+          e29379d4b6bd224eb50167ae7785736c1542cd5c.
+          
+          Java 25 / Gradle-built remapped Fabric JAR. Does not depend on
+          completing the full 3,537-block Dome GameTest, which remains
+          unfinished. Use only with a backed-up world and remove other
+          Golems Plus JAR versions first.
+          EOF
+          if gh release view "builder-pathing-test-26.2-e29379d" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "builder-pathing-test-26.2-e29379d" \
+              package/golems-plus-builder-pathing-26.2-e29379d.jar \
+              package/SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "builder-pathing-test-26.2-e29379d" \
+              package/golems-plus-builder-pathing-26.2-e29379d.jar \
+              package/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "Builder Pathing Fabric 26.2 — e29379d (experimental)" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
