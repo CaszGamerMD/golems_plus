@@ -72,6 +72,11 @@ public final class CraneService {
         Selection old=selected.get(player.getUUID());
         if(old!=null&&old.world()==player.level()&&old.expires()>=player.level().getGameTime()&&old.table()!=null
                 &&player.level().getBlockEntity(old.table()) instanceof WorkerStationBlockEntity table){
+            BuildingCrane linked=linked(table);
+            if(linked!=null&&linked!=crane&&linked.operator()!=null){
+                tell(player,"This Planner already has an operating crane. Finish/cancel the job and safely release its operator before replacing it.");
+                return;
+            }
             if(!crane.link(table)){tell(player,"Cannot link: job ownership or passenger check failed");return;}
             if(autoAssignOperator(player.level(),crane,table))
                 tell(player,"Crane linked: one Builder permanently assigned as operator until the job ends or is cancelled.");
