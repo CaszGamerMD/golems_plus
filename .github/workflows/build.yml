@@ -4,6 +4,78 @@ on:
     branches: [main]
   pull_request:
 jobs:
+  # Frozen playable snapshot: compile, unit-test and remap the Fabric mod.
+  # This job is independent of the still-failing full Dome GameTest.
+  # It must NOT be represented as a completed 3537-block Dome build.
+  snapshot:
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'snapshot/crane-navigation-fabric262' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Compile, run unit tests, and build playable remapped JAR
+        run: gradle --no-daemon clean test assemble
+      - name: Check actual Fabric classes and freeze one playable JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t candidates < <(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | sort)
+          if [ "${#candidates[@]}" -ne 1 ]; then
+            printf 'Expected exactly one playable Fabric JAR; found %s\n' "${#candidates[@]}"
+            printf '%s\n' "${candidates[@]}"
+            exit 1
+          fi
+          zipinfo -1 "${candidates[0]}" > "$RUNNER_TEMP/jar-content.txt"
+          for file in fabric.mod.json com/caszgamermd/golemsplus/crane/BuildingCrane.class com/caszgamermd/golemsplus/worker/WorkerNavigation.class com/caszgamermd/golemsplus/builder/BuilderScaffolding.class; do
+            grep -Fxq "$file" "$RUNNER_TEMP/jar-content.txt" || { echo "Missing $file"; exit 1; }
+          done
+          mkdir -p snapshot
+          cp "${candidates[0]}" snapshot/golems-plus-crane-navigation-snapshot-26.2.jar
+          sha256sum snapshot/*.jar | tee snapshot/SHA256SUMS.txt
+      - name: Upload downloadable combined test JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: golems-plus-crane-navigation-snapshot-26.2
+          path: snapshot/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish direct-download snapshot prerelease
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="crane-nav-snapshot-26.2"
+          file="snapshot/golems-plus-crane-navigation-snapshot-26.2.jar"
+          cat > "$RUNNER_TEMP/snapshot-notes.md" <<'EOF'
+          Frozen Minecraft Fabric 26.2 **test snapshot** combining Building Crane and improved Builder pathfinding.
+          
+          Includes physical one-block stepping, shared scaffold climb / solid landing / descent,
+          two-block-outside Dome towers, and working four-Builder crane passenger movement.
+          Compiled with Java 25, JUnit tested and Fabric-remapped.
+          
+          IMPORTANT: The full 3537-block Dome construction is still INCOMPLETE.
+          This is not a production-stable or fully Dome-verified release.
+          Install in a backed-up world, removing any old Golems Plus mod JAR first.
+          EOF
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$file" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$tag" --notes-file "$RUNNER_TEMP/snapshot-notes.md" --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" "$file" --repo "$GITHUB_REPOSITORY" \
+              --target "${{ github.event.pull_request.head.sha }}" --prerelease \
+              --title "Crane + Navigation (Fabric 26.2) — frozen testing snapshot" \
+              --notes-file "$RUNNER_TEMP/snapshot-notes.md"
+          fi
   build:
     runs-on: ubuntu-latest
     permissions:
