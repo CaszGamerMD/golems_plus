@@ -16,6 +16,46 @@ import net.minecraft.world.level.block.Blocks;
  * those segments instead of treating the obstacle as a second tower.
  */
 public final class BuilderScaffoldBridgeGameTest {
+    /** Requesting one platform at a time must not trigger an entire
+     * depot roundtrip for every suspended bridge cell. Batch pickup still
+     * debits the actual chest and requires a physically nearby worker.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=80,skyAccess=true)
+    public void fetchesBatchOfRealScaffoldingAtDepot(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        helper.setBlock(3,1,3,Blocks.STONE);
+        helper.setBlock(4,1,3,Blocks.STONE);
+        helper.setBlock(3,2,3,WorksiteContent.BUILDER_TABLE);
+        helper.setBlock(4,2,3,Blocks.CHEST);
+        BlockPos planner=helper.absolutePos(new BlockPos(3,2,3));
+        BlockPos depot=helper.absolutePos(new BlockPos(4,2,3));
+        if(!(level.getBlockEntity(planner) instanceof WorkerStationBlockEntity table)
+                ||!(level.getBlockEntity(depot) instanceof net.minecraft.world.Container chest)){
+            helper.fail("Batch scaffold trial has no real Planner / chest");
+            return;
+        }
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setBuilderMaterialStorage(owner.getUUID(),depot)){
+            helper.fail("Batch scaffold trial could not configure depot");
+            return;
+        }
+        chest.setItem(0,new ItemStack(Items.SCAFFOLDING,40));
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(depot.getX()+.5,depot.getY(),depot.getZ()+1.5);
+        worker.setPersistenceRequired();
+        level.addFreshEntity(worker);
+        var outcome=BuilderSupplyInventory.loadScaffold(level,worker,table,1);
+        int carried=worker.carriedCount(Items.SCAFFOLDING);
+        int remaining=chest.getItem(0).getCount();
+        if(outcome!=BuilderSupplyInventory.ScaffoldLoad.READY
+                ||carried!=32||remaining!=8||carried+remaining!=40){
+            helper.fail("Scaffold pickup violated real-item batching: "
+                    +outcome+" carried="+carried+" chest="+remaining);
+            return;
+        }
+        helper.succeed();
+    }
     /** Prove an actual Golem buys/builds an outside tower, climbs it,
      * and places two real horizontal scaffolds across the reserved gap.
      * No 3,537-block Dome workload or teammate doorway traffic involved.
