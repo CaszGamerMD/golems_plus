@@ -272,8 +272,11 @@ public final class BuilderEvolutionAltCourseGameTest {
         final Map<Edge,Integer> realBlockFailures=new HashMap<>();
         final int index;
         final BuilderGolem mob;
-        final String route;
+        // Routes may be replanned from CURRENT physical position after
+        // a real obstruction; only the 12-gene logic is inherited.
+        String route;
         final Genome dna;
+        final Map<Edge,Integer> inheritedBlockMemory;
         // Actual Minecraft positions are retained for EVERY physical generation,
         // including failed offspring, never simulated or interpolated.
         final JsonArray movementSamples=new JsonArray();
@@ -295,6 +298,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             if("b".equals(movementMode))reverseTicks++;
             if("d".equals(movementMode))doorTicks++;
             if("s".equals(movementMode))slabTicks++;
+            if("p".equals(movementMode))precisionTicks++;
             if("c".equals(movementMode))blockedTicks++;
             JsonArray sample=new JsonArray();
             sample.add(tick);
@@ -315,17 +319,19 @@ public final class BuilderEvolutionAltCourseGameTest {
         int ticksSinceJump;
         double doorLaneShift;
         boolean doorOffsetX;
-        int slabTicks,headroomReplans;
+        int slabTicks,reroutes,precisionTicks;
+        int lastRerouteTick=-1000;
         int doorTargetX=Integer.MIN_VALUE,doorTargetZ=Integer.MIN_VALUE;
         int exitTargetX=Integer.MIN_VALUE,exitTargetZ=Integer.MIN_VALUE;
         double lastDistance=Double.POSITIVE_INFINITY;
         Candidate(int index,BuilderGolem mob,String route,int x,int z,
-                  Genome dna){
+                  Genome dna,Map<Edge,Integer> inheritedBlockMemory){
             this.index=index;
             this.mob=mob;
             this.route=route;
             this.x=x;this.z=z;
             this.dna=dna;
+            this.inheritedBlockMemory=inheritedBlockMemory;
         }
         double fitness(){
             if(arrivedTick>=0)
@@ -343,8 +349,8 @@ public final class BuilderEvolutionAltCourseGameTest {
             }
             double progress=(bestCursor+fraction)
                     /Math.max(1,route.length());
-            return Math.max(0,progress)*10000
-                    -collisions*3;
+            return Math.min(1,Math.max(0,progress))*10000
+                    -collisions*3-reroutes*10;
         }
         // Absolute positions of the GameTest arena origin, only used to
         // score how close the actual entity came to its next tile.
@@ -352,9 +358,6 @@ public final class BuilderEvolutionAltCourseGameTest {
         long birthTick;
     }
 
-    private static boolean topSlab(int x,int z){
-        return x==19&&(z==2||z==7||z==8)||x==17&&z==9;
-    }
     private static BlockPos pos(GameTestHelper h,int x,int y,int z){
         return h.absolutePos(new BlockPos(X_OFFSET+x,y,Z_OFFSET+z));
     }
@@ -482,6 +485,66 @@ public final class BuilderEvolutionAltCourseGameTest {
     }
 
     /**
+     * Sweep the REAL 0.65 x 1.6 Builder hitbox across a cardinal edge
+     * at the higher of the two supported standing heights. This rejects
+     * the ceiling-slab opening and corner clipping that a check only at
+     * individual cell centers can miss. Legal 0.5 floor slab ramps
+     * remain accessible through Minecraft's automatic ground step.
+     */
+    private static boolean bodySweepClear(GameTestHelper helper,
+            ServerLevel world,BuilderGolem mob,int fromX,int fromZ,
+            int toX,int toZ){
+        double before=standingY(helper,world,fromX,fromZ);
+        double after=standingY(helper,world,toX,toZ);
+        if(!Double.isFinite(before)||!Double.isFinite(after)
+                ||after-before>.600001||before-after>1.000001)return false;
+        // The door's open leaf requires an offset; verified in the
+        // directional doorway controller and its own real GameTest.
+        if(MAZE[fromZ].charAt(fromX)=='D'
+                ||MAZE[toZ].charAt(toX)=='D')return true;
+        BlockPos origin=pos(helper,0,2,0);
+        double y=Math.max(before,after);
+        for(int i=0;i<=12;i++){
+            double t=i/12.0;
+            double x=origin.getX()+fromX+.5+(toX-fromX)*t;
+            double z=origin.getZ()+fromZ+.5+(toZ-fromZ)*t;
+            if(!clearBodyAt(world,mob,x,y,z))return false;
+        }
+        return true;
+    }
+
+    /**
+     * Precision steering through slabs and tight overhead apertures.
+     * Direction changes inside these corridors need a real centered
+     * body, not a corner cut based solely on the waypoint tolerance.
+     */
+    private static boolean precisionTransition(GameTestHelper helper,
+            ServerLevel world,int fromX,int fromZ,int toX,int toZ){
+        if(MAZE[fromZ].charAt(fromX)=='D'
+                ||MAZE[toZ].charAt(toX)=='D')return true;
+        double before=standingY(helper,world,fromX,fromZ);
+        double after=standingY(helper,world,toX,toZ);
+        if(Math.abs(before-after)>.01)return true;
+        for(int[] p:new int[][]{{fromX,fromZ},{toX,toZ}}){
+            BlockPos cell=pos(helper,p[0],2,p[1]);
+            BlockState floor=world.getBlockState(cell);
+            BlockState head=world.getBlockState(cell.above());
+            if(floor.getBlock() instanceof SlabBlock
+                    ||head.getBlock() instanceof SlabBlock)
+                return true;
+            // A ceiling-slab next to a narrow opening can be
+            // hazardous even when the destination center is clear.
+            for(Direction side:new Direction[]{
+                    Direction.NORTH,Direction.SOUTH,
+                    Direction.EAST,Direction.WEST}){
+                BlockState near=world.getBlockState(cell.relative(side).above());
+                if(near.getBlock() instanceof SlabBlock)return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * A grid diagonal is only a candidate. Inspect Minecraft's REAL
      * solid-block collision at the full 0.65-wide, 1.6-high entity size
      * along the entire diagonal. Keep door openings and steps as
@@ -559,7 +622,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                 double toY=standingY(helper,world,x,z);
                 // Preserve vanilla auto-step and ground-only walking.
                 if(!Double.isFinite(fromY)||!Double.isFinite(toY)
-                    ||toY-fromY>.600001||fromY-toY>1.000001)
+                    ||toY-fromY>.600001||fromY-toY>1.000001
+                    ||!bodySweepClear(helper,world,mob,
+                            node.x(),node.z(),x,z))
                     continue;
                 int stepX=x-node.x(),stepZ=z-node.z();
                 boolean diagonal=stepX!=0&&stepZ!=0;
@@ -635,7 +700,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             Genome genome=genomes.get(slot);
             Candidate b=new Candidate(slot,mob,planRoute(start[0],
                     start[1],genome,blockMemory,helper,world,mob),
-                    start[0],start[1],genome);
+                    start[0],start[1],genome,blockMemory);
             BlockPos origin=pos(helper,0,2,0);
             b.originX=origin.getX();
             b.originZ=origin.getZ();
@@ -730,9 +795,13 @@ public final class BuilderEvolutionAltCourseGameTest {
             distance=Math.hypot(dx,dz);
             boolean diagonalStep=Math.abs(ahead[0]-b.x)==1
                     &&Math.abs(ahead[1]-b.z)==1;
+            boolean precise=precisionTransition(helper,world,
+                    b.x,b.z,ahead[0],ahead[1]);
+            if(precise&&!enteringDoor&&!leavingDoor)
+                b.movementMode="p";
             // Do not clip the corner of a solid block by rounding an
             // intermediate diagonal waypoint off at 0.2 blocks early.
-            double acquisition=diagonalStep
+            double acquisition=diagonalStep||precise
                     ?Math.min(b.dna.tolerance(),.075)
                     :b.dna.tolerance();
             if(distance>=acquisition)break;
@@ -816,7 +885,20 @@ public final class BuilderEvolutionAltCourseGameTest {
         // Evolve how much to anticipate a corner, WITHOUT reducing
         // horizontal speed. Actual Minecraft block collision still
         // rejects unsafe corner cuts.
-        if(b.cursor+1<b.route.length()&&distance<.45){
+        // Turn anticipation helps on open ground, but offsets the
+        // body into slab lips and overhead openings. Maintain a
+        // centered line until fully clear of any height constraint.
+        boolean precision=precisionTransition(helper,world,
+                b.x,b.z,ahead[0],ahead[1]);
+        boolean nextPrecision=false;
+        if(b.cursor+1<b.route.length()){
+            int[] look=next(ahead[0],ahead[1],
+                    b.route.charAt(b.cursor+1));
+            nextPrecision=precisionTransition(helper,world,
+                    ahead[0],ahead[1],look[0],look[1]);
+        }
+        if(!precision&&!nextPrecision
+                &&b.cursor+1<b.route.length()&&distance<.45){
             int[] corner=next(ahead[0],ahead[1],
                     b.route.charAt(b.cursor+1));
             double lookX=corner[0]-ahead[0],lookZ=corner[1]-ahead[1];
@@ -1090,6 +1172,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                 entry.addProperty("doorTicks",b.doorTicks);
                 entry.addProperty("blockedTicks",b.blockedTicks);
                 entry.addProperty("slabTicks",b.slabTicks);
+                entry.addProperty("precisionTicks",b.precisionTicks);
+                entry.addProperty("reroutes",b.reroutes);
                 entry.addProperty("distanceMeters",b.measuredDistance);
                 physicalFitness.add(entry);
                 JsonObject trace=new JsonObject();
@@ -1107,6 +1191,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                 trace.addProperty("doorTicks",b.doorTicks);
                 trace.addProperty("blockedTicks",b.blockedTicks);
                 trace.addProperty("slabTicks",b.slabTicks);
+                trace.addProperty("precisionTicks",b.precisionTicks);
+                trace.addProperty("reroutes",b.reroutes);
                 trace.addProperty("distanceMeters",b.measuredDistance);
                 trace.add("genes",encode(b.dna));
                 trace.add("positions",b.movementSamples);
