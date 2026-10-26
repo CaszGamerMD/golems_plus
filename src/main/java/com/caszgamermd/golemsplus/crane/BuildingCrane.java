@@ -87,7 +87,8 @@ public final class BuildingCrane extends Entity implements Container {
     public void place(UUID owner,BlockPos anchor,Vec3 load){this.owner=owner;this.anchor=anchor.immutable();this.home=BlockPos.containing(load);anchorPoint(CraneMovement.anchorPoint((ServerLevel)level(),anchor));setPos(load);}
     public boolean link(WorkerStationBlockEntity s){
         if(!parked()||!destinations.isEmpty()||!batch.isEmpty()
-                ||!Objects.equals(owner,s.owner())||s.activeOrder()==null||!builders().isEmpty())return false;
+                ||!Objects.equals(owner,s.owner())||!s.hasPlacedSchematic()
+                ||!builders().isEmpty())return false;
         if(!s.setBuilderCraneLink(owner,s.activeOrder(),getUUID()))return false;
         table=s.getBlockPos().immutable();job=s.activeOrder();
         dispatch.clear();destinations.clear();batch.clear();
@@ -97,6 +98,19 @@ public final class BuildingCrane extends Entity implements Container {
             BuilderChunkTickets.prime(world,s);
         }
         return true;
+    }
+    /** Prepare crane through the Planner Connections menu before Start.
+     * Once the Planner issues the active job UUID, bind the previously
+     * linked vehicle without replacing its operator or cargo.
+     */
+    void activatePreparedJob(){
+        if(job!=null||!(level() instanceof ServerLevel world)
+                ||!(world.getBlockEntity(table) instanceof WorkerStationBlockEntity s)
+                ||s.activeOrder()==null||!Objects.equals(owner,s.owner())
+                ||!getUUID().equals(s.builderCraneId()))return;
+        job=s.activeOrder();
+        BuilderChunkTickets.prime(world,s);
+        status="Construction job active; operator retained";
     }
     public boolean assignOperator(BuilderGolem w){
         var s=station();
