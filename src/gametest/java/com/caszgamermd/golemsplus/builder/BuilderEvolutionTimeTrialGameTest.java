@@ -167,8 +167,8 @@ public final class BuilderEvolutionTimeTrialGameTest {
         };
     }
 
-    @GameTest(maxTicks=460,padding=64,skyAccess=true)
-    public void realBuildersTryUserMazeInTwentySeconds(GameTestHelper helper){
+    @GameTest(maxTicks=420,padding=64,skyAccess=true)
+    public void realBuildersTryUserMazeInEighteenSeconds(GameTestHelper helper){
         ServerLevel world=helper.getLevel();
         fillOriginalCourse(helper);
         List<Candidate> bots=new ArrayList<>();
