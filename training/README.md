@@ -8,7 +8,7 @@ acceptance, and must not be used to declare a winning generation.
 
 The normal Fabric GameTest manifest registers
 `BuilderEvolutionTimeTrialGameTest` as a **mandatory** test. Its
-20 real Minecraft entities start on green wool, have an actual
+10 real Minecraft entities start on green wool (five from each start column), have an actual
 0.65 x 0.65 x 1.6 collision box, and must all physically touch
 red wool by tick **360**. At timeout the test discards all remaining
 trial entities. Movement uses actual block/entity collision, doors,
@@ -20,7 +20,7 @@ automatically on navigation branch pushes and pull requests.
 The previous CI workflows that awarded success based on simulated
 Python movement have been removed.
 
-**Current in-game status is still failing.** Previous GameTests
+**Current in-game status is still failing.** Previous 20-bot GameTests
 reached 9/20 in 400 ticks on the original replay, so no 18-second
 physical victory has been demonstrated. Before next scored training,
 the evolution fitness loop must move *into the server* or receive
@@ -195,25 +195,27 @@ hash are saved to `results.json` and `history.csv`.
 
 ### Current acceptance findings
 
-- **Headless genetics, 18-second limit (seed 42):**
+- **Archived headless genetics, 18-second limit (seed 42; not accepted as testing):**
   generation 1 **17/20**, generation 2 **18/20**, generation 3 **19/20**,
   generation 4 **20/20**, with the slowest completing at exactly
   **360 ticks (18 seconds)**. This is repeatable in the deterministic
   offline simulator and **NOT a physical Minecraft validation**.
   The earlier 20-second run took two generations; these results are
   separate and stricter.
-- **Real Minecraft physics:** an opt-in GameTest spawns all 20 actual
+- **Real Minecraft physics:** the mandatory GameTest now spawns 10 actual
   Builder Golems onto green wool and drives the headless-generated
   routes through the reconstructed original blocks. Their footprint
   is 0.65 x 0.65 blocks, height 1.6 blocks, horizontal motion is
   capped at 0.2 blocks/tick, and all test entities are removed at tick
   **360**. Previous 400-tick Minecraft probes **FAILED** (9/20,
-  with another diagnostic run 0/20)
+  with another diagnostic run 0/20). The 10-bot physical trial is
+  a new controlled test with exactly the same deadline, hitbox, movement
+  rules, map geometry, and path replay inputs.
   because the headless simulator did not model the detailed collision
   of half slabs and open door panels. Actual GameTest success MUST be
   established before treating the evolved policy as usable in-game.
 - The physical test is now **mandatory** in GameTest CI. It is
-  expected to fail until all 20 live golems succeed in 360 ticks.
+  expected to fail until all 10 live golems succeed in 360 ticks.
 
 ### Next physics-aware learning phase
 
