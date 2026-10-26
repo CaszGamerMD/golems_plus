@@ -79,6 +79,14 @@ public final class BuilderCreativeFlight {
         // Stalled flight inside a closed Dome must find a real air
         // corridor to ANY legal placement tile, not keep pressing its
         // head against the same roof or wall.
+        if(!flight.airRoute.isEmpty()
+                &&level.getGameTime()-flight.lastCloser>70){
+            // Another worker may have placed a wall across our planned
+            // air corridor. Release that obsolete leg and BFS again.
+            flight.airRoute=List.of();
+            flight.routeIndex=0;
+            flight.cruiseY=Double.NaN;
+        }
         if(!flight.depot&&flight.escapingUntil<=level.getGameTime()
                 &&flight.airRoute.isEmpty()
                 &&level.getGameTime()-flight.lastCloser>55){
@@ -95,7 +103,7 @@ public final class BuilderCreativeFlight {
             // resume the old straight-line flight destination mid-route.
             while(flight.routeIndex<flight.airRoute.size()
                     &&worker.distanceToSqr(
-                            flight.airRoute.get(flight.routeIndex))<.20){
+                            flight.airRoute.get(flight.routeIndex))<.012){
                 flight.routeIndex++;
                 flight.lastCloser=level.getGameTime();
             }
@@ -107,7 +115,7 @@ public final class BuilderCreativeFlight {
             }
         }
         distance=worker.distanceToSqr(finalPosition);
-        if(distance<.08&&flight.airRoute.isEmpty()){
+        if(distance<.006&&flight.airRoute.isEmpty()){
             worker.setDeltaMovement(0,0,0);
             flight.cruiseY=Double.NaN;
             return true;
@@ -323,7 +331,8 @@ public final class BuilderCreativeFlight {
     public static String debug(BuilderGolem worker){
         Flight flight=flights.get(worker);
         if(flight==null)return "OFF";
-        return (flight.depot?"DEPOT":"BUILD")+" destination="+flight.destination
+        return (flight.depot?"DEPOT":"BUILD")+" feet="+worker.position()
+                +" destination="+flight.destination
                 +" cruiseY="+flight.cruiseY+" bestSq="+flight.best
                 +" escaping="+flight.escapingUntil
                 +" airRoute="+flight.routeIndex+"/"+flight.airRoute.size();
