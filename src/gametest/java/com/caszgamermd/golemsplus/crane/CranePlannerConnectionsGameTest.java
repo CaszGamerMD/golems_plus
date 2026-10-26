@@ -32,6 +32,11 @@ public final class CranePlannerConnectionsGameTest {
                 h.absolutePos(new BlockPos(2,2,2)),0,0,50,0)){
             h.fail("Cannot save selected build placement");return;
         }
+        // Default Planner crew capacity is one. Explicitly provision two
+        // real workers: one driver plus at least one construction Builder.
+        if(!table.setCrewTarget(owner.getUUID(),2)){
+            h.fail("Could not set two-Builder crew capacity");return;
+        }
         BuilderGolem driver=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         for(BuilderGolem builder:new BuilderGolem[]{driver,worker}){
