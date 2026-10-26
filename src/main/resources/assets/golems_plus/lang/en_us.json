@@ -19,5 +19,10 @@
   "block.golems_plus.meal_counter": "Meal Pickup Counter",
   "block.golems_plus.fishing_spot": "Fishing Waypoint Flag / Buoy",
   "item.golems_plus.fishing_spot_marker": "Fishing Spot Marker",
-  "item.golems_plus.fishing_bait": "Fisherman's Bait"
+  "item.golems_plus.fishing_bait": "Fisherman's Bait",
+  "block.golems_plus.break_room_chair": "Golem Break Room Chair",
+  "block.golems_plus.break_room_table": "Golem Break Room Table",
+  "block.golems_plus.golem_snack_machine": "Golem Snack Machine",
+  "block.golems_plus.golem_arcade": "Golem Arcade"
 }
+
