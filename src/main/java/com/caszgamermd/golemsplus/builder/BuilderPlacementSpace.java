@@ -80,6 +80,13 @@ public final class BuilderPlacementSpace {
     private record Approach(BlockPos target,BlockPos destination,long until){}
     private static final Map<BuilderGolem,Approach> workApproaches=
             new WeakHashMap<>();
+    // Native exact-path rejection must not immediately choose the SAME
+    // impossible side of a wall on the following construction tick.
+    // Bound the blacklist to this worker and one placement only; it
+    // expires so player-removed obstacles can be retried.
+    private record Rejected(BlockPos target,BlockPos tile,long until){}
+    private static final Map<BuilderGolem,Rejected> rejectedApproaches=
+            new WeakHashMap<>();
 
     private static AABB volume(BlockPos pos){
         // Horizontal breathing room prevents a Golem's shoulder/edge
@@ -261,7 +268,11 @@ public final class BuilderPlacementSpace {
     public static BlockPos approach(ServerLevel level,BuilderGolem worker,
             BlockPos target){
         Approach cached=workApproaches.get(worker);
+        Rejected rejection=rejectedApproaches.get(worker);
+        boolean hasRejection=rejection!=null&&rejection.target().equals(target)
+                &&rejection.until()>level.getGameTime();
         if(cached!=null&&cached.target().equals(target)
+                &&(!hasRejection||!cached.destination().equals(rejection.tile()))
                 &&cached.until()>level.getGameTime()
                 &&cached.destination().distSqr(target)<=9
                 &&WorkerNavigation.canStandOn(level,worker,cached.destination()))
@@ -294,6 +305,7 @@ public final class BuilderPlacementSpace {
         int attempted=0;
         for(BlockPos p:candidates){
             if(++attempted>16)break;
+            if(hasRejection&&p.equals(rejection.tile()))continue;
             if(!WorkerNavigation.canReachExact(level,worker,p))continue;
             workApproaches.put(worker,new Approach(target,p.immutable(),
                     level.getGameTime()+100));
@@ -311,6 +323,14 @@ public final class BuilderPlacementSpace {
         Approach approach=workApproaches.get(worker);
         if(approach!=null&&approach.target().equals(target))
             workApproaches.remove(worker);
+    }
+    public static void rejectApproach(ServerLevel level,BuilderGolem worker,
+            BlockPos target,BlockPos tile){
+        if(tile==null)return;
+        rejectedApproaches.put(worker,new Rejected(target.immutable(),
+                tile.immutable(),level.getGameTime()+140));
+        invalidateApproach(worker,target);
+        WorkerNavigation.stop(worker);
     }
 
     /** @return true only when the future block volume is clear of workers. */
