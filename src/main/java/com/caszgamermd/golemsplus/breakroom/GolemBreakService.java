@@ -25,13 +25,15 @@ public final class GolemBreakService {
  public static boolean takingBreak(PathfinderMob m){var s=workers.get(m);return s!=null&&s.furniture!=null&&!s.working;}
  public static void initialize(){
   ServerEntityEvents.ENTITY_LOAD.register((entity,world)->{if(entity instanceof PathfinderMob m&&home(m)!=null)workers.computeIfAbsent(m,ignored->new Rest());});
-  ServerEntityEvents.ENTITY_UNLOAD.register((entity,world)->workers.remove(entity));
+  // Weak keys allow save/unload ordering without discarding readiness before serialization.
   ServerTickEvents.END_SERVER_TICK.register(server->{for(var row:new ArrayList<>(workers.entrySet()))if(row.getKey().level() instanceof ServerLevel world&&world.getGameTime()%5==0)tick(world,row.getKey(),row.getValue());});
  }
  private static void tick(ServerLevel world,PathfinderMob mob,Rest s){
   BlockPos home=home(mob);if(home==null||!mob.isAlive()||mob.isPassenger()||!world.hasChunkAt(home))return;
   if(!(world.getBlockEntity(home) instanceof WorkerStationBlockEntity table))return;
   boolean working=(table.activeOrder()!=null||table.chefBusy()||table.isFishing())&&table.phase()!=WorkerPhase.PAUSED&&table.phase()!=WorkerPhase.COMPLETE&&table.phase()!=WorkerPhase.IDLE;
+  if(mob instanceof com.caszgamermd.golemsplus.beekeeper.BeekeeperGolem bee)working=bee.job()!=0&&table.phase()!=WorkerPhase.PAUSED;
+  if(mob instanceof com.caszgamermd.golemsplus.trader.TraderGolem trader)working=trader.busy()&&table.phase()!=WorkerPhase.PAUSED;
   if(working){
    if(!s.working&&(s.ready)){mob.addEffect(new MobEffectInstance(MobEffects.SPEED,3600,0));s.ready=false;}
    if(s.furniture!=null)WorkerNavigation.stop(mob);
