@@ -13,6 +13,20 @@ public final class CranePath {
     private static final int[][] SIDES={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
     public static List<Cell> find(Cell start,Predicate<Cell> goal,ToIntFunction<Cell> estimate,
             Predicate<Cell> allowed,BiPredicate<Cell,Cell> edge,int budget){
+        return find(start,goal,estimate,allowed,edge,budget,
+                cell->{
+                    var adjacent=new ArrayList<Cell>(SIDES.length);
+                    for(int[] d:SIDES)adjacent.add(cell.add(d[0],d[1],d[2]));
+                    return adjacent;
+                });
+    }
+    /** Rail networks can supply their actual auto-connected neighbors,
+     * including supported floor-to-wall diagonal bends. Free-flight loads
+     * continue using the ordinary six-axis route above.
+     */
+    public static List<Cell> find(Cell start,Predicate<Cell> goal,ToIntFunction<Cell> estimate,
+            Predicate<Cell> allowed,BiPredicate<Cell,Cell> edge,int budget,
+            Function<Cell,? extends Iterable<Cell>> neighbors){
         var open=new PriorityQueue<Node>(Comparator.comparingInt(Node::score).thenComparingInt(Node::cost));
         var cost=new HashMap<Cell,Integer>();var parent=new HashMap<Cell,Cell>();
         cost.put(start,0);open.add(new Node(start,0,estimate.applyAsInt(start)));
@@ -23,7 +37,7 @@ public final class CranePath {
                 while(!at.equals(start)){path.add(at);at=parent.get(at);}
                 Collections.reverse(path);return path;
             }
-            for(int[] d:SIDES){Cell at=n.cell().add(d[0],d[1],d[2]);int next=n.cost()+1;
+            for(Cell at:neighbors.apply(n.cell())){int next=n.cost()+1;
                 if(next>=cost.getOrDefault(at,Integer.MAX_VALUE)||!allowed.test(at)||!edge.test(n.cell(),at))continue;
                 cost.put(at,next);parent.put(at,n.cell());open.add(new Node(at,next,next+estimate.applyAsInt(at)));
             }
