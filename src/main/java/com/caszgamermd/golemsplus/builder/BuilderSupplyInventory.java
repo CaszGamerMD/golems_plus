@@ -665,7 +665,18 @@ public final class BuilderSupplyInventory {
                     level,worker,pos,.82);
             return ScaffoldLoad.MOVING;
         }
-        drawFromSources(table,worker,item,required-worker.carriedCount(item));
+        // An elevated bridge requests its scaffold one segment at a time.
+        // Fetching EXACTLY that one segment caused a full trip back to the
+        // physical depot for every next block, leaving Builders circling
+        // between a tower and storage instead of completing the route.
+        // Only at the REAL depot, draw up to half a stack for the next
+        // supported bridge/column stage. Respect actual pouch capacity and
+        // count each item as a normal physical transfer; never generate it.
+        int carried=worker.carriedCount(item);
+        int desired=Math.max(required,32);
+        int take=Math.max(0,Math.min(desired-carried,
+                room(worker,new ItemStack(item))));
+        if(take>0)drawFromSources(table,worker,item,take);
         return worker.carriedCount(item)>=required?
                 ScaffoldLoad.READY:ScaffoldLoad.MISSING;
     }
