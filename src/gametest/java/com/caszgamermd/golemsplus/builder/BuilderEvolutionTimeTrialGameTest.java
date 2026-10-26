@@ -862,7 +862,9 @@ public final class BuilderEvolutionTimeTrialGameTest {
             // Save after EVERY scored generation, even if all 10 fail.
             writeAtomic(checkpoint(),obj);
             try{
-                Files.writeString(history(),JSON.toJson(obj)+"\n",
+                // JSONL requires exactly one compact JSON object per
+                // line. Pretty printing here made prior history invalid.
+                Files.writeString(history(),new Gson().toJson(obj)+"\n",
                         StandardCharsets.UTF_8,
                         StandardOpenOption.CREATE,StandardOpenOption.APPEND);
             }catch(IOException e){
