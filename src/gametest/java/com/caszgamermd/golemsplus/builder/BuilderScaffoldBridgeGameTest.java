@@ -113,6 +113,8 @@ public final class BuilderScaffoldBridgeGameTest {
         if(!table.registerBuilderWorker(worker.getUUID())){
             helper.fail("Two-gap Builder registration failed");return;
         }
+        final Runnable simulation=BuilderChunkTickets.holdGameTestSimulation(level,
+                worker.blockPosition());
         final int[] stage={0};
         final long[] stageStart={helper.getTick()};
         helper.onEachTick(()->{
@@ -152,6 +154,7 @@ public final class BuilderScaffoldBridgeGameTest {
                     &&level.getBlockState(second).is(Blocks.SCAFFOLDING)
                     &&worker.distanceToSqr(goal.getX()+.5,goal.getY(),
                             goal.getZ()+.5)<=12.5){
+                simulation.run();
                 helper.succeed();
                 return;
             }
@@ -208,6 +211,8 @@ public final class BuilderScaffoldBridgeGameTest {
         if(!table.registerBuilderWorker(worker.getUUID())){
             helper.fail("Unable to register Bridge Builder");return;
         }
+        final Runnable simulation=BuilderChunkTickets.holdGameTestSimulation(level,
+                worker.blockPosition());
         for(int y=2;y<=5;y++){
             BlockPos column=helper.absolutePos(new BlockPos(2,y,3));
             level.setBlock(column,Blocks.SCAFFOLDING.defaultBlockState(),3);
@@ -261,6 +266,7 @@ public final class BuilderScaffoldBridgeGameTest {
             }
             if(worker.distanceToSqr(anchor.getX()+.5,anchor.getY()+1,
                     anchor.getZ()+.5)<.25){
+                simulation.run();
                 helper.succeed();
                 return;
             }
@@ -299,6 +305,8 @@ public final class BuilderScaffoldBridgeGameTest {
         if(!table.registerBuilderWorker(worker.getUUID())){
             helper.fail("Cannot register long bridge worker");return;
         }
+        final Runnable simulation=BuilderChunkTickets.holdGameTestSimulation(level,
+                worker.blockPosition());
         // The scaffold MUST be directly below the spawned worker.
         // Previously this fixture registered a tower at local (2,3),
         // while its worker actually started at local (10,11).
@@ -329,6 +337,13 @@ public final class BuilderScaffoldBridgeGameTest {
                         +" step="+BuilderScaffoldBridge.debug(worker));return;
             }
             if(helper.getTick()%5!=0)return;
+            // A loaded GameTest structure is not necessarily entity ticking:
+            // if tickCount does not advance, any physics/path "test" is fake.
+            if(helper.getTick()>90&&worker.tickCount<15){
+                helper.fail("No physical entity simulation for scaffold Builder: "
+                        +"workerTicks="+worker.tickCount+" gameTicks="+helper.getTick());
+                return;
+            }
             int ownedNow=table.sharedScaffoldPositions().size();
             if(worker.position().distanceToSqr(lastPosition[0])>.20
                     ||ownedNow>lastOwned[0]){
@@ -343,7 +358,7 @@ public final class BuilderScaffoldBridgeGameTest {
                         +BuilderScaffoldBridge.debug(worker)
                         +" climb="+BuilderScaffolding.debugClimb(worker)
                         +" nav="+com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                .debugStatus(worker));
+                                .debugStatus(worker)+" workerTicks="+worker.tickCount);
                 return;
             }
             if(worker.distanceToSqr(goal.getX()+.5,goal.getY()+.5,
@@ -360,7 +375,10 @@ public final class BuilderScaffoldBridgeGameTest {
                         posts++;
                 if(posts==0)
                     helper.fail("Long unsupported bridge missed its footing posts");
-                else helper.succeed();
+                else {
+                    simulation.run();
+                    helper.succeed();
+                }
                 return;
             }
             var state=BuilderScaffoldBridge.reach(level,worker,table,owner,
