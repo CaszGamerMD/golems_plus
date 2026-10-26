@@ -69,6 +69,18 @@ class NavigationTrainerTests(unittest.TestCase):
         self.assertFalse(less_headroom.legal_step((3, 1), (4, 1)))
         self.assertTrue(c.legal_step((4, 1), (5, 1)))
 
+    def test_drop_and_jump_obey_full_3d_four_meter_speed_cap(self):
+        raised = course(["#########", "#S1....G#", "#########"])
+        genome = trainer.Genome.random(random.Random(3))
+        result = trainer.simulate(raised, genome, timeout=200, seed=3)
+        self.assertTrue(result.finished)
+        for (t0, x0, z0), (t1, x1, z1) in zip(result.path, result.path[1:]):
+            dy = raised.height((x1, z1)) - raised.height((x0, z0))
+            displacement = __import__("math").hypot(1.0, dy)
+            self.assertGreaterEqual(t1 - t0,
+                    __import__("math").ceil(displacement * 5))
+            self.assertTrue(raised.legal_step((x0, z0), (x1, z1)))
+
     def test_invalid_course_and_unreachable_finish(self):
         with self.assertRaises(ValueError):
             course(["S.G", "##"])
