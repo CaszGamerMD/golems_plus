@@ -41,11 +41,17 @@ public final class CraneRenderer extends EntityRenderer<BuildingCrane,CraneRende
     @Override public void submit(State s,PoseStack pose,SubmitNodeCollector collector,CameraRenderState camera){
         super.submit(s,pose,collector,camera);
         Vec3 a=s.anchor;
-        box(s.black,s,pose,collector,a.x,a.y+.2,a.z,1.4f,.4f,1.4f);
-        box(s.yellow,s,pose,collector,a.x,a.y+.7,a.z,1.2f,.6f,1.2f);
-        box(s.glass,s,pose,collector,a.x,a.y+1.7,a.z,.9f,1.3f,.9f);
-        box(s.yellow,s,pose,collector,a.x,a.y+2.5,a.z,1.2f,.2f,1.2f);
-        Vec3 root=a.add(0,2.9,0),tip=new Vec3(0,2.8,0),delta=tip.subtract(root);double length=delta.length();
+        // Chassis: exactly 2 × 2 × 2 Minecraft blocks. The dark solid
+        // cubic shell, lower yellow hazard band and narrow glass windows
+        // all stay within the same physical 2-block bounds.
+        box(s.black,s,pose,collector,a.x,a.y+1,a.z,2f,2f,2f);
+        box(s.yellow,s,pose,collector,a.x,a.y+.25,a.z,1.92f,.38f,1.92f);
+        box(s.yellow,s,pose,collector,a.x,a.y+1.88,a.z,1.92f,.2f,1.92f);
+        box(s.glass,s,pose,collector,a.x,a.y+1.27,a.z+.947,1.54f,.72f,.075f);
+        box(s.glass,s,pose,collector,a.x,a.y+1.27,a.z-.947,1.54f,.72f,.075f);
+        box(s.glass,s,pose,collector,a.x+.947,a.y+1.27,a.z,.075f,.72f,1.54f);
+        box(s.glass,s,pose,collector,a.x-.947,a.y+1.27,a.z,.075f,.72f,1.54f);
+        Vec3 root=a.add(0,2.05,0),tip=new Vec3(0,2.8,0),delta=tip.subtract(root);double length=delta.length();
         if(length>.01){
             Vec3 mid=root.lerp(tip,.5),unit=delta.normalize();pose.pushPose();pose.translate(mid.x,mid.y,mid.z);
             pose.mulPose(new Quaternionf().rotationTo(0,1,0,(float)unit.x,(float)unit.y,(float)unit.z));
