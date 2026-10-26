@@ -85,6 +85,10 @@ public final class BuilderProgressRecovery {
             watch.best=distance;watch.since=now;
             return false;
         }
+        // The work-order staging courier may intentionally walk AWAY
+        // from this schematic coordinate to pick up real supplies.
+        // Do not diagnose that delivery route as a construction detour.
+        if(!table.builderOrderPrepared(worker.getUUID()))return false;
         // Do not interrupt a legitimate arrival at placement reach:
         // the regular Builder placement code owns close-range obstacles
         // and ensures no block is placed inside a worker's collision box.
