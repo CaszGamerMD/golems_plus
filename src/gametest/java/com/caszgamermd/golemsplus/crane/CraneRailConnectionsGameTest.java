@@ -77,6 +77,27 @@ public final class CraneRailConnectionsGameTest {
                         .stream().map(CraneMovement::cell).toList());
         if(cells==null||cells.size()!=4)
             throw new IllegalStateException("Crane rail planner failed to climb wall: "+cells);
+        // The graph alone is not enough: a full TWO-BLOCK cubic chassis,
+        // boom and builder basket must physically clear every step of the
+        // grounded-to-vertical route. The basket stays outboard from the
+        // backing wall, with no teleport or collision exemptions.
+        var crane=new BuildingCrane(CraneContent.CRANE,world);
+        Vec3 previousAnchor=CraneMovement.anchorPoint(world,ground);
+        Vec3 offset=new Vec3(0,0,3);
+        Vec3 previousLoad=previousAnchor.add(offset);
+        if(!CraneMovement.pose(world,crane,previousLoad,previousAnchor))
+            throw new IllegalStateException("2x2 chassis already clips corner at floor rail");
+        for(var cell:cells){
+            Vec3 nextAnchor=CraneMovement.anchorPoint(world,CraneMovement.pos(cell));
+            Vec3 nextLoad=nextAnchor.add(offset);
+            if(!CraneMovement.swept(world,crane,previousLoad,nextLoad,
+                    previousAnchor,nextAnchor))
+                throw new IllegalStateException("2x2 chassis clips floor/wall rail bend at "
+                        +CraneMovement.pos(cell)+" start="+previousAnchor
+                        +" next="+nextAnchor);
+            previousAnchor=nextAnchor;
+            previousLoad=nextLoad;
+        }
         Vec3 chassisPoint=CraneMovement.anchorPoint(world,ground);
         var chassis=CraneMovement.chassis(chassisPoint);
         if(Math.abs(chassis.getXsize()-2)>1e-6
@@ -84,7 +105,7 @@ public final class CraneRailConnectionsGameTest {
                 ||Math.abs(chassis.getZsize()-2)>1e-6)
             throw new IllegalStateException("Crane chassis not 2x2x2: "+chassis);
         System.out.println("[CRANE RAILS] PASS 4-way floor, 4-way wall, "
-                +"dynamic disconnect and physically connected floor-to-wall climb");
+                +"dynamic disconnect and collision-safe 2x2 chassis floor-to-wall climb");
         h.succeed();
     }
 }
