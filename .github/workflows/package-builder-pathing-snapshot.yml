@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - snapshot/builder-pathing-fabric262-20261026
+  pull_request:
 
 jobs:
   package-jar:
@@ -47,6 +48,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Publish direct-download test prerelease
+        if: github.event_name == 'push'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -63,10 +65,16 @@ jobs:
           unfinished. Use only with a backed-up world and remove other
           Golems Plus JAR versions first.
           EOF
-          gh release create "builder-pathing-test-26.2-e29379d" \
-            package/golems-plus-builder-pathing-26.2-e29379d.jar \
-            package/SHA256SUMS.txt \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --prerelease \
-            --title "Builder Pathing Fabric 26.2 — e29379d (experimental)" \
-            --notes-file "$RUNNER_TEMP/release-notes.md"
+          if gh release view "builder-pathing-test-26.2-e29379d" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "builder-pathing-test-26.2-e29379d" \
+              package/golems-plus-builder-pathing-26.2-e29379d.jar \
+              package/SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "builder-pathing-test-26.2-e29379d" \
+              package/golems-plus-builder-pathing-26.2-e29379d.jar \
+              package/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "Builder Pathing Fabric 26.2 — e29379d (experimental)" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
