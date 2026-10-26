@@ -127,6 +127,10 @@ public final class BuilderDomeConstructionGameTest {
             needs.add(Items.IRON_PICKAXE);
             needs.add(Items.IRON_AXE);
             needs.add(Items.IRON_SHOVEL);
+            // Clearance may encounter hoe-mineable blocks. Include the
+            // fourth vanilla tool in the real chest rather than allowing
+            // the build to stall with only pick/axe/shovel supplied.
+            needs.add(Items.IRON_HOE);
             for(BuilderGolem worker:crew){
                 for(Integer n:table.builderWorkOrder(worker.getUUID())){
                     if(n!=null&&n>=0&&n<steps.size())
