@@ -177,7 +177,12 @@ public final class BuilderClockwiseTraffic {
             // If BOTH have jobs in motion, ONE golem must keep moving:
             // the lower UUID retains right of way. An idle blocker can
             // still be walked around clockwise by an active worker.
-            boolean otherMoving=WorkerNavigation.requestedTarget(other)!=null;
+            // The yielding participant stops A* while waiting. It is
+            // STILL the designated yielding worker; the priority worker
+            // must not begin a mirrored sidestep just because the other's
+            // native navigation currently reports IDLE.
+            boolean otherMoving=WorkerNavigation.requestedTarget(other)!=null
+                    ||active.containsKey(other);
             if(otherMoving&&worker.getUUID().compareTo(other.getUUID())<0)
                 continue;
             if(separation<best){best=separation;nearest=other;}
