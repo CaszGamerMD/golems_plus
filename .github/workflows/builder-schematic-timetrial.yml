@@ -1,4 +1,4 @@
-name: Uploaded Schematic - 20-second evolutionary time trial
+name: Uploaded Schematic - 18-second evolutionary time trial
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
           python3 scripts/schem_course_import.py \
             training/courses/timetrial.schem.base64 \
             --out build/timetrial-training/imported_course.json
-      - name: Mutate and select 20 running ground bots - 400 ticks each
+      - name: Mutate and select 20 running ground bots - 360 ticks each
         run: |
           python3 scripts/train_schem_timetrial.py \
             training/courses/timetrial.schem.base64 \
@@ -48,10 +48,10 @@ jobs:
           assert data["course_dimensions"] == [27,6,12]
           assert len(data["starts_covered"]) == 20
           assert data["bots_per_generation"] == 20
-          assert data["generation_duration_ticks"] == 400
+          assert data["generation_duration_ticks"] == 360
           assert data["collision_box"] == [.65,.65,1.6]
           assert data["speed_cap_m_per_s"] == 4.0
-          assert not data["accepted"] or data["history"][-1]["finished_by_20s"] == 20
+          assert not data["accepted"] or data["history"][-1]["finished_by_18s"] == 20
           assert data["history"]
           assert Path("build/timetrial-training/history.csv").is_file()
           print("All-generation acceptance rigor confirmed:",
