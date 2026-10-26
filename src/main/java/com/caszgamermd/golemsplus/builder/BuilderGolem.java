@@ -147,8 +147,16 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         // independently of its slower construction task scheduler.
         boolean returning= !climbing&&level() instanceof ServerLevel floorWorld
                 &&BuilderTeamGroundTraffic.tickMotion(floorWorld,this);
+        boolean placing=false;
         if(!climbing&&!returning&&level() instanceof ServerLevel teamWorld)
-            BuilderPlacementSpace.tickMotion(teamWorld,this);
+            placing=BuilderPlacementSpace.tickMotion(teamWorld,this);
+        // Separate physical movement owner for face-to-face worker traffic.
+        // It must NEVER fight an existing scaffold, bridge, transport,
+        // ledge descent or placement escape session.
+        boolean clockwise=false;
+        if(!climbing&&!returning&&!placing
+                &&level() instanceof ServerLevel trafficWorld)
+            clockwise=BuilderClockwiseTraffic.tickMotion(trafficWorld,this);
         // Never retain the old no-gravity state after switching jobs,
         // unloading, leaving a tower, or reloading an entity from disk.
         if(level() instanceof ServerLevel server
@@ -172,7 +180,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
             BuilderChunkTickets.track(server,this);
             // A physical scaffold climb owns this worker's movement.
             // Normal A* anti-stall checks may not stop or redirect it.
-            if(!climbing)
+            if(!climbing&&!clockwise)
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
         }
         // Each Builder evaluates its own long-lived task state four times
