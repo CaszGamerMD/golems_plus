@@ -36,6 +36,9 @@ public final class BuilderScaffoldBridgeGameTest {
         }
         var owner=helper.makeMockServerPlayerInLevel();
         if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),
+                        "placed-batch-transfer-test.litematic","Batch inventory test",
+                        planner,0,0,1,0)
                 ||!table.setBuilderMaterialStorage(owner.getUUID(),depot)){
             helper.fail("Batch scaffold trial could not configure depot");
             return;
