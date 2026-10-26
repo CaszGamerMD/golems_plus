@@ -28,6 +28,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
+      - name: Test gene persistence and no-regression champion merging
+        run: python3 -m unittest discover -s scripts/tests -p test_merge_real_evolution_state.py -v
       - name: Isolate the real-entity training course from other GameTest arenas
         run: |
           python3 - <<'PY'
