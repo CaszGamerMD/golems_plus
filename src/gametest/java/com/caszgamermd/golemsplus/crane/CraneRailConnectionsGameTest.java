@@ -86,7 +86,14 @@ public final class CraneRailConnectionsGameTest {
         Vec3 offset=new Vec3(0,0,3);
         Vec3 previousLoad=previousAnchor.add(offset);
         if(!CraneMovement.pose(world,crane,previousLoad,previousAnchor))
-            throw new IllegalStateException("2x2 chassis already clips corner at floor rail");
+            throw new IllegalStateException("2x2 chassis clips floor rail"
+                    +" anchor="+previousAnchor
+                    +" cabin="+CraneMovement.clear(world,crane,
+                            CraneMovement.chassis(previousAnchor))
+                    +" basket="+CraneMovement.clear(world,crane,
+                            CraneMovement.load(crane,previousLoad))
+                    +" rail="+world.getBlockState(ground)
+                    +" center="+world.getBlockState(center));
         for(var cell:cells){
             Vec3 nextAnchor=CraneMovement.anchorPoint(world,CraneMovement.pos(cell));
             Vec3 nextLoad=nextAnchor.add(offset);
