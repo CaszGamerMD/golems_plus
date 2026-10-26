@@ -23,6 +23,35 @@ public final class BuilderTeamGroundTraffic {
     }
     public static void cancel(BuilderGolem worker){drops.remove(worker);}
 
+    /** Validate every intermediate physical stance before steering from
+     * the center of a completed 3x3/5x5 upper platform toward its edge.
+     * The Builder may stand on same-level terrain or take a single
+     * ordinary one-block drop, never a void gap or a two-block fall.
+     * Checking the entire swept body prevents diagonal wall clipping.
+     */
+    private static boolean shallowWalk(ServerLevel level,BuilderGolem worker,
+            BlockPos destination){
+        double dx=destination.getX()+.5-worker.getX();
+        double dz=destination.getZ()+.5-worker.getZ();
+        int samples=Math.max(1,(int)Math.ceil(Math.hypot(dx,dz)*4));
+        int y=worker.blockPosition().getY();
+        for(int i=1;i<=samples;i++){
+            double f=i/(double)samples;
+            double x=dx*f,z=dz*f;
+            if(!level.noCollision(worker,worker.getBoundingBox().move(x,0,z)))
+                return false;
+            BlockPos step=new BlockPos(
+                    (int)Math.floor(worker.getX()+x),y,
+                    (int)Math.floor(worker.getZ()+z));
+            if(!level.hasChunkAt(step)||!level.hasChunkAt(step.below())
+                    ||!level.hasChunkAt(step.below(2))
+                    ||!WorkerNavigation.canStandOn(level,worker,step)
+                        &&!WorkerNavigation.canStandOn(level,worker,step.below()))
+                return false;
+        }
+        return true;
+    }
+
     public static boolean recover(ServerLevel level,BuilderGolem worker,
             BlockPos depot){
         if(drops.containsKey(worker))return true;
@@ -31,10 +60,12 @@ public final class BuilderTeamGroundTraffic {
                 ||!level.getFluidState(here).isEmpty())return false;
         BlockPos best=null;
         double score=Double.POSITIVE_INFINITY;
-        // Moving to the open tile must be a genuine <=1-block DROP,
-        // with a safe, loaded support floor and 2-block head clearance.
-        for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++){
-            if(dx==0&&dz==0)continue;
+        // The golem may stand in the MIDDLE of a finished 3-5-wide
+        // raised deck, so an immediate adjacent drop is impossible.
+        // Search a small radius for a one-block-lower safe landing;
+        // never attempt a direct cut-through-wall to reach it.
+        for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
+            if(dx==0&&dz==0||dx*dx+dz*dz>20)continue;
             BlockPos at=here.offset(dx,-1,dz);
             if(!level.hasChunkAt(at)||!level.hasChunkAt(at.below())
                     ||!level.hasChunkAt(at.above())
@@ -53,8 +84,8 @@ public final class BuilderTeamGroundTraffic {
             if(dist<.01)continue;
             double vx=x/dist*Math.min(.12,dist);
             double vz=z/dist*Math.min(.12,dist);
-            if(!level.noCollision(worker,worker.getBoundingBox().move(vx,0,vz)))
-                continue;
+            if(!level.noCollision(worker,worker.getBoundingBox().move(vx,0,vz))
+                    ||!shallowWalk(level,worker,at))continue;
             double value=at.distSqr(depot)*.10+dist;
             if(value<score){score=value;best=at;}
         }
