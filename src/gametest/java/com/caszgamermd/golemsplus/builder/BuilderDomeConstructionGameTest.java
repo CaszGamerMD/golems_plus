@@ -65,12 +65,17 @@ public final class BuilderDomeConstructionGameTest {
         // This is well outside x=8..38 and z=8..41 Dome structure.
         var rail=CraneContent.RAIL.defaultBlockState()
                 .setValue(CraneRailBlock.FACING,Direction.UP);
-        for(int z=5;z<=24;z++){
+        // Connect all four outboard sides, not only the north detour.
+        // Distant southern Dome tasks need a chassis approach from the
+        // nearest outside wall; otherwise the boom crosses solid shell.
+        for(int z=5;z<=44;z++){
             helper.getLevel().setBlock(helper.absolutePos(new BlockPos(3,2,z)),rail,2);
             helper.getLevel().setBlock(helper.absolutePos(new BlockPos(44,2,z)),rail,2);
         }
-        for(int x=3;x<=44;x++)
+        for(int x=3;x<=44;x++){
             helper.getLevel().setBlock(helper.absolutePos(new BlockPos(x,2,5)),rail,2);
+            helper.getLevel().setBlock(helper.absolutePos(new BlockPos(x,2,44)),rail,2);
+        }
         helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
         helper.setBlock(5,2,7,Blocks.CHEST);
         BlockPos plannerPos=helper.absolutePos(new BlockPos(4,2,7));
