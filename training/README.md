@@ -165,12 +165,13 @@ hash are saved to `results.json` and `history.csv`.
 
 ### Current acceptance findings
 
-- **Headless genetics, previous 20-second limit (seed 42):** first
-  generation **19/20**, second generation **20/20** within **400 ticks**.
-  The slowest bot took **370 ticks (18.5 seconds)**, which **fails**
-  the new stricter 360-tick limit. New 18-second training results
-  are generated separately by the CI training workflow. **Neither
-  headless result is a physical Minecraft validation.**
+- **Headless genetics, 18-second limit (seed 42):**
+  generation 1 **17/20**, generation 2 **18/20**, generation 3 **19/20**,
+  generation 4 **20/20**, with the slowest completing at exactly
+  **360 ticks (18 seconds)**. This is repeatable in the deterministic
+  offline simulator and **NOT a physical Minecraft validation**.
+  The earlier 20-second run took two generations; these results are
+  separate and stricter.
 - **Real Minecraft physics:** an opt-in GameTest spawns all 20 actual
   Builder Golems onto green wool and drives the headless-generated
   routes through the reconstructed original blocks. Their footprint
