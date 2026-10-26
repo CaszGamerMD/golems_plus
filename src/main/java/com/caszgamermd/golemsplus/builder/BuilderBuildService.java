@@ -180,6 +180,7 @@ public final class BuilderBuildService {
         // Wait for the player to craft and place builders beside the table.
     }
     public static void tick(ServerLevel level,BuilderGolem worker){
+        if(com.caszgamermd.golemsplus.crane.CraneService.controls(worker))return;
         BlockPos home=worker.home();
         if(worker.owner()==null||!level.hasChunkAt(home))return;
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)
@@ -478,6 +479,7 @@ public final class BuilderBuildService {
                 // when no walkable route can bring the worker into reach.
                 // Select a safe ascent beside the desired X/Z
                 // and travel to it on foot before placing scaffolding.
+                if(com.caszgamermd.golemsplus.crane.CraneService.requestRide(level,worker,pos))return;
                 var climbing=BuilderScaffolding.reach(level,worker,table,owner,pos,
                         plan.steps());
                 if(climbing==BuilderScaffolding.Result.NEED_MATERIALS){
@@ -672,7 +674,7 @@ public final class BuilderBuildService {
         if(!table.hasPlacedSchematic())
             throw new IllegalArgumentException("No placed schematic");
         Path folder=FabricLoader.getInstance().getConfigDir()
-                .resolve("golems_plus").resolve("schematics");
+                .resolve("golems_plus").resolve("schematics").toAbsolutePath().normalize();
         Path file=folder.resolve(table.builderFile()).normalize();
         if(!file.startsWith(folder)||!Files.isRegularFile(file))
             throw new IllegalArgumentException("Saved schematic missing");
@@ -727,3 +729,4 @@ public final class BuilderBuildService {
         return next;
     }
 }
+

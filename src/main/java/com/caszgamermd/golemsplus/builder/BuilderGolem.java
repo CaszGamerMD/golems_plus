@@ -60,6 +60,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
      */
     @Override protected InteractionResult mobInteract(Player player,
             InteractionHand hand){
+        if(com.caszgamermd.golemsplus.crane.CraneService.operatorClick(this,player,hand))return InteractionResult.SUCCESS;
         if(player.isShiftKeyDown()){
             if(player instanceof net.minecraft.server.level.ServerPlayer recipient
                     &&level() instanceof ServerLevel world){
@@ -130,6 +131,11 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         return n;
     }
     @Override public void tick(){
+        if(getVehicle() instanceof com.caszgamermd.golemsplus.crane.BuildingCrane){
+            super.tick();
+            if(level() instanceof ServerLevel world)BuilderChunkTickets.track(world,this);
+            return;
+        }
         boolean climbing=level() instanceof ServerLevel climbWorld
                 &&BuilderScaffolding.tickMotion(climbWorld,this);
         // Never retain the old no-gravity state after switching jobs,
@@ -190,3 +196,4 @@ public final class BuilderGolem extends PathfinderMob implements Container {
                     .orElse(ItemStack.EMPTY));
     }
 }
+

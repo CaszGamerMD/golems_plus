@@ -31,3 +31,4 @@ assert "WorkerNavigation.tick(server,this);" in golem
 assert 'BuilderScaffolding.debugClimb(worker)' in build
 assert "new ClimbPermit(" not in sc
 print("PASS: stable owned tower, per-tick physical climb, descent and navigation isolation")
+

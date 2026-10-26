@@ -30,3 +30,4 @@ assert "table.phase()==WorkerPhase.COMPLETE" in build
 assert "public static final int EXTENSION=16" in plan
 assert "public static int stageTop(" in plan
 print("PASS staged 16-block vertical routes, owned tower, restocks and exclusive motion")
+

@@ -1,7 +1,7 @@
 name: Build and test
 on:
   push:
-    branches: [main]
+    branches: [main, feature/building-crane]
   pull_request:
 jobs:
   build:
@@ -65,9 +65,59 @@ jobs:
         run: python3 scripts/builder_warehouse_queued_smoke.py
       - name: Verify Builder chunk ticket and worker persistence protections
         run: python3 scripts/builder_chunk_tickets_smoke.py
-      # The build task now runs a real dedicated Minecraft GameTest.
+      - run: gradle --no-daemon clean test assemble
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: golems-plus-dev
+          path: build/libs/*.jar
+          if-no-files-found: error
+      # A separate, clearly marked experimental release for the crane branch.
+      # Runs after successful compilation, not after the unfinished Dome
+      # GameTest. Never replace or publish the main/stable release.
+      - name: Publish direct-download Building Crane test JAR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/building-crane'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t jars < <(find build/libs -maxdepth 1 -type f -name '*.jar' \
+              ! -name '*-sources.jar' ! -name '*-javadoc.jar' | sort)
+          if [ "${#jars[@]}" -ne 1 ]; then
+            printf 'Expected exactly one mod JAR, got %s\n' "${#jars[@]}"
+            printf '%s\n' "${jars[@]}"
+            exit 1
+          fi
+          cp "${jars[0]}" "$RUNNER_TEMP/golems-plus-building-crane-test.jar"
+          cat > "$RUNNER_TEMP/crane-release.md" <<EOF
+          Experimental Building Crane test JAR for Minecraft Fabric 26.2.
+
+          Branch: feature/building-crane
+          Commit: ${GITHUB_SHA}
+
+          This JAR compiles, but the complete four-builder Dome test has NOT
+          passed. Use only in a backed-up test world.
+
+          This release is separate from the stable main/dev-latest build.
+          EOF
+          if gh release view building-crane-test --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload building-crane-test \
+              "$RUNNER_TEMP/golems-plus-building-crane-test.jar" \
+              --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit building-crane-test --repo "$GITHUB_REPOSITORY" \
+              --title "Golems Plus Building Crane — experimental test JAR" \
+              --notes-file "$RUNNER_TEMP/crane-release.md"
+          else
+            gh release create building-crane-test \
+              "$RUNNER_TEMP/golems-plus-building-crane-test.jar" \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+              --title "Golems Plus Building Crane — experimental test JAR" \
+              --notes-file "$RUNNER_TEMP/crane-release.md"
+          fi
+      # Test the compiled artifact in a real dedicated Minecraft server.
       # A green JUnit run alone does not count as a movement pass.
-      - name: Run Minecraft server GameTests (scaffold route and framed doorway)
+      - name: Run Minecraft server GameTests (crane, Dome, scaffold and doorway)
         run: gradle --no-daemon runGameTest
       - name: Preserve Minecraft GameTest logs and reports
         if: always()
@@ -79,13 +129,6 @@ jobs:
             build/reports/
             build/test-results/
           if-no-files-found: ignore
-      - run: gradle --no-daemon clean test build
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: golems-plus-dev
-          path: build/libs/*.jar
-          if-no-files-found: error
       # Unlike Actions artifacts, release attachments have stable download
       # URLs and don't expire with GitHub's artifact retention window.
       - name: Publish stable JAR and mods-folder ZIP
@@ -134,3 +177,4 @@ jobs:
               --title "Golems Plus ${version} — latest development build" \
               --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
+

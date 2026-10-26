@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " R ",
+    "ICI",
+    " I "
+  ],
+  "key": {
+    "R": "minecraft:redstone",
+    "I": "minecraft:iron_ingot",
+    "C": "minecraft:compass"
+  },
+  "result": {
+    "id": "golems_plus:crane_controller",
+    "count": 1
+  }
+}

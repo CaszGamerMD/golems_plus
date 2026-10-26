@@ -104,6 +104,17 @@ public final class BuilderChunkTickets {
      */
     public static void tick(ServerLevel level,WorkerStationBlockEntity table){
         if(level.getGameTime()%20!=0)return;
+        reconcile(level,table);
+    }
+    /** A newly activated Planner must begin simulation immediately. Waiting
+     * for its first block-entity tick can deadlock when the region initially
+     * has no entity-ticking ticket (also reproduced in the isolated Dome).
+     * These are the SAME bounded, transient tickets used during ordinary work.
+     */
+    public static void prime(ServerLevel level,WorkerStationBlockEntity table){
+        reconcile(level,table);
+    }
+    private static void reconcile(ServerLevel level,WorkerStationBlockEntity table){
         if(!running(table)){
             release(level,table.getBlockPos());
             return;
@@ -138,6 +149,8 @@ public final class BuilderChunkTickets {
             if(previous!=null&&target!=null)
                 add(required,ahead(previous,target),home);
         }
+        for(BlockPos pos:com.caszgamermd.golemsplus.crane.CraneService.simulationPositions(table))
+            add(required,pos,home);
         for(ChunkPos key:required)if(!lease.held.contains(key))
             acquire(level,key);
         for(ChunkPos key:Set.copyOf(lease.held))if(!required.contains(key))
@@ -187,3 +200,4 @@ public final class BuilderChunkTickets {
         if(entries.isEmpty())jobs.remove(level);
     }
 }
+

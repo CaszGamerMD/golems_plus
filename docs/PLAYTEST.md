@@ -410,3 +410,12 @@ loads or expensive A* every five ticks is permitted.
   it remains intact until a valid home is restored or the player handles it.
 - Confirm idle/no-job Builders do NOT force-load chunks. A paused job does
   not continue accumulating tickets. No mass area /forceload is used.
+
+
+## Builder navigation 0.3.54
+
+- Send eight builders both ways through a single oak door, then repeat for all hinge/facing combinations and a fence gate. Test an idle builder in the opening and a queue on both sides. Workers must clear the opening and resume their original assignments.
+- In an open worksite, send two builders head-on and put an idle builder in their route. The yielding worker should step sideways, wait briefly, then resume. Repeat in an enclosed aisle: no wall clipping or unsafe sidesteps.
+- Supply scaffolding for targets 3, 10, and 30 blocks above ground. Builders must enter the column, finish reaching its top, place blocks, descend to ground to restock, and reclaim their tracked scaffolding after stepping away.
+- Cancel/complete a job while a builder is on a tower. Verify descent before returning materials. Destroy a scaffold segment and obstruct the tower top; verify no hovering or movement through solid blocks.
+- These scenarios require an in-game run; source smoke checks and unit tests alone do not prove entity movement.

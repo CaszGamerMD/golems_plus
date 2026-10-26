@@ -37,3 +37,4 @@ public final class ScaffoldVerticalRoute {
         return dx*dx+dz*dz>1.35;
     }
 }
+

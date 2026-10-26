@@ -23,7 +23,9 @@ assert "Action.COMPLETE" in service
 assert "BUILDER_STAGE_SIZE=32" in station
 assert "if(current>=0&&current<steps.size()" in station
 assert "builderMissingRetries.getOrDefault(idx,0L)>now" in station
-assert "builderClaims.put(worker,idx)" in station
+# Zone-claim candidate is named selected after skipping already claimed cells.
+assert "if(builderClaims.containsValue(idx))continue;" in station
+assert "builderClaims.put(worker,selected)" in station
 assert "if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())" in station
 assert "now-builderProgressNotifyTick>=20" in station
 assert "setChanged();" in station

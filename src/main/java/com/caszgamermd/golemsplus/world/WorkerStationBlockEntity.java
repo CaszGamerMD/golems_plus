@@ -488,6 +488,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
         sync();
     }
+    public boolean setBuilderCraneStorage(UUID actor,UUID job,BlockPos target){
+        if(!isBuilder()||!canConfigure(actor)||target==null||job==null||!job.equals(activeOrder))return false;
+        builderMaterialStorage=target.immutable();sync();return true;
+    }
     public boolean setBuilderMaterialStorage(UUID actor,BlockPos target){
         if(!isBuilder()||!canConfigure(actor)||target==null
                 ||builderOrigin.distSqr(target)>128L*128L)return false;
@@ -630,6 +634,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public BlockPos builderOrigin(){return builderOrigin;}
     public String placedSchematicName(){return placedSchematicName;}
     public int builderCursor(){return builderCursor;}
+    /** Total finished positions, including work by independent zone builders
+     * beyond the earliest unfinished schematic index. Used by test progress,
+     * not a substitute for physical block-state verification at completion.
+     */
+    public int builderCompletedCount(){
+        return Math.min(builderBlocks,builderCursor+builderFinishedSteps.size());
+    }
     public int builderClearCursor(){return builderClearCursor;}
     /** The job block owns the clear cursor, verified cells and claims.
      * A stalled claim expires after five seconds; a different Builder can
@@ -789,6 +800,21 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(builderWorkerId!=null)ids.add(builderWorkerId);
         ids.addAll(additionalBuilderWorkers);
         return java.util.List.copyOf(ids);
+    }
+    /** Transfer only the role; the physical entity keeps all of its cargo.
+     * A courier or scaffold owner must finish that work before operating.
+     */
+    public boolean detachBuilderForCrane(UUID worker){
+        if(worker==null||worker.equals(supplyRunner)
+                ||!scaffoldPositions(worker).isEmpty())return false;
+        if(!builderWorkerIds().contains(worker))return true;
+        if(worker.equals(builderWorkerId)){
+            builderWorkerId=additionalBuilderWorkers.isEmpty()?null:
+                    additionalBuilderWorkers.removeFirst();
+        }else additionalBuilderWorkers.remove(worker);
+        builderLastPositions.remove(worker);
+        releaseBuilderWorkOrder(worker);releaseBuilderClear(worker);
+        sync();return true;
     }
     public boolean registerBuilderWorker(UUID id){
         if(id==null||builderWorkerIds().contains(id)
@@ -976,13 +1002,32 @@ public final class WorkerStationBlockEntity extends BlockEntity
             sync(); // Only on stage refresh, not on each coordinate.
         }
         long now=level==null?0:level.getGameTime();
+        // Within the SAME independently assigned layer, choose the closest
+        // unclaimed, non-deferred physical target. Index order made four
+        // workers repeatedly cross completed lanes and claim inaccessible
+        // rim cells while reachable nearby blocks sat in their own batch.
+        // The stage remains stable (no cross-zone stealing/overlap).
+        int selected=-1;
+        double best=Double.POSITIVE_INFINITY;
+        BlockPos currentPos=level instanceof net.minecraft.server.level.ServerLevel server
+                &&server.getEntity(worker) instanceof
+                    com.caszgamermd.golemsplus.builder.BuilderGolem golem
+                        ?golem.blockPosition():null;
         for(int idx:stage){
             if(builderFinishedSteps.contains(idx)
                     ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
-            builderClaims.put(worker,idx);
-            return idx;
+            var cell=steps.get(idx);
+            double cost=currentPos==null?idx:currentPos.distSqr(
+                    new BlockPos(cell.x(),cell.y(),cell.z()));
+            // Avoid any staging overlap, even on restored old saves.
+            if(builderClaims.containsValue(idx))continue;
+            if(cost<best){best=cost;selected=idx;}
         }
-        return -1; // deferred dependencies remain in this zone's layer
+        if(selected>=0){
+            builderClaims.put(worker,selected);
+            return selected;
+        }
+        return -1; // temporarily deferred cells remain in this zone's layer
     }
 
     /** Move one exact same-layer coordinate to a worker who already holds
@@ -1069,12 +1114,21 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public java.util.List<BlockPos> scaffoldPositions(UUID worker){
         return java.util.List.copyOf(trackedScaffolds.getOrDefault(worker,java.util.List.of()));
     }
+    /** Team-wide read-only scaffold graph. Placement/refunds still belong
+     * to the original worker, but ALL assigned Builders can use completed
+     * tower/catwalk nodes. Never duplicate an existing scaffold item.
+     */
+    public java.util.List<BlockPos> sharedScaffoldPositions(){
+        java.util.Set<BlockPos> positions=new java.util.HashSet<>();
+        for(var owned:trackedScaffolds.values())positions.addAll(owned);
+        return java.util.List.copyOf(positions);
+    }
     public boolean isTrackedScaffold(BlockPos pos){
         return trackedScaffolds.values().stream().anyMatch(list->list.contains(pos));
     }
     public boolean trackScaffold(UUID worker,BlockPos pos){
         if(!builderWorkerIds().contains(worker)||isTrackedScaffold(pos)
-                ||trackedScaffolds.values().stream().mapToInt(java.util.List::size).sum()>=256)
+                ||trackedScaffolds.values().stream().mapToInt(java.util.List::size).sum()>=1024)
             return false;
         trackedScaffolds.computeIfAbsent(worker,k->new java.util.ArrayList<>())
                 .add(pos.immutable());sync();return true;
@@ -1177,7 +1231,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClearVerified.clear();
         builderMissingRetries.clear();
         builderClaims.clear();builderRecallRequested=false;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
-        phase=WorkerPhase.WORKING;sync();return true;
+        phase=WorkerPhase.WORKING;sync();
+        if(level instanceof net.minecraft.server.level.ServerLevel server)
+            com.caszgamermd.golemsplus.builder.BuilderChunkTickets.prime(server,this);
+        return true;
     }
     public void advanceBuilder(){
         if(builderCursor<builderBlocks){
@@ -1992,3 +2049,5 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return ClientboundBlockEntityDataPacket.create(this);
     }
 }
+
+
