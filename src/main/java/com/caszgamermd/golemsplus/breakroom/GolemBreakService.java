@@ -19,9 +19,12 @@ public final class GolemBreakService {
   if(m instanceof com.caszgamermd.golemsplus.fishing.FisherGolem g)return g.home();
   return null;
  }
+ public static boolean rested(PathfinderMob mob){var s=workers.get(mob);return s!=null&&s.ready;}
+ public static void saveRest(PathfinderMob mob,net.minecraft.world.level.storage.ValueOutput out){out.putBoolean("golems_plus_rested",rested(mob));}
+ public static void loadRest(PathfinderMob mob,net.minecraft.world.level.storage.ValueInput in){workers.computeIfAbsent(mob,m->new Rest()).ready=in.getBooleanOr("golems_plus_rested",false);}
  public static boolean takingBreak(PathfinderMob m){var s=workers.get(m);return s!=null&&s.furniture!=null&&!s.working;}
  public static void initialize(){
-  ServerEntityEvents.ENTITY_LOAD.register((entity,world)->{if(entity instanceof PathfinderMob m&&home(m)!=null)workers.put(m,new Rest());});
+  ServerEntityEvents.ENTITY_LOAD.register((entity,world)->{if(entity instanceof PathfinderMob m&&home(m)!=null)workers.computeIfAbsent(m,ignored->new Rest());});
   ServerEntityEvents.ENTITY_UNLOAD.register((entity,world)->workers.remove(entity));
   ServerTickEvents.END_SERVER_TICK.register(server->{for(var row:new ArrayList<>(workers.entrySet()))if(row.getKey().level() instanceof ServerLevel world&&world.getGameTime()%5==0)tick(world,row.getKey(),row.getValue());});
  }
@@ -30,7 +33,7 @@ public final class GolemBreakService {
   if(!(world.getBlockEntity(home) instanceof WorkerStationBlockEntity table))return;
   boolean working=(table.activeOrder()!=null||table.chefBusy()||table.isFishing())&&table.phase()!=WorkerPhase.PAUSED&&table.phase()!=WorkerPhase.COMPLETE&&table.phase()!=WorkerPhase.IDLE;
   if(working){
-   if(!s.working&&(s.ready||mob.getTags().contains("golems_plus.rested"))){mob.addEffect(new MobEffectInstance(MobEffects.SPEED,3600,0));s.ready=false;mob.removeTag("golems_plus.rested");}
+   if(!s.working&&(s.ready)){mob.addEffect(new MobEffectInstance(MobEffects.SPEED,3600,0));s.ready=false;}
    if(s.furniture!=null)WorkerNavigation.stop(mob);
    s.furniture=null;s.stand=null;s.rest=0;s.working=true;return;
   }
@@ -41,7 +44,7 @@ public final class GolemBreakService {
    if(mob.distanceToSqr(s.stand.getX()+.5,s.stand.getY(),s.stand.getZ()+.5)<1){
     WorkerNavigation.stop(mob);mob.getLookControl().setLookAt(s.furniture.getX()+.5,s.furniture.getY()+.8,s.furniture.getZ()+.5);
     if(now%40==0&&(world.getBlockState(s.furniture).is(BreakRoomContent.ARCADE)||world.getBlockState(s.furniture).is(BreakRoomContent.SNACK_MACHINE)))mob.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
-    s.rest+=5;if(s.rest>=200){s.ready=true;mob.addTag("golems_plus.rested");}
+    s.rest+=5;if(s.rest>=200){s.ready=true;}
     if(s.rest>=240+mob.getRandom().nextInt(160)){s.furniture=null;s.rest=0;s.chooseAt=now+40+mob.getRandom().nextInt(160);}
    }else if(!WorkerNavigation.routeToExact(world,mob,s.stand,.65)){s.furniture=null;s.rest=0;s.chooseAt=now+100;}
    return;

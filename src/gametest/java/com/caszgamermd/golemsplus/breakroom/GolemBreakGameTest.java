@@ -20,7 +20,7 @@ public final class GolemBreakGameTest {
   table.registerBuilderWorker(worker.getUUID());h.getLevel().addFreshEntity(worker);
   var furniture=h.absolutePos(new BlockPos(5,2,5));
   h.onEachTick(()->{
-   if(worker.getTags().contains("golems_plus.rested")){
+   if(GolemBreakService.rested(worker)){
     if(worker.distanceToSqr(furniture.getX()+.5,furniture.getY(),furniture.getZ()+.5)>5){h.fail("Rest granted away from furniture");return;}
     h.succeed();
    }
