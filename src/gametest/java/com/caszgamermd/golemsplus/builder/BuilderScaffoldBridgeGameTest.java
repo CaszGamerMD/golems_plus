@@ -193,24 +193,29 @@ public final class BuilderScaffoldBridgeGameTest {
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.setPersistenceRequired();
         worker.setPos(anchor.getX()+.5,anchor.getY()+1,anchor.getZ()+.5);
-        level.addFreshEntity(worker);
         if(!table.registerBuilderWorker(worker.getUUID())){
             helper.fail("Ghost-flight worker registration failed");return;
         }
         for(int y=2;y<=3;y++){
             BlockPos piece=new BlockPos(anchor.getX(),y,anchor.getZ());
-            level.setBlock(piece,Blocks.SCAFFOLDING.defaultBlockState(),3);
+            level.setBlock(piece,Blocks.SCAFFOLDING.defaultBlockState()
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,0),3);
             if(!table.trackScaffold(worker.getUUID(),piece)){
                 helper.fail("Untracked departure scaffold");return;
             }
         }
         for(int y=2;y<=4;y++){
             BlockPos piece=new BlockPos(landing.getX(),y,landing.getZ());
-            level.setBlock(piece,Blocks.SCAFFOLDING.defaultBlockState(),3);
+            level.setBlock(piece,Blocks.SCAFFOLDING.defaultBlockState()
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,0),3);
             if(!table.trackScaffold(worker.getUUID(),piece)){
                 helper.fail("Untracked arrival scaffold");return;
             }
         }
+        // Finish constructing the grounded columns before entity spawning
+        // so the test cannot accidentally conflate idle scaffold cleanup
+        // with the actual guided one-block ascent.
+        level.addFreshEntity(worker);
         if(!BuilderScaffoldBridge.sidestep(level,worker,table,landing.above())){
             helper.fail("Ghost-flight refused supported ascent: state="
                     +level.getBlockState(landing)+" owned="
