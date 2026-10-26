@@ -61,6 +61,14 @@ public final class BuilderEscapeScaffoldGameTest {
                 }
                 if(!table.scaffoldPositions(worker.getUUID()).isEmpty())
                     phase[0]=1;
+                else if(h.getTick()>100){
+                    h.fail("No escape scaffolding created result="+result
+                            +" workerY="+worker.getY()
+                            +" ground="+table.builderOrigin()
+                            +" station="+table.getBlockPos()
+                            +" carried="+worker.carriedCount(Items.SCAFFOLDING)
+                            +" move="+BuilderScaffolding.debugClimb(worker));
+                }
             }else{
                 if(BuilderScaffolding.descendForTravel(level,worker,table))
                     return;
