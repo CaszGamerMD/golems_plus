@@ -88,6 +88,7 @@ public final class BuildingCrane extends Entity implements Container {
     public boolean link(WorkerStationBlockEntity s){
         if(!parked()||!destinations.isEmpty()||!batch.isEmpty()
                 ||!Objects.equals(owner,s.owner())||s.activeOrder()==null||!builders().isEmpty())return false;
+        if(!s.setBuilderCraneLink(owner,s.activeOrder(),getUUID()))return false;
         table=s.getBlockPos().immutable();job=s.activeOrder();
         dispatch.clear();destinations.clear();batch.clear();
         status="Job linked; select a builder operator";
@@ -150,7 +151,11 @@ public final class BuildingCrane extends Entity implements Container {
                 return;
             }
         }
-        if(station()==null&&!recalling){recall();status="Job ended or unavailable; returning passengers";}
+        var linked=station();
+        if((linked==null||linked.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.COMPLETE)
+                &&!recalling){
+            recall();status="Job ended or unavailable; returning passengers and operator";
+        }
         // A blocked pickup must not own the entire queue forever. Count
         // lack of progress, not trip duration (a 90-block trip takes longer).
         if(!delivering&&pickup!=null&&world.getGameTime()-pickupStarted>400
@@ -168,7 +173,25 @@ public final class BuildingCrane extends Entity implements Container {
             Vec3 end=Vec3.atBottomCenterOf(home);
             if(position().distanceTo(end)>.15){go(world,end);return;}
             boolean all=true;for(BuilderGolem rider:builders())all&=unload(world,rider,home);
-            if(all){recalling=false;status="Home";}return;
+            if(all){
+                // Keep the dedicated operator aboard for the entire job.
+                // On cancellation/completion, unboard ONLY at a verified
+                // solid, unobstructed tile near the crane's home dock.
+                BuilderGolem driverGolem=world.getEntity(operator)
+                        instanceof BuilderGolem d?d:null;
+                if(driverGolem!=null){
+                    BlockPos safe=CraneMovement.landing(world,this,driverGolem,home);
+                    if(safe==null||!unload(world,driverGolem,safe)){
+                        status="Job finished; awaiting safe operator dismount";
+                        return;
+                    }
+                    if(world.getBlockEntity(table) instanceof WorkerStationBlockEntity former)
+                        former.registerBuilderWorker(driverGolem.getUUID());
+                }
+                operator=null;
+                recalling=false;status="Home; operator released";
+            }
+            return;
         }
         if(supplyMode()){
             if(supplyStop!=null){Vec3 end=Vec3.atBottomCenterOf(supplyStop);
