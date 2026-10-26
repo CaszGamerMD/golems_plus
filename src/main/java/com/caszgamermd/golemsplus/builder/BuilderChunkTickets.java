@@ -79,15 +79,14 @@ public final class BuilderChunkTickets {
         if((table.phase()==WorkerPhase.COMPLETE
                 ||table.builderRecallRequested())
                 &&!table.builderWorkerIds().isEmpty())return true;
-        // A linked crane must continue ticking its physical operator
-        // and passengers while the construction Planner is PAUSED.
-        // Otherwise the vehicle freezes with tickCount=0 in a nearby
-        // non-player-simulated chunk and can never pick anyone up.
-        // Job cancellation still releases the lease because serves()
-        // requires the SAME non-null active order and its owner.
-        if(table.activeOrder()!=null&&table.phase()==WorkerPhase.PAUSED
-                &&!com.caszgamermd.golemsplus.crane.CraneService
-                        .simulationPositions(table).isEmpty())return true;
+        // A crane's physical operator must continue ticking during
+        // PAUSE and, crucially, after COMPLETE/CANCEL until it safely
+        // docks and unboards. A cancelled job must NEVER strand a
+        // still-mounted driver by dropping simulation tickets early.
+        // CraneService stops reporting positions once the operator is
+        // released, so no permanent chunk-loader remains.
+        if(!com.caszgamermd.golemsplus.crane.CraneService
+                .simulationPositions(table).isEmpty())return true;
         return table.activeOrder()!=null
                 &&table.phase()!=WorkerPhase.PAUSED
                 &&table.phase()!=WorkerPhase.COMPLETE;
