@@ -497,12 +497,7 @@ public final class BuilderBuildService {
             }
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
-            // Normal survival block interaction reach is 4.5 blocks.
-            // Builders stranded on a finished stair/roof surface should be
-            // allowed to place a block 4.0 blocks away on the next layer;
-            // insisting on a 3.74-block radius forced invalid A* movements
-            // for blocks the worker could already legitimately reach.
-            if(workDistance>4.5*4.5){
+            if(workDistance>14){
                 // Leave a completed scaffold onto an adjacent solid upper
                 // walkway BEFORE asking vanilla A* to path from its
                 // non-walkable scaffolding node. This is crucial for
