@@ -226,10 +226,16 @@ public final class BuilderScaffoldBridge {
         worker.getMoveControl().setWantedPosition(tx,platform.getY()+1,tz,1);
         double vx=Math.max(-.13,Math.min(.13,dx*.24));
         double vz=Math.max(-.13,Math.min(.13,dz*.24));
-        if(level.noCollision(worker,worker.getBoundingBox().move(vx,0,vz))){
-            var v=worker.getDeltaMovement();
-            worker.setDeltaMovement(vx,v.y,vz);
-        }
+        // Scaffolding's directional collision surface depends on the
+        // entity's current feet height and the direction it approaches.
+        // An AABB translated ahead of the actual entity can report a
+        // false wall at the lip of an otherwise walkable scaffold. The
+        // real mob move() call inside vanilla tick is the authority:
+        // it resolves FULL block/entity collisions without phasing.
+        // The destination was already checked as a genuine supported
+        // scaffold or solid standing tile above.
+        var v=worker.getDeltaMovement();
+        worker.setDeltaMovement(vx,v.y,vz);
         return true;
     }
 
