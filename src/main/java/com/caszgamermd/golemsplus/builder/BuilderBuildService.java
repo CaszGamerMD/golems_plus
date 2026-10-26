@@ -295,10 +295,10 @@ public final class BuilderBuildService {
         // While stepping CLOCKWISE around a colleague, do not issue
         // fresh A* routes, switch work assignments or override the
         // random stagger timer. One physical controller owns the worker.
-        if(!BuilderCreativeFlight.ENABLED
-                &&BuilderClockwiseTraffic.controlling(worker))return;
-        if(!BuilderCreativeFlight.ENABLED
-                &&BuilderPlacementSpace.yieldTick(level,worker))return;
+        if(!BuilderCreativeFlight.ENABLED){
+            if(BuilderClockwiseTraffic.controlling(worker))return;
+            if(BuilderPlacementSpace.yieldTick(level,worker))return;
+        }
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
             if(BuilderCreativeFlight.ENABLED)BuilderCreativeFlight.stop(worker);
             // On job completion a Builder may still be on its LAST
