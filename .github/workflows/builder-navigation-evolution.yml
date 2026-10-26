@@ -23,8 +23,10 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -p 'test_builder_nav_evolution.py' -v
       - name: Train on deterministic door corridor fixture
         run: |
-          python3 scripts/builder_nav_evolution.py training/examples/door_corridor.json \
-            --population 16 --generations 8 --timeout 150 --target 55 \
+          python3 scripts/builder_nav_evolution.py \
+            training/examples/door_corridor.json \
+            training/examples/deadend_maze.json \
+            --population 16 --generations 8 --timeout 400 --target 130 \
             --seed 42 --elites 3 --out build/builder-training
       - name: Verify saved champion constraints and replay
         run: |
@@ -41,7 +43,7 @@ jobs:
           assert not any(d["physics"][action]
                          for action in ("breaking", "scaffolding", "flying", "diagonal"))
           assert d["runs"] and d["runs"][0]["path"]
-          assert all(run["ticks"] <= 150 for run in d["runs"])
+          assert all(run["ticks"] <= 400 for run in d["runs"])
           assert Path("build/builder-training/history.csv").is_file()
           print("Validated simulation-only champion and physical constraints")
           PY
