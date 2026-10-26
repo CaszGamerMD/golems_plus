@@ -9,7 +9,8 @@ every winner before using its genes in Builder Golems.
 
 - Training bot has **0.65 x 0.65 block footprint and 1.6-block height**.
 - Horizontal speed cap is **4 blocks/meters per second** (20 tps, at least
-  **5 game ticks for one horizontal block**). No sprint boosts.
+  **5 game ticks for one horizontal block**). For jumps/drops, the
+  simulator also caps the full 3D displacement per tick. No sprint boosts.
 - **No breaking**, **no building**, **no scaffolding**, **no flying**, and
   **no diagonals**. Obstacles must be bypassed on foot.
 - Existing vanilla doors may be opened; opening costs 8 simulated ticks.
@@ -26,8 +27,10 @@ every winner before using its genes in Builder Golems.
 From the repo root, with Python 3.10+ and no third-party libraries:
 
 ```bash
-python3 scripts/builder_nav_evolution.py training/examples/door_corridor.json \
-  --population 32 --generations 50 --timeout 1200 --target 60 --seed 42 \
+python3 scripts/builder_nav_evolution.py \
+  training/examples/door_corridor.json \
+  training/examples/deadend_maze.json \
+  --population 32 --generations 50 --timeout 1200 --target 130 --seed 42 \
   --out build/builder-training
 ```
 
