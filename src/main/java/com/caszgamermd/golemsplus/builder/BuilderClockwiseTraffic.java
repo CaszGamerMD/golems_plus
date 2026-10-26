@@ -177,8 +177,7 @@ public final class BuilderClockwiseTraffic {
             // If BOTH have jobs in motion, ONE golem must keep moving:
             // the lower UUID retains right of way. An idle blocker can
             // still be walked around clockwise by an active worker.
-            boolean otherMoving=WorkerNavigation.requestedTarget(other)!=null
-                    &&!other.getNavigation().isDone();
+            boolean otherMoving=WorkerNavigation.requestedTarget(other)!=null;
             if(otherMoving&&worker.getUUID().compareTo(other.getUUID())<0)
                 continue;
             if(separation<best){best=separation;nearest=other;}
@@ -242,7 +241,7 @@ public final class BuilderClockwiseTraffic {
         worker.setDeltaMovement(0,worker.getDeltaMovement().y,0);
         var other=world.getEntity(m.blocker);
         boolean past=!(other instanceof BuilderGolem b&&b.isAlive())
-                ||other.distanceToSqr(worker)<7.0;
+                ||other.distanceToSqr(worker)>7.0;
         // Give the other Builder at least 20 ticks to pass before
         // rebuilding this worker's ordinary A* route.
         if(now-m.parkedAt>=20&&(past||now-m.parkedAt>=65))
