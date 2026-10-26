@@ -88,7 +88,14 @@ public final class BuildingCrane extends Entity implements Container {
     public boolean link(WorkerStationBlockEntity s){
         if(!parked()||!destinations.isEmpty()||!batch.isEmpty()
                 ||!Objects.equals(owner,s.owner())||s.activeOrder()==null||!builders().isEmpty())return false;
-        table=s.getBlockPos().immutable();job=s.activeOrder();dispatch.clear();destinations.clear();batch.clear();status="Job linked; select a builder operator";return true;
+        table=s.getBlockPos().immutable();job=s.activeOrder();
+        dispatch.clear();destinations.clear();batch.clear();
+        status="Job linked; select a builder operator";
+        if(level() instanceof ServerLevel world){
+            CraneService.track(world,this);
+            BuilderChunkTickets.prime(world,s);
+        }
+        return true;
     }
     public boolean assignOperator(BuilderGolem w){
         var s=station();
