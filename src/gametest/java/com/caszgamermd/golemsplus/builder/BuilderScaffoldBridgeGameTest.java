@@ -16,6 +16,49 @@ import net.minecraft.world.level.block.Blocks;
  * those segments instead of treating the obstacle as a second tower.
  */
 public final class BuilderScaffoldBridgeGameTest {
+    /** Requesting one platform at a time must not trigger an entire
+     * depot roundtrip for every suspended bridge cell. Batch pickup still
+     * debits the actual chest and requires a physically nearby worker.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=80,skyAccess=true)
+    public void fetchesBatchOfRealScaffoldingAtDepot(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        helper.setBlock(3,1,3,Blocks.STONE);
+        helper.setBlock(4,1,3,Blocks.STONE);
+        helper.setBlock(3,2,3,WorksiteContent.BUILDER_TABLE);
+        helper.setBlock(4,2,3,Blocks.CHEST);
+        BlockPos planner=helper.absolutePos(new BlockPos(3,2,3));
+        BlockPos depot=helper.absolutePos(new BlockPos(4,2,3));
+        if(!(level.getBlockEntity(planner) instanceof WorkerStationBlockEntity table)
+                ||!(level.getBlockEntity(depot) instanceof net.minecraft.world.Container chest)){
+            helper.fail("Batch scaffold trial has no real Planner / chest");
+            return;
+        }
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),
+                        "placed-batch-transfer-test.litematic","Batch inventory test",
+                        planner,0,0,1,0)
+                ||!table.setBuilderMaterialStorage(owner.getUUID(),depot)){
+            helper.fail("Batch scaffold trial could not configure depot");
+            return;
+        }
+        chest.setItem(0,new ItemStack(Items.SCAFFOLDING,40));
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(depot.getX()+.5,depot.getY(),depot.getZ()+1.5);
+        worker.setPersistenceRequired();
+        level.addFreshEntity(worker);
+        var outcome=BuilderSupplyInventory.loadScaffold(level,worker,table,1);
+        int carried=worker.carriedCount(Items.SCAFFOLDING);
+        int remaining=chest.getItem(0).getCount();
+        if(outcome!=BuilderSupplyInventory.ScaffoldLoad.READY
+                ||carried!=32||remaining!=8||carried+remaining!=40){
+            helper.fail("Scaffold pickup violated real-item batching: "
+                    +outcome+" carried="+carried+" chest="+remaining);
+            return;
+        }
+        helper.succeed();
+    }
     /** Prove an actual Golem buys/builds an outside tower, climbs it,
      * and places two real horizontal scaffolds across the reserved gap.
      * No 3,537-block Dome workload or teammate doorway traffic involved.
@@ -70,6 +113,8 @@ public final class BuilderScaffoldBridgeGameTest {
         if(!table.registerBuilderWorker(worker.getUUID())){
             helper.fail("Two-gap Builder registration failed");return;
         }
+        final Runnable simulation=BuilderChunkTickets.holdGameTestSimulation(level,
+                worker.blockPosition(),goal);
         final int[] stage={0};
         final long[] stageStart={helper.getTick()};
         helper.onEachTick(()->{
@@ -109,6 +154,7 @@ public final class BuilderScaffoldBridgeGameTest {
                     &&level.getBlockState(second).is(Blocks.SCAFFOLDING)
                     &&worker.distanceToSqr(goal.getX()+.5,goal.getY(),
                             goal.getZ()+.5)<=12.5){
+                simulation.run();
                 helper.succeed();
                 return;
             }
@@ -165,6 +211,8 @@ public final class BuilderScaffoldBridgeGameTest {
         if(!table.registerBuilderWorker(worker.getUUID())){
             helper.fail("Unable to register Bridge Builder");return;
         }
+        final Runnable simulation=BuilderChunkTickets.holdGameTestSimulation(level,
+                worker.blockPosition(),helper.absolutePos(new BlockPos(8,6,3)));
         for(int y=2;y<=5;y++){
             BlockPos column=helper.absolutePos(new BlockPos(2,y,3));
             level.setBlock(column,Blocks.SCAFFOLDING.defaultBlockState(),3);
@@ -218,6 +266,7 @@ public final class BuilderScaffoldBridgeGameTest {
             }
             if(worker.distanceToSqr(anchor.getX()+.5,anchor.getY()+1,
                     anchor.getZ()+.5)<.25){
+                simulation.run();
                 helper.succeed();
                 return;
             }
@@ -256,6 +305,8 @@ public final class BuilderScaffoldBridgeGameTest {
         if(!table.registerBuilderWorker(worker.getUUID())){
             helper.fail("Cannot register long bridge worker");return;
         }
+        final Runnable simulation=BuilderChunkTickets.holdGameTestSimulation(level,
+                worker.blockPosition(),helper.absolutePos(new BlockPos(22,4,11)));
         // The scaffold MUST be directly below the spawned worker.
         // Previously this fixture registered a tower at local (2,3),
         // while its worker actually started at local (10,11).
@@ -273,6 +324,12 @@ public final class BuilderScaffoldBridgeGameTest {
         var plan=List.of(new BuilderConstructionPlan.Step(
                 goal.getX(),goal.getY(),goal.getZ(),
                 "minecraft:stone","minecraft:stone"));
+        // Diagnose the exact failed bridge node instead of the generic
+        // GameTest 1400-tick timeout. Building piers counts as progress;
+        // physically moving around the obstruction counts as progress.
+        final net.minecraft.world.phys.Vec3[] lastPosition={worker.position()};
+        final long[] lastProgress={helper.getTick()};
+        final int[] lastOwned={table.sharedScaffoldPositions().size()};
         helper.onEachTick(()->{
             if(!worker.isAlive()){
                 helper.fail("Long bridge worker disappeared at "
@@ -280,6 +337,30 @@ public final class BuilderScaffoldBridgeGameTest {
                         +" step="+BuilderScaffoldBridge.debug(worker));return;
             }
             if(helper.getTick()%5!=0)return;
+            // A loaded GameTest structure is not necessarily entity ticking:
+            // if tickCount does not advance, any physics/path "test" is fake.
+            if(helper.getTick()>90&&worker.tickCount<15){
+                helper.fail("No physical entity simulation for scaffold Builder: "
+                        +"workerTicks="+worker.tickCount+" gameTicks="+helper.getTick());
+                return;
+            }
+            int ownedNow=table.sharedScaffoldPositions().size();
+            if(worker.position().distanceToSqr(lastPosition[0])>.20
+                    ||ownedNow>lastOwned[0]){
+                lastPosition[0]=worker.position();
+                lastOwned[0]=ownedNow;
+                lastProgress[0]=helper.getTick();
+            }
+            if(helper.getTick()-lastProgress[0]>230){
+                helper.fail("Long bridge physically stalled at "
+                        +worker.blockPosition()+" feetY="+worker.getY()
+                        +" owned="+ownedNow+" bridge="
+                        +BuilderScaffoldBridge.debug(worker)
+                        +" climb="+BuilderScaffolding.debugClimb(worker)
+                        +" nav="+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .debugStatus(worker)+" workerTicks="+worker.tickCount);
+                return;
+            }
             if(worker.distanceToSqr(goal.getX()+.5,goal.getY()+.5,
                     goal.getZ()+.5)<=12.5){
                 String unstable=unstableBridge(level,
@@ -294,7 +375,10 @@ public final class BuilderScaffoldBridgeGameTest {
                         posts++;
                 if(posts==0)
                     helper.fail("Long unsupported bridge missed its footing posts");
-                else helper.succeed();
+                else {
+                    simulation.run();
+                    helper.succeed();
+                }
                 return;
             }
             var state=BuilderScaffoldBridge.reach(level,worker,table,owner,

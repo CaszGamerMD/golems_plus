@@ -37,7 +37,11 @@ assert "storage.setChanged();remaining-=moved;" in supply
 assert "ItemContainerContents.fromItems(nested)" in supply
 assert "drawFromSources(table,worker,item,needed);" in supply
 assert "drawFromSources(table,worker,requested,needed);" in supply
-assert "drawFromSources(table,worker,item,required-worker.carriedCount(item));" in supply
+# Each bridge segment requests one item, but a real depot pickup must carry
+# a bounded batch to avoid a 30-block roundtrip after EVERY scaffold.
+assert "int desired=Math.max(required,32);" in supply
+assert "Math.min(desired-carried," in supply
+assert "if(take>0)drawFromSources(table,worker,item,take);" in supply
 assert "for(Container store:sources(table))" in supply
 assert "BuilderScaffolding.descendForTravel(level,worker,table)" in supply
 assert "tower=" in builder and "gravity=" in builder and "depot=" in builder

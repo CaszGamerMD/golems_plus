@@ -97,6 +97,27 @@ public final class BuilderChunkTickets {
                 ||Math.abs((long)center.getZ()-reference.getZ())>MAX_DISTANCE)return;
         chunks.add(new ChunkPos(center.getX() >> 4,center.getZ() >> 4));
     }
+    /** Entity simulation can end abruptly on a chunk boundary even if
+     * the NEXT chunk is already block-loaded. The Planner reconciles at
+     * 20-tick intervals; warm adjacent simulation centers six blocks
+     * before a Builder reaches their edge (more than one work interval
+     * at the nominal four-block-per-second walking speed). Do this after
+     * all workers' real jobs and targets have reserved their tickets.
+     * No global force loading or permanent per-chunk flags.
+     */
+    private static void boundarySimulation(Set<ChunkPos> required,
+            BlockPos position,BlockPos home){
+        if(position==null)return;
+        int localX=Math.floorMod(position.getX(),16);
+        int localZ=Math.floorMod(position.getZ(),16);
+        int sx=localX<6?-1:localX>9?1:0;
+        int sz=localZ<6?-1:localZ>9?1:0;
+        if(sx!=0)add(required,position.offset(sx*16,0,0),home);
+        if(sz!=0)add(required,position.offset(0,0,sz*16),home);
+        if(sx!=0&&sz!=0)
+            add(required,position.offset(sx*16,0,sz*16),home);
+    }
+
     private static BlockPos ahead(BlockPos from,BlockPos goal){
         long dx=(long)goal.getX()-from.getX(),dz=(long)goal.getZ()-from.getZ();
         double distance=Math.hypot(dx,dz);
@@ -104,6 +125,29 @@ public final class BuilderChunkTickets {
         double fraction=32.0/distance;
         return new BlockPos(from.getX()+(int)Math.round(dx*fraction),
                 from.getY(),from.getZ()+(int)Math.round(dz*fraction));
+    }
+
+    /**
+     * Isolated Minecraft GameTests construct small scaffold routes without
+     * starting a real Builder order. A structure block may load test chunks
+     * without an ENTITY-SIMULATION ticket; the test's onEachTick() advances
+     * while BuilderGolem.tick() never runs (tickCount stays zero).
+     * Use our already-registered, nonpersistent simulation ticket so test
+     * physics are real and identical to job-owned worker ticking. The
+     * caller must run the returned release callback on completion.
+     *
+     * This does NOT bypass collision, move an entity, or create stock.
+     */
+    public static Runnable holdGameTestSimulation(ServerLevel level,BlockPos... sites){
+        // GameTest routes are known up front. Simulate BOTH departure and
+        // destination chunks: radius-two may tick the starting chunk but
+        // stop the golem's entity at the very next chunk boundary, even
+        // though the structure and scaffolds remain block-loaded.
+        Set<ChunkPos> centers=new HashSet<>();
+        for(BlockPos site:sites)if(site!=null)
+            centers.add(new ChunkPos(site.getX() >> 4,site.getZ() >> 4));
+        for(ChunkPos center:centers)acquire(level,center);
+        return ()->{for(ChunkPos center:centers)relinquish(level,center);};
     }
 
     /** Called from the loaded Planner. Never scans all loaded chunks or
@@ -157,8 +201,12 @@ public final class BuilderChunkTickets {
             if(previous!=null&&target!=null)
                 add(required,ahead(previous,target),home);
         }
+        // Preserve every physical crane's simulation position before
+        // optional near-edge warmup consumes any remaining lease capacity.
         for(BlockPos pos:com.caszgamermd.golemsplus.crane.CraneService.simulationPositions(table))
             add(required,pos,home);
+        for(UUID id:table.builderWorkerIds())
+            boundarySimulation(required,table.builderLastPosition(id),home);
         for(ChunkPos key:required)if(!lease.held.contains(key))
             acquire(level,key);
         for(ChunkPos key:Set.copyOf(lease.held))if(!required.contains(key))

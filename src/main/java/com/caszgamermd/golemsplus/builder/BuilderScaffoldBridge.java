@@ -36,6 +36,24 @@ public final class BuilderScaffoldBridge {
     private static final Map<BuilderGolem,Route> routes=new WeakHashMap<>();
     private static final Map<BuilderGolem,Walk> walking=new WeakHashMap<>();
     private static final Map<BuilderGolem,String> failures=new WeakHashMap<>();
+    // Native A* cannot walk on suspended scaffold. Track actual displacement
+    // on each physically driven edge and briefly exclude an edge that is
+    // blocked by a new wall, cargo entity or another worker.
+    private record BlockedCell(BlockPos cell,long expires){}
+    private static final Map<BuilderGolem,BlockedCell> blockedCells=
+            new WeakHashMap<>();
+    private static final class WalkMonitor {
+        BlockPos destination;
+        net.minecraft.world.phys.Vec3 last;
+        long lastMoved;
+        WalkMonitor(BlockPos destination,BuilderGolem worker,long tick){
+            this.destination=destination;
+            last=worker.position();
+            lastMoved=tick;
+        }
+    }
+    private static final Map<BuilderGolem,WalkMonitor> walkMonitors=
+            new WeakHashMap<>();
 
     /** Determine scaffold stability from REAL world supports before spending
      * a worker's item. Vanilla scaffolds fall at unsupported distance seven.
@@ -95,6 +113,8 @@ public final class BuilderScaffoldBridge {
         routes.remove(worker);
         walking.remove(worker);
         failures.remove(worker);
+        blockedCells.remove(worker);
+        walkMonitors.remove(worker);
     }
     /** Retrace an already built bridge in reverse before descending a
      * tower or returning to the real OnSite chest. No aerial shortcuts:
@@ -137,8 +157,30 @@ public final class BuilderScaffoldBridge {
     public static String debug(BuilderGolem worker){
         Walk moving=walking.get(worker);
         Route route=routes.get(worker);
-        return moving!=null?"BRIDGE WALK "+moving.destination().toShortString()
-                :route==null?failures.getOrDefault(worker,"NONE")
+        if(moving!=null){
+            BlockPos platform=moving.destination();
+            String base="BRIDGE WALK "+platform.toShortString();
+            if(!(worker.level() instanceof ServerLevel level))return base;
+            double dx=platform.getX()+.5-worker.getX();
+            double dz=platform.getZ()+.5-worker.getZ();
+            double sx=Math.max(-.13,Math.min(.13,dx*.24));
+            double sz=Math.max(-.13,Math.min(.13,dz*.24));
+            var nearby=worker.getBoundingBox().move(sx,0,sz);
+            var monitor=walkMonitors.get(worker);
+            return base+" toward="+String.format(java.util.Locale.ROOT,
+                        "(%.2f,%.2f)",dx,dz)
+                    +" feet="+String.format(java.util.Locale.ROOT,
+                        "(%.2f,%.2f,%.2f)",worker.getX(),worker.getY(),worker.getZ())
+                    +" velocity="+worker.getDeltaMovement()
+                    +" grounded="+worker.onGround()
+                    +" collides="+!level.noCollision(worker,nearby)
+                    +" bodyBlocks="+level.getBlockCollisions(worker,nearby).iterator().hasNext()
+                    +" support="+level.getBlockState(platform)
+                    +" under="+level.getBlockState(platform.below())
+                    +" head="+level.getBlockState(platform.above())
+                    +" idle="+(monitor==null?-1:level.getGameTime()-monitor.lastMoved);
+        }
+        return route==null?failures.getOrDefault(worker,"NONE")
                         :"BRIDGE "+route.next()+"/"+route.cells().size();
     }
 
@@ -148,7 +190,10 @@ public final class BuilderScaffoldBridge {
      */
     public static boolean tickMotion(ServerLevel level,BuilderGolem worker){
         Walk walk=walking.get(worker);
-        if(walk==null)return false;
+        if(walk==null){
+            walkMonitors.remove(worker);
+            return false;
+        }
         BlockPos platform=walk.destination();
         if(level.getGameTime()>walk.expires()
                 ||!level.hasChunkAt(platform)
@@ -161,6 +206,7 @@ public final class BuilderScaffoldBridge {
                 ||worker.getY()>platform.getY()+2){
             walking.remove(worker);
             routes.remove(worker);
+            walkMonitors.remove(worker);
             return false;
         }
         double tx=platform.getX()+.5,tz=platform.getZ()+.5;
@@ -168,8 +214,32 @@ public final class BuilderScaffoldBridge {
         if(dx*dx+dz*dz<.10
                 &&Math.abs(worker.getY()-platform.getY()-1)<.55){
             walking.remove(worker);
+            walkMonitors.remove(worker);
             worker.getNavigation().stop();
             worker.setDeltaMovement(0,worker.getDeltaMovement().y,0);
+            return false;
+        }
+        WalkMonitor watch=walkMonitors.get(worker);
+        if(watch==null||!watch.destination.equals(platform)){
+            watch=new WalkMonitor(platform,worker,level.getGameTime());
+            walkMonitors.put(worker,watch);
+        }
+        if(worker.position().distanceToSqr(watch.last)>.09){
+            watch.last=worker.position();
+            watch.lastMoved=level.getGameTime();
+        }else if(level.getGameTime()-watch.lastMoved>=65){
+            // A live bridge route must NEVER claim permanent progress while
+            // its entity is standing still. Stop this failed physical edge,
+            // then let BFS try a different, actually walkable side for the
+            // next 160 ticks. No scaffold is deleted and no items are spent.
+            blockedCells.put(worker,new BlockedCell(platform.immutable(),
+                    level.getGameTime()+160));
+            failures.put(worker,"BRIDGE_BLOCKED at "+platform.toShortString()
+                    +" from="+worker.blockPosition().toShortString());
+            walking.remove(worker);
+            routes.remove(worker);
+            walkMonitors.remove(worker);
+            worker.getNavigation().stop();
             return false;
         }
         worker.getNavigation().stop();
@@ -178,10 +248,16 @@ public final class BuilderScaffoldBridge {
         worker.getMoveControl().setWantedPosition(tx,platform.getY()+1,tz,1);
         double vx=Math.max(-.13,Math.min(.13,dx*.24));
         double vz=Math.max(-.13,Math.min(.13,dz*.24));
-        if(level.noCollision(worker,worker.getBoundingBox().move(vx,0,vz))){
-            var v=worker.getDeltaMovement();
-            worker.setDeltaMovement(vx,v.y,vz);
-        }
+        // Scaffolding's directional collision surface depends on the
+        // entity's current feet height and the direction it approaches.
+        // An AABB translated ahead of the actual entity can report a
+        // false wall at the lip of an otherwise walkable scaffold. The
+        // real mob move() call inside vanilla tick is the authority:
+        // it resolves FULL block/entity collisions without phasing.
+        // The destination was already checked as a genuine supported
+        // scaffold or solid standing tile above.
+        var v=worker.getDeltaMovement();
+        worker.setDeltaMovement(vx,v.y,vz);
         return true;
     }
 
@@ -338,6 +414,9 @@ public final class BuilderScaffoldBridge {
                     .comparingInt((BlockPos node)->wholeBuild&&shell.isShell(node)?0:1)
                     .thenComparingDouble(node->node.distSqr(target)));
             for(BlockPos next:neighbors){
+                BlockedCell blocked=blockedCells.get(worker);
+                if(blocked!=null&&blocked.expires()>level.getGameTime()
+                        &&blocked.cell().equals(next))continue;
                 if(parent.containsKey(next)
                         ||Math.abs(next.getX()-anchor.getX())>MAX_SEARCH
                         ||Math.abs(next.getZ()-anchor.getZ())>MAX_SEARCH
@@ -491,6 +570,19 @@ public final class BuilderScaffoldBridge {
         BlockPos from=path.get(next-1),to=path.get(next);
         if(worker.distanceToSqr(from.getX()+.5,from.getY()+1,
                 from.getZ()+.5)>1.6){
+            // Never steer a Builder through open air toward a REMOTE
+            // scaffold segment. This happens after a supply run or when a
+            // different tower was chosen while the Builder stood on an
+            // isolated completed ledge. Only an adjacent real platform is
+            // eligible for the physical one-block bridge controller.
+            if(worker.distanceToSqr(from.getX()+.5,from.getY()+1,
+                    from.getZ()+.5)>6.25){
+                routes.remove(worker);
+                failures.put(worker,"BRIDGE_REANCHOR needed at "
+                        +from.toShortString()+" worker="
+                        +worker.blockPosition().toShortString());
+                return BuilderScaffolding.Result.NO_SAFE_TOWER;
+            }
             // On an already constructed branch, walk back toward the
             // previous known scaffold instead of spawning another block.
             if(owned.contains(from)&&level.getBlockState(from).is(Blocks.SCAFFOLDING)){
