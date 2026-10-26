@@ -502,6 +502,21 @@ public final class BuilderScaffolding {
                                 .canStandOn(level,worker,cached.landing())
                         ?cached.landing():returnLanding(level,worker,tower);
                 if(landing==null)continue; // try another owned tower
+                // A* may report "path already complete" when the Builder
+                // stands on the solid tile DIRECTLY beside a scaffold.
+                // Reissuing that exact route every job tick strands the
+                // Builder on the landing forever. Physically transfer
+                // control to the vertical descent from this real support,
+                // not to a fictitious walkable scaffold A* node.
+                double landX=worker.getX()-landing.getX()-.5;
+                double landZ=worker.getZ()-landing.getZ()-.5;
+                if(landX*landX+landZ*landZ<=.36
+                        &&Math.abs(worker.getY()-landing.getY())<=.38
+                        &&worker.onGround()){
+                    returning.remove(worker);
+                    begin(level,worker,base,base.getY()+1.0,true);
+                    return true;
+                }
                 boolean underway=com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .routeToExact(level,worker,landing,1.0);
                 if(!underway){
