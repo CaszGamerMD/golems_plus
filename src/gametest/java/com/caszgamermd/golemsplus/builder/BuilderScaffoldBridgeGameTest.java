@@ -197,7 +197,7 @@ public final class BuilderScaffoldBridgeGameTest {
             helper.fail("Ghost-flight worker registration failed");return;
         }
         for(int y=2;y<=3;y++){
-            BlockPos piece=new BlockPos(anchor.getX(),y,anchor.getZ());
+            BlockPos piece=helper.absolutePos(new BlockPos(6,y,6));
             level.setBlock(piece,Blocks.SCAFFOLDING.defaultBlockState()
                     .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,0),3);
             if(!table.trackScaffold(worker.getUUID(),piece)){
@@ -205,7 +205,7 @@ public final class BuilderScaffoldBridgeGameTest {
             }
         }
         for(int y=2;y<=4;y++){
-            BlockPos piece=new BlockPos(landing.getX(),y,landing.getZ());
+            BlockPos piece=helper.absolutePos(new BlockPos(7,y,6));
             level.setBlock(piece,Blocks.SCAFFOLDING.defaultBlockState()
                     .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,0),3);
             if(!table.trackScaffold(worker.getUUID(),piece)){
