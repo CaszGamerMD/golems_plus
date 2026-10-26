@@ -488,6 +488,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
         sync();
     }
+    /** The actual parked crane can replace a job's OnSite supply depot. */
+    public boolean setBuilderCraneStorage(UUID actor,UUID job,BlockPos target){
+        if(!isBuilder()||!canConfigure(actor)||target==null||job==null
+                ||!job.equals(activeOrder))return false;
+        builderMaterialStorage=target.immutable();sync();return true;
+    }
     public boolean setBuilderMaterialStorage(UUID actor,BlockPos target){
         if(!isBuilder()||!canConfigure(actor)||target==null
                 ||builderOrigin.distSqr(target)>128L*128L)return false;
@@ -807,6 +813,22 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(builderWorkerId!=null)ids.add(builderWorkerId);
         ids.addAll(additionalBuilderWorkers);
         return java.util.List.copyOf(ids);
+    }
+    /** Detach a crane operator from the construction crew without
+     * deleting its physical entity or its real carried inventory.
+     */
+    public boolean detachBuilderForCrane(UUID worker){
+        if(worker==null||worker.equals(supplyRunner)
+                ||!scaffoldPositions(worker).isEmpty())return false;
+        if(!builderWorkerIds().contains(worker))return true;
+        if(worker.equals(builderWorkerId)){
+            builderWorkerId=additionalBuilderWorkers.isEmpty()?null:
+                    additionalBuilderWorkers.removeFirst();
+        }else additionalBuilderWorkers.remove(worker);
+        builderLastPositions.remove(worker);
+        releaseBuilderWorkOrder(worker);
+        releaseBuilderClear(worker);
+        sync();return true;
     }
     public boolean registerBuilderWorker(UUID id){
         if(id==null||builderWorkerIds().contains(id)
