@@ -29,3 +29,4 @@ assert "if(!climbing)" in (src/"builder/BuilderGolem.java").read_text()
 assert "BuilderScaffolding.descendForTravel(level,worker,table)" in build
 assert "BuilderScaffolding.descendForTravel(level,worker,table)" in supplies
 print("PASS 0.65 worker hitboxes, physical scaffold return at matching elevation, long descent and safe exit")
+

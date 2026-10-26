@@ -13,11 +13,11 @@ import java.util.Base64;
  * schematic before the game's production parser sees them.
  * The gameplay mod never packages these test-only resources.
  */
-final class BuilderDomeFixture {
+public final class BuilderDomeFixture {
     private static final String SHA256=
             "5a3f8b8f5dba9766838b79f238bfa0802aea3cca4ca03f19a8c567408ebeaa54";
     private BuilderDomeFixture(){}
-    static Path unpack() throws Exception {
+    public static Path unpack() throws Exception {
         StringBuilder b64=new StringBuilder(8652);
         for(int i=0;i<9;i++){
             String path="/golems_plus_dome/segment"+i+".txt";

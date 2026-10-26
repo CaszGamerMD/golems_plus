@@ -35,3 +35,4 @@ assert "return Result.NOT_NEEDED;" in scaffolds
 assert "routeToExact(level,worker,landing,1.0)" in scaffolds
 print("PASS: crowd-tolerant block-collision routes, broader route candidates, "
       "retry diagnostics and no platform climbing loop")
+

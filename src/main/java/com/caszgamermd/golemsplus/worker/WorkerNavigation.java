@@ -202,8 +202,20 @@ public final class WorkerNavigation {
         // noCollision alone rejects a valid route while another golem is
         // standing at a waypoint and makes a flat site look impossible.
         // Dynamic entities still yield to each other during movement.
-        if(door||world.noCollision(mob,body))return true;
-        return !world.getBlockCollisions(mob,body).iterator().hasNext();
+        if(world.noCollision(mob,body))return true;
+        if(!door&&world.getBlockCollisions(mob,body).iterator().hasNext())
+            return false;
+        // Only OTHER moving worker golems may be treated as temporary
+        // congestion. The earlier block-only fallback also ignored
+        // physical vehicles/pallet transports: A* then repeatedly picked
+        // a stance occupied by their large cargo entity. Keep those
+        // objects as real obstacles, while ordinary worker queues still
+        // yield to each other at doorways.
+        return world.getEntitiesOfClass(Entity.class,body,
+                entity->entity!=mob&&entity.isAlive()
+                    &&entity.isPickable()
+                    &&!(entity instanceof PathfinderMob other
+                            &&worker(other))).isEmpty();
     }
     private static boolean safePath(ServerLevel level,PathfinderMob mob,
                                     Path path,boolean lookAheadOnly){
@@ -348,6 +360,13 @@ public final class WorkerNavigation {
     }
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
+        // A booked crane must not cancel an active scaffold or temporary
+        // right-of-way movement during a five-tick A* route retry.
+        if(target!=null&&mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&!com.caszgamermd.golemsplus.builder.BuilderScaffolding
+                        .isControllingMovement(builder)
+                &&com.caszgamermd.golemsplus.crane.CraneService
+                        .requestRide(level,builder,target))return true;
         Progress progress=state(mob);
         if(progress.queuedDoor!=null&&target!=null
                 &&progress.requested!=null&&!target.equals(progress.requested))
@@ -382,6 +401,11 @@ public final class WorkerNavigation {
 
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
                                   double speed){
+        if(target!=null&&mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&!com.caszgamermd.golemsplus.builder.BuilderScaffolding
+                        .isControllingMovement(builder)
+                &&com.caszgamermd.golemsplus.crane.CraneService
+                        .requestRide(level,builder,target))return true;
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder){
             com.caszgamermd.golemsplus.builder.BuilderChunkTickets
                     .destination(level,builder,target);

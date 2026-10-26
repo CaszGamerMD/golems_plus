@@ -18,7 +18,9 @@ assert "worker.setShiftKeyDown(true);" in sc
 assert "worker.getNavigation().stop();" in sc
 assert "sessions.put(worker,new ClimbSession(" in sc
 assert "clearMotion(worker);" in sc
-assert "if(Math.abs(worker.getX()-cx)>1.15" in sc
+assert "double entryLimit=session.descending()?1.55:1.15" in sc
+assert "Math.abs(worker.getX()-cx)>entryLimit" in sc
+assert "Math.abs(worker.getZ()-cz)>entryLimit" in sc
 assert "target.getY()-worker.getY()<=1.35" in sc
 assert "dx*dx+dz*dz<=13&&!avoided(level,worker,p);" in sc
 assert "if(base==null)for(Direction side:Direction.Plane.HORIZONTAL)" in sc

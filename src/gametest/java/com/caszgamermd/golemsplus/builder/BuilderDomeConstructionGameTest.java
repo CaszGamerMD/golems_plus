@@ -30,7 +30,7 @@ import net.minecraft.world.level.block.Blocks;
  */
 public final class BuilderDomeConstructionGameTest {
     @SuppressWarnings("removal")
-    @GameTest(structure="golems_plus_gametest:dome_arena",
+    @GameTest(structure="golems_plus_gametest:dome_arena",padding=64,
             maxTicks=90000,skyAccess=true)
     public void constructsExactDomeWithRealBuilders(GameTestHelper helper){
         ServerLevel level=helper.getLevel();
@@ -127,6 +127,10 @@ public final class BuilderDomeConstructionGameTest {
             needs.add(Items.IRON_PICKAXE);
             needs.add(Items.IRON_AXE);
             needs.add(Items.IRON_SHOVEL);
+            // Clearance may encounter hoe-mineable blocks. Include the
+            // fourth vanilla tool in the real chest rather than allowing
+            // the build to stall with only pick/axe/shovel supplied.
+            needs.add(Items.IRON_HOE);
             for(BuilderGolem worker:crew){
                 for(Integer n:table.builderWorkOrder(worker.getUUID())){
                     if(n!=null&&n>=0&&n<steps.size())
@@ -159,9 +163,25 @@ public final class BuilderDomeConstructionGameTest {
                     helper.fail("Reached 1700 but four real Builders not alive");
                     return;
                 }
+                // Do not package an experimental JAR based solely on a
+                // planner counter. Confirm at least 1,700 ACTUAL world
+                // positions have the expected physical schematic state.
+                int verified=0;
+                for(var placed:steps){
+                    if(placed.ignorePlant())continue;
+                    var expected=BuilderBlockResolver.resolve(
+                            placed.encodedState(),BuildSite.Rotation.NONE,
+                            BuildSite.Mirror.NONE);
+                    if(expected==null)continue;
+                    BlockPos at=new BlockPos(placed.x(),placed.y(),placed.z());
+                    if(BuilderPlacementState.matches(level.getBlockState(at),
+                            expected.state()))verified++;
+                }
+                if(verified<1700)return;
                 checkpoint[0]=true;
                 System.out.println("[DOME TEAMWORK] PASS 1700 placed-block "
-                        +"milestone with FOUR real Builders at tick="+tick);
+                        +"milestone with FOUR real Builders; verified="
+                        +verified+" world block states at tick="+tick);
             }
             if(!inspected[0]&&table.builderClearCursor()>0){
                 inspected[0]=true;
@@ -204,6 +224,23 @@ public final class BuilderDomeConstructionGameTest {
                         table.builderClearCursor()+" | contiguous="+table.builderCursor()
                         +" | totalCompleted="+table.builderCompletedCount()
                         +"/"+steps.size()+" | problem="+table.problem());
+                var site=BuilderSupplyInventory.selectedStorage(table);
+                message.append(" | OnSite selected=")
+                        .append(site==null?"MISSING":site.getClass().getSimpleName())
+                        .append(" depot=").append(table.builderUnloadingStorage());
+                if(site!=null){
+                    java.util.Map<String,Integer> equipment=new java.util.LinkedHashMap<>();
+                    for(int slot=0;slot<site.getContainerSize();slot++){
+                        var stack=site.getItem(slot);
+                        if(!stack.isEmpty()&&(stack.is(Items.IRON_PICKAXE)
+                                ||stack.is(Items.IRON_AXE)
+                                ||stack.is(Items.IRON_SHOVEL)
+                                ||stack.is(Items.IRON_HOE)))
+                            equipment.merge(stack.getItem().toString(),
+                                    stack.getCount(),Integer::sum);
+                    }
+                    message.append(" tools=").append(equipment);
+                }
                 for(BuilderGolem worker:crew)
                     message.append(" | ").append(worker.getName().getString())
                         .append(" @ ").append(worker.blockPosition())

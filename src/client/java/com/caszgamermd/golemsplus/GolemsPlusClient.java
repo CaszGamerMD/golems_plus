@@ -16,6 +16,8 @@ import com.caszgamermd.golemsplus.render.ProfessionGolemRenderer;
 
 public final class GolemsPlusClient implements ClientModInitializer {
     @Override public void onInitializeClient() {
+        EntityRenderers.register(com.caszgamermd.golemsplus.crane.CraneContent.CRANE,
+                com.caszgamermd.golemsplus.crane.CraneRenderer::new);
         MenuScreens.<com.caszgamermd.golemsplus.world.WorkerStationMenu,WorkerStationScreen>register(
                 WorksiteContent.STATION_MENU,(menu,inventory,title)->
                 menu.isBuilderTable()?new BuilderPlannerScreen(menu,inventory,title):
@@ -50,3 +52,4 @@ public final class GolemsPlusClient implements ClientModInitializer {
         com.caszgamermd.golemsplus.builder.LitematicaPlacementClient.register();
     }
 }
+

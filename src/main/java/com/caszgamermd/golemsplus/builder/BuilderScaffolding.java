@@ -137,7 +137,17 @@ public final class BuilderScaffolding {
         }
         BlockPos pos=worker.blockPosition();
         double cx=session.column().getX()+.5,cz=session.column().getZ()+.5;
-        if(Math.abs(worker.getX()-cx)>1.15||Math.abs(worker.getZ()-cz)>1.15){
+        // A Builder returning from a SOLID tile adjacent to the
+        // scaffold can stop as much as ~1.25 blocks from the column
+        // center when native A* declares that tile reached. If the
+        // DOWN session is rejected at 1.15, the next Planner tick
+        // recreates it forever and the Builder never re-enters the
+        // real tower. Permit a short physical side entry on DESCENT.
+        // World collisions and the real scaffold-support check below
+        // still apply; this grants no teleport, flight or remote climb.
+        double entryLimit=session.descending()?1.55:1.15;
+        if(Math.abs(worker.getX()-cx)>entryLimit
+                ||Math.abs(worker.getZ()-cz)>entryLimit){
             clearMotion(worker);return false;
         }
         BlockPos columnLevel=new BlockPos(session.column().getX(),
@@ -289,7 +299,19 @@ public final class BuilderScaffolding {
             double mx=Math.max(-.13,Math.min(.13,(cx-worker.getX())*.25));
             double mz=Math.max(-.13,Math.min(.13,(cz-worker.getZ())*.25));
             var tryBox=worker.getBoundingBox().move(mx,0,mz);
-            if(level.noCollision(worker,tryBox)){
+            // Vanilla scaffolding's collision shape depends on the
+            // approaching entity and whether its feet are above the
+            // scaffold lip. A predictive noCollision() probe can reject
+            // the SIDE entry even though the actual move controller can
+            // step over its supported top. Let vanilla move() perform
+            // the authoritative collision resolution on scaffold return.
+            // We still require a REAL scaffold under the destination and
+            // never teleport or disable collisions.
+            BlockPos support=new BlockPos(session.column().getX(),
+                    worker.blockPosition().getY()-1,
+                    session.column().getZ());
+            if(level.noCollision(worker,tryBox)
+                    ||level.getBlockState(support).is(Blocks.SCAFFOLDING)){
                 var motion=worker.getDeltaMovement();
                 worker.setDeltaMovement(mx,Math.min(0,motion.y),mz);
             }
@@ -502,6 +524,21 @@ public final class BuilderScaffolding {
                                 .canStandOn(level,worker,cached.landing())
                         ?cached.landing():returnLanding(level,worker,tower);
                 if(landing==null)continue; // try another owned tower
+                // A* may report "path already complete" when the Builder
+                // stands on the solid tile DIRECTLY beside a scaffold.
+                // Reissuing that exact route every job tick strands the
+                // Builder on the landing forever. Physically transfer
+                // control to the vertical descent from this real support,
+                // not to a fictitious walkable scaffold A* node.
+                double landX=worker.getX()-landing.getX()-.5;
+                double landZ=worker.getZ()-landing.getZ()-.5;
+                if(landX*landX+landZ*landZ<=.36
+                        &&Math.abs(worker.getY()-landing.getY())<=.38
+                        &&worker.onGround()){
+                    returning.remove(worker);
+                    begin(level,worker,base,base.getY()+1.0,true);
+                    return true;
+                }
                 boolean underway=com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .routeToExact(level,worker,landing,1.0);
                 if(!underway){

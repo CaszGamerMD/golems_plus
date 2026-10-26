@@ -79,6 +79,15 @@ public final class BuilderChunkTickets {
         if((table.phase()==WorkerPhase.COMPLETE
                 ||table.builderRecallRequested())
                 &&!table.builderWorkerIds().isEmpty())return true;
+        // A linked crane must continue ticking its physical operator
+        // and passengers while the construction Planner is PAUSED.
+        // Otherwise the vehicle freezes with tickCount=0 in a nearby
+        // non-player-simulated chunk and can never pick anyone up.
+        // Job cancellation still releases the lease because serves()
+        // requires the SAME non-null active order and its owner.
+        if(table.activeOrder()!=null&&table.phase()==WorkerPhase.PAUSED
+                &&!com.caszgamermd.golemsplus.crane.CraneService
+                        .simulationPositions(table).isEmpty())return true;
         return table.activeOrder()!=null
                 &&table.phase()!=WorkerPhase.PAUSED
                 &&table.phase()!=WorkerPhase.COMPLETE;
@@ -104,6 +113,17 @@ public final class BuilderChunkTickets {
      */
     public static void tick(ServerLevel level,WorkerStationBlockEntity table){
         if(level.getGameTime()%20!=0)return;
+        reconcile(level,table);
+    }
+    /** A newly activated Planner must begin simulation immediately. Waiting
+     * for its first block-entity tick can deadlock when the region initially
+     * has no entity-ticking ticket (also reproduced in the isolated Dome).
+     * These are the SAME bounded, transient tickets used during ordinary work.
+     */
+    public static void prime(ServerLevel level,WorkerStationBlockEntity table){
+        reconcile(level,table);
+    }
+    private static void reconcile(ServerLevel level,WorkerStationBlockEntity table){
         if(!running(table)){
             release(level,table.getBlockPos());
             return;
@@ -138,6 +158,8 @@ public final class BuilderChunkTickets {
             if(previous!=null&&target!=null)
                 add(required,ahead(previous,target),home);
         }
+        for(BlockPos pos:com.caszgamermd.golemsplus.crane.CraneService.simulationPositions(table))
+            add(required,pos,home);
         for(ChunkPos key:required)if(!lease.held.contains(key))
             acquire(level,key);
         for(ChunkPos key:Set.copyOf(lease.held))if(!required.contains(key))
@@ -187,3 +209,4 @@ public final class BuilderChunkTickets {
         if(entries.isEmpty())jobs.remove(level);
     }
 }
+
