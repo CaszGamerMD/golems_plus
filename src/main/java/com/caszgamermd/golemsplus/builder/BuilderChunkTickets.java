@@ -106,6 +106,23 @@ public final class BuilderChunkTickets {
                 from.getY(),from.getZ()+(int)Math.round(dz*fraction));
     }
 
+    /**
+     * Isolated Minecraft GameTests construct small scaffold routes without
+     * starting a real Builder order. A structure block may load test chunks
+     * without an ENTITY-SIMULATION ticket; the test's onEachTick() advances
+     * while BuilderGolem.tick() never runs (tickCount stays zero).
+     * Use our already-registered, nonpersistent simulation ticket so test
+     * physics are real and identical to job-owned worker ticking. The
+     * caller must run the returned release callback on completion.
+     *
+     * This does NOT bypass collision, move an entity, or create stock.
+     */
+    public static Runnable holdGameTestSimulation(ServerLevel level,BlockPos feet){
+        ChunkPos center=new ChunkPos(feet);
+        acquire(level,center);
+        return ()->relinquish(level,center);
+    }
+
     /** Called from the loaded Planner. Never scans all loaded chunks or
      * creates a Builder entity. Existing UUIDs and all their real cargo
      * remain authoritative across saves and reloads.
