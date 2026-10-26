@@ -47,8 +47,8 @@ public final class BuilderCreativeAirRoute {
             AABB body=bodyAt(worker,at);
             double dx=at.getX()+.5-target.getX()-.5;
             double dz=at.getZ()+.5-target.getZ()-.5;
-            double dy=at.getY()-target.getY();
-            if(dx*dx+dy*dy+dz*dz<13.8
+            double dy=at.getY()-(target.getY()+.5);
+            if(dx*dx+dy*dy+dz*dz<13.4
                     &&!body.intersects(goalBox)
                     &&level.noCollision(worker,body)){
                 found=at;break;
