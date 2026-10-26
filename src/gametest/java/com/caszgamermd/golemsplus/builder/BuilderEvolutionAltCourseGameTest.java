@@ -852,11 +852,24 @@ public final class BuilderEvolutionAltCourseGameTest {
                     b.x,b.z,ahead[0],ahead[1]);
             if(precise&&!enteringDoor&&!leavingDoor)
                 b.movementMode="p";
-            // Do not clip the corner of a solid block by rounding an
-            // intermediate diagonal waypoint off at 0.2 blocks early.
-            double acquisition=diagonalStep||precise
-                    ?Math.min(b.dna.tolerance(),.075)
-                    :b.dna.tolerance();
+            // On a flat, cardinal, physically clear straightaway,
+            // hand off to the NEXT waypoint before decelerating at
+            // this cell center. Remain precise at corners, slabs,
+            // diagonals, doors and overhead headroom openings.
+            boolean sameSafeStraight=false;
+            if(!precise&&!diagonalStep&&b.cursor+1<b.route.length()
+                    &&b.route.charAt(b.cursor)==b.route.charAt(b.cursor+1)){
+                int[] after=next(ahead[0],ahead[1],
+                        b.route.charAt(b.cursor+1));
+                sameSafeStraight=!precisionTransition(helper,world,
+                            ahead[0],ahead[1],after[0],after[1])
+                        &&bodySweepClear(helper,world,mob,
+                            ahead[0],ahead[1],after[0],after[1]);
+            }
+            double acquisition=sameSafeStraight?.205:
+                    diagonalStep||precise
+                        ?Math.min(b.dna.tolerance(),.075)
+                        :b.dna.tolerance();
             if(distance>=acquisition)break;
             b.x=ahead[0];
             b.z=ahead[1];
