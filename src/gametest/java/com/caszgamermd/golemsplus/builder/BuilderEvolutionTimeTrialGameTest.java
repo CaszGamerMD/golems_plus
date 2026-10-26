@@ -287,6 +287,39 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 &&MAZE[z].charAt(x)!='#';
     }
 
+    /**
+     * A grid diagonal is only a candidate. Inspect Minecraft's REAL
+     * solid-block collision at the full 0.65-wide, 1.6-high entity size
+     * along the entire diagonal. Keep door openings and steps as
+     * cardinal approach moves because their hitbox/height transitions
+     * require their own physical alignment/auto-step handling.
+     */
+    private static boolean diagonalBodyClear(GameTestHelper helper,
+            ServerLevel world,BuilderGolem mob,int fromX,int fromZ,
+            int toX,int toZ){
+        int loX=Math.min(fromX,toX),hiX=Math.max(fromX,toX);
+        int loZ=Math.min(fromZ,toZ),hiZ=Math.max(fromZ,toZ);
+        for(int x=loX;x<=hiX;x++)for(int z=loZ;z<=hiZ;z++){
+            if(!walkableCell(x,z))return false;
+            char type=MAZE[z].charAt(x);
+            if(type=='D'||type=='^')return false;
+        }
+        BlockPos origin=pos(helper,0,2,0);
+        double half=mob.getBbWidth()*.5;
+        for(int i=0;i<=20;i++){
+            double t=i/20.0;
+            double centerX=origin.getX()+fromX+.5+(toX-fromX)*t;
+            double centerZ=origin.getZ()+fromZ+.5+(toZ-fromZ)*t;
+            var body=new net.minecraft.world.phys.AABB(
+                    centerX-half,origin.getY()+.01,centerZ-half,
+                    centerX+half,origin.getY()+mob.getBbHeight()-.025,
+                    centerZ+half);
+            if(world.getBlockCollisions(mob,body).iterator().hasNext())
+                return false;
+        }
+        return true;
+    }
+
     private record RouteNode(int x,int z,char heading){}
     private record Frontier(RouteNode node,double cost){}
 
@@ -298,7 +331,9 @@ public final class BuilderEvolutionTimeTrialGameTest {
      * avoiding risky slabs or exploring different legal corridors.
      */
     private static String planRoute(int startX,int startZ,Genome dna,
-                                    Map<Edge,Integer> realBlockFailures){
+                                    Map<Edge,Integer> realBlockFailures,
+                                    GameTestHelper helper,ServerLevel world,
+                                    BuilderGolem mob){
         RouteNode start=new RouteNode(startX,startZ,'?');
         PriorityQueue<Frontier> open=new PriorityQueue<>(
                 Comparator.comparingDouble(Frontier::cost));
@@ -326,7 +361,9 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 // nominally open. Require both adjoining side tiles to
                 // be open; physical AABB collision validates the move.
                 if(diagonal&&(!walkableCell(node.x()+stepX,node.z())
-                        ||!walkableCell(node.x(),node.z()+stepZ)))
+                        ||!walkableCell(node.x(),node.z()+stepZ)
+                        ||!diagonalBodyClear(helper,world,mob,
+                                node.x(),node.z(),x,z)))
                     continue;
                 char tile=MAZE[z].charAt(x);
                 double weight=(diagonal?Math.sqrt(2):1.0)
@@ -385,7 +422,8 @@ public final class BuilderEvolutionTimeTrialGameTest {
                         +" x "+mob.getBbHeight());
             Genome genome=genomes.get(slot);
             Candidate b=new Candidate(slot,mob,planRoute(start[0],
-                    start[1],genome,blockMemory),start[0],start[1],genome);
+                    start[1],genome,blockMemory,helper,world,mob),
+                    start[0],start[1],genome);
             BlockPos origin=pos(helper,0,2,0);
             b.originX=origin.getX();
             b.originZ=origin.getZ();
@@ -481,7 +519,14 @@ public final class BuilderEvolutionTimeTrialGameTest {
             dx=target.getX()+.5-mob.getX();
             dz=target.getZ()+.5+centerShift-mob.getZ();
             distance=Math.hypot(dx,dz);
-            if(distance>=b.dna.tolerance())break;
+            boolean diagonalStep=Math.abs(ahead[0]-b.x)==1
+                    &&Math.abs(ahead[1]-b.z)==1;
+            // Do not clip the corner of a solid block by rounding an
+            // intermediate diagonal waypoint off at 0.2 blocks early.
+            double acquisition=diagonalStep
+                    ?Math.min(b.dna.tolerance(),.075)
+                    :b.dna.tolerance();
+            if(distance>=acquisition)break;
             b.x=ahead[0];
             b.z=ahead[1];
             b.cursor++;
