@@ -635,7 +635,7 @@ public final class WorkerNavigation {
      */
     public static BlockPos requestedTarget(PathfinderMob mob){
         Progress p=states.get(mob);
-        return p==null?p.requested:null;
+        return p==null?null:p.requested;
     }
     public static boolean retryScheduled(PathfinderMob mob){
         Progress p=states.get(mob);
