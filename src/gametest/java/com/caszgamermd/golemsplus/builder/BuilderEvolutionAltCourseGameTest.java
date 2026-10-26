@@ -297,7 +297,8 @@ public final class BuilderEvolutionAltCourseGameTest {
             lastRecordedX=realX;lastRecordedZ=realZ;
             if("b".equals(movementMode))reverseTicks++;
             if("d".equals(movementMode))doorTicks++;
-            if("s".equals(movementMode))slabTicks++;
+            if("s".equals(movementMode)||"p".equals(movementMode))
+                slabTicks++;
             if("p".equals(movementMode))precisionTicks++;
             if("c".equals(movementMode))blockedTicks++;
             JsonArray sample=new JsonArray();
@@ -319,7 +320,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         int ticksSinceJump;
         double doorLaneShift;
         boolean doorOffsetX;
-        int slabTicks,reroutes,precisionTicks;
+        int slabTicks,reroutes,precisionTicks,staticStalls;
         int lastRerouteTick=-1000;
         int doorTargetX=Integer.MIN_VALUE,doorTargetZ=Integer.MIN_VALUE;
         int exitTargetX=Integer.MIN_VALUE,exitTargetZ=Integer.MIN_VALUE;
@@ -744,6 +745,57 @@ public final class BuilderEvolutionAltCourseGameTest {
         return chosen;
     }
 
+    /**
+     * Replan from the entity's ACTUAL floor cell after confirmed,
+     * persistent static obstruction. The same saved 12-gene logic,
+     * live collision shapes, and observed block edges choose the new
+     * route; no previous route or movement trace is replayed.
+     */
+    private static boolean recoverBlockedRoute(GameTestHelper helper,
+                                                Candidate b){
+        if(b.reroutes>=2||b.cursor>=b.route.length())return false;
+        int tick=(int)(helper.getTick()-b.birthTick);
+        if(b.staticStalls<Math.max(5,b.dna.stuckTimeout()/2)
+                ||tick-b.lastRerouteTick<20)return false;
+        b.lastRerouteTick=tick;
+        ServerLevel world=helper.getLevel();
+        int fromX=(int)Math.floor(b.mob.getX()-b.originX);
+        int fromZ=(int)Math.floor(b.mob.getZ()-b.originZ);
+        if(!physicalCellOpen(helper,world,b.mob,fromX,fromZ))
+            return false;
+        int[] ahead=next(b.x,b.z,b.route.charAt(b.cursor));
+        Edge blocked=new Edge(fromX,fromZ,ahead[0],ahead[1]);
+        b.realBlockFailures.merge(blocked,15,(a,c)->Math.min(100,a+c));
+        Map<Edge,Integer> evidence=new HashMap<>(b.inheritedBlockMemory);
+        for(var edge:b.realBlockFailures.entrySet())
+            evidence.merge(edge.getKey(),edge.getValue(),Math::max);
+        try{
+            String alternative=planRoute(fromX,fromZ,b.dna,evidence,
+                    helper,world,b.mob);
+            if(alternative.equals(b.route.substring(b.cursor))
+                    &&fromX==b.x&&fromZ==b.z)return false;
+            b.route=alternative;
+            b.cursor=0;
+            b.x=fromX;
+            b.z=fromZ;
+            b.reroutes++;
+            b.staticStalls=0;
+            b.backoffTicks=0;
+            b.immobile=0;
+            b.lastDistance=Double.POSITIVE_INFINITY;
+            b.doorTargetX=Integer.MIN_VALUE;
+            b.exitTargetX=Integer.MIN_VALUE;
+            b.movementMode="r";
+            System.out.println("[ALT PHYSICAL REROUTE] slot="+b.index
+                +" tick="+tick+" reroute="+b.reroutes
+                +" from="+fromX+","+fromZ+" nextRoute="+alternative);
+            return true;
+        }catch(IllegalStateException impossible){
+            // Real physics recovery remains available without an alternate.
+            return false;
+        }
+    }
+
     /** Controller uses real Minecraft entity move + collisions; only
      * genes controlling WALK / JUMP / alignment can be selected.
      */
@@ -759,6 +811,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             mob.discard();
             return;
         }
+        if(recoverBlockedRoute(helper,b))return;
         int[] ahead=null;
         BlockPos target=null;
         double dx=0,dz=0,distance=0;
@@ -809,6 +862,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             b.z=ahead[1];
             b.cursor++;
             b.bestCursor=Math.max(b.bestCursor,b.cursor);
+            b.staticStalls=0;
             b.immobile=0;
             b.lastDistance=Double.POSITIVE_INFINITY;
         }
@@ -931,12 +985,16 @@ public final class BuilderEvolutionAltCourseGameTest {
             mob.discard();
             return;
         }
+        double realHorizontal=Math.hypot(mob.getX()-old.x,
+                mob.getZ()-old.z);
+        boolean hitsStaticBlock=world.getBlockCollisions(mob,
+                mob.getBoundingBox().move(vx,0,vz))
+                .iterator().hasNext();
+        if(realHorizontal<.11&&hitsStaticBlock)b.staticStalls++;
+        else if(realHorizontal>.15)b.staticStalls=0;
         if(mob.position().distanceToSqr(old)<.000004){
             b.movementMode="c";
             b.collisions++;
-            boolean hitsStaticBlock=world.getBlockCollisions(mob,
-                    mob.getBoundingBox().move(vx,0,vz))
-                    .iterator().hasNext();
             if(hitsStaticBlock&&b.immobile>3){
                 Edge blocked=new Edge(b.x,b.z,ahead[0],ahead[1]);
                 b.realBlockFailures.merge(blocked,1,Integer::sum);
@@ -1414,6 +1472,45 @@ public final class BuilderEvolutionAltCourseGameTest {
      * contact. Verify this legal step separately from a deliberately
      * constructed low-ceiling slab (regression-only fixture).
      */
+
+    /**
+     * The apparent short passage under the top slabs is too short for
+     * a 1.6-tall real golem. Validate THREE overhead slab tiles as
+     * blocked without rejecting the adjacent open ground corridor.
+     */
+    @GameTest(maxTicks=120,padding=64,skyAccess=true)
+    public void realBuilderPlansAroundUpperSlabHeadroomHole(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos start=pos(helper,13,2,5);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(mob);
+        for(int z=5;z<=7;z++){
+            if(physicalCellOpen(helper,world,mob,12,z)
+                    ||bodySweepClear(helper,world,mob,13,z,12,z)){
+                helper.fail("Overhead slab opening wrongly marked passable at "
+                        +"x12 z"+z);
+                mob.discard();
+                return;
+            }
+        }
+        boolean open=physicalCellOpen(helper,world,mob,12,9)
+                &&bodySweepClear(helper,world,mob,13,9,12,9);
+        boolean bottom=bodySweepClear(helper,world,mob,16,5,15,5)
+                &&precisionTransition(helper,world,16,5,15,5);
+        if(!open||!bottom){
+            helper.fail("Open path or legal bottom-slab transition rejected "
+                    +open+"/"+bottom);
+        }else{
+            System.out.println("[ALT OVERHEAD SLAB] blocked all 3 low"
+                +" openings; physical open path and 0.5-step valid");
+            helper.succeed();
+        }
+        mob.discard();
+    }
+
     @GameTest(maxTicks=120,padding=64,skyAccess=true)
     public void realBuilderRejectsLowCeilingSlabButCanUseOpenHalfSlab(
             GameTestHelper helper){
