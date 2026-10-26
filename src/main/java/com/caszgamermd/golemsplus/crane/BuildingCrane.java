@@ -38,6 +38,11 @@ public final class BuildingCrane extends Entity implements Container {
     private final Map<UUID,Long> requestedAt=new HashMap<>();
     private final List<UUID> batch=new ArrayList<>();
     private final Map<UUID,Long> retry=new HashMap<>();
+    /** A failed pickup stays scheduled for a bounded reattempt instead of
+     * silently abandoning a builder on a roof when three companions return.
+     */
+    private final Set<UUID> delayedPickups=new HashSet<>();
+    private final Map<UUID,Integer> failedPickups=new HashMap<>();
     private final NonNullList<ItemStack> pallets=NonNullList.withSize(2,ItemStack.EMPTY);
     private final NonNullList<ItemStack> stock=NonNullList.withSize(432,ItemStack.EMPTY);
     private List<Vec3> path=new ArrayList<>();
@@ -168,6 +173,17 @@ public final class BuildingCrane extends Entity implements Container {
         for(UUID id:new ArrayList<>(destinations.keySet()))
             if(!(world.getEntity(id) instanceof BuilderGolem)&&world.getGameTime()-requestedAt.getOrDefault(id,0L)>1200)forget(id);
         if(!hasBox()){status="Attach a builder box or supply box";return;}
+        // A crowded landing may become reachable after the first group has
+        // unloaded. Requeue delayed requests in their original direction,
+        // rather than dropping the last stranded worker silently.
+        for(UUID id:new ArrayList<>(delayedPickups)){
+            if(world.getGameTime()<retry.getOrDefault(id,0L))continue;
+            if(!destinations.containsKey(id)){delayedPickups.remove(id);continue;}
+            if(!(world.getEntity(id) instanceof BuilderGolem waiting))continue;
+            delayedPickups.remove(id);
+            dispatch.request(id,waiting.blockPosition().getY(),
+                    destinations.get(id).getY(),world.getGameTime());
+        }
         if(batch.isEmpty()){
             batch.addAll(dispatch.batch());delivering=false;
             if(batch.isEmpty()){status="Ready";return;}
@@ -212,8 +228,28 @@ public final class BuildingCrane extends Entity implements Container {
         if(position().distanceTo(at)>.15){go(world,at);return;}
         if(unload(world,rider,dock)){forget(rider.getUUID());status="Builder delivered";}
     }
-    private void defer(UUID id){retry.put(id,level().getGameTime()+100);forget(id);status="Pickup unavailable; request deferred";}
-    private void forget(UUID id){dispatch.remove(id);destinations.remove(id);requestedAt.remove(id);batch.remove(id);}
+    private void defer(UUID id){
+        // Never monopolize the active four-seat batch. Allow the others to
+        // finish while this worker waits for the next available safe dock.
+        batch.remove(id);
+        dispatch.remove(id);
+        retry.put(id,level().getGameTime()+100);
+        int tries=failedPickups.merge(id,1,Integer::sum);
+        if(tries>=8){
+            // The builder must be released to normal scaffold/navigation
+            // work if the crane cannot reach them after several retries.
+            forget(id);
+            status="Pickup unreachable after 8 attempts; builder may use scaffolding";
+        }else{
+            delayedPickups.add(id);
+            status="Pickup deferred "+tries+"/8; requeued after 100 ticks";
+        }
+        if(Objects.equals(pickup,id))pickup=null;
+    }
+    private void forget(UUID id){
+        dispatch.remove(id);destinations.remove(id);requestedAt.remove(id);
+        batch.remove(id);delayedPickups.remove(id);failedPickups.remove(id);
+    }
     private boolean unload(ServerLevel world,BuilderGolem w,BlockPos dock){
         for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++){
             BlockPos p=dock.offset(dx,0,dz);if(!WorkerNavigation.canStandOn(world,w,p))continue;
