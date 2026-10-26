@@ -8,7 +8,7 @@ jobs:
   # This job is independent of the still-failing full Dome GameTest.
   # It must NOT be represented as a completed 3537-block Dome build.
   snapshot:
-    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'snapshot/crane-navigation-fabric262' }}
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'snapshot/vine-rails-escape-26.2' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -38,12 +38,12 @@ jobs:
             grep -Fxq "$file" "$RUNNER_TEMP/jar-content.txt" || { echo "Missing $file"; exit 1; }
           done
           mkdir -p snapshot
-          cp "${candidates[0]}" snapshot/golems-plus-crane-navigation-snapshot-26.2.jar
+          cp "${candidates[0]}" snapshot/golems-plus-vine-rails-escape-26.2.jar
           sha256sum snapshot/*.jar | tee snapshot/SHA256SUMS.txt
       - name: Upload downloadable combined test JAR
         uses: actions/upload-artifact@v4
         with:
-          name: golems-plus-crane-navigation-snapshot-26.2
+          name: golems-plus-vine-rails-escape-26.2
           path: snapshot/
           if-no-files-found: error
           retention-days: 30
@@ -54,17 +54,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="crane-nav-snapshot-26.2"
-          file="snapshot/golems-plus-crane-navigation-snapshot-26.2.jar"
+          tag="vine-rails-escape-26.2"
+          file="snapshot/golems-plus-vine-rails-escape-26.2.jar"
           cat > "$RUNNER_TEMP/snapshot-notes.md" <<'EOF'
-          Frozen Minecraft Fabric 26.2 **test snapshot** combining Building Crane and improved Builder pathfinding.
+          Minecraft Fabric 26.2 **experimental test JAR** with vine-style multi-face crane rails and temporary scaffold escape ladders.
           
-          Includes physical one-block stepping, shared scaffold climb / solid landing / descent,
+          Builds on the previous crane/navigation snapshot and adds multiple rail faces inside one block cell,\n          real tracked/material-paid scaffold rescue ladders for stranded elevated Builders,\n          and a watchdog for repeatedly circling without getting closer to the work target.\n          It retains physical one-block stepping, shared scaffold climb / solid landing / descent,
           two-block-outside Dome towers, and working four-Builder crane passenger movement.
-          Compiled with Java 25, JUnit tested and Fabric-remapped.
+          Compiled with Java 25 and JUnit tested; rail and escape GameTests passed in an earlier integration run. Full Dome continues to stall.
           
           IMPORTANT: The full 3537-block Dome construction is still INCOMPLETE.
-          This is not a production-stable or fully Dome-verified release.
+          This is not a production-stable or fully Dome-verified release. Keep the prior crane-nav snapshot available as a rollback.
           Install in a backed-up world, removing any old Golems Plus mod JAR first.
           EOF
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -73,7 +73,7 @@ jobs:
           else
             gh release create "$tag" "$file" --repo "$GITHUB_REPOSITORY" \
               --target "${{ github.event.pull_request.head.sha }}" --prerelease \
-              --title "Crane + Navigation (Fabric 26.2) — frozen testing snapshot" \
+              --title "Vine Rails + Scaffold Escape (Fabric 26.2) — testing JAR" \
               --notes-file "$RUNNER_TEMP/snapshot-notes.md"
           fi
   build:
