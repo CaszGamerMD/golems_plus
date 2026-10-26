@@ -34,7 +34,8 @@ class SchematicTimeTrialTests(unittest.TestCase):
         self.assertEqual(len(doc["spawn_tiles"]), 20)
         self.assertEqual(len(doc["finish_tiles"]), 20)
         self.assertEqual(len(doc["door_tiles"]), 2)
-        self.assertEqual(len(doc["slab_cells_too_short_for_1_6_block_bot"]), 7)
+        self.assertEqual(len(doc["slab_cells_too_short_for_1_6_block_bot"]), 4)
+        self.assertEqual(len(doc["walkable_half_slab_steps"]), 3)
         self.assertTrue(all(doc["rows"][z][x] == "S"
                             for x, z in doc["spawn_tiles"]))
         self.assertTrue(all(doc["rows"][z][x] == "G"
@@ -45,14 +46,16 @@ class SchematicTimeTrialTests(unittest.TestCase):
         self.assertEqual(len(courses), 20)
         distances = [course.oracle_distance(course.start)
                      for course in courses]
-        self.assertEqual(min(distances), 54)
-        self.assertEqual(max(distances), 63)
+        self.assertEqual(min(distances), 50)
+        self.assertEqual(max(distances), 59)
         self.assertTrue(all(len(course.goals) == 20 for course in courses))
         self.assertTrue(all(d * engine.TICKS_PER_BLOCK <= 400
                             for d in distances))
 
     def test_slab_collision_in_user_course(self):
-        self.assertEqual(self.doc["rows"][5][10], "#")
+        self.assertEqual(self.doc["rows"][5][10], "^")
+        self.assertEqual(self.doc["rows"][6][10], "^")
+        self.assertEqual(self.doc["rows"][7][10], "^")
         self.assertEqual(self.doc["rows"][2][19], "#")
         self.assertEqual(self.doc["rows"][5][3], "D")
         self.assertEqual(self.doc["rows"][6][3], "D")
