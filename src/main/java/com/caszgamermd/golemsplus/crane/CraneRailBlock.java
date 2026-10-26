@@ -9,7 +9,6 @@ import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.*;
 import net.minecraft.world.level.block.state.properties.*;
 import net.minecraft.world.phys.shapes.*;
-import net.minecraft.world.ticks.ScheduledTickAccess;
 
 /**
  * Redstone-style rail junctions on any sturdy face. There are six possible
@@ -173,10 +172,10 @@ public final class CraneRailBlock extends Block {
         super.onPlace(state,level,pos,oldState,movedByPiston);
         if(oldState.getBlock()!=state.getBlock())refresh(level,pos);
     }
-    @Override protected void onRemove(BlockState state,Level level,BlockPos pos,
-            BlockState newState,boolean movedByPiston){
-        super.onRemove(state,level,pos,newState,movedByPiston);
-        if(newState.getBlock()!=state.getBlock())refresh(level,pos);
+    @Override protected void affectNeighborsAfterRemoval(BlockState state,
+            net.minecraft.server.level.ServerLevel world,BlockPos pos,boolean movedByPiston){
+        super.affectNeighborsAfterRemoval(state,world,pos,movedByPiston);
+        refresh(world,pos);
     }
 
     private static VoxelShape arm(Direction face,Direction direction){
