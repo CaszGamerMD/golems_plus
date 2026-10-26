@@ -4,6 +4,14 @@ on:
   push:
     branches:
       - feature/builder-evolutionary-navigation-trainer-262
+  pull_request:
+    paths:
+      - src/gametest/**
+      - src/main/java/com/caszgamermd/golemsplus/**
+      - scripts/merge_real_evolution_state.py
+      - scripts/tests/test_merge_real_evolution_state.py
+      - training/**
+      - .github/workflows/builder-physical-timetrial-probe.yml
   workflow_dispatch:
 
 permissions:
@@ -12,12 +20,14 @@ permissions:
 # Serialize checkpoint writers so one Minecraft run cannot overwrite
 # another run's genetically learned progress.
 concurrency:
-  group: physical-evolution-checkpoint-${{ github.ref }}
+  group: physical-evolution-checkpoint-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   real-minecraft-physics:
     runs-on: ubuntu-latest
+    env:
+      TRAINING_BRANCH: ${{ github.head_ref || github.ref_name }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -77,7 +87,7 @@ jobs:
           mkdir -p build/timetrial-training
           gradle --no-daemon runGameTest 2>&1 | tee build/timetrial-training/real-builder-genetics.log
       - name: Commit learned real-entity genes, EVEN IF the trial fails
-        if: always() && github.ref == 'refs/heads/feature/builder-evolutionary-navigation-trainer-262'
+        if: always() && (github.head_ref == 'feature/builder-evolutionary-navigation-trainer-262' || github.ref == 'refs/heads/feature/builder-evolutionary-navigation-trainer-262') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         shell: bash
         run: |
           if [[ ! -s training/state/checkpoint.json ]]; then
@@ -96,8 +106,8 @@ jobs:
           rm -rf training/state
           git reset --hard HEAD
           for attempt in 1 2 3; do
-            git fetch origin "${GITHUB_REF_NAME}"
-            git checkout -B physical-training-publish "origin/${GITHUB_REF_NAME}"
+            git fetch origin "${TRAINING_BRANCH}"
+            git checkout -B physical-training-publish "origin/${TRAINING_BRANCH}"
             python3 scripts/merge_real_evolution_state.py "$local_state" training/state
             git add -- training/state/
             if git diff --cached --quiet; then
@@ -105,7 +115,7 @@ jobs:
               exit 0
             fi
             git commit -m 'Preserve real Builder Golem mutations and best 10-of-10 champion [skip ci]'
-            if git push origin HEAD:"${GITHUB_REF_NAME}"; then
+            if git push origin HEAD:"${TRAINING_BRANCH}"; then
               echo 'Checkpoint, champion, and history are durable on GitHub.'
               exit 0
             fi
