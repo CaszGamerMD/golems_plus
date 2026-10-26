@@ -128,7 +128,6 @@ public final class CraneService {
                 goal.getY()))return false;
         BuildingCrane crane=linked(table);
         return crane!=null&&crane.operator()!=null&&crane.request(worker,goal);
-        return false;
     }
     static boolean walk(ServerLevel level,BuilderGolem worker,BlockPos at){
         walking=true;try{return WorkerNavigation.routeToExact(level,worker,at,1);}
