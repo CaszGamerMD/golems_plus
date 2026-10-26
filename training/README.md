@@ -1,3 +1,37 @@
+## Persisted evolution — retained learning between real Minecraft runs
+
+**Physical navigation training now saves and resumes.** After EVERY
+360-tick generation, whether it finishes or fails, the Minecraft server
+writes a checkpoint with (1) the next mutated 10-Builders population,
+(2) each spawn lane's best recorded genes and real fitness, (3)
+real-collision blocked-edge observations and (4) actual result metrics.
+A successful generation additionally writes a **protected 10/10 champion**,
+and the old winner is not replaced unless the newer full generation
+has a strictly faster slowest arrival (or the same worst time with a
+better mean time).
+
+The required dedicated Actions job merges new results with the current
+GitHub branch and commits the state even when Minecraft's test exits
+with a nonzero failure code. It doesn't score simulated routes.
+Only push/dispatch runs of the experiment branch are used for scored
+physical training; separate PR events do not run an unpersisted copy.
+
+- [checkpoint.json](state/checkpoint.json) — next chromosome population,
+  lane-wise elite genes, physical fitness, and blocked edges. This is
+  **not** a saved route. It is loaded at the start of the next training run.
+- [champion.json](state/champion.json) — protected best actual 10/10
+  finishing generation and its full gene vectors. Its route strings
+  are audit/debug data; the planner recomputes routes from genes.
+- [history.jsonl](state/history.jsonl) — one record per physically scored
+  generation; previous results are retained through GitHub merges.
+
+**Important:** The genetic rules are reusable behavior weights, but
+the current GameTest's route topology and some blocked-edge history
+refer to THIS schematic. An unfamiliar course needs its geometry read
+from Minecraft and separately validated before any generalization
+claims. The trained logic has also NOT been merged into the playable
+production Builder Golem.
+
 ## Required testing policy: real BuilderGolem entities only
 
 **Every future scored navigation trial must execute in a Minecraft server
@@ -6,8 +40,8 @@ may remain as reference material for the genetic algorithm, but its
 successes are NOT navigation test results, do not satisfy fitness
 acceptance, and must not be used to declare a winning generation.
 
-The normal Fabric GameTest manifest registers
-`BuilderEvolutionTimeTrialGameTest` as a **mandatory** test. Its
+The dedicated physical-training GitHub Actions job loads
+`BuilderEvolutionTimeTrialGameTest` in its own Minecraft server. Its
 10 real Minecraft entities start on green wool (five from each start column), have an actual
 0.65 x 0.65 x 1.6 collision box, and must all physically touch
 red wool by tick **360**. At timeout the test discards all remaining
