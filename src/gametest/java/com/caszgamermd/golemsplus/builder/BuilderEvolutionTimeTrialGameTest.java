@@ -178,6 +178,35 @@ public final class BuilderEvolutionTimeTrialGameTest {
         final BuilderGolem mob;
         final String route;
         final Genome dna;
+        // Actual Minecraft positions are retained for EVERY physical generation,
+        // including failed offspring, never simulated or interpolated.
+        final JsonArray movementSamples=new JsonArray();
+        String movementMode="w";
+        boolean capturedArrival;
+        double lastRecordedX=Double.NaN,lastRecordedZ=Double.NaN;
+        int reducedSpeedTicks,stationaryTicks,reverseTicks,doorTicks,blockedTicks;
+        double measuredDistance;
+        void captureMovement(int tick){
+            if(capturedArrival)return;
+            double realX=mob.getX(),realZ=mob.getZ();
+            if(Double.isFinite(lastRecordedX)){
+                double moved=Math.hypot(realX-lastRecordedX,realZ-lastRecordedZ);
+                measuredDistance+=moved;
+                if(moved<.005)stationaryTicks++;
+                else if(moved<.15)reducedSpeedTicks++;
+            }
+            lastRecordedX=realX;lastRecordedZ=realZ;
+            if("b".equals(movementMode))reverseTicks++;
+            if("d".equals(movementMode))doorTicks++;
+            if("c".equals(movementMode))blockedTicks++;
+            JsonArray sample=new JsonArray();
+            sample.add(tick);
+            sample.add((int)Math.round((realX-originX)*1000));
+            sample.add((int)Math.round((realZ-originZ)*1000));
+            sample.add(arrivedTick>=0?"f":movementMode);
+            movementSamples.add(sample);
+            if(arrivedTick>=0)capturedArrival=true;
+        }
         int cursor;
         int x,z;
         int arrivedTick=-1;
@@ -441,6 +470,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
             b.originX=origin.getX();
             b.originZ=origin.getZ();
             b.birthTick=helper.getTick();
+            b.captureMovement(0);
             bots.add(b);
         }
         return bots;
@@ -486,6 +516,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
      */
     private static void walkOneTick(GameTestHelper helper,Candidate b){
         BuilderGolem mob=b.mob;
+        b.movementMode="w";
         if(!mob.isAlive()||b.arrivedTick>=0)return;
         ServerLevel world=helper.getLevel();
         if(world.getBlockState(mob.blockPosition().below()).is(RED)){
@@ -507,6 +538,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
             double centerShift=0;
             boolean enteringDoor=MAZE[ahead[1]].charAt(ahead[0])=='D';
             boolean leavingDoor=MAZE[b.z].charAt(b.x)=='D';
+            if(enteringDoor||leavingDoor)b.movementMode="d";
             if(enteringDoor){
                 if(b.doorTargetX!=ahead[0]||b.doorTargetZ!=ahead[1]){
                     b.doorTargetX=ahead[0];
@@ -600,6 +632,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         if((approachingRaisedCell||solidAhead&&!lowStep&&b.immobile>4)
                 &&grounded&&b.ticksSinceJump>=b.dna.jumpCooldown()){
             mob.setDeltaMovement(0,b.dna.jumpPower(),0);
+            b.movementMode="j";
             b.ticksSinceJump=0;
             b.jumps++;
         }
@@ -609,6 +642,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         // Driving back for 3 ticks breaks a collision lock without
         // passing through solid blocks.
         if(b.backoffTicks>0){
+            b.movementMode="b";
             step=-Math.min(b.dna.backoff(),SPEED_CAP);
             b.backoffTicks--;
         }
@@ -642,6 +676,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
             return;
         }
         if(mob.position().distanceToSqr(old)<.000004){
+            b.movementMode="c";
             b.collisions++;
             boolean hitsStaticBlock=world.getBlockCollisions(mob,
                     mob.getBoundingBox().move(vx,0,vz))
@@ -674,6 +709,10 @@ public final class BuilderEvolutionTimeTrialGameTest {
         private static Path checkpoint(){return DIRECTORY.resolve("checkpoint.json");}
         private static Path champion(){return DIRECTORY.resolve("champion.json");}
         private static Path history(){return DIRECTORY.resolve("history.jsonl");}
+        private static Path replayDirectory(){return Path.of(
+                System.getenv("GOLEMS_EVOLUTION_REPLAY_DIR")==null
+                ||System.getenv("GOLEMS_EVOLUTION_REPLAY_DIR").isBlank()
+                ?"training/replays/live":System.getenv("GOLEMS_EVOLUTION_REPLAY_DIR"));}
 
         private static JsonArray encode(Genome genome){
             JsonArray a=new JsonArray();
@@ -846,6 +885,21 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 edges.add(e);
             }
             obj.add("blockedEdges",edges);
+            String session=System.getenv("GOLEMS_EVOLUTION_SESSION");
+            if(session==null||session.isBlank())session="manual";
+            if(!session.matches("[A-Za-z0-9_-]{1,90}"))
+                throw new IllegalStateException("Invalid physical replay session");
+            String replayName="trial-"+session+"-generation-"
+                    +(run.completedGenerations+1)+".json";
+            obj.addProperty("replayFile",replayName);
+            JsonObject replay=header();
+            replay.addProperty("format","golems-plus-real-movement-v1");
+            replay.addProperty("trial",session);
+            replay.addProperty("generation",run.generation);
+            replay.addProperty("completedGeneration",run.completedGenerations+1);
+            replay.addProperty("finished",finished);
+            replay.addProperty("deadlineTicks",DEADLINE);
+            JsonArray physicalTraces=new JsonArray();
             JsonArray physicalFitness=new JsonArray();
             for(Candidate b:bots){
                 JsonObject entry=new JsonObject();
@@ -856,8 +910,34 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 entry.addProperty("collisions",b.collisions);
                 entry.addProperty("jumps",b.jumps);
                 entry.add("genes",encode(b.dna));
+                entry.addProperty("reducedSpeedTicks",b.reducedSpeedTicks);
+                entry.addProperty("stationaryTicks",b.stationaryTicks);
+                entry.addProperty("reverseTicks",b.reverseTicks);
+                entry.addProperty("doorTicks",b.doorTicks);
+                entry.addProperty("blockedTicks",b.blockedTicks);
+                entry.addProperty("distanceMeters",b.measuredDistance);
                 physicalFitness.add(entry);
+                JsonObject trace=new JsonObject();
+                trace.addProperty("slot",b.index);
+                trace.addProperty("spawnIndex",SELECTED_BOTS[b.index]);
+                trace.addProperty("startX",STARTS[SELECTED_BOTS[b.index]][0]);
+                trace.addProperty("startZ",STARTS[SELECTED_BOTS[b.index]][1]);
+                trace.addProperty("arrivedTicks",b.arrivedTick);
+                trace.addProperty("plannedRoute",b.route);
+                trace.addProperty("collisions",b.collisions);
+                trace.addProperty("jumps",b.jumps);
+                trace.addProperty("reducedSpeedTicks",b.reducedSpeedTicks);
+                trace.addProperty("stationaryTicks",b.stationaryTicks);
+                trace.addProperty("reverseTicks",b.reverseTicks);
+                trace.addProperty("doorTicks",b.doorTicks);
+                trace.addProperty("blockedTicks",b.blockedTicks);
+                trace.addProperty("distanceMeters",b.measuredDistance);
+                trace.add("genes",encode(b.dna));
+                trace.add("positions",b.movementSamples);
+                physicalTraces.add(trace);
             }
+            replay.add("bots",physicalTraces);
+            writeAtomic(replayDirectory().resolve(replayName),replay);
             obj.add("lastRealEntityResults",physicalFitness);
             // Save after EVERY scored generation, even if all 10 fail.
             writeAtomic(checkpoint(),obj);
@@ -945,7 +1025,10 @@ public final class BuilderEvolutionTimeTrialGameTest {
             // End at exactly 360 ticks, without allowing another
             // movement after the deadline.
             if(roundTick<DEADLINE)
-                for(Candidate b:bots)walkOneTick(helper,b);
+                for(Candidate b:bots){
+                    walkOneTick(helper,b);
+                    b.captureMovement((int)roundTick+1);
+                }
             if(roundTick<DEADLINE)return;
             int finished=0;
             double mean=0;

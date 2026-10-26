@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TRAINING_BRANCH: ${{ github.head_ref || github.ref_name }}
-    timeout-minutes: 10
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -39,7 +39,9 @@ jobs:
         with:
           gradle-version: '9.7.0'
       - name: Test gene persistence and no-regression champion merging
-        run: python3 -m unittest discover -s scripts/tests -p test_merge_real_evolution_state.py -v
+        run: |
+          python3 -m unittest discover -s scripts/tests -p test_merge_real_evolution_state.py -v
+          python3 -m unittest discover -s scripts/tests -p test_export_real_evolution_replays.py -v
       - name: Isolate the real-entity training course from other GameTest arenas
         run: |
           python3 - <<'PY'
@@ -82,10 +84,28 @@ jobs:
         shell: bash
         env:
           GOLEMS_EVOLUTION_STATE_DIR: ${{ github.workspace }}/training/state
+          GOLEMS_EVOLUTION_REPLAY_DIR: ${{ github.workspace }}/training/replays/live
         run: |
           set -o pipefail
-          mkdir -p build/timetrial-training
-          gradle --no-daemon runGameTest 2>&1 | tee build/timetrial-training/real-builder-genetics.log
+          mkdir -p build/timetrial-training training/replays/live
+          failures=0
+          for trial in 1 2 3; do
+            echo "::group::Real physical Minecraft trial ${trial}/3"
+            export GOLEMS_EVOLUTION_SESSION="${GITHUB_RUN_ID:-local}-${trial}"
+            echo "Trial ${trial}: resuming persisted DNA from previous trial"
+            if gradle --no-daemon runGameTest 2>&1 | tee "build/timetrial-training/real-builder-trial-${trial}.log"; then
+              echo "PHYSICAL TRIAL ${trial}: Minecraft GameTest passed"
+            else
+              echo "PHYSICAL TRIAL ${trial}: Minecraft GameTest failed; keeping learned DNA"
+              failures=$((failures+1))
+            fi
+            echo "::endgroup::"
+          done
+          echo "Completed 3 physical trials; failures=${failures}"
+          exit "${failures}"
+      - name: Generate offline HTML with every physical generation
+        if: always()
+        run: python3 scripts/export_real_evolution_replays.py --session-prefix "${GITHUB_RUN_ID:-local}-" --viewer training/replays/route-viewer.html
       - name: Commit learned real-entity genes, EVEN IF the trial fails
         if: always() && (github.head_ref == 'feature/builder-evolutionary-navigation-trainer-262' || github.ref == 'refs/heads/feature/builder-evolutionary-navigation-trainer-262') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         shell: bash
@@ -100,6 +120,12 @@ jobs:
           # merge results with LATEST remote champion/state before commit.
           local_state="$(mktemp -d)"
           cp -a training/state/. "$local_state/"
+          replay_backup="$(mktemp -d)"
+          if [[ -d training/replays/live ]]; then
+            cp -a training/replays/live/. "$replay_backup/"
+          fi
+          viewer_backup="$(mktemp)"
+          cp training/replays/route-viewer.html "$viewer_backup"
           # The GameTest workflow temporarily edits its Fabric test
           # manifest, and training edits tracked checkpoint files.
           # Reset this disposable checkout AFTER copying new learning.
@@ -109,7 +135,10 @@ jobs:
             git fetch origin "${TRAINING_BRANCH}"
             git checkout -B physical-training-publish "origin/${TRAINING_BRANCH}"
             python3 scripts/merge_real_evolution_state.py "$local_state" training/state
-            git add -- training/state/
+            mkdir -p training/replays/live
+            cp -an "$replay_backup/." training/replays/live/
+            cp "$viewer_backup" training/replays/route-viewer.html
+            git add -- training/state/ training/replays/live/ training/replays/route-viewer.html
             if git diff --cached --quiet; then
               echo 'No improved state over current remote.'
               exit 0
@@ -130,7 +159,8 @@ jobs:
           name: builder-18-second-physical-entity-diagnostics
           path: |
             training/state/
-            build/timetrial-training/real-builder-genetics.log
+            build/timetrial-training/real-builder-trial-*.log
+            training/replays/live/
             build/gametest/
             build/reports/
             build/test-results/

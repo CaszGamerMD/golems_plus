@@ -23,7 +23,22 @@ times. It is NOT footage, and it does not claim to reproduce actual
 collisions or pauses. The recorded finish times and generational outcomes
 **were measured on real `BuilderGolem` entities**.
 
-## Three physical Minecraft trial outcomes
+## New: All-generation ACTUAL movement replay
+
+The training workflow now executes **three consecutive, independent real-entity
+Minecraft GameTests**, carrying forward learned genes between attempts. The
+same [offline HTML route viewer](route-viewer.html) exposes a **Generation**
+selector and replays all 10 actual physical entity positions per tick, even for
+generations where zero bots finish. Select a golem to inspect its real measured
+speed, stationary time, recovery/backoff, door alignment, and collisions.
+
+The viewer is regenerated directly in GitHub after each three-trial workflow.
+During a running workflow or until the first new replay is published, it
+continues to show the original archived dataset (which never contained real
+per-tick movement). Fresh captures are also retained as individual
+[physical-generation JSON files](live/), independently of the HTML viewer.
+
+## Three historical physical Minecraft trial outcomes
 
 | Trial | Best real generation | Strictly finished within 360 ticks | Outcome |
 |---|---:|---:|---|
