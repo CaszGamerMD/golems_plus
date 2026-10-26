@@ -1,6 +1,12 @@
 name: 13s VANILLA alternate track — 10 actual Builder Golems
 
 on:
+  push:
+    branches:
+      - feature/builder-evolutionary-alt-course-262
+    paths:
+      - src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderEvolutionAltCourseGameTest.java
+      - .github/workflows/builder-alt-physical-timetrial.yml
   workflow_dispatch:
 
 permissions:
@@ -67,6 +73,10 @@ jobs:
           assert 'realBlockFailures' in test
           assert 'planRoute(' in test
           assert 'walkOneTick(helper,b)' in test
+          assert 'physicalCellOpen(helper,world,mob,x,z)' in test
+          assert 'realBuilderRejectsLowCeilingSlabButCanUseOpenHalfSlab' in test
+          assert 'realBuilderCrossesExistingSingleOpenBirchDoor' in test
+          assert 'mob.move(MoverType.SELF,new Vec3(vx,0,vz))' in test
           print('Physical evolution gate: 10 live BuilderGolem entities per 260-tick generation, genetics from actual collisions')
           PY
       - name: Mandatory 260-tick real Minecraft golem trial
