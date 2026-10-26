@@ -28,8 +28,8 @@ import net.minecraft.world.level.block.Blocks;
  * the next. The Builder's inventory and its Planner still own every item.
  */
 public final class BuilderScaffoldBridge {
-    private static final int MAX_SPAN=20; // real supported piers every five blocks
-    private static final int MAX_SEARCH=20;
+    private static final int MAX_SPAN=48; // virtual flight path: extended scaffold corridor
+    private static final int MAX_SEARCH=30;
     private static final int[][] DIRECTIONS={{1,0},{-1,0},{0,1},{0,-1}};
     private record Route(BlockPos target,List<BlockPos> cells,int next,long created){}
     private record Walk(BlockPos destination,long expires){}
@@ -362,40 +362,38 @@ public final class BuilderScaffoldBridge {
             Set<BlockPos> owned,BuilderScaffoldShell.Blueprint shell){
         if(!owned.contains(anchor)||Math.abs(anchor.getY()+1-target.getY())>1)
             return List.of();
-        // Profile the model in both vertical axes first. The search goal
-        // is a safe WORK PLATFORM outside the finished silhouette, not the
-        // placement cell itself (which would collide with the Builder).
-        var sectionStations=BuilderScaffoldSections.stations(
-                future,target,anchor.getY());
+        // GHOST-FLIGHT PLAN: survey up to two levels either side of the
+        // existing real tower. This is a VIRTUAL route through clear air,
+        // not entity flight and not permission to cross future blocks.
+        // When executed, every footprint becomes one paid, physically
+        // supported scaffold BEFORE its Builder advances onto it.
         Set<BlockPos> workFloors=new HashSet<>();
-        // The complete blueprint already contains a one-wide OUTER
-        // walkway around every level, including overhangs and corners.
-        // Favor that route instead of searching directly toward a wall.
-        // A complete exterior shell is meaningful for a *structure*, not
-        // a single-block movement fixture. Preserve the proven local
-        // cross-section route for tiny jobs/isolated repair placements.
         boolean wholeBuild=shell.solids().size()>=24;
-        if(wholeBuild)for(BlockPos floor:shell.atHeight(anchor.getY())){
-            int dx=floor.getX()-target.getX(),dz=floor.getZ()-target.getZ();
-            int dy=floor.getY()+1-target.getY();
-            if(dx*dx+dz*dz+dy*dy<=12.5)workFloors.add(floor);
+        for(int y=anchor.getY()-2;y<=anchor.getY()+2;y++){
+            if(wholeBuild)for(BlockPos floor:shell.atHeight(y)){
+                int dx=floor.getX()-target.getX(),dz=floor.getZ()-target.getZ();
+                int dy=floor.getY()+1-target.getY();
+                if(dx*dx+dz*dz+dy*dy<=12.5)workFloors.add(floor);
+            }
+            // A local cross-section may expose a reachable ledge even when
+            // the whole-build outer shell has no nearby usable platform.
+            for(var station:BuilderScaffoldSections.stations(future,target,y))
+                workFloors.add(station.scaffold());
         }
-        if(workFloors.isEmpty())
-            for(var station:sectionStations)workFloors.add(station.scaffold());
         if(workFloors.isEmpty()){
             failures.put(worker,"No unobstructed X/Z section work platforms");
             return List.of();
         }
         ArrayDeque<BlockPos> queue=new ArrayDeque<>();
         Map<BlockPos,BlockPos> parent=new HashMap<>();
+        Map<BlockPos,Integer> depths=new HashMap<>();
         queue.add(anchor);
         parent.put(anchor,anchor);
+        depths.put(anchor,0);
         BlockPos winner=null;
         while(!queue.isEmpty()){
             BlockPos current=queue.removeFirst();
-            int distance=0;
-            for(BlockPos walk=current;!walk.equals(anchor);walk=parent.get(walk))
-                distance++;
+            int distance=depths.get(current);
             double dx=current.getX()-target.getX(),dz=current.getZ()-target.getZ();
             double dy=(current.getY()+1)-target.getY();
             if(workFloors.contains(current)
@@ -407,9 +405,14 @@ public final class BuilderScaffoldBridge {
             // Keep true breadth-first order; addFirst(shell) caused a
             // depth-first bias, marking nodes reached by long winding
             // routes before their short approaches. Sort ONLY siblings.
-            List<BlockPos> neighbors=new ArrayList<>(4);
-            for(int[] dir:DIRECTIONS)
-                neighbors.add(current.offset(dir[0],0,dir[1]));
+            List<BlockPos> neighbors=new ArrayList<>(12);
+            // Simulate a Builder flying around the silhouette: north,
+            // south, east and west, including one-level changes. The
+            // real-world execution below constructs actual scaffold
+            // stairs/piers and follows the resulting collision-safe path.
+            for(int dy:new int[]{0,1,-1})
+                for(int[] dir:DIRECTIONS)
+                    neighbors.add(current.offset(dir[0],dy,dir[1]));
             neighbors.sort(Comparator
                     .comparingInt((BlockPos node)->wholeBuild&&shell.isShell(node)?0:1)
                     .thenComparingDouble(node->node.distSqr(target)));
@@ -420,11 +423,16 @@ public final class BuilderScaffoldBridge {
                 if(parent.containsKey(next)
                         ||Math.abs(next.getX()-anchor.getX())>MAX_SEARCH
                         ||Math.abs(next.getZ()-anchor.getZ())>MAX_SEARCH
+                        ||Math.abs(next.getY()-anchor.getY())>2
                         ||!open(level,owner,table,worker,next,future,owned)
-                        ||(distance+1)%5==0
+                        // Vertical scaffold steps and every fifth lateral
+                        // span need a feasible load-bearing pier below.
+                        ||((distance+1)%5==0
+                            ||next.getY()!=current.getY())
                             &&!pierFeasible(level,owner,next,future,owned))
                     continue;
                 parent.put(next,current);
+                depths.put(next,distance+1);
                 queue.addLast(next);
             }
         }
@@ -487,7 +495,7 @@ public final class BuilderScaffoldBridge {
             for(var tower:shell.towers())cardinalBases.add(
                     BlockPos.asLong(tower.base().getX(),0,tower.base().getZ()));
             for(BlockPos top:tops.values()){
-                if(top.getY()!=bridgeY&&top.getY()!=bridgeY-1)continue;
+                if(Math.abs(top.getY()-bridgeY)>2)continue;
                 matchingTops++;
                 List<BlockPos> candidate=search(level,owner,table,worker,
                         top,target,future,owned,shell);
@@ -593,7 +601,7 @@ public final class BuilderScaffoldBridge {
             return BuilderScaffolding.Result.NO_SAFE_TOWER;
         }
         if(!level.getBlockState(to).is(Blocks.SCAFFOLDING)){
-            if(next%5==0){
+            if(next%5==0||to.getY()!=from.getY()){
                 var support=addPier(level,worker,table,owner,to,plan);
                 if(support!=BuilderScaffolding.Result.NOT_NEEDED)return support;
             }
