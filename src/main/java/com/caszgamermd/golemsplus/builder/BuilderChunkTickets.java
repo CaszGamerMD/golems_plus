@@ -201,12 +201,12 @@ public final class BuilderChunkTickets {
             if(previous!=null&&target!=null)
                 add(required,ahead(previous,target),home);
         }
-        // Prewarm only nearby chunk-boundary crossings after preserving
-        // every worker's requested route centers in the bounded lease.
-        for(UUID id:table.builderWorkerIds())
-            boundarySimulation(required,table.builderLastPosition(id),home);
+        // Preserve every physical crane's simulation position before
+        // optional near-edge warmup consumes any remaining lease capacity.
         for(BlockPos pos:com.caszgamermd.golemsplus.crane.CraneService.simulationPositions(table))
             add(required,pos,home);
+        for(UUID id:table.builderWorkerIds())
+            boundarySimulation(required,table.builderLastPosition(id),home);
         for(ChunkPos key:required)if(!lease.held.contains(key))
             acquire(level,key);
         for(ChunkPos key:Set.copyOf(lease.held))if(!required.contains(key))
