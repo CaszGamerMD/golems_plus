@@ -63,7 +63,7 @@ class Course:
             raise ValueError("Course rows must be a nonempty array of strings")
         if not len(rows[0]) or any(len(row) != len(rows[0]) for row in rows):
             raise ValueError("Every course row must have equal nonzero length")
-        allowed = set("#.SDG0123456789")
+        allowed = set("#.SDG^0123456789")
         if any(char not in allowed for row in rows for char in row):
             raise ValueError("Allowed course tiles: # wall, . floor, S, G, D door, 0-9 height")
         starts = [(x, z) for z, row in enumerate(rows)
@@ -118,9 +118,11 @@ class Course:
             return self.rows[z][x]
         return "#"
 
-    def height(self, point: tuple[int, int]) -> int:
+    def height(self, point: tuple[int, int]) -> float:
         tile = self.tile(point)
-        return int(tile) if tile.isdigit() else 0
+        if tile == "^":
+            return 0.5  # bottom half-slab is walkable, not a full wall
+        return float(int(tile)) if tile.isdigit() else 0.0
 
     def can_occupy(self, point: tuple[int, int]) -> bool:
         """Static full-body fit at a cell center, not just feet occupancy."""
@@ -257,8 +259,10 @@ def _observe(course: Course, position: tuple[int, int],
                 belief[p] = course.tile(p)
 
 
-def _sensed_height(tile: str) -> int:
-    return int(tile) if tile.isdigit() else 0
+def _sensed_height(tile: str) -> float:
+    if tile == "^":
+        return 0.5
+    return float(int(tile)) if tile.isdigit() else 0.0
 
 
 def _plan(course: Course, position: tuple[int, int], genome: Genome,
