@@ -433,8 +433,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public UUID builderCraneId(){return builderCraneId;}
     /** Only a crane owned by this job may be recorded as a connection. */
     public boolean setBuilderCraneLink(UUID actor,UUID job,UUID crane){
-        if(!isBuilder()||!canConfigure(actor)||activeOrder==null
-                ||!activeOrder.equals(job)||crane==null)return false;
+        if(!isBuilder()||!canConfigure(actor)||!hasPlacedSchematic()
+                ||!java.util.Objects.equals(activeOrder,job)
+                ||crane==null)return false;
         builderCraneId=crane;sync();return true;
     }
     public BlockPos builderUnloadingStorage(){
@@ -1247,7 +1248,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(!canConfigure(actor)||!isBuilder()||!hasPlacedSchematic()
                 ||activeOrder!=null||warehouse==null
                 ||builderWorkerIds().isEmpty()||builderBlocks<1)return false;
-        activeOrder=UUID.randomUUID();builderCraneId=null;builderCursor=0;completedAhead=0;
+        // Preserve a crane attached through Connections before START;
+        // the crane binds to the newly issued job UUID on its next tick.
+        activeOrder=UUID.randomUUID();builderCursor=0;completedAhead=0;
         builderClearCursor=0;builderClearByFile.put(builderFile,0);
         builderClearClaims.clear();builderClearClaimTick.clear();
         builderClearVerified.clear();
