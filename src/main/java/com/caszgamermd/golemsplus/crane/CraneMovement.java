@@ -18,8 +18,23 @@ final class CraneMovement {
             // outboard from a support wall (rather than clipping into it).
             Vec3 c=Vec3.atBottomCenterOf(rail);
             return switch(d){
-                case UP->c.add(0,.125,0);
-                case DOWN->c.add(0,-1.125,0);
+                case UP,DOWN->{
+                    // At a floor-to-wall (or ceiling-to-wall) bend, a
+                    // centered TWO-BLOCK chassis would clip the wall rail
+                    // at the inner corner. Move half a block outboard only
+                    // at that bend; the connecting wall chassis sits on
+                    // this same outside line, giving a short smooth climb.
+                    Vec3 out=Vec3.ZERO;
+                    for(Direction toward:Direction.Plane.HORIZONTAL){
+                        BlockPos adjacent=rail.relative(toward).relative(d);
+                        if(CraneRailBlock.linked(world,rail,adjacent)){
+                            out=new Vec3(-toward.getStepX()*.5,0,
+                                    -toward.getStepZ()*.5);
+                            break;
+                        }
+                    }
+                    yield c.add(out).add(0,d==Direction.UP?.125:-1.125,0);
+                }
                 case NORTH,SOUTH,EAST,WEST->
                     c.add(d.getStepX()*1.5,-.5,d.getStepZ()*1.5);
             };
