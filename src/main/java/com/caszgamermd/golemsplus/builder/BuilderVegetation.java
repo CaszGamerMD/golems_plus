@@ -24,7 +24,8 @@ public final class BuilderVegetation {
         Block block=BuiltInRegistries.BLOCK.getValue(id);
         if(block instanceof BushBlock)return true;
         String path=id.getPath();
-        return path.equals("wheat")||path.equals("carrots")
+        return path.equals("azalea")||path.equals("flowering_azalea")
+                ||path.equals("wheat")||path.equals("carrots")
                 ||path.equals("potatoes")||path.equals("beetroots")
                 ||path.equals("nether_wart")||path.equals("cocoa")
                 ||path.equals("sugar_cane")||path.equals("bamboo")
