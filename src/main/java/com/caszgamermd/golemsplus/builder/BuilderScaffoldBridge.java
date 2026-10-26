@@ -440,9 +440,9 @@ public final class BuilderScaffoldBridge {
             // south, east and west, including one-level changes. The
             // real-world execution below constructs actual scaffold
             // stairs/piers and follows the resulting collision-safe path.
-            for(int dy:new int[]{0,1,-1})
+            for(int heightStep:new int[]{0,1,-1})
                 for(int[] dir:DIRECTIONS)
-                    neighbors.add(current.offset(dir[0],dy,dir[1]));
+                    neighbors.add(current.offset(dir[0],heightStep,dir[1]));
             neighbors.sort(Comparator
                     .comparingInt((BlockPos node)->wholeBuild&&shell.isShell(node)?0:1)
                     .thenComparingDouble(node->node.distSqr(target)));
