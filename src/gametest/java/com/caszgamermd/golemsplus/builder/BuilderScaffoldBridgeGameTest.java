@@ -114,7 +114,7 @@ public final class BuilderScaffoldBridgeGameTest {
             helper.fail("Two-gap Builder registration failed");return;
         }
         final Runnable simulation=BuilderChunkTickets.holdGameTestSimulation(level,
-                worker.blockPosition());
+                worker.blockPosition(),goal);
         final int[] stage={0};
         final long[] stageStart={helper.getTick()};
         helper.onEachTick(()->{
@@ -212,7 +212,7 @@ public final class BuilderScaffoldBridgeGameTest {
             helper.fail("Unable to register Bridge Builder");return;
         }
         final Runnable simulation=BuilderChunkTickets.holdGameTestSimulation(level,
-                worker.blockPosition());
+                worker.blockPosition(),goal);
         for(int y=2;y<=5;y++){
             BlockPos column=helper.absolutePos(new BlockPos(2,y,3));
             level.setBlock(column,Blocks.SCAFFOLDING.defaultBlockState(),3);
@@ -306,7 +306,7 @@ public final class BuilderScaffoldBridgeGameTest {
             helper.fail("Cannot register long bridge worker");return;
         }
         final Runnable simulation=BuilderChunkTickets.holdGameTestSimulation(level,
-                worker.blockPosition());
+                worker.blockPosition(),goal);
         // The scaffold MUST be directly below the spawned worker.
         // Previously this fixture registered a tower at local (2,3),
         // while its worker actually started at local (10,11).
