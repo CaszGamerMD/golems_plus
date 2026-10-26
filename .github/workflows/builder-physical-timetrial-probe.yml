@@ -37,7 +37,7 @@ jobs:
           # The standard build independently runs the normal regression
           # GameTests. Every scored evolution still uses live entities.
           manifest['entrypoints']['fabric-gametest']=[required]
-          p.write_text(json.dumps(manifest,indent=2)+'\\n')
+          p.write_text(json.dumps(manifest,indent=2)+'\n')
           PY
       - name: Verify 10 physical BuilderGolem entrants and registration
         run: |
