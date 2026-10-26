@@ -24,7 +24,7 @@ def read(path):
             or result.get("course") != COURSE
             or result.get("physicalEntities") is not True
             or result.get("bots") != POPULATION
-            or result.get("deadlineTicks") != 360):
+            or result.get("deadlineTicks") != 260):
         raise ValueError(f"Incompatible or unverified Minecraft state: {path}")
     return result
 
