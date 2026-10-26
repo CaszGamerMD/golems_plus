@@ -31,6 +31,7 @@ public final class BuilderCreativeFlight {
         long lastCloser;
         double best;
         long escapingUntil;
+        long nextPlanTick;
         List<Vec3> airRoute=List.of();
         int routeIndex;
         Flight(BlockPos goal,Vec3 destination,boolean depot,
@@ -89,7 +90,11 @@ public final class BuilderCreativeFlight {
         }
         if(!flight.depot&&flight.escapingUntil<=level.getGameTime()
                 &&flight.airRoute.isEmpty()
+                &&level.getGameTime()>=flight.nextPlanTick
                 &&level.getGameTime()-flight.lastCloser>55){
+            // Failed searches have a cooldown to avoid freezing the
+            // server with thousands of repeated 3D collision checks.
+            flight.nextPlanTick=level.getGameTime()+110;
             var alternative=BuilderCreativeAirRoute.plan(level,worker,flight.goal);
             if(!alternative.isEmpty()){
                 flight.airRoute=alternative;
@@ -129,7 +134,8 @@ public final class BuilderCreativeFlight {
         // walking into the same wall.
         if(level.getGameTime()-flight.lastCloser>28
                 &&Double.isNaN(flight.cruiseY)){
-            flight.cruiseY=Math.max(worker.getY(),finalPosition.y)+3.5;
+            flight.cruiseY=Math.max(worker.getY(),finalPosition.y)
+                    +3.5+Math.floorMod(worker.getId(),4)*1.5;
             flight.lastCloser=level.getGameTime();
         }
         Vec3 waypoint=flight.airRoute.isEmpty()?finalPosition
@@ -162,7 +168,10 @@ public final class BuilderCreativeFlight {
             }else {
                 // Seek a clear side to go around an overhead obstacle.
                 boolean found=false;
-                for(int[] d:new int[][]{{1,0},{0,1},{-1,0},{0,-1}}){
+                int[][] directions={{1,0},{0,1},{-1,0},{0,-1}};
+                // Different Builders pick different clockwise side lanes.
+                for(int n=0;n<4;n++){
+                    int[] d=directions[(n+Math.floorMod(worker.getId(),4))%4];
                     if(level.noCollision(worker,current.move(d[0]*.20,0,d[1]*.20))){
                         vx=d[0]*.20;vy=0;vz=d[1]*.20;
                         found=true;break;
