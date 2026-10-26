@@ -163,9 +163,25 @@ public final class BuilderDomeConstructionGameTest {
                     helper.fail("Reached 1700 but four real Builders not alive");
                     return;
                 }
+                // Do not package an experimental JAR based solely on a
+                // planner counter. Confirm at least 1,700 ACTUAL world
+                // positions have the expected physical schematic state.
+                int verified=0;
+                for(var placed:steps){
+                    if(placed.ignorePlant())continue;
+                    var expected=BuilderBlockResolver.resolve(
+                            placed.encodedState(),BuildSite.Rotation.NONE,
+                            BuildSite.Mirror.NONE);
+                    if(expected==null)continue;
+                    BlockPos at=new BlockPos(placed.x(),placed.y(),placed.z());
+                    if(BuilderPlacementState.matches(level.getBlockState(at),
+                            expected.state()))verified++;
+                }
+                if(verified<1700)return;
                 checkpoint[0]=true;
                 System.out.println("[DOME TEAMWORK] PASS 1700 placed-block "
-                        +"milestone with FOUR real Builders at tick="+tick);
+                        +"milestone with FOUR real Builders; verified="
+                        +verified+" world block states at tick="+tick);
             }
             if(!inspected[0]&&table.builderClearCursor()>0){
                 inspected[0]=true;
