@@ -592,9 +592,20 @@ public final class WorkerNavigation {
      */
     public static boolean repeatedlyUnreachable(PathfinderMob mob,int retries){
         Progress p=states.get(mob);
-        return p!=null&&p.requested!=null&&p.approach==null
-                &&p.attempts>=retries&&mob.getNavigation().isDone()
-                &&!p.waitingDoor&&!p.finishingDoor&&!p.parkingAtDoor;
+        // A* can finish a SHORT detour at a provisional waypoint but
+        // remain many blocks short of the actual OnSite depot. Previously
+        // approach!=null suppressed this recovery forever, even after
+        // 125 failed routes on an isolated wall one block above ground.
+        // Use actual destination distance and completed native navigation,
+        // not the stale provisional waypoint, to trigger safe recovery.
+        if(p==null||p.requested==null||p.attempts<retries
+                ||!mob.getNavigation().isDone()
+                ||p.waitingDoor||p.finishingDoor||p.parkingAtDoor)
+            return false;
+        double dx=mob.getX()-p.requested.getX()-.5;
+        double dy=mob.getY()-p.requested.getY();
+        double dz=mob.getZ()-p.requested.getZ()-.5;
+        return dx*dx+dy*dy+dz*dz>16.0;
     }
 
     public static boolean retryScheduled(PathfinderMob mob){
