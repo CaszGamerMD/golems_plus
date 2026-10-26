@@ -1,0 +1,61 @@
+name: Archive corrected vanilla 13s physical-trial learning
+
+on:
+  push:
+    branches:
+      - feature/builder-evolutionary-alt-course-262
+    paths:
+      - .github/workflows/builder-alt-recover-first-three-trials.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: alternate-trial-learning-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover-physical-trials:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download original 3-trial real-entity recordings
+        uses: actions/download-artifact@v4
+        with:
+          name: builder-13-second-physical-entity-diagnostics
+          run-id: 40337985923
+          github-token: ${{ github.token }}
+          path: build/recovered-13s-physical
+      - name: Verify and restore actual recorded positions and genetic history
+        shell: bash
+        run: |
+          set -euo pipefail
+          from=build/recovered-13s-physical/training/alt
+          test -s "$from/state/checkpoint.json"
+          test -s "$from/state/history.jsonl"
+          test -d "$from/replays/live"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          state=json.loads(Path('training/alt/state/checkpoint.json').read_text())
+          recovered=json.loads(Path('build/recovered-13s-physical/training/alt/state/checkpoint.json').read_text())
+          assert state["completedGenerations"] == recovered["completedGenerations"] == 75
+          assert state["course"] == recovered["course"]
+          assert state["nextPopulation"] == recovered["nextPopulation"]
+          assert state["personalBests"] == recovered["personalBests"]
+          print("Recovered original 75-generations mutated population exactly")
+          PY
+          mkdir -p training/alt/replays/live training/alt/state
+          cp "$from/state/history.jsonl" training/alt/state/history.jsonl
+          cp -a "$from/replays/live/." training/alt/replays/live/
+          python3 scripts/export_alt_evolution_replays.py --session-prefix "" --viewer training/alt/replays/route-viewer.html
+          test "$(find training/alt/replays/live -name '*.json' | wc -l)" -eq 75
+      - name: Publish retained real-entity histories and complete all-generation viewer
+        run: |
+          git config user.name 'golems-evolution[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add training/alt/state/ training/alt/replays/
+          git commit -m 'Archive 75 real Builder Golem generations from first 3 corrected vanilla trials [skip ci]'
+          git push origin HEAD:feature/builder-evolutionary-alt-course-262

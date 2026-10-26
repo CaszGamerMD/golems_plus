@@ -1,9 +1,6 @@
 name: 13s VANILLA alternate track — 10 actual Builder Golems
 
 on:
-  push:
-    branches:
-      - feature/builder-evolutionary-alt-course-262
   workflow_dispatch:
 
 permissions:
