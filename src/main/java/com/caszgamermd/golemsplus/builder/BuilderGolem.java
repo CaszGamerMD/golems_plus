@@ -187,8 +187,9 @@ public final class BuilderGolem extends PathfinderMob implements Container {
             BuilderChunkTickets.track(server,this);
             // A physical scaffold climb owns this worker's movement.
             // Normal A* anti-stall checks may not stop or redirect it.
-            if(!flying&&!climbing&&!clockwise)
-                com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
+            if(!climbing&&!clockwise)
+                if(!flying)
+                    com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
         }
         // Each Builder evaluates its own long-lived task state four times
         // per second. Offset different entities across server ticks: a
