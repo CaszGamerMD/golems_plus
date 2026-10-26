@@ -1,6 +1,15 @@
-name: Physical Timetrial Probe (20 actual Builder Golems)
+name: Required - 20 actual Builder Golems in Minecraft (18s)
 
 on:
+  push:
+    branches:
+      - feature/builder-evolutionary-navigation-trainer-262
+  pull_request:
+    paths:
+      - src/gametest/**
+      - src/main/java/com/caszgamermd/golemsplus/**
+      - training/**
+      - .github/workflows/builder-physical-timetrial-probe.yml
   workflow_dispatch:
 
 jobs:
@@ -16,25 +25,29 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
-      - name: Enable opt-in actual collision trial in temporary GameTest manifest
+      - name: Verify physical BuilderGolem acceptance is registered
         run: |
           python3 - <<'PY'
           import json
           from pathlib import Path
-          file=Path("src/gametest/resources/fabric.mod.json")
-          data=json.loads(file.read_text())
-          entry="com.caszgamermd.golemsplus.builder.BuilderEvolutionTimeTrialGameTest"
-          game=data["entrypoints"]["fabric-gametest"]
-          if entry not in game: game.append(entry)
-          file.write_text(json.dumps(data,indent=2)+"\n")
+          manifest=json.loads(Path('src/gametest/resources/fabric.mod.json').read_text())
+          required='com.caszgamermd.golemsplus.builder.BuilderEvolutionTimeTrialGameTest'
+          assert required in manifest['entrypoints']['fabric-gametest'], (
+              'The REAL-ENTITY GameTest is mandatory, not an optional probe')
+          test=Path('src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderEvolutionTimeTrialGameTest.java').read_text()
+          assert 'new BuilderGolem(' in test
+          assert 'private static final int DEADLINE=360;' in test
+          assert 'if(finished==bots.size())helper.succeed();' in test
+          assert 'else helper.fail(' in test
+          print('Physical-only acceptance gate: 20 live BuilderGolem entities / 360 ticks')
           PY
-      - name: Spawn 20 real golems, race 400 ticks, then remove all
+      - name: Mandatory 360-tick real Minecraft golem trial
         run: gradle --no-daemon runGameTest
-      - name: Preserve the test result, including failed collision trajectories
+      - name: Preserve movement collision and timeout diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: builder-timetrial-physical-failure-diagnostics
+          name: builder-18-second-physical-entity-diagnostics
           path: |
             build/gametest/
             build/reports/
