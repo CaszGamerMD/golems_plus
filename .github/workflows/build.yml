@@ -73,7 +73,35 @@ jobs:
       # The build task now runs a real dedicated Minecraft GameTest.
       # A green JUnit run alone does not count as a movement pass.
       - name: Run Minecraft server GameTests (scaffold route and framed doorway)
-        run: gradle --no-daemon runGameTest
+        id: minecraft
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/builder-gametest.log"
+      # An unfinished full Dome test remains RED. Nevertheless, once the
+      # server proves 1,700 real world-state matches and four living Builders,
+      # publish a separately labeled experimental JAR for hands-on trials.
+      # Never replace the main/dev-latest release with a partial build.
+      - name: Build experimental 1700-block checkpoint JAR
+        if: ${{ failure() && steps.minecraft.conclusion == 'failure' }}
+        id: dome_1700
+        shell: bash
+        run: |
+          if ! grep -Fq '[DOME TEAMWORK] PASS 1700 placed-block' "$RUNNER_TEMP/builder-gametest.log"; then
+            echo "reached=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Dome checkpoint verified in the actual Minecraft server."
+          gradle --no-daemon build -x runGameTest
+          echo "reached=true" >> "$GITHUB_OUTPUT"
+      - name: Upload experimental crane and navigation 1700 JAR
+        if: ${{ steps.dome_1700.outputs.reached == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: golems-plus-crane-nav-1700-experimental
+          path: |
+            build/libs/*.jar
+          if-no-files-found: error
       - name: Preserve Minecraft GameTest logs and reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -83,6 +111,7 @@ jobs:
             build/gametest/
             build/reports/
             build/test-results/
+            ${{ runner.temp }}/builder-gametest.log
           if-no-files-found: ignore
       - run: gradle --no-daemon clean test build
       - uses: actions/upload-artifact@v4
