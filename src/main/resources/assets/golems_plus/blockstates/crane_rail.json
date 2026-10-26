@@ -10,7 +10,14 @@
     },
     {
       "when": {
-        "face_up": "true"
+        "AND": [
+          {
+            "face_up": "true"
+          },
+          {
+            "link_north": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_north"
@@ -18,7 +25,14 @@
     },
     {
       "when": {
-        "face_up": "true"
+        "AND": [
+          {
+            "face_up": "true"
+          },
+          {
+            "link_east": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_east"
@@ -26,7 +40,14 @@
     },
     {
       "when": {
-        "face_up": "true"
+        "AND": [
+          {
+            "face_up": "true"
+          },
+          {
+            "link_south": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_south"
@@ -34,7 +55,14 @@
     },
     {
       "when": {
-        "face_up": "true"
+        "AND": [
+          {
+            "face_up": "true"
+          },
+          {
+            "link_west": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_west"
@@ -45,94 +73,72 @@
         "face_down": "true"
       },
       "apply": {
-        "model": "golems_plus:block/crane_rail",
-        "x": 180
+        "model": "golems_plus:block/crane_rail"
       }
     },
     {
       "when": {
-        "face_down": "true"
+        "AND": [
+          {
+            "face_down": "true"
+          },
+          {
+            "link_south": "true"
+          }
+        ]
       },
       "apply": {
-        "model": "golems_plus:block/crane_rail_arm_north",
-        "x": 180
+        "model": "golems_plus:block/crane_rail_arm_north"
       }
     },
     {
       "when": {
-        "face_down": "true"
+        "AND": [
+          {
+            "face_down": "true"
+          },
+          {
+            "link_east": "true"
+          }
+        ]
       },
       "apply": {
-        "model": "golems_plus:block/crane_rail_arm_east",
-        "x": 180
+        "model": "golems_plus:block/crane_rail_arm_east"
       }
     },
     {
       "when": {
-        "face_down": "true"
+        "AND": [
+          {
+            "face_down": "true"
+          },
+          {
+            "link_north": "true"
+          }
+        ]
       },
       "apply": {
-        "model": "golems_plus:block/crane_rail_arm_south",
-        "x": 180
+        "model": "golems_plus:block/crane_rail_arm_south"
       }
     },
     {
       "when": {
-        "face_down": "true"
+        "AND": [
+          {
+            "face_down": "true"
+          },
+          {
+            "link_west": "true"
+          }
+        ]
       },
       "apply": {
-        "model": "golems_plus:block/crane_rail_arm_west",
-        "x": 180
+        "model": "golems_plus:block/crane_rail_arm_west"
       }
     },
     {
       "when": {
         "face_north": "true"
-      },
-      "apply": {
-        "model": "golems_plus:block/crane_rail",
-        "x": 270
-      }
-    },
-    {
-      "when": {
-        "face_north": "true"
-      },
-      "apply": {
-        "model": "golems_plus:block/crane_rail_arm_north",
-        "x": 270
-      }
-    },
-    {
-      "when": {
-        "face_north": "true"
-      },
-      "apply": {
-        "model": "golems_plus:block/crane_rail_arm_east",
-        "x": 270
-      }
-    },
-    {
-      "when": {
-        "face_north": "true"
-      },
-      "apply": {
-        "model": "golems_plus:block/crane_rail_arm_south",
-        "x": 270
-      }
-    },
-    {
-      "when": {
-        "face_north": "true"
-      },
-      "apply": {
-        "model": "golems_plus:block/crane_rail_arm_west",
-        "x": 270
-      }
-    },
-    {
-      "when": {
-        "face_south": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail",
@@ -141,7 +147,14 @@
     },
     {
       "when": {
-        "face_south": "true"
+        "AND": [
+          {
+            "face_north": "true"
+          },
+          {
+            "link_up": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_north",
@@ -150,7 +163,14 @@
     },
     {
       "when": {
-        "face_south": "true"
+        "AND": [
+          {
+            "face_north": "true"
+          },
+          {
+            "link_east": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_east",
@@ -159,7 +179,14 @@
     },
     {
       "when": {
-        "face_south": "true"
+        "AND": [
+          {
+            "face_north": "true"
+          },
+          {
+            "link_down": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_south",
@@ -168,11 +195,91 @@
     },
     {
       "when": {
-        "face_south": "true"
+        "AND": [
+          {
+            "face_north": "true"
+          },
+          {
+            "link_west": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_west",
         "x": 90
+      }
+    },
+    {
+      "when": {
+        "face_south": "true"
+      },
+      "apply": {
+        "model": "golems_plus:block/crane_rail",
+        "x": 270
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "face_south": "true"
+          },
+          {
+            "link_down": "true"
+          }
+        ]
+      },
+      "apply": {
+        "model": "golems_plus:block/crane_rail_arm_north",
+        "x": 270
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "face_south": "true"
+          },
+          {
+            "link_east": "true"
+          }
+        ]
+      },
+      "apply": {
+        "model": "golems_plus:block/crane_rail_arm_east",
+        "x": 270
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "face_south": "true"
+          },
+          {
+            "link_up": "true"
+          }
+        ]
+      },
+      "apply": {
+        "model": "golems_plus:block/crane_rail_arm_south",
+        "x": 270
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "face_south": "true"
+          },
+          {
+            "link_west": "true"
+          }
+        ]
+      },
+      "apply": {
+        "model": "golems_plus:block/crane_rail_arm_west",
+        "x": 270
       }
     },
     {
@@ -182,47 +289,75 @@
       "apply": {
         "model": "golems_plus:block/crane_rail",
         "x": 90,
-        "y": 90
+        "y": 270
       }
     },
     {
       "when": {
-        "face_east": "true"
+        "AND": [
+          {
+            "face_east": "true"
+          },
+          {
+            "link_up": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_north",
         "x": 90,
-        "y": 90
+        "y": 270
       }
     },
     {
       "when": {
-        "face_east": "true"
+        "AND": [
+          {
+            "face_east": "true"
+          },
+          {
+            "link_south": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_east",
         "x": 90,
-        "y": 90
+        "y": 270
       }
     },
     {
       "when": {
-        "face_east": "true"
+        "AND": [
+          {
+            "face_east": "true"
+          },
+          {
+            "link_down": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_south",
         "x": 90,
-        "y": 90
+        "y": 270
       }
     },
     {
       "when": {
-        "face_east": "true"
+        "AND": [
+          {
+            "face_east": "true"
+          },
+          {
+            "link_north": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_west",
         "x": 90,
-        "y": 90
+        "y": 270
       }
     },
     {
@@ -232,47 +367,75 @@
       "apply": {
         "model": "golems_plus:block/crane_rail",
         "x": 90,
-        "y": 270
+        "y": 90
       }
     },
     {
       "when": {
-        "face_west": "true"
+        "AND": [
+          {
+            "face_west": "true"
+          },
+          {
+            "link_up": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_north",
         "x": 90,
-        "y": 270
+        "y": 90
       }
     },
     {
       "when": {
-        "face_west": "true"
+        "AND": [
+          {
+            "face_west": "true"
+          },
+          {
+            "link_north": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_east",
         "x": 90,
-        "y": 270
+        "y": 90
       }
     },
     {
       "when": {
-        "face_west": "true"
+        "AND": [
+          {
+            "face_west": "true"
+          },
+          {
+            "link_down": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_south",
         "x": 90,
-        "y": 270
+        "y": 90
       }
     },
     {
       "when": {
-        "face_west": "true"
+        "AND": [
+          {
+            "face_west": "true"
+          },
+          {
+            "link_south": "true"
+          }
+        ]
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_west",
         "x": 90,
-        "y": 270
+        "y": 90
       }
     }
   ]
