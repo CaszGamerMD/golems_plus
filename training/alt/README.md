@@ -1,3 +1,27 @@
+## October 26: More accurate half-slab and top-slab navigation
+
+The course is unchanged. We continue to use exactly **10 real Builder Golems**, **260 ticks / 13 seconds**, native 0.6 step-up, and 4m/s max.
+
+### New motion and pathing checks
+- Full 0.65×1.6 body sweeps along prospective route edges, rather than relying on a clear tile center.
+- Slab-edge/overhead-clearance precision control; no early corner anticipation across risky edges.
+- Evidence-based, bounded (max 2) A* replans after real repeated static obstruction. Chromosomes, not old routes, are retained.
+- On open cardinal straightaways only, verified safe early waypoint handoff prevents needless sub-4m/s slowdowns.
+- Three overhead upper-slab tiles **x=12,z=5..7** fail real 1.6-block vertical clearance; the x=12,z=9 corridor remains passable. Never assume this visually open hole is navigable.
+- Additional physical GameTest validates headroom rejection plus legal 0.5 slab access. All existing dedicated slab-step and birch-door regressions continue to pass.
+
+### Actual new 3-test batches
+
+| GitHub Actions run | Test 1 | Test 2 | Test 3 |
+|---|---|---|---|
+| [40401960397](https://github.com/CaszGamerMD/golems_plus/actions/runs/40401960397) initial swept route/precision | fail (best 7/10) | 10/10 at generation 16 | 10/10 at generation 1 |
+| [40402904138](https://github.com/CaszGamerMD/golems_plus/actions/runs/40402904138) bounded real replan | fail (best 6/10) | fail (best 5/10) | **10/10 at generation 0, slowest 240 ticks** |
+| [40403749983](https://github.com/CaszGamerMD/golems_plus/actions/runs/40403749983) straight handoff | 10/10 at generation 4, slowest 257 ticks | **10/10 at generation 0, slowest 254 ticks** | fail (best 5/10) |
+
+**Result is still inconsistent.** Physical regressions confirm the ability to climb 0.5 slabs and exclude inadequate headroom, but a clean 3/3 generation-0 result is **not established**. Congestion near turns/approaches and inherited mutated populations still produce large latency variance. The latest experimental run passed only 2/3 test sessions.
+
+Saved: **361 actual physical generations**, raw movement for **all ten entities in every generation**, failed as well as successful, fitness history and the next mutated population. The protected fastest old winner **236 ticks slowest** and original-course memory remain intact. Later successes did not replace the better protected winner.
+
 ## Slab and single-door controller fix — 2026-10-26
 
 **Physical result:** the corrected 13-second vanilla course now completes **10/10 real BuilderGolem entities** in three consecutive scored GitHub Actions tests: [run 40343560995](https://github.com/CaszGamerMD/golems_plus/actions/runs/40343560995).
