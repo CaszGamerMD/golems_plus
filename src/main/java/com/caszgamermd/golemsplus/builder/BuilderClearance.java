@@ -45,7 +45,13 @@ public final class BuilderClearance{
             if(result==BuilderSupplyInventory.ToolStatus.MOVING)return Result.MOVING;
             if(result==BuilderSupplyInventory.ToolStatus.MISSING){
                 table.setProblem("Supply a matching pickaxe, axe, shovel or hoe "
-                        +"in OnSite Storage to clear "+pos);
+                        +"in OnSite Storage to clear "+pos
+                        +" block="+net.minecraft.core.registries.BuiltInRegistries
+                                .BLOCK.getKey(current.getBlock())
+                        +" mineable[px="+current.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_PICKAXE)
+                        +",axe="+current.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_AXE)
+                        +",shovel="+current.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_SHOVEL)
+                        +",hoe="+current.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_HOE)+"]");
                 return Result.BLOCKED;
             }
             slot=BuilderSupplyInventory.toolSlot(worker,current);
