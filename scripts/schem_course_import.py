@@ -73,7 +73,8 @@ class NbtReader:
                 child = self.integer(1, signed=False)
                 if child == 0:
                     return result
-                result[self.string()] = self.value(child)
+                name = self.string()
+                result[name] = self.value(child)
         if tag == 11:
             length = self.integer(4)
             if length < 0 or length > MAX_BYTES // 4:
