@@ -262,14 +262,20 @@ public final class BuilderScaffoldBridge {
                 &&supportedDistance(level,platform)<7;
         boolean close=dx*dx+dz*dz<=4.0
                 &&Math.abs(worker.getY()-(platform.getY()+1))<=1.5;
-        worker.setNoGravity(supported&&close);
+        // Do not use assisted flight on a healthy walking route: only
+        // enable it after 12 real game ticks with no closer displacement.
+        // This lets successful normal scaffold travel stay grounded and
+        // prevents hover corrections fighting the normal movement AI.
+        boolean assistedFlight=supported&&close
+                &&level.getGameTime()-watch.lastMoved>=12;
+        worker.setNoGravity(assistedFlight);
         double destinationY=platform.getY()+1.0;
         worker.getMoveControl().setWantedPosition(tx,destinationY,tz,1);
         double vx=Math.max(-.13,Math.min(.13,dx*.24));
         double vz=Math.max(-.13,Math.min(.13,dz*.24));
         double deltaY=destinationY-worker.getY();
         double vy=worker.getDeltaMovement().y;
-        if(supported&&close){
+        if(assistedFlight){
             if(deltaY>.16){
                 // A true 1-block ascent must gain clearance before moving
                 // sideways. But a 0.2-0.5-height lip correction must NOT
