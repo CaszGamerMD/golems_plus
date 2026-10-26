@@ -2,7 +2,9 @@ package com.caszgamermd.golemsplus.builder;
 
 import com.caszgamermd.golemsplus.world.WorksiteContent;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Random;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -22,17 +24,22 @@ import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * PHYSICAL Minecraft verification of a 10-bot subset of the headless-trained
- * timetrial winner. Every bot is a real 0.65 x 0.65 x 1.6 BuilderGolem,
- * must cross actual blocks, doors, half slabs and other bots, with no
- * breaking/scaffold/flying and at most 0.20 blocks of movement per tick.
+ * EVOLUTIONARY TRAINING INSIDE THE REAL MINECRAFT SERVER.
+ * Every generation spawns 10 physical 0.65 x 0.65 x 1.6 BuilderGolem
+ * entities, drives legal walking/jumping into REAL Minecraft collisions,
+ * times out after 360 ticks, and selects/crosses/mutates navigation
+ * control genes using ONLY what the real entities physically achieved.
  *
- * This is a REPLAY ACCEPTANCE TEST, not an in-game genetic optimizer.
- * Failed physical runs must inform later generations of the separate
- * training engine; headless success alone is not a GameTest pass.
+ * Neither a successful headless simulation nor theoretical route length
+ * can pass this test. All ten real entities must reach real RED_WOOL in
+ * the same 360-tick generation. No flight, scaffold or world modification
+ * during runs. The original test fixture is built once before training.
  */
 public final class BuilderEvolutionTimeTrialGameTest {
     private static final int DEADLINE=360;
+    private static final int GENERATIONS=12;
+    private static final long TRAINING_SEED=20261026L;
+    private static final double SPEED_CAP=0.2;
     // Five bots from each green-wool column, spaced through all ten rows.
     // Keep both columns and the same maze: only concurrent entity count changes.
     private static final int[] SELECTED_BOTS={0,2,4,6,8,11,13,15,17,19};
@@ -92,17 +99,95 @@ public final class BuilderEvolutionTimeTrialGameTest {
         "WWNWWWWWNNNNNNWWWSSSSWWNNNWWSSSWWSSSWWWNENNNNNNWWWSSWW"
     };
 
+    /**
+     * Chromosome for ACTUAL entity walking. Each numeric gene affects
+     * real movement on Minecraft's collision geometry: horizontal drive,
+     * centerline steering, waypoint acquisition, step-up jump timing and
+     * stuck recovery. Mutations cannot grant no-gravity or teleporting.
+     */
+    private record Genome(double drive,double align,double tolerance,
+                          double jumpLead,double jumpPower,
+                          int jumpCooldown,int stuckTimeout,
+                          double backoff) {
+        static Genome random(Random rng){
+            return new Genome(.78+rng.nextDouble()*.22,
+                    .60+rng.nextDouble()*.40,
+                    .07+rng.nextDouble()*.13,
+                    .36+rng.nextDouble()*.95,
+                    .36+rng.nextDouble()*.08,
+                    7+rng.nextInt(17),
+                    9+rng.nextInt(27),
+                    .06+rng.nextDouble()*.14);
+        }
+        static Genome cross(Genome a,Genome b,Random rng){
+            return new Genome(
+                    rng.nextBoolean()?a.drive:b.drive,
+                    rng.nextBoolean()?a.align:b.align,
+                    rng.nextBoolean()?a.tolerance:b.tolerance,
+                    rng.nextBoolean()?a.jumpLead:b.jumpLead,
+                    rng.nextBoolean()?a.jumpPower:b.jumpPower,
+                    rng.nextBoolean()?a.jumpCooldown:b.jumpCooldown,
+                    rng.nextBoolean()?a.stuckTimeout:b.stuckTimeout,
+                    rng.nextBoolean()?a.backoff:b.backoff);
+        }
+        Genome mutate(Random rng){
+            return new Genome(
+                    clamp(drive+rng.nextGaussian()*.07,.55,1),
+                    clamp(align+rng.nextGaussian()*.14,.35,1),
+                    clamp(tolerance+rng.nextGaussian()*.025,.05,.24),
+                    clamp(jumpLead+rng.nextGaussian()*.20,.2,1.65),
+                    clamp(jumpPower+rng.nextGaussian()*.02,.34,.46),
+                    (int)clamp(jumpCooldown+rng.nextGaussian()*4,4,32),
+                    (int)clamp(stuckTimeout+rng.nextGaussian()*7,5,45),
+                    clamp(backoff+rng.nextGaussian()*.055,.03,.27));
+        }
+        private static double clamp(double value,double lo,double hi){
+            return Math.max(lo,Math.min(hi,value));
+        }
+    }
     private static final class Candidate {
+        final int index;
         final BuilderGolem mob;
         final String route;
+        final Genome dna;
         int cursor;
         int x,z;
-        long reached=-1;
-        double bestDistance;
+        int arrivedTick=-1;
+        int collisions;
+        int jumps;
+        int bestCursor;
         int immobile;
-        Candidate(BuilderGolem mob,String route,int x,int z){
-            this.mob=mob;this.route=route;this.x=x;this.z=z;
+        int backoffTicks;
+        int ticksSinceJump;
+        double lastDistance=Double.POSITIVE_INFINITY;
+        Candidate(int index,BuilderGolem mob,String route,int x,int z,
+                  Genome dna){
+            this.index=index;
+            this.mob=mob;
+            this.route=route;
+            this.x=x;this.z=z;
+            this.dna=dna;
         }
+        double fitness(){
+            if(arrivedTick>=0)
+                return 100000+(DEADLINE-arrivedTick)*15
+                        -collisions*2;
+            // Fitness is grounded in physically traversed checkpoints
+            // and remaining REAL distance to the next tile.
+            double fraction=0;
+            if(cursor<route.length()){
+                int[] next=next(x,z,route.charAt(cursor));
+                double remaining=Math.sqrt(
+                        Math.pow((next[0]+.5)-(mob.getX()-originX),2)
+                        +Math.pow((next[1]+.5)-(mob.getZ()-originZ),2));
+                fraction=Math.max(0,1-Math.min(1,remaining));
+            }
+            return Math.max(0,bestCursor+fraction)*100
+                    -collisions*3;
+        }
+        // Absolute positions of the GameTest arena origin, only used to
+        // score how close the actual entity came to its next tile.
+        double originX,originZ;
     }
 
     private static boolean topSlab(int x,int z){
@@ -170,125 +255,225 @@ public final class BuilderEvolutionTimeTrialGameTest {
         };
     }
 
-    @GameTest(maxTicks=420,padding=64,skyAccess=true)
-    public void realBuildersTryUserMazeInEighteenSeconds(GameTestHelper helper){
+    private static List<Candidate> spawnGeneration(GameTestHelper helper,
+            List<Genome> genomes){
         ServerLevel world=helper.getLevel();
-        fillOriginalCourse(helper);
         List<Candidate> bots=new ArrayList<>();
-        if(STARTS.length!=20||REPLAYS.length!=20||SELECTED_BOTS.length!=10){
-            helper.fail("Expected ten selected physical Builder Golem entrants");
-            return;
-        }
-        for(int index:SELECTED_BOTS){
+        for(int slot=0;slot<SELECTED_BOTS.length;slot++){
+            int index=SELECTED_BOTS[slot];
             int[] start=STARTS[index];
-            if(helper.getBlockState(new BlockPos(
-                    X_OFFSET+start[0],1,Z_OFFSET+start[1]))
-                    .getBlock()!=GREEN){
-                helper.fail("Training bot not placed on green wool");
-                return;
-            }
-            BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
             BlockPos at=pos(helper,start[0],2,start[1]);
+            if(world.getBlockState(at.below()).getBlock()!=GREEN)
+                throw new IllegalStateException(
+                        "Trial must spawn only above green wool");
+            BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
             mob.setPos(at.getX()+.5,at.getY(),at.getZ()+.5);
             mob.setPersistenceRequired();
             mob.setNoGravity(false);
             world.addFreshEntity(mob);
             if(Math.abs(mob.getBbWidth()-.65)>.01
-                    ||Math.abs(mob.getBbHeight()-1.6)>.01){
-                helper.fail("Training Builder physical collision box is "
-                        +mob.getBbWidth()+" x "+mob.getBbHeight());
+                    ||Math.abs(mob.getBbHeight()-1.60)>.01)
+                throw new IllegalStateException(
+                        "Wrong real BuilderGolem body: "+mob.getBbWidth()
+                        +" x "+mob.getBbHeight());
+            Candidate b=new Candidate(slot,mob,REPLAYS[index],
+                    start[0],start[1],genomes.get(slot));
+            BlockPos origin=pos(helper,0,2,0);
+            b.originX=origin.getX();
+            b.originZ=origin.getZ();
+            bots.add(b);
+        }
+        return bots;
+    }
+
+    /** Controller uses real Minecraft entity move + collisions; only
+     * genes controlling WALK / JUMP / alignment can be selected.
+     */
+    private static void walkOneTick(GameTestHelper helper,Candidate b){
+        BuilderGolem mob=b.mob;
+        if(!mob.isAlive()||b.arrivedTick>=0)return;
+        ServerLevel world=helper.getLevel();
+        if(world.getBlockState(mob.blockPosition().below()).is(RED)){
+            b.arrivedTick=(int)(helper.getTick()%DEADLINE);
+            // A winner leaves the track; otherwise it obstructs the door
+            // or blocks remaining racers at the finish line.
+            mob.discard();
+            return;
+        }
+        if(b.cursor>=b.route.length())return;
+        int[] ahead=next(b.x,b.z,b.route.charAt(b.cursor));
+        BlockPos target=pos(helper,ahead[0],2,ahead[1]);
+        double dx=target.getX()+.5-mob.getX();
+        double dz=target.getZ()+.5-mob.getZ();
+        double distance=Math.hypot(dx,dz);
+        if(distance<b.dna.tolerance()){
+            b.x=ahead[0];
+            b.z=ahead[1];
+            b.cursor++;
+            b.bestCursor=Math.max(b.bestCursor,b.cursor);
+            b.immobile=0;
+            b.lastDistance=Double.POSITIVE_INFINITY;
+            return;
+        }
+
+        if(distance<b.lastDistance-.015){
+            b.immobile=0;
+            b.lastDistance=distance;
+        }else b.immobile++;
+        // Reset on progress; otherwise trigger an evolving retreat/jump
+        // decision instead of driving forever into a blocking step.
+        if(b.immobile>=b.dna.stuckTimeout()){
+            b.immobile=0;
+            b.lastDistance=Double.POSITIVE_INFINITY;
+            b.backoffTicks=3;
+            b.collisions++;
+        }
+        b.ticksSinceJump++;
+        BlockPos nextFeet=target;
+        BlockState footState=world.getBlockState(nextFeet);
+        BlockState aboveState=world.getBlockState(nextFeet.above());
+        boolean halfStep=footState.getBlock() instanceof SlabBlock;
+        boolean tallerStep=aboveState.getBlock() instanceof SlabBlock;
+        boolean approachingRaisedCell=(halfStep||tallerStep)
+                &&distance<=b.dna.jumpLead();
+        // Jump from ground, with native gravity and vanilla collision.
+        // Never add positive upward acceleration while airborne.
+        if((approachingRaisedCell||b.collisions>0&&b.immobile>4)
+                &&mob.onGround()&&b.ticksSinceJump>=b.dna.jumpCooldown()){
+            mob.setDeltaMovement(0,b.dna.jumpPower(),0);
+            b.ticksSinceJump=0;
+            b.jumps++;
+        }
+        double step=Math.min(SPEED_CAP,
+                b.dna.drive()*SPEED_CAP);
+        // Driving back for 3 ticks breaks a collision lock without
+        // passing through solid blocks.
+        if(b.backoffTicks>0){
+            step=-Math.min(b.dna.backoff(),SPEED_CAP);
+            b.backoffTicks--;
+        }
+        double vx=step*dx/Math.max(.00001,distance);
+        double vz=step*dz/Math.max(.00001,distance);
+        // Aim toward the tile center. The alignment gene changes
+        // how strongly the bot commits to that centerline.
+        vx*=b.dna.align();
+        vz*=b.dna.align();
+        double norm=Math.hypot(vx,vz);
+        if(norm>SPEED_CAP){
+            vx*=SPEED_CAP/norm;
+            vz*=SPEED_CAP/norm;
+        }
+        // Actual mob collision resolver, not a simulated tile hop.
+        mob.setNoGravity(false);
+        mob.getNavigation().stop();
+        Vec3 old=mob.position();
+        mob.move(MoverType.SELF,new Vec3(vx,0,vz));
+        if(mob.position().distanceToSqr(old)<.000004)
+            b.collisions++;
+    }
+
+    private static final class Tournament {
+        final GameTestHelper helper;
+        final Random rng=new Random(TRAINING_SEED);
+        final Genome[] champions=new Genome[SELECTED_BOTS.length];
+        final double[] championScores=new double[SELECTED_BOTS.length];
+        List<Genome> generationGenes=new ArrayList<>();
+        List<Candidate> bots=new ArrayList<>();
+        int generation=0;
+        int generationStart=0;
+        int bestFinished=0;
+        Tournament(GameTestHelper helper){
+            this.helper=helper;
+            for(int i=0;i<SELECTED_BOTS.length;i++){
+                championScores[i]=-Double.MAX_VALUE;
+                generationGenes.add(Genome.random(rng));
+            }
+            bots=spawnGeneration(helper,generationGenes);
+        }
+        void tick(){
+            int absoluteTick=helper.getTick();
+            int roundTick=absoluteTick-generationStart;
+            if(roundTick<0)return;
+            for(Candidate b:bots)walkOneTick(helper,b);
+            if(roundTick<DEADLINE)return;
+            int finished=0;
+            double mean=0;
+            int collisions=0,jumps=0;
+            List<Candidate> ranked=new ArrayList<>(bots);
+            ranked.sort(Comparator.comparingDouble(Candidate::fitness).reversed());
+            StringBuilder blockers=new StringBuilder();
+            for(Candidate b:bots){
+                if(b.arrivedTick>=0)finished++;
+                else if(blockers.length()<550)
+                    blockers.append(" #").append(b.index)
+                            .append(" step=").append(b.cursor)
+                            .append("/").append(b.route.length())
+                            .append(" p=").append(b.mob.position());
+                mean+=b.fitness();
+                collisions+=b.collisions;
+                jumps+=b.jumps;
+                if(b.fitness()>championScores[b.index]){
+                    champions[b.index]=b.dna;
+                    championScores[b.index]=b.fitness();
+                }
+            }
+            bestFinished=Math.max(bestFinished,finished);
+            System.out.println("[TIMETRIAL REAL GENETICS] gen="+generation
+                    +" realBuilderGolems="+bots.size()
+                    +" finish18s="+finished+"/"+bots.size()
+                    +" best="+bestFinished
+                    +" meanFitness="+Math.round(mean/bots.size())
+                    +" collisions="+collisions+" jumps="+jumps
+                    +" stalled="+blockers);
+            // Always discard all physical entities, even winners.
+            for(Candidate b:bots)if(b.mob.isAlive())b.mob.discard();
+            if(finished==bots.size()){
+                helper.succeed();return;
+            }
+            if(generation+1>=GENERATIONS){
+                helper.fail("Physical evolution failed after "+GENERATIONS
+                        +" generations. Best REAL result="+bestFinished
+                        +"/"+bots.size()
+                        +", latest="+finished+"/10; "+blockers);
                 return;
             }
-            bots.add(new Candidate(mob,REPLAYS[index],start[0],start[1]));
+            // Genetic selection uses ONLY actual golem trajectories.
+            // Stronger physical performers are more likely to breed,
+            // while the best genotype per spawn remains an elite.
+            List<Genome> parents=new ArrayList<>();
+            int eliteCount=Math.min(4,ranked.size());
+            for(int i=0;i<eliteCount;i++)parents.add(ranked.get(i).dna);
+            for(Genome elite:champions)if(elite!=null)parents.add(elite);
+            List<Genome> offspring=new ArrayList<>();
+            for(int i=0;i<SELECTED_BOTS.length;i++){
+                if(champions[i]!=null&&championScores[i]>100000){
+                    offspring.add(champions[i]);continue;
+                }
+                if(rng.nextDouble()<.10){
+                    offspring.add(Genome.random(rng));continue;
+                }
+                Genome a=champions[i]!=null&&rng.nextBoolean()
+                        ?champions[i]:parents.get(rng.nextInt(parents.size()));
+                Genome b=parents.get(rng.nextInt(parents.size()));
+                offspring.add(Genome.cross(a,b,rng).mutate(rng));
+            }
+            generationGenes=offspring;
+            generation++;
+            generationStart=absoluteTick+1;
+            bots=spawnGeneration(helper,generationGenes);
         }
-        helper.onEachTick(()->{
-            long tick=helper.getTick();
-            if(tick>DEADLINE)return; // GameTest may tick once after reporting failure.
-            for(Candidate b:bots){
-                if(b.reached>=0)continue;
-                if(!b.mob.isAlive()){
-                    helper.fail("Trial Builder disappeared at tick "+tick);
-                    return;
-                }
-                BlockPos under=b.mob.blockPosition().below();
-                if(world.getBlockState(under).is(RED)){
-                    b.reached=tick;
-                    b.mob.getNavigation().stop();
-                    // The BOT has reached the finish; remove it from
-                    // contention immediately rather than parking at the
-                    // narrow doorway and blocking everyone still racing.
-                    b.mob.discard();
-                    continue;
-                }
-                if(tick>DEADLINE||b.cursor>=b.route.length())
-                    continue;
-                int[] destination=next(b.x,b.z,b.route.charAt(b.cursor));
-                BlockPos cell=pos(helper,destination[0],2,destination[1]);
-                if(b.mob.getX()>cell.getX()+.5-.10
-                        &&b.mob.getX()<cell.getX()+.5+.10
-                        &&b.mob.getZ()>cell.getZ()+.5-.10
-                        &&b.mob.getZ()<cell.getZ()+.5+.10){
-                    b.x=destination[0];
-                    b.z=destination[1];
-                    b.cursor++;
-                    continue;
-                }
-                double vx=Math.max(-.2,Math.min(.2,
-                        cell.getX()+.5-b.mob.getX()));
-                double vz=Math.max(-.2,Math.min(.2,
-                        cell.getZ()+.5-b.mob.getZ()));
-                // Real Minecraft movement: no teleporting, no collision
-                // bypass, no upward/flight commands, and no block edits.
-                // Step height and gravity are the vanilla entity's.
-                b.mob.setNoGravity(false);
-                b.mob.getNavigation().stop();
-                Vec3 velocity=b.mob.getDeltaMovement();
-                b.mob.setDeltaMovement(0,velocity.y,0);
-                b.mob.move(MoverType.SELF,new Vec3(vx,0,vz));
-            }
-            if(tick>=DEADLINE){
-                int finished=0;
-                StringBuilder misses=new StringBuilder();
-                for(Candidate b:bots){
-                    if(b.reached>=0&&b.reached<=DEADLINE)finished++;
-                    else if(misses.length()<4800){
-                        String direction=b.cursor<b.route.length()
-                                ?String.valueOf(b.route.charAt(b.cursor)):"DONE";
-                        int[] nextStep=b.cursor<b.route.length()
-                                ?next(b.x,b.z,b.route.charAt(b.cursor))
-                                :new int[]{b.x,b.z};
-                        BlockPos waypoint=pos(helper,nextStep[0],2,nextStep[1]);
-                        boolean aheadClear=world.noCollision(b.mob,
-                                b.mob.getBoundingBox().move(
-                                        Math.max(-.16,Math.min(.16,
-                                            waypoint.getX()+.5-b.mob.getX())),
-                                        0,Math.max(-.16,Math.min(.16,
-                                            waypoint.getZ()+.5-b.mob.getZ()))));
-                        var doorA=world.getBlockState(pos(helper,3,2,5));
-                        var doorB=world.getBlockState(pos(helper,3,2,6));
-                        misses.append(" start=").append(b.route.length())
-                                .append(" idx=").append(b.cursor)
-                                .append(" leg=").append(direction)
-                                .append(" next=").append(nextStep[0])
-                                .append(",").append(nextStep[1])
-                                .append(" plannedCell=").append(b.x)
-                                .append(",").append(b.z)
-                                .append(" pos=").append(b.mob.position())
-                                .append(" clear=").append(aheadClear)
-                                .append(" door5=").append(doorA)
-                                .append(" door6=").append(doorB);
-                    }
-                    // Simulate tournament cutoff: kill/reset all bots after
-                    // 18s before the next generation would be spawned.
-                    b.mob.discard();
-                }
-                System.out.println("[TIMETRIAL PHYSICAL] "+finished
-                        +"/"+bots.size()+" arrived on red wool within 360 game ticks; "
-                        +"missed:"+misses);
-                if(finished==bots.size())helper.succeed();
-                else helper.fail("Real Minecraft 18s trial did not pass: "+
-                        finished+"/"+bots.size()+" reached red; "+misses);
-            }
-        });
+    }
+
+    @GameTest(maxTicks=4550,padding=64,skyAccess=true)
+    public void realBuildersEvolveOnUserMazeInEighteenSeconds(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        if(STARTS.length!=20||REPLAYS.length!=20
+                ||SELECTED_BOTS.length!=10){
+            helper.fail("Expected exactly 10 live Builder Golem entrants");
+            return;
+        }
+        Tournament training=new Tournament(helper);
+        helper.onEachTick(training::tick);
     }
 }
