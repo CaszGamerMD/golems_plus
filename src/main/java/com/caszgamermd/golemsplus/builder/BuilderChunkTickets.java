@@ -117,10 +117,16 @@ public final class BuilderChunkTickets {
      *
      * This does NOT bypass collision, move an entity, or create stock.
      */
-    public static Runnable holdGameTestSimulation(ServerLevel level,BlockPos feet){
-        ChunkPos center=new ChunkPos(feet.getX() >> 4,feet.getZ() >> 4);
-        acquire(level,center);
-        return ()->relinquish(level,center);
+    public static Runnable holdGameTestSimulation(ServerLevel level,BlockPos... sites){
+        // GameTest routes are known up front. Simulate BOTH departure and
+        // destination chunks: radius-two may tick the starting chunk but
+        // stop the golem's entity at the very next chunk boundary, even
+        // though the structure and scaffolds remain block-loaded.
+        Set<ChunkPos> centers=new HashSet<>();
+        for(BlockPos site:sites)if(site!=null)
+            centers.add(new ChunkPos(site.getX() >> 4,site.getZ() >> 4));
+        for(ChunkPos center:centers)acquire(level,center);
+        return ()->{for(ChunkPos center:centers)relinquish(level,center);};
     }
 
     /** Called from the loaded Planner. Never scans all loaded chunks or
