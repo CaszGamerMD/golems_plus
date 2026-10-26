@@ -276,12 +276,12 @@ public final class BuilderScaffoldBridge {
                 vx=0;vz=0;
                 vy=Math.min(.16,Math.max(.06,deltaY*.30));
             }else if(deltaY<-.16){
-                // Fly horizontally over the lower block first, then land
-                // on its actual scaffold top, never into the old support.
-                if(dx*dx+dz*dz<.12){
-                    vx=0;vz=0;
-                    vy=Math.max(-.15,Math.min(-.05,deltaY*.30));
-                }else vy=0;
+                // Correct small altitude errors WHILE crossing: a worker
+                // half a block above the next scaffold otherwise hovers
+                // sideways forever. For a full one-block step DOWN,
+                // traverse to the supported lower tile before lowering.
+                if(deltaY<-.80&&dx*dx+dz*dz>.16)vy=0;
+                else vy=Math.max(-.15,Math.min(-.05,deltaY*.30));
             }else vy=deltaY*.20;
         }
         // Vanilla move() still resolves all FULL block/entity collisions.
