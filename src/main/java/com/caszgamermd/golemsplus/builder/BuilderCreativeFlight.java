@@ -2,6 +2,7 @@ package com.caszgamermd.golemsplus.builder;
 
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import com.caszgamermd.golemsplus.worker.WorkerPhase;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
@@ -30,6 +31,8 @@ public final class BuilderCreativeFlight {
         long lastCloser;
         double best;
         long escapingUntil;
+        List<Vec3> airRoute=List.of();
+        int routeIndex;
         Flight(BlockPos goal,Vec3 destination,boolean depot,
                 BuilderGolem worker,ServerLevel level){
             this.goal=goal.immutable();
@@ -73,7 +76,38 @@ public final class BuilderCreativeFlight {
 
         Vec3 finalPosition=flight.destination;
         double distance=worker.distanceToSqr(finalPosition);
-        if(distance<.08){
+        // Stalled flight inside a closed Dome must find a real air
+        // corridor to ANY legal placement tile, not keep pressing its
+        // head against the same roof or wall.
+        if(!flight.depot&&flight.escapingUntil<=level.getGameTime()
+                &&flight.airRoute.isEmpty()
+                &&level.getGameTime()-flight.lastCloser>55){
+            var alternative=BuilderCreativeAirRoute.plan(level,worker,flight.goal);
+            if(!alternative.isEmpty()){
+                flight.airRoute=alternative;
+                flight.routeIndex=0;
+                flight.cruiseY=Double.NaN;
+                flight.lastCloser=level.getGameTime();
+            }
+        }
+        if(!flight.airRoute.isEmpty()){
+            // Progress through physically adjacent 3D waypoints; don't
+            // resume the old straight-line flight destination mid-route.
+            while(flight.routeIndex<flight.airRoute.size()
+                    &&worker.distanceToSqr(
+                            flight.airRoute.get(flight.routeIndex))<.20){
+                flight.routeIndex++;
+                flight.lastCloser=level.getGameTime();
+            }
+            if(flight.routeIndex>=flight.airRoute.size()){
+                flight.destination=flight.airRoute.get(
+                        flight.airRoute.size()-1);
+                flight.airRoute=List.of();
+                finalPosition=flight.destination;
+            }
+        }
+        distance=worker.distanceToSqr(finalPosition);
+        if(distance<.08&&flight.airRoute.isEmpty()){
             worker.setDeltaMovement(0,0,0);
             flight.cruiseY=Double.NaN;
             return true;
@@ -90,8 +124,9 @@ public final class BuilderCreativeFlight {
             flight.cruiseY=Math.max(worker.getY(),finalPosition.y)+3.5;
             flight.lastCloser=level.getGameTime();
         }
-        Vec3 waypoint=finalPosition;
-        if(!Double.isNaN(flight.cruiseY)){
+        Vec3 waypoint=flight.airRoute.isEmpty()?finalPosition
+                :flight.airRoute.get(flight.routeIndex);
+        if(flight.airRoute.isEmpty()&&!Double.isNaN(flight.cruiseY)){
             double horizontal=Math.hypot(finalPosition.x-worker.getX(),
                     finalPosition.z-worker.getZ());
             if(horizontal>.9&&worker.getY()<flight.cruiseY-.35)
@@ -186,7 +221,8 @@ public final class BuilderCreativeFlight {
         Flight old=flights.get(worker);
         if(old!=null&&old.escapingUntil>level.getGameTime())return false;
         if(old==null||!old.goal.equals(target)||old.depot
-                ||old.destination.distanceToSqr(worker.position())<.16
+                ||old.airRoute.isEmpty()
+                        &&old.destination.distanceToSqr(worker.position())<.16
                         &&old.destination.distanceToSqr(
                                 target.getX()+.5,target.getY()+.5,
                                 target.getZ()+.5)<11.0){
@@ -289,6 +325,7 @@ public final class BuilderCreativeFlight {
         if(flight==null)return "OFF";
         return (flight.depot?"DEPOT":"BUILD")+" destination="+flight.destination
                 +" cruiseY="+flight.cruiseY+" bestSq="+flight.best
-                +" escaping="+flight.escapingUntil;
+                +" escaping="+flight.escapingUntil
+                +" airRoute="+flight.routeIndex+"/"+flight.airRoute.size();
     }
 }
