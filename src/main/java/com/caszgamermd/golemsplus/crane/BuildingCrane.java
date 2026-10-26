@@ -81,7 +81,12 @@ public final class BuildingCrane extends Entity implements Container {
         return positions;
     }
     public boolean onsite(){return onsite;}
-    public boolean serves(WorkerStationBlockEntity station){return table.equals(station.getBlockPos())&&Objects.equals(owner,station.owner())&&Objects.equals(job,station.activeOrder());}
+    public boolean serves(WorkerStationBlockEntity station){
+        return table.equals(station.getBlockPos())
+                &&Objects.equals(owner,station.owner())
+                &&Objects.equals(job,station.activeOrder())
+                &&getUUID().equals(station.builderCraneId());
+    }
     public WorkerStationBlockEntity station(){return level().getBlockEntity(table) instanceof WorkerStationBlockEntity s&&serves(s)?s:null;}
     public boolean ownsWorker(BuilderGolem w){return w.getUUID().equals(operator)||destinations.containsKey(w.getUUID())||w.getVehicle()==this;}
     public void place(UUID owner,BlockPos anchor,Vec3 load){this.owner=owner;this.anchor=anchor.immutable();this.home=BlockPos.containing(load);anchorPoint(CraneMovement.anchorPoint((ServerLevel)level(),anchor));setPos(load);}
@@ -193,6 +198,10 @@ public final class BuildingCrane extends Entity implements Container {
                 // solid, unobstructed tile near the crane's home dock.
                 BuilderGolem driverGolem=world.getEntity(operator)
                         instanceof BuilderGolem d?d:null;
+                if(driverGolem==null){
+                    status="Job finished; operator entity unloaded, retaining reservation";
+                    return;
+                }
                 if(driverGolem!=null){
                     BlockPos safe=CraneMovement.landing(world,this,driverGolem,home);
                     if(safe==null||!unload(world,driverGolem,safe)){
