@@ -14,7 +14,7 @@ import net.minecraft.world.phys.Vec3;
  * refresh when a neighbor changes, and join safely around a floor/wall bend.
  */
 public final class CraneRailConnectionsGameTest {
-    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=400)
+    @GameTest(structure="golems_plus_gametest:dome_arena",padding=64,maxTicks=400)
     public void redstoneLikeCrossesWallsAndCornerClimbs(GameTestHelper h){
         var world=h.getLevel();
         // Dedicated GameTest arenas can contain residual test boundary
