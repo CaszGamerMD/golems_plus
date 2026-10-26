@@ -52,6 +52,10 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         return PathfinderMob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH,20)
                 .add(Attributes.MOVEMENT_SPEED,.40)
+                // Vanilla collision stepping: 0.5-high slabs and other
+                // obstacles below 0.6 can be walked onto without jumping.
+                // Full blocks still require a jump or another route.
+                .add(Attributes.STEP_HEIGHT,.60)
                 .add(Attributes.FOLLOW_RANGE,128);
     }
     @Override protected void registerGoals(){}
