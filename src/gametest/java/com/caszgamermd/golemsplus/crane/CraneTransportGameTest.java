@@ -18,7 +18,10 @@ public final class CraneTransportGameTest {
     @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=3000,skyAccess=true)
     public void fourBuildersRideUpAndBackDown(GameTestHelper h){
         var world=h.getLevel();
-        for(int x=1;x<46;x++)for(int z=1;z<46;z++)h.setBlock(x,1,z,Blocks.STONE);
+        for(int x=1;x<46;x++)for(int z=1;z<46;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=17;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
         for(int x=18;x<=22;x++)for(int z=18;z<=22;z++)h.setBlock(x,12,z,Blocks.STONE);
         h.setBlock(4,2,4,WorksiteContent.BUILDER_TABLE);
         BlockPos home=h.absolutePos(new BlockPos(4,2,4));
