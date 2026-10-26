@@ -23,7 +23,7 @@ public final class GolemBreakService {
  public static void initialize(){
   ServerEntityEvents.ENTITY_LOAD.register((entity,world)->{if(entity instanceof PathfinderMob m&&home(m)!=null)workers.put(m,new Rest());});
   ServerEntityEvents.ENTITY_UNLOAD.register((entity,world)->workers.remove(entity));
-  ServerTickEvents.END_WORLD_TICK.register(world->{if(world.getGameTime()%5!=0)return;for(var row:new ArrayList<>(workers.entrySet()))if(row.getKey().level()==world)tick(world,row.getKey(),row.getValue());});
+  ServerTickEvents.END_SERVER_TICK.register(server->{for(var row:new ArrayList<>(workers.entrySet()))if(row.getKey().level() instanceof ServerLevel world&&world.getGameTime()%5==0)tick(world,row.getKey(),row.getValue());});
  }
  private static void tick(ServerLevel world,PathfinderMob mob,Rest s){
   BlockPos home=home(mob);if(home==null||!mob.isAlive()||mob.isPassenger()||!world.hasChunkAt(home))return;
