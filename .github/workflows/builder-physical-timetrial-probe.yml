@@ -12,6 +12,15 @@ on:
       - .github/workflows/builder-physical-timetrial-probe.yml
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+# Serialize checkpoint writers so one Minecraft run cannot overwrite
+# another run's genetically learned progress.
+concurrency:
+  group: physical-evolution-checkpoint-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   real-minecraft-physics:
     runs-on: ubuntu-latest
@@ -65,16 +74,39 @@ jobs:
           PY
       - name: Mandatory 360-tick real Minecraft golem trial
         shell: bash
+        env:
+          GOLEMS_EVOLUTION_STATE_DIR: ${{ github.workspace }}/training/state
         run: |
           set -o pipefail
           mkdir -p build/timetrial-training
           gradle --no-daemon runGameTest 2>&1 | tee build/timetrial-training/real-builder-genetics.log
+      - name: Commit learned real-entity genes, EVEN IF the trial fails
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/feature/builder-evolutionary-navigation-trainer-262'
+        shell: bash
+        run: |
+          if [[ ! -s training/state/checkpoint.json ]]; then
+            echo 'No new real-entity checkpoint was produced.'
+            exit 0
+          fi
+          git config user.name 'golems-evolution[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- training/state/
+          if git diff --cached --quiet; then
+            echo 'No changes in saved physical genes.'
+            exit 0
+          fi
+          git commit -m 'Save verified Builder Golem mutation checkpoint [skip ci]'
+          # The branch itself is the long-term memory between CI servers.
+          # Avoid force pushes; every unique generation remains in the
+          # tracked history.jsonl as well as the latest checkpoint.
+          git push origin HEAD:"${GITHUB_REF_NAME}"
       - name: Preserve movement collision and timeout diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: builder-18-second-physical-entity-diagnostics
           path: |
+            training/state/
             build/timetrial-training/real-builder-genetics.log
             build/gametest/
             build/reports/
