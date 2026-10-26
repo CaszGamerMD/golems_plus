@@ -28,7 +28,12 @@ public final class CraneService {
     private static List<BuildingCrane> cranes(ServerLevel level){return live.getOrDefault(level,Map.of()).values().stream().filter(c->!c.isRemoved()).toList();}
     public static List<BlockPos> simulationPositions(WorkerStationBlockEntity table){
         if(!(table.getLevel() instanceof ServerLevel level))return List.of();
-        return cranes(level).stream().filter(c->c.serves(table))
+        // Job-scoped crane tickets remain active during PAUSE and while
+        // returning its physical operator after COMPLETE or CANCEL.
+        // Prepared-but-not-started cranes do NOT load chunks indefinitely.
+        return cranes(level).stream().filter(c->
+                table.activeOrder()!=null&&c.serves(table)
+                        ||c.returningOperatorFor(table))
                 .flatMap(c->c.simulationPositions().stream()).distinct().limit(12).toList();
     }
     public static void tell(Player player,String text){player.sendSystemMessage(Component.literal("Crane: "+text));}
