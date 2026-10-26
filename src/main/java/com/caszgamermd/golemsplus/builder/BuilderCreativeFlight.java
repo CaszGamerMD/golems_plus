@@ -194,7 +194,8 @@ public final class BuilderCreativeFlight {
             if(destination==null){
                 // Try to clear the target's own body volume, even when
                 // its ideal work-radius candidates have become blocked.
-                return !requestClearance(level,worker,target);
+                requestClearance(level,worker,target);
+                return false;
             }
             navigate(level,worker,target,destination,false);
         }
