@@ -176,6 +176,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         int ticksSinceJump;
         double doorLaneShift;
         int doorTargetX=Integer.MIN_VALUE,doorTargetZ=Integer.MIN_VALUE;
+        int exitTargetX=Integer.MIN_VALUE,exitTargetZ=Integer.MIN_VALUE;
         double lastDistance=Double.POSITIVE_INFINITY;
         Candidate(int index,BuilderGolem mob,String route,int x,int z,
                   Genome dna){
@@ -446,6 +447,15 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 // golems switch sides and oscillate without advancing.
                 centerShift=b.doorLaneShift;
             }else if(leavingDoor){
+                if(b.exitTargetX!=ahead[0]||b.exitTargetZ!=ahead[1]){
+                    b.exitTargetX=ahead[0];
+                    b.exitTargetZ=ahead[1];
+                    // A Builder can cross the FIRST face of an open
+                    // door and still collide with its EXIT face.
+                    // Physically probe the next cell in Minecraft
+                    // before choosing a separate, stable exit lane.
+                    b.doorLaneShift=safeDoorLane(world,mob,target,b.dna);
+                }
                 centerShift=b.doorLaneShift;
             }
             dx=target.getX()+.5-mob.getX();
@@ -475,6 +485,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
             // If the door's first approach was obstructed by another
             // mob, allow a new physical clearance probe on recovery.
             b.doorTargetX=Integer.MIN_VALUE;
+            b.exitTargetX=Integer.MIN_VALUE;
         }
         b.ticksSinceJump++;
         // GameTest's explicit horizontal move(MoverType.SELF,...) can
