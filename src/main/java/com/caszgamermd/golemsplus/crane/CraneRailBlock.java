@@ -29,12 +29,24 @@ public final class CraneRailBlock extends Block {
     public static final BooleanProperty FACE_WEST=BooleanProperty.create("face_west");
     public static final BooleanProperty FACE_UP=BooleanProperty.create("face_up");
     public static final BooleanProperty FACE_DOWN=BooleanProperty.create("face_down");
+    // Visual arms must follow ACTUAL neighboring rails; a face-mounted
+    // centre by itself is not an unconditional four-way cross.
+    // Six global link axes keep the blockstate finite (not 24 booleans
+    // per face). A rail may still have up to six distinct attached faces.
+    public static final BooleanProperty LINK_NORTH=BooleanProperty.create("link_north");
+    public static final BooleanProperty LINK_EAST=BooleanProperty.create("link_east");
+    public static final BooleanProperty LINK_SOUTH=BooleanProperty.create("link_south");
+    public static final BooleanProperty LINK_WEST=BooleanProperty.create("link_west");
+    public static final BooleanProperty LINK_UP=BooleanProperty.create("link_up");
+    public static final BooleanProperty LINK_DOWN=BooleanProperty.create("link_down");
 
     public CraneRailBlock(Properties p){
         super(p);
         BlockState state=stateDefinition.any().setValue(FACING,Direction.UP);
         for(Direction direction:Direction.values())
             state=state.setValue(faceProperty(direction),direction==Direction.UP);
+        for(Direction direction:Direction.values())
+            state=state.setValue(linkProperty(direction),false);
         registerDefaultState(state);
     }
     @Override protected MapCodec<? extends Block> codec(){
@@ -42,7 +54,8 @@ public final class CraneRailBlock extends Block {
     }
     @Override protected void createBlockStateDefinition(
             StateDefinition.Builder<Block,BlockState> b){
-        b.add(FACING,FACE_NORTH,FACE_EAST,FACE_SOUTH,FACE_WEST,FACE_UP,FACE_DOWN);
+        b.add(FACING,FACE_NORTH,FACE_EAST,FACE_SOUTH,FACE_WEST,FACE_UP,FACE_DOWN,
+                LINK_NORTH,LINK_EAST,LINK_SOUTH,LINK_WEST,LINK_UP,LINK_DOWN);
     }
     private static BooleanProperty faceProperty(Direction d){
         return switch(d){
@@ -52,6 +65,16 @@ public final class CraneRailBlock extends Block {
             case WEST->FACE_WEST;
             case UP->FACE_UP;
             case DOWN->FACE_DOWN;
+        };
+    }
+    private static BooleanProperty linkProperty(Direction d){
+        return switch(d){
+            case NORTH->LINK_NORTH;
+            case EAST->LINK_EAST;
+            case SOUTH->LINK_SOUTH;
+            case WEST->LINK_WEST;
+            case UP->LINK_UP;
+            case DOWN->LINK_DOWN;
         };
     }
     public static boolean attached(BlockState s,Direction face){
@@ -147,6 +170,20 @@ public final class CraneRailBlock extends Block {
         }
         if(first==null)return Blocks.AIR.defaultBlockState();
         if(!attached(s,preferred))s=s.setValue(FACING,first);
+        // Recalculate on every neighbor update. Never render an arm that
+        // has no real connected rail at the adjoining world coordinate.
+        // Derive from the current retained face set (NOT stale world state
+        // at pos, which can be replaced during support loss).
+        for(Direction dir:Direction.values()){
+            boolean connects=false;
+            for(Direction face:Direction.values()){
+                if(!attached(s,face)||face.getAxis()==dir.getAxis())continue;
+                if(straight(world,p,face,dir)||corner(world,p,face,dir)){
+                    connects=true;break;
+                }
+            }
+            s=s.setValue(linkProperty(dir),connects);
+        }
         return s;
     }
     @Override public BlockState getStateForPlacement(BlockPlaceContext c){
@@ -156,12 +193,13 @@ public final class CraneRailBlock extends Block {
         BlockState existing=c.getLevel().getBlockState(pos);
         if(existing.is(this)){
             if(attached(existing,face))return null;
-            return existing.setValue(faceProperty(face),true);
+            return withSupportedFaces(existing.setValue(faceProperty(face),true),
+                    c.getLevel(),pos);
         }
         BlockState state=defaultBlockState().setValue(FACING,face);
         for(Direction d:Direction.values())
             state=state.setValue(faceProperty(d),d==face);
-        return state;
+        return withSupportedFaces(state,c.getLevel(),pos);
     }
     @Override protected boolean canBeReplaced(BlockState s,BlockPlaceContext ctx){
         // Like vines, right-click a different supported face with another

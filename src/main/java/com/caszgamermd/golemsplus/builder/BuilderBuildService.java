@@ -65,6 +65,11 @@ public final class BuilderBuildService {
         net.minecraft.world.phys.Vec3 at;
         long lastMove,lastCloser;
         double bestTargetDistance=Double.POSITIVE_INFINITY;
+        // A circular route can satisfy "is moving" forever. Record
+        // coarse visited feet tiles and trigger a replan after repeatedly
+        // returning to the SAME place without improving the target range.
+        final java.util.Map<BlockPos,Long> visited=new java.util.HashMap<>();
+        int loops;
     }
     private static final Map<BuilderGolem,TravelWatch> travelWatch=
             new WeakHashMap<>();
@@ -78,6 +83,7 @@ public final class BuilderBuildService {
             watch.lastMove=level.getGameTime();
             watch.lastCloser=level.getGameTime();
             watch.bestTargetDistance=distance;
+            watch.visited.clear();watch.loops=0;
             return false;
         }
         if(worker.position().distanceToSqr(watch.at)>.36){
@@ -86,13 +92,27 @@ public final class BuilderBuildService {
         if(distance<watch.bestTargetDistance-1.0){
             watch.bestTargetDistance=distance;
             watch.lastCloser=level.getGameTime();
+            watch.visited.clear();watch.loops=0;
         }
+        BlockPos feet=worker.blockPosition();
+        Long last=watch.visited.put(feet,level.getGameTime());
+        if(last!=null&&level.getGameTime()-last>=28
+                &&level.getGameTime()-watch.lastCloser>=45)
+            watch.loops++;
+        // Bounded history: old positions are irrelevant after a detour,
+        // and each Builder owns only its transient short-term map.
+        if(watch.visited.size()>90)
+            watch.visited.entrySet().removeIf(e->
+                    level.getGameTime()-e.getValue()>160);
         // Distinct from standing still: circling around a wall can
         // continue moving for minutes while never getting any closer
         // to the assigned site. Eventually try a DIFFERENT scaffold
         // / route rather than wasting the entire crew's shift.
-        return level.getGameTime()-watch.lastMove>=180
-                ||level.getGameTime()-watch.lastCloser>=300;
+        boolean circles=watch.loops>=2
+                &&level.getGameTime()-watch.lastCloser>=85;
+        return level.getGameTime()-watch.lastMove>=150
+                ||level.getGameTime()-watch.lastCloser>=240
+                ||circles;
     }
     private static WorkerAction action(BuilderGolem worker,int index){
         var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
@@ -582,6 +602,13 @@ public final class BuilderBuildService {
                             return;
                         }
                     }
+                    // Cancel the obsolete A* detour BEFORE assigning a
+                    // new target. Otherwise the old native path keeps
+                    // walking the same circle while the Planner briefly
+                    // reassigns this step.
+                    com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .stop(worker);
+                    BuilderPlacementSpace.invalidateApproach(worker,pos);
                     // Do not hold a whole zoned crew hostage to one
                     // unreachable cell. Keep the item pouch and future
                     // schematic intact, but try another staged coordinate.
@@ -673,9 +700,12 @@ public final class BuilderBuildService {
                         // immediately try moving toward the job and choose
                         // another exact landing on the next evaluation.
                         // Never count a stopped navigation as task progress.
-                        BuilderPlacementSpace.invalidateApproach(worker,pos);
-                        com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                .routeTo(level,worker,pos,.85);
+                        BuilderPlacementSpace.rejectApproach(level,
+                                worker,pos,approach);
+                        // Wait for the NEXT Builder tick to choose a fresh
+                        // reachable approach; don't immediately issue a
+                        // general target route that sends this Golem back
+                        // toward the failed side of the wall.
                     }
                 }else{
                     // Long-distance travel still uses bounded multi-leg A*.
