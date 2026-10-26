@@ -161,7 +161,10 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         // unloading, leaving a tower, or reloading an entity from disk.
         if(level() instanceof ServerLevel server
                 &&(isNoGravity()||isShiftKeyDown())
-                &&!BuilderScaffolding.climbingNow(server,this)){
+                &&!BuilderScaffolding.climbingNow(server,this)
+                // The paid scaffold bridge controls temporary creative-style
+                // hover only while a real supported walking tile exists.
+                &&!BuilderScaffoldBridge.moving(this)){
             setNoGravity(false);
             setShiftKeyDown(false);
             var velocity=getDeltaMovement();

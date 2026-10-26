@@ -19,8 +19,8 @@ import net.minecraft.world.level.block.Blocks;
 
 /**
  * Physical temporary catwalks for a Builder blocked by an overhang.
- * A route is a chain of real, owned scaffold blocks at one elevation,
- * beginning at the top of an EXISTING owned tower. Four-way BFS permits
+ * A route is a chain of real, owned scaffold blocks across adjacent elevations,
+ * beginning at the top of an EXISTING owned tower. 3D BFS permits
  * turns around protruding walls; no teleport or imaginary walk nodes.
  *
  * Only one scaffold is placed from within interaction range at a time.
@@ -28,8 +28,8 @@ import net.minecraft.world.level.block.Blocks;
  * the next. The Builder's inventory and its Planner still own every item.
  */
 public final class BuilderScaffoldBridge {
-    private static final int MAX_SPAN=20; // real supported piers every five blocks
-    private static final int MAX_SEARCH=20;
+    private static final int MAX_SPAN=48; // virtual flight path: extended scaffold corridor
+    private static final int MAX_SEARCH=30;
     private static final int[][] DIRECTIONS={{1,0},{-1,0},{0,1},{0,-1}};
     private record Route(BlockPos target,List<BlockPos> cells,int next,long created){}
     private record Walk(BlockPos destination,long expires){}
@@ -46,10 +46,13 @@ public final class BuilderScaffoldBridge {
         BlockPos destination;
         net.minecraft.world.phys.Vec3 last;
         long lastMoved;
+        double bestRange;
         WalkMonitor(BlockPos destination,BuilderGolem worker,long tick){
             this.destination=destination;
             last=worker.position();
             lastMoved=tick;
+            bestRange=worker.distanceToSqr(destination.getX()+.5,
+                    destination.getY()+1.0,destination.getZ()+.5);
         }
     }
     private static final Map<BuilderGolem,WalkMonitor> walkMonitors=
@@ -202,7 +205,7 @@ public final class BuilderScaffoldBridge {
                 ||!level.getBlockState(platform).is(Blocks.SCAFFOLDING)
                     &&!com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .canStandOn(level,worker,platform.above())
-                ||worker.getY()<platform.getY()+.35
+                ||worker.getY()<platform.getY()-.25
                 ||worker.getY()>platform.getY()+2){
             walking.remove(worker);
             routes.remove(worker);
@@ -212,7 +215,7 @@ public final class BuilderScaffoldBridge {
         double tx=platform.getX()+.5,tz=platform.getZ()+.5;
         double dx=tx-worker.getX(),dz=tz-worker.getZ();
         if(dx*dx+dz*dz<.10
-                &&Math.abs(worker.getY()-platform.getY()-1)<.55){
+                &&Math.abs(worker.getY()-platform.getY()-1)<.22){
             walking.remove(worker);
             walkMonitors.remove(worker);
             worker.getNavigation().stop();
@@ -224,8 +227,14 @@ public final class BuilderScaffoldBridge {
             watch=new WalkMonitor(platform,worker,level.getGameTime());
             walkMonitors.put(worker,watch);
         }
-        if(worker.position().distanceToSqr(watch.last)>.09){
+        // Merely shifting left/right isn't progress on a ghost-flight
+        // route. Count only real motion that SHORTENS the remaining 3D
+        // distance to the next paid scaffold tile.
+        double remaining=worker.distanceToSqr(platform.getX()+.5,
+                platform.getY()+1.0,platform.getZ()+.5);
+        if(remaining<watch.bestRange-.04){
             watch.last=worker.position();
+            watch.bestRange=remaining;
             watch.lastMoved=level.getGameTime();
         }else if(level.getGameTime()-watch.lastMoved>=65){
             // A live bridge route must NEVER claim permanent progress while
@@ -243,21 +252,50 @@ public final class BuilderScaffoldBridge {
             return false;
         }
         worker.getNavigation().stop();
-        worker.setNoGravity(false);
         worker.setShiftKeyDown(false);
-        worker.getMoveControl().setWantedPosition(tx,platform.getY()+1,tz,1);
+        // Creative-flight EMULATION: stabilize only while the next block
+        // is ALREADY a physically supported scaffold (or solid landing).
+        // No teleporting, collision disabling or remote unsupported hover.
+        // Restoring gravity happens automatically as soon as this walking
+        // reservation is released, timed out or the platform disappears.
+        boolean supported=level.getBlockState(platform).is(Blocks.SCAFFOLDING)
+                &&supportedDistance(level,platform)<7;
+        boolean close=dx*dx+dz*dz<=4.0
+                &&Math.abs(worker.getY()-(platform.getY()+1))<=1.5;
+        // Do not use assisted flight on a healthy walking route: only
+        // enable it after 12 real game ticks with no closer displacement.
+        // This lets successful normal scaffold travel stay grounded and
+        // prevents hover corrections fighting the normal movement AI.
+        boolean assistedFlight=supported&&close
+                &&level.getGameTime()-watch.lastMoved>=12;
+        worker.setNoGravity(assistedFlight);
+        double destinationY=platform.getY()+1.0;
+        worker.getMoveControl().setWantedPosition(tx,destinationY,tz,1);
         double vx=Math.max(-.13,Math.min(.13,dx*.24));
         double vz=Math.max(-.13,Math.min(.13,dz*.24));
-        // Scaffolding's directional collision surface depends on the
-        // entity's current feet height and the direction it approaches.
-        // An AABB translated ahead of the actual entity can report a
-        // false wall at the lip of an otherwise walkable scaffold. The
-        // real mob move() call inside vanilla tick is the authority:
-        // it resolves FULL block/entity collisions without phasing.
-        // The destination was already checked as a genuine supported
-        // scaffold or solid standing tile above.
-        var v=worker.getDeltaMovement();
-        worker.setDeltaMovement(vx,v.y,vz);
+        double deltaY=destinationY-worker.getY();
+        double vy=worker.getDeltaMovement().y;
+        if(assistedFlight){
+            if(deltaY>.16){
+                // A true 1-block ascent must gain clearance before moving
+                // sideways. But a 0.2-0.5-height lip correction must NOT
+                // freeze X/Z, otherwise a Builder perpetually bobs at the
+                // edge of a perfectly good scaffold bridge.
+                if(deltaY>.80){vx=0;vz=0;}
+                vy=Math.min(.16,Math.max(.06,deltaY*.30));
+            }else if(deltaY<-.16){
+                // Correct small altitude errors WHILE crossing: a worker
+                // half a block above the next scaffold otherwise hovers
+                // sideways forever. For a full one-block step DOWN,
+                // traverse to the supported lower tile before lowering.
+                if(deltaY<-.80&&dx*dx+dz*dz>.16)vy=0;
+                else vy=Math.max(-.15,Math.min(-.05,deltaY*.30));
+            }else vy=deltaY*.20;
+        }
+        // Vanilla move() still resolves all FULL block/entity collisions.
+        // The virtual flight route instructs where to lay scaffolds; it
+        // cannot make an impossible physical edge magically passable.
+        worker.setDeltaMovement(vx,vy,vz);
         return true;
     }
 
@@ -359,43 +397,42 @@ public final class BuilderScaffoldBridge {
     private static List<BlockPos> search(ServerLevel level,ServerPlayer owner,
             WorkerStationBlockEntity table,BuilderGolem worker,
             BlockPos anchor,BlockPos target,Set<BlockPos> future,
-            Set<BlockPos> owned,BuilderScaffoldShell.Blueprint shell){
-        if(!owned.contains(anchor)||Math.abs(anchor.getY()+1-target.getY())>1)
+            Set<BlockPos> owned,BuilderScaffoldShell.Blueprint shell,
+            boolean allowVertical){
+        if(!owned.contains(anchor)||Math.abs(anchor.getY()+1-target.getY())>2)
             return List.of();
-        // Profile the model in both vertical axes first. The search goal
-        // is a safe WORK PLATFORM outside the finished silhouette, not the
-        // placement cell itself (which would collide with the Builder).
-        var sectionStations=BuilderScaffoldSections.stations(
-                future,target,anchor.getY());
+        // GHOST-FLIGHT PLAN: survey up to two levels either side of the
+        // existing real tower. This is a VIRTUAL route through clear air,
+        // not entity flight and not permission to cross future blocks.
+        // When executed, every footprint becomes one paid, physically
+        // supported scaffold BEFORE its Builder advances onto it.
         Set<BlockPos> workFloors=new HashSet<>();
-        // The complete blueprint already contains a one-wide OUTER
-        // walkway around every level, including overhangs and corners.
-        // Favor that route instead of searching directly toward a wall.
-        // A complete exterior shell is meaningful for a *structure*, not
-        // a single-block movement fixture. Preserve the proven local
-        // cross-section route for tiny jobs/isolated repair placements.
         boolean wholeBuild=shell.solids().size()>=24;
-        if(wholeBuild)for(BlockPos floor:shell.atHeight(anchor.getY())){
-            int dx=floor.getX()-target.getX(),dz=floor.getZ()-target.getZ();
-            int dy=floor.getY()+1-target.getY();
-            if(dx*dx+dz*dz+dy*dy<=12.5)workFloors.add(floor);
+        for(int y=anchor.getY()-2;y<=anchor.getY()+2;y++){
+            if(wholeBuild)for(BlockPos floor:shell.atHeight(y)){
+                int dx=floor.getX()-target.getX(),dz=floor.getZ()-target.getZ();
+                int dy=floor.getY()+1-target.getY();
+                if(dx*dx+dz*dz+dy*dy<=12.5)workFloors.add(floor);
+            }
+            // A local cross-section may expose a reachable ledge even when
+            // the whole-build outer shell has no nearby usable platform.
+            for(var station:BuilderScaffoldSections.stations(future,target,y))
+                workFloors.add(station.scaffold());
         }
-        if(workFloors.isEmpty())
-            for(var station:sectionStations)workFloors.add(station.scaffold());
         if(workFloors.isEmpty()){
             failures.put(worker,"No unobstructed X/Z section work platforms");
             return List.of();
         }
         ArrayDeque<BlockPos> queue=new ArrayDeque<>();
         Map<BlockPos,BlockPos> parent=new HashMap<>();
+        Map<BlockPos,Integer> depths=new HashMap<>();
         queue.add(anchor);
         parent.put(anchor,anchor);
+        depths.put(anchor,0);
         BlockPos winner=null;
         while(!queue.isEmpty()){
             BlockPos current=queue.removeFirst();
-            int distance=0;
-            for(BlockPos walk=current;!walk.equals(anchor);walk=parent.get(walk))
-                distance++;
+            int distance=depths.get(current);
             double dx=current.getX()-target.getX(),dz=current.getZ()-target.getZ();
             double dy=(current.getY()+1)-target.getY();
             if(workFloors.contains(current)
@@ -407,9 +444,14 @@ public final class BuilderScaffoldBridge {
             // Keep true breadth-first order; addFirst(shell) caused a
             // depth-first bias, marking nodes reached by long winding
             // routes before their short approaches. Sort ONLY siblings.
-            List<BlockPos> neighbors=new ArrayList<>(4);
-            for(int[] dir:DIRECTIONS)
-                neighbors.add(current.offset(dir[0],0,dir[1]));
+            List<BlockPos> neighbors=new ArrayList<>(12);
+            // Simulate a Builder flying around the silhouette: north,
+            // south, east and west, including one-level changes. The
+            // real-world execution below constructs actual scaffold
+            // stairs/piers and follows the resulting collision-safe path.
+            for(int heightStep:allowVertical?new int[]{0,1,-1}:new int[]{0})
+                for(int[] dir:DIRECTIONS)
+                    neighbors.add(current.offset(dir[0],heightStep,dir[1]));
             neighbors.sort(Comparator
                     .comparingInt((BlockPos node)->wholeBuild&&shell.isShell(node)?0:1)
                     .thenComparingDouble(node->node.distSqr(target)));
@@ -420,11 +462,16 @@ public final class BuilderScaffoldBridge {
                 if(parent.containsKey(next)
                         ||Math.abs(next.getX()-anchor.getX())>MAX_SEARCH
                         ||Math.abs(next.getZ()-anchor.getZ())>MAX_SEARCH
+                        ||Math.abs(next.getY()-anchor.getY())>2
                         ||!open(level,owner,table,worker,next,future,owned)
-                        ||(distance+1)%5==0
+                        // Vertical scaffold steps and every fifth lateral
+                        // span need a feasible load-bearing pier below.
+                        ||((distance+1)%5==0
+                            ||next.getY()!=current.getY())
                             &&!pierFeasible(level,owner,next,future,owned))
                     continue;
                 parent.put(next,current);
+                depths.put(next,distance+1);
                 queue.addLast(next);
             }
         }
@@ -487,10 +534,16 @@ public final class BuilderScaffoldBridge {
             for(var tower:shell.towers())cardinalBases.add(
                     BlockPos.asLong(tower.base().getX(),0,tower.base().getZ()));
             for(BlockPos top:tops.values()){
-                if(top.getY()!=bridgeY&&top.getY()!=bridgeY-1)continue;
+                if(Math.abs(top.getY()-bridgeY)>2)continue;
                 matchingTops++;
+                // Prefer the physically simpler, constant-height scaffold
+                // corridor. Only train a 3D ghost-flight path if every flat
+                // candidate is blocked, out of reach or too long.
                 List<BlockPos> candidate=search(level,owner,table,worker,
-                        top,target,future,owned,shell);
+                        top,target,future,owned,shell,false);
+                if(candidate.isEmpty())
+                    candidate=search(level,owner,table,worker,
+                            top,target,future,owned,shell,true);
                 if(candidate.isEmpty())continue;
                 // Prefer a short, physical route that stays on the
                 // planned exterior shell; penalize needless detours across
@@ -593,7 +646,7 @@ public final class BuilderScaffoldBridge {
             return BuilderScaffolding.Result.NO_SAFE_TOWER;
         }
         if(!level.getBlockState(to).is(Blocks.SCAFFOLDING)){
-            if(next%5==0){
+            if(next%5==0||to.getY()!=from.getY()){
                 var support=addPier(level,worker,table,owner,to,plan);
                 if(support!=BuilderScaffolding.Result.NOT_NEEDED)return support;
             }

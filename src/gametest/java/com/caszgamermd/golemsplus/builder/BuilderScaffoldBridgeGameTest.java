@@ -167,6 +167,95 @@ public final class BuilderScaffoldBridgeGameTest {
                         +" bridge="+BuilderScaffoldBridge.debug(worker));
         });
     }
+    /** A virtual flight edge climbs ONE block but always lands on a
+     * physically placed, registered scaffold. Test actual entity motion;
+     * no instant position changes or invisible floor are permitted.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=300,skyAccess=true)
+    public void fliesOnlyOverBuiltScaffoldToOneLevelHigher(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=2;x<=12;x++)for(int z=2;z<=10;z++){
+            helper.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=7;y++)helper.setBlock(x,y,z,Blocks.AIR);
+        }
+        helper.setBlock(2,2,2,WorksiteContent.BUILDER_TABLE);
+        BlockPos home=helper.absolutePos(new BlockPos(2,2,2));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            helper.fail("Ghost-flight test missing Planner");return;
+        }
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())){
+            helper.fail("Ghost-flight Planner owner missing");return;
+        }
+        BlockPos anchor=helper.absolutePos(new BlockPos(6,3,6));
+        BlockPos landing=helper.absolutePos(new BlockPos(7,4,6));
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPersistenceRequired();
+        worker.setPos(anchor.getX()+.5,anchor.getY()+1,anchor.getZ()+.5);
+        if(!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Ghost-flight worker registration failed");return;
+        }
+        for(int y=2;y<=3;y++){
+            BlockPos piece=helper.absolutePos(new BlockPos(6,y,6));
+            level.setBlock(piece,Blocks.SCAFFOLDING.defaultBlockState()
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,0),3);
+            if(!table.trackScaffold(worker.getUUID(),piece)){
+                helper.fail("Untracked departure scaffold");return;
+            }
+        }
+        for(int y=2;y<=4;y++){
+            BlockPos piece=helper.absolutePos(new BlockPos(7,y,6));
+            level.setBlock(piece,Blocks.SCAFFOLDING.defaultBlockState()
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,0),3);
+            if(!table.trackScaffold(worker.getUUID(),piece)){
+                helper.fail("Untracked arrival scaffold");return;
+            }
+        }
+        // Finish constructing the grounded columns before entity spawning
+        // so the test cannot accidentally conflate idle scaffold cleanup
+        // with the actual guided one-block ascent.
+        boolean beforeBlock=level.getBlockState(landing).is(Blocks.SCAFFOLDING);
+        boolean beforeOwned=table.sharedScaffoldPositions().contains(landing);
+        level.addFreshEntity(worker);
+        if(!BuilderScaffoldBridge.sidestep(level,worker,table,landing.above())){
+            helper.fail("Ghost-flight refused supported ascent: state="
+                    +level.getBlockState(landing)+" owned="
+                    +table.sharedScaffoldPositions().contains(landing)
+                    +" loaded="+level.hasChunkAt(landing)
+                    +" beforeSpawn="+beforeBlock+"/"+beforeOwned
+                    +" rangeSq="+worker.distanceToSqr(landing.getX()+.5,
+                            landing.getY()+1,landing.getZ()+.5));
+            return;
+        }
+        final Runnable simulation=BuilderChunkTickets.holdGameTestSimulation(level,
+                anchor.above(),landing.above());
+        final boolean[] rose={false};
+        helper.onEachTick(()->{
+            if(!worker.isAlive()){
+                helper.fail("Ghost-flight Builder died");return;
+            }
+            if(worker.getY()>anchor.getY()+1.35)rose[0]=true;
+            if(worker.distanceToSqr(landing.getX()+.5,
+                    landing.getY()+1,landing.getZ()+.5)<.10
+                    &&!BuilderScaffoldBridge.moving(worker)){
+                if(!rose[0]||!level.getBlockState(landing).is(Blocks.SCAFFOLDING)){
+                    helper.fail("Flight did not traverse real supported scaffolding");
+                    return;
+                }
+                simulation.run();
+                helper.succeed();
+                return;
+            }
+            if(helper.getTick()>200){
+                simulation.run();
+                helper.fail("Ghost-flight scaffold transition stalled at "
+                        +worker.blockPosition()+" bridge="
+                        +BuilderScaffoldBridge.debug(worker));
+            }
+        });
+    }
+
     /** The GameTest must reject bridges that only LOOK built but whose
      * unsupported spans have distance seven and will fall on block tick.
      */
