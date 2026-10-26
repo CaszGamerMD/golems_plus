@@ -272,8 +272,19 @@ public final class BuilderEvolutionTimeTrialGameTest {
             case 'S' -> new int[]{x,z+1};
             case 'E' -> new int[]{x+1,z};
             case 'W' -> new int[]{x-1,z};
+            // Keypad diagonals: 7 NW, 9 NE, 3 SE, 1 SW.
+            // These are single real movements, not two cardinal moves.
+            case '7' -> new int[]{x-1,z-1};
+            case '9' -> new int[]{x+1,z-1};
+            case '3' -> new int[]{x+1,z+1};
+            case '1' -> new int[]{x-1,z+1};
             default -> throw new IllegalArgumentException("Bad replay movement");
         };
+    }
+
+    private static boolean walkableCell(int x,int z){
+        return z>=0&&z<MAZE.length&&x>=0&&x<MAZE[z].length()
+                &&MAZE[z].charAt(x)!='#';
     }
 
     private record RouteNode(int x,int z,char heading){}
@@ -304,13 +315,22 @@ public final class BuilderEvolutionTimeTrialGameTest {
             if(MAZE[node.z()].charAt(node.x())=='G'){
                 finish=node;break;
             }
-            for(char direction:new char[]{'N','E','S','W'}){
+            for(char direction:new char[]{'N','E','S','W','7','9','3','1'}){
                 int[] p=next(node.x(),node.z(),direction);
                 int x=p[0],z=p[1];
-                if(z<0||z>=MAZE.length||x<0||x>=MAZE[0].length()
-                        ||MAZE[z].charAt(x)=='#')continue;
+                if(!walkableCell(x,z))continue;
+                int stepX=x-node.x(),stepZ=z-node.z();
+                boolean diagonal=stepX!=0&&stepZ!=0;
+                // A 0.65-wide golem cannot cut through two wall
+                // corners just because their diagonal destination is
+                // nominally open. Require both adjoining side tiles to
+                // be open; physical AABB collision validates the move.
+                if(diagonal&&(!walkableCell(node.x()+stepX,node.z())
+                        ||!walkableCell(node.x(),node.z()+stepZ)))
+                    continue;
                 char tile=MAZE[z].charAt(x);
-                double weight=1.0+(tile=='^'?dna.slabAvoid():0)
+                double weight=(diagonal?Math.sqrt(2):1.0)
+                        +(tile=='^'?dna.slabAvoid():0)
                         +(node.heading()!='?'&&node.heading()!=direction
                                 ?dna.turnBias():0);
                 // Deterministic genetic corridor preferences. Small
@@ -497,10 +517,17 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 .iterator().hasNext();
         BlockPos nextFeet=target;
         BlockState footState=world.getBlockState(nextFeet);
-        BlockState aboveState=world.getBlockState(nextFeet.above());
-        boolean halfStep=footState.getBlock() instanceof SlabBlock;
-        boolean tallerStep=aboveState.getBlock() instanceof SlabBlock;
-        boolean approachingRaisedCell=(halfStep||tallerStep)
+        // Vanilla STEP_HEIGHT=0.6 resolves these low obstacles using
+        // real ground movement. Do NOT jump for a bottom slab (0.5 high).
+        // Only obstacles exceeding the automatic step height may trigger
+        // the learned jump behaviour.
+        var obstacleShape=footState.getCollisionShape(world,nextFeet);
+        double stepRise=obstacleShape.isEmpty()?0
+                :nextFeet.getY()+obstacleShape.max(Direction.Axis.Y)
+                        -mob.getY();
+        boolean lowStep=stepRise>0&&stepRise<=.600001;
+        boolean tallObstacle=stepRise>.600001;
+        boolean approachingRaisedCell=tallObstacle
                 &&distance<=b.dna.jumpLead();
         // Jump from ground, with native gravity and vanilla collision.
         // Never add positive upward acceleration while airborne.
@@ -512,7 +539,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         boolean solidAhead=world.getBlockCollisions(mob,
                 mob.getBoundingBox().move(proposedX,0,proposedZ))
                 .iterator().hasNext();
-        if((approachingRaisedCell||solidAhead&&b.immobile>4)
+        if((approachingRaisedCell||solidAhead&&!lowStep&&b.immobile>4)
                 &&grounded&&b.ticksSinceJump>=b.dna.jumpCooldown()){
             mob.setDeltaMovement(0,b.dna.jumpPower(),0);
             b.ticksSinceJump=0;
@@ -549,6 +576,13 @@ public final class BuilderEvolutionTimeTrialGameTest {
         mob.getNavigation().stop();
         Vec3 old=mob.position();
         mob.move(MoverType.SELF,new Vec3(vx,0,vz));
+        // Count arrival on the SAME game tick as the physical move,
+        // not on the following tick (which could be tick 361).
+        if(world.getBlockState(mob.blockPosition().below()).is(RED)){
+            b.arrivedTick=(int)(helper.getTick()-b.birthTick);
+            mob.discard();
+            return;
+        }
         if(mob.position().distanceToSqr(old)<.000004){
             b.collisions++;
             boolean hitsStaticBlock=world.getBlockCollisions(mob,
@@ -586,7 +620,10 @@ public final class BuilderEvolutionTimeTrialGameTest {
             long absoluteTick=helper.getTick();
             long roundTick=absoluteTick-generationStart;
             if(roundTick<0)return;
-            for(Candidate b:bots)walkOneTick(helper,b);
+            // End at exactly 360 ticks, without allowing another
+            // movement after the deadline.
+            if(roundTick<DEADLINE)
+                for(Candidate b:bots)walkOneTick(helper,b);
             if(roundTick<DEADLINE)return;
             int finished=0;
             double mean=0;
@@ -596,7 +633,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
             ranked.sort(Comparator.comparingDouble(Candidate::fitness).reversed());
             StringBuilder blockers=new StringBuilder();
             for(Candidate b:bots){
-                if(b.arrivedTick>=0){
+                if(b.arrivedTick>=0&&b.arrivedTick<=DEADLINE){
                     finished++;
                     fastest=Math.min(fastest,b.arrivedTick);
                     slowest=Math.max(slowest,b.arrivedTick);
