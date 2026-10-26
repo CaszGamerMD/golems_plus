@@ -79,11 +79,24 @@ public final class BuilderBuildService {
         double distance=worker.distanceToSqr(
                 target.getX()+.5,target.getY()+.5,target.getZ()+.5);
         if(watch.step!=step||watch.at==null){
+            // A deferred placement does not reset the *physical*
+            // wandering history. Otherwise each re-assignment starts a
+            // fresh watchdog while this Golem makes the same circuit.
+            // A new goal gets a fair progress window, but recurring feet
+            // tiles remain visible for the next ~160 server ticks.
+            long now=level.getGameTime();
+            boolean newJourney=watch.at==null
+                    ||now-watch.lastMove>220;
             watch.step=step;watch.at=worker.position();
-            watch.lastMove=level.getGameTime();
-            watch.lastCloser=level.getGameTime();
+            watch.lastMove=now;
+            watch.lastCloser=now;
             watch.bestTargetDistance=distance;
-            watch.visited.clear();watch.loops=0;
+            if(newJourney){
+                watch.visited.clear();watch.loops=0;
+            }else{
+                watch.visited.entrySet().removeIf(e->
+                        now-e.getValue()>160);
+            }
             return false;
         }
         if(worker.position().distanceToSqr(watch.at)>.36){
@@ -614,7 +627,9 @@ public final class BuilderBuildService {
                     // schematic intact, but try another staged coordinate.
                     table.waitForBuilderTraffic(worker.getUUID(),index,
                             level.getGameTime());
-                    travelWatch.remove(worker);
+                    // Retain the physical circling history across
+                    // same-layer step reassignments. We only reset after
+                    // actual placement or a new supply journey.
                     table.setProblem("Builder is detouring around team traffic "
                             +"at "+pos.toShortString());
                     return;
