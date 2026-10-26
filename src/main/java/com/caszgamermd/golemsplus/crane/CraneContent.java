@@ -19,7 +19,7 @@ public final class CraneContent {
         var entityKey=ResourceKey.create(Registries.ENTITY_TYPE,GolemsPlus.id("building_crane"));
         CRANE=Registry.register(BuiltInRegistries.ENTITY_TYPE,entityKey,
                 EntityType.Builder.<BuildingCrane>of(BuildingCrane::new,MobCategory.MISC)
-                        .sized(2.2f,2.5f).clientTrackingRange(128).updateInterval(1).build(entityKey));
+                        .sized(2.0f,2.0f).clientTrackingRange(128).updateInterval(1).build(entityKey));
         var railKey=ResourceKey.create(Registries.BLOCK,GolemsPlus.id("crane_rail"));
         RAIL=Registry.register(BuiltInRegistries.BLOCK,railKey,new CraneRailBlock(
                 Block.Properties.ofFullCopy(Blocks.IRON_BLOCK).noOcclusion().strength(4).setId(railKey)));
