@@ -876,6 +876,7 @@ public final class BuilderBuildService {
                     +" | gravity="+(!worker.isNoGravity())
                     +" | sneaking="+worker.isShiftKeyDown()
                     +" | climb="+BuilderScaffolding.debugClimb(worker)
+                    +" | flight="+BuilderCreativeFlight.debug(worker)
                     +" | depot="+(table.builderUnloadingStorage()==null
                             ?"unlinked":table.builderUnloadingStorage().toShortString());
         }catch(Exception error){
