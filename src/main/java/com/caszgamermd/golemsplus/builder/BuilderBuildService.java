@@ -295,9 +295,12 @@ public final class BuilderBuildService {
         // While stepping CLOCKWISE around a colleague, do not issue
         // fresh A* routes, switch work assignments or override the
         // random stagger timer. One physical controller owns the worker.
-        if(BuilderClockwiseTraffic.controlling(worker))return;
-        if(BuilderPlacementSpace.yieldTick(level,worker))return;
+        if(!BuilderCreativeFlight.ENABLED
+                &&BuilderClockwiseTraffic.controlling(worker))return;
+        if(!BuilderCreativeFlight.ENABLED
+                &&BuilderPlacementSpace.yieldTick(level,worker))return;
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
+            if(BuilderCreativeFlight.ENABLED)BuilderCreativeFlight.stop(worker);
             // On job completion a Builder may still be on its LAST
             // scaffold tower. It must return to ground and dismount
             // BEFORE reclaiming blocks, delivering tools or going home.
@@ -351,6 +354,7 @@ public final class BuilderBuildService {
             return;
         }
         if(table.phase()==WorkerPhase.PAUSED){
+            if(BuilderCreativeFlight.ENABLED)BuilderCreativeFlight.stop(worker);
             BuilderScaffolding.cancel(worker);
             worker.getNavigation().stop();
             worker.setNoGravity(false);return;
@@ -358,8 +362,9 @@ public final class BuilderBuildService {
         // Do not let a fresh route to supplies/work overwrite the last
         // meter of ascent, descent, or dismount. The per-entity-tick
         // scaffold controller alone owns movement until safe arrival.
-        if(BuilderScaffolding.isControllingMovement(worker)
-                ||BuilderTeamGroundTraffic.controlling(worker))return;
+        if(!BuilderCreativeFlight.ENABLED
+                &&(BuilderScaffolding.isControllingMovement(worker)
+                ||BuilderTeamGroundTraffic.controlling(worker)))return;
         int membership=table.builderWorkerIds().indexOf(worker.getUUID());
         if(membership>=table.crewTarget()&&table.claimedStep(worker.getUUID())<0
                 &&!worker.hasSupplyBox()){
@@ -493,12 +498,14 @@ public final class BuilderBuildService {
                 activity.phase=Action.STAGE_MATERIALS;
                 // An A* route from the TOP of a temporary scaffold to
                 // OnSite Storage can never discover the vertical descent.
-                if(BuilderScaffolding.descendForTravel(level,worker,table))
+                if(!BuilderCreativeFlight.ENABLED
+                        &&BuilderScaffolding.descendForTravel(level,worker,table))
                     return;
                 // Resupply cannot start if an isolated high platform has
                 // no existing return tower. On genuine repeated A* failure,
                 // construct a PAID, supported escape ladder and descend.
-                if(worker.getY()>table.builderOrigin().getY()+2.5
+                if(!BuilderCreativeFlight.ENABLED
+                        &&worker.getY()>table.builderOrigin().getY()+2.5
                         &&com.caszgamermd.golemsplus.worker.WorkerNavigation
                                 .repeatedlyUnreachable(worker,6)){
                     var rescue=BuilderScaffolding.escapeDown(level,worker,
@@ -522,7 +529,8 @@ public final class BuilderBuildService {
             activity.phase=Action.MOVE_TO_WORK;
             // A newly assigned low cell may be underneath an old tower.
             // Descent belongs to this worker, not a global path command.
-            if(step.y()+1.5<worker.getY()
+            if(!BuilderCreativeFlight.ENABLED
+                    &&step.y()+1.5<worker.getY()
                     &&BuilderScaffolding.descendForTravel(level,worker,table))
                 return;
             // Check the replacement's survival BEFORE clearing an existing
@@ -591,6 +599,12 @@ public final class BuilderBuildService {
                     +Math.pow(worker.getZ()-(pos.getZ()+.5),2);
             double distToTarget=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+            if(BuilderCreativeFlight.ENABLED){
+                // Fly to a real, collision-clear position near this cell.
+                // Material staging and normal block survival/payment remain
+                // identical to the survival implementation.
+                if(!BuilderCreativeFlight.reachWork(level,worker,pos))return;
+            }else{
             if(pos.getY()-worker.getY()>2.5
                     ||pos.getY()-worker.getY()>1.35&&distToTarget>14){
                 // Even targets only two blocks up may need scaffolding
@@ -743,6 +757,7 @@ public final class BuilderBuildService {
                 }
                 return;
             }
+            } // normal scaffold / native navigation
             activity.phase=Action.PLACE;
             // Travel and placement are mutually exclusive for THIS worker:
             // stop the previous A* path and horizontal momentum before a
