@@ -81,6 +81,16 @@ public final class BuildingCrane extends Entity implements Container {
         return positions;
     }
     public boolean onsite(){return onsite;}
+    /** An orphaned/completed job must retain temporary simulation
+     * tickets until the crane safely returns and releases its driver.
+     * This doesn't authorize service to a DIFFERENT construction job.
+     */
+    boolean returningOperatorFor(WorkerStationBlockEntity station){
+        return operator!=null&&job!=null&&table.equals(station.getBlockPos())
+                &&Objects.equals(owner,station.owner())
+                &&(!Objects.equals(job,station.activeOrder())
+                    ||station.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.COMPLETE);
+    }
     public boolean serves(WorkerStationBlockEntity station){
         return table.equals(station.getBlockPos())
                 &&Objects.equals(owner,station.owner())
