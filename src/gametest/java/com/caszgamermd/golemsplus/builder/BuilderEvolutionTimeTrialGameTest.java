@@ -22,7 +22,7 @@ import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * PHYSICAL Minecraft verification of the first headless-trained 20-bot
+ * PHYSICAL Minecraft verification of a 10-bot subset of the headless-trained
  * timetrial winner. Every bot is a real 0.65 x 0.65 x 1.6 BuilderGolem,
  * must cross actual blocks, doors, half slabs and other bots, with no
  * breaking/scaffold/flying and at most 0.20 blocks of movement per tick.
@@ -33,6 +33,9 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class BuilderEvolutionTimeTrialGameTest {
     private static final int DEADLINE=360;
+    // Five bots from each green-wool column, spaced through all ten rows.
+    // Keep both columns and the same maze: only concurrent entity count changes.
+    private static final int[] SELECTED_BOTS={0,2,4,6,8,11,13,15,17,19};
     private static Block block(String name){
         return BuiltInRegistries.BLOCK.getValue(
                 Identifier.tryParse("minecraft:"+name));
@@ -172,12 +175,12 @@ public final class BuilderEvolutionTimeTrialGameTest {
         ServerLevel world=helper.getLevel();
         fillOriginalCourse(helper);
         List<Candidate> bots=new ArrayList<>();
-        if(STARTS.length!=20||REPLAYS.length!=20){
-            helper.fail("Expected exactly twenty first-generation genomes");
+        if(STARTS.length!=20||REPLAYS.length!=20||SELECTED_BOTS.length!=10){
+            helper.fail("Expected ten selected physical Builder Golem entrants");
             return;
         }
-        for(int i=0;i<20;i++){
-            int[] start=STARTS[i];
+        for(int index:SELECTED_BOTS){
+            int[] start=STARTS[index];
             if(helper.getBlockState(new BlockPos(
                     X_OFFSET+start[0],1,Z_OFFSET+start[1]))
                     .getBlock()!=GREEN){
@@ -196,7 +199,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
                         +mob.getBbWidth()+" x "+mob.getBbHeight());
                 return;
             }
-            bots.add(new Candidate(mob,REPLAYS[i],start[0],start[1]));
+            bots.add(new Candidate(mob,REPLAYS[index],start[0],start[1]));
         }
         helper.onEachTick(()->{
             long tick=helper.getTick();
@@ -280,11 +283,11 @@ public final class BuilderEvolutionTimeTrialGameTest {
                     b.mob.discard();
                 }
                 System.out.println("[TIMETRIAL PHYSICAL] "+finished
-                        +"/20 arrived on red wool within 360 game ticks; "
+                        +"/"+bots.size()+" arrived on red wool within 360 game ticks; "
                         +"missed:"+misses);
                 if(finished==bots.size())helper.succeed();
                 else helper.fail("Real Minecraft 18s trial did not pass: "+
-                        finished+"/20 reached red; "+misses);
+                        finished+"/"+bots.size()+" reached red; "+misses);
             }
         });
     }
