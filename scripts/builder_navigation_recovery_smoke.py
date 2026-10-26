@@ -13,8 +13,13 @@ assert "best!=null&&checked>8" in navigation
 assert "mob.blockPosition().equals(feet)" in navigation
 assert "Math.abs(a-b)>.60)continue;" in navigation
 # Walking to a depot/doorway must NEVER be short-circuited by placing reach.
-assert "if(option.feet().equals(mob.blockPosition()))continue;" in navigation
-assert "&&mob.distanceToSqr(target.getX()+.5" not in navigation
+assert "if(option.feet().equals(mob.blockPosition())" in navigation
+# Do not consider a completed provisional A* endpoint a success when it
+# remains more than four blocks from the actual OnSite/work destination.
+assert "p.lastBad=p.approach;" in navigation
+assert "p.avoidUntil=mob.tickCount+150;" in navigation
+assert "mob.distanceToSqr(target.getX()+.5,target.getY()" in navigation
+assert "candidate.feet().distSqr(p.lastBad)<=2" in navigation
 assert "public static boolean retryScheduled(PathfinderMob mob)" in navigation
 assert 'WorkerNavigation' in building
 assert "WorkerNavigation" in building

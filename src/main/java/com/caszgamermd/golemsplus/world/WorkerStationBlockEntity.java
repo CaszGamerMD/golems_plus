@@ -94,6 +94,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
             new java.util.HashMap<>();
     private final java.util.Map<Integer,Long> builderMissingRetries=
             new java.util.HashMap<>();
+    // Repeated navigation failures cannot churn the same work cell every
+    // two minutes. This is a transient, per-cell cooldown, NOT an item
+    // deletion or a completed schematic position; all cells remain queued.
+    private final java.util.Map<Integer,Integer> builderTrafficFailures=
+            new java.util.HashMap<>();
     private UUID builderWorkerId;
     private boolean builderRecallRequested;
     // Saved chunk positions of actual crafted Builders, never substitute entities.
@@ -591,6 +596,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClearClaims.clear();builderClearClaimTick.clear();
         builderClearVerified.clear();
         builderMissingRetries.clear();
+        builderTrafficFailures.clear();
         builderRequired.clear();builderRequired.putAll(selected.required());
         builderRemaining.clear();builderRemaining.putAll(selected.remaining());
         warehouse=selected.warehouse();builderMaterialStorage=selected.storage();
@@ -732,8 +738,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public void waitForBuilderTraffic(UUID worker,int step,long tick){
         if(builderClaims.getOrDefault(worker,-1)!=step)return;
         builderClaims.remove(worker);
-        builderMissingRetries.put(step,tick+120);
-        // No inventory unload, no cross-zone reassignment, no lost work.
+        int attempts=Math.min(5,builderTrafficFailures
+                .merge(step,1,Integer::sum));
+        long delay=Math.min(720L,120L*attempts);
+        builderMissingRetries.put(step,tick+delay);
+        // The next available same-layer cell can proceed; never erase
+        // materials or mark the unreachable cell complete.
         setChanged();
     }
     public UUID builderWorkerId(){return builderWorkerId;}
@@ -1101,6 +1111,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(builderClaims.getOrDefault(worker,-1)!=index)return false;
         builderClaims.remove(worker);
         builderMissingRetries.remove(index);
+        builderTrafficFailures.remove(index);
         var order=builderWorkOrders.get(worker);
         if(order!=null){
             order.remove(Integer.valueOf(index));
@@ -1234,6 +1245,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClearClaims.clear();builderClearClaimTick.clear();
         builderClearVerified.clear();
         builderMissingRetries.clear();
+        builderTrafficFailures.clear();
         builderClaims.clear();builderPlaced=true;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         builderRequired.clear();builderRemaining.clear();
         builderWarehouseStock.clear();builderStockChecked=false;
@@ -1255,6 +1267,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClearClaims.clear();builderClearClaimTick.clear();
         builderClearVerified.clear();
         builderMissingRetries.clear();
+        builderTrafficFailures.clear();
         builderClaims.clear();builderRecallRequested=false;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         phase=WorkerPhase.WORKING;sync();return true;
     }
@@ -1942,6 +1955,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 builderClearVerified.add(idx);
         }
         builderMissingRetries.clear();
+        builderTrafficFailures.clear();
         builderWorkerId=uuid(in,"builder_worker");
         crewTarget=Math.clamp(in.getIntOr("builder_crew_target",1),1,isBuilder()?8:4);
         builderRecallRequested=in.getBooleanOr("builder_recall_requested",false);

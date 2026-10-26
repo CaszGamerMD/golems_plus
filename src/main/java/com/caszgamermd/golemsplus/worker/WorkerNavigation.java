@@ -433,6 +433,24 @@ public final class WorkerNavigation {
         if(!changed&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
         if(!changed&&mob.tickCount<p.nextRoute)return false; // retry scheduled, not a hard no-path
+        // A vanilla path can finish at its provisional "near enough"
+        // endpoint while the REAL requested storage/work destination
+        // remains four-plus blocks away. Repeated calls used to route
+        // towards another nearby provisional tile, then back again,
+        // visibly circling forever. Reject this exact endpoint for a
+        // bounded window and require a genuinely different way through.
+        if(!changed&&p.approach!=null&&mob.getNavigation().isDone()
+                &&mob.blockPosition().distSqr(p.approach)<=2
+                &&mob.distanceToSqr(target.getX()+.5,target.getY(),
+                        target.getZ()+.5)>16.0){
+            p.lastBad=p.approach;
+            p.avoidUntil=mob.tickCount+150;
+            p.approach=null;
+            p.weightedRoute=List.of();p.routeCursor=0;
+            p.attempts++;
+            p.nextRoute=mob.tickCount+ROUTE_RETRY;
+            return false;
+        }
         // A temporary body-block or a closed door must not permanently
         // blacklist the only valid aisle. Expire bad waypoints after
         // roughly three seconds, then try the new world state.
@@ -460,7 +478,9 @@ public final class WorkerNavigation {
                 // arrived at a real movement target (door, depot, route
                 // waypoint). Only the job itself may skip walking if its
                 // placement is already within reach.
-                if(option.feet().equals(mob.blockPosition()))continue;
+                if(option.feet().equals(mob.blockPosition())
+                        ||p.lastBad!=null&&option.feet().distSqr(p.lastBad)<=2)
+                    continue;
                 Path candidate=mob.getNavigation().createPath(option.feet(),0);
                 if(!safePath(level,mob,candidate,false))continue;
                 // Distances along the actual path, then distance from its
@@ -500,6 +520,8 @@ public final class WorkerNavigation {
             List<BlockPos> goals=new ArrayList<>();
             for(Candidate candidate:candidateGoals(level,mob,target,avoid)){
                 if(goals.size()>=16)break;
+                if(p.lastBad!=null
+                        &&candidate.feet().distSqr(p.lastBad)<=2)continue;
                 goals.add(candidate.feet());
             }
             WorkerRoutePlanner.Route route=WorkerRoutePlanner.plan(
