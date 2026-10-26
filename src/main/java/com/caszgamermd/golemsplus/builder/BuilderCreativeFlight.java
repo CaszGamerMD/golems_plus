@@ -150,7 +150,12 @@ public final class BuilderCreativeFlight {
         if(depot==null)return false;
         if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                 depot.getZ()+.5)<=11.5){
-            // Keep hovering by the storage until the pouch has been staged.
+            // Cancel the old WORK destination, not just its velocity;
+            // otherwise the flight controller restarts it next entity tick.
+            Flight previous=flights.get(worker);
+            if(previous==null||!previous.depot||!previous.goal.equals(depot)
+                    ||previous.destination.distanceToSqr(worker.position())>.3)
+                navigate(level,worker,depot,worker.position(),true);
             worker.setDeltaMovement(0,0,0);
             return true;
         }
@@ -168,7 +173,12 @@ public final class BuilderCreativeFlight {
         boolean clear= !worker.getBoundingBox().intersects(placement);
         if(clear&&worker.distanceToSqr(target.getX()+.5,target.getY()+.5,
                 target.getZ()+.5)<11.0){
-            // Stop drifting before the actual block is placed.
+            // Hold in the real normal placement radius; NEVER resume a
+            // previous depot/placement destination after placing.
+            Flight previous=flights.get(worker);
+            if(previous==null||previous.depot||!previous.goal.equals(target)
+                    ||previous.destination.distanceToSqr(worker.position())>.3)
+                navigate(level,worker,target,worker.position(),false);
             worker.setDeltaMovement(0,0,0);
             return true;
         }
