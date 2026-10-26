@@ -118,7 +118,7 @@ public final class BuilderChunkTickets {
      * This does NOT bypass collision, move an entity, or create stock.
      */
     public static Runnable holdGameTestSimulation(ServerLevel level,BlockPos feet){
-        ChunkPos center=new ChunkPos(feet);
+        ChunkPos center=new ChunkPos(feet.getX() >> 4,feet.getZ() >> 4);
         acquire(level,center);
         return ()->relinquish(level,center);
     }
