@@ -183,7 +183,7 @@ public final class WorksiteContent {
                 GolemsPlus.id("builder_golem"));
         BUILDER_GOLEM=Registry.register(BuiltInRegistries.ENTITY_TYPE,builderKey,
                 EntityType.Builder.<BuilderGolem>of(BuilderGolem::new,MobCategory.MISC)
-                        .sized(.65f,1.62f).build(builderKey));
+                        .sized(.65f,1.60f).build(builderKey));
         FabricDefaultAttributeRegistry.register(BUILDER_GOLEM,BuilderGolem.attributes());
         ResourceKey<EntityType<?>> beekeeperKey=ResourceKey.create(Registries.ENTITY_TYPE,
                 GolemsPlus.id("beekeeper_golem"));
