@@ -188,6 +188,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         // Absolute positions of the GameTest arena origin, only used to
         // score how close the actual entity came to its next tile.
         double originX,originZ;
+        long birthTick;
     }
 
     private static boolean topSlab(int x,int z){
@@ -281,6 +282,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
             BlockPos origin=pos(helper,0,2,0);
             b.originX=origin.getX();
             b.originZ=origin.getZ();
+            b.birthTick=helper.getTick();
             bots.add(b);
         }
         return bots;
@@ -294,7 +296,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         if(!mob.isAlive()||b.arrivedTick>=0)return;
         ServerLevel world=helper.getLevel();
         if(world.getBlockState(mob.blockPosition().below()).is(RED)){
-            b.arrivedTick=(int)(helper.getTick()%DEADLINE);
+            b.arrivedTick=(int)(helper.getTick()-b.birthTick);
             // A winner leaves the track; otherwise it obstructs the door
             // or blocks remaining racers at the finish line.
             mob.discard();
@@ -380,7 +382,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         List<Genome> generationGenes=new ArrayList<>();
         List<Candidate> bots=new ArrayList<>();
         int generation=0;
-        int generationStart=0;
+        long generationStart=0;
         int bestFinished=0;
         Tournament(GameTestHelper helper){
             this.helper=helper;
@@ -391,8 +393,8 @@ public final class BuilderEvolutionTimeTrialGameTest {
             bots=spawnGeneration(helper,generationGenes);
         }
         void tick(){
-            int absoluteTick=helper.getTick();
-            int roundTick=absoluteTick-generationStart;
+            long absoluteTick=helper.getTick();
+            long roundTick=absoluteTick-generationStart;
             if(roundTick<0)return;
             for(Candidate b:bots)walkOneTick(helper,b);
             if(roundTick<DEADLINE)return;
