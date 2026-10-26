@@ -289,7 +289,19 @@ public final class BuilderScaffolding {
             double mx=Math.max(-.13,Math.min(.13,(cx-worker.getX())*.25));
             double mz=Math.max(-.13,Math.min(.13,(cz-worker.getZ())*.25));
             var tryBox=worker.getBoundingBox().move(mx,0,mz);
-            if(level.noCollision(worker,tryBox)){
+            // Vanilla scaffolding's collision shape depends on the
+            // approaching entity and whether its feet are above the
+            // scaffold lip. A predictive noCollision() probe can reject
+            // the SIDE entry even though the actual move controller can
+            // step over its supported top. Let vanilla move() perform
+            // the authoritative collision resolution on scaffold return.
+            // We still require a REAL scaffold under the destination and
+            // never teleport or disable collisions.
+            BlockPos support=new BlockPos(session.column().getX(),
+                    worker.blockPosition().getY()-1,
+                    session.column().getZ());
+            if(level.noCollision(worker,tryBox)
+                    ||level.getBlockState(support).is(Blocks.SCAFFOLDING)){
                 var motion=worker.getDeltaMovement();
                 worker.setDeltaMovement(mx,Math.min(0,motion.y),mz);
             }
