@@ -1,3 +1,17 @@
+## Physical confirmation of complete-crew retention
+
+[GitHub Actions run 40419002888](https://github.com/CaszGamerMD/golems_plus/actions/runs/40419002888) tested the restored, verified 10/10 cohort on the unchanged vanilla 13-second course:
+
+| Test | Generation 0 | First complete generation | Slowest arrival |
+|---|---:|---:|---:|
+| 1 | 10/10 | 0 | 244 ticks |
+| 2 | 10/10 | 0 | 244 ticks |
+| 3 | 7/10 | 1 | 253 ticks |
+
+All three **physical** Minecraft sessions passed; 2/3 passed generation zero. Crucial distinction: the **same ten gene arrays and same ten planned routes** appeared in generation 0 of all three trials; test 3 still had three late golems. That demonstrates *physical movement variability* independently of the now-fixed checkpoint retention problem. The recorded failures show golems #1 and #3 oscillating/backing off against one another at X≈9–10, Z≈1.5–2.5; golem #6 subsequently arrived too late. Static-collision counters remained zero for those stalls, so the existing *static-only* reroute trigger never activated. Further improvements must handle *other moving entities as obstruction* separately, and avoid falsely poisoning static blocked-edge memory.
+
+State updated after run: **365 generations**, latest physically verified cohort at generation **365** (slowest **253 ticks**), its full ten genes saved with separate mutated offspring; protected best-speed champion still **236 ticks**. The HTML offline viewer includes all 365 complete real-entity generations. A repeated 10/10 by generation zero is **not proven** yet across all three sessions, despite all three sessions ultimately succeeding.
+
 ## Why a 10/10 team was lost between tests — retained-cohort fix
 
 Previous test sessions resumed `checkpoint.nextPopulation` (mutated offspring), not the last physically winning ten-genome cohort. A slower 10/10 also did not replace `champion.json` (correct for speed ranking), but the complete slower winning team wasn't retained independently. Thus test 2 could achieve 10/10 and test 3 would begin with a different, untested team.
