@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Generation-by-generation 400-tick survival navigation time trial.
+"""Generation-by-generation 360-tick survival navigation time trial.
 
 Input is converted from the actual Sponge .schem: EVERY green wool spawn
 has a real candidate assigned, and ANY red wool is a finish. All bots
-are reset after the fixed 400 game-tick deadline. Selection/crossover/
+are reset after the fixed 360 game-tick deadline. Selection/crossover/
 mutation repeats until ALL bots in ONE generation make it, or a stated
 resource cap is reached. No scaffolds, breaking, flying, teleports or
 speed bonuses.
@@ -26,7 +26,7 @@ from pathlib import Path
 from builder_nav_evolution import Course, GENES, Genome, simulate
 from schem_course_import import convert, load_input
 
-TICKS_PER_GENERATION = 400
+TICKS_PER_GENERATION = 360
 SEED_SCALE = 10007
 
 
@@ -74,7 +74,7 @@ def train_time_trial(source: dict, *, generations: int = 250,
                      keep_replays: bool = True,
                      print_generation: bool = True) -> dict:
     if timeout_ticks != TICKS_PER_GENERATION:
-        raise ValueError("Time trial is fixed to 20s = 400 Minecraft ticks")
+        raise ValueError("Time trial is fixed to 18s = 360 Minecraft ticks")
     if not 1 <= generations <= 100000:
         raise ValueError("Invalid generation limit")
     arenas = build_spawn_courses(source)
@@ -106,7 +106,7 @@ def train_time_trial(source: dict, *, generations: int = 250,
             outcome = simulate(course, genome, timeout=timeout_ticks,
                                seed=bot_seed)
             if outcome.ticks > timeout_ticks:
-                raise AssertionError("Bot exceeded the 400-tick kill deadline")
+                raise AssertionError("Bot exceeded the 360-tick kill deadline")
             run_score = score_run(outcome, course)
             runs.append(outcome)
             ranks.append(run_score)
@@ -135,7 +135,7 @@ def train_time_trial(source: dict, *, generations: int = 250,
         row = {
             "generation": generation,
             "population": pop_size,
-            "finished_by_20s": finished,
+            "finished_by_18s": finished,
             "failed_and_reset": pop_size - finished,
             "deadline_ticks": TICKS_PER_GENERATION,
             "slowest_success_ticks": max_ticks or "",
@@ -183,7 +183,7 @@ def train_time_trial(source: dict, *, generations: int = 250,
     elapsed_generations = len(history)
     winner = bool(winning)
     best_generation = max(history,
-                          key=lambda d: (d["finished_by_20s"],
+                          key=lambda d: (d["finished_by_18s"],
                                          d["mean_fitness"])) if history else None
     return {
         "format": "golems-plus-schem-time-trial-evolution-v1",
@@ -197,7 +197,7 @@ def train_time_trial(source: dict, *, generations: int = 250,
         "start_tile": "minecraft:green_wool",
         "finish_tile": "minecraft:red_wool",
         "generation_duration_ticks": TICKS_PER_GENERATION,
-        "generation_duration_seconds": 20,
+        "generation_duration_seconds": 18,
         "bots_per_generation": pop_size,
         "starts_covered": [list(arena.start) for arena in arenas],
         "accepted": winner,
@@ -246,7 +246,7 @@ def main() -> None:
             writer.writeheader()
             writer.writerows(result["history"])
     print(f"RESULT: {result['best_finished_count']}/"
-          f"{result['bots_per_generation']} finished by 20s; "
+          f"{result['bots_per_generation']} finished by 18s; "
           f"whole_generation_passed={result['accepted']}, "
           f"generations={result['generations_run']}. "
           f"This is a HEADLESS simulator, not yet Minecraft GameTest.")
