@@ -25,6 +25,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
+      - name: Isolate the real-entity training course from other GameTest arenas
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          manifest=json.loads(p.read_text())
+          required='com.caszgamermd.golemsplus.builder.BuilderEvolutionTimeTrialGameTest'
+          # Dedicated world: this one job runs the actual course alone.
+          # The standard build independently runs the normal regression
+          # GameTests. Every scored evolution still uses live entities.
+          manifest['entrypoints']['fabric-gametest']=[required]
+          p.write_text(json.dumps(manifest,indent=2)+'\\n')
+          PY
       - name: Verify 10 physical BuilderGolem entrants and registration
         run: |
           python3 - <<'PY'
@@ -32,8 +46,8 @@ jobs:
           from pathlib import Path
           manifest=json.loads(Path('src/gametest/resources/fabric.mod.json').read_text())
           required='com.caszgamermd.golemsplus.builder.BuilderEvolutionTimeTrialGameTest'
-          assert required in manifest['entrypoints']['fabric-gametest'], (
-              'The REAL-ENTITY GameTest is mandatory, not an optional probe')
+          assert manifest['entrypoints']['fabric-gametest'] == [required], (
+              'A physical evolution run must own an isolated Minecraft GameTest arena')
           test=Path('src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderEvolutionTimeTrialGameTest.java').read_text()
           assert 'new BuilderGolem(' in test
           assert 'private static final int DEADLINE=360;' in test
