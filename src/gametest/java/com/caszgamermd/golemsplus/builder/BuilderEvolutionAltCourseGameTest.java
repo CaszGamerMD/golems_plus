@@ -294,6 +294,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             lastRecordedX=realX;lastRecordedZ=realZ;
             if("b".equals(movementMode))reverseTicks++;
             if("d".equals(movementMode))doorTicks++;
+            if("s".equals(movementMode))slabTicks++;
             if("c".equals(movementMode))blockedTicks++;
             JsonArray sample=new JsonArray();
             sample.add(tick);
@@ -313,6 +314,8 @@ public final class BuilderEvolutionAltCourseGameTest {
         int backoffTicks;
         int ticksSinceJump;
         double doorLaneShift;
+        boolean doorOffsetX;
+        int slabTicks,headroomReplans;
         int doorTargetX=Integer.MIN_VALUE,doorTargetZ=Integer.MIN_VALUE;
         int exitTargetX=Integer.MIN_VALUE,exitTargetZ=Integer.MIN_VALUE;
         double lastDistance=Double.POSITIVE_INFINITY;
@@ -432,6 +435,53 @@ public final class BuilderEvolutionAltCourseGameTest {
     }
 
     /**
+     * Real geometry, not schematic glyphs: a half-slab has a 0.5-block
+     * standing surface, and the full 1.6-block Builder body must fit
+     * ABOVE it. A floor slab under an overhead slab can have only one
+     * block of headroom and is NOT a legal route, even though both
+     * individual blocks are slabs. Keep vanilla 0.6 automatic step.
+     */
+    private static double standingY(GameTestHelper helper,ServerLevel world,
+                                    int x,int z){
+        if(!walkableCell(x,z))return Double.NaN;
+        BlockPos feet=pos(helper,x,2,z);
+        var shape=world.getBlockState(feet).getCollisionShape(world,feet);
+        double rise=shape.isEmpty()?0:shape.max(Direction.Axis.Y);
+        if(rise>.600001)return Double.NaN;
+        return feet.getY()+rise;
+    }
+
+    private static boolean clearBodyAt(ServerLevel world,BuilderGolem mob,
+                                        double x,double y,double z){
+        if(!Double.isFinite(y))return false;
+        double half=mob.getBbWidth()/2.0;
+        var box=new net.minecraft.world.phys.AABB(
+                x-half,y+.002,z-half,
+                x+half,y+mob.getBbHeight()-.002,z+half);
+        return !world.getBlockCollisions(mob,box).iterator().hasNext();
+    }
+
+    private static boolean physicalCellOpen(GameTestHelper helper,
+                    ServerLevel world,BuilderGolem mob,int x,int z){
+        if(!walkableCell(x,z))return false;
+        double y=standingY(helper,world,x,z);
+        if(!Double.isFinite(y))return false;
+        BlockPos pos=pos(helper,x,2,z);
+        if(MAZE[z].charAt(x)=='D'){
+            // An already-open door can need an offset, but its leaf
+            // cannot be bypassed using no-clip or block editing.
+            for(double lane:new double[]{0,-.08,.08,-.12,.12,-.16,.16}){
+                if(clearBodyAt(world,mob,pos.getX()+.5,y,pos.getZ()+.5+lane))
+                    return true;
+                if(clearBodyAt(world,mob,pos.getX()+.5+lane,y,pos.getZ()+.5))
+                    return true;
+            }
+            return false;
+        }
+        return clearBodyAt(world,mob,pos.getX()+.5,y,pos.getZ()+.5);
+    }
+
+    /**
      * A grid diagonal is only a candidate. Inspect Minecraft's REAL
      * solid-block collision at the full 0.65-wide, 1.6-high entity size
      * along the entire diagonal. Keep door openings and steps as
@@ -484,6 +534,9 @@ public final class BuilderEvolutionAltCourseGameTest {
         Map<RouteNode,Double> best=new HashMap<>();
         Map<RouteNode,RouteNode> parents=new HashMap<>();
         Map<RouteNode,Character> directions=new HashMap<>();
+        // Cache immutable physical-collision checks for this single plan.
+        // The test rebuilds the course before each scored training run.
+        Map<Integer,Boolean> physicallyOpen=new HashMap<>();
         open.add(new Frontier(start,0));best.put(start,0.0);
         RouteNode finish=null;
         while(!open.isEmpty()){
@@ -498,14 +551,26 @@ public final class BuilderEvolutionAltCourseGameTest {
                 int[] p=next(node.x(),node.z(),direction);
                 int x=p[0],z=p[1];
                 if(!walkableCell(x,z))continue;
+                int key=z*MAZE[0].length()+x;
+                if(!physicallyOpen.computeIfAbsent(key,
+                    ignored->physicalCellOpen(helper,world,mob,x,z)))
+                    continue;
+                double fromY=standingY(helper,world,node.x(),node.z());
+                double toY=standingY(helper,world,x,z);
+                // Preserve vanilla auto-step and ground-only walking.
+                if(!Double.isFinite(fromY)||!Double.isFinite(toY)
+                    ||toY-fromY>.600001||fromY-toY>1.000001)
+                    continue;
                 int stepX=x-node.x(),stepZ=z-node.z();
                 boolean diagonal=stepX!=0&&stepZ!=0;
                 // A 0.65-wide golem cannot cut through two wall
                 // corners just because their diagonal destination is
                 // nominally open. Require both adjoining side tiles to
                 // be open; physical AABB collision validates the move.
-                if(diagonal&&(!walkableCell(node.x()+stepX,node.z())
-                        ||!walkableCell(node.x(),node.z()+stepZ)
+                if(diagonal&&(!physicalCellOpen(helper,world,mob,
+                            node.x()+stepX,node.z())
+                        ||!physicalCellOpen(helper,world,mob,
+                            node.x(),node.z()+stepZ)
                         ||!diagonalBodyClear(helper,world,mob,
                                 node.x(),node.z(),x,z)))
                     continue;
@@ -524,7 +589,10 @@ public final class BuilderEvolutionAltCourseGameTest {
                 // collisions add these extra costs. Do not train on
                 // simulated wall guesses or other entity traffic.
                 Edge edge=new Edge(node.x(),node.z(),x,z);
-                weight+=Math.min(65,realBlockFailures.getOrDefault(edge,0)*2.5);
+                // Preserve all real collision memories but do not let
+                // historic congestion permanently forbid a geometrically
+                // legal half-slab crossing or the single door.
+                weight+=Math.min(10,realBlockFailures.getOrDefault(edge,0)*.40);
                 RouteNode nextNode=new RouteNode(x,z,direction);
                 double cost=current.cost()+weight;
                 if(cost>=best.getOrDefault(nextNode,Double.POSITIVE_INFINITY))
@@ -584,28 +652,26 @@ public final class BuilderEvolutionAltCourseGameTest {
      * always its safe centerline.
      */
     private static double safeDoorLane(ServerLevel world,BuilderGolem mob,
-                                       BlockPos door,Genome dna){
-        double[] candidates={0,.08,-.08,.12,-.12,.16,-.16};
+                                       BlockPos door,Genome dna,
+                                       boolean offsetX){
+        double[] candidates={0,-.08,.08,-.12,.12,-.16,.16};
         double best=Double.POSITIVE_INFINITY;
         double chosen=0;
         for(double offset:candidates){
-            // Test the full live golem body at several real positions
-            // along its approach to the existing door. Never remove
-            // blocks or disable collision.
+            double goalX=door.getX()+.5+(offsetX?offset:0);
+            double goalZ=door.getZ()+.5+(offsetX?0:offset);
             boolean clear=true;
-            for(double t:new double[]{.65,.82,1.0}){
-                double x=mob.getX()+(door.getX()+.5-mob.getX())*t;
-                double z=mob.getZ()+(door.getZ()+.5+offset-mob.getZ())*t;
-                var box=mob.getBoundingBox().move(
-                        x-mob.getX(),0,z-mob.getZ());
-                if(world.getBlockCollisions(mob,box).iterator().hasNext()){
+            // Probe an ACTUAL 1.6-tall body along both faces of the
+            // open, single-wide vanilla door. Use the perpendicular
+            // axis to movement, never a fixed world Z offset.
+            for(double t:new double[]{.55,.75,.95,1,1.13}){
+                double x=mob.getX()+(goalX-mob.getX())*t;
+                double z=mob.getZ()+(goalZ-mob.getZ())*t;
+                if(!clearBodyAt(world,mob,x,mob.getY(),z)){
                     clear=false;break;
                 }
             }
             if(!clear)continue;
-            // Doorway offset is genetically inherited and mutated.
-            // The world decides WHICH lanes are physically clear;
-            // evolution decides which available lane the bot prefers.
             double penalty=Math.abs(offset-dna.doorBias())
                     +Math.abs(offset)*.04;
             if(penalty<best){best=penalty;chosen=offset;}
@@ -645,26 +711,22 @@ public final class BuilderEvolutionAltCourseGameTest {
                 if(b.doorTargetX!=ahead[0]||b.doorTargetZ!=ahead[1]){
                     b.doorTargetX=ahead[0];
                     b.doorTargetZ=ahead[1];
-                    b.doorLaneShift=safeDoorLane(world,mob,target,b.dna);
+                    b.doorOffsetX=ahead[0]==b.x;
+                    b.doorLaneShift=safeDoorLane(world,mob,target,b.dna,
+                            b.doorOffsetX);
                 }
-                // Keep the SAME physically selected passage through the
-                // doorway. Recalculating every tick made adjacent
-                // golems switch sides and oscillate without advancing.
                 centerShift=b.doorLaneShift;
             }else if(leavingDoor){
-                if(b.exitTargetX!=ahead[0]||b.exitTargetZ!=ahead[1]){
-                    b.exitTargetX=ahead[0];
-                    b.exitTargetZ=ahead[1];
-                    // A Builder can cross the FIRST face of an open
-                    // door and still collide with its EXIT face.
-                    // Physically probe the next cell in Minecraft
-                    // before choosing a separate, stable exit lane.
-                    b.doorLaneShift=safeDoorLane(world,mob,target,b.dna);
-                }
+                // Maintain the SAME verified alignment through the EXIT
+                // face. Re-solving on the far side causes side-to-side
+                // oscillation in a single door.
                 centerShift=b.doorLaneShift;
             }
-            dx=target.getX()+.5-mob.getX();
-            dz=target.getZ()+.5+centerShift-mob.getZ();
+            if(!enteringDoor&&!leavingDoor
+                    &&MAZE[ahead[1]].charAt(ahead[0])=='^')
+                b.movementMode="s";
+            dx=target.getX()+.5+(b.doorOffsetX?centerShift:0)-mob.getX();
+            dz=target.getZ()+.5+(b.doorOffsetX?0:centerShift)-mob.getZ();
             distance=Math.hypot(dx,dz);
             boolean diagonalStep=Math.abs(ahead[0]-b.x)==1
                     &&Math.abs(ahead[1]-b.z)==1;
@@ -712,7 +774,8 @@ public final class BuilderEvolutionAltCourseGameTest {
         // Vanilla STEP_HEIGHT=0.6 resolves these low obstacles using
         // real ground movement. Do NOT jump for a bottom slab (0.5 high).
         // Only obstacles exceeding the automatic step height may trigger
-        // the learned jump behaviour.
+        // the learned jump behaviour. The planner now excludes slab cells
+        // with inadequate headroom, before mutations are ever scored.
         var obstacleShape=footState.getCollisionShape(world,nextFeet);
         double stepRise=obstacleShape.isEmpty()?0
                 :nextFeet.getY()+obstacleShape.max(Direction.Axis.Y)
@@ -1017,6 +1080,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 entry.addProperty("reverseTicks",b.reverseTicks);
                 entry.addProperty("doorTicks",b.doorTicks);
                 entry.addProperty("blockedTicks",b.blockedTicks);
+                entry.addProperty("slabTicks",b.slabTicks);
                 entry.addProperty("distanceMeters",b.measuredDistance);
                 physicalFitness.add(entry);
                 JsonObject trace=new JsonObject();
@@ -1033,6 +1097,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 trace.addProperty("reverseTicks",b.reverseTicks);
                 trace.addProperty("doorTicks",b.doorTicks);
                 trace.addProperty("blockedTicks",b.blockedTicks);
+                trace.addProperty("slabTicks",b.slabTicks);
                 trace.addProperty("distanceMeters",b.measuredDistance);
                 trace.add("genes",encode(b.dna));
                 trace.add("positions",b.movementSamples);
@@ -1124,7 +1189,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             long absoluteTick=helper.getTick();
             long roundTick=absoluteTick-generationStart;
             if(roundTick<0)return;
-            // End at exactly 360 ticks, without allowing another
+            // End at exactly 260 ticks, without allowing another
             // movement after the deadline.
             if(roundTick<DEADLINE)
                 for(Candidate b:bots){
