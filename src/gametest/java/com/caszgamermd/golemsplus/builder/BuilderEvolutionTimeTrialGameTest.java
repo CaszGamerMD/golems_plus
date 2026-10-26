@@ -425,8 +425,9 @@ public final class BuilderEvolutionTimeTrialGameTest {
         // reset the onGround flag. Probe the REAL Minecraft collision
         // shape immediately beneath the golem rather than trusting that
         // stale flag when deciding whether a legal ground jump can start.
-        boolean grounded=mob.onGround()||!world.noCollision(mob,
-                mob.getBoundingBox().move(0,-.07,0));
+        boolean grounded=mob.onGround()||world.getBlockCollisions(mob,
+                mob.getBoundingBox().move(0,-.07,0))
+                .iterator().hasNext();
         BlockPos nextFeet=target;
         BlockState footState=world.getBlockState(nextFeet);
         BlockState aboveState=world.getBlockState(nextFeet.above());
