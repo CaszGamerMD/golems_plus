@@ -235,14 +235,17 @@ public final class BuildingCrane extends Entity implements Container {
         dispatch.remove(id);
         retry.put(id,level().getGameTime()+100);
         int tries=failedPickups.merge(id,1,Integer::sum);
-        if(tries>=8){
-            // The builder must be released to normal scaffold/navigation
-            // work if the crane cannot reach them after several retries.
+        if(tries>=4){
+            // An obstructed crane must not freeze a construction worker for
+            // the rest of the job. Release the claimed builder and give its
+            // normal scaffold planner a one-minute window to work while the
+            // inaccessible crane route is repaired or rails are extended.
             forget(id);
-            status="Pickup unreachable after 8 attempts; builder may use scaffolding";
+            retry.put(id,level().getGameTime()+1200);
+            status="Pickup blocked after four attempts; builder using scaffolding";
         }else{
             delayedPickups.add(id);
-            status="Pickup deferred "+tries+"/8; requeued after 100 ticks";
+            status="Pickup deferred "+tries+"/4; requeued after 100 ticks";
         }
         if(Objects.equals(pickup,id))pickup=null;
     }
