@@ -170,6 +170,7 @@ public final class FisherGolem extends PathfinderMob {
             dropCargo(level);discard();return;
         }
         if(station.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED){
+            if(com.caszgamermd.golemsplus.breakroom.GolemBreakService.takingBreak(this))return;
             // An off-duty Fisher rests in the camp chair when it has
             // returned to the coolers, rather than standing frozen.
             boolean waiting=distanceToSqr(home.getX()+.5,home.getY()+.5,
@@ -428,6 +429,7 @@ public final class FisherGolem extends PathfinderMob {
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
         super.addAdditionalSaveData(out);
+        com.caszgamermd.golemsplus.breakroom.GolemBreakService.saveRest(this,out);
         out.store("fisher_home",BlockPos.CODEC,home);
         if(owner!=null)out.putString("fisher_owner",owner.toString());
         if(!rod.isEmpty())out.store("fisher_rod",ItemStack.CODEC,rod);
@@ -443,6 +445,7 @@ public final class FisherGolem extends PathfinderMob {
     }
     @Override protected void readAdditionalSaveData(ValueInput in){
         super.readAdditionalSaveData(in);
+        com.caszgamermd.golemsplus.breakroom.GolemBreakService.loadRest(this,in);
         // Vanilla persists custom names; migrate old generic names, but keep
         // names given by players with a name tag unchanged.
         ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.FISHER);
@@ -468,3 +471,5 @@ public final class FisherGolem extends PathfinderMob {
         syncCarried();
     }
 }
+
+

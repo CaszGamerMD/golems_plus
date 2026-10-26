@@ -14,6 +14,7 @@ public final class WorkerIdleRoam {
     private static final int RADIUS=10;
 
     public static void tick(ServerLevel level,PathfinderMob mob,BlockPos home){
+        if(com.caszgamermd.golemsplus.breakroom.GolemBreakService.takingBreak(mob))return;
         if(home==null||!level.hasChunkAt(home))return;
         double hx=home.getX()+.5, hy=home.getY()+1, hz=home.getZ()+.5;
         double dx=mob.getX()-hx, dz=mob.getZ()-hz;
@@ -39,3 +40,4 @@ public final class WorkerIdleRoam {
         }
     }
 }
+

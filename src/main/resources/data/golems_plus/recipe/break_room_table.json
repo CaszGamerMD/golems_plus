@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "PPP",
+    " I ",
+    " I "
+  ],
+  "key": {
+    "P": "minecraft:oak_planks",
+    "I": "minecraft:iron_ingot"
+  },
+  "result": {
+    "id": "golems_plus:break_room_table",
+    "count": 1
+  }
+}

@@ -87,17 +87,19 @@ public final class ChefGolem extends PathfinderMob {
             setJobAppearance(false,net.minecraft.world.item.ItemStack.EMPTY);
         // Maintain the original paced idle movement, but do not let it
         // slow down hand/appearance cleanup.
-        if(tickCount%40==0&&!station.chefBusy()
+        if(tickCount%40==0&&!com.caszgamermd.golemsplus.breakroom.GolemBreakService.takingBreak(this)&&!station.chefBusy()
                 &&station.phase()!=com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED)
             ChefFloorNavigation.idle(server,this,home);
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
         super.addAdditionalSaveData(out);
+        com.caszgamermd.golemsplus.breakroom.GolemBreakService.saveRest(this,out);
         out.store("chef_home",BlockPos.CODEC,home);
         if(owner!=null)out.putString("chef_owner",owner.toString());
     }
     @Override protected void readAdditionalSaveData(ValueInput in){
         super.readAdditionalSaveData(in);
+        com.caszgamermd.golemsplus.breakroom.GolemBreakService.loadRest(this,in);
         // Vanilla persists custom names; migrate old generic names, but keep
         // names given by players with a name tag unchanged.
         ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.CHEF);
@@ -106,3 +108,5 @@ public final class ChefGolem extends PathfinderMob {
         catch(IllegalArgumentException ex){owner=null;}
     }
 }
+
+
