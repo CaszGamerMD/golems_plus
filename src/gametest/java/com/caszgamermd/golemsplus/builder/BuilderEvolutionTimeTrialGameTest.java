@@ -248,10 +248,33 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 StringBuilder misses=new StringBuilder();
                 for(Candidate b:bots){
                     if(b.reached>=0&&b.reached<=DEADLINE)finished++;
-                    else if(misses.length()<1200)
+                    else if(misses.length()<4800){
+                        String direction=b.cursor<b.route.length()
+                                ?String.valueOf(b.route.charAt(b.cursor)):"DONE";
+                        int[] nextStep=b.cursor<b.route.length()
+                                ?next(b.x,b.z,b.route.charAt(b.cursor))
+                                :new int[]{b.x,b.z};
+                        BlockPos waypoint=pos(helper,nextStep[0],2,nextStep[1]);
+                        boolean aheadClear=world.noCollision(b.mob,
+                                b.mob.getBoundingBox().move(
+                                        Math.max(-.16,Math.min(.16,
+                                            waypoint.getX()+.5-b.mob.getX())),
+                                        0,Math.max(-.16,Math.min(.16,
+                                            waypoint.getZ()+.5-b.mob.getZ()))));
+                        var doorA=world.getBlockState(pos(helper,3,2,5));
+                        var doorB=world.getBlockState(pos(helper,3,2,6));
                         misses.append(" start=").append(b.route.length())
                                 .append(" idx=").append(b.cursor)
-                                .append(" pos=").append(b.mob.position());
+                                .append(" leg=").append(direction)
+                                .append(" next=").append(nextStep[0])
+                                .append(",").append(nextStep[1])
+                                .append(" plannedCell=").append(b.x)
+                                .append(",").append(b.z)
+                                .append(" pos=").append(b.mob.position())
+                                .append(" clear=").append(aheadClear)
+                                .append(" door5=").append(doorA)
+                                .append(" door6=").append(doorB);
+                    }
                     // Simulate tournament cutoff: kill/reset all bots after
                     // 20s before the next generation would be spawned.
                     b.mob.discard();
