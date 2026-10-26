@@ -922,14 +922,18 @@ public final class BuilderEvolutionTimeTrialGameTest {
         int generation=0;
         long generationStart=0;
         int bestFinished=0;
+        int completedGenerations=0;
+        int bestChampionSlowest=Integer.MAX_VALUE;
+        double bestChampionAverage=Double.POSITIVE_INFINITY;
+        List<Genome> verifiedChampion=List.of();
         Tournament(GameTestHelper helper){
             this.helper=helper;
             for(int i=0;i<SELECTED_BOTS.length;i++){
                 championScores[i]=-Double.MAX_VALUE;
-                // Start from previously REAL-tested chromosomes instead
-                // of forgetting physical learning after a server restart.
-                generationGenes.add(SAVED_PHYSICAL_CHAMPIONS[i]);
             }
+            // Preserve real progress from PREVIOUS GitHub Actions runs.
+            // No headless scores may seed or qualify the physical test.
+            TrainingMemory.restore(this);
             bots=spawnGeneration(helper,generationGenes,collisionMemory);
         }
         void tick(){
@@ -980,44 +984,62 @@ public final class BuilderEvolutionTimeTrialGameTest {
                     +" fastestTicks="+(finished>0?fastest:-1)
                     +" slowestTicks="+(finished>0?slowest:-1)
                     +" stalled="+blockers);
-            // Always discard all physical entities, even winners.
+            // Genetic selection uses ONLY actual Minecraft entities and
+            // their measured arrivals, traversed waypoints and collisions.
+            // Breed a NEXT population even when the current run succeeds:
+            // saving this mutation is what makes the NEXT run grow.
+            List<Genome> parents=new ArrayList<>();
+            int eliteCount=Math.min(4,ranked.size());
+            for(int i=0;i<eliteCount;i++)parents.add(ranked.get(i).dna);
+            for(Genome elite:champions)if(elite!=null)parents.add(elite);
+            // Keep the entire previously proven winning lineage in
+            // the mating pool. Never discard it after an unlucky run.
+            parents.addAll(verifiedChampion);
+            List<Genome> offspring=new ArrayList<>();
+            for(int i=0;i<SELECTED_BOTS.length;i++){
+                double roll=rng.nextDouble();
+                if(roll<.12&&champions[i]!=null){
+                    // Individual elite preservation, but do NOT freeze
+                    // every once-successful slot forever: we need to
+                    // keep exploring faster and more reliable genes.
+                    offspring.add(champions[i]);
+                }else if(roll<.20){
+                    offspring.add(Genome.random(rng));
+                }else{
+                    Genome a=champions[i]!=null&&rng.nextBoolean()
+                            ?champions[i]:parents.get(rng.nextInt(parents.size()));
+                    Genome b=parents.get(rng.nextInt(parents.size()));
+                    offspring.add(Genome.cross(a,b,rng).mutate(rng));
+                }
+            }
+            // Data durability is NOT conditional on success. Even a
+            // failed 24-generation experiment contributes nextPopulation,
+            // the best motor genes per starting lane and observed
+            // blocked edges for the following server run.
+            TrainingMemory.save(this,bots,finished,slowest,
+                    mean/bots.size(),offspring);
+            completedGenerations++;
+
+            // Always discard all real entities after their actual 18s
+            // trial; the next generation must spawn physical golems.
             for(Candidate b:bots)if(b.mob.isAlive())b.mob.discard();
             if(finished==bots.size()){
-                // Preserve the actual physical winners so their route and
-                // tested DNA can later be promoted to a production AI.
                 for(Candidate b:bots)
                     System.out.println("[TIMETRIAL REAL CHAMPION] slot="+b.index
                             +" arrivedTicks="+b.arrivedTick
                             +" route="+b.route
                             +" genes="+b.dna);
+                System.out.println("[TIMETRIAL MEMORY] Future run will "
+                        +"resume from MUTATED offspring of this 10/10 result");
                 helper.succeed();return;
             }
             if(generation+1>=GENERATIONS){
                 helper.fail("Physical evolution failed after "+GENERATIONS
                         +" generations. Best REAL result="+bestFinished
                         +"/"+bots.size()
-                        +", latest="+finished+"/10; "+blockers);
+                        +", latest="+finished+"/10; "
+                        +"checkpoint saved for future runs; "+blockers);
                 return;
-            }
-            // Genetic selection uses ONLY actual golem trajectories.
-            // Stronger physical performers are more likely to breed,
-            // while the best genotype per spawn remains an elite.
-            List<Genome> parents=new ArrayList<>();
-            int eliteCount=Math.min(4,ranked.size());
-            for(int i=0;i<eliteCount;i++)parents.add(ranked.get(i).dna);
-            for(Genome elite:champions)if(elite!=null)parents.add(elite);
-            List<Genome> offspring=new ArrayList<>();
-            for(int i=0;i<SELECTED_BOTS.length;i++){
-                if(champions[i]!=null&&championScores[i]>100000){
-                    offspring.add(champions[i]);continue;
-                }
-                if(rng.nextDouble()<.10){
-                    offspring.add(Genome.random(rng));continue;
-                }
-                Genome a=champions[i]!=null&&rng.nextBoolean()
-                        ?champions[i]:parents.get(rng.nextInt(parents.size()));
-                Genome b=parents.get(rng.nextInt(parents.size()));
-                offspring.add(Genome.cross(a,b,rng).mutate(rng));
             }
             generationGenes=offspring;
             generation++;
