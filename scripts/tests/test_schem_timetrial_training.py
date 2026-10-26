@@ -1,4 +1,4 @@
-"""Uploaded user's real schem and 20-second all-generation acceptance tests."""
+"""Uploaded user's real schem and 18-second all-generation acceptance tests."""
 import importlib.util
 import sys
 import unittest
@@ -49,7 +49,7 @@ class SchematicTimeTrialTests(unittest.TestCase):
         self.assertEqual(min(distances), 50)
         self.assertEqual(max(distances), 59)
         self.assertTrue(all(len(course.goals) == 20 for course in courses))
-        self.assertTrue(all(d * engine.TICKS_PER_BLOCK <= 400
+        self.assertTrue(all(d * engine.TICKS_PER_BLOCK <= 360
                             for d in distances))
 
     def test_slab_collision_in_user_course(self):
@@ -62,21 +62,21 @@ class SchematicTimeTrialTests(unittest.TestCase):
 
     def test_generation_is_20_bot_all_pass_not_champion_shortcut(self):
         # Only one generation here. A fast bot must NEVER count as a
-        # winner unless all 20 green spawns reach the red by 400 ticks.
+        # winner unless all 20 green spawns reach the red by 360 ticks.
         result = trial.train_time_trial(self.doc, generations=1,
                                         wall_seconds=20, seed=42,
                                         keep_replays=False,
                                         print_generation=False)
         self.assertEqual(result["bots_per_generation"], 20)
-        self.assertEqual(result["generation_duration_ticks"], 400)
+        self.assertEqual(result["generation_duration_ticks"], 360)
         self.assertEqual(len(result["starts_covered"]), 20)
         self.assertEqual(result["generations_run"], 1)
         self.assertEqual(len(result["history"]), 1)
         row = result["history"][0]
-        self.assertEqual(row["finished_by_20s"]
+        self.assertEqual(row["finished_by_18s"]
                          + row["failed_and_reset"], 20)
         self.assertEqual(result["accepted"],
-                         row["finished_by_20s"] == 20)
+                         row["finished_by_18s"] == 20)
         self.assertTrue(result["simulated_only"])
         self.assertFalse(result["minecraft_entity_game_test_passed"])
         self.assertEqual(result["collision_box"], [0.65, 0.65, 1.6])
