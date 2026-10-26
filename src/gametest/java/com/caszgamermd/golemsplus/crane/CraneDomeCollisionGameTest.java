@@ -24,7 +24,7 @@ import net.minecraft.world.phys.Vec3;
  * swept-boom geometry.  A far-side landing must not tunnel through the Dome.
  */
 public final class CraneDomeCollisionGameTest {
-    @GameTest(structure="golems_plus_gametest:dome_arena",
+    @GameTest(structure="golems_plus_gametest:dome_arena",padding=64,
             maxTicks=1200, skyAccess=true)
     public void boomRespectsRealDomeAndRequiresReposition(GameTestHelper helper) {
         Path fixture=null;
