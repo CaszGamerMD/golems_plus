@@ -18,21 +18,20 @@ import net.minecraft.world.level.block.Blocks;
  *   and exit onto the ground without teleporting or fabricating scaffolds.
  */
 public final class BuilderNavigationRequirementsGameTest {
-    @GameTest(structure="golems_plus_gametest:dome_arena",
-            padding=24,maxTicks=1050,skyAccess=true)
+    @GameTest(maxTicks=1050,skyAccess=true)
     public void walksOneFullBlockUpAndBackDown(GameTestHelper helper){
         ServerLevel world=helper.getLevel();
-        for(int x=2;x<=17;x++)for(int z=4;z<=12;z++){
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++){
             helper.setBlock(x,1,z,Blocks.STONE);
             for(int y=2;y<=5;y++)helper.setBlock(x,y,z,Blocks.AIR);
         }
         // One-block-tall solid step with no stairs, slabs or scaffolding.
-        for(int x=8;x<=10;x++)for(int z=7;z<=9;z++)
+        for(int x=3;x<=4;x++)for(int z=2;z<=4;z++)
             helper.setBlock(x,2,z,Blocks.STONE);
         var builder=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
-        BlockPos spawn=helper.absolutePos(new BlockPos(5,2,8));
-        BlockPos high=helper.absolutePos(new BlockPos(9,3,8));
-        BlockPos low=helper.absolutePos(new BlockPos(13,2,8));
+        BlockPos spawn=helper.absolutePos(new BlockPos(1,2,3));
+        BlockPos high=helper.absolutePos(new BlockPos(4,3,3));
+        BlockPos low=helper.absolutePos(new BlockPos(6,2,3));
         builder.setPos(spawn.getX()+.5,spawn.getY(),spawn.getZ()+.5);
         world.addFreshEntity(builder);
         final int[] phase={0};
@@ -61,17 +60,16 @@ public final class BuilderNavigationRequirementsGameTest {
         });
     }
 
-    @GameTest(structure="golems_plus_gametest:dome_arena",
-            padding=24,maxTicks=1350,skyAccess=true)
+    @GameTest(maxTicks=1350,skyAccess=true)
     public void recognizesSharedScaffoldAndExitsBothSolidPlatforms(
             GameTestHelper helper){
         ServerLevel world=helper.getLevel();
-        for(int x=3;x<=17;x++)for(int z=4;z<=16;z++){
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++){
             helper.setBlock(x,1,z,Blocks.STONE);
             for(int y=2;y<=10;y++)helper.setBlock(x,y,z,Blocks.AIR);
         }
-        helper.setBlock(4,2,5,WorksiteContent.BUILDER_TABLE);
-        BlockPos planner=helper.absolutePos(new BlockPos(4,2,5));
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        BlockPos planner=helper.absolutePos(new BlockPos(0,2,0));
         if(!(world.getBlockEntity(planner) instanceof WorkerStationBlockEntity table)){
             helper.fail("No navigation requirement Planner");return;
         }
@@ -80,8 +78,8 @@ public final class BuilderNavigationRequirementsGameTest {
             helper.fail("Unable to claim requirement Planner");return;
         }
         var builder=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
-        BlockPos base=helper.absolutePos(new BlockPos(8,2,10));
-        BlockPos elevated=helper.absolutePos(new BlockPos(10,7,10));
+        BlockPos base=helper.absolutePos(new BlockPos(2,2,3));
+        BlockPos elevated=helper.absolutePos(new BlockPos(4,7,3));
         builder.setPos(base.getX()+.5,base.getY(),base.getZ()+.5);
         builder.assign(planner,owner.getUUID());
         world.addFreshEntity(builder);
@@ -95,7 +93,7 @@ public final class BuilderNavigationRequirementsGameTest {
                 helper.fail("Could not place/track existing tower at "+pos);return;
             }
         }
-        for(int x=9;x<=11;x++)for(int z=9;z<=11;z++)
+        for(int x=3;x<=6;x++)for(int z=2;z<=4;z++)
             helper.setBlock(x,6,z,Blocks.STONE);
         if(table.sharedScaffoldPositions().size()!=5
                 ||!table.sharedScaffoldPositions().contains(base)){
