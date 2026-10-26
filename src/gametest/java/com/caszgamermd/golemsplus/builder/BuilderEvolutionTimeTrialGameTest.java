@@ -6,6 +6,9 @@ import java.util.List;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.MoverType;
@@ -30,6 +33,13 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class BuilderEvolutionTimeTrialGameTest {
     private static final int DEADLINE=400;
+    private static Block block(String name){
+        return BuiltInRegistries.BLOCK.getValue(
+                Identifier.tryParse("minecraft:"+name));
+    }
+    private static final Block GREEN=block("green_wool");
+    private static final Block RED=block("red_wool");
+    private static final Block GRAY=block("light_gray_concrete");
     private static final int X_OFFSET=4,Z_OFFSET=4;
     // Exact uploaded Sponge .schem floor projection. Prefix ^ means a
     // half slab STEP at Y+1; blocked overhead slabs are handled below.
@@ -84,7 +94,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         final String route;
         int cursor;
         int x,z;
-        int reached=-1;
+        long reached=-1;
         double bestDistance;
         int immobile;
         Candidate(BuilderGolem mob,String route,int x,int z){
@@ -106,9 +116,9 @@ public final class BuilderEvolutionTimeTrialGameTest {
             for(int x=0;x<27;x++){
                 char cell=MAZE[z].charAt(x);
                 boolean border=x==0||z==0||x==26||z==11;
-                BlockState floor=cell=='S'?Blocks.GREEN_WOOL.defaultBlockState()
-                        :cell=='G'?Blocks.RED_WOOL.defaultBlockState()
-                        :border?Blocks.LIGHT_GRAY_CONCRETE.defaultBlockState()
+                BlockState floor=cell=='S'?GREEN.defaultBlockState()
+                        :cell=='G'?RED.defaultBlockState()
+                        :border?GRAY.defaultBlockState()
                         :Blocks.STONE.defaultBlockState();
                 h.setBlock(X_OFFSET+x,1,Z_OFFSET+z,floor);
                 // First clear original test arena volumes so the uploaded
@@ -169,8 +179,9 @@ public final class BuilderEvolutionTimeTrialGameTest {
         }
         for(int i=0;i<20;i++){
             int[] start=STARTS[i];
-            if(helper.getBlockState(X_OFFSET+start[0],1,Z_OFFSET+start[1])
-                    .getBlock()!=Blocks.GREEN_WOOL){
+            if(helper.getBlockState(new BlockPos(
+                    X_OFFSET+start[0],1,Z_OFFSET+start[1]))
+                    .getBlock()!=GREEN){
                 helper.fail("Training bot not placed on green wool");
                 return;
             }
@@ -189,7 +200,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
             bots.add(new Candidate(mob,REPLAYS[i],start[0],start[1]));
         }
         helper.onEachTick(()->{
-            int tick=helper.getTick();
+            long tick=helper.getTick();
             for(Candidate b:bots){
                 if(b.reached>=0)continue;
                 if(!b.mob.isAlive()){
@@ -197,7 +208,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
                     return;
                 }
                 BlockPos under=b.mob.blockPosition().below();
-                if(world.getBlockState(under).is(Blocks.RED_WOOL)){
+                if(world.getBlockState(under).is(RED)){
                     b.reached=tick;
                     b.mob.getNavigation().stop();
                     b.mob.setDeltaMovement(Vec3.ZERO);
