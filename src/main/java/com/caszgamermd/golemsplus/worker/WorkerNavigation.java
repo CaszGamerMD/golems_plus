@@ -630,6 +630,13 @@ public final class WorkerNavigation {
         return dx*dx+dy*dy+dz*dz>16.0;
     }
 
+    /** Real requested destination for the short, physical Builder crowd
+     * passing maneuver. Not a provisional A* detour waypoint.
+     */
+    public static BlockPos requestedTarget(PathfinderMob mob){
+        Progress p=states.get(mob);
+        return p==null?p.requested:null;
+    }
     public static boolean retryScheduled(PathfinderMob mob){
         Progress p=states.get(mob);
         return p!=null&&p.requested!=null
