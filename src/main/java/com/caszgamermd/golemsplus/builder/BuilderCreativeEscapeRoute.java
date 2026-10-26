@@ -43,24 +43,25 @@ public final class BuilderCreativeEscapeRoute {
      */
     public static boolean clearIncludingOpenableDoors(ServerLevel level,
             BuilderGolem worker,AABB bounds){
-        if(level.noCollision(worker,bounds))return true;
-        boolean sawDoor=false;
+        // The SEARCH graph must model static block geometry, not other
+        // Builders currently flying through the same doorway. Dynamic
+        // entity collision is still enforced by actual move() each tick.
+        // Treat a CLOSED DoorBlock as passable only because the executor
+        // opens it immediately before entering the corresponding node.
         for(int x=(int)Math.floor(bounds.minX);x<Math.ceil(bounds.maxX);x++)
             for(int y=(int)Math.floor(bounds.minY);y<Math.ceil(bounds.maxY);y++)
                 for(int z=(int)Math.floor(bounds.minZ);z<Math.ceil(bounds.maxZ);z++){
                     BlockPos pos=new BlockPos(x,y,z);
                     if(!level.hasChunkAt(pos))return false;
                     BlockState state=level.getBlockState(pos);
-                    if(state.getBlock() instanceof DoorBlock){
-                        sawDoor=true;continue;
-                    }
+                    if(state.getBlock() instanceof DoorBlock)continue;
                     var shape=state.getCollisionShape(level,pos);
                     if(!shape.isEmpty()&&Shapes.joinIsNotEmpty(
                             Shapes.create(bounds),
                             shape.move(x,y,z),BooleanOp.AND))
                         return false;
                 }
-        return sawDoor;
+        return true;
     }
 
     public static List<Vec3> toDepot(ServerLevel level,BuilderGolem worker,
