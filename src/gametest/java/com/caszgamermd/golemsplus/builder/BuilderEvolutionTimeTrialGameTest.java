@@ -158,7 +158,9 @@ public final class BuilderEvolutionTimeTrialGameTest {
             return Math.max(lo,Math.min(hi,value));
         }
     }
+    private record Edge(int x,int z,int toX,int toZ){}
     private static final class Candidate {
+        final Map<Edge,Integer> realBlockFailures=new HashMap<>();
         final int index;
         final BuilderGolem mob;
         final String route;
@@ -281,7 +283,8 @@ public final class BuilderEvolutionTimeTrialGameTest {
      * Route genes allow evolution to prefer shorter paths, fewer turns,
      * avoiding risky slabs or exploring different legal corridors.
      */
-    private static String planRoute(int startX,int startZ,Genome dna){
+    private static String planRoute(int startX,int startZ,Genome dna,
+                                    Map<Edge,Integer> realBlockFailures){
         RouteNode start=new RouteNode(startX,startZ,'?');
         PriorityQueue<Frontier> open=new PriorityQueue<>(
                 Comparator.comparingDouble(Frontier::cost));
@@ -313,6 +316,11 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 int hash=Math.floorMod(x*31873+z*19009
                         +direction*7919,1000);
                 weight+=dna.routeJitter()*hash/1000.0;
+                // Only empirically observed REAL Minecraft block
+                // collisions add these extra costs. Do not train on
+                // simulated wall guesses or other entity traffic.
+                Edge edge=new Edge(node.x(),node.z(),x,z);
+                weight+=Math.min(65,realBlockFailures.getOrDefault(edge,0)*2.5);
                 RouteNode nextNode=new RouteNode(x,z,direction);
                 double cost=current.cost()+weight;
                 if(cost>=best.getOrDefault(nextNode,Double.POSITIVE_INFINITY))
@@ -332,7 +340,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
     }
 
     private static List<Candidate> spawnGeneration(GameTestHelper helper,
-            List<Genome> genomes){
+            List<Genome> genomes,Map<Edge,Integer> blockMemory){
         ServerLevel world=helper.getLevel();
         List<Candidate> bots=new ArrayList<>();
         for(int slot=0;slot<SELECTED_BOTS.length;slot++){
@@ -354,7 +362,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
                         +" x "+mob.getBbHeight());
             Genome genome=genomes.get(slot);
             Candidate b=new Candidate(slot,mob,planRoute(start[0],
-                    start[1],genome),start[0],start[1],genome);
+                    start[1],genome,blockMemory),start[0],start[1],genome);
             BlockPos origin=pos(helper,0,2,0);
             b.originX=origin.getX();
             b.originZ=origin.getZ();
@@ -413,6 +421,12 @@ public final class BuilderEvolutionTimeTrialGameTest {
             b.collisions++;
         }
         b.ticksSinceJump++;
+        // GameTest's explicit horizontal move(MoverType.SELF,...) can
+        // reset the onGround flag. Probe the REAL Minecraft collision
+        // shape immediately beneath the golem rather than trusting that
+        // stale flag when deciding whether a legal ground jump can start.
+        boolean grounded=mob.onGround()||!world.noCollision(mob,
+                mob.getBoundingBox().move(0,-.07,0));
         BlockPos nextFeet=target;
         BlockState footState=world.getBlockState(nextFeet);
         BlockState aboveState=world.getBlockState(nextFeet.above());
@@ -423,7 +437,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         // Jump from ground, with native gravity and vanilla collision.
         // Never add positive upward acceleration while airborne.
         if((approachingRaisedCell||b.collisions>0&&b.immobile>4)
-                &&mob.onGround()&&b.ticksSinceJump>=b.dna.jumpCooldown()){
+                &&grounded&&b.ticksSinceJump>=b.dna.jumpCooldown()){
             mob.setDeltaMovement(0,b.dna.jumpPower(),0);
             b.ticksSinceJump=0;
             b.jumps++;
@@ -458,13 +472,22 @@ public final class BuilderEvolutionTimeTrialGameTest {
         mob.getNavigation().stop();
         Vec3 old=mob.position();
         mob.move(MoverType.SELF,new Vec3(vx,0,vz));
-        if(mob.position().distanceToSqr(old)<.000004)
+        if(mob.position().distanceToSqr(old)<.000004){
             b.collisions++;
+            boolean hitsStaticBlock=world.getBlockCollisions(mob,
+                    mob.getBoundingBox().move(vx,0,vz))
+                    .iterator().hasNext();
+            if(hitsStaticBlock&&b.immobile>3){
+                Edge blocked=new Edge(b.x,b.z,ahead[0],ahead[1]);
+                b.realBlockFailures.merge(blocked,1,Integer::sum);
+            }
+        }
     }
 
     private static final class Tournament {
         final GameTestHelper helper;
         final Random rng=new Random(TRAINING_SEED);
+        final Map<Edge,Integer> collisionMemory=new HashMap<>();
         final Genome[] champions=new Genome[SELECTED_BOTS.length];
         final double[] championScores=new double[SELECTED_BOTS.length];
         List<Genome> generationGenes=new ArrayList<>();
@@ -478,7 +501,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 championScores[i]=-Double.MAX_VALUE;
                 generationGenes.add(Genome.random(rng));
             }
-            bots=spawnGeneration(helper,generationGenes);
+            bots=spawnGeneration(helper,generationGenes,collisionMemory);
         }
         void tick(){
             long absoluteTick=helper.getTick();
@@ -502,6 +525,9 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 mean+=b.fitness();
                 collisions+=b.collisions;
                 jumps+=b.jumps;
+                for(var edge:b.realBlockFailures.entrySet())
+                    collisionMemory.merge(edge.getKey(),edge.getValue(),
+                            (a,c)->Math.min(100,a+c));
                 if(b.fitness()>championScores[b.index]){
                     champions[b.index]=b.dna;
                     championScores[b.index]=b.fitness();
@@ -514,6 +540,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
                     +" best="+bestFinished
                     +" meanFitness="+Math.round(mean/bots.size())
                     +" collisions="+collisions+" jumps="+jumps
+                    +" learnedBlockEdges="+collisionMemory.size()
                     +" stalled="+blockers);
             // Always discard all physical entities, even winners.
             for(Candidate b:bots)if(b.mob.isAlive())b.mob.discard();
@@ -550,7 +577,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
             generationGenes=offspring;
             generation++;
             generationStart=absoluteTick+1;
-            bots=spawnGeneration(helper,generationGenes);
+            bots=spawnGeneration(helper,generationGenes,collisionMemory);
         }
     }
 
