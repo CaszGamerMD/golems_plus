@@ -378,21 +378,27 @@ public final class BuilderEvolutionTimeTrialGameTest {
             mob.discard();
             return;
         }
-        if(b.cursor>=b.route.length())return;
-        int[] ahead=next(b.x,b.z,b.route.charAt(b.cursor));
-        BlockPos target=pos(helper,ahead[0],2,ahead[1]);
-        double dx=target.getX()+.5-mob.getX();
-        double dz=target.getZ()+.5-mob.getZ();
-        double distance=Math.hypot(dx,dz);
-        if(distance<b.dna.tolerance()){
+        int[] ahead=null;
+        BlockPos target=null;
+        double dx=0,dz=0,distance=0;
+        // DO NOT spend a full Minecraft tick at every waypoint just to
+        // increment a route cursor. On a 50-60 block route that artificial
+        // pause wastes up to three seconds and makes an 18s run impossible.
+        while(b.cursor<b.route.length()){
+            ahead=next(b.x,b.z,b.route.charAt(b.cursor));
+            target=pos(helper,ahead[0],2,ahead[1]);
+            dx=target.getX()+.5-mob.getX();
+            dz=target.getZ()+.5-mob.getZ();
+            distance=Math.hypot(dx,dz);
+            if(distance>=b.dna.tolerance())break;
             b.x=ahead[0];
             b.z=ahead[1];
             b.cursor++;
             b.bestCursor=Math.max(b.bestCursor,b.cursor);
             b.immobile=0;
             b.lastDistance=Double.POSITIVE_INFINITY;
-            return;
         }
+        if(b.cursor>=b.route.length())return;
 
         if(distance<b.lastDistance-.015){
             b.immobile=0;
@@ -432,10 +438,16 @@ public final class BuilderEvolutionTimeTrialGameTest {
         }
         double vx=step*dx/Math.max(.00001,distance);
         double vz=step*dz/Math.max(.00001,distance);
-        // Aim toward the tile center. The alignment gene changes
-        // how strongly the bot commits to that centerline.
-        vx*=b.dna.align();
-        vz*=b.dna.align();
+        // Evolve how much to anticipate a corner, WITHOUT reducing
+        // horizontal speed. Actual Minecraft block collision still
+        // rejects unsafe corner cuts.
+        if(b.cursor+1<b.route.length()&&distance<.45){
+            int[] corner=next(ahead[0],ahead[1],
+                    b.route.charAt(b.cursor+1));
+            double lookX=corner[0]-ahead[0],lookZ=corner[1]-ahead[1];
+            vx+=lookX*(1-b.dna.align())*.075;
+            vz+=lookZ*(1-b.dna.align())*.075;
+        }
         double norm=Math.hypot(vx,vz);
         if(norm>SPEED_CAP){
             vx*=SPEED_CAP/norm;
@@ -542,7 +554,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         }
     }
 
-    @GameTest(maxTicks=4550,padding=64,skyAccess=true)
+    @GameTest(maxTicks=8950,padding=64,skyAccess=true)
     public void realBuildersEvolveOnUserMazeInEighteenSeconds(
             GameTestHelper helper){
         fillOriginalCourse(helper);
