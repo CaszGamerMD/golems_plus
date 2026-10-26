@@ -23,7 +23,7 @@ from pathlib import Path
 MAX_BYTES = 8_000_000
 BOT_HEIGHT = 1.6
 BOT_WIDTH = .65
-MAX_TICKS = 400
+MAX_TICKS = 360
 
 
 class NbtReader:
