@@ -1,3 +1,26 @@
+## Slab and single-door controller fix — 2026-10-26
+
+**Physical result:** the corrected 13-second vanilla course now completes **10/10 real BuilderGolem entities** in three consecutive scored GitHub Actions tests: [run 40343560995](https://github.com/CaszGamerMD/golems_plus/actions/runs/40343560995).
+
+| Test | Generation reaching 10/10 | Slowest real entity |
+|---|---:|---:|
+| 1 | 5 | 251 ticks (12.55 s) |
+| 2 | 1 | 249 ticks (12.45 s) |
+| 3 | 1 | 236 ticks (11.8 s) |
+
+The primary bottleneck was **native entity step-up at X≈16.325, Z≈6.5**: feeding a zero-Y delta directly into `Entity.move` sometimes cleared on-ground state before a 0.5-high bottom slab. The controller now includes a small **downward collision movement** when physically grounded, allowing Minecraft's own **0.6-block step height** to resolve the half-slab. It does not raise or teleport entities or allow flight, scaffold, breaking or noclip. The new route planner also checks full 0.65×1.6 collision clearance and physical standing heights, and uses stable perpendicular door offsets when passing a single-width door.
+
+Separate Minecraft GameTests confirmed:
+- Real grounded 0.5 slab ascent in **5 ticks**.
+- An exposed bottom slab admits the real Builder body; an added roof in the isolated test correctly rejects it.
+- A real Builder crosses the original single open birch door in **15 ticks** (chosen lateral offset 0.08).
+
+This branch retains **235 scored real-entity generations**, all actual per-tick traces and a protected alt-course **10/10 champion** with slowest arrival **236 ticks**, mean arrival **220.9 ticks**. The first-course 18-second training data and champion remain separate. A new/unseen course is still necessary to validate generalization; these results demonstrate this track only. 
+
+The official [all-generation HTML viewer](replays/route-viewer.html) embeds the saved live entity tracks and includes the new 12-trial sequence.
+
+---
+
 # Alternate vanilla physical course (13 seconds)
 
 This folder contains the NEW upload **timetrial_alt(2).schem**, SHA-256 `b8a216c4b1a91359c044fa20546b214670b8431991d305fd47f4e2c8a72d1ea4`. Its raw gzip file is saved losslessly under `courses/timetrial_alt_vanilla.schem.base64`.
