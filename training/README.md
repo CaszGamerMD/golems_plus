@@ -1,3 +1,33 @@
+## Required testing policy: real BuilderGolem entities only
+
+**Every future scored navigation trial must execute in a Minecraft server
+using actual `BuilderGolem` entities.** The former Python grid simulator
+may remain as reference material for the genetic algorithm, but its
+successes are NOT navigation test results, do not satisfy fitness
+acceptance, and must not be used to declare a winning generation.
+
+The normal Fabric GameTest manifest registers
+`BuilderEvolutionTimeTrialGameTest` as a **mandatory** test. Its
+20 real Minecraft entities start on green wool, have an actual
+0.65 x 0.65 x 1.6 collision box, and must all physically touch
+red wool by tick **360**. At timeout the test discards all remaining
+trial entities. Movement uses actual block/entity collision, doors,
+slabs and gravity. Never allow breaking, scaffolding or flight.
+
+The real-entity workflow
+`.github/workflows/builder-physical-timetrial-probe.yml` runs
+automatically on navigation branch pushes and pull requests.
+The previous CI workflows that awarded success based on simulated
+Python movement have been removed.
+
+**Current in-game status is still failing.** Previous GameTests
+reached 9/20 in 400 ticks on the original replay, so no 18-second
+physical victory has been demonstrated. Before next scored training,
+the evolution fitness loop must move *into the server* or receive
+real per-tick Minecraft entity feedback. Replaying hard-coded
+headless paths on real entities is an intermediate diagnostic,
+NOT physical evolutionary training.
+
 # Builder Navigation Evolution Lab (Fabric 26.2)
 
 This **headless Python training prototype is not a Minecraft movement test**.
@@ -182,10 +212,8 @@ hash are saved to `results.json` and `history.csv`.
   because the headless simulator did not model the detailed collision
   of half slabs and open door panels. Actual GameTest success MUST be
   established before treating the evolved policy as usable in-game.
-- The physical test is excluded from default green CI, and is available
-  explicitly through the **Physical Timetrial Probe** GitHub Action.
-  Do not infer that game movement has passed from the green headless
-  GitHub job.
+- The physical test is now **mandatory** in GameTest CI. It is
+  expected to fail until all 20 live golems succeed in 360 ticks.
 
 ### Next physics-aware learning phase
 
