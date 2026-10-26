@@ -1,6 +1,19 @@
 package com.caszgamermd.golemsplus.builder;
 
 import com.caszgamermd.golemsplus.world.WorksiteContent;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -637,6 +650,264 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 Edge blocked=new Edge(b.x,b.z,ahead[0],ahead[1]);
                 b.realBlockFailures.merge(blocked,1,Integer::sum);
             }
+        }
+    }
+
+    /**
+     * Durable checkpoints for REAL Minecraft-only fitness. Each physical
+     * generation writes an atomic checkpoint; a verified all-10 winner is
+     * independently protected in champion.json. The CI workflow commits
+     * both files to the Git branch even when the GameTest returns failure.
+     *
+     * All numbers used to rank/survive come from the actual entities.
+     * Never load a Python/headless trainer result as a valid checkpoint.
+     */
+    private static final class TrainingMemory {
+        private static final String FORMAT="golems-plus-physical-genes-v1";
+        private static final String COURSE="timetrial-10-builders-360-ticks-v2-diagonal-step";
+        private static final Gson JSON=new GsonBuilder()
+                .setPrettyPrinting().disableHtmlEscaping().create();
+        private static final Path DIRECTORY=Path.of(
+                System.getenv("GOLEMS_EVOLUTION_STATE_DIR")==null
+                ||System.getenv("GOLEMS_EVOLUTION_STATE_DIR").isBlank()
+                ?"training/state":System.getenv("GOLEMS_EVOLUTION_STATE_DIR"));
+        private static Path checkpoint(){return DIRECTORY.resolve("checkpoint.json");}
+        private static Path champion(){return DIRECTORY.resolve("champion.json");}
+        private static Path history(){return DIRECTORY.resolve("history.jsonl");}
+
+        private static JsonArray encode(Genome genome){
+            JsonArray a=new JsonArray();
+            for(double value:new double[]{
+                    genome.drive(),genome.align(),genome.tolerance(),
+                    genome.jumpLead(),genome.jumpPower(),genome.jumpCooldown(),
+                    genome.stuckTimeout(),genome.backoff(),genome.slabAvoid(),
+                    genome.turnBias(),genome.routeJitter(),genome.doorBias()})
+                a.add(value);
+            return a;
+        }
+        private static Genome decode(JsonElement element){
+            JsonArray a=element.getAsJsonArray();
+            if(a.size()!=12)throw new IllegalArgumentException(
+                    "Expected 12 evolution genes, found "+a.size());
+            double[] p=new double[12];
+            for(int i=0;i<p.length;i++){
+                p[i]=a.get(i).getAsDouble();
+                if(!Double.isFinite(p[i]))
+                    throw new IllegalArgumentException("Invalid gene "+i);
+            }
+            if(p[0]<.5||p[0]>1.1||p[1]<.3||p[1]>1.1
+                    ||p[2]<.04||p[2]>.3||p[3]<.15||p[3]>1.8
+                    ||p[4]<.3||p[4]>.5||p[5]<3||p[5]>40
+                    ||p[6]<4||p[6]>50||p[7]<0||p[7]>.3
+                    ||p[8]<0||p[8]>6||p[9]<0||p[9]>2
+                    ||p[10]<0||p[10]>2||p[11]<-.2||p[11]>.2
+                    ||p[5]!=Math.rint(p[5])||p[6]!=Math.rint(p[6]))
+                throw new IllegalArgumentException("Genome out of bounds");
+            return new Genome(p[0],p[1],p[2],p[3],p[4],
+                    (int)p[5],(int)p[6],p[7],p[8],p[9],p[10],p[11]);
+        }
+        private static JsonObject read(Path path){
+            if(!Files.exists(path))return null;
+            try(var reader=Files.newBufferedReader(path,StandardCharsets.UTF_8)){
+                if(Files.size(path)>1_000_000)
+                    throw new IllegalArgumentException("Checkpoint too large: "+path);
+                JsonObject obj=JsonParser.parseReader(reader).getAsJsonObject();
+                if(!FORMAT.equals(obj.get("format").getAsString())
+                        ||!COURSE.equals(obj.get("course").getAsString())
+                        ||!obj.get("physicalEntities").getAsBoolean())
+                    throw new IllegalStateException("Incompatible saved training state: "+path);
+                return obj;
+            }catch(IOException|RuntimeException e){
+                // Never reset to old random genes and erase valuable saved
+                // training if a checkpoint is unreadable.
+                throw new IllegalStateException("Cannot load physical training state "+path,e);
+            }
+        }
+        private static void writeAtomic(Path path,JsonObject obj){
+            try{
+                Files.createDirectories(path.getParent());
+                Path temporary=path.resolveSibling(path.getFileName()+".tmp");
+                Files.writeString(temporary,JSON.toJson(obj)+"\n",
+                        StandardCharsets.UTF_8);
+                try{
+                    Files.move(temporary,path,StandardCopyOption.REPLACE_EXISTING,
+                            StandardCopyOption.ATOMIC_MOVE);
+                }catch(AtomicMoveNotSupportedException unsupported){
+                    Files.move(temporary,path,StandardCopyOption.REPLACE_EXISTING);
+                }
+            }catch(IOException e){
+                throw new IllegalStateException(
+                        "Could not durably save physical genes to "+path,e);
+            }
+        }
+        private static JsonObject header(){
+            JsonObject obj=new JsonObject();
+            obj.addProperty("format",FORMAT);
+            obj.addProperty("course",COURSE);
+            obj.addProperty("physicalEntities",true);
+            obj.addProperty("bots",SELECTED_BOTS.length);
+            obj.addProperty("deadlineTicks",DEADLINE);
+            obj.addProperty("speedCapMetersPerSecond",4.0);
+            return obj;
+        }
+        private static JsonArray encodePopulation(List<Genome> population){
+            JsonArray a=new JsonArray();
+            for(Genome g:population)a.add(encode(g));
+            return a;
+        }
+        private static List<Genome> decodePopulation(JsonArray a){
+            if(a.size()!=SELECTED_BOTS.length)
+                throw new IllegalStateException("Saved population must have 10 genomes");
+            List<Genome> result=new ArrayList<>();
+            for(JsonElement e:a)result.add(decode(e));
+            return result;
+        }
+        static int restore(Tournament run){
+            JsonObject checkpoint=read(checkpoint());
+            JsonObject champion=read(champion());
+            if(checkpoint!=null){
+                run.generationGenes=decodePopulation(
+                        checkpoint.getAsJsonArray("nextPopulation"));
+                JsonArray a=checkpoint.getAsJsonArray("personalBests");
+                JsonArray scores=checkpoint.getAsJsonArray("personalScores");
+                if(a.size()!=SELECTED_BOTS.length
+                        ||scores.size()!=SELECTED_BOTS.length)
+                    throw new IllegalStateException("Invalid saved personal bests");
+                for(int i=0;i<a.size();i++){
+                    run.champions[i]=a.get(i).isJsonNull()?null:decode(a.get(i));
+                    run.championScores[i]=scores.get(i).getAsDouble();
+                    if(!Double.isFinite(run.championScores[i]))
+                        throw new IllegalStateException("Invalid fitness checkpoint");
+                }
+                run.completedGenerations=checkpoint.get("completedGenerations").getAsInt();
+                run.bestFinished=checkpoint.get("bestFinishedEver").getAsInt();
+                if(run.completedGenerations<0||run.bestFinished<0
+                        ||run.bestFinished>SELECTED_BOTS.length)
+                    throw new IllegalStateException("Invalid generation counter");
+                for(JsonElement item:checkpoint.getAsJsonArray("blockedEdges")){
+                    JsonObject e=item.getAsJsonObject();
+                    run.collisionMemory.put(new Edge(e.get("x").getAsInt(),
+                            e.get("z").getAsInt(),e.get("toX").getAsInt(),
+                            e.get("toZ").getAsInt()),e.get("failures").getAsInt());
+                }
+                System.out.println("[TIMETRIAL MEMORY] RESTORED checkpoint generations="
+                        +run.completedGenerations+" best="+run.bestFinished
+                        +" edges="+run.collisionMemory.size());
+            }else{
+                for(Genome saved:SAVED_PHYSICAL_CHAMPIONS)
+                    run.generationGenes.add(saved);
+                System.out.println("[TIMETRIAL MEMORY] seeded from 10 previously "
+                        +"real-entity-verified fallback genomes");
+            }
+            if(champion!=null){
+                List<Genome> gold=decodePopulation(
+                        champion.getAsJsonArray("winningGenomes"));
+                int worst=champion.get("slowestTicks").getAsInt();
+                if(worst>DEADLINE)
+                    throw new IllegalStateException("Saved champion was late!");
+                run.bestChampionSlowest=worst;
+                run.bestChampionAverage=champion.get("meanTicks").getAsDouble();
+                // Champion is an immutable, physically proven anchor.
+                // Use these in the parent pool, but do not overwrite the
+                // checkpoint population of fresh mutations.
+                run.verifiedChampion=gold;
+                System.out.println("[TIMETRIAL MEMORY] LOADED proven 10/10 champion "
+                        +"worstTicks="+worst);
+            }
+            return run.completedGenerations;
+        }
+
+        static void save(Tournament run,List<Candidate> bots,int finished,
+                         int slowest,double mean,List<Genome> nextPopulation){
+            JsonObject obj=header();
+            obj.addProperty("completedGenerations",run.completedGenerations+1);
+            obj.addProperty("bestFinishedEver",run.bestFinished);
+            obj.addProperty("lastCompleted",finished);
+            obj.addProperty("lastSlowestTicks",finished==10?slowest:-1);
+            obj.addProperty("lastMeanFitness",mean);
+            obj.addProperty("lastGenerationIndex",run.generation);
+            obj.add("nextPopulation",encodePopulation(nextPopulation));
+            JsonArray personal=new JsonArray(),scores=new JsonArray();
+            for(int i=0;i<SELECTED_BOTS.length;i++){
+                if(run.champions[i]==null)personal.add(com.google.gson.JsonNull.INSTANCE);
+                else personal.add(encode(run.champions[i]));
+                scores.add(run.championScores[i]);
+            }
+            obj.add("personalBests",personal);
+            obj.add("personalScores",scores);
+            JsonArray edges=new JsonArray();
+            for(var edge:run.collisionMemory.entrySet()){
+                JsonObject e=new JsonObject();
+                e.addProperty("x",edge.getKey().x());
+                e.addProperty("z",edge.getKey().z());
+                e.addProperty("toX",edge.getKey().toX());
+                e.addProperty("toZ",edge.getKey().toZ());
+                e.addProperty("failures",Math.min(100,edge.getValue()));
+                edges.add(e);
+            }
+            obj.add("blockedEdges",edges);
+            JsonArray physicalFitness=new JsonArray();
+            for(Candidate b:bots){
+                JsonObject entry=new JsonObject();
+                entry.addProperty("slot",b.index);
+                entry.addProperty("arrivedTicks",b.arrivedTick);
+                entry.addProperty("fitness",b.fitness());
+                entry.addProperty("progressWaypoints",b.bestCursor);
+                entry.addProperty("collisions",b.collisions);
+                entry.addProperty("jumps",b.jumps);
+                entry.add("genes",encode(b.dna));
+                physicalFitness.add(entry);
+            }
+            obj.add("lastRealEntityResults",physicalFitness);
+            // Save after EVERY scored generation, even if all 10 fail.
+            writeAtomic(checkpoint(),obj);
+            try{
+                Files.writeString(history(),JSON.toJson(obj)+"\n",
+                        StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE,StandardOpenOption.APPEND);
+            }catch(IOException e){
+                throw new IllegalStateException("Cannot record physical learning history",e);
+            }
+
+            if(finished==SELECTED_BOTS.length){
+                double meanArrival=bots.stream().mapToInt(b->b.arrivedTick)
+                        .average().orElse(Double.POSITIVE_INFINITY);
+                // Never regress or erase the best VERIFIED complete
+                // generation from prior runs. A later losing run cannot
+                // even reach this branch.
+                if(slowest<run.bestChampionSlowest
+                        ||(slowest==run.bestChampionSlowest
+                            &&meanArrival<run.bestChampionAverage)){
+                    JsonObject winner=header();
+                    winner.addProperty("wonAtCompletedGeneration",
+                            run.completedGenerations+1);
+                    winner.addProperty("slowestTicks",slowest);
+                    winner.addProperty("meanTicks",meanArrival);
+                    JsonArray winningGenes=new JsonArray();
+                    JsonArray arrivals=new JsonArray();
+                    for(Candidate b:bots){
+                        winningGenes.add(encode(b.dna));
+                        JsonObject hit=new JsonObject();
+                        hit.addProperty("slot",b.index);
+                        hit.addProperty("ticks",b.arrivedTick);
+                        hit.addProperty("plannedRoute",b.route);
+                        arrivals.add(hit);
+                    }
+                    winner.add("winningGenomes",winningGenes);
+                    winner.add("physicalArrivalRecords",arrivals);
+                    writeAtomic(champion(),winner);
+                    run.bestChampionSlowest=slowest;
+                    run.bestChampionAverage=meanArrival;
+                    run.verifiedChampion=new ArrayList<>();
+                    for(Candidate b:bots)run.verifiedChampion.add(b.dna);
+                    System.out.println("[TIMETRIAL MEMORY] SAVED new real-entity "
+                            +"10/10 champion, slowest="+slowest
+                            +" mean="+meanArrival);
+                }else System.out.println("[TIMETRIAL MEMORY] 10/10 won but "
+                        +"retained faster earlier verified champion");
+            }
+            System.out.println("[TIMETRIAL MEMORY] CHECKPOINT saved real generation "
+                    +(run.completedGenerations+1)+" -> "+checkpoint());
         }
     }
 
