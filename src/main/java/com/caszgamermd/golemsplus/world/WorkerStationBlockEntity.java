@@ -905,6 +905,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderPreparedOrders.add(worker);sync();
         }
     }
+    /** Re-stage after a real creative-flight trip home. The same zone
+     * and current claim remain intact; no physical items are fabricated.
+     */
+    public void resetBuilderPrepared(UUID worker){
+        if(builderPreparedOrders.remove(worker))sync();
+    }
     public void releaseBuilderWorkOrder(UUID worker){
         builderClaims.remove(worker);
         builderWorkOrders.remove(worker);
