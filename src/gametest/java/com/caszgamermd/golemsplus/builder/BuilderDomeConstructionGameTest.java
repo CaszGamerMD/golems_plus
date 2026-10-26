@@ -204,6 +204,23 @@ public final class BuilderDomeConstructionGameTest {
                         table.builderClearCursor()+" | contiguous="+table.builderCursor()
                         +" | totalCompleted="+table.builderCompletedCount()
                         +"/"+steps.size()+" | problem="+table.problem());
+                var site=BuilderSupplyInventory.selectedStorage(table);
+                message.append(" | OnSite selected=")
+                        .append(site==null?"MISSING":site.getClass().getSimpleName())
+                        .append(" depot=").append(table.builderUnloadingStorage());
+                if(site!=null){
+                    java.util.Map<String,Integer> equipment=new java.util.LinkedHashMap<>();
+                    for(int slot=0;slot<site.getContainerSize();slot++){
+                        var stack=site.getItem(slot);
+                        if(!stack.isEmpty()&&(stack.is(Items.IRON_PICKAXE)
+                                ||stack.is(Items.IRON_AXE)
+                                ||stack.is(Items.IRON_SHOVEL)
+                                ||stack.is(Items.IRON_HOE)))
+                            equipment.merge(stack.getItem().toString(),
+                                    stack.getCount(),Integer::sum);
+                    }
+                    message.append(" tools=").append(equipment);
+                }
                 for(BuilderGolem worker:crew)
                     message.append(" | ").append(worker.getName().getString())
                         .append(" @ ").append(worker.blockPosition())
