@@ -125,7 +125,7 @@ public final class BuilderDomeConstructionGameTest {
         final List<BuilderGolem> crew=new ArrayList<>();
         for(int i=0;i<4;i++){
             BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-            BlockPos pos=helper.absolutePos(new BlockPos(6+i%2,2,5+i/2));
+            BlockPos pos=helper.absolutePos(new BlockPos(6+i%2,2,20+i/2));
             worker.setPos(pos.getX()+.5,pos.getY(),pos.getZ()+.5);
             worker.assign(plannerPos,id);
             level.addFreshEntity(worker);
@@ -156,7 +156,7 @@ public final class BuilderDomeConstructionGameTest {
         var crane=new BuildingCrane(CraneContent.CRANE,level);
         BlockPos craneRail=helper.absolutePos(new BlockPos(3,2,24));
         // South-offset basket stays inside the arena throughout rail travel.
-        BlockPos craneBasket=helper.absolutePos(new BlockPos(3,2,21));
+        BlockPos craneBasket=helper.absolutePos(new BlockPos(6,2,24));
         crane.place(id,craneRail,Vec3.atBottomCenterOf(craneBasket));
         if(!level.addFreshEntity(crane)||!crane.link(table)
                 ||!crane.assignOperator(operator)){
@@ -183,6 +183,11 @@ public final class BuilderDomeConstructionGameTest {
         for(int x=5;x<=7;x++)for(int z=24;z<=26;z++)
             helper.setBlock(x,16,z,Blocks.STONE);
         BlockPos elevatedDock=helper.absolutePos(new BlockPos(6,17,25));
+        // The initial basket must not intersect a rail at the chassis
+        // height. A basket sitting directly ON a rail cannot begin lifting.
+        if(level.getBlockState(craneBasket).is(CraneContent.RAIL)){
+            helper.fail("Dome test placed crane basket inside a rail");return;
+        }
         if(!crane.request(crew.get(0),elevatedDock)){
             helper.fail("Crane rejected real first builder's elevated ride");return;
         }
