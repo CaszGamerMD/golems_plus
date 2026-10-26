@@ -198,6 +198,8 @@ public final class BuilderCreativeFlight {
                 flight.destination=flight.airRoute.get(
                         flight.airRoute.size()-1);
                 flight.airRoute=List.of();
+                if(flight.returningHome)
+                    flight.nextEscapePlan=level.getGameTime()+2;
                 finalPosition=flight.destination;
             }
         }
@@ -240,6 +242,19 @@ public final class BuilderCreativeFlight {
         double vz=clamp(dz*.28,.24);
         AABB current=worker.getBoundingBox();
         if(!level.noCollision(worker,current.move(vx,vy,vz))){
+            // In a ROOFED interior, the old upward escape reflex can
+            // drive directly into the finished ceiling indefinitely.
+            // Replace this blocked route segment with a fresh 3D search
+            // from the actual position. No phasing or block destruction.
+            if(flight.returningHome){
+                flight.airRoute=List.of();
+                flight.routeIndex=0;
+                flight.cruiseY=Double.NaN;
+                flight.nextEscapePlan=level.getGameTime()+12;
+                flight.lastCloser=level.getGameTime();
+                worker.setDeltaMovement(0,0,0);
+                return true;
+            }
             // Creative flight NEVER phases through a completed wall or
             // another Builder. A blocked leg goes vertically first.
             if(level.noCollision(worker,current.move(0,.22,0))){
