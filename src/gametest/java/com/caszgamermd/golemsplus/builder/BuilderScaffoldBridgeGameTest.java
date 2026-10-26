@@ -273,6 +273,12 @@ public final class BuilderScaffoldBridgeGameTest {
         var plan=List.of(new BuilderConstructionPlan.Step(
                 goal.getX(),goal.getY(),goal.getZ(),
                 "minecraft:stone","minecraft:stone"));
+        // Diagnose the exact failed bridge node instead of the generic
+        // GameTest 1400-tick timeout. Building piers counts as progress;
+        // physically moving around the obstruction counts as progress.
+        final net.minecraft.world.phys.Vec3[] lastPosition={worker.position()};
+        final long[] lastProgress={helper.getTick()};
+        final int[] lastOwned={table.sharedScaffoldPositions().size()};
         helper.onEachTick(()->{
             if(!worker.isAlive()){
                 helper.fail("Long bridge worker disappeared at "
@@ -280,6 +286,23 @@ public final class BuilderScaffoldBridgeGameTest {
                         +" step="+BuilderScaffoldBridge.debug(worker));return;
             }
             if(helper.getTick()%5!=0)return;
+            int ownedNow=table.sharedScaffoldPositions().size();
+            if(worker.position().distanceToSqr(lastPosition[0])>.20
+                    ||ownedNow>lastOwned[0]){
+                lastPosition[0]=worker.position();
+                lastOwned[0]=ownedNow;
+                lastProgress[0]=helper.getTick();
+            }
+            if(helper.getTick()-lastProgress[0]>230){
+                helper.fail("Long bridge physically stalled at "
+                        +worker.blockPosition()+" feetY="+worker.getY()
+                        +" owned="+ownedNow+" bridge="
+                        +BuilderScaffoldBridge.debug(worker)
+                        +" climb="+BuilderScaffolding.debugClimb(worker)
+                        +" nav="+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .debugStatus(worker));
+                return;
+            }
             if(worker.distanceToSqr(goal.getX()+.5,goal.getY()+.5,
                     goal.getZ()+.5)<=12.5){
                 String unstable=unstableBridge(level,
