@@ -501,7 +501,13 @@ public final class BuilderScaffolding {
             WorkerStationBlockEntity table,ServerPlayer owner,
             List<BuilderConstructionPlan.Step> schematic){
         int feet=worker.blockPosition().getY();
-        if(feet<=table.builderOrigin().getY()+2)return Result.NOT_NEEDED;
+        // A manually managed Builder Planner may not have a schematic
+        // origin yet (BlockPos.ZERO). The physical station's floor is
+        // then the only sensible local ground reference, especially in
+        // Minecraft's negative-Y GameTest structures.
+        int floor=table.builderOrigin().equals(BlockPos.ZERO)
+                ?table.getBlockPos().getY():table.builderOrigin().getY();
+        if(feet<=floor+2)return Result.NOT_NEEDED;
         if(sessions.containsKey(worker)||exiting.containsKey(worker)
                 ||BuilderScaffoldBridge.moving(worker))return Result.CLIMBING;
         if(descendForTravel(level,worker,table))return Result.CLIMBING;
