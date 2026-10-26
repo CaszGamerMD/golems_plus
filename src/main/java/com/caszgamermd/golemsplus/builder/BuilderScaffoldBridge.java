@@ -157,8 +157,30 @@ public final class BuilderScaffoldBridge {
     public static String debug(BuilderGolem worker){
         Walk moving=walking.get(worker);
         Route route=routes.get(worker);
-        return moving!=null?"BRIDGE WALK "+moving.destination().toShortString()
-                :route==null?failures.getOrDefault(worker,"NONE")
+        if(moving!=null){
+            BlockPos platform=moving.destination();
+            String base="BRIDGE WALK "+platform.toShortString();
+            if(!(worker.level() instanceof ServerLevel level))return base;
+            double dx=platform.getX()+.5-worker.getX();
+            double dz=platform.getZ()+.5-worker.getZ();
+            double sx=Math.max(-.13,Math.min(.13,dx*.24));
+            double sz=Math.max(-.13,Math.min(.13,dz*.24));
+            var nearby=worker.getBoundingBox().move(sx,0,sz);
+            var monitor=walkMonitors.get(worker);
+            return base+" toward="+String.format(java.util.Locale.ROOT,
+                        "(%.2f,%.2f)",dx,dz)
+                    +" feet="+String.format(java.util.Locale.ROOT,
+                        "(%.2f,%.2f,%.2f)",worker.getX(),worker.getY(),worker.getZ())
+                    +" velocity="+worker.getDeltaMovement()
+                    +" grounded="+worker.onGround()
+                    +" collides="+!level.noCollision(worker,nearby)
+                    +" bodyBlocks="+level.getBlockCollisions(worker,nearby).iterator().hasNext()
+                    +" support="+level.getBlockState(platform)
+                    +" under="+level.getBlockState(platform.below())
+                    +" head="+level.getBlockState(platform.above())
+                    +" idle="+(monitor==null?-1:level.getGameTime()-monitor.lastMoved);
+        }
+        return route==null?failures.getOrDefault(worker,"NONE")
                         :"BRIDGE "+route.next()+"/"+route.cells().size();
     }
 
