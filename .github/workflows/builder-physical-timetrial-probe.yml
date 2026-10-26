@@ -43,7 +43,9 @@ jobs:
           assert 'helper.succeed();return;' in test
           assert 'Physical evolution failed after ' in test
           assert 'Genome.cross(a,b,rng).mutate(rng)' in test
-          assert 'spawnGeneration(helper,generationGenes)' in test
+          assert 'spawnGeneration(helper,generationGenes,collisionMemory)' in test
+          assert 'realBlockFailures' in test
+          assert 'planRoute(' in test
           assert 'walkOneTick(helper,b)' in test
           print('Physical evolution gate: 10 live BuilderGolem entities per 360-tick generation, genetics from actual collisions')
           PY
