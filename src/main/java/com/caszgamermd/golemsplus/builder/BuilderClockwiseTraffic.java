@@ -81,7 +81,7 @@ public final class BuilderClockwiseTraffic {
      * Minecraft's horizontal clockwise order is N -> E -> S -> W.
      */
     public static Direction clockwise(Direction forward){
-        if(!forward.getAxis().isHorizontal())
+        if(forward.getAxis()==Direction.Axis.Y)
             throw new IllegalArgumentException("Only horizontal travel can yield");
         return forward.getClockWise();
     }
