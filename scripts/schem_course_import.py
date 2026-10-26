@@ -188,6 +188,7 @@ def convert(data: bytes, name: str = "timetrial") -> dict:
     rows = []
     doors = []
     rejected_slabs = []
+    walkable_half_slabs = []
     for z in range(length):
         result = ""
         for x in range(width):
@@ -204,7 +205,15 @@ def convert(data: bytes, name: str = "timetrial") -> dict:
                 char = "."
             if char != "#":
                 feet_y = floor_y + 1
-                top_y = feet_y + BOT_HEIGHT
+                lower = block(x, feet_y, z)
+                # Bottom slabs at the normal foot elevation are
+                # walkable half-block steps, not impassable walls.
+                stepping = ("_slab" in lower and "type=bottom" in lower)
+                if stepping and char == ".":
+                    char = "^"
+                    walkable_half_slabs.append((x, z))
+                stand_y = feet_y + (0.5 if stepping else 0.0)
+                top_y = stand_y + BOT_HEIGHT
                 for layer in range(floor_y + 1, min(height,
                                                      floor_y + 4)):
                     state = block(x, layer, z)
@@ -215,7 +224,7 @@ def convert(data: bytes, name: str = "timetrial") -> dict:
                         continue
                     shape = occupancy(state, layer)
                     if shape is not None and shape[0] < top_y - 1e-9 \
-                            and shape[1] > feet_y + 1e-9:
+                            and shape[1] > stand_y + 1e-9:
                         if "slab" in state:
                             rejected_slabs.append((x, z))
                         char = "#"
@@ -236,6 +245,9 @@ def convert(data: bytes, name: str = "timetrial") -> dict:
         "door_tiles": [list(p) for p in sorted(set(doors))],
         "slab_cells_too_short_for_1_6_block_bot": [
             list(p) for p in sorted(set(rejected_slabs))
+        ],
+        "walkable_half_slab_steps": [
+            list(p) for p in sorted(set(walkable_half_slabs))
         ],
         "constraints": {"width": BOT_WIDTH, "height": BOT_HEIGHT,
                         "speed_m_per_s": 4.0,
@@ -265,7 +277,8 @@ def main() -> None:
           f"{len(doc['spawn_tiles'])} green starts, "
           f"{len(doc['finish_tiles'])} red finishes, "
           f"{len(doc['door_tiles'])} door tiles, "
-          f"{len(doc['slab_cells_too_short_for_1_6_block_bot'])} blocked slabs")
+          f"{len(doc['slab_cells_too_short_for_1_6_block_bot'])} blocked slabs, "
+          f"{len(doc['walkable_half_slab_steps'])} walkable half-slabs")
     print("\n".join(doc["rows"]))
     if args.out is not None:
         args.out.parent.mkdir(parents=True, exist_ok=True)
