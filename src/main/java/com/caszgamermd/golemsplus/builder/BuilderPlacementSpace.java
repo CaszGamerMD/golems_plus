@@ -25,7 +25,7 @@ import net.minecraft.world.phys.AABB;
 public final class BuilderPlacementSpace {
     private BuilderPlacementSpace(){}
     private record Yield(BlockPos target,BlockPos destination,
-            long until,boolean placingWorker){}
+            long until,boolean placingWorker,long notBefore){}
     private static final Map<BuilderGolem,Yield> yielding=new WeakHashMap<>();
     // Contention is attached to the CLAIMED placement, not the moving
     // teammate. Repeatedly asking a blocked cell for help must not reset
@@ -33,6 +33,13 @@ public final class BuilderPlacementSpace {
     private record Contention(BlockPos target,long since){}
     private static final Map<BuilderGolem,Contention> contention=new WeakHashMap<>();
     private static final int MAX_BLOCKED_TICKS=100;
+
+    /** Pending placement evacuation owns its worker before general
+     * clockwise crowd negotiation can be scheduled.
+     */
+    public static boolean controlling(BuilderGolem worker){
+        return yielding.containsKey(worker);
+    }
 
     public static boolean blockedTooLong(ServerLevel level,BuilderGolem worker,
             BlockPos target){
@@ -53,6 +60,14 @@ public final class BuilderPlacementSpace {
         Yield hold=yielding.get(worker);
         if(hold==null||!occupied(hold.target(),worker)
                 ||level.getGameTime()>=hold.until())return false;
+        // Placement evacuations use the SAME independent 1..30 tick
+        // stagger as face-to-face traffic. Each participant delays ONCE,
+        // without re-rolling the wait or synchronized replanning.
+        if(level.getGameTime()<hold.notBefore()){
+            worker.getNavigation().stop();
+            worker.setDeltaMovement(0,worker.getDeltaMovement().y,0);
+            return true;
+        }
         BlockPos at=hold.destination();
         if(at.getY()!=worker.blockPosition().getY()
                 ||worker.distanceToSqr(at.getX()+.5,at.getY(),at.getZ()+.5)>3.8
@@ -113,6 +128,10 @@ public final class BuilderPlacementSpace {
             // immediately instead of waiting out the full yield window.
             yielding.remove(worker);
             return false;
+        }
+        if(level.getGameTime()<hold.notBefore()){
+            worker.getNavigation().stop();
+            return true;
         }
         // The scaffold controller owns lateral movement when a Builder
         // must vacate a block on a suspended catwalk. Do not replace its
@@ -193,8 +212,23 @@ public final class BuilderPlacementSpace {
                     if(canStand(level,worker,p,target))choices.add(p);
                 }
         }
-        choices.sort(java.util.Comparator.comparingDouble(p->
-                p.distSqr(origin)+Math.abs(p.getY()-origin.getY())*2));
+        // Tie-break near standing tiles in the SAME clockwise order as
+        // general worker traffic: RIGHT, BACK, LEFT. This prevents two
+        // builders from picking opposite directions on the next tick.
+        net.minecraft.core.Direction toward=worker.getDirection();
+        net.minecraft.core.Direction right=toward.getClockWise();
+        net.minecraft.core.Direction back=right.getClockWise();
+        net.minecraft.core.Direction left=back.getClockWise();
+        choices.sort(java.util.Comparator
+                .comparingDouble((BlockPos p)->p.distSqr(origin)
+                        +Math.abs(p.getY()-origin.getY())*2)
+                .thenComparingInt(p->{
+                    int dx=p.getX()-origin.getX(),dz=p.getZ()-origin.getZ();
+                    if(dx*right.getStepX()+dz*right.getStepZ()>0)return 0;
+                    if(dx*back.getStepX()+dz*back.getStepZ()>0)return 1;
+                    if(dx*left.getStepX()+dz*left.getStepZ()>0)return 2;
+                    return 3;
+                }));
         // A one-step move from the ACTUAL worker position takes priority
         // over a distant route calculated from the future target's center.
         // For four Builders, the latter often sent supply couriers through
@@ -365,10 +399,14 @@ public final class BuilderPlacementSpace {
                 found=false;
                 continue;
             }
+            int delay=BuilderClockwiseTraffic.staggerTicks(
+                    blocker.getRandom());
             yielding.put(blocker,new Yield(target,destination,
-                    level.getGameTime()+60,blocker==placing));
-            if(!BuilderScaffoldBridge.sidestep(level,blocker,table,destination))
-                WorkerNavigation.routeToExact(level,blocker,destination,.9);
+                    level.getGameTime()+60+delay,blocker==placing,
+                    level.getGameTime()+delay));
+            // No immediate route request: let the randomized stagger
+            // elapse before either Builder tries to vacate the cell.
+            WorkerNavigation.stop(blocker);
         }
         table.setProblem(found
                 ?"Clearing placement space "+target.toShortString()

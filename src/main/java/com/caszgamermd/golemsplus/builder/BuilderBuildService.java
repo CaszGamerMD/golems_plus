@@ -292,6 +292,10 @@ public final class BuilderBuildService {
         // A teammate may need the block space currently occupied by this
         // Builder. Honor its short physical sidestep before resuming the
         // current 10-coordinate assignment or warehouse courier route.
+        // While stepping CLOCKWISE around a colleague, do not issue
+        // fresh A* routes, switch work assignments or override the
+        // random stagger timer. One physical controller owns the worker.
+        if(BuilderClockwiseTraffic.controlling(worker))return;
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
             // On job completion a Builder may still be on its LAST
@@ -372,6 +376,11 @@ public final class BuilderBuildService {
         }
         try{
             Cache plan=cache(table,worker);
+            // One shared, bounded pre-build comparison BEFORE any
+            // clearing/destructive action. Correct original blocks remain
+            // in-world, and large 41k-cell Domes are scanned incrementally.
+            if(!BuilderSiteReconciliation.tick(level,table,plan.clearing()))
+                return;
             // Warehouse reconciliation and proactive orders are Planner-
             // level jobs running from dispatch() every two/four seconds.
             // Doing both here from EVERY Builder every five ticks generated
@@ -403,6 +412,11 @@ public final class BuilderBuildService {
                             plan.clearing(),plan.steps());
                 return;
             }
+            // Periodic mid-build reconciliation begins ONLY after the
+            // protected clearing pass finishes. It must not mark a
+            // construction step finished while obstructions remain.
+            if(BuilderProgressRecovery.tick(level,worker,table,plan.steps()))
+                return;
             // All positions for each X/Z zone were pre-assigned as one
             // immutable ordered execution plan. The Planner does NOT
             // arbitrate between Builders on each move or block placement.
@@ -838,6 +852,8 @@ public final class BuilderBuildService {
                     +" | nav="+(worker.getNavigation().isDone()?"idle":"walking")
                     +" "+com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .debugStatus(worker)
+                    +" | preflight="+BuilderSiteReconciliation.status(table)
+                    +" | recovery="+BuilderProgressRecovery.debug(worker)
                     +" | staged="+table.builderOrderPrepared(worker.getUUID())
                     +" | stock="+(current.requiredItem()==null?"none":current.requiredItem())
                     +" | tower="+table.scaffoldPositions(worker.getUUID()).size()

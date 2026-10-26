@@ -28,7 +28,8 @@ assert "if(base==null)base=findBase(level,worker,target,feet,table,plan)" in sc
 assert "begin(level,worker,base,top+1.0,false)" in sc
 assert "begin(level,worker,base,bottom,true)" in sc
 assert "BuilderScaffolding.tickMotion(climbWorld,this)" in golem
-assert "if(!climbing)" in golem
+assert "if(!climbing&&!clockwise)" in golem
+assert "BuilderClockwiseTraffic.tickMotion(trafficWorld,this)" in golem
 assert "WorkerNavigation.tick(server,this);" in golem
 assert 'BuilderScaffolding.debugClimb(worker)' in build
 assert "new ClimbPermit(" not in sc

@@ -630,6 +630,13 @@ public final class WorkerNavigation {
         return dx*dx+dy*dy+dz*dz>16.0;
     }
 
+    /** Real requested destination for the short, physical Builder crowd
+     * passing maneuver. Not a provisional A* detour waypoint.
+     */
+    public static BlockPos requestedTarget(PathfinderMob mob){
+        Progress p=states.get(mob);
+        return p==null?null:p.requested;
+    }
     public static boolean retryScheduled(PathfinderMob mob){
         Progress p=states.get(mob);
         return p!=null&&p.requested!=null
@@ -935,7 +942,9 @@ public final class WorkerNavigation {
             BlockPos upcoming=handDoor(level,inside)?inside
                     :handDoor(level,inside.below())?inside.below()
                     :imminentDoor(level,mob,p);
-            if(upcoming!=null){
+            if(upcoming!=null
+                    &&!(p.lastBad!=null&&p.lastBad.equals(upcoming)
+                        &&mob.tickCount<p.avoidUntil)){
                 p.queuedDoor=upcoming;
                 p.doorLastProgressTick=mob.tickCount;
                 p.doorLastDistance=Double.POSITIVE_INFINITY;
@@ -969,6 +978,25 @@ public final class WorkerNavigation {
                 return false;
             }
         }
+        // The FIFO head has its own physical-stall watchdog above.
+        // A non-owner can instead wait indefinitely behind a stranded
+        // colleague or an impossible doorway at an elevated level.
+        // Leave the queue after nine seconds, avoid this door briefly
+        // and stagger this worker's next route retry (1..30 ticks).
+        // Keep the real original destination; no teleport or item loss.
+        if(p.waitingDoor&&!WorkerDoorTraffic.owns(level,p.queuedDoor,mob)
+                &&mob.tickCount-p.doorLastProgressTick>=180){
+            BlockPos blocked=p.queuedDoor;
+            clearDoor(level,mob,p);
+            p.lastBad=blocked;
+            p.avoidUntil=mob.tickCount+150;
+            p.weightedRoute=List.of();p.routeCursor=0;
+            p.wait=1+mob.getRandom().nextInt(30);
+            p.nextRoute=mob.tickCount+p.wait;
+            p.attempts++;
+            mob.getNavigation().stop();
+            return false;
+        }
         if(WorkerDoorTraffic.request(level,p.queuedDoor,mob)){
             // The head must open the passage BEFORE native A* can find
             // a route. This is essential for fence gates, which vanilla
@@ -992,6 +1020,7 @@ public final class WorkerNavigation {
         p.finishingDoor=false;p.doorExit=null;
         if(!p.waitingDoor){
             p.waitingDoor=true;p.parkingAtDoor=false;p.doorStandby=null;
+            p.doorLastProgressTick=mob.tickCount;
             mob.getNavigation().stop();
         }
         if(p.doorStandby==null||!standingTile(level,mob,p.doorStandby))

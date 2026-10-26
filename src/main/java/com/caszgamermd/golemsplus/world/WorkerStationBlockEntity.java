@@ -688,6 +688,26 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         return -1;
     }
+    /** Non-destructive preflight: confirm that one exact schematic cell
+     * requires NO mining. A server-side world-state match is mandatory
+     * before calling this. It never consumes resources or marks a
+     * construction step built; that step gets its own world verification.
+     * A cleared cursor cannot pass an unverified obstruction.
+     */
+    public void preverifyBuilderClear(int index){
+        if(!isBuilder()||activeOrder==null||index<builderClearCursor
+                ||builderClearClaims.containsValue(index))return;
+        builderClearVerified.add(index);
+        int old=builderClearCursor;
+        while(builderClearVerified.remove(builderClearCursor))
+            builderClearCursor++;
+        if(builderClearCursor!=old){
+            builderClearByFile.put(builderFile,builderClearCursor);
+            // Persist progress even before the Builder crew starts moving.
+            setChanged();
+        }
+    }
+
     public void completeBuilderClear(UUID worker,int index,boolean brokeBlock){
         if(!java.util.Objects.equals(builderClearClaims.get(worker),index))return;
         builderClearClaims.remove(worker);builderClearClaimTick.remove(worker);

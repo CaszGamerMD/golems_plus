@@ -23,6 +23,12 @@ assert "radius<2||radius>3.35" in nav
 assert "if(doorTrafficTick(level,mob,p))" in nav
 assert "if(p.waitingDoor||p.finishingDoor)return true" in nav
 assert "WorkerDoorTraffic.request(level,local,mob)" in nav
+# A Builder that has been waiting behind a blocked door owner for nine
+# seconds must eventually free its FIFO slot and stagger its retry.
+assert "mob.tickCount-p.doorLastProgressTick>=180" in nav
+assert "p.wait=1+mob.getRandom().nextInt(30)" in nav
+assert "p.avoidUntil=mob.tickCount+150" in nav
+assert "p.doorLastProgressTick=mob.tickCount" in nav
 assert "if(WorkerDoorTraffic.count(level,door)>0)return;" in nav
 assert "1.5*1.5" in nav
 assert "neighborOccupied(level,mob,p)?90:0" in nav
