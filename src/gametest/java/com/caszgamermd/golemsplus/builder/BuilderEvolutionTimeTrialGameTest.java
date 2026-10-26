@@ -90,7 +90,8 @@ public final class BuilderEvolutionTimeTrialGameTest {
                           double jumpLead,double jumpPower,
                           int jumpCooldown,int stuckTimeout,
                           double backoff,double slabAvoid,
-                          double turnBias,double routeJitter) {
+                          double turnBias,double routeJitter,
+                          double doorBias) {
         static Genome random(Random rng){
             return new Genome(.90+rng.nextDouble()*.10,
                     .65+rng.nextDouble()*.35,
@@ -102,7 +103,8 @@ public final class BuilderEvolutionTimeTrialGameTest {
                     .06+rng.nextDouble()*.14,
                     rng.nextDouble()*2.0,
                     rng.nextDouble()*.65,
-                    rng.nextDouble()*.50);
+                    rng.nextDouble()*.50,
+                    -.14+rng.nextDouble()*.28);
         }
         static Genome cross(Genome a,Genome b,Random rng){
             return new Genome(
@@ -116,7 +118,8 @@ public final class BuilderEvolutionTimeTrialGameTest {
                     rng.nextBoolean()?a.backoff:b.backoff,
                     rng.nextBoolean()?a.slabAvoid:b.slabAvoid,
                     rng.nextBoolean()?a.turnBias:b.turnBias,
-                    rng.nextBoolean()?a.routeJitter:b.routeJitter);
+                    rng.nextBoolean()?a.routeJitter:b.routeJitter,
+                    rng.nextBoolean()?a.doorBias:b.doorBias);
         }
         Genome mutate(Random rng){
             return new Genome(
@@ -130,7 +133,8 @@ public final class BuilderEvolutionTimeTrialGameTest {
                     clamp(backoff+rng.nextGaussian()*.055,.03,.27),
                     clamp(slabAvoid+rng.nextGaussian()*.45,0,5),
                     clamp(turnBias+rng.nextGaussian()*.2,0,1.8),
-                    clamp(routeJitter+rng.nextGaussian()*.20,0,1.5));
+                    clamp(routeJitter+rng.nextGaussian()*.20,0,1.5),
+                    clamp(doorBias+rng.nextGaussian()*.06,-.16,.16));
         }
         private static double clamp(double value,double lo,double hi){
             return Math.max(lo,Math.min(hi,value));
@@ -153,6 +157,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         int backoffTicks;
         int ticksSinceJump;
         double doorLaneShift;
+        int doorTargetX=Integer.MIN_VALUE,doorTargetZ=Integer.MIN_VALUE;
         double lastDistance=Double.POSITIVE_INFINITY;
         Candidate(int index,BuilderGolem mob,String route,int x,int z,
                   Genome dna){
@@ -376,8 +381,11 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 }
             }
             if(!clear)continue;
-            double penalty=Math.abs(offset)+(1-dna.align())*
-                    Math.abs(offset)*.2;
+            // Doorway offset is genetically inherited and mutated.
+            // The world decides WHICH lanes are physically clear;
+            // evolution decides which available lane the bot prefers.
+            double penalty=Math.abs(offset-dna.doorBias())
+                    +Math.abs(offset)*.04;
             if(penalty<best){best=penalty;chosen=offset;}
         }
         return chosen;
@@ -410,8 +418,14 @@ public final class BuilderEvolutionTimeTrialGameTest {
             boolean enteringDoor=MAZE[ahead[1]].charAt(ahead[0])=='D';
             boolean leavingDoor=MAZE[b.z].charAt(b.x)=='D';
             if(enteringDoor){
-                if(Math.abs(mob.getX()-target.getX()-.5)<1.75)
+                if(b.doorTargetX!=ahead[0]||b.doorTargetZ!=ahead[1]){
+                    b.doorTargetX=ahead[0];
+                    b.doorTargetZ=ahead[1];
                     b.doorLaneShift=safeDoorLane(world,mob,target,b.dna);
+                }
+                // Keep the SAME physically selected passage through the
+                // doorway. Recalculating every tick made adjacent
+                // golems switch sides and oscillate without advancing.
                 centerShift=b.doorLaneShift;
             }else if(leavingDoor){
                 centerShift=b.doorLaneShift;
@@ -440,6 +454,9 @@ public final class BuilderEvolutionTimeTrialGameTest {
             b.lastDistance=Double.POSITIVE_INFINITY;
             b.backoffTicks=3;
             b.collisions++;
+            // If the door's first approach was obstructed by another
+            // mob, allow a new physical clearance probe on recovery.
+            b.doorTargetX=Integer.MIN_VALUE;
         }
         b.ticksSinceJump++;
         // GameTest's explicit horizontal move(MoverType.SELF,...) can
