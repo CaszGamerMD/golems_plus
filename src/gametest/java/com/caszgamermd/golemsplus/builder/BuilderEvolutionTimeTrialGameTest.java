@@ -167,8 +167,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         };
     }
 
-    @GameTest(structure="golems_plus_gametest:dome_arena",
-            maxTicks=460,padding=64,skyAccess=true)
+    @GameTest(maxTicks=460,padding=64,skyAccess=true)
     public void realBuildersTryUserMazeInTwentySeconds(GameTestHelper helper){
         ServerLevel world=helper.getLevel();
         fillOriginalCourse(helper);
