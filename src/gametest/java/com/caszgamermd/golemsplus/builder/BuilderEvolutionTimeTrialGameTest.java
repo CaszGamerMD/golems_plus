@@ -32,7 +32,7 @@ import net.minecraft.world.phys.Vec3;
  * training engine; headless success alone is not a GameTest pass.
  */
 public final class BuilderEvolutionTimeTrialGameTest {
-    private static final int DEADLINE=400;
+    private static final int DEADLINE=360;
     private static Block block(String name){
         return BuiltInRegistries.BLOCK.getValue(
                 Identifier.tryParse("minecraft:"+name));
@@ -64,7 +64,7 @@ public final class BuilderEvolutionTimeTrialGameTest {
         {25,6},{25,7},{25,8},{25,9},{25,10}
     };
     // Headless time-trial's *winning generation 2*, seed=42.
-    // All chosen routes completed its own 400-tick simulated deadline.
+    // All chosen routes completed its own 360-tick simulated deadline.
     // Movement here is authoritative Minecraft collision-aware movement.
     private static final String[] REPLAYS={
         "WWWSSSSSSSSWWWNNNNNNWWWSSSSWWNNNWWSSSWWSSSWWWNENNNNNNWWWSSWW",
@@ -276,14 +276,14 @@ public final class BuilderEvolutionTimeTrialGameTest {
                                 .append(" door6=").append(doorB);
                     }
                     // Simulate tournament cutoff: kill/reset all bots after
-                    // 20s before the next generation would be spawned.
+                    // 18s before the next generation would be spawned.
                     b.mob.discard();
                 }
                 System.out.println("[TIMETRIAL PHYSICAL] "+finished
-                        +"/20 arrived on red wool within 400 game ticks; "
+                        +"/20 arrived on red wool within 360 game ticks; "
                         +"missed:"+misses);
                 if(finished==bots.size())helper.succeed();
-                else helper.fail("Real Minecraft 20s trial did not pass: "+
+                else helper.fail("Real Minecraft 18s trial did not pass: "+
                         finished+"/20 reached red; "+misses);
             }
         });
