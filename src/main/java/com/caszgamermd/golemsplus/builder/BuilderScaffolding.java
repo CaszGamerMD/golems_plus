@@ -397,9 +397,17 @@ public final class BuilderScaffolding {
             }
         choices.sort(Comparator.comparingDouble(p->
                 p.distSqr(worker.blockPosition())));
-        for(BlockPos p:choices)
+        for(BlockPos p:choices){
+            // A* may have no route TO the tile the Builder already stands
+            // on; this is a valid solid entry for the scaffold below.
+            double dx=worker.getX()-p.getX()-.5;
+            double dz=worker.getZ()-p.getZ()-.5;
+            if(dx*dx+dz*dz<.5
+                    &&Math.abs(worker.getY()-p.getY())<.4
+                    &&worker.onGround())return p;
             if(com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .canReachExact(level,worker,p))return p;
+        }
         return null;
     }
     private static BlockPos exitGround(ServerLevel level,BuilderGolem worker,
@@ -477,6 +485,116 @@ public final class BuilderScaffolding {
         clearMotion(worker);
         exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));
         return true;
+    }
+
+    /** Build a temporary REAL escape ladder next to an isolated upper
+     * ledge, from a solid foundation up to the Builder's current height.
+     * Never spawn unsupported scaffolds, delete a schematic block,
+     * teleport the worker, or conjure an item. A column must be immediately
+     * adjacent to a solid ledge so ordinary physical descent can enter it.
+     *
+     * Existing towers are always preferred: this is a rescue fallback when
+     * repeated A* circles have no return route. The tower joins the same
+     * station-owned pool for reuse and safe recovery on completion.
+     */
+    public static Result escapeDown(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,ServerPlayer owner,
+            List<BuilderConstructionPlan.Step> schematic){
+        int feet=worker.blockPosition().getY();
+        // A manually managed Builder Planner may not have a schematic
+        // origin yet (BlockPos.ZERO). The physical station's floor is
+        // then the only sensible local ground reference, especially in
+        // Minecraft's negative-Y GameTest structures.
+        int floor=table.builderOrigin().equals(BlockPos.ZERO)
+                ?table.getBlockPos().getY():table.builderOrigin().getY();
+        if(feet<=floor+2)return Result.NOT_NEEDED;
+        if(sessions.containsKey(worker)||exiting.containsKey(worker)
+                ||BuilderScaffoldBridge.moving(worker))return Result.CLIMBING;
+        if(descendForTravel(level,worker,table))return Result.CLIMBING;
+        if(owner==null)return Result.NO_SAFE_TOWER;
+
+        java.util.Set<BlockPos> future=new java.util.HashSet<>();
+        for(var step:schematic)
+            if(!step.ignorePlant())future.add(
+                    new BlockPos(step.x(),step.y(),step.z()));
+        BlockPos origin=worker.blockPosition();
+        java.util.List<BlockPos> columns=new java.util.ArrayList<>();
+        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+            int distance=dx*dx+dz*dz;
+            if(distance==0||distance>4)continue;
+            columns.add(origin.offset(dx,0,dz));
+        }
+        columns.sort(Comparator.comparingDouble(p->
+                worker.distanceToSqr(p.getX()+.5,worker.getY(),p.getZ()+.5)));
+        for(BlockPos top:columns){
+            if(!level.hasChunkAt(top)||!level.hasChunkAt(top.above())
+                    ||!level.getBlockState(top).isAir()
+                    ||!level.getBlockState(top.below()).isAir()
+                    ||future.contains(top)||future.contains(top.below()))
+                continue;
+            // Search DOWN for a REAL ground foundation, at least three
+            // blocks below this ledge. Anything above the foundation
+            // must be clear (or already station-owned scaffolding).
+            for(int y=feet-4;y>=Math.max(level.getMinY()+1,feet-18);y--){
+                BlockPos base=new BlockPos(top.getX(),y,top.getZ());
+                BlockPos under=base.below();
+                if(!level.hasChunkAt(under)
+                        ||!level.getBlockState(under).isFaceSturdy(
+                                level,under,Direction.UP))continue;
+                boolean clear=true;
+                int need=0;
+                for(int h=y;h<feet;h++){
+                    BlockPos at=new BlockPos(base.getX(),h,base.getZ());
+                    if(!level.hasChunkAt(at)||!level.mayInteract(owner,at)
+                            ||future.contains(at)){
+                        clear=false;break;
+                    }
+                    if(level.getBlockState(at).is(Blocks.SCAFFOLDING)
+                            &&table.isTrackedScaffold(at))continue;
+                    if(!level.getBlockState(at).isAir()){
+                        clear=false;break;
+                    }
+                    need++;
+                }
+                if(!clear||need==0||need>16)continue;
+                var loaded=BuilderSupplyInventory.loadScaffold(
+                        level,worker,table,need);
+                if(loaded==BuilderSupplyInventory.ScaffoldLoad.MOVING)
+                    return Result.CLIMBING;
+                if(loaded==BuilderSupplyInventory.ScaffoldLoad.MISSING)
+                    return Result.NEED_MATERIALS;
+                for(int h=y;h<feet;h++){
+                    BlockPos at=new BlockPos(base.getX(),h,base.getZ());
+                    if(level.getBlockState(at).is(Blocks.SCAFFOLDING)
+                            &&table.isTrackedScaffold(at))continue;
+                    if(!level.getBlockState(at).isAir()
+                            ||!level.getBlockState(at.below())
+                                    .isFaceSturdy(level,at.below(),Direction.UP)
+                              &&!level.getBlockState(at.below())
+                                    .is(Blocks.SCAFFOLDING))
+                        return Result.NO_SAFE_TOWER;
+                    var receipt=BuilderSupplyInventory.consume(
+                            worker,Items.SCAFFOLDING);
+                    if(receipt==null)return Result.NEED_MATERIALS;
+                    if(!level.setBlock(at,Blocks.SCAFFOLDING.defaultBlockState(),3)){
+                        BuilderSupplyInventory.refund(table,receipt);
+                        return Result.NO_SAFE_TOWER;
+                    }
+                    if(!table.trackScaffold(worker.getUUID(),at)){
+                        level.setBlock(at,Blocks.AIR.defaultBlockState(),3);
+                        BuilderSupplyInventory.refund(table,receipt);
+                        return Result.NO_SAFE_TOWER;
+                    }
+                }
+                // Never drop over the ledge. The next regular descent
+                // tick sees this physically constructed shared tower
+                // and directs the Builder to a valid solid entry tile.
+                if(descendForTravel(level,worker,table))
+                    return Result.CLIMBING;
+                return Result.NO_SAFE_TOWER;
+            }
+        }
+        return Result.NO_SAFE_TOWER;
     }
 
     /** Return physically to a worker's own upper scaffold landing,

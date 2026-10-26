@@ -63,25 +63,36 @@ public final class BuilderBuildService {
     private static final class TravelWatch {
         int step=-1;
         net.minecraft.world.phys.Vec3 at;
-        long lastMove;
+        long lastMove,lastCloser;
+        double bestTargetDistance=Double.POSITIVE_INFINITY;
     }
     private static final Map<BuilderGolem,TravelWatch> travelWatch=
             new WeakHashMap<>();
     private static boolean travelBlocked(ServerLevel level,BuilderGolem worker,
-            int step){
+            int step,BlockPos target){
         var watch=travelWatch.computeIfAbsent(worker,k->new TravelWatch());
+        double distance=worker.distanceToSqr(
+                target.getX()+.5,target.getY()+.5,target.getZ()+.5);
         if(watch.step!=step||watch.at==null){
             watch.step=step;watch.at=worker.position();
-            watch.lastMove=level.getGameTime();return false;
-        }
-        // Do not confuse a path taking a useful detour around a wall with
-        // a stuck golem. Actual displacement, not decreasing target range,
-        // is the right signal for physical work traffic.
-        if(worker.position().distanceToSqr(watch.at)>.36){
-            watch.at=worker.position();watch.lastMove=level.getGameTime();
+            watch.lastMove=level.getGameTime();
+            watch.lastCloser=level.getGameTime();
+            watch.bestTargetDistance=distance;
             return false;
         }
-        return level.getGameTime()-watch.lastMove>=180;
+        if(worker.position().distanceToSqr(watch.at)>.36){
+            watch.at=worker.position();watch.lastMove=level.getGameTime();
+        }
+        if(distance<watch.bestTargetDistance-1.0){
+            watch.bestTargetDistance=distance;
+            watch.lastCloser=level.getGameTime();
+        }
+        // Distinct from standing still: circling around a wall can
+        // continue moving for minutes while never getting any closer
+        // to the assigned site. Eventually try a DIFFERENT scaffold
+        // / route rather than wasting the entire crew's shift.
+        return level.getGameTime()-watch.lastMove>=180
+                ||level.getGameTime()-watch.lastCloser>=300;
     }
     private static WorkerAction action(BuilderGolem worker,int index){
         var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
@@ -422,6 +433,20 @@ public final class BuilderBuildService {
                 // OnSite Storage can never discover the vertical descent.
                 if(BuilderScaffolding.descendForTravel(level,worker,table))
                     return;
+                // Resupply cannot start if an isolated high platform has
+                // no existing return tower. On genuine repeated A* failure,
+                // construct a PAID, supported escape ladder and descend.
+                if(worker.getY()>table.builderOrigin().getY()+2.5
+                        &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .repeatedlyUnreachable(worker,6)){
+                    var rescue=BuilderScaffolding.escapeDown(level,worker,
+                            table,owner,plan.steps());
+                    if(rescue==BuilderScaffolding.Result.CLIMBING)return;
+                    if(rescue==BuilderScaffolding.Result.NEED_MATERIALS){
+                        table.setProblem("Stranded Builder needs real scaffolding to return to OnSite");
+                        return;
+                    }
+                }
                 var prep=BuilderSupplyInventory.prepareWorkOrder(
                         level,worker,table,plan.steps());
                 if(prep==BuilderSupplyInventory.LoadStatus.MOVING)return;
@@ -532,7 +557,16 @@ public final class BuilderBuildService {
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
             if(workDistance>14){
                 if(!BuilderScaffolding.isControllingMovement(worker)
-                        &&travelBlocked(level,worker,index)){
+                        &&travelBlocked(level,worker,index,pos)){
+                    if(worker.getY()>table.builderOrigin().getY()+2.5){
+                        var rescue=BuilderScaffolding.escapeDown(level,
+                                worker,table,owner,plan.steps());
+                        if(rescue==BuilderScaffolding.Result.CLIMBING)return;
+                        if(rescue==BuilderScaffolding.Result.NEED_MATERIALS){
+                            table.setProblem("Builder requires scaffolding for a temporary escape ladder");
+                            return;
+                        }
+                    }
                     // Do not hold a whole zoned crew hostage to one
                     // unreachable cell. Keep the item pouch and future
                     // schematic intact, but try another staged coordinate.
@@ -562,9 +596,17 @@ public final class BuilderBuildService {
                         table.setProblem("Need scaffolding for ledge access at "+pos);
                         return;
                     }
-                    if(bridge==BuilderScaffolding.Result.NO_SAFE_TOWER
-                            &&BuilderScaffolding.descendForTravel(level,worker,table))
-                        return;
+                    if(bridge==BuilderScaffolding.Result.NO_SAFE_TOWER){
+                        if(BuilderScaffolding.descendForTravel(level,worker,table))
+                            return;
+                        var escape=BuilderScaffolding.escapeDown(level,worker,
+                                table,owner,plan.steps());
+                        if(escape==BuilderScaffolding.Result.CLIMBING)return;
+                        if(escape==BuilderScaffolding.Result.NEED_MATERIALS){
+                            table.setProblem("Builder needs scaffolding for a safe temporary escape ladder");
+                            return;
+                        }
+                    }
                 }
                 // Leave a completed scaffold onto an adjacent solid upper
                 // walkway BEFORE asking vanilla A* to path from its

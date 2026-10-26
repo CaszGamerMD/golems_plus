@@ -32,11 +32,11 @@ public final class CraneRailConnectionsGameTest {
                 Direction.EAST,Direction.WEST})
             world.setBlock(center.relative(d),floor,3);
         BlockState hub=world.getBlockState(center);
-        if(CraneRailBlock.connections(hub)!=4
-                ||!hub.getValue(CraneRailBlock.NORTH)
-                ||!hub.getValue(CraneRailBlock.EAST)
-                ||!hub.getValue(CraneRailBlock.SOUTH)
-                ||!hub.getValue(CraneRailBlock.WEST))
+        if(CraneRailBlock.connections(world,center)!=4
+                ||!CraneRailBlock.hasConnection(world,center,Direction.NORTH)
+                ||!CraneRailBlock.hasConnection(world,center,Direction.EAST)
+                ||!CraneRailBlock.hasConnection(world,center,Direction.SOUTH)
+                ||!CraneRailBlock.hasConnection(world,center,Direction.WEST))
             throw new IllegalStateException("Floor cross isn't linked in all four directions: "+hub);
 
         // Sturdy vertical wall backing. An EAST-facing rail is attached
@@ -44,23 +44,41 @@ public final class CraneRailConnectionsGameTest {
         for(int y=3;y<=9;y++)for(int z=9;z<=11;z++)
             h.setBlock(14,y,z,Blocks.STONE);
         BlockState wall=CraneContent.RAIL.defaultBlockState()
-                .setValue(CraneRailBlock.FACING,Direction.EAST);
+                .setValue(CraneRailBlock.FACING,Direction.EAST)
+                .setValue(CraneRailBlock.FACE_UP,false)
+                .setValue(CraneRailBlock.FACE_EAST,true);
         BlockPos middle=h.absolutePos(new BlockPos(15,6,10));
         world.setBlock(middle,wall,3);
         for(Direction d:new Direction[]{Direction.UP,Direction.DOWN,
                 Direction.NORTH,Direction.SOUTH})
             world.setBlock(middle.relative(d),wall,3);
         BlockState cross=world.getBlockState(middle);
-        if(CraneRailBlock.connections(cross)!=4
-                ||!cross.getValue(CraneRailBlock.UP)
-                ||!cross.getValue(CraneRailBlock.DOWN)
-                ||!cross.getValue(CraneRailBlock.NORTH)
-                ||!cross.getValue(CraneRailBlock.SOUTH))
+        if(CraneRailBlock.connections(world,middle)!=4
+                ||!CraneRailBlock.hasConnection(world,middle,Direction.UP)
+                ||!CraneRailBlock.hasConnection(world,middle,Direction.DOWN)
+                ||!CraneRailBlock.hasConnection(world,middle,Direction.NORTH)
+                ||!CraneRailBlock.hasConnection(world,middle,Direction.SOUTH))
             throw new IllegalStateException("Wall cross isn't 4-way: "+cross);
         world.setBlock(middle.relative(Direction.NORTH),Blocks.AIR.defaultBlockState(),3);
-        if(CraneRailBlock.connections(world.getBlockState(middle))!=3)
+        if(CraneRailBlock.connections(world,middle)!=3)
             throw new IllegalStateException("Wall branch didn't disconnect when broken");
 
+        // Add another rail to a different face in the SAME BLOCK CELL.
+        // Removing only one backing wall must preserve the other rail.
+        BlockPos multiface=h.absolutePos(new BlockPos(20,4,20));
+        world.setBlock(multiface.below(),Blocks.STONE.defaultBlockState(),3);
+        world.setBlock(multiface.west(),Blocks.STONE.defaultBlockState(),3);
+        var faceUp=CraneContent.RAIL.defaultBlockState();
+        var faceUpAndEast=faceUp.setValue(CraneRailBlock.FACE_EAST,true);
+        world.setBlock(multiface,faceUpAndEast,3);
+        if(!CraneRailBlock.attached(world.getBlockState(multiface),Direction.UP)
+                ||!CraneRailBlock.attached(world.getBlockState(multiface),Direction.EAST)
+                ||CraneRailBlock.faceCount(world.getBlockState(multiface))!=2)
+            throw new IllegalStateException("A cell cannot have multiple mounted rail faces");
+        world.setBlock(multiface.west(),Blocks.AIR.defaultBlockState(),3);
+        if(!CraneRailBlock.attached(world.getBlockState(multiface),Direction.UP)
+                ||CraneRailBlock.attached(world.getBlockState(multiface),Direction.EAST))
+            throw new IllegalStateException("Removing one support destroyed another mounted face");
         // Floor X+ at y2 turns into wall X- at y3, then runs upwards.
         BlockPos ground=h.absolutePos(new BlockPos(16,2,10));
         BlockPos foot=h.absolutePos(new BlockPos(15,3,10));
@@ -69,8 +87,8 @@ public final class CraneRailConnectionsGameTest {
             world.setBlock(h.absolutePos(new BlockPos(15,y,10)),wall,3);
         if(!CraneRailBlock.linked(world,ground,foot)
                 ||!CraneRailBlock.linked(world,foot,ground)
-                ||!world.getBlockState(ground).getValue(CraneRailBlock.WEST)
-                ||!world.getBlockState(foot).getValue(CraneRailBlock.DOWN))
+                ||!CraneRailBlock.hasConnection(world,ground,Direction.WEST)
+                ||!CraneRailBlock.hasConnection(world,foot,Direction.DOWN))
             throw new IllegalStateException("Floor-to-wall corner failed to form a reciprocal bend");
         var goal=h.absolutePos(new BlockPos(15,6,10));
         var cells=CranePath.find(CraneMovement.cell(ground),

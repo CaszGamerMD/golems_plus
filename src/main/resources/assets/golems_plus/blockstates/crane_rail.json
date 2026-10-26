@@ -2,7 +2,7 @@
   "multipart": [
     {
       "when": {
-        "facing": "up"
+        "face_up": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail"
@@ -10,8 +10,7 @@
     },
     {
       "when": {
-        "facing": "up",
-        "north": "true"
+        "face_up": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_north"
@@ -19,8 +18,7 @@
     },
     {
       "when": {
-        "facing": "up",
-        "east": "true"
+        "face_up": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_east"
@@ -28,8 +26,7 @@
     },
     {
       "when": {
-        "facing": "up",
-        "south": "true"
+        "face_up": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_south"
@@ -37,8 +34,7 @@
     },
     {
       "when": {
-        "facing": "up",
-        "west": "true"
+        "face_up": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_west"
@@ -46,7 +42,7 @@
     },
     {
       "when": {
-        "facing": "down"
+        "face_down": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail",
@@ -55,8 +51,7 @@
     },
     {
       "when": {
-        "facing": "down",
-        "south": "true"
+        "face_down": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_north",
@@ -65,8 +60,7 @@
     },
     {
       "when": {
-        "facing": "down",
-        "east": "true"
+        "face_down": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_east",
@@ -75,8 +69,7 @@
     },
     {
       "when": {
-        "facing": "down",
-        "north": "true"
+        "face_down": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_south",
@@ -85,8 +78,7 @@
     },
     {
       "when": {
-        "facing": "down",
-        "west": "true"
+        "face_down": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_west",
@@ -95,7 +87,7 @@
     },
     {
       "when": {
-        "facing": "north"
+        "face_north": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail",
@@ -104,8 +96,7 @@
     },
     {
       "when": {
-        "facing": "north",
-        "down": "true"
+        "face_north": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_north",
@@ -114,8 +105,7 @@
     },
     {
       "when": {
-        "facing": "north",
-        "east": "true"
+        "face_north": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_east",
@@ -124,8 +114,7 @@
     },
     {
       "when": {
-        "facing": "north",
-        "up": "true"
+        "face_north": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_south",
@@ -134,8 +123,7 @@
     },
     {
       "when": {
-        "facing": "north",
-        "west": "true"
+        "face_north": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_west",
@@ -144,7 +132,7 @@
     },
     {
       "when": {
-        "facing": "south"
+        "face_south": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail",
@@ -153,8 +141,7 @@
     },
     {
       "when": {
-        "facing": "south",
-        "up": "true"
+        "face_south": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_north",
@@ -163,8 +150,7 @@
     },
     {
       "when": {
-        "facing": "south",
-        "east": "true"
+        "face_south": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_east",
@@ -173,8 +159,7 @@
     },
     {
       "when": {
-        "facing": "south",
-        "down": "true"
+        "face_south": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_south",
@@ -183,8 +168,7 @@
     },
     {
       "when": {
-        "facing": "south",
-        "west": "true"
+        "face_south": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_west",
@@ -193,7 +177,7 @@
     },
     {
       "when": {
-        "facing": "east"
+        "face_east": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail",
@@ -203,8 +187,7 @@
     },
     {
       "when": {
-        "facing": "east",
-        "up": "true"
+        "face_east": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_north",
@@ -214,8 +197,7 @@
     },
     {
       "when": {
-        "facing": "east",
-        "north": "true"
+        "face_east": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_east",
@@ -225,8 +207,7 @@
     },
     {
       "when": {
-        "facing": "east",
-        "down": "true"
+        "face_east": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_south",
@@ -236,8 +217,7 @@
     },
     {
       "when": {
-        "facing": "east",
-        "south": "true"
+        "face_east": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_west",
@@ -247,7 +227,7 @@
     },
     {
       "when": {
-        "facing": "west"
+        "face_west": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail",
@@ -257,8 +237,7 @@
     },
     {
       "when": {
-        "facing": "west",
-        "up": "true"
+        "face_west": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_north",
@@ -268,8 +247,7 @@
     },
     {
       "when": {
-        "facing": "west",
-        "south": "true"
+        "face_west": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_east",
@@ -279,8 +257,7 @@
     },
     {
       "when": {
-        "facing": "west",
-        "down": "true"
+        "face_west": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_south",
@@ -290,8 +267,7 @@
     },
     {
       "when": {
-        "facing": "west",
-        "north": "true"
+        "face_west": "true"
       },
       "apply": {
         "model": "golems_plus:block/crane_rail_arm_west",
