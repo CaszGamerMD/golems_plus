@@ -1,91 +1,22 @@
 {
   "textures": {
     "all": "minecraft:block/iron_block",
+    "line": "minecraft:block/yellow_concrete",
     "particle": "minecraft:block/iron_block"
   },
   "elements": [
     {
       "from": [
-        1,
+        5,
         0,
-        0
-      ],
-      "to": [
-        4,
-        2,
-        16
-      ],
-      "faces": {
-        "up": {
-          "texture": "#all"
-        },
-        "down": {
-          "texture": "#all"
-        },
-        "north": {
-          "texture": "#all"
-        },
-        "south": {
-          "texture": "#all"
-        },
-        "east": {
-          "texture": "#all"
-        },
-        "west": {
-          "texture": "#all"
-        }
-      }
-    },
-    {
-      "from": [
-        12,
-        0,
-        0
-      ],
-      "to": [
-        15,
-        2,
-        16
-      ],
-      "faces": {
-        "up": {
-          "texture": "#all"
-        },
-        "down": {
-          "texture": "#all"
-        },
-        "north": {
-          "texture": "#all"
-        },
-        "south": {
-          "texture": "#all"
-        },
-        "east": {
-          "texture": "#all"
-        },
-        "west": {
-          "texture": "#all"
-        }
-      }
-    },
-    {
-      "from": [
-        0,
-        0,
-        3
-      ],
-      "to": [
-        16,
-        1,
         5
       ],
+      "to": [
+        11,
+        2,
+        11
+      ],
       "faces": {
-        "up": {
-          "texture": "#all"
-        },
-        "down": {
-          "texture": "#all"
-        },
         "north": {
           "texture": "#all"
         },
@@ -96,39 +27,45 @@
           "texture": "#all"
         },
         "west": {
+          "texture": "#all"
+        },
+        "up": {
+          "texture": "#all"
+        },
+        "down": {
           "texture": "#all"
         }
       }
     },
     {
       "from": [
-        0,
-        0,
-        11
+        6,
+        2,
+        6
       ],
       "to": [
-        16,
-        1,
-        13
+        10,
+        2.3,
+        10
       ],
       "faces": {
-        "up": {
-          "texture": "#all"
-        },
-        "down": {
-          "texture": "#all"
-        },
         "north": {
-          "texture": "#all"
+          "texture": "#line"
         },
         "south": {
-          "texture": "#all"
+          "texture": "#line"
         },
         "east": {
-          "texture": "#all"
+          "texture": "#line"
         },
         "west": {
-          "texture": "#all"
+          "texture": "#line"
+        },
+        "up": {
+          "texture": "#line"
+        },
+        "down": {
+          "texture": "#line"
         }
       }
     }
