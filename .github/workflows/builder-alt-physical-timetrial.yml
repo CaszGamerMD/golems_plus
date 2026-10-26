@@ -99,7 +99,7 @@ jobs:
         if: always()
         run: python3 scripts/export_alt_evolution_replays.py --session-prefix "" --viewer training/alt/replays/route-viewer.html
       - name: Commit learned real-entity genes, EVEN IF the trial fails
-        if: always() && (github.head_ref == 'feature/builder-evolutionary-navigation-trainer-262' || github.ref == 'refs/heads/feature/builder-evolutionary-navigation-trainer-262') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && (github.head_ref == 'feature/builder-evolutionary-alt-course-262' || github.ref == 'refs/heads/feature/builder-evolutionary-alt-course-262') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         shell: bash
         run: |
           if [[ ! -s training/alt/state/checkpoint.json ]]; then
