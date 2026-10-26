@@ -46,10 +46,13 @@ public final class BuilderScaffoldBridge {
         BlockPos destination;
         net.minecraft.world.phys.Vec3 last;
         long lastMoved;
+        double bestRange;
         WalkMonitor(BlockPos destination,BuilderGolem worker,long tick){
             this.destination=destination;
             last=worker.position();
             lastMoved=tick;
+            bestRange=worker.distanceToSqr(destination.getX()+.5,
+                    destination.getY()+1.0,destination.getZ()+.5);
         }
     }
     private static final Map<BuilderGolem,WalkMonitor> walkMonitors=
@@ -224,8 +227,14 @@ public final class BuilderScaffoldBridge {
             watch=new WalkMonitor(platform,worker,level.getGameTime());
             walkMonitors.put(worker,watch);
         }
-        if(worker.position().distanceToSqr(watch.last)>.09){
+        // Merely shifting left/right isn't progress on a ghost-flight
+        // route. Count only real motion that SHORTENS the remaining 3D
+        // distance to the next paid scaffold tile.
+        double remaining=worker.distanceToSqr(platform.getX()+.5,
+                platform.getY()+1.0,platform.getZ()+.5);
+        if(remaining<watch.bestRange-.04){
             watch.last=worker.position();
+            watch.bestRange=remaining;
             watch.lastMoved=level.getGameTime();
         }else if(level.getGameTime()-watch.lastMoved>=65){
             // A live bridge route must NEVER claim permanent progress while
@@ -243,21 +252,42 @@ public final class BuilderScaffoldBridge {
             return false;
         }
         worker.getNavigation().stop();
-        worker.setNoGravity(false);
         worker.setShiftKeyDown(false);
-        worker.getMoveControl().setWantedPosition(tx,platform.getY()+1,tz,1);
+        // Creative-flight EMULATION: stabilize only while the next block
+        // is ALREADY a physically supported scaffold (or solid landing).
+        // No teleporting, collision disabling or remote unsupported hover.
+        // Restoring gravity happens automatically as soon as this walking
+        // reservation is released, timed out or the platform disappears.
+        boolean supported=level.getBlockState(platform).is(Blocks.SCAFFOLDING)
+                &&supportedDistance(level,platform)<7;
+        boolean close=dx*dx+dz*dz<=4.0
+                &&Math.abs(worker.getY()-(platform.getY()+1))<=1.5;
+        worker.setNoGravity(supported&&close);
+        double destinationY=platform.getY()+1.0;
+        worker.getMoveControl().setWantedPosition(tx,destinationY,tz,1);
         double vx=Math.max(-.13,Math.min(.13,dx*.24));
         double vz=Math.max(-.13,Math.min(.13,dz*.24));
-        // Scaffolding's directional collision surface depends on the
-        // entity's current feet height and the direction it approaches.
-        // An AABB translated ahead of the actual entity can report a
-        // false wall at the lip of an otherwise walkable scaffold. The
-        // real mob move() call inside vanilla tick is the authority:
-        // it resolves FULL block/entity collisions without phasing.
-        // The destination was already checked as a genuine supported
-        // scaffold or solid standing tile above.
-        var v=worker.getDeltaMovement();
-        worker.setDeltaMovement(vx,v.y,vz);
+        double deltaY=destinationY-worker.getY();
+        double vy=worker.getDeltaMovement().y;
+        if(supported&&close){
+            if(deltaY>.16){
+                // Rise above the previous scaffold before crossing onto
+                // the next one-block-higher footprint.
+                vx=0;vz=0;
+                vy=Math.min(.16,Math.max(.06,deltaY*.30));
+            }else if(deltaY<-.16){
+                // Fly horizontally over the lower block first, then land
+                // on its actual scaffold top, never into the old support.
+                if(dx*dx+dz*dz<.12){
+                    vx=0;vz=0;
+                    vy=Math.max(-.15,Math.min(-.05,deltaY*.30));
+                }else vy=0;
+            }else vy=deltaY*.20;
+        }
+        // Vanilla move() still resolves all FULL block/entity collisions.
+        // The virtual flight route instructs where to lay scaffolds; it
+        // cannot make an impossible physical edge magically passable.
+        worker.setDeltaMovement(vx,vy,vz);
         return true;
     }
 
