@@ -25,7 +25,11 @@ assert "exiting.put(worker,new ExitRoute(" in sc
 assert "worker.getMoveControl().setWantedPosition(tx," in sc
 assert "sessions.put(worker,new ClimbSession(active.column()," in sc
 assert "level.getGameTime()+30" in sc
-assert "if(!climbing)" in (src/"builder/BuilderGolem.java").read_text()
+golem=(src/"builder/BuilderGolem.java").read_text()
+# Ordinary navigation must not interrupt either a physical scaffold
+# climb or the new clockwise Builder collision avoidance maneuver.
+assert "if(!climbing&&!clockwise)" in golem
+assert "BuilderClockwiseTraffic.tickMotion(trafficWorld,this)" in golem
 assert "BuilderScaffolding.descendForTravel(level,worker,table)" in build
 assert "BuilderScaffolding.descendForTravel(level,worker,table)" in supplies
 print("PASS 0.65 worker hitboxes, physical scaffold return at matching elevation, long descent and safe exit")
