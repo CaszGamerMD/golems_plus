@@ -386,6 +386,20 @@ public final class BuilderPlacementSpace {
                     +target.toShortString());
             return false;
         }
+        if(BuilderCreativeFlight.ENABLED){
+            // A ground-only sidestep can never clear a hovering Builder.
+            // Have each actual blocker fly to a collision-clear pocket
+            // before the placing worker spends its real block.
+            int ordered=0;
+            for(BuilderGolem blocker:blockers)
+                if(BuilderCreativeFlight.requestClearance(level,blocker,target))
+                    ordered++;
+            table.setProblem(ordered==blockers.size()
+                    ?"Creative-flight Builders vacating "+target.toShortString()
+                    :"Creative-flight Builder needs a clear air pocket at "
+                        +target.toShortString());
+            return false;
+        }
         Contention previous=contention.get(placing);
         if(previous==null||!previous.target().equals(target))
             contention.put(placing,new Contention(target,level.getGameTime()));

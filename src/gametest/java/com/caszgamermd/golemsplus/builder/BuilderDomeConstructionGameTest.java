@@ -219,8 +219,24 @@ public final class BuilderDomeConstructionGameTest {
                 return;
             }
             if(tick-lastProgress[0]>2400){
+                // Never confuse Planner counters with physical blocks. An
+                // earlier bug re-claimed steps below builderCursor, making
+                // totalCompleted exceed 3537. Independently count all
+                // ACTUAL world-state matches on every failure.
+                int worldMatches=0;
+                for(var candidate:steps){
+                    if(candidate.ignorePlant())continue;
+                    var expected=BuilderBlockResolver.resolve(
+                            candidate.encodedState(),BuildSite.Rotation.NONE,
+                            BuildSite.Mirror.NONE);
+                    if(expected!=null&&BuilderPlacementState.matches(
+                            level.getBlockState(new BlockPos(candidate.x(),
+                                    candidate.y(),candidate.z())),
+                            expected.state()))worldMatches++;
+                }
                 StringBuilder message=new StringBuilder(
-                        "Dome stalled after "+tick+" ticks | clear="+
+                        "Dome stalled after "+tick+" ticks | worldMatches="+
+                        worldMatches+"/"+steps.size()+" | clear="+
                         table.builderClearCursor()+" | contiguous="+table.builderCursor()
                         +" | totalCompleted="+table.builderCompletedCount()
                         +"/"+steps.size()+" | problem="+table.problem());

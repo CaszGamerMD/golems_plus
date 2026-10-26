@@ -656,7 +656,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
      * progress while an earlier dependency keeps builderCursor unchanged.
      */
     public int builderCompletedCount(){
-        return builderCursor+builderFinishedSteps.size();
+        // Finished positions below the contiguous cursor have already
+        // been counted. Old saved jobs could contain those indices from
+        // zone replay; never double-count them as physical progress.
+        long pending=builderFinishedSteps.stream().filter(index->
+                index>=builderCursor&&index<builderBlocks).count();
+        return (int)Math.min(builderBlocks,builderCursor+pending);
     }
     public int builderClearCursor(){return builderClearCursor;}
     /** The job block owns the clear cursor, verified cells and claims.
@@ -900,6 +905,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderPreparedOrders.add(worker);sync();
         }
     }
+    /** Re-stage after a real creative-flight trip home. The same zone
+     * and current claim remain intact; no physical items are fabricated.
+     */
+    public void resetBuilderPrepared(UUID worker){
+        if(builderPreparedOrders.remove(worker))sync();
+    }
     public void releaseBuilderWorkOrder(UUID worker){
         builderClaims.remove(worker);
         builderWorkOrders.remove(worker);
@@ -1029,21 +1040,23 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(activeOrder==null||!builderWorkerIds().contains(worker)
                 ||fullZone==null||fullZone.isEmpty())return -1;
         int current=builderClaims.getOrDefault(worker,-1);
-        if(current>=0&&current<steps.size()
+        if(current>=builderCursor&&current<steps.size()
                 &&!builderFinishedSteps.contains(current))return current;
         builderClaims.remove(worker);
         var stage=builderWorkOrders.get(worker);
         if(stage==null||stage.isEmpty()){
             int lowest=Integer.MAX_VALUE;
             for(int idx:fullZone){
-                if(idx>=0&&idx<steps.size()&&!builderFinishedSteps.contains(idx)){
+                if(idx>=builderCursor&&idx<steps.size()
+                        &&!builderFinishedSteps.contains(idx)){
                     lowest=steps.get(idx).y();break;
                 }
             }
             if(lowest==Integer.MAX_VALUE)return -1;
             var newStage=new java.util.ArrayList<Integer>(BUILDER_STAGE_SIZE);
             for(int idx:fullZone){
-                if(idx<0||idx>=steps.size()||builderFinishedSteps.contains(idx))continue;
+                if(idx<builderCursor||idx>=steps.size()
+                        ||builderFinishedSteps.contains(idx))continue;
                 if(steps.get(idx).y()!=lowest)break;
                 newStage.add(idx);
                 if(newStage.size()>=BUILDER_STAGE_SIZE)break;
@@ -1067,7 +1080,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                     com.caszgamermd.golemsplus.builder.BuilderGolem golem
                         ?golem.blockPosition():null;
         for(int idx:stage){
-            if(builderFinishedSteps.contains(idx)
+            if(idx<builderCursor||builderFinishedSteps.contains(idx)
                     ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
             var cell=steps.get(idx);
             double cost=currentPos==null?idx:currentPos.distSqr(
@@ -1128,7 +1141,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
 
     public boolean completeBuilderStep(UUID worker,int index){
-        if(builderClaims.getOrDefault(worker,-1)!=index)return false;
+        if(index<builderCursor||index>=builderBlocks
+                ||builderFinishedSteps.contains(index)
+                ||builderClaims.getOrDefault(worker,-1)!=index)return false;
         builderClaims.remove(worker);
         builderMissingRetries.remove(index);
         builderTrafficFailures.remove(index);
@@ -1142,6 +1157,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         builderFinishedSteps.add(index);
         while(builderFinishedSteps.remove(builderCursor))builderCursor++;
+        // Defensive migration for previous re-claimed completed cells.
+        builderFinishedSteps.removeIf(done->done<builderCursor
+                ||done>=builderBlocks);
         if(builderCursor>=builderBlocks){
             phase=WorkerPhase.COMPLETE;activeOrder=null;builderClaims.clear();
             builderWorkOrders.clear();builderPreparedOrders.clear();

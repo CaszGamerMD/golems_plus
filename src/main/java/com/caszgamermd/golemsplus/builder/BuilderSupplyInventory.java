@@ -262,15 +262,20 @@ public final class BuilderSupplyInventory {
     public static LoadStatus prepareWorkOrder(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps){
-        if(com.caszgamermd.golemsplus.crane.CraneService
-                .bringSupplies(table,worker))return LoadStatus.MOVING;
+        if(!BuilderCreativeFlight.ENABLED
+                &&com.caszgamermd.golemsplus.crane.CraneService
+                        .bringSupplies(table,worker))return LoadStatus.MOVING;
         var indices=table.builderWorkOrder(worker.getUUID());
         if(indices.isEmpty())return LoadStatus.MISSING;
         BlockPos depot=table.builderUnloadingStorage();
         Container storage=selectedStorage(table);
         if(depot==null||storage==null)return LoadStatus.MISSING;
-        if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                depot.getZ()+.5)>12){
+        if(BuilderCreativeFlight.ENABLED
+                &&!BuilderCreativeFlight.reachDepot(level,worker,depot))
+            return LoadStatus.MOVING;
+        if(!BuilderCreativeFlight.ENABLED
+                &&worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                        depot.getZ()+.5)>12){
             if(BuilderScaffolding.descendForTravel(level,worker,table))
                 return LoadStatus.MOVING;
             // A finished wall can strand a supply runner one block above
@@ -404,8 +409,12 @@ public final class BuilderSupplyInventory {
             BlockPos depot=table.builderUnloadingStorage();
             Container site=selectedStorage(table);
             if(site==null||depot==null)return LoadStatus.MISSING;
-            if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                    depot.getZ()+.5)>12){
+            if(BuilderCreativeFlight.ENABLED
+                    &&!BuilderCreativeFlight.reachDepot(level,worker,depot))
+                return LoadStatus.MOVING;
+            if(!BuilderCreativeFlight.ENABLED
+                    &&worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                            depot.getZ()+.5)>12){
                 if(BuilderScaffolding.descendForTravel(level,worker,table))
                     return LoadStatus.MOVING;
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
@@ -445,8 +454,12 @@ public final class BuilderSupplyInventory {
                         row.getValue()-worker.carriedCount(requested)));
                 if(needed==0||!containsInSources(table,requested))
                     continue;
-                if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                        depot.getZ()+.5)>12){
+                if(BuilderCreativeFlight.ENABLED
+                        &&!BuilderCreativeFlight.reachDepot(level,worker,depot))
+                    return LoadStatus.MOVING;
+                if(!BuilderCreativeFlight.ENABLED
+                        &&worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                                depot.getZ()+.5)>12){
                     if(BuilderScaffolding.descendForTravel(level,worker,table))
                         return LoadStatus.MOVING;
                     com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(

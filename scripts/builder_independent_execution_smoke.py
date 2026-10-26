@@ -21,8 +21,10 @@ assert "Action.MOVE_TO_WORK" in service
 assert "Action.PLACE" in service
 assert "Action.COMPLETE" in service
 assert "BUILDER_STAGE_SIZE=32" in station
-assert "if(current>=0&&current<steps.size()" in station
+assert "if(current>=builderCursor&&current<steps.size()" in station
 assert "builderMissingRetries.getOrDefault(idx,0L)>now" in station
+assert "if(idx<builderCursor||builderFinishedSteps.contains(idx)" in station
+assert "if(index<builderCursor||index>=builderBlocks" in station
 assert "builderClaims.put(worker,selected)" in station
 assert "if(builderClaims.containsValue(idx))continue;" in station
 assert "double cost=currentPos==null?idx:" in station
@@ -36,7 +38,7 @@ assert "(tickCount+getId())%5==0" in worker
 assert service.index("if(BuilderPlacementState.matches(existing,state.state()))") < service.index(
     "if(!table.builderOrderPrepared(worker.getUUID()))")
 # Never reset a claimed navigation step just because another Builder ticks.
-assert "if(current>=0&&current<steps.size()" in station
+assert "if(current>=builderCursor&&current<steps.size()" in station
 # Ensure a single builder's transient approach does not overwrite all
 # workers' Planner problem messages while traversing a valid route.
 assert '"Builder exploring alternate routes to "' not in service
