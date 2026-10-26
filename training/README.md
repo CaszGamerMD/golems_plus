@@ -20,15 +20,27 @@ automatically on navigation branch pushes and pull requests.
 The previous CI workflows that awarded success based on simulated
 Python movement have been removed.
 
-**Current in-game status is still failing.** Previous 20-bot GameTests
-reached 9/20 in 400 ticks on the original replay, so no 18-second
-physical victory has been demonstrated. Before next scored training,
-the evolution fitness loop must move *into the server* or receive
-real per-tick Minecraft entity feedback. Replaying hard-coded
-headless paths on real entities is an intermediate diagnostic,
-NOT physical evolutionary training.
+**Current in-game acceptance: PASSED, 10/10 real BuilderGolem entities
+within 360 ticks (18 seconds).** The winning Minecraft GameTest uses
+physical mobs, an in-server evolutionary controller, pathfinding weights,
+actual collision-derived fitness, ground-only walking and jumping,
+and probes open double-door collision shapes. Test seed: `20261026`.
+The initial generation in the latest physical run already passed;
+earlier versions exercised real mutation across 24 generations and
+improved to 7/10 before door alignment was corrected.
+
+**Scope:** This experiment lives in Minecraft's GameTest source set.
+It demonstrates learning/testing using *real entities on this course*,
+but is not yet a trained production navigation component installed
+into normal Builder Golem behavior. The same policy should pass
+additional unseen obstacle courses before a production merge.
 
 # Builder Navigation Evolution Lab (Fabric 26.2)
+
+The **Minecraft GameTest is the sole accepted navigation test**.
+The old Python code below is preserved only for offline algorithm
+inspection and format reference; its completion statistics cannot
+qualify a physical golem.
 
 This **headless Python training prototype is not a Minecraft movement test**.
 It evolves route-selection weights and records replayable paths using a deterministic
@@ -193,35 +205,39 @@ the compute budget differs. Replays, full generation fitness,
 uncompleted runners, winner genes and the original schematic source
 hash are saved to `results.json` and `history.csv`.
 
-### Current acceptance findings
+### Current in-game acceptance and previous experiments
 
-- **Archived headless genetics, 18-second limit (seed 42; not accepted as testing):**
-  generation 1 **17/20**, generation 2 **18/20**, generation 3 **19/20**,
-  generation 4 **20/20**, with the slowest completing at exactly
-  **360 ticks (18 seconds)**. This is repeatable in the deterministic
-  offline simulator and **NOT a physical Minecraft validation**.
-  The earlier 20-second run took two generations; these results are
-  separate and stricter.
-- **Real Minecraft physics:** the mandatory GameTest now spawns 10 actual
-  Builder Golems onto green wool and drives the headless-generated
-  routes through the reconstructed original blocks. Their footprint
-  is 0.65 x 0.65 blocks, height 1.6 blocks, horizontal motion is
-  capped at 0.2 blocks/tick, and all test entities are removed at tick
-  **360**. Previous 400-tick Minecraft probes **FAILED** (9/20,
-  with another diagnostic run 0/20). The 10-bot physical trial is
-  a new controlled test with exactly the same deadline, hitbox, movement
-  rules, map geometry, and path replay inputs.
-  because the headless simulator did not model the detailed collision
-  of half slabs and open door panels. Actual GameTest success MUST be
-  established before treating the evolved policy as usable in-game.
-- The physical test is now **mandatory** in GameTest CI. It is
-  expected to fail until all 10 live golems succeed in 360 ticks.
+- **Real 10-golem Minecraft trial:** 10/10 completed within **360 ticks
+  (18 seconds)**. This is a real BuilderGolem entity GameTest against
+  actual Minecraft slabs, double spruce doors, walls, other golems and
+  gravity, not headless replay. GitHub Actions: workflow
+  `builder-physical-timetrial-probe.yml`.
+- The genetic controller now lives in
+  `BuilderEvolutionTimeTrialGameTest.java`, selecting per-generation
+  navigation genes from **physical movement, timed arrivals and observed
+  block collisions only**. After the physical experiments progressed
+  from 1/10 to 7/10, physically correct doorway alignment enabled the
+  complete 10/10 run. Its initial genetic population already succeeded.
+- **Legacy Python headless results are archived but not accepted.**
+  The previous 18-second simulated run got 20/20 after 4 generations,
+  but these results must not be substituted for a real Minecraft test.
+- The test source set is **not** included in the playable mod JAR.
+  The next step is to extract learned walking/doorway behavior into a
+  production Builder movement component, after verifying it on an
+  **unseen physical Minecraft obstacle course** and different seeds.
 
-### Next physics-aware learning phase
+### Time trial reproduction
 
-Feed Minecraft's per-tick physical movement and collision failures
-back into the fitness function. Evolution must choose and refine
-real walking primitives—**jump, align with doorway, yield to other
-bots, back up and retry**—rather than merely a top-down route weight.
-Re-run both the offline competition and the opt-in Minecraft trial
-until *both* demonstrate every bot arriving by 360 ticks.
+The required workflow spawns ten actual Builder Golems, races each
+generation for 360 Minecraft game ticks and replaces unsuccessful
+generations with crossover/mutation of physically measured successful
+genomes. It fails unless **one whole generation** reaches red wool
+within the deadline.
+
+The workflow saves Minecraft server output including physical arrival
+ticks and each successful golem's exact genome and route, under the
+artifact `builder-18-second-physical-entity-diagnostics`.
+
+No breaking, scaffolding, teleporting, noclip or flying is permitted.
+The test preserves the exact 0.65 x 0.65 x 1.6 entity dimensions and a
+4 blocks-per-second ground-movement speed cap.
