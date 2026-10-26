@@ -399,8 +399,12 @@ def simulate(course: Course, genome: Genome, *, timeout: int,
             known[move] = course.tile(move)
             ticks += 1
             continue
-        needed = TICKS_PER_BLOCK
-        if course.height(move) > course.height(bot):
+        elevation = course.height(move) - course.height(bot)
+        # Limit full 3D displacement to 0.2 blocks per tick, including
+        # drops: a two-block fall cannot skip the speed cap.
+        needed = math.ceil(math.hypot(1.0, elevation)
+                           * TICKS_PER_SECOND / METERS_PER_SECOND)
+        if elevation > 0:
             needed += JUMP_TICKS
         if course.tile(move) == "D" and move not in open_doors:
             needed += DOOR_OPEN_TICKS
@@ -423,10 +427,11 @@ def simulate(course: Course, genome: Genome, *, timeout: int,
         (initial_distance - best_remaining) / max(1, initial_distance))
     # A completed course always wins. Partial progress rewards genuinely
     # closer shortest-path distance, not hugging an impassable wall.
-    fitness = ((10000.0 - ticks * 4.0 - collisions * 10)
+    fitness = ((100000.0 + (timeout - ticks) * 4.0 - collisions * 10)
                if finished else
                (3000.0 * progress + min(200, len(visited)) * 1.5
                 - collisions * 4 - ticks * .1))
+    # Completion must always outrank a failed run, regardless of timeout.
     return Run(course.name, finished, ticks, round(fitness, 3),
                round(progress, 4), len(visited), collisions,
                len(open_doors), tuple(route))
