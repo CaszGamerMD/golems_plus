@@ -170,6 +170,7 @@ public final class FisherGolem extends PathfinderMob {
             dropCargo(level);discard();return;
         }
         if(station.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED){
+            if(com.caszgamermd.golemsplus.breakroom.GolemBreakService.takingBreak(this))return;
             // An off-duty Fisher rests in the camp chair when it has
             // returned to the coolers, rather than standing frozen.
             boolean waiting=distanceToSqr(home.getX()+.5,home.getY()+.5,
@@ -468,3 +469,4 @@ public final class FisherGolem extends PathfinderMob {
         syncCarried();
     }
 }
+

@@ -87,7 +87,7 @@ public final class ChefGolem extends PathfinderMob {
             setJobAppearance(false,net.minecraft.world.item.ItemStack.EMPTY);
         // Maintain the original paced idle movement, but do not let it
         // slow down hand/appearance cleanup.
-        if(tickCount%40==0&&!station.chefBusy()
+        if(tickCount%40==0&&!com.caszgamermd.golemsplus.breakroom.GolemBreakService.takingBreak(this)&&!station.chefBusy()
                 &&station.phase()!=com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED)
             ChefFloorNavigation.idle(server,this,home);
     }
@@ -106,3 +106,4 @@ public final class ChefGolem extends PathfinderMob {
         catch(IllegalArgumentException ex){owner=null;}
     }
 }
+
