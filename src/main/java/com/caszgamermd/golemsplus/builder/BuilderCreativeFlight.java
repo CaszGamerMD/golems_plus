@@ -25,6 +25,7 @@ public final class BuilderCreativeFlight {
     public static final boolean ENABLED=true;
     private static final Map<BuilderGolem,Flight> flights=new WeakHashMap<>();
     private static final Map<BuilderGolem,WorkWatch> workWatches=new WeakHashMap<>();
+    private static final Map<BuilderGolem,WorkWatch> depotWatches=new WeakHashMap<>();
     private static final int WORK_STALL_TICKS=220;
     private static final class WorkWatch {
         BlockPos goal;
@@ -83,11 +84,13 @@ public final class BuilderCreativeFlight {
         worker.getNavigation().stop();
         worker.setDeltaMovement(0,0,0);
         workWatches.remove(worker);
+        depotWatches.remove(worker);
     }
 
     public static void stop(BuilderGolem worker){
         Flight old=flights.remove(worker);
         workWatches.remove(worker);
+        depotWatches.remove(worker);
         if(old!=null&&worker.level() instanceof ServerLevel server)
             closePassedDoors(server,worker,old);
         worker.setNoGravity(false);
@@ -121,6 +124,7 @@ public final class BuilderCreativeFlight {
                 closePassedDoors(level,worker,flight);
                 flights.remove(worker);
                 workWatches.remove(worker);
+                depotWatches.remove(worker);
                 table.resetBuilderPrepared(worker.getUUID());
                 worker.setDeltaMovement(0,0,0);
                 // The next Builder tick restages physical stock at OnSite,
@@ -280,8 +284,11 @@ public final class BuilderCreativeFlight {
     public static boolean reachDepot(ServerLevel level,BuilderGolem worker,
                                      BlockPos depot){
         if(depot==null)return false;
-        if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                depot.getZ()+.5)<=11.5){
+        if(recovering(worker))return false;
+        double depotRange=worker.distanceToSqr(depot.getX()+.5,
+                depot.getY()+.5,depot.getZ()+.5);
+        if(depotRange<=11.5){
+            depotWatches.remove(worker);
             // Cancel the old WORK destination, not just its velocity;
             // otherwise the flight controller restarts it next entity tick.
             Flight previous=flights.get(worker);
@@ -290,6 +297,21 @@ public final class BuilderCreativeFlight {
                 navigate(level,worker,depot,worker.position(),true);
             worker.setDeltaMovement(0,0,0);
             return true;
+        }
+        long now=level.getGameTime();
+        WorkWatch watch=depotWatches.get(worker);
+        if(watch==null||!watch.goal.equals(depot)){
+            watch=new WorkWatch(depot,depotRange,now);
+            depotWatches.put(worker,watch);
+        }else if(depotRange<watch.closest-.28){
+            watch.closest=depotRange;
+            watch.progressTick=now;
+        }else if(now-watch.progressTick>=180){
+            // Failed storage return is the common enclosed-Dome deadlock.
+            // Replan from the golem's actual position through the door,
+            // rather than continuing direct flight into the solid wall.
+            startEscape(level,worker,depot);
+            return false;
         }
         Vec3 target=new Vec3(depot.getX()+.5,depot.getY()+1.3,depot.getZ()+1.5);
         navigate(level,worker,depot,target,true);
