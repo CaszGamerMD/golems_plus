@@ -228,13 +228,12 @@ public final class BuilderCreativeFlight {
         }
         Flight old=flights.get(worker);
         if(old!=null&&old.escapingUntil>level.getGameTime())return false;
-        if(old==null||!old.goal.equals(target)||old.depot
-                ||old.airRoute.isEmpty()
-                        &&old.destination.distanceToSqr(worker.position())<.16
-                        &&old.destination.distanceToSqr(
-                                target.getX()+.5,target.getY()+.5,
-                                target.getZ()+.5)<11.0){
-            Vec3 destination=chooseWorkPosition(level,worker,target);
+        boolean expired=old!=null&&!old.depot
+                &&old.airRoute.isEmpty()
+                &&level.getGameTime()-old.lastCloser>90;
+        if(old==null||!old.goal.equals(target)||old.depot||expired){
+            Vec3 destination=chooseWorkPosition(level,worker,target,
+                    expired?old.destination:null);
             if(destination==null){
                 // Try to clear the target's own body volume, even when
                 // its ideal work-radius candidates have become blocked.
@@ -247,7 +246,7 @@ public final class BuilderCreativeFlight {
     }
 
     private static Vec3 chooseWorkPosition(ServerLevel level,BuilderGolem worker,
-                                            BlockPos target){
+                                            BlockPos target,Vec3 avoided){
         Vec3 best=null;
         double bestScore=Double.POSITIVE_INFINITY;
         // Candidates deliberately remain within the normal 14 squared
@@ -262,7 +261,7 @@ public final class BuilderCreativeFlight {
                     double y=landing.getY();
                     double z=landing.getZ()+.5;
                     double reach=(x-target.getX()-.5)*(x-target.getX()-.5)
-                            +(y-target.getY())*(y-target.getY())
+                            +(y-target.getY()-.5)*(y-target.getY()-.5)
                             +(z-target.getZ()-.5)*(z-target.getZ()-.5);
                     if(reach>=13.8||!level.hasChunkAt(landing)
                             ||!level.hasChunkAt(landing.above()))continue;
@@ -273,7 +272,11 @@ public final class BuilderCreativeFlight {
                     double distance=worker.distanceToSqr(x,y,z);
                     // Prefer a clear exterior approach over stepping into
                     // adjacent planned blocks that are already solid.
-                    double score=distance+(offset==1?1.25:0);
+                    // Avoid repeatedly selecting the same air tile that
+                    // proved physically unreachable from this Builder.
+                    double score=distance+(offset==1?1.25:0)
+                            +(avoided!=null&&avoided.distanceToSqr(x,y,z)<.5
+                                    ?500:0);
                     if(score<bestScore){
                         bestScore=score;
                         best=new Vec3(x,y,z);
