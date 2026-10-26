@@ -173,7 +173,7 @@ public final class BuilderCreativeFlight {
         AABB placement=new AABB(target);
         boolean clear= !worker.getBoundingBox().intersects(placement);
         if(clear&&worker.distanceToSqr(target.getX()+.5,target.getY()+.5,
-                target.getZ()+.5)<11.0){
+                target.getZ()+.5)<13.8){
             // Hold in the real normal placement radius; NEVER resume a
             // previous depot/placement destination after placing.
             Flight previous=flights.get(worker);
@@ -209,9 +209,10 @@ public final class BuilderCreativeFlight {
         // Candidates deliberately remain within the normal 14 squared
         // reach and outside the block to be placed. Flight is only a
         // substitute for the access path, NEVER extended placement range.
-        for(int h:new int[]{1,0,-1,2}){
+        for(int h:new int[]{1,2,0,3,-1}){
             for(Direction dir:Direction.Plane.HORIZONTAL){
-                for(int offset:new int[]{2,1}){
+                for(int offset:new int[]{0,1,2}){
+                    if(offset==0&&dir!=Direction.NORTH)continue;
                     BlockPos landing=target.relative(dir,offset).offset(0,h,0);
                     double x=landing.getX()+.5;
                     double y=landing.getY();
@@ -219,7 +220,7 @@ public final class BuilderCreativeFlight {
                     double reach=(x-target.getX()-.5)*(x-target.getX()-.5)
                             +(y-target.getY())*(y-target.getY())
                             +(z-target.getZ()-.5)*(z-target.getZ()-.5);
-                    if(reach>=11.5||!level.hasChunkAt(landing)
+                    if(reach>=13.8||!level.hasChunkAt(landing)
                             ||!level.hasChunkAt(landing.above()))continue;
                     AABB box=worker.getBoundingBox().move(
                             x-worker.getX(),y-worker.getY(),z-worker.getZ());
@@ -250,6 +251,16 @@ public final class BuilderCreativeFlight {
         Vec3 candidate=null;
         double score=Double.POSITIVE_INFINITY;
         AABB forbidden=new AABB(target).inflate(.15);
+        // Prefer a short vertical escape from an obstructing footprint.
+        for(double lift:new double[]{1.2,2.2,-1.2}){
+            Vec3 at=worker.position().add(0,lift,0);
+            BlockPos cell=BlockPos.containing(at.x,at.y,at.z);
+            AABB dest=worker.getBoundingBox().move(0,lift,0);
+            if(level.hasChunkAt(cell)&&!dest.intersects(forbidden)
+                    &&level.noCollision(worker,dest)){
+                candidate=at;score=.01;break;
+            }
+        }
         for(int y:new int[]{2,3,1,0,-1}){
             for(Direction side:Direction.Plane.HORIZONTAL){
                 for(int radius:new int[]{2,3}){
