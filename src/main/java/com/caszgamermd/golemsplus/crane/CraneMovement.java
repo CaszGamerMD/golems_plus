@@ -14,7 +14,15 @@ final class CraneMovement {
         var state=world.getBlockState(rail);
         if(state.is(CraneContent.RAIL)){
             Direction d=state.getValue(CraneRailBlock.FACING);
-            return Vec3.atCenterOf(rail).add(d.getStepX()*1.3,d.getStepY()*.65,d.getStepZ()*1.3);
+            // The 2x2x2 chassis is centered over flat rails and wholly
+            // outboard from a support wall (rather than clipping into it).
+            Vec3 c=Vec3.atBottomCenterOf(rail);
+            return switch(d){
+                case UP->c.add(0,.125,0);
+                case DOWN->c.add(0,-1.125,0);
+                case NORTH,SOUTH,EAST,WEST->
+                    c.add(d.getStepX()*1.5,-.5,d.getStepZ()*1.5);
+            };
         }
         return Vec3.atBottomCenterOf(rail);
     }
@@ -24,11 +32,12 @@ final class CraneMovement {
             if(!world.hasChunkAt(p)||!world.isInWorldBounds(p))return false;
         return !world.getBlockCollisions(crane,box).iterator().hasNext();
     }
-    static AABB chassis(Vec3 p){return new AABB(p.x-.65,p.y,p.z-.65,p.x+.65,p.y+2.8,p.z+.65);}
+    /** Exact two-block cubic cabin/chassis, including swept collision. */
+    static AABB chassis(Vec3 p){return new AABB(p.x-1,p.y,p.z-1,p.x+1,p.y+2,p.z+1);}
     static AABB load(BuildingCrane crane,Vec3 p){double h=crane.supplyMode()?2.05:1.1;
         return new AABB(p.x-h,p.y,p.z-h,p.x+h,p.y+2.7,p.z+h);}
     static boolean pose(ServerLevel world,BuildingCrane crane,Vec3 load,Vec3 anchor){
-        Vec3 root=anchor.add(0,2.9,0),tip=load.add(0,2.8,0);
+        Vec3 root=anchor.add(0,2.05,0),tip=load.add(0,2.8,0);
         if(root.distanceTo(tip)>crane.reach()||!clear(world,crane,chassis(anchor))
                 ||!clear(world,crane,load(crane,load)))return false;
         int samples=Math.max(1,(int)Math.ceil(root.distanceTo(tip)*2));
@@ -92,7 +101,10 @@ final class CraneMovement {
                 p->world.hasChunkAt(pos(p))&&world.getBlockState(pos(p)).is(CraneContent.RAIL)
                     &&world.getBlockState(pos(p)).canSurvive(world,pos(p)),
                 (a,b)->{Vec3 x=anchorPoint(world,pos(a)),y=anchorPoint(world,pos(b));
-                    return swept(world,crane,x.add(offset),y.add(offset),x,y);},400);
+                    return CraneRailBlock.linked(world,pos(a),pos(b))
+                            &&swept(world,crane,x.add(offset),y.add(offset),x,y);},
+                400,at->CraneRailBlock.linkedNeighbors(world,pos(at)).stream()
+                        .map(CraneMovement::cell).toList());
         return path==null?null:path.stream().map(CraneMovement::pos).toList();
     }
     static BlockPos landing(ServerLevel world,BuildingCrane crane,BuilderGolem worker,BlockPos target){
