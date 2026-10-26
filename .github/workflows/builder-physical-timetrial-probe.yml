@@ -1,4 +1,4 @@
-name: Required - 20 actual Builder Golems in Minecraft (18s)
+name: Required - 10 actual Builder Golems in Minecraft (18s)
 
 on:
   push:
@@ -25,7 +25,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
-      - name: Verify physical BuilderGolem acceptance is registered
+      - name: Verify 10 physical BuilderGolem entrants and registration
         run: |
           python3 - <<'PY'
           import json
@@ -37,9 +37,11 @@ jobs:
           test=Path('src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderEvolutionTimeTrialGameTest.java').read_text()
           assert 'new BuilderGolem(' in test
           assert 'private static final int DEADLINE=360;' in test
+          assert 'SELECTED_BOTS.length!=10' in test
+          assert '0,2,4,6,8,11,13,15,17,19' in test
           assert 'if(finished==bots.size())helper.succeed();' in test
           assert 'else helper.fail(' in test
-          print('Physical-only acceptance gate: 20 live BuilderGolem entities / 360 ticks')
+          print('Physical-only acceptance gate: 10 live BuilderGolem entities / 360 ticks')
           PY
       - name: Mandatory 360-tick real Minecraft golem trial
         run: gradle --no-daemon runGameTest
