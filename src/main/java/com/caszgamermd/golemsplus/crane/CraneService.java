@@ -106,6 +106,14 @@ public final class CraneService {
         if(!(worker.level() instanceof ServerLevel level))return false;
         return cranes(level).stream().anyMatch(c->c.ownsWorker(worker));
     }
+    /** Inclusive boundary: a work elevation of minimumY+15 switches
+     * from scaffold to crane, provided the move needs a vertical lift.
+     * Descents from above the boundary also use the crane.
+     */
+    public static boolean shouldUseCrane(int lowestY,int workerY,int goalY){
+        return Math.abs(goalY-workerY)>=2
+                &&Math.max(goalY,workerY)>=lowestY+15;
+    }
     public static boolean requestRide(ServerLevel level,BuilderGolem worker,BlockPos goal){
         if(walking||goal==null||Math.abs(goal.getY()-worker.getY())<2)return false;
         if(!(level.getBlockEntity(worker.home()) instanceof WorkerStationBlockEntity table)
@@ -116,8 +124,8 @@ public final class CraneService {
         // Below 15 blocks above the LOWEST planned block, Builders use
         // the improved walk/solid-step/scaffold controller, even if a
         // powered crane happens to be parked alongside them.
-        if(bottom==null||Math.max(goal.getY(),worker.blockPosition().getY())
-                <bottom+15)return false;
+        if(bottom==null||!shouldUseCrane(bottom,worker.blockPosition().getY(),
+                goal.getY()))return false;
         BuildingCrane crane=linked(table);
         return crane!=null&&crane.operator()!=null&&crane.request(worker,goal);
         return false;
