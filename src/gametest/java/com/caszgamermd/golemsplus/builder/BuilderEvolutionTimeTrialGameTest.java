@@ -437,14 +437,23 @@ public final class BuilderEvolutionTimeTrialGameTest {
                 &&distance<=b.dna.jumpLead();
         // Jump from ground, with native gravity and vanilla collision.
         // Never add positive upward acceleration while airborne.
-        if((approachingRaisedCell||b.collisions>0&&b.immobile>4)
+        // Only jump at a real half-step or a collision-confirmed
+        // ground obstacle. Never waste the last meters by jumping just
+        // because this Builder hit an unrelated obstacle earlier.
+        double proposedX=Math.max(-SPEED_CAP,Math.min(SPEED_CAP,dx));
+        double proposedZ=Math.max(-SPEED_CAP,Math.min(SPEED_CAP,dz));
+        boolean solidAhead=world.getBlockCollisions(mob,
+                mob.getBoundingBox().move(proposedX,0,proposedZ))
+                .iterator().hasNext();
+        if((approachingRaisedCell||solidAhead&&b.immobile>4)
                 &&grounded&&b.ticksSinceJump>=b.dna.jumpCooldown()){
             mob.setDeltaMovement(0,b.dna.jumpPower(),0);
             b.ticksSinceJump=0;
             b.jumps++;
         }
-        double step=Math.min(SPEED_CAP,
-                b.dna.drive()*SPEED_CAP);
+        // Exactly 4 m/s whenever unobstructed. Genes still evolve
+        // routes, approach alignment and when to jump/back off.
+        double step=Math.min(SPEED_CAP,distance);
         // Driving back for 3 ticks breaks a collision lock without
         // passing through solid blocks.
         if(b.backoffTicks>0){
@@ -460,8 +469,8 @@ public final class BuilderEvolutionTimeTrialGameTest {
             int[] corner=next(ahead[0],ahead[1],
                     b.route.charAt(b.cursor+1));
             double lookX=corner[0]-ahead[0],lookZ=corner[1]-ahead[1];
-            vx+=lookX*(1-b.dna.align())*.075;
-            vz+=lookZ*(1-b.dna.align())*.075;
+            vx+=lookX*(1-b.dna.align())*b.dna.drive()*.075;
+            vz+=lookZ*(1-b.dna.align())*b.dna.drive()*.075;
         }
         double norm=Math.hypot(vx,vz);
         if(norm>SPEED_CAP){
