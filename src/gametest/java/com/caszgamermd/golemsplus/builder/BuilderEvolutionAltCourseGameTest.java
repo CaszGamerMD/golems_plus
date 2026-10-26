@@ -832,7 +832,16 @@ public final class BuilderEvolutionAltCourseGameTest {
         mob.setNoGravity(false);
         mob.getNavigation().stop();
         Vec3 old=mob.position();
-        mob.move(MoverType.SELF,new Vec3(vx,0,vz));
+        // A horizontal-only direct move clears the vanilla onGround
+        // state on some ticks. Then Minecraft will not auto-step a 0.5
+        // bottom slab despite maxUpStep() == 0.6, trapping a 0.65-wide
+        // golem precisely at the slab face. Include a small DOWNWARD
+        // collision probe in the native move, so actual ground support
+        // and Minecraft's normal step-up solver are respected.
+        // No manual y-position change, flying, noclip or jump boost.
+        double nativeGroundProbe=grounded&&!"j".equals(b.movementMode)
+                ?-.08:0;
+        mob.move(MoverType.SELF,new Vec3(vx,nativeGroundProbe,vz));
         // Count arrival on the SAME game tick as the physical move,
         // not on the following tick (which could be tick 361).
         if(world.getBlockState(mob.blockPosition().below()).is(RED)){
@@ -1314,10 +1323,10 @@ public final class BuilderEvolutionAltCourseGameTest {
     }
 
     /**
-     * Physically validate the corridor that trapped most previous runners.
-     * At x=15,z=4 there is an exposed bottom slab (legal 0.5 rise).
-     * At x=15,z=5/6 a second top slab leaves only 1 block of headroom
-     * and no legal 1.6-tall Builder can enter, even on a short route.
+     * The original x=15 ground slabs have open air above. The old AI
+     * incorrectly stalled because direct horizontal movement lost ground
+     * contact. Verify this legal step separately from a deliberately
+     * constructed low-ceiling slab (regression-only fixture).
      */
     @GameTest(maxTicks=120,padding=64,skyAccess=true)
     public void realBuilderRejectsLowCeilingSlabButCanUseOpenHalfSlab(
@@ -1328,16 +1337,67 @@ public final class BuilderEvolutionAltCourseGameTest {
         BlockPos spawn=pos(helper,16,2,4);
         mob.setPos(spawn.getX()+.5,spawn.getY(),spawn.getZ()+.5);
         level.addFreshEntity(mob);
-        boolean open=physicalCellOpen(helper,level,mob,15,4);
-        boolean closed5=physicalCellOpen(helper,level,mob,15,5);
-        boolean closed6=physicalCellOpen(helper,level,mob,15,6);
-        System.out.println("[ALT SLAB REGRESSION] exposed="+open
-                +" lowHeadroom5="+closed5+" lowHeadroom6="+closed6);
-        if(!open||closed5||closed6){
-            helper.fail("Real Builder AABB must admit raised open slab and"
-                +" reject 1-block-headroom slabs: "+open+"/"+closed5+"/"+closed6);
-        }else helper.succeed();
+        boolean exposed4=physicalCellOpen(helper,level,mob,15,4);
+        boolean exposed5=physicalCellOpen(helper,level,mob,15,5);
+        // Add an overhead obstacle ONLY inside this isolated regression.
+        // The actual scored user track is never altered.
+        helper.setBlock(X_OFFSET+15,3,Z_OFFSET+5,
+                Blocks.BIRCH_SLAB.defaultBlockState()
+                   .setValue(SlabBlock.TYPE,SlabType.TOP));
+        boolean roofed5=physicalCellOpen(helper,level,mob,15,5);
+        System.out.println("[ALT SLAB REGRESSION] open4="+exposed4
+                +" open5="+exposed5+" syntheticLowCeiling="+roofed5);
+        if(!exposed4||!exposed5||roofed5)
+            helper.fail("Slab AABB clearance must distinguish exposed"
+                +" slab from real overhead obstruction");
+        else helper.succeed();
         mob.discard();
+    }
+
+    /**
+     * Verify a REAL ground-only Builder steps onto a legal 0.5 slab
+     * without teleporting, removing blocks or jumping. This was the
+     * primary physical failure seen at x=16.325,z=6.5.
+     */
+    @GameTest(maxTicks=140,padding=64,skyAccess=true)
+    public void realBuilderStepsOntoAltCourseBottomSlab(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel level=helper.getLevel();
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos spawn=pos(helper,16,2,4);
+        mob.setPos(spawn.getX()+.5,spawn.getY(),spawn.getZ()+.5);
+        mob.setNoGravity(false);
+        level.addFreshEntity(mob);
+        if(mob.maxUpStep()<.599){
+            helper.fail("Native 0.6 auto-step is not enabled on real Builder");
+            mob.discard();
+            return;
+        }
+        final int[] elapsed={0};
+        helper.onEachTick(()->{
+            if(!mob.isAlive()){
+                helper.fail("Real Builder disappeared on bottom slab");
+                return;
+            }
+            if(mob.getX()<=pos(helper,15,2,4).getX()+.65
+                    &&mob.getY()>=spawn.getY()+.48){
+                System.out.println("[ALT SLAB STEP] physical grounded ascent"
+                    +" succeeded in "+elapsed[0]+" ticks y="+mob.getY());
+                mob.discard();
+                helper.succeed();
+                return;
+            }
+            if(elapsed[0]++>65){
+                helper.fail("Builder did not step up half slab using native"
+                    +" ground collision at "+mob.position()
+                    +" onGround="+mob.onGround());
+                mob.discard();
+                return;
+            }
+            mob.getNavigation().stop();
+            mob.move(MoverType.SELF,new Vec3(-.2,-.08,0));
+        });
     }
 
     /**
