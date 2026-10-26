@@ -130,12 +130,12 @@ public final class StationSettingsNetworking {
             }
             case "builder_crane" -> {
                 if(!table.isBuilder())return;
-                if(table.activeOrder()==null){
-                    reply(player,"Start this saved job before linking a crane. The connection belongs to its job UUID.");
+                if(!table.hasPlacedSchematic()){
+                    reply(player,"Import/select your schematic before linking a crane.");
                     return;
                 }
                 com.caszgamermd.golemsplus.crane.CraneService.selectJob(player,table);
-                reply(player,"Close Planner, hold the Crane Controller and right-click the crane. A free Builder will be assigned as the operator.");
+                reply(player,"Close Planner, hold the Crane Controller and right-click the crane. With 2+ registered Builders, one free Builder becomes the permanent operator. You can link before starting the build.");
                 return;
             }
             case "builder_crane_status" -> {
