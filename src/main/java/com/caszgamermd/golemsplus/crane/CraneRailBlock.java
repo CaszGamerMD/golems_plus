@@ -220,14 +220,19 @@ public final class CraneRailBlock extends Block {
         return withSupportedFaces(s,world,pos);
     }
 
+    // The face flag records the NORMAL of the supporting surface:
+    // FACE_EAST means a block immediately WEST of the rail cell, so its
+    // model/selection must sit at x=0, not x=16. Vanilla vine blockstates
+    // use precisely this convention. This must match our already-correct
+    // W/E model orientations, including multi-face rails.
     private static VoxelShape center(Direction face){
         return switch(face){
             case UP->Block.box(5,0,5,11,2,11);
             case DOWN->Block.box(5,14,5,11,16,11);
-            case NORTH->Block.box(5,5,0,11,11,2);
-            case SOUTH->Block.box(5,5,14,11,11,16);
-            case EAST->Block.box(14,5,5,16,11,11);
-            case WEST->Block.box(0,5,5,2,11,11);
+            case NORTH->Block.box(5,5,14,11,11,16);
+            case SOUTH->Block.box(5,5,0,11,11,2);
+            case EAST->Block.box(0,5,5,2,11,11);
+            case WEST->Block.box(14,5,5,16,11,11);
         };
     }
     private static VoxelShape arm(Direction face,Direction direction){
@@ -247,7 +252,7 @@ public final class CraneRailBlock extends Block {
                 default->Shapes.empty();
             };
             case NORTH,SOUTH->{
-                int lo=face==Direction.NORTH?0:14,hi=lo+2;
+                int lo=face==Direction.NORTH?14:0,hi=lo+2;
                 yield switch(direction){
                     case UP->Block.box(6,8,lo,10,16,hi);
                     case DOWN->Block.box(6,0,lo,10,8,hi);
@@ -257,7 +262,7 @@ public final class CraneRailBlock extends Block {
                 };
             }
             case EAST,WEST->{
-                int lo=face==Direction.EAST?14:0,hi=lo+2;
+                int lo=face==Direction.EAST?0:14,hi=lo+2;
                 yield switch(direction){
                     case UP->Block.box(lo,8,6,hi,16,10);
                     case DOWN->Block.box(lo,0,6,hi,8,10);
