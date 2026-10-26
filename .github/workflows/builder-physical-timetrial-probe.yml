@@ -88,6 +88,11 @@ jobs:
           # merge results with LATEST remote champion/state before commit.
           local_state="$(mktemp -d)"
           cp -a training/state/. "$local_state/"
+          # The GameTest workflow temporarily edits its Fabric test
+          # manifest, and training edits tracked checkpoint files.
+          # Reset this disposable checkout AFTER copying new learning.
+          rm -rf training/state
+          git reset --hard HEAD
           for attempt in 1 2 3; do
             git fetch origin "${GITHUB_REF_NAME}"
             git checkout -B physical-training-publish "origin/${GITHUB_REF_NAME}"
