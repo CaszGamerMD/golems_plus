@@ -1,4 +1,4 @@
-name: Restore compact 3-bundle Builder Golem replay viewers
+name: Restore compact 3-bundle Builder Golem replay viewers (9-worker family aware)
 
 on:
   push:
@@ -24,7 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate real-entity compact replay exporter
-        run: python3 -m unittest discover -s scripts/tests -p test_export_alt_mobile_replays.py -v
+        run: |
+          python3 -m unittest discover -s scripts/tests -p test_export_alt_mobile_replays.py -v
+          python3 -m unittest discover -s scripts/tests -p test_export_alt_nine_mobile.py -v
       - name: Restore only the three newest archived real-Minecraft bundles
         shell: bash
         run: |
@@ -33,7 +35,13 @@ jobs:
           for attempt in 1 2 3; do
             git fetch origin feature/builder-evolutionary-alt-course-262
             git reset --hard origin/feature/builder-evolutionary-alt-course-262
-            python3 scripts/export_alt_mobile_replays.py --batches 3
+            # Publish new nine-worker families when physical recordings
+            # exist; preserve legacy ten-worker viewer until then.
+            if compgen -G 'training/alt/replays/live-nine/trial-*-generation-*.json' > /dev/null; then
+              python3 scripts/export_alt_nine_mobile.py --batches 3
+            else
+              python3 scripts/export_alt_mobile_replays.py --batches 3
+            fi
             cp training/alt/replays/mobile-viewer.html training/alt/replays/route-viewer.html
             git add -- training/alt/replays/mobile-viewer.html training/alt/replays/route-viewer.html training/alt/replays/mobile-data.json
             if git diff --cached --quiet; then
