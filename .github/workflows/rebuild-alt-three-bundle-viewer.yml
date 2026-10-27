@@ -1,0 +1,66 @@
+name: Restore compact 3-bundle Builder Golem replay viewers
+
+on:
+  push:
+    branches:
+      - feature/builder-evolutionary-alt-course-262
+    paths:
+      - .github/workflows/rebuild-alt-three-bundle-viewer.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Viewer-only publishing can run without scheduling new Minecraft trials.
+# Re-check latest real physical traces before committing.
+concurrency:
+  group: alt-viewer-rebuild-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish-three-bundles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate real-entity compact replay exporter
+        run: python3 -m unittest discover -s scripts/tests -p test_export_alt_mobile_replays.py -v
+      - name: Restore only the three newest archived real-Minecraft bundles
+        shell: bash
+        run: |
+          git config user.name 'golems-evolution[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3; do
+            git fetch origin feature/builder-evolutionary-alt-course-262
+            git reset --hard origin/feature/builder-evolutionary-alt-course-262
+            python3 scripts/export_alt_mobile_replays.py --batches 3
+            cp training/alt/replays/mobile-viewer.html training/alt/replays/route-viewer.html
+            git add -- training/alt/replays/mobile-viewer.html training/alt/replays/route-viewer.html training/alt/replays/mobile-data.json
+            if git diff --cached --quiet; then
+              echo 'The 3-bundle replay viewers are already current.'
+              exit 0
+            fi
+            git commit -m 'Restore latest three physical test bundles in compact viewers [skip ci]'
+            if git push origin HEAD:feature/builder-evolutionary-alt-course-262; then
+              echo 'Published latest 3 real test bundles; state and raw traces unchanged.'
+              exit 0
+            fi
+          done
+          echo 'Could not update viewer without overwriting concurrent changes.'
+          exit 1
+      - name: Summarize published viewer
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('training/alt/replays/mobile-data.json')
+          if path.exists():
+              data=json.loads(path.read_text())
+              metas=data.get('meta',[])
+              ids=sorted({str(m[1]).split('-')[0] for m in metas})
+              print('Real generations:',len(metas),'Latest bundles:',', '.join(ids))
+              if 'GITHUB_STEP_SUMMARY' in __import__('os').environ:
+                  with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a') as fp:
+                      fp.write(f'### Compact replay viewer\n\nBundles: {", ".join(ids)} ({len(metas)} generations).\n')
+          PY
