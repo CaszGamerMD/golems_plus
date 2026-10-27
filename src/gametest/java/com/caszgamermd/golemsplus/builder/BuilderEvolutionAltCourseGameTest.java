@@ -1140,17 +1140,45 @@ public final class BuilderEvolutionAltCourseGameTest {
                 ?memory.choose(context,new ArrayList<>(options.keySet()),validation)
                 :new NavigationStrategyMemory.Decision(
                     options.containsKey(forced)?forced:NavigationStrategyMemory.Strategy.DIRECT,
-                    "frozen-comparison",memory.summary(context,forced).trials());
+                    validation?"frozen-comparison":"inherited-family-route",
+                    memory.summary(context,forced).trials());
         System.out.println("[ALT STRATEGY CHOICE] context="+context
                 +" strategy="+choice.strategy()+" reason="+choice.reason()
                 +" priorPhysicalTrials="+choice.evidenceTrials());
         return new StrategyPlan(options.get(choice.strategy()),context,choice);
     }
 
+    /** Validate all inherited waypoints against current real collision
+     * geometry. A learned route is a proposal, never noclip or telemetry
+     * playback. Static doors are explicit legal action cells.
+     */
+    private static boolean inheritedRouteLegal(int startX,int startZ,
+            String route,GameTestHelper helper,ServerLevel world,
+            BuilderGolem mob){
+        if(route==null||route.isBlank()||route.length()>200)return false;
+        int x=startX,z=startZ;
+        for(char step:route.toCharArray()){
+            int[] ahead;
+            try{ahead=next(x,z,step);}
+            catch(IllegalArgumentException invalid){return false;}
+            if(!physicalCellOpen(helper,world,mob,ahead[0],ahead[1])
+                    ||!bodySweepClear(helper,world,mob,
+                            x,z,ahead[0],ahead[1]))
+                return false;
+            if(ahead[0]!=x&&ahead[1]!=z
+                    &&!diagonalBodyClear(helper,world,mob,
+                            x,z,ahead[0],ahead[1]))return false;
+            x=ahead[0];z=ahead[1];
+        }
+        return MAZE[z].charAt(x)=='G';
+    }
+
     private static List<Candidate> spawnGeneration(GameTestHelper helper,
             List<Genome> genomes,Map<Edge,Integer> blockMemory,
             NavigationStrategyMemory strategyMemory,boolean validation,
-            List<NavigationStrategyMemory.Strategy> frozenStrategies){
+            List<NavigationStrategyMemory.Strategy> frozenStrategies,
+            List<NavigationStrategyMemory.Strategy> inheritedStrategies,
+            List<String> inheritedRoutes,List<Integer> familyOrigins){
         ServerLevel world=helper.getLevel();
         List<Candidate> bots=new ArrayList<>();
         Map<Integer,Double> slabEntryReservations=new HashMap<>();
@@ -1174,8 +1202,25 @@ public final class BuilderEvolutionAltCourseGameTest {
             Genome genome=genomes.get(slot);
             StrategyPlan plan=chooseStrategy(start[0],start[1],genome,
                     blockMemory,helper,world,mob,slabEntryReservations,
-                    strategyMemory,validation,frozenStrategies.isEmpty()?null:frozenStrategies.get(slot));
-            Candidate b=new Candidate(slot,mob,plan.route(),
+                    strategyMemory,validation,
+                    !frozenStrategies.isEmpty()?frozenStrategies.get(slot):
+                    inheritedStrategies.size()==SELECTED_BOTS.length
+                            ?inheritedStrategies.get(slot):null);
+            String route=plan.route();
+            // The exact three parents retain their own proven physical
+            // route whenever the current world's collision model permits.
+            // The other six carry parent route INTENT and independently
+            // replan legal entrances from different spawn positions.
+            if(familyOrigins.size()==SELECTED_BOTS.length
+                    &&familyOrigins.get(slot)==slot
+                    &&inheritedRoutes.size()==SELECTED_BOTS.length
+                    &&inheritedRouteLegal(start[0],start[1],
+                            inheritedRoutes.get(slot),helper,world,mob)){
+                route=inheritedRoutes.get(slot);
+                System.out.println("[ALT EXACT PARENT ROUTE] slot="+slot
+                        +" preserved="+route);
+            }
+            Candidate b=new Candidate(slot,mob,route,
                     start[0],start[1],genome,blockMemory);
             b.strategyContext=plan.context();
             b.strategyDecision=plan.decision();
@@ -2665,7 +2710,9 @@ public final class BuilderEvolutionAltCourseGameTest {
             if(consistencyMode&&generation%6==0)
                 blockBindings=ruleMemory.bindings();
             bots=spawnGeneration(helper,generationGenes,collisionMemory,
-                    strategyMemory,strategyValidation,consistencyMode?frozenStrategies:List.of());
+                    strategyMemory,strategyValidation,
+                    consistencyMode?frozenStrategies:List.of(),
+                    generationStrategies,generationRoutes,generationFamilyOrigins);
             if(consistencyMode){
                 if(frozenStrategies.isEmpty())frozenStrategies=bots.stream()
                         .map(b->b.strategyDecision.strategy()).toList();
