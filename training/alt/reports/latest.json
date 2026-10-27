@@ -1,5 +1,5 @@
 {
-  "runId": "40567353515",
+  "runId": "40568092138",
   "mode": "evolve",
   "trials": 3,
   "physicalGenerations": 72,
@@ -24,7 +24,7 @@
     {
       "slot": 4,
       "fitness": 100840.0,
-      "generation": 2164
+      "generation": 2138
     },
     {
       "slot": 1,
@@ -35,12 +35,12 @@
   "historicChampionSlowestTicks": 236,
   "totals": {
     "doorPlans": 78,
-    "doorCrossings": 69,
+    "doorCrossings": 68,
     "collisions": 1,
-    "jumps": 73,
-    "slabAscents": 1269,
+    "jumps": 71,
+    "slabAscents": 1263,
     "slabEntryStalls": 0,
-    "trafficReplans": 173
+    "trafficReplans": 168
   },
   "hasSlabTelemetry": true,
   "perTrial": [

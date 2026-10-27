@@ -1,7 +1,7 @@
 # Builder Golem physical training — latest results
 
-**GitHub Actions:** https://github.com/CaszGamerMD/golems_plus/actions/runs/40567353515
-**Run ID:** 40567353515
+**GitHub Actions:** https://github.com/CaszGamerMD/golems_plus/actions/runs/40568092138
+**Run ID:** 40568092138
 **Mode:** evolve | **Course:** existing alt course | **Real entities:** 10 per generation
 
 ## Results
@@ -17,9 +17,9 @@
 
 ## Physical movement signals
 
-- Slab ascents: **1269**; slab-entry stalls: **0**.
-- Door plans: **78**; door crossing attempts: **69**.
-- Collision events: **1**; jump events: **73**; traffic replans: **173**.
+- Slab ascents: **1263**; slab-entry stalls: **0**.
+- Door plans: **78**; door crossing attempts: **68**.
+- Collision events: **1**; jump events: **71**; traffic replans: **168**.
 
 ## Trial breakdown
 
