@@ -115,6 +115,11 @@ jobs:
           assert 'trafficRecoveryTicks' in test
           assert 'ordered.sort(Comparator' in test
           assert 'physicalCellOpen(helper,world,mob,x,z)' in test
+          assert 'realControllerWalksEntireWideSlabFieldOffCenter' in test
+          assert 'realControllerWalksOuterSlabLaneWithoutCornerClipping' in test
+          assert 'boolean nativeSlabAscent=cardinalApproach' in test
+          assert 'b.successfulSlabAscents++' in test
+          assert 'slabEntryStalls' in test
           assert 'realBuilderRejectsLowCeilingSlabButCanUseOpenHalfSlab' in test
           assert 'realBuilderCrossesExistingSingleOpenBirchDoor' in test
           assert 'realBuilderOpensClosedDoorAndWalksThrough' in test
