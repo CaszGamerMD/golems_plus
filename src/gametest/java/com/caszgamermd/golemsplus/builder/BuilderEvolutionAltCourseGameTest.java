@@ -770,7 +770,15 @@ public final class BuilderEvolutionAltCourseGameTest {
                 // Preserve all real collision memories but do not let
                 // historic congestion permanently forbid a geometrically
                 // legal half-slab crossing or the single door.
-                weight+=Math.min(10,realBlockFailures.getOrDefault(edge,0)*.40);
+                BlockState fromFoot=world.getBlockState(pos(helper,node.x(),2,node.z()));
+                BlockState toFoot=world.getBlockState(pos(helper,x,2,z));
+                boolean checkedBottomSlab=
+                        fromFoot.getBlock() instanceof SlabBlock
+                            &&fromFoot.getValue(SlabBlock.TYPE)==SlabType.BOTTOM
+                        ||toFoot.getBlock() instanceof SlabBlock
+                            &&toFoot.getValue(SlabBlock.TYPE)==SlabType.BOTTOM;
+                if(!checkedBottomSlab)
+                    weight+=Math.min(10,realBlockFailures.getOrDefault(edge,0)*.40);
                 RouteNode nextNode=new RouteNode(x,z,direction);
                 double cost=current.cost()+weight;
                 if(cost>=best.getOrDefault(nextNode,Double.POSITIVE_INFINITY))
