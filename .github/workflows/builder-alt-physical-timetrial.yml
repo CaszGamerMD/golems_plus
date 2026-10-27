@@ -98,6 +98,12 @@ jobs:
           assert 'physicalCellOpen(helper,world,mob,x,z)' in test
           assert 'realBuilderRejectsLowCeilingSlabButCanUseOpenHalfSlab' in test
           assert 'realBuilderCrossesExistingSingleOpenBirchDoor' in test
+          assert 'realBuilderOpensClosedDoorAndWalksThrough' in test
+          assert 'openDoorFromReach(world,mob,target)' in test
+          assert 'updateKnowledgePool(this,b)' in test
+          assert 'parents=knowledgePool.stream()' in test
+          assert 'obj.add("knowledgePool",pool)' in test
+          assert 'if(i<parents.size())offspring.add(parents.get(i))' in test
           # Stepping up 0.5 blocks needs the native downward ground
           # probe; the old check incorrectly required zero vertical
           # movement and would reject the already-tested slab fix.
