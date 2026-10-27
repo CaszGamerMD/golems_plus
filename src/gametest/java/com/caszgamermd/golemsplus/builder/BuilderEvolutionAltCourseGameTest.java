@@ -2195,7 +2195,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         mob.setPos(at.getX()+.5,at.getY(),at.getZ()+.5);
         world.addFreshEntity(mob);
         String route=planRoute(16,5,SAVED_PHYSICAL_CHAMPIONS[0],
-                Map.of(),helper,world,mob);
+                Map.of(new Edge(16,5,15,5),100,new Edge(9,5,8,5),100),helper,world,mob);
         int x=16,z=5,field=0;
         for(int i=0;i<route.length();i++){
             int[] nextStep=next(x,z,route.charAt(i));
