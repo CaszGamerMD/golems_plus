@@ -865,10 +865,28 @@ public final class BuilderEvolutionAltCourseGameTest {
             double ahead=rx*dirX+rz*dirZ;
             double lateral=Math.abs(rx*dirZ-rz*dirX);
             if(lateral>=.68)continue;
-            // A peer already ahead of us owns its position. Stay
-            // 0.70 blocks apart horizontally: slightly more than
-            // the true 0.65 collision diameter, not an entire tile.
-            if(ahead>.03&&ahead<1.3){
+            // Other golems are NOT a line of traffic just because
+            // they are nearby. At the GREEN starting area the lanes
+            // cross and sometimes face OPPOSITE directions. The old
+            // broad 'ahead' test froze eight of ten real golems.
+            // First inspect the peer's own CURRENT route heading.
+            if(peer.cursor>=peer.route.length())continue;
+            int[] peerTarget=next(peer.x,peer.z,
+                    peer.route.charAt(peer.cursor));
+            double peerDx=peerTarget[0]+.5
+                    -(peer.mob.getX()-peer.originX);
+            double peerDz=peerTarget[1]+.5
+                    -(peer.mob.getZ()-peer.originZ);
+            double peerLength=Math.hypot(peerDx,peerDz);
+            if(peerLength<.00001)continue;
+            double headingAgreement=(peerDx*dirX+peerDz*dirZ)
+                    /peerLength;
+            // Queue only in the SAME lane, moving toward the same
+            // destination. Side-by-side, head-on and crossing golems
+            // must NOT wait for one another until their real body
+            // envelopes genuinely overlap.
+            if(headingAgreement>.80&&lateral<.42
+                    &&ahead>.03&&ahead<1.30){
                 double legal=Math.max(0,ahead-.70);
                 if(legal<allowance){
                     allowance=legal;
@@ -876,10 +894,10 @@ public final class BuilderEvolutionAltCourseGameTest {
                     queue=true;
                     yieldingFor=peer.index;
                 }
-            }else if(ahead>=-.12&&gap<.75){
-                // Two players approach the same corner sideways:
-                // grant fixed deterministic right-of-way and avoid
-                // mirror-image attempts to escape simultaneously.
+            }else if(gap<.63&&ahead>-.12){
+                // Already within the real 0.65-wide body diameter:
+                // only then assign crossing right-of-way, breaking
+                // mirrored reactions with a fixed tie-breaker.
                 double priority=remainingPathMeters(peer);
                 if(priority<ownPriority-.01
                         ||(Math.abs(priority-ownPriority)<.01
@@ -1738,6 +1756,14 @@ public final class BuilderEvolutionAltCourseGameTest {
         first.originX=a.getX()-6;first.originZ=a.getZ()-3;
         second.originX=first.originX;second.originZ=first.originZ;
         List<Candidate> crew=List.of(first,second);
+        // Opposite-direction traffic 0.8 blocks away is NOT a
+        // same-lane queue. Regression for the original green start
+        // positions: never freeze opposing walkers prematurely.
+        if(coordinateTraffic(first,crew,.2,0).queue()){
+            helper.fail("Opposite-direction golems were misidentified"
+                    +" as same-lane followers");
+            lead.discard();follow.discard();return;
+        }
         final int[] ticks={0},yielded={0};
         helper.onEachTick(()->{
             if(ticks[0]++>=15){
