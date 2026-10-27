@@ -13,6 +13,8 @@ on:
       - src/main/java/com/caszgamermd/golemsplus/builder/BuilderChunkTickets.java
       - scripts/tests/test_navigation_local_rules.py
       - scripts/tests/test_navigation_strategy_memory.py
+      - scripts/report_alt_physical_results.py
+      - scripts/tests/test_report_alt_physical_results.py
       - .github/workflows/builder-alt-physical-timetrial.yml
       - scripts/export_alt_mobile_replays.py
       - scripts/tests/test_export_alt_mobile_replays.py
