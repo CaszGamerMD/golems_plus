@@ -746,9 +746,17 @@ public final class BuilderEvolutionAltCourseGameTest {
                 // The cap keeps every A* edge positive (>=0.20) and
                 // the actual 10 real golems decide the winning policy
                 // with physical arrival fitness, not expected geometry.
-                if(tile=='D')
-                    weight-=Math.max(-.80,Math.min(.80,
-                            dna.doorBias()*5.0));
+                if(tile=='D'){
+                    // A one-block OPEN door can be physically legal
+                    // but much SLOWER than bare ground: the last
+                    // real-door experiment finished none of its five
+                    // door-using golems before tick 260. Account for
+                    // the narrow leaf alignment using a modest 2.5m
+                    // traversal cost, modulated by the saved mutable
+                    // preference. Never forbid the door completely.
+                    weight+=2.5-Math.max(-.3,Math.min(.3,
+                            dna.doorBias()*2.0));
+                }
                 // Deterministic genetic corridor preferences. Small
                 // positive perturbations prevent repeatedly selecting
                 // exactly the same equally costly route across a crew.
@@ -808,7 +816,14 @@ public final class BuilderEvolutionAltCourseGameTest {
             Genome dna,Map<Edge,Integer> memory,GameTestHelper helper,
             ServerLevel world,BuilderGolem mob){
         String direct=planRoute(startX,startZ,dna,memory,helper,world,mob);
-        if(dna.doorBias()<=.075)return direct;
+        // The speed-qualification suite must not force an unproven
+        // detour into every promising team. A* remains free to PICK
+        // open doors based on geometry and measured penalty. The
+        // separate exploration mode explicitly tests door variants
+        // against that baseline without polluting qualification.
+        if(!"explore".equalsIgnoreCase(
+                    System.getenv("GOLEMS_EVOLUTION_MODE"))
+                ||dna.doorBias()<=.075)return direct;
         for(int z=1;z<MAZE.length-1;z++)
             for(int x=1;x<MAZE[z].length()-1;x++){
                 if(MAZE[z].charAt(x)!='D'
@@ -2155,6 +2170,43 @@ public final class BuilderEvolutionAltCourseGameTest {
      * horizontally onto, ACROSS and off the original bottom slabs.
      * A continuous slab surface does not require jumping or detours.
      */
+    /**
+     * Full-maze route discovery: slab savings must be usable all the
+     * way to the GREEN finish without turning the successful shortcut
+     * into a forced slow walk through the birch door at z=10.
+     * We still independently test door accessibility and can explore
+     * it using GOLEMS_EVOLUTION_MODE=explore.
+     */
+    @GameTest(maxTicks=120,padding=64,skyAccess=true)
+    public void realBuilderFindsGlobalBottomSlabShortcutWithoutDoor(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos at=pos(helper,16,2,5);
+        mob.setPos(at.getX()+.5,at.getY(),at.getZ()+.5);
+        world.addFreshEntity(mob);
+        String route=planRoute(16,5,SAVED_PHYSICAL_CHAMPIONS[0],
+                Map.of(),helper,world,mob);
+        int x=16,z=5,field=0;
+        for(int i=0;i<route.length();i++){
+            int[] nextStep=next(x,z,route.charAt(i));
+            x=nextStep[0];z=nextStep[1];
+            if(x>=6&&x<=8&&z>=2&&z<=7)field++;
+        }
+        boolean door=routeEntersDoor(16,5,route);
+        System.out.println("[ALT GLOBAL SLAB ROUTING] field="+field
+                +" door="+door+" steps="+route.length()
+                +" route="+route);
+        if(field<2||door||MAZE[z].charAt(x)!='G'){
+            helper.fail("Global A* failed to exploit physical slab"
+                    +" shortcut without wasting time at the door:"
+                    +" field="+field+" door="+door
+                    +" route="+route);
+        }else helper.succeed();
+        mob.discard();
+    }
+
     @GameTest(maxTicks=115,padding=64,skyAccess=true)
     public void realBuilderWalksAcrossWideBottomSlabField(
             GameTestHelper helper){
