@@ -2380,8 +2380,13 @@ public final class BuilderEvolutionAltCourseGameTest {
         List<Genome> frozenPopulation=List.of();
         List<NavigationStrategyMemory.Strategy> frozenStrategies=List.of();
         Map<String,NavigationRuleMemory.Binding> blockBindings=Map.of();
-        final boolean consistencyMode=!"evolve".equalsIgnoreCase(System.getenv("GOLEMS_EVOLUTION_MODE"))
-                &&!"validate".equalsIgnoreCase(System.getenv("GOLEMS_EVOLUTION_MODE"));
+        // An absent mode must TRAIN, not silently freeze all ten genes.
+        // Matched-rule consistency and historical validation are explicit
+        // experiments; they never masquerade as evolutionary progress.
+        final String trainingMode=System.getenv("GOLEMS_EVOLUTION_MODE")==null
+                ?"evolve":System.getenv("GOLEMS_EVOLUTION_MODE");
+        final boolean consistencyMode="consistency".equalsIgnoreCase(trainingMode)
+                ||"validate".equalsIgnoreCase(trainingMode);
         final List<Integer> comparisonFinishes=new ArrayList<>();
         String comparisonFingerprint;
         final Genome[] champions=new Genome[SELECTED_BOTS.length];
@@ -2393,8 +2398,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         boolean ended;
         final String strategySession=System.getenv("GOLEMS_EVOLUTION_SESSION")==null
                 ?"local-"+java.util.UUID.randomUUID():System.getenv("GOLEMS_EVOLUTION_SESSION");
-        final boolean strategyValidation=consistencyMode||"validate".equalsIgnoreCase(
-                System.getenv("GOLEMS_EVOLUTION_MODE"));
+        final boolean strategyValidation=consistencyMode;
         long generationStart=0;
         int bestFinished=0;
         int bestFinishedThisSession=0,targetQualifiedRounds;
@@ -2416,6 +2420,11 @@ public final class BuilderEvolutionAltCourseGameTest {
             // Preserve real progress from PREVIOUS GitHub Actions runs.
             // No headless scores may seed or qualify the physical test.
             TrainingMemory.restore(this);
+            System.out.println("[ALT TRAINING MODE] "+trainingMode
+                    +" frozenComparison="+consistencyMode
+                    +" independentLearning="+!consistencyMode
+                    +" existingGenerations="+completedGenerations
+                    +" savedIndividualElites="+knowledgePool.size());
             if(pendingExploration.isEmpty())pendingExploration=new ArrayList<>(generationGenes);
             if(consistencyMode){
                 if(frozenPopulation.isEmpty())frozenPopulation=new ArrayList<>(
