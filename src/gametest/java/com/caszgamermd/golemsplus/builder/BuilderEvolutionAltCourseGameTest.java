@@ -2448,10 +2448,14 @@ public final class BuilderEvolutionAltCourseGameTest {
             };
         }
         private void startRound(){
-            if(consistencyMode){
-                fillOriginalCourse(helper); // exact fixture reset BETWEEN trials only
-                if(generation%6==0)blockBindings=ruleMemory.bindings();
-            }
+            // Restore the EXACT original geometry for each generation,
+            // not just the frozen-rule control runs. A previous worker
+            // may have opened a wooden door; its state must not leak into
+            // another generation and change the next population's trial.
+            // Generation zero was already built by the enclosing GameTest.
+            if(generation>0)fillOriginalCourse(helper);
+            if(consistencyMode&&generation%6==0)
+                blockBindings=ruleMemory.bindings();
             bots=spawnGeneration(helper,generationGenes,collisionMemory,
                     strategyMemory,strategyValidation,consistencyMode?frozenStrategies:List.of());
             if(consistencyMode){
