@@ -115,7 +115,7 @@ public final class NavigationStrategyMemory {
                 chosen=strategy;
                 best=candidate.meanReward();
                 bestPaceGain=paceGain;
-                reason=faster?"faster-physical-arrivals":"repeated-outcomes";
+                reason=reliable?"repeated-outcomes":"faster-physical-arrivals";
             }
         }
         int decisions=0;
