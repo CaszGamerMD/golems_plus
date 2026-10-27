@@ -1,4 +1,5 @@
 name: 13s VANILLA alternate track — 10 actual Builder Golems
+# Qualification run: re-test the preserved real-entity winning cohort in three unchanged alt-track trials; no navigation/genes altered.
 
 on:
   push:
