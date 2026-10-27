@@ -961,6 +961,21 @@ public final class BuilderEvolutionAltCourseGameTest {
         return false;
     }
 
+    /** A physically planned route enters a continuous 0.5-high slab
+     * surface before reaching a wooden door. No saved coordinates or
+     * movement instructions are supplied to the navigation policy.
+     */
+    private static boolean routeCrossesSlabsThenDoor(int fromX,int fromZ,
+                                                     String route){
+        int x=fromX,z=fromZ,slabCells=0;
+        for(char step:route.toCharArray()){
+            int[] ahead=next(x,z,step);x=ahead[0];z=ahead[1];
+            if(MAZE[z].charAt(x)=='^')slabCells++;
+            if(MAZE[z].charAt(x)=='D')return slabCells>=2;
+        }
+        return false;
+    }
+
     /**
      * Genetic alternative-route sampling through DISCOVERED open doors.
      * A* normally returns only one cheapest plan, starving evolution
@@ -1050,8 +1065,13 @@ public final class BuilderEvolutionAltCourseGameTest {
         String doorRoute=exploratoryRoute(x,z,dna,blockMemory,helper,world,mob,
                 congestion,true);
         boolean door=routeEntersDoor(x,z,doorRoute);
-        if(door&&!options.containsValue(doorRoute))
+        if(door&&!options.containsValue(doorRoute)){
             options.put(NavigationStrategyMemory.Strategy.DOOR,doorRoute);
+            System.out.println("[ALT SLAB DOOR CANDIDATE] traversesSlabsThenDoor="
+                    +routeCrossesSlabsThenDoor(x,z,doorRoute)
+                    +" doorRouteMeters="+routeMeters(doorRoute)
+                    +" directMeters="+routeMeters(direct));
+        }
         // Abstract geometry/traffic only: no starting slot, coordinates,
         // route string, course ID or historical successful route in the key.
         int slabs=0,turns=0,px=x,pz=z;char last='?';
@@ -1141,7 +1161,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                     start[0],start[1],b.route);
             if(b.initialRouteUsesDoor)
                 System.out.println("[ALT OPEN DOOR OPTION] slot="+slot
-                        +" planner discovered a usable wooden door route");
+                        +" planner discovered a usable wooden door route"
+                        +" slabsBeforeDoor="+routeCrossesSlabsThenDoor(
+                                start[0],start[1],b.route));
             b.captureMovement(0);
             bots.add(b);
         }
