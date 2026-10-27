@@ -66,7 +66,7 @@ class PhysicalResultsReporterTests(unittest.TestCase):
         self.assertIn("No scored generations found", md)
         self.assertIn("Training retention warning", md)
         self.assertIn("Experience retention warning", md)
-        self.assertNotIn("Best 13s (260 ticks): 9/10", md)
+        self.assertNotIn("Best 13s (260 ticks): 9/9", md)
 
     def test_rejects_fake_or_inconsistent_physical_crew_count(self):
         with TemporaryDirectory() as d:
@@ -74,7 +74,7 @@ class PhysicalResultsReporterTests(unittest.TestCase):
             path.write_text(row(0, 4, 5) + "\n")
             with self.assertRaisesRegex(ValueError, "Inconsistent"):
                 read_trials(Path(d))
-            path.write_text(row(0, 4, 2).replace("realBuilderGolems=10",
+            path.write_text(row(0, 4, 2).replace("realBuilderGolems=9",
                                                  "realBuilderGolems=9")+"\n")
             with self.assertRaisesRegex(ValueError, "Invalid physical-crew"):
                 read_trials(Path(d))
