@@ -1,4 +1,4 @@
-name: 11.2s goal on real alt track — 10 actual Builder Golems (13s baseline preserved)
+name: 11.2s goal on real alt track — 9 real Builder Golems, three parent families
 # Normal CI performs REAL individual evolution; matched local-rule comparisons are opt-in.
 
 on:
@@ -65,6 +65,9 @@ jobs:
           python3 -m unittest discover -s scripts/tests -p test_export_alt_mobile_replays.py -v
           python3 -m unittest discover -s scripts/tests -p test_export_alt_bounded_replays.py -v
           python3 -m unittest discover -s scripts/tests -p test_report_alt_physical_results.py -v
+          python3 -m unittest discover -s scripts/tests -p test_export_alt_nine_mobile.py -v
+          python3 -m unittest discover -s scripts/tests -p test_report_alt_nine_results.py -v
+          python3 -m unittest discover -s scripts/tests -p test_merge_alt_nine_state.py -v
       - name: Isolate the real-entity training course from other GameTest arenas
         run: |
           python3 - <<'PY'
@@ -79,7 +82,7 @@ jobs:
           manifest['entrypoints']['fabric-gametest']=[required]
           p.write_text(json.dumps(manifest,indent=2)+'\n')
           PY
-      - name: Verify 10 physical BuilderGolem entrants and registration
+      - name: Verify 9 real BuilderGolem entrants and three parent families
         run: |
           python3 - <<'PY'
           import json
@@ -91,11 +94,16 @@ jobs:
           test=Path('src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderEvolutionAltCourseGameTest.java').read_text()
           assert 'new BuilderGolem(' in test
           assert 'private static final int DEADLINE=260;' in test
-          assert 'SELECTED_BOTS.length!=10' in test
+          assert 'SELECTED_BOTS.length!=9' in test
+          assert 'breedFamilies(knowledgePool,rng,SELECTED_BOTS.length)' in test
+          assert 'if(winners.size()!=3||size!=9)' in test
+          assert 'for(int clone=0;clone<2;clone++)' in test
+          assert 'obj.add("nextStrategies"' in test
+          assert 'inheritedRouteLegal(' in test
           assert '0,2,4,6,8,11,13,15,17,19' in test
           assert 'if(finished==bots.size()){' in test
           assert 'helper.succeed();return;' in test
-          assert 'Physical evolution did not qualify all 10' in test
+          assert 'Physical evolution did not qualify all 9' in test
           assert 'private static final int SPEED_TARGET_TICKS=224;' in test
           assert 'finish11_2s=' in test
           assert 'StrategyPlan plan=chooseStrategy(start[0],start[1],genome,' in test
@@ -131,10 +139,10 @@ jobs:
           assert '&&!enteringDoorCell&&!leavingDoorCell' in test
           assert 'openDoorFromReach(world,mob,target)' in test
           assert 'updateKnowledgePool(this,b)' in test
-          assert 'parents=knowledgePool.stream()' in test
+          assert 'knowledgePool.clear();' in test
           assert 'obj.add("knowledgePool",pool)' in test
-          assert 'if(elite!=null)offspring.add(elite.dna())' in test
-          assert 'generationGenes=pinElites(generationGenes,knowledgePool)' in test
+          assert 'genes.set(slot,parent.dna());' in test
+          assert 'generationStrategies=new ArrayList<>(families.policies())' in test
           assert 'strategyMemory,strategyValidation' in test
           assert 'strategyMemory.observe(new NavigationStrategyMemory.Observation(' in test
           assert 'checkpoint.has("strategyMemory")' in test
@@ -149,27 +157,28 @@ jobs:
           # movement and would reject the already-tested slab fix.
           assert 'double nativeGroundProbe=grounded' in test
           assert 'mob.move(MoverType.SELF,new Vec3(vx,nativeGroundProbe,vz))' in test
-          print('Physical evolution gate: 10 live BuilderGolem entities per 260-tick generation, genetics from actual collisions')
+          print('Physical family evolution gate: 9 live Builder Golems, three unchanged parents and 6 physical mutations')
           PY
       - name: Mandatory 260-tick real Minecraft golem trial
         shell: bash
         env:
-          GOLEMS_EVOLUTION_STATE_DIR: ${{ github.workspace }}/training/alt/state
-          GOLEMS_EVOLUTION_REPLAY_DIR: ${{ github.workspace }}/training/alt/replays/live
+          GOLEMS_EVOLUTION_STATE_DIR: ${{ github.workspace }}/training/alt/state-nine
+          GOLEMS_EVOLUTION_REPLAY_DIR: ${{ github.workspace }}/training/alt/replays/live-nine
           GOLEMS_EVOLUTION_MODE: ${{ github.event.inputs.mode || 'evolve' }}
         run: |
           set -o pipefail
-          mkdir -p build/timetrial-training training/alt/replays/live
+          mkdir -p build/timetrial-training training/alt/replays/live-nine training/alt/state-nine
           echo "Physical training mode: ${GOLEMS_EVOLUTION_MODE}"
           # Capture baseline to prove we saved NEW physical observations,
           # not merely copied another non-learning checkpoint unchanged.
           python3 - <<'PY'
           import json
           from pathlib import Path
-          state=json.loads(Path('training/alt/state/checkpoint.json').read_text())
+          state_path=Path('training/alt/state-nine/checkpoint.json')
+          state=json.loads(state_path.read_text()) if state_path.exists() else {}
           Path('build/timetrial-training/original-state.json').write_text(
               json.dumps({
-                  'completedGenerations': state['completedGenerations'],
+                  'completedGenerations': state.get('completedGenerations',0),
                   'strategyObservations': len(state.get('strategyMemory',{}).get('observations',[])),
                   'personalScores': state.get('personalScores', []),
                   'knowledgePool': state.get('knowledgePool', [])
@@ -197,13 +206,17 @@ jobs:
           from pathlib import Path
           root=Path('build/timetrial-training')
           original=json.loads((root/'original-state.json').read_text())
-          latest=json.loads(Path('training/alt/state/checkpoint.json').read_text())
+          latest=json.loads(Path('training/alt/state-nine/checkpoint.json').read_text())
           assert latest['completedGenerations'] > original['completedGenerations'], (
               'Training did not advance physical generations')
           assert len(latest['strategyMemory']['observations']) > original['strategyObservations'], (
               'Training did not collect independent physical strategy episodes')
           assert 1 <= len(latest['knowledgePool']) <= 3
-          assert len(latest['nextPopulation']) == 10
+          assert len(latest['nextPopulation']) == 9
+          assert len(latest['knowledgePool']) == 3
+          assert latest['familyModel'] == 'three-parents-two-mutated-children-v1'
+          from collections import Counter
+          assert sorted(Counter(latest['nextFamilyOrigins']).values()) == [3,3,3]
           assert any('[ALT INDEPENDENT LEARNING]' in log.read_text()
                      for log in root.glob('real-builder-trial-*.log')), (
                          'Frozen consistency mode accidentally ran instead of evolution')
@@ -221,14 +234,14 @@ jobs:
         env:
           GOLEMS_EVOLUTION_MODE: ${{ github.event.inputs.mode || 'evolve' }}
         run: |
-          python3 scripts/report_alt_physical_results.py \
+          python3 scripts/report_alt_nine_results.py \
             --run-id "${GITHUB_RUN_ID}" \
             --out training/alt/reports/latest.md \
             --json-out training/alt/reports/latest.json
       - name: Build bounded 3-bundle replay viewers from real physical traces
         if: always()
         run: |
-          python3 scripts/export_alt_mobile_replays.py --batches 3
+          python3 scripts/export_alt_nine_mobile.py --batches 3
           # Both phone and desktop addresses use the same compact viewer.
           # Never embed the raw 90+ MiB historical replay archive again.
           cp training/alt/replays/mobile-viewer.html training/alt/replays/route-viewer.html
@@ -236,7 +249,7 @@ jobs:
         if: always() && (github.head_ref == 'feature/builder-evolutionary-alt-course-262' || github.ref == 'refs/heads/feature/builder-evolutionary-alt-course-262') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         shell: bash
         run: |
-          if [[ ! -s training/alt/state/checkpoint.json ]]; then
+          if [[ ! -s training/alt/state-nine/checkpoint.json ]]; then
             echo 'No new real-entity checkpoint was produced.'
             exit 0
           fi
@@ -245,10 +258,10 @@ jobs:
           # Protect new genetic improvements from stale CI checkouts:
           # merge results with LATEST remote champion/state before commit.
           local_state="$(mktemp -d)"
-          cp -a training/alt/state/. "$local_state/"
+          cp -a training/alt/state-nine/. "$local_state/"
           replay_backup="$(mktemp -d)"
-          if [[ -d training/alt/replays/live ]]; then
-            cp -a training/alt/replays/live/. "$replay_backup/"
+          if [[ -d training/alt/replays/live-nine ]]; then
+            cp -a training/alt/replays/live-nine/. "$replay_backup/"
           fi
           report_backup="$(mktemp -d)"
           if [[ -f training/alt/reports/latest.md && -f training/alt/reports/latest.json ]]; then
@@ -259,7 +272,7 @@ jobs:
           # The GameTest workflow temporarily edits its Fabric test
           # manifest, and training edits tracked checkpoint files.
           # Reset this disposable checkout AFTER copying new learning.
-          rm -rf training/alt/state
+          rm -rf training/alt/state-nine
           # A newer training job may already have committed reports at
           # these paths. Their untracked local copies otherwise abort
           # git checkout BEFORE checkpoint merge, losing all new DNA.
@@ -269,23 +282,23 @@ jobs:
           for attempt in 1 2 3; do
             git fetch origin "${TRAINING_BRANCH}"
             git checkout -B physical-training-publish "origin/${TRAINING_BRANCH}"
-            python3 scripts/merge_alt_evolution_state.py "$local_state" training/alt/state
-            mkdir -p training/alt/replays/live
-            cp -an "$replay_backup/." training/alt/replays/live/
+            python3 scripts/merge_alt_nine_state.py "$local_state" training/alt/state-nine
+            mkdir -p training/alt/replays/live-nine
+            cp -an "$replay_backup/." training/alt/replays/live-nine/
             mkdir -p training/alt/reports/
             if [[ -f "$report_backup/latest.md" && -f "$report_backup/latest.json" ]]; then
               cp "$report_backup/latest.md" "$report_backup/latest.json" training/alt/reports/
             fi
             # Publish exactly the latest THREE run bundles after merging,
             # with identical bounded HTML at the mobile and desktop links.
-            python3 scripts/export_alt_mobile_replays.py --batches 3
+            python3 scripts/export_alt_nine_mobile.py --batches 3
             cp training/alt/replays/mobile-viewer.html training/alt/replays/route-viewer.html
-            git add -- training/alt/state/ training/alt/replays/live/ training/alt/reports/ training/alt/replays/mobile-viewer.html training/alt/replays/mobile-data.json training/alt/replays/route-viewer.html
+            git add -- training/alt/state-nine/ training/alt/replays/live-nine/ training/alt/reports/ training/alt/replays/mobile-viewer.html training/alt/replays/mobile-data.json training/alt/replays/route-viewer.html
             if git diff --cached --quiet; then
               echo 'No improved state over current remote.'
               exit 0
             fi
-            git commit -m 'Preserve real Builder Golem mutations and best 10-of-10 champion [skip ci]'
+            git commit -m 'Preserve nine-worker three-parent breeding and physical navigation evidence [skip ci]'
             if git push origin HEAD:"${TRAINING_BRANCH}"; then
               echo 'Checkpoint, champion, and history are durable on GitHub.'
               exit 0
@@ -300,10 +313,10 @@ jobs:
         with:
           name: builder-13-second-physical-entity-diagnostics
           path: |
-            training/alt/state/
+            training/alt/state-nine/
             build/timetrial-training/real-builder-trial-*.log
             training/alt/reports/
-            training/alt/replays/live/
+            training/alt/replays/live-nine/
             training/alt/replays/mobile-viewer.html
             training/alt/replays/route-viewer.html
             training/alt/replays/mobile-data.json
