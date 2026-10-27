@@ -550,13 +550,20 @@ public final class BuilderEvolutionAltCourseGameTest {
                 ||MAZE[toZ].charAt(toX)=='D')return true;
         double before=standingY(helper,world,fromX,fromZ);
         double after=standingY(helper,world,toX,toZ);
-        if(Math.abs(before-after)>.01)return true;
+        // Precise alignment is essential while stepping ON or OFF a slab,
+        // but a broad, same-height slab plateau is ordinary walkable floor.
+        // Treating EVERY slab tile as a precision obstacle forces a near
+        // full stop at each cell center and wastes the shortcut's benefit.
+        // Keep conservative steering by actual height transitions, slab
+        // edges and low overhead clearance, not by floor block identity.
+        if(Math.abs(before-after)>.01
+                ||nearGroundSlabEdge(helper,world,fromX,fromZ)
+                ||nearGroundSlabEdge(helper,world,toX,toZ))
+            return true;
         for(int[] p:new int[][]{{fromX,fromZ},{toX,toZ}}){
             BlockPos cell=pos(helper,p[0],2,p[1]);
-            BlockState floor=world.getBlockState(cell);
             BlockState head=world.getBlockState(cell.above());
-            if(floor.getBlock() instanceof SlabBlock
-                    ||head.getBlock() instanceof SlabBlock)
+            if(head.getBlock() instanceof SlabBlock)
                 return true;
             // A ceiling-slab next to a narrow opening can be
             // hazardous even when the destination center is clear.
@@ -2150,6 +2157,12 @@ public final class BuilderEvolutionAltCourseGameTest {
                 6,4,7,5);
         boolean edgeDiagonal=diagonalBodyClear(helper,world,mob,
                 9,4,8,5);
+        // Stepping up and back down needs careful hitbox alignment;
+        // cruising across two fully supported open-air slab tiles does not.
+        // This guards against restoring an expensive per-slab slowdown.
+        boolean plateauCruise=!precisionTransition(helper,world,7,4,7,5);
+        boolean stepUpPrecision=precisionTransition(helper,world,9,5,8,5);
+        boolean stepDownPrecision=precisionTransition(helper,world,8,5,9,5);
         String planned=planRouteTo(9,5,SAVED_PHYSICAL_CHAMPIONS[0],
                 Map.of(new Edge(9,5,8,5),100),helper,world,mob,5,5);
         int x=9,z=5,slabCount=0;
@@ -2161,8 +2174,12 @@ public final class BuilderEvolutionAltCourseGameTest {
         System.out.println("[ALT WIDE SLAB ROUTING] route="+planned
                 +" slabCount="+slabCount
                 +" levelDiagonal="+plateauDiagonal
-                +" illegalEdgeDiagonal="+edgeDiagonal);
-        if(!plateauDiagonal||edgeDiagonal||slabCount<3
+                +" illegalEdgeDiagonal="+edgeDiagonal
+                +" plateauCruise="+plateauCruise
+                +" stepUpPrecision="+stepUpPrecision
+                +" stepDownPrecision="+stepDownPrecision);
+        if(!plateauDiagonal||edgeDiagonal||!plateauCruise
+                ||!stepUpPrecision||!stepDownPrecision||slabCount<3
                 ||planned.length()>6||x!=5||z!=5)
             helper.fail("Pathfinder is still avoiding safe slab"
                 +" shortcut, or allowing a blocked half-slab corner:"
