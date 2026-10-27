@@ -1,4 +1,5 @@
 name: 11.2s goal on real alt track — 9 real Builder Golems, three parent families
+run-name: Nine-golem family evolution — fresh physical test (3 × 24 generations)
 # Normal CI performs REAL individual evolution; matched local-rule comparisons are opt-in.
 
 on:
