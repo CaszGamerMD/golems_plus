@@ -617,6 +617,21 @@ public final class BuilderEvolutionAltCourseGameTest {
                                     Map<Edge,Integer> realBlockFailures,
                                     GameTestHelper helper,ServerLevel world,
                                     BuilderGolem mob){
+        return planRouteTo(startX,startZ,dna,realBlockFailures,
+                helper,world,mob,-1,-1);
+    }
+
+    /**
+     * A* from a current position to an optionally specified real
+     * navigable cell; (-1,-1) still targets the original GREEN finish.
+     * Used for evaluating alternative discovered openings. Both
+     * segments are calculated by the SAME physics-checked planner;
+     * no saved route, replay, or world-edit shortcuts.
+     */
+    private static String planRouteTo(int startX,int startZ,Genome dna,
+                                    Map<Edge,Integer> realBlockFailures,
+                                    GameTestHelper helper,ServerLevel world,
+                                    BuilderGolem mob,int goalX,int goalZ){
         RouteNode start=new RouteNode(startX,startZ,'?');
         PriorityQueue<Frontier> open=new PriorityQueue<>(
                 Comparator.comparingDouble(Frontier::cost));
@@ -633,7 +648,9 @@ public final class BuilderEvolutionAltCourseGameTest {
             RouteNode node=current.node();
             if(current.cost()>best.getOrDefault(node,Double.POSITIVE_INFINITY))
                 continue;
-            if(MAZE[node.z()].charAt(node.x())=='G'){
+            if(goalX>=0
+                    ?(node.x()==goalX&&node.z()==goalZ)
+                    :MAZE[node.z()].charAt(node.x())=='G'){
                 finish=node;break;
             }
             for(char direction:new char[]{'N','E','S','W','7','9','3','1'}){
@@ -727,6 +744,48 @@ public final class BuilderEvolutionAltCourseGameTest {
         return false;
     }
 
+    /**
+     * Genetic alternative-route sampling through DISCOVERED open doors.
+     * A* normally returns only one cheapest plan, starving evolution
+     * of data about different corridors. Genomes with an inherited,
+     * mutable positive doorBias (>0.075) sample an optional legal
+     * opening. They still walk every block using genuine Minecraft
+     * collisions and compete by REAL observed 224/260 tick fitness.
+     * Other genomes remain unmodified controls. No authored route,
+     * old trace, teleport or forced arrival earns a result.
+     */
+    private static String exploratoryRoute(int startX,int startZ,
+            Genome dna,Map<Edge,Integer> memory,GameTestHelper helper,
+            ServerLevel world,BuilderGolem mob){
+        String direct=planRoute(startX,startZ,dna,memory,helper,world,mob);
+        if(dna.doorBias()<=.075)return direct;
+        for(int z=1;z<MAZE.length-1;z++)
+            for(int x=1;x<MAZE[z].length()-1;x++){
+                if(MAZE[z].charAt(x)!='D'
+                        ||!physicalCellOpen(helper,world,mob,x,z))
+                    continue;
+                try{
+                    String toOpening=planRouteTo(startX,startZ,dna,
+                            memory,helper,world,mob,x,z);
+                    String fromOpening=planRoute(x,z,dna,memory,
+                            helper,world,mob);
+                    String option=toOpening+fromOpening;
+                    if(!routeEntersDoor(startX,startZ,option))
+                        continue;
+                    System.out.println("[ALT GENETIC OPENING EXPLORE] "
+                        +"doorBias="+dna.doorBias()
+                        +" alternateLen="+option.length()
+                        +" baselineLen="+direct.length()
+                        +" discoveredOpening="+x+","+z);
+                    return option;
+                }catch(IllegalStateException inaccessible){
+                    // A closed, obstructed or inaccessible door
+                    // cannot be selected merely due to a gene.
+                }
+            }
+        return direct;
+    }
+
     private static List<Candidate> spawnGeneration(GameTestHelper helper,
             List<Genome> genomes,Map<Edge,Integer> blockMemory){
         ServerLevel world=helper.getLevel();
@@ -749,7 +808,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                         "Wrong real BuilderGolem body: "+mob.getBbWidth()
                         +" x "+mob.getBbHeight());
             Genome genome=genomes.get(slot);
-            Candidate b=new Candidate(slot,mob,planRoute(start[0],
+            Candidate b=new Candidate(slot,mob,exploratoryRoute(start[0],
                     start[1],genome,blockMemory,helper,world,mob),
                     start[0],start[1],genome,blockMemory);
             BlockPos origin=pos(helper,0,2,0);
@@ -1007,74 +1066,6 @@ public final class BuilderEvolutionAltCourseGameTest {
         return false;
     }
 
-    /**
-     * Shorten only turns that are demonstrably safe for the real
-     * 0.65 x 1.6 hitbox. Minecraft still resolves every meter using
-     * MoverType.SELF; this just avoids an artificial intermediate
-     * waypoint when the same floor supports a direct corner cut.
-     *
-     * Unlike grid A*, the continuous 25-step sweep checks ALL points
-     * between the entity's actual position and the following tile,
-     * including floor support. Any wall, slab lip, low overhead slab,
-     * door or missing floor rejects the shortcut; the normal
-     * individual-waypoint movement remains available.
-     */
-    private static boolean safeSupportedCornerCut(GameTestHelper helper,
-            ServerLevel world,BuilderGolem mob,
-            int fromX,int fromZ,int midX,int midZ,int endX,int endZ){
-        if(!walkableCell(endX,endZ)||!walkableCell(midX,midZ))return false;
-        if(MAZE[fromZ].charAt(fromX)=='D'
-                ||MAZE[midZ].charAt(midX)=='D'
-                ||MAZE[endZ].charAt(endX)=='D')return false;
-        if(precisionTransition(helper,world,fromX,fromZ,midX,midZ)
-                ||precisionTransition(helper,world,midX,midZ,endX,endZ))
-            return false;
-        // An apparently open corner can feed into a tight 0.5-step
-        // slab/overhead opening a moment later. Keep centerline
-        // discipline through a generous TWO-BLOCK buffer around
-        // every slab or door, not only the current grid edge.
-        for(int[] vertex:new int[][]{{fromX,fromZ},{midX,midZ},{endX,endZ}}){
-            BlockPos center=pos(helper,vertex[0],2,vertex[1]);
-            for(int ax=-2;ax<=2;ax++)for(int az=-2;az<=2;az++){
-                BlockPos nearby=center.offset(ax,0,az);
-                BlockState feet=world.getBlockState(nearby);
-                BlockState head=world.getBlockState(nearby.above());
-                if(feet.getBlock() instanceof SlabBlock
-                        ||head.getBlock() instanceof SlabBlock
-                        ||feet.getBlock() instanceof DoorBlock
-                        ||head.getBlock() instanceof DoorBlock)
-                    return false;
-            }
-        }
-        double sy=standingY(helper,world,fromX,fromZ);
-        if(!Double.isFinite(sy)
-                ||Math.abs(sy-standingY(helper,world,midX,midZ))>.001
-                ||Math.abs(sy-standingY(helper,world,endX,endZ))>.001
-                ||Math.abs(mob.getY()-sy)>.08)
-            return false;
-        BlockPos origin=pos(helper,0,2,0);
-        double goalX=origin.getX()+endX+.5;
-        double goalZ=origin.getZ()+endZ+.5;
-        double startX=mob.getX(),startZ=mob.getZ();
-        double length=Math.hypot(goalX-startX,goalZ-startZ);
-        if(length>2.6||length<.12)return false;
-        double half=mob.getBbWidth()*.5;
-        for(int i=0;i<=25;i++){
-            double t=i/25.0;
-            double x=startX+(goalX-startX)*t;
-            double z=startZ+(goalZ-startZ)*t;
-            if(!clearBodyAt(world,mob,x,sy,z))return false;
-            // Real collision support: no jumping gaps or hovering
-            // across a fractional slab edge to save distance.
-            var support=new net.minecraft.world.phys.AABB(
-                    x-half+.02,sy-.085,z-half+.02,
-                    x+half-.02,sy-.015,z+half-.02);
-            if(!world.getBlockCollisions(mob,support).iterator().hasNext())
-                return false;
-        }
-        return true;
-    }
-
     /** Controller uses real Minecraft entity move + collisions; only
      * genes controlling WALK / JUMP / alignment can be selected.
      */
@@ -1095,7 +1086,6 @@ public final class BuilderEvolutionAltCourseGameTest {
         int[] ahead=null;
         BlockPos target=null;
         double dx=0,dz=0,distance=0;
-        boolean shortcutUsed=false;
         // DO NOT spend a full Minecraft tick at every waypoint just to
         // increment a route cursor. On a 50-60 block route that artificial
         // pause wastes up to three seconds and makes an 13s run impossible.
@@ -1133,29 +1123,6 @@ public final class BuilderEvolutionAltCourseGameTest {
                     b.x,b.z,ahead[0],ahead[1]);
             if(precise&&!enteringDoor&&!leavingDoor)
                 b.movementMode="p";
-            // Geometry-based string pulling, not a scripted course
-            // route. Skip ONE intermediate center on a turn only
-            // when the entire real-body direct line is safe.
-            if(!shortcutUsed&&!precise&&!diagonalStep
-                    &&distance<.70
-                    &&!teammateWithin(b,crew,1.3)
-                    &&b.cursor+1<b.route.length()
-                    &&("NESW".indexOf(b.route.charAt(b.cursor+1))>=0)
-                    &&b.route.charAt(b.cursor)!=b.route.charAt(b.cursor+1)){
-                int[] beyond=next(ahead[0],ahead[1],
-                        b.route.charAt(b.cursor+1));
-                if(safeSupportedCornerCut(helper,world,mob,
-                        b.x,b.z,ahead[0],ahead[1],beyond[0],beyond[1])){
-                    b.x=ahead[0];b.z=ahead[1];b.cursor++;
-                    b.bestCursor=Math.max(b.bestCursor,b.cursor);
-                    b.safeCornerShortcuts++;
-                    b.immobile=0;
-                    b.staticStalls=0;
-                    b.lastDistance=Double.POSITIVE_INFINITY;
-                    shortcutUsed=true;
-                    continue;
-                }
-            }
             // On a flat, cardinal, physically clear straightaway,
             // hand off to the NEXT waypoint before decelerating at
             // this cell center. Remain precise at corners, slabs,
