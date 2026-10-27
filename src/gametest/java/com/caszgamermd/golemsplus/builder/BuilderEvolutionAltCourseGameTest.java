@@ -3089,6 +3089,76 @@ public final class BuilderEvolutionAltCourseGameTest {
         mob.discard();
     }
 
+    /**
+     * Regression using the ACTUAL evolved movement controller, not the
+     * earlier manually driven MoverType.SELF slab test. Start offset
+     * towards the slab's outer edge, dock the whole 0.65-wide hitbox,
+     * ascend normally, walk the big field, and descend without a jump.
+     * This catches regressions invisible to the simple direct-move test.
+     */
+    private static void verifyControllerCrossesSlabField(
+            GameTestHelper helper,int lane,double lateralOffset){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BlockPos at=pos(helper,9,2,lane),origin=pos(helper,0,2,0);
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(at.getX()+.5,at.getY(),at.getZ()+.5+lateralOffset);
+        mob.setNoGravity(false);
+        world.addFreshEntity(mob);
+        Candidate b=new Candidate(0,mob,"WWWW",9,lane,
+                SAVED_PHYSICAL_CHAMPIONS[0],Map.of());
+        b.originX=origin.getX();b.originZ=origin.getZ();
+        b.birthTick=helper.getTick();
+        final int[] ticks={0},slabTicks={0};
+        final boolean[] done={false};
+        helper.onEachTick(()->{
+            if(done[0])return;
+            if(!mob.isAlive()){
+                done[0]=true;
+                helper.fail("Slab controller walker disappeared");return;
+            }
+            if(mob.getY()>at.getY()+.43)slabTicks[0]++;
+            if(mob.getX()<pos(helper,5,2,lane).getX()+.67
+                    &&Math.abs(mob.getY()-at.getY())<.14){
+                done[0]=true;
+                if(slabTicks[0]<4||b.jumps>0)
+                    helper.fail("Controller did not use legal grounded slab"
+                            +" step, lane="+lane+" slabTicks="+slabTicks[0]
+                            +" jumps="+b.jumps);
+                else{
+                    System.out.println("[ALT CONTROLLER SLAB FIELD] lane="+lane
+                            +" offset="+lateralOffset+" ticks="+ticks[0]
+                            +" elevated="+slabTicks[0]
+                            +" jumps="+b.jumps);
+                    helper.succeed();
+                }
+                mob.discard();return;
+            }
+            if(ticks[0]++>85){
+                done[0]=true;
+                helper.fail("Physical controller could not enter/cross slab"
+                        +" plateau lane="+lane+" offset="+lateralOffset
+                        +" position="+mob.position()+" cursor="+b.cursor
+                        +" collisions="+b.collisions);
+                mob.discard();return;
+            }
+            b.controlTick++;
+            walkOneTick(helper,b,List.of(b));
+        });
+    }
+
+    @GameTest(maxTicks=135,padding=64,skyAccess=true)
+    public void realControllerWalksEntireWideSlabFieldOffCenter(
+            GameTestHelper helper){
+        verifyControllerCrossesSlabField(helper,5,.27);
+    }
+
+    @GameTest(maxTicks=135,padding=64,skyAccess=true)
+    public void realControllerWalksOuterSlabLaneWithoutCornerClipping(
+            GameTestHelper helper){
+        verifyControllerCrossesSlabField(helper,7,.27);
+    }
+
     @GameTest(maxTicks=115,padding=64,skyAccess=true)
     public void realBuilderWalksAcrossWideBottomSlabField(
             GameTestHelper helper){
