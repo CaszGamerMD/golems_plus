@@ -1,10 +1,20 @@
+## Native simulation qualification
+
+The full course receives temporary simulation tickets before spawning racers.
+Actual entity tick counters must cover each scored trip. Incomplete simulations
+fail before training or saving. Existing genes are retained as seeds and earlier
+fitness evidence is archived; newly verified full-team winners use
+`state/native-champion.json`. Tick coverage diagnostics are saved in checkpoints.
+This is a test-integrity change; performance improvement requires physical results.
+
 ## Current experiment: consistency and obstacle-level rules
 
 See [controlled comparisons and remembered local rules](CONSISTENCY_AND_RULES.md).
-Default tests freeze the full cohort, route policy and static memory, then
-run three matched baseline/challenger pairs per block. Useful obstacle-level
+Default tests continue genetic and contextual strategy evolution. Explicit
+`GOLEMS_EVOLUTION_MODE=consistency` freezes the cohort, route policy and static
+memory for three matched baseline/challenger pairs per block. Obstacle-level
 condition/action bindings require repeated local improvement without crew
-regression. Genetic breeding is paused in this mode. Earlier sections below
+regression. Genetic breeding is paused only in that comparison mode. Earlier sections below
 describe prior revisions and must not be read as current test results.
 
 ## Contextual strategy experience — previous experiment

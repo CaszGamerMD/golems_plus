@@ -30,6 +30,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DoorBlock;
@@ -54,6 +55,8 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class BuilderEvolutionAltCourseGameTest {
     private static final int DEADLINE=260;
+    private static final String NATIVE_PROTOCOL="course-entity-ticking-v1";
+    private static JsonObject nativeTickCoverage;
     // Preserve the original 13s physics benchmark and require a *real*
     // 10-of-10 arrival by 11.2s to qualify this speed experiment.
     private static final int SPEED_TARGET_TICKS=224;
@@ -323,6 +326,8 @@ public final class BuilderEvolutionAltCourseGameTest {
         String route;
         final String initialRoute;
         final Genome dna;
+        final int initialEntityTicks;
+        final JsonArray nativeTickSamples=new JsonArray();
         int controlTick,episodeSerial,episodeCooldown,holdingStage,holdingArrivalTick,holdingAttempts;
         LocalEpisode localEpisode;
         RuleRound ruleRound;
@@ -366,6 +371,10 @@ public final class BuilderEvolutionAltCourseGameTest {
             sample.add((int)Math.round((realZ-originZ)*1000));
             sample.add(arrivedTick>=0?"f":movementMode);
             movementSamples.add(sample);
+            JsonArray nativeSample=new JsonArray();
+            nativeSample.add(tick);nativeSample.add(mob.tickCount-initialEntityTicks);
+            nativeSample.add((int)Math.round(mob.getY()*1000));
+            nativeTickSamples.add(nativeSample);
             if(arrivedTick>=0)capturedArrival=true;
         }
         int cursor;
@@ -398,6 +407,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             this.initialRoute=route;
             this.x=x;this.z=z;
             this.dna=dna;
+            this.initialEntityTicks=mob.tickCount;
             this.inheritedBlockMemory=inheritedBlockMemory;
         }
         double fitness(){
@@ -482,6 +492,16 @@ public final class BuilderEvolutionAltCourseGameTest {
         System.out.println("[ALT COURSE] Restored exact VANILLA 27x10x12 track; "
                 +"10 real golems race from green wool to red wool in 260 ticks.");
     }
+
+    private static Runnable holdCourseSimulation(GameTestHelper helper){
+        BlockPos a=pos(helper,-1,2,-1),b=pos(helper,27,2,12);
+        java.util.Set<ChunkPos> chunks=new java.util.HashSet<>();
+        for(int x=Math.min(a.getX(),b.getX())>>4;x<=(Math.max(a.getX(),b.getX())>>4);x++)
+            for(int z=Math.min(a.getZ(),b.getZ())>>4;z<=(Math.max(a.getZ(),b.getZ())>>4);z++)
+                chunks.add(new ChunkPos(x,z));
+        return BuilderChunkTickets.simulationLease(helper.getLevel(),chunks);
+    }
+
 
     private static int[] next(int x,int z,char step){
         return switch(step){
@@ -1868,6 +1888,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 ?"training/alt/state":System.getenv("GOLEMS_EVOLUTION_STATE_DIR"));
         private static Path checkpoint(){return DIRECTORY.resolve("checkpoint.json");}
         private static Path champion(){return DIRECTORY.resolve("champion.json");}
+        private static Path nativeChampion(){return DIRECTORY.resolve("native-champion.json");}
         private static Path history(){return DIRECTORY.resolve("history.jsonl");}
         private static Path replayDirectory(){return Path.of(
                 System.getenv("GOLEMS_EVOLUTION_REPLAY_DIR")==null
@@ -1944,6 +1965,8 @@ public final class BuilderEvolutionAltCourseGameTest {
             obj.addProperty("format",FORMAT);
             obj.addProperty("course",COURSE);
             obj.addProperty("physicalEntities",true);
+            obj.addProperty("nativeSimulationProtocol",NATIVE_PROTOCOL);
+            if(nativeTickCoverage!=null)obj.add("nativeTickCoverage",nativeTickCoverage.deepCopy());
             obj.addProperty("bots",SELECTED_BOTS.length);
             obj.addProperty("deadlineTicks",DEADLINE);
             obj.addProperty("speedCapMetersPerSecond",4.0);
@@ -1963,8 +1986,20 @@ public final class BuilderEvolutionAltCourseGameTest {
         }
         static int restore(Tournament run){
             JsonObject checkpoint=read(checkpoint());
-            JsonObject champion=read(champion());
+            JsonObject champion=read(nativeChampion());
+            boolean nativeWinner=champion!=null;
+            if(nativeWinner&&!NATIVE_PROTOCOL.equals(champion.get("nativeSimulationProtocol").getAsString()))
+                throw new IllegalStateException("Unknown native champion protocol");
+            if(champion==null)champion=read(champion());
             if(checkpoint!=null){
+                boolean nativeCheckpoint=checkpoint.has("nativeSimulationProtocol")
+                        &&NATIVE_PROTOCOL.equals(checkpoint.get("nativeSimulationProtocol").getAsString());
+                if(checkpoint.has("legacyLocalRuleMemory"))
+                    run.legacyRuleMemory=checkpoint.getAsJsonObject("legacyLocalRuleMemory").deepCopy();
+                if(checkpoint.has("legacyStrategyMemory"))
+                    run.legacyStrategyMemory=checkpoint.getAsJsonObject("legacyStrategyMemory").deepCopy();
+                if(checkpoint.has("legacyGeneticKnowledge"))
+                    run.legacyGeneticKnowledge=checkpoint.getAsJsonObject("legacyGeneticKnowledge").deepCopy();
                 if(checkpoint.has("consistencyPopulation"))
                     run.frozenPopulation=decodePopulation(checkpoint.getAsJsonArray("consistencyPopulation"));
                 if(checkpoint.has("consistencyStrategies"))
@@ -1972,17 +2007,19 @@ public final class BuilderEvolutionAltCourseGameTest {
                             NavigationStrategyMemory.Strategy[].class));
                 if(checkpoint.has("localRuleMemory")){
                     JsonObject local=checkpoint.getAsJsonObject("localRuleMemory");
-                    if(!NavigationRuleMemory.FORMAT.equals(local.get("format").getAsString()))
+                    if(!nativeCheckpoint){run.legacyRuleMemory=local.deepCopy();}
+                    else if(!NavigationRuleMemory.FORMAT.equals(local.get("format").getAsString()))
                         throw new IllegalStateException("Unknown local rule format");
-                    for(NavigationRuleMemory.Trial trial:JSON.fromJson(local.get("trials"),
+                    else for(NavigationRuleMemory.Trial trial:JSON.fromJson(local.get("trials"),
                             NavigationRuleMemory.Trial[].class))run.ruleMemory.observe(trial);
                 }
                 if(checkpoint.has("strategyMemory")){
                     JsonObject memory=checkpoint.getAsJsonObject("strategyMemory");
-                    if(!NavigationStrategyMemory.FORMAT.equals(
+                    if(!nativeCheckpoint){run.legacyStrategyMemory=memory.deepCopy();}
+                    else if(!NavigationStrategyMemory.FORMAT.equals(
                             memory.get("format").getAsString()))
                         throw new IllegalStateException("Unknown strategy memory format");
-                    for(NavigationStrategyMemory.Observation outcome:JSON.fromJson(
+                    else for(NavigationStrategyMemory.Observation outcome:JSON.fromJson(
                             memory.get("observations"),
                             NavigationStrategyMemory.Observation[].class))
                         run.strategyMemory.observe(outcome);
@@ -2025,6 +2062,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                     run.lastSuccessfulPopulation=new ArrayList<>(fullTeam);
                     run.lastSuccessfulArrivalTicks=ticks;
                     run.lastSuccessfulGeneration=generation;
+                    run.lastSuccessfulNativeVerified=nativeCheckpoint&&checkpoint.has("lastSuccessfulNativeTicksVerified")
+                            &&checkpoint.get("lastSuccessfulNativeTicksVerified").getAsBoolean();
                     // Explicit validation can replay the historically
                     // successful TEN genes, but normal training must
                     // restore independent pooled offspring instead.
@@ -2115,6 +2154,15 @@ public final class BuilderEvolutionAltCourseGameTest {
                 if(run.completedGenerations<0||run.bestFinished<0
                         ||run.bestFinished>SELECTED_BOTS.length)
                     throw new IllegalStateException("Invalid generation counter");
+                if(!nativeCheckpoint){
+                    JsonObject old=new JsonObject();
+                    for(String key:List.of("personalBests","personalScores","knowledgePool"))
+                        if(checkpoint.has(key))old.add(key,checkpoint.get(key).deepCopy());
+                    run.legacyGeneticKnowledge=old;
+                    java.util.Arrays.fill(run.championScores,-Double.MAX_VALUE);
+                    run.knowledgePool.clear();run.bestFinished=0;
+                }else if(checkpoint.has("bestNativeFinishedEver"))
+                    run.bestFinished=checkpoint.get("bestNativeFinishedEver").getAsInt();
                 for(JsonElement item:checkpoint.getAsJsonArray("blockedEdges")){
                     JsonObject e=item.getAsJsonObject();
                     run.collisionMemory.put(new Edge(e.get("x").getAsInt(),
@@ -2136,14 +2184,16 @@ public final class BuilderEvolutionAltCourseGameTest {
                 int worst=champion.get("slowestTicks").getAsInt();
                 if(worst>DEADLINE)
                     throw new IllegalStateException("Saved champion was late!");
-                run.bestChampionSlowest=worst;
-                run.bestChampionAverage=champion.get("meanTicks").getAsDouble();
+                if(nativeWinner){
+                    run.bestChampionSlowest=worst;
+                    run.bestChampionAverage=champion.get("meanTicks").getAsDouble();
+                }
                 // Champion is an immutable, physically proven anchor.
                 // Use these in the parent pool, but do not overwrite the
                 // checkpoint population of fresh mutations.
                 run.verifiedChampion=gold;
-                System.out.println("[TIMETRIAL MEMORY] LOADED proven 10/10 champion "
-                        +"worstTicks="+worst);
+                System.out.println("[TIMETRIAL MEMORY] LOADED saved gene cohort "
+                        +"worstTicks="+worst+" nativeTickQualified="+nativeWinner);
             }
             return run.completedGenerations;
         }
@@ -2169,6 +2219,10 @@ public final class BuilderEvolutionAltCourseGameTest {
             obj.add("strategyMemory",strategyMemory);
             obj.addProperty("completedGenerations",run.completedGenerations+1);
             obj.addProperty("bestFinishedEver",run.bestFinished);
+            obj.addProperty("bestNativeFinishedEver",run.bestFinished);
+            if(run.legacyRuleMemory!=null)obj.add("legacyLocalRuleMemory",run.legacyRuleMemory.deepCopy());
+            if(run.legacyStrategyMemory!=null)obj.add("legacyStrategyMemory",run.legacyStrategyMemory.deepCopy());
+            if(run.legacyGeneticKnowledge!=null)obj.add("legacyGeneticKnowledge",run.legacyGeneticKnowledge.deepCopy());
             obj.addProperty("lastCompleted",finished);
             obj.addProperty("lastSlowestTicks",finished==10?slowest:-1);
             obj.addProperty("lastMeanFitness",mean);
@@ -2186,6 +2240,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 obj.add("lastSuccessfulArrivalTicks",arrivals);
                 obj.addProperty("lastSuccessfulGeneration",
                         run.lastSuccessfulGeneration);
+                obj.addProperty("lastSuccessfulNativeTicksVerified",run.lastSuccessfulNativeVerified);
                 obj.addProperty("lastSuccessfulSlowestTicks",arrivals.size()==0
                         ?-1:run.lastSuccessfulArrivalTicks.stream()
                             .mapToInt(Integer::intValue).max().orElse(-1));
@@ -2243,6 +2298,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 entry.addProperty("slot",b.index);
                 entry.addProperty("arrivedTicks",b.arrivedTick);
                 entry.addProperty("fitness",b.fitness());
+                entry.addProperty("nativeEntityTicks",b.mob.tickCount-b.initialEntityTicks);
                 entry.addProperty("strategyContext",b.strategyContext);
                 entry.addProperty("strategy",b.strategyDecision.strategy().name());
                 entry.addProperty("strategyReason",b.strategyDecision.reason());
@@ -2279,6 +2335,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                 trace.addProperty("arrivedTicks",b.arrivedTick);
                 trace.addProperty("plannedRoute",b.initialRoute);
                 trace.addProperty("finalRoute",b.route);
+                trace.addProperty("nativeEntityTicks",b.mob.tickCount-b.initialEntityTicks);
+                trace.add("nativeTickSamples",b.nativeTickSamples);
                 trace.add("localEpisodes",JSON.toJsonTree(b.localEpisodes));
                 trace.addProperty("collisions",b.collisions);
                 trace.addProperty("jumps",b.jumps);
@@ -2310,6 +2368,9 @@ public final class BuilderEvolutionAltCourseGameTest {
             JsonObject historyEntry=obj.deepCopy();
             historyEntry.remove("strategyMemory");
             historyEntry.remove("localRuleMemory");
+            historyEntry.remove("legacyLocalRuleMemory");
+            historyEntry.remove("legacyStrategyMemory");
+            historyEntry.remove("legacyGeneticKnowledge");
             historyEntry.addProperty("localRuleTrialCount",run.ruleMemory.trials().size());
             historyEntry.addProperty("strategyObservationCount",
                     run.strategyMemory.observations().size());
@@ -2347,12 +2408,13 @@ public final class BuilderEvolutionAltCourseGameTest {
                         JsonObject hit=new JsonObject();
                         hit.addProperty("slot",b.index);
                         hit.addProperty("ticks",b.arrivedTick);
+                        hit.addProperty("nativeEntityTicks",b.mob.tickCount-b.initialEntityTicks);
                         hit.addProperty("plannedRoute",b.route);
                         arrivals.add(hit);
                     }
                     winner.add("winningGenomes",winningGenes);
                     winner.add("physicalArrivalRecords",arrivals);
-                    writeAtomic(champion(),winner);
+                    writeAtomic(nativeChampion(),winner);
                     run.bestChampionSlowest=slowest;
                     run.bestChampionAverage=meanArrival;
                     run.verifiedChampion=new ArrayList<>();
@@ -2377,6 +2439,10 @@ public final class BuilderEvolutionAltCourseGameTest {
         final Map<Edge,Integer> collisionMemory=new HashMap<>();
         final NavigationStrategyMemory strategyMemory=new NavigationStrategyMemory();
         final NavigationRuleMemory ruleMemory=new NavigationRuleMemory();
+        JsonObject legacyRuleMemory,legacyStrategyMemory,legacyGeneticKnowledge;
+        Runnable releaseSimulation=()->{};
+        long warmupUntil;
+        boolean started;
         List<Genome> frozenPopulation=List.of();
         List<NavigationStrategyMemory.Strategy> frozenStrategies=List.of();
         Map<String,NavigationRuleMemory.Binding> blockBindings=Map.of();
@@ -2410,6 +2476,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         List<Integer> lastSuccessfulArrivalTicks=List.of();
         List<Genome> pendingExploration=List.of();
         int lastSuccessfulGeneration;
+        boolean lastSuccessfulNativeVerified;
         final boolean exploreMode="explore".equalsIgnoreCase(
                 System.getenv("GOLEMS_EVOLUTION_MODE"));
         Tournament(GameTestHelper helper){
@@ -2436,8 +2503,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                 generationGenes=pinElites(generationGenes,knowledgePool);
             rng=new Random(TRAINING_SEED
                     +1000003L*(long)completedGenerations);
-            startRound();
-            generationStart=helper.getTick()+1;
+            releaseSimulation=holdCourseSimulation(helper);
+            warmupUntil=helper.getTick()+20;
         }
         private NavigationRuleMemory.Rule challengerRule(){
             return switch((generation/6)%4){
@@ -2489,8 +2556,16 @@ public final class BuilderEvolutionAltCourseGameTest {
             return data;
         }
         void tick(){
+            try{tickWithSimulation();}
+            catch(RuntimeException failure){ended=true;releaseSimulation.run();throw failure;}
+        }
+        private void tickWithSimulation(){
             if(ended)return;
             long absoluteTick=helper.getTick();
+            if(!started){
+                if(absoluteTick<warmupUntil)return;
+                startRound();started=true;generationStart=absoluteTick+1;return;
+            }
             long roundTick=absoluteTick-generationStart;
             if(roundTick<0)return;
             // End at exactly 260 ticks, without allowing another
@@ -2513,6 +2588,18 @@ public final class BuilderEvolutionAltCourseGameTest {
                 }
             }
             if(roundTick<DEADLINE)return;
+            for(Candidate b:bots){
+                int expected=b.arrivedTick<0?DEADLINE:b.arrivedTick;
+                int actual=b.mob.tickCount-b.initialEntityTicks;
+                if(actual<expected-2){
+                    ended=true;releaseSimulation.run();
+                    for(Candidate peer:bots)if(peer.mob.isAlive())peer.mob.discard();
+                    helper.fail("Incomplete native entity simulation: slot="+b.index
+                            +" expectedTicks="+expected+" actualTicks="+actual
+                            +"; refusing to learn from this round");
+                    return;
+                }
+            }
             int finished=0,finishedTarget=0;
             long doorPlans=bots.stream().filter(b->b.initialRouteUsesDoor)
                     .count();
@@ -2641,6 +2728,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                     lastSuccessfulArrivalTicks.add(b.arrivedTick);
                 }
                 lastSuccessfulGeneration=completedGenerations+1;
+                lastSuccessfulNativeVerified=true;
                 System.out.println("[TIMETRIAL MEMORY] Retained entire "
                         +"latest VERIFIED 10/10 team independently of"
                         +" best-ever champion and mutated offspring");
@@ -2666,10 +2754,12 @@ public final class BuilderEvolutionAltCourseGameTest {
                         +"run will START with all ten verified winning "
                         +"genes; exploratory offspring saved separately");
                 ended=true;
+                releaseSimulation.run();
                 helper.succeed();return;
             }
             if(generation+1>=GENERATIONS){
                 ended=true;
+                releaseSimulation.run();
                 if(consistencyMode){
                     System.out.println("[ALT CONSISTENCY REPORT] finishes="+comparisonFinishes
                             +" retainedRules="+ruleMemory.bindings()
@@ -3347,6 +3437,47 @@ public final class BuilderEvolutionAltCourseGameTest {
                 helper.succeed();mob.discard();
             }else if(helper.getTick()>140){
                 done[0]=true;helper.fail("Centered real Builder did not clear the slab corner");mob.discard();
+            }
+        });
+    }
+
+    @GameTest(maxTicks=130,padding=64,skyAccess=true)
+    public void realBuildersReceiveNativeTicksAcrossCourse(GameTestHelper helper){
+        fillOriginalCourse(helper);
+        List<BuilderGolem> actors=new ArrayList<>();
+        for(int x:new int[]{2,13,25}){
+            BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,helper.getLevel());
+            BlockPos at=pos(helper,x,2,5);
+            mob.setPos(at.getX()+.5,at.getY(),at.getZ()+.5);
+            helper.getLevel().addFreshEntity(mob);actors.add(mob);
+        }
+        int[] before=new int[3],start=new int[3];
+        boolean[] leased={false},measuring={false},done={false};
+        Runnable[] release={()->{}};
+        helper.onEachTick(()->{
+            if(done[0])return;
+            long tick=helper.getTick();
+            if(tick>=30&&!leased[0]){
+                for(int i=0;i<3;i++)before[i]=actors.get(i).tickCount;
+                release[0]=holdCourseSimulation(helper);leased[0]=true;
+            }
+            if(tick>=50&&!measuring[0]){
+                for(int i=0;i<3;i++)start[i]=actors.get(i).tickCount;
+                measuring[0]=true;
+            }
+            if(tick>=80){
+                done[0]=true;int[] advanced=new int[3];
+                for(int i=0;i<3;i++)advanced[i]=actors.get(i).tickCount-start[i];
+                nativeTickCoverage=new JsonObject();
+                nativeTickCoverage.add("unleased30",TrainingMemory.JSON.toJsonTree(before));
+                nativeTickCoverage.add("leased30",TrainingMemory.JSON.toJsonTree(advanced));
+                nativeTickCoverage.addProperty("passed",java.util.Arrays.stream(advanced).allMatch(n->n>=28));
+                release[0].run();for(BuilderGolem actor:actors)actor.discard();
+                System.out.println("[ALT NATIVE TICK COVERAGE] unleased30="
+                        +java.util.Arrays.toString(before)+" leased30="+java.util.Arrays.toString(advanced));
+                if(java.util.Arrays.stream(advanced).anyMatch(n->n<28))
+                    helper.fail("Course simulation tickets did not tick every real Builder");
+                else helper.succeed();
             }
         });
     }

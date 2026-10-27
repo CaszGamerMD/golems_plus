@@ -49,6 +49,17 @@ public final class BuilderChunkTickets {
     private static final Map<ServerLevel,Map<ChunkPos,Integer>> holders=new WeakHashMap<>();
     private BuilderChunkTickets(){}
     public static void initialize(){} // Force the ticket type to register at mod initialization.
+    /** Temporary bounded-arena simulation; preserves other owners and persistent forceloads. */
+    static Runnable simulationLease(ServerLevel level,Set<ChunkPos> centers){
+        Set<ChunkPos> owned=Set.copyOf(centers);
+        for(ChunkPos center:owned)acquire(level,center);
+        boolean[] released={false};
+        return ()->{
+            if(released[0])return;
+            released[0]=true;
+            for(ChunkPos center:owned)relinquish(level,center);
+        };
+    }
 
     private static Map<Long,Lease> world(ServerLevel level){
         return jobs.computeIfAbsent(level,ignored->new HashMap<>());

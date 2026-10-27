@@ -12,7 +12,7 @@ import java.util.Map;
  * Stored trials are evidence; bindings are derived again after restore.
  */
 public final class NavigationRuleMemory {
-    public static final String FORMAT="golems-local-rules-v1";
+    public static final String FORMAT="golems-local-rules-v2-native-ticks";
     public enum Rule { BASELINE, STABLE_MERGE, YIELD_ASIDE, CENTER_STEP }
     public record Episode(String id,int slot,String context,Rule action,
             boolean cleared,int elapsedTicks,int stationaryTicks,int collisions) {

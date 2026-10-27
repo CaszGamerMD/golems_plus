@@ -133,6 +133,11 @@ class LocalRuleMerge(unittest.TestCase):
         self.assertEqual({t['block'] for t in result['trials']}, {'block0', 'block8', 'block9'})
         self.assertEqual(len(result['trials']), 18)
 
+    def test_pre_native_tick_evidence_cannot_create_native_rules(self):
+        old = self.memory()
+        old['localRuleMemory']['format'] = 'golems-local-rules-v1'
+        self.assertIsNone(merge_local_rule_memory(old))
+
 
 if __name__ == '__main__':
     unittest.main()

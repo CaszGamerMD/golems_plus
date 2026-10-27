@@ -62,12 +62,14 @@ def encode_trace(record):
             [len(bot.get("localEpisodes", [])),
              sum(e.get("cleared") is True for e in bot.get("localEpisodes", [])),
              sorted({e["action"] for e in bot.get("localEpisodes", [])})],
+            bot.get("nativeEntityTicks"),
         ])
     arrivals = [bot["arrivedTicks"] for bot in record["bots"] if bot["arrivedTicks"] >= 0]
     meta = [
         record["completedGeneration"], record["trial"], record.get("generation", 0),
         len([t for t in arrivals if t <= 260]), len([t for t in arrivals if t <= 224]),
         max(arrivals) if arrivals else -1, bot_summary, record.get("experiment"),
+        record.get("nativeSimulationProtocol"),
     ]
     packed = base64.b64encode(gzip.compress(bytes(compressed), compresslevel=8, mtime=0)).decode("ascii")
     return meta, packed

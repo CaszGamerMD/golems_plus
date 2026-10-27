@@ -45,7 +45,7 @@
   </div>
   <div><section class="panel canvaspane"><h2>Original 27 × 12 alt course</h2><div class="mapbox"><canvas id="map" width="468" height="1053" aria-label="Top-down Minecraft course with ten animated golem movements"></canvas></div><div class="legend"><span><i class="swatch" style="background:#2fa27b"></i> Green start</span><span><i class="swatch" style="background:#b75e6e"></i> Red finish</span><span><i class="swatch" style="background:#c79752"></i> Slabs</span><span><i class="swatch" style="background:#dbc37b"></i> Door</span></div><p class="mapcaption">The track is rotated vertically for portrait phones: start at the top, finish at the bottom. Landscape works too.</p></section></div>
  </section>
- <footer><b>Offline playback. Online refresh checks for new tests.</b> Real Minecraft movement samples; coordinates rounded to 1 cm for compact rendering, all ticks preserved. Original run archive generated in GitHub Actions. Best protected historical full-team time: 236 ticks. Offline playback uses browser gzip support (Android Chrome recommended).</footer>
+ <footer><b>Offline playback. Online refresh checks for new tests.</b> Real Minecraft movement samples; coordinates rounded to 1 cm, all ticks preserved. The protected 236-tick legacy record predates native tick verification. New records label verified native simulation separately. Offline playback uses browser gzip support (Android Chrome recommended).</footer>
 </main>
 <script>
 'use strict';
@@ -87,6 +87,7 @@ function stats(info){const gen=info[0],trial=info[1],f=info[3],target=info[4],sl
  $('selGenLabel').textContent=`#${gen} of ${TOTAL}`;
  $('runDesc').textContent=`GitHub Actions ${trial} · local generation ${info[2]} · ${f===10?'Complete team':'Partial team'} · Minecraft physics`;
  const experiment=info[7];if(experiment)$('runDesc').textContent+=` · ${experiment.arm} · pair ${experiment.repeat+1}/3 · testing ${experiment.testedRule} · ${experiment.rememberedRules||0} remembered rules`;
+ $('runDesc').textContent+=info[8]?' · native entity ticks verified':' · legacy: native ticks unverified';
  $('statFinished').textContent=f+'/10';$('statTarget').textContent=target+'/10';$('statSlow').textContent=slow<0?'—':slow+'t';
  $('statDoor').textContent=bots.filter(b=>b[10]||b[6]>0).length;
  for(const id of ['statFinished','statTarget'])$(id).parentElement.classList.toggle('good',id==='statFinished'?f===10:target===10);

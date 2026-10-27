@@ -15,7 +15,8 @@ COURSE = "timetrial-alt-vanilla-10-builders-260-ticks-v2"
 GENES = 12
 POPULATION = 10
 STRATEGY_FORMAT = "golems-context-strategies-v1"
-RULE_FORMAT = "golems-local-rules-v1"
+RULE_FORMAT = "golems-local-rules-v2-native-ticks"
+NATIVE_PROTOCOL = "course-entity-ticking-v1"
 
 
 def merge_local_rule_memory(*checkpoints):
@@ -26,6 +27,8 @@ def merge_local_rule_memory(*checkpoints):
     for checkpoint in checkpoints:
         memory = (checkpoint or {}).get("localRuleMemory")
         if memory is None:
+            continue
+        if memory.get("format") == "golems-local-rules-v1":
             continue
         present = True
         if memory.get("format") != RULE_FORMAT or not isinstance(memory.get("trials"), list):
@@ -235,11 +238,16 @@ def merge_checkpoint(old, new, protected):
     # server tests complete the same generation, prefer the more
     # successful trial rather than the last writer.
     def merit(c):
-        return (c["completedGenerations"],
+        return (c.get("nativeSimulationProtocol") == NATIVE_PROTOCOL,
+                c["completedGenerations"],
                 c["lastCompleted"],
                 c["lastMeanFitness"])
     winning = new if merit(new) > merit(old) else old
     merged = dict(winning)
+    native_sources = [c for c in (old, new) if c.get("nativeSimulationProtocol") == NATIVE_PROTOCOL]
+    active_sources = native_sources or [old, new]
+    if native_sources:
+        merged["bestNativeFinishedEver"] = max(c.get("bestNativeFinishedEver", 0) for c in native_sources)
     local_rules = merge_local_rule_memory(old, new)
     if local_rules is not None:
         merged["localRuleMemory"] = local_rules
@@ -249,7 +257,7 @@ def merge_checkpoint(old, new, protected):
                 if field in source:
                     merged[field] = source[field]
                     break
-    strategy_memory = merge_strategy_memory(old, new)
+    strategy_memory = merge_strategy_memory(*active_sources)
     if strategy_memory is not None:
         merged["strategyMemory"] = strategy_memory
     merged["completedGenerations"] = max(
@@ -258,7 +266,7 @@ def merge_checkpoint(old, new, protected):
         new["bestFinishedEver"], old["bestFinishedEver"])
     personal, scores = [], []
     for index in range(POPULATION):
-        choice = max((new, old), key=lambda c:
+        choice = max(active_sources, key=lambda c:
                      c["personalScores"][index])
         personal.append(choice["personalBests"][index])
         scores.append(choice["personalScores"][index])
@@ -267,7 +275,7 @@ def merge_checkpoint(old, new, protected):
     # physical evidence by worker slot and preserve the global top THREE
     # even if either checkout came from a failed 10/10 generation.
     candidates = {}
-    for source in (old, new):
+    for source in active_sources:
         for member in source.get("knowledgePool", []):
             slot = member["slot"]
             if (slot not in candidates or
@@ -291,6 +299,10 @@ def merge_checkpoint(old, new, protected):
     # A later failed checkout can never erase its full ten genes, and
     # the faster historical best remains separately in champion.json.
     proven = [c for c in (old, new) if "lastSuccessfulPopulation" in c]
+    native_proven = [c for c in proven if c.get("lastSuccessfulNativeTicksVerified") is True
+                     and c.get("nativeSimulationProtocol") == NATIVE_PROTOCOL]
+    if native_proven:
+        proven = native_proven
     if proven:
         latest = max(proven, key=lambda c: (
             c["lastSuccessfulGeneration"], -c["lastSuccessfulSlowestTicks"]))
@@ -299,6 +311,8 @@ def merge_checkpoint(old, new, protected):
                       "lastSuccessfulGeneration",
                       "lastSuccessfulSlowestTicks"):
             merged[field] = latest[field]
+        if "lastSuccessfulNativeTicksVerified" in latest:
+            merged["lastSuccessfulNativeTicksVerified"] = latest["lastSuccessfulNativeTicksVerified"]
     edges = {}
     for c in (old, new):
         for edge in c.get("blockedEdges", []):
@@ -365,6 +379,21 @@ def main():
     if best:
         (args.target / "champion.json").write_text(
             json.dumps(best, indent=2) + "\n", encoding="utf8")
+    native_candidates = []
+    for parent in (args.target, args.incoming):
+        candidate = read(parent / "native-champion.json")
+        if candidate is None:
+            continue
+        validate_champion(candidate)
+        if (candidate.get("nativeSimulationProtocol") != NATIVE_PROTOCOL
+                or any(x.get("nativeEntityTicks", -1) < max(0, x["ticks"] - 2)
+                       for x in candidate["physicalArrivalRecords"])):
+            raise ValueError("Native champion lacks verified entity ticks")
+        native_candidates.append(candidate)
+    if native_candidates:
+        native_best = min(native_candidates, key=champion_key)
+        (args.target / "native-champion.json").write_text(
+            json.dumps(native_best, indent=2) + "\n", encoding="utf8")
     (args.target / "history.jsonl").write_text(history, encoding="utf8")
     print("Preserved physical learning: generations=",
           merged["completedGenerations"],

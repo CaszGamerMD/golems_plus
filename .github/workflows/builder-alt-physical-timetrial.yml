@@ -10,6 +10,7 @@ on:
       - src/gametest/java/com/caszgamermd/golemsplus/builder/NavigationStrategyMemory.java
       - src/gametest/java/com/caszgamermd/golemsplus/builder/NavigationRuleMemory.java
       - src/gametest/java/com/caszgamermd/golemsplus/builder/NavigationRightOfWay.java
+      - src/main/java/com/caszgamermd/golemsplus/builder/BuilderChunkTickets.java
       - scripts/tests/test_navigation_local_rules.py
       - scripts/tests/test_navigation_strategy_memory.py
       - .github/workflows/builder-alt-physical-timetrial.yml
@@ -129,6 +130,8 @@ jobs:
           assert 'checkpoint.has("localRuleMemory")' in test
           assert 'realBuilderUsesClearHoldingSpace' in test
           assert 'realBuilderCentersAtSlabCorner' in test
+          assert 'realBuildersReceiveNativeTicksAcrossCourse' in test
+          assert 'Incomplete native entity simulation' in test
           assert 'ruleMemory.observe(new NavigationRuleMemory.Trial(' in test
           # Stepping up 0.5 blocks needs the native downward ground
           # probe; the old check incorrectly required zero vertical

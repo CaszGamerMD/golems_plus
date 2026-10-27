@@ -25,6 +25,18 @@ def checkpoint(g, successes=None):
     return d
 
 class AlternateCrewRetention(unittest.TestCase):
+    def test_native_epoch_does_not_inherit_legacy_peak_fitness(self):
+        old=checkpoint(100)
+        new=checkpoint(101)
+        old['personalScores']=[100900]*10
+        new['nativeSimulationProtocol']=m.NATIVE_PROTOCOL
+        new['bestNativeFinishedEver']=2
+        new['personalScores']=[-100]*10
+        merged=m.merge_checkpoint(old,new,None)
+        self.assertEqual(merged['personalScores'],[-100]*10)
+        self.assertEqual(merged['bestNativeFinishedEver'],2)
+        self.assertTrue(all(k['fitness']==-100 for k in merged['knowledgePool']))
+
     def test_last_perfect_cohort_survives_failing_later_generations(self):
         good=checkpoint(30,successes=30)
         failed=checkpoint(54)

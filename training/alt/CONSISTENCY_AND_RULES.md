@@ -1,8 +1,8 @@
 # Matched consistency experiments and local navigation rules
 
-Default training mode is now `consistency`. The former genetic exploration
-is available explicitly as `GOLEMS_EVOLUTION_MODE=evolve`; old genes,
-offspring, top-three pool, course memory and champion remain preserved.
+Default training mode is `evolve`: genes and contextual route strategies keep adapting.
+Use `GOLEMS_EVOLUTION_MODE=consistency` for the controlled comparisons below.
+The saved cohort, offspring, top-three pool and historical champion remain preserved.
 
 ## Controlled comparisons
 
@@ -93,3 +93,19 @@ They do not synthesize arbitrary Java code or establish generalization to
 unseen terrain. Three repeats provide an initial retention gate, not a
 statistical guarantee. Matched baseline results and physical regressions
 must establish whether these changes improve movement.
+
+## Native simulation prerequisite
+
+The complete course receives temporary simulation tickets and a 20-tick warmup
+before entrants spawn. Every scored round checks actual entity tick counters;
+incomplete native movement simulation fails before selection or saving.
+A separate physical regression records unleased and leased tick counts at three
+positions in `nativeTickCoverage`. Replay traces retain entity tick and height samples.
+This tests a suspected harness issue; it does not establish better navigation.
+
+The `course-entity-ticking-v1` protocol separates this evidence from older runs.
+Earlier genes remain available as seeds; old fitness, strategy observations and
+rule trials are archived in the checkpoint instead of competing with verified
+native-tick evidence. New local proofs use `golems-local-rules-v2-native-ticks`.
+The historical `champion.json` is preserved; qualified new winners are written to
+`native-champion.json`. Continuous evolution remains the default.
