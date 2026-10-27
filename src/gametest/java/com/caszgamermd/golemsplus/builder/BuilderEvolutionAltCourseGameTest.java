@@ -3091,6 +3091,36 @@ public final class BuilderEvolutionAltCourseGameTest {
     }
 
     /**
+     * Validate the discovered slab-then-wooden-door alternative on the
+     * original real-collision fixture. This test checks legal strategy
+     * availability, NOT successful timing (that requires ten live bots).
+     * No recorded route is injected or made mandatory in evolution.
+     */
+    @GameTest(maxTicks=120,padding=64,skyAccess=true)
+    public void realBuilderDiscoversWideSlabThenDoorAlternative(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos at=pos(helper,24,2,1);
+        mob.setPos(at.getX()+.5,at.getY(),at.getZ()+.5);
+        world.addFreshEntity(mob);
+        Genome dna=SAVED_PHYSICAL_CHAMPIONS[0];
+        String route=exploratoryRoute(24,1,dna,Map.of(),
+                helper,world,mob,Map.of(),true);
+        boolean slabDoor=routeCrossesSlabsThenDoor(24,1,route);
+        System.out.println("[ALT SLAB THEN DOOR ROUTING] "
+                +"legalCombinedRoute="+slabDoor
+                +" plannedMeters="+routeMeters(route)
+                +" traversesDoor="+routeEntersDoor(24,1,route));
+        mob.discard();
+        if(!slabDoor)
+            helper.fail("Could not discover legal slab-to-door shortcut"
+                    +" on original collision geometry");
+        else helper.succeed();
+    }
+
+    /**
      * Movement is scored from an ACTUAL Builder entity walking
      * horizontally onto, ACROSS and off the original bottom slabs.
      * A continuous slab surface does not require jumping or detours.
