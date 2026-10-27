@@ -86,20 +86,38 @@ public final class NavigationStrategyMemory {
         Summary baseline=summary(context,Strategy.DIRECT);
         Strategy chosen=Strategy.DIRECT;
         double best=baseline.meanReward();
+        double bestPaceGain=0;
+        String reason="baseline";
         for(Strategy strategy:available){
             if(strategy==Strategy.DIRECT)continue;
             Summary candidate=summary(context,strategy);
             // A single lucky arrival cannot establish a rule. Compare
-            // repeated outcomes in the SAME abstract situation.
-            if(baseline.trials()>=3&&candidate.trials()>=3
-                    &&candidate.finished()>=2
-                    &&candidate.finished()/(double)candidate.trials()
-                        >=baseline.finished()/(double)baseline.trials()
-                    &&candidate.meanReward()>best+.02){
-                chosen=strategy;best=candidate.meanReward();
+            // repeated REAL arrivals in the SAME abstract context.
+            // Previously a route was rejected whenever its success rate
+            // was even slightly lower than direct, even when completing
+            // workers arrived ~20 ticks sooner. That kept the already
+            // observed slab->door shortcut in exploration mode forever.
+            if(baseline.trials()<3||candidate.trials()<3
+                    ||baseline.finished()<2||candidate.finished()<2)
+                continue;
+            double baselineRate=baseline.finished()/(double)baseline.trials();
+            double candidateRate=candidate.finished()/(double)candidate.trials();
+            double paceGain=baseline.meanArrivalTicks()-candidate.meanArrivalTicks();
+            boolean reliable=candidateRate>=baselineRate
+                    &&candidate.meanReward()>best+.02;
+            // Accept a demonstrably faster route IF its completion rate
+            // stays within 12 percentage points of direct. Require an
+            // 8-tick improvement and repeated successful physical trips.
+            // This is a learned route STRATEGY, never saved coordinates.
+            boolean faster=paceGain>=8.0&&candidateRate>=baselineRate-.12;
+            if(reliable||(faster
+                    &&(chosen==Strategy.DIRECT||paceGain>bestPaceGain))){
+                chosen=strategy;
+                best=candidate.meanReward();
+                bestPaceGain=paceGain;
+                reason=faster?"faster-physical-arrivals":"repeated-outcomes";
             }
         }
-        String reason=chosen==Strategy.DIRECT?"baseline":"repeated-outcomes";
         int decisions=0;
         for(Strategy strategy:Strategy.values())decisions+=visits(context,strategy);
         // Four uses of the retained preference, one explicit exploration.
