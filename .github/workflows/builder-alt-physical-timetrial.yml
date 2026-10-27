@@ -1,5 +1,5 @@
 name: 11.2s goal on real alt track — 10 actual Builder Golems (13s baseline preserved)
-# Matched local-rule trials: frozen crew/routes; 3 baseline/challenger pairs per block.
+# Normal CI performs REAL individual evolution; matched local-rule comparisons are opt-in.
 
 on:
   push:
@@ -17,6 +17,15 @@ on:
       - scripts/tests/test_export_alt_mobile_replays.py
       - training/alt/replays/mobile-template.html
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Physical golem training mode (evolve learns, consistency freezes, validate checks historic cohort)"
+        type: choice
+        options:
+          - evolve
+          - consistency
+          - validate
+        default: evolve
 
 permissions:
   contents: write
@@ -133,10 +142,23 @@ jobs:
         env:
           GOLEMS_EVOLUTION_STATE_DIR: ${{ github.workspace }}/training/alt/state
           GOLEMS_EVOLUTION_REPLAY_DIR: ${{ github.workspace }}/training/alt/replays/live
-          GOLEMS_EVOLUTION_MODE: consistency
+          GOLEMS_EVOLUTION_MODE: ${{ github.event.inputs.mode || 'evolve' }}
         run: |
           set -o pipefail
           mkdir -p build/timetrial-training training/alt/replays/live
+          echo "Physical training mode: ${GOLEMS_EVOLUTION_MODE}"
+          # Capture baseline to prove we saved NEW physical observations,
+          # not merely copied another non-learning checkpoint unchanged.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          state=json.loads(Path('training/alt/state/checkpoint.json').read_text())
+          Path('build/timetrial-training/original-state.json').write_text(
+              json.dumps({
+                  'completedGenerations': state['completedGenerations'],
+                  'strategyObservations': len(state.get('strategyMemory',{}).get('observations',[]))
+              }))
+          PY
           failures=0
           for trial in 1 2 3; do
             echo "::group::Real physical Minecraft trial ${trial}/3"
@@ -151,6 +173,31 @@ jobs:
             echo "::endgroup::"
           done
           echo "Completed 3 physical trials; failures=${failures}"
+          # Even when 10/10 fails, a LEARNING run must have scored and
+          # persisted actual gene generations and strategy outcomes.
+          if [[ "${GOLEMS_EVOLUTION_MODE}" == evolve ]]; then
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('build/timetrial-training')
+          original=json.loads((root/'original-state.json').read_text())
+          latest=json.loads(Path('training/alt/state/checkpoint.json').read_text())
+          assert latest['completedGenerations'] > original['completedGenerations'], (
+              'Training did not advance physical generations')
+          assert len(latest['strategyMemory']['observations']) > original['strategyObservations'], (
+              'Training did not collect independent physical strategy episodes')
+          assert 1 <= len(latest['knowledgePool']) <= 3
+          assert len(latest['nextPopulation']) == 10
+          assert any('[ALT INDEPENDENT LEARNING]' in log.read_text()
+                     for log in root.glob('real-builder-trial-*.log')), (
+                         'Frozen consistency mode accidentally ran instead of evolution')
+          print('Verified genuine physical evolution: generations:',
+                original['completedGenerations'], '->', latest['completedGenerations'],
+                '; strategy observations:',
+                original['strategyObservations'], '->',
+                len(latest['strategyMemory']['observations']))
+          PY
+          fi
           exit "${failures}"
       - name: Generate bounded offline HTML while retaining all raw physical traces
         if: always()
