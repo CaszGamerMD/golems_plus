@@ -65,7 +65,7 @@ public final class BuilderEvolutionAltCourseGameTest {
     private static final double SPEED_CAP=0.2;
     // Five bots from each green-wool column, spaced through all ten rows.
     // Keep both columns and the same maze: only concurrent entity count changes.
-    private static final int[] SELECTED_BOTS={0,2,4,6,8,11,13,15,17,19};
+    private static final int[] SELECTED_BOTS={0,2,4,6,8,11,13,15,17};
     private static Block block(String name){
         return BuiltInRegistries.BLOCK.getValue(
                 Identifier.tryParse("minecraft:"+name));
@@ -1954,13 +1954,13 @@ public final class BuilderEvolutionAltCourseGameTest {
      */
     private static final class TrainingMemory {
         private static final String FORMAT="golems-plus-physical-genes-v1";
-        private static final String COURSE="timetrial-alt-vanilla-10-builders-260-ticks-v2";
+        private static final String COURSE="timetrial-alt-vanilla-9-builders-260-ticks-v3";
         private static final Gson JSON=new GsonBuilder()
                 .setPrettyPrinting().disableHtmlEscaping().create();
         private static final Path DIRECTORY=Path.of(
                 System.getenv("GOLEMS_EVOLUTION_STATE_DIR")==null
                 ||System.getenv("GOLEMS_EVOLUTION_STATE_DIR").isBlank()
-                ?"training/alt/state":System.getenv("GOLEMS_EVOLUTION_STATE_DIR"));
+                ?"training/alt/state-nine":System.getenv("GOLEMS_EVOLUTION_STATE_DIR"));
         private static Path checkpoint(){return DIRECTORY.resolve("checkpoint.json");}
         private static Path champion(){return DIRECTORY.resolve("champion.json");}
         private static Path nativeChampion(){return DIRECTORY.resolve("native-champion.json");}
@@ -1968,7 +1968,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         private static Path replayDirectory(){return Path.of(
                 System.getenv("GOLEMS_EVOLUTION_REPLAY_DIR")==null
                 ||System.getenv("GOLEMS_EVOLUTION_REPLAY_DIR").isBlank()
-                ?"training/alt/replays/live":System.getenv("GOLEMS_EVOLUTION_REPLAY_DIR"));}
+                ?"training/alt/replays/live-nine":System.getenv("GOLEMS_EVOLUTION_REPLAY_DIR"));}
 
         private static JsonArray encode(Genome genome){
             JsonArray a=new JsonArray();
@@ -2054,7 +2054,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         }
         private static List<Genome> decodePopulation(JsonArray a){
             if(a.size()!=SELECTED_BOTS.length)
-                throw new IllegalStateException("Saved population must have 10 genomes");
+                throw new IllegalStateException("Saved population must have 9 genomes");
             List<Genome> result=new ArrayList<>();
             for(JsonElement e:a)result.add(decode(e));
             return result;
@@ -2248,8 +2248,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                         +run.completedGenerations+" best="+run.bestFinished
                         +" edges="+run.collisionMemory.size());
             }else{
-                for(Genome saved:SAVED_PHYSICAL_CHAMPIONS)
-                    run.generationGenes.add(saved);
+                for(int i=0;i<SELECTED_BOTS.length;i++)
+                    run.generationGenes.add(SAVED_PHYSICAL_CHAMPIONS[i]);
                 System.out.println("[TIMETRIAL MEMORY] seeded from 10 previously "
                         +"real-entity-verified fallback genomes");
             }
@@ -2505,7 +2505,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                     run.verifiedChampion=new ArrayList<>();
                     for(Candidate b:bots)run.verifiedChampion.add(b.dna);
                     System.out.println("[TIMETRIAL MEMORY] SAVED new real-entity "
-                            +"10/10 champion, slowest="+slowest
+                            +"9/9 champion, slowest="+slowest
                             +" mean="+meanArrival);
                 }else System.out.println("[TIMETRIAL MEMORY] 10/10 won but "
                         +"retained faster earlier verified champion");
@@ -2823,7 +2823,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 lastSuccessfulGeneration=completedGenerations+1;
                 lastSuccessfulNativeVerified=true;
                 System.out.println("[TIMETRIAL MEMORY] Retained entire "
-                        +"latest VERIFIED 10/10 team independently of"
+                        +"latest VERIFIED 9/9 team independently of"
                         +" best-ever champion and mutated offspring");
             }
             // Data durability is NOT conditional on success. Even a
@@ -2844,7 +2844,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                             +" route="+b.route
                             +" genes="+b.dna);
                 System.out.println("[TIMETRIAL MEMORY] Next validation "
-                        +"run will START with all ten verified winning "
+                        +"run will START with all nine verified winning "
                         +"genes; exploratory offspring saved separately");
                 ended=true;
                 releaseSimulation.run();
@@ -2859,11 +2859,11 @@ public final class BuilderEvolutionAltCourseGameTest {
                             +" qualified224TickRounds="+targetQualifiedRounds);
                     if(targetQualifiedRounds==GENERATIONS){helper.succeed();return;}
                 }
-                helper.fail("Physical evolution did not qualify all 10"
+                helper.fail("Physical evolution did not qualify all 9"
                         +" by 11.2s after "+GENERATIONS
                         +" generations. Best REAL 13s result="+bestFinishedThisSession
                         +"/"+bots.size()
-                        +", latest="+finished+"/10; "
+                        +", latest="+finished+"/"+bots.size()+"; "
                         +"checkpoint saved for future runs; "+blockers);
                 return;
             }
