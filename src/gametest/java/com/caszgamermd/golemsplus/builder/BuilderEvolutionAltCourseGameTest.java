@@ -374,6 +374,8 @@ public final class BuilderEvolutionAltCourseGameTest {
         // a real obstruction; only the 12-gene logic is inherited.
         String route;
         final String initialRoute;
+        int familyParentSlot=-1;
+        String familyRole="seed";
         final Genome dna;
         final int initialEntityTicks;
         final JsonArray nativeTickSamples=new JsonArray();
@@ -1279,6 +1281,10 @@ public final class BuilderEvolutionAltCourseGameTest {
             }
             Candidate b=new Candidate(slot,mob,route,
                     start[0],start[1],genome,blockMemory);
+            if(familyOrigins.size()==SELECTED_BOTS.length){
+                b.familyParentSlot=familyOrigins.get(slot);
+                b.familyRole=b.familyParentSlot==slot?"parent":"mutant";
+            }
             b.strategyContext=plan.context();
             b.strategyDecision=plan.decision();
             // All entries are discovered by A* from actual geometry.
@@ -2595,6 +2601,8 @@ public final class BuilderEvolutionAltCourseGameTest {
             for(Candidate b:bots){
                 JsonObject entry=new JsonObject();
                 entry.addProperty("slot",b.index);
+                entry.addProperty("familyParentSlot",b.familyParentSlot);
+                entry.addProperty("familyRole",b.familyRole);
                 entry.addProperty("arrivedTicks",b.arrivedTick);
                 entry.addProperty("fitness",b.fitness());
                 entry.addProperty("nativeEntityTicks",b.mob.tickCount-b.initialEntityTicks);
@@ -2630,6 +2638,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                 physicalFitness.add(entry);
                 JsonObject trace=new JsonObject();
                 trace.addProperty("slot",b.index);
+                trace.addProperty("familyParentSlot",b.familyParentSlot);
+                trace.addProperty("familyRole",b.familyRole);
                 trace.addProperty("strategyContext",b.strategyContext);
                 trace.addProperty("strategy",b.strategyDecision.strategy().name());
                 trace.addProperty("strategyReason",b.strategyDecision.reason());
