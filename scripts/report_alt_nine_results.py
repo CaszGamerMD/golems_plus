@@ -137,7 +137,7 @@ def report(trials, before, after, champion, run_id="", run_url="", mode="evolve"
         if summed["collisions"] > total * 15:
             notes.append("**High collision burden:** inspect start-area crowding, right-of-way arbitration, and whether teammate contacts are counted as static wall failures.")
         if maxima["finish112"] is not None and maxima["finish112"] < 9:
-            notes.append("**Speed target not met:** optimize reliable 10/10 completion under 260 ticks before accepting faster individual records as team-wide improvement.")
+            notes.append("**Speed target not met:** optimize reliable 9/9 completion under 260 ticks before accepting faster individual records as team-wide improvement.")
     if mode == "evolve":
         if growth is None or growth <= 0:
             notes.insert(0, "**Training retention warning:** completed generation count did not advance (or the checkpoint is missing). Inspect state save and merge.")
@@ -166,7 +166,7 @@ def report(trials, before, after, champion, run_id="", run_url="", mode="evolve"
         f"- **Recorded strategy observations change:** {bobs if bobs is not None else 'unavailable'} → {aobs if aobs is not None else 'unavailable'} ({observed if observed is not None else 'unknown'}).",
         f"- **Personal-best improvements this run:** {', '.join('golem '+str(i) for i in improved) if improved else 'none verified'}.",
         f"- **Shared top three:** {', '.join('golem '+str(k['slot'])+' ('+str(round(k['fitness'], 1))+')' for k in current_pool) if current_pool else 'unavailable'}; pool changed: {'yes' if pool_changed is True else 'no' if pool_changed is False else 'unknown'}.",
-        f"- **Protected historical champion:** {champion_tick} ticks (10/10) — historical, NOT evidence of this run." if champion_tick is not None else "- **Historical champion:** unavailable.",
+        f"- **Protected historical champion:** {champion_tick} ticks (9/9) — historical, NOT evidence of this run." if champion_tick is not None else "- **Historical champion:** unavailable.",
         "",
         "## Physical movement signals", "",
         (f"- Slab ascents: **{summed['slabAscents']}**; slab-entry stalls: **{summed['slabEntryStalls']}**."
