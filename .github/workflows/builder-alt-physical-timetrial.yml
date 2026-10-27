@@ -39,6 +39,7 @@ jobs:
           gradle-version: '9.7.0'
       - name: Test gene persistence and no-regression champion merging
         run: |
+          python3 -m unittest discover -s scripts/tests -p test_alt_genetic_selection.py -v
           python3 -m unittest discover -s scripts/tests -p test_merge_real_evolution_state.py -v
           python3 -m unittest discover -s scripts/tests -p test_merge_alt_evolution_state.py -v
           python3 -m unittest discover -s scripts/tests -p test_export_real_evolution_replays.py -v
@@ -103,7 +104,9 @@ jobs:
           assert 'updateKnowledgePool(this,b)' in test
           assert 'parents=knowledgePool.stream()' in test
           assert 'obj.add("knowledgePool",pool)' in test
-          assert 'if(i<parents.size())offspring.add(parents.get(i))' in test
+          assert 'if(elite!=null)offspring.add(elite.dna())' in test
+          assert 'generationGenes=pinElites(generationGenes,knowledgePool)' in test
+          assert 'genome.doorBias()>.075' in test
           # Stepping up 0.5 blocks needs the native downward ground
           # probe; the old check incorrectly required zero vertical
           # movement and would reject the already-tested slab fix.

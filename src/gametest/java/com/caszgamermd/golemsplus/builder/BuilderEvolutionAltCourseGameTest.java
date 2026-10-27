@@ -43,7 +43,7 @@ import net.minecraft.world.phys.Vec3;
  * EVOLUTIONARY TRAINING INSIDE THE REAL MINECRAFT SERVER.
  * Every generation spawns 10 physical 0.65 x 0.65 x 1.6 BuilderGolem
  * entities, drives legal walking/jumping into REAL Minecraft collisions,
- * times out after 360 ticks, and selects/crosses/mutates navigation
+ * times out after 260 ticks, and selects/crosses/mutates navigation
  * control genes using ONLY what the real entities physically achieved.
  *
  * Neither a successful headless simulation nor theoretical route length
@@ -232,19 +232,23 @@ public final class BuilderEvolutionAltCourseGameTest {
                     rng.nextBoolean()?a.doorBias:b.doorBias);
         }
         Genome mutate(Random rng){
+            // Local search: keep eleven learned traits intact. Previously
+            // every child perturbed all twelve at once, obscuring which
+            // change helped and frequently destroying useful combinations.
+            int changed=rng.nextInt(12);
             return new Genome(
-                    clamp(drive+rng.nextGaussian()*.07,.55,1),
-                    clamp(align+rng.nextGaussian()*.14,.35,1),
-                    clamp(tolerance+rng.nextGaussian()*.025,.05,.24),
-                    clamp(jumpLead+rng.nextGaussian()*.20,.2,1.65),
-                    clamp(jumpPower+rng.nextGaussian()*.02,.34,.46),
-                    (int)clamp(jumpCooldown+rng.nextGaussian()*4,4,32),
-                    (int)clamp(stuckTimeout+rng.nextGaussian()*7,5,45),
-                    clamp(backoff+rng.nextGaussian()*.055,.03,.27),
-                    clamp(slabAvoid+rng.nextGaussian()*.45,0,5),
-                    clamp(turnBias+rng.nextGaussian()*.2,0,1.8),
-                    clamp(routeJitter+rng.nextGaussian()*.20,0,1.5),
-                    clamp(doorBias+rng.nextGaussian()*.06,-.16,.16));
+                    changed==0?clamp(drive+rng.nextGaussian()*.035,.55,1):drive,
+                    changed==1?clamp(align+rng.nextGaussian()*.07,.35,1):align,
+                    changed==2?clamp(tolerance+rng.nextGaussian()*.0125,.05,.24):tolerance,
+                    changed==3?clamp(jumpLead+rng.nextGaussian()*.10,.2,1.65):jumpLead,
+                    changed==4?clamp(jumpPower+rng.nextGaussian()*.01,.34,.46):jumpPower,
+                    changed==5?(int)clamp(jumpCooldown+(rng.nextBoolean()?1:-1),4,32):jumpCooldown,
+                    changed==6?(int)clamp(stuckTimeout+(rng.nextBoolean()?1:-1),5,45):stuckTimeout,
+                    changed==7?clamp(backoff+rng.nextGaussian()*.0275,.03,.27):backoff,
+                    changed==8?clamp(slabAvoid+rng.nextGaussian()*.225,0,5):slabAvoid,
+                    changed==9?clamp(turnBias+rng.nextGaussian()*.10,0,1.8):turnBias,
+                    changed==10?clamp(routeJitter+rng.nextGaussian()*.10,0,1.5):routeJitter,
+                    changed==11?clamp(doorBias+rng.nextGaussian()*.06,-.16,.16):doorBias);
         }
         private static double clamp(double value,double lo,double hi){
             return Math.max(lo,Math.min(hi,value));
@@ -278,6 +282,14 @@ public final class BuilderEvolutionAltCourseGameTest {
      */
     private record Knowledge(int slot,Genome dna,double fitness,
                              int arrivedTick,double progress,int generation){}
+
+    /** An elite's evidence belongs to its original starting slot. */
+    private static List<Genome> pinElites(List<Genome> population,
+                                         List<Knowledge> pool){
+        List<Genome> pinned=new ArrayList<>(population);
+        for(Knowledge elite:pool)pinned.set(elite.slot(),elite.dna());
+        return pinned;
+    }
     private static void updateKnowledgePool(Tournament run,Candidate b){
         double score=b.fitness();
         Knowledge record=new Knowledge(b.index,b.dna,score,b.arrivedTick,
@@ -932,10 +944,9 @@ public final class BuilderEvolutionAltCourseGameTest {
             Map<Integer,Double> crewCongestion,boolean probeDoor){
         String direct=planRouteTo(startX,startZ,dna,memory,helper,world,mob,
                 -1,-1,crewCongestion);
-        // Let two rotating INDIVIDUAL golems each generation physically
-        // evaluate a door route; the others retain unbiased routes.
-        // The opening and closing logic is a learned route option, not
-        // an authored path, force-arrival, or pooled teammate thought.
+        // Alternative exploration is inherited with the genome. A rotating
+        // slot/time flag made the SAME genes choose different policies on
+        // successive runs, so fitness could not identify a useful door trait.
         if(!probeDoor)return direct;
         for(int z=1;z<MAZE.length-1;z++)
             for(int x=1;x<MAZE[z].length()-1;x++){
@@ -990,7 +1001,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             Candidate b=new Candidate(slot,mob,exploratoryRoute(start[0],
                     start[1],genome,blockMemory,helper,world,mob,
                     slabEntryReservations,
-                    ((slot+(int)(helper.getTick()/DEADLINE))%5)==0),
+                    genome.doorBias()>.075),
                     start[0],start[1],genome,blockMemory);
             // All entries are discovered by A* from actual geometry.
             // Spread simultaneous workers among several accessible slab
@@ -2103,6 +2114,9 @@ public final class BuilderEvolutionAltCourseGameTest {
             // Preserve real progress from PREVIOUS GitHub Actions runs.
             // No headless scores may seed or qualify the physical test.
             TrainingMemory.restore(this);
+            if(!"validate".equalsIgnoreCase(
+                    System.getenv("GOLEMS_EVOLUTION_MODE")))
+                generationGenes=pinElites(generationGenes,knowledgePool);
             rng=new Random(TRAINING_SEED
                     +1000003L*(long)completedGenerations);
             bots=spawnGeneration(helper,generationGenes,collisionMemory);
@@ -2195,11 +2209,17 @@ public final class BuilderEvolutionAltCourseGameTest {
                 throw new IllegalStateException("No verified physical knowledge");
             List<Genome> offspring=new ArrayList<>();
             for(int i=0;i<SELECTED_BOTS.length;i++){
-                if(i<parents.size())offspring.add(parents.get(i));
+                final int slot=i;
+                Knowledge elite=knowledgePool.stream()
+                        .filter(k->k.slot()==slot).findFirst().orElse(null);
+                if(elite!=null)offspring.add(elite.dna());
                 else{
                     Genome a=parents.get(rng.nextInt(parents.size()));
                     Genome b=parents.get(rng.nextInt(parents.size()));
-                    offspring.add(Genome.cross(a,b,rng).mutate(rng));
+                    // Most children refine one intact parent; retain some
+                    // crossover exploration without reshuffling every child.
+                    offspring.add(rng.nextInt(3)==0
+                            ?Genome.cross(a,b,rng).mutate(rng):a.mutate(rng));
                 }
             }
             // The complete 10/10 TEAM must survive intact, whether or
