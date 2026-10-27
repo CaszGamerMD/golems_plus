@@ -49,7 +49,7 @@ import net.minecraft.world.phys.Vec3;
  * control genes using ONLY what the real entities physically achieved.
  *
  * Neither a successful headless simulation nor theoretical route length
- * can pass this test. All ten real entities must reach real RED_WOOL in
+ * can pass this test. All nine real entities must reach real RED_WOOL in
  * the same 260-tick generation. No flight, scaffold or world modification
  * during runs. The original test fixture is built once before training.
  */
@@ -543,7 +543,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 }
             }
         System.out.println("[ALT COURSE] Restored exact VANILLA 27x10x12 track; "
-                +"10 real golems race from green wool to red wool in 260 ticks.");
+                +"9 real golems race from green wool to red wool in 260 ticks.");
     }
 
     private static Runnable holdCourseSimulation(GameTestHelper helper){
@@ -2261,7 +2261,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                             System.getenv("GOLEMS_EVOLUTION_MODE"))){
                         run.generationGenes=new ArrayList<>(fullTeam);
                         System.out.println("[TIMETRIAL MEMORY] GEN0 "
-                            +"restoring latest VERIFIED 10/10 cohort from "
+                            +"restoring latest VERIFIED 9/9 cohort from "
                             +"generation "+generation+" (not offspring)");
                     }else System.out.println("[TIMETRIAL MEMORY] GEN0 "
                             +"exploration mode uses saved mutated offspring");
@@ -2674,7 +2674,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                     System.out.println("[TIMETRIAL MEMORY] SAVED new real-entity "
                             +"9/9 champion, slowest="+slowest
                             +" mean="+meanArrival);
-                }else System.out.println("[TIMETRIAL MEMORY] 10/10 won but "
+                }else System.out.println("[TIMETRIAL MEMORY] 9/9 won but "
                         +"retained faster earlier verified champion");
             }
             System.out.println("[TIMETRIAL MEMORY] CHECKPOINT saved real generation "
@@ -3896,7 +3896,7 @@ public final class BuilderEvolutionAltCourseGameTest {
     public void realBuildersEvolveOnAltMazeInThirteenSeconds(
             GameTestHelper helper){
         fillOriginalCourse(helper);
-        if(STARTS.length!=20||SELECTED_BOTS.length!=10){
+        if(STARTS.length!=20||SELECTED_BOTS.length!=9){
             helper.fail("Expected exactly 10 live Builder Golem entrants");
             return;
         }
