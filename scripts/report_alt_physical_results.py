@@ -31,7 +31,10 @@ def read_trials(directory):
     results = []
     for path in sorted(Path(directory).glob("real-builder-trial-*.log")):
         rows = []
+        traffic_replans = 0
         for line in path.open(encoding="utf-8", errors="replace"):
+            if "[ALT TRAFFIC REPLAN]" in line:
+                traffic_replans += 1
             match = GEN.search(line)
             if not match:
                 continue
@@ -43,7 +46,8 @@ def read_trials(directory):
             if not (0 <= row["finish112"] <= row["finish13"] <= 10):
                 raise ValueError("Inconsistent physical finishing counts")
             rows.append(row)
-        results.append({"name": path.name, "generations": rows})
+        results.append({"name": path.name, "generations": rows,
+                        "trafficReplans": traffic_replans})
     return results
 
 
@@ -83,6 +87,9 @@ def report(trials, before, after, champion, run_id="", run_url="", mode="evolve"
     summed = {field: sum(g.get(field, 0) for g in generations) for field
               in ("doorPlans", "doorCrossings", "collisions", "jumps",
                   "slabAscents", "slabEntryStalls")}
+    summed["trafficReplans"] = sum(t["trafficReplans"] for t in trials)
+    has_slab_telemetry = bool(generations) and all(
+        "slabAscents" in g and "slabEntryStalls" in g for g in generations)
     summary = {
         "runId": str(run_id), "mode": mode,
         "trials": len(trials), "physicalGenerations": total,
@@ -93,7 +100,7 @@ def report(trials, before, after, champion, run_id="", run_url="", mode="evolve"
         "completedGenerationDelta": growth, "strategyEvidenceDelta": observed,
         "improvedPersonalSlots": improved, "poolChanged": pool_changed,
         "pool": current_pool, "historicChampionSlowestTicks": champion_tick,
-        "totals": summed,
+        "totals": summed, "hasSlabTelemetry": has_slab_telemetry,
         "perTrial": [{
             "name": t["name"], "generations": len(t["generations"]),
             "best13s": max((g["finish13"] for g in t["generations"]), default=None),
@@ -106,11 +113,13 @@ def report(trials, before, after, champion, run_id="", run_url="", mode="evolve"
     if not generations:
         notes.append("**No scored generations found.** Inspect Minecraft startup, compilation, and GameTest errors; do not claim training occurred.")
     else:
-        if summed["slabEntryStalls"] > summed["slabAscents"] and summed["slabEntryStalls"] > 0:
+        if not has_slab_telemetry:
+            notes.append("**Slab telemetry incomplete:** physical generation logs do not consistently contain ascent/stall counters. Confirm instrumentation is active before interpreting slab progress.")
+        elif summed["slabEntryStalls"] > summed["slabAscents"] and summed["slabEntryStalls"] > 0:
             notes.append("**Slab entry remains a bottleneck:** more physical slab-entry stalls than successful ascents. Investigate edge alignment, step-up grounding, and nearby worker clearance; verify with controller-level slab tests.")
-        elif summed["slabAscents"] > 0:
+        elif has_slab_telemetry and summed["slabAscents"] > 0:
             notes.append("**Slabs are physically accessible:** observed real ascents. Compare entry stalls and completion rates before changing slab route costs.")
-        else:
+        elif has_slab_telemetry:
             notes.append("**Slab skill not demonstrated in the scored crew:** no recorded native ascents. Check whether plans enter slabs, then check approach geometry and instrumentation.")
         if summed["doorPlans"] > 0 and summed["doorCrossings"] == 0:
             notes.append("**Door exploration does not translate to traversal:** planned door routes were recorded, but no golem used a door. Investigate door approach/leaf clearance and traffic; do not increase door preference blindly.")
@@ -118,6 +127,8 @@ def report(trials, before, after, champion, run_id="", run_url="", mode="evolve"
             notes.append("**Door routes were attempted:** compare completion times of door users versus other routes before assigning a larger door preference.")
         if total >= 6 and last["finish13"] < maxima["finish13"]:
             notes.append("**Final generation regressed from the session best.** Keep the protected champion and individual top-three pool, then test gene changes against repeated identical conditions.")
+        if summed["trafficReplans"] > total * 4:
+            notes.append("**Frequent traffic replanning:** evaluate wait-to-reroute thresholds and predictable right-of-way; excessive reroutes can cause the crew to repeatedly abandon short slab entrances.")
         if summed["collisions"] > total * 15:
             notes.append("**High collision burden:** inspect start-area crowding, right-of-way arbitration, and whether teammate contacts are counted as static wall failures.")
         if maxima["finish112"] is not None and maxima["finish112"] < 10:
@@ -134,8 +145,8 @@ def report(trials, before, after, champion, run_id="", run_url="", mode="evolve"
     if run_url:
         lines.append(f"**GitHub Actions:** {run_url}")
     if run_id:
-        lines.append(f"**Run ID:** \`{run_id}\`")
-    lines += [f"**Mode:** \`{mode}\` | **Course:** existing alt course | **Real entities:** 10 per generation",
+        lines.append(f"**Run ID:** {run_id}")
+    lines += [f"**Mode:** {mode} | **Course:** existing alt course | **Real entities:** 10 per generation",
               "", "## Results", ""]
     if total:
         lines += [
@@ -153,9 +164,10 @@ def report(trials, before, after, champion, run_id="", run_url="", mode="evolve"
         f"- **Protected historical champion:** {champion_tick} ticks (10/10) — historical, NOT evidence of this run." if champion_tick is not None else "- **Historical champion:** unavailable.",
         "",
         "## Physical movement signals", "",
-        f"- Slab ascents: **{summed['slabAscents']}**; slab-entry stalls: **{summed['slabEntryStalls']}**.",
+        (f"- Slab ascents: **{summed['slabAscents']}**; slab-entry stalls: **{summed['slabEntryStalls']}**."
+         if has_slab_telemetry else "- Slab ascents/stalls: telemetry incomplete."),
         f"- Door plans: **{summed['doorPlans']}**; door crossing attempts: **{summed['doorCrossings']}**.",
-        f"- Collision events: **{summed['collisions']}**; jump events: **{summed['jumps']}**.",
+        f"- Collision events: **{summed['collisions']}**; jump events: **{summed['jumps']}**; traffic replans: **{summed['trafficReplans']}**.",
         "", "## Trial breakdown", "",
         "| Trial | Generations | Best ≤260t | Best ≤224t | Final ≤260t |",
         "|---|---:|---:|---:|---:|",
