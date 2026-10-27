@@ -330,6 +330,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         boolean doorOffsetX;
         int slabTicks,reroutes,precisionTicks,staticStalls;
         int yieldingTicks,trafficQueueTicks,trafficCrossingTicks;
+        int trafficWaitTicks,trafficReroutes,lastTrafficRerouteTick=-1000;
         int safeCornerShortcuts;
         int trafficRecoveryTicks;
         boolean initialRouteUsesDoor;
@@ -1101,11 +1102,11 @@ public final class BuilderEvolutionAltCourseGameTest {
     private static TrafficMotion coordinateTraffic(Candidate self,
             List<Candidate> group,double vx,double vz){
         double speed=Math.hypot(vx,vz);
-        // Courtesy never becomes a permanent stop. On a 260-tick
-        // physical course a queue that waits 60-120 ticks is worse
-        // than vanilla real-entity collision recovery. Four total
-        // courtesy ticks per golem, then continue actual walking.
-        if(speed<.00001||group.size()<2||self.yieldingTicks>=4)
+        // Do not exhaust a lifetime courtesy allowance after four ticks.
+        // Priority must be recomputed from moving LIVE entities on every
+        // tick; otherwise a ten-golem platoon pushes into the slab lip.
+        // Prolonged waits cause a bounded traffic-only replan below.
+        if(speed<.00001||group.size()<2)
             return new TrafficMotion(vx,vz,false,false,-1);
         double dirX=vx/speed,dirZ=vz/speed;
         double allowance=speed;
@@ -1171,15 +1172,17 @@ public final class BuilderEvolutionAltCourseGameTest {
                     queue=true;
                     yieldingFor=peer.index;
                 }
-            }else if(gap<.52&&ahead>-.12){
-                // Already within the real 0.65-wide body diameter:
-                // only then assign crossing right-of-way, breaking
-                // mirrored reactions with a fixed tie-breaker.
+            }else if(gap<1.02&&ahead>-.18&&lateral<.64){
+                // Crossing/merging at slab entries must resolve BEFORE
+                // two 0.65-wide hitboxes overlap. Give the nearer-to-
+                // finish traveler priority, with slot as a stable tie
+                // breaker. The lower-priority traveler eases off while
+                // the other moves, avoiding mirrored stop/start dances.
                 double priority=remainingPathMeters(peer);
                 if(priority<ownPriority-.01
                         ||(Math.abs(priority-ownPriority)<.01
                             &&peer.index<self.index)){
-                    allowance=0;
+                    allowance=Math.min(allowance,Math.max(0,gap-.72));
                     yielding=true;
                     yieldingFor=peer.index;
                 }
@@ -1212,6 +1215,71 @@ public final class BuilderEvolutionAltCourseGameTest {
         return false;
     }
 
+    /**
+     * Dynamic teammate obstruction is NOT a failure of Minecraft floor
+     * geometry. Re-plan from the golem's actual standing cell with a
+     * short-lived cost around LIVE teammates and their next waypoints.
+     * Never retain these costs in blockedEdges, never noclip/jump or
+     * force a fixed slab lane. Real AABB and grounded step checks still
+     * validate every edge of the new route.
+     */
+    private static boolean recoverCongestedRoute(GameTestHelper helper,
+            Candidate self,List<Candidate> crew){
+        if(self.trafficWaitTicks<9||self.trafficReroutes>=2
+                ||self.cursor>=self.route.length())return false;
+        int tick=(int)(helper.getTick()-self.birthTick);
+        if(tick-self.lastTrafficRerouteTick<18)return false;
+        self.lastTrafficRerouteTick=tick;
+        ServerLevel world=helper.getLevel();
+        int fromX=(int)Math.floor(self.mob.getX()-self.originX);
+        int fromZ=(int)Math.floor(self.mob.getZ()-self.originZ);
+        if(!physicalCellOpen(helper,world,self.mob,fromX,fromZ))
+            return false;
+        Map<Integer,Double> crowd=new HashMap<>();
+        for(Candidate peer:crew){
+            if(peer==self||peer.arrivedTick>=0||!peer.mob.isAlive()
+                    ||Math.abs(peer.mob.getY()-self.mob.getY())>.7
+                    ||Math.hypot(peer.mob.getX()-self.mob.getX(),
+                            peer.mob.getZ()-self.mob.getZ())>4.0)
+                continue;
+            int px=(int)Math.floor(peer.mob.getX()-self.originX);
+            int pz=(int)Math.floor(peer.mob.getZ()-self.originZ);
+            if(walkableCell(px,pz))
+                crowd.merge(pz*MAZE[0].length()+px,4.0,Double::sum);
+            if(peer.cursor<peer.route.length()){
+                int[] nextCell=next(peer.x,peer.z,
+                        peer.route.charAt(peer.cursor));
+                if(walkableCell(nextCell[0],nextCell[1]))
+                    crowd.merge(nextCell[1]*MAZE[0].length()+nextCell[0],
+                            2.0,Double::sum);
+            }
+        }
+        if(crowd.isEmpty())return false;
+        try{
+            String detour=planRouteTo(fromX,fromZ,self.dna,
+                    self.inheritedBlockMemory,helper,world,self.mob,
+                    -1,-1,crowd);
+            if(detour.equals(self.route.substring(self.cursor))
+                    &&fromX==self.x&&fromZ==self.z)return false;
+            self.route=detour;
+            self.cursor=0;
+            self.x=fromX;self.z=fromZ;
+            self.trafficReroutes++;
+            self.trafficWaitTicks=0;
+            self.immobile=0;
+            self.backoffTicks=0;
+            self.staticStalls=0;
+            self.lastDistance=Double.POSITIVE_INFINITY;
+            self.movementMode="r";
+            System.out.println("[ALT TRAFFIC REPLAN] slot="+self.index
+                    +" tick="+tick+" detour="+detour
+                    +" trafficReroutes="+self.trafficReroutes);
+            return true;
+        }catch(IllegalStateException noAlternative){
+            return false;
+        }
+    }
+
     /** Controller uses real Minecraft entity move + collisions; only
      * genes controlling WALK / JUMP / alignment can be selected.
      */
@@ -1228,6 +1296,9 @@ public final class BuilderEvolutionAltCourseGameTest {
             mob.discard();
             return;
         }
+        // Crew congestion uses live occupancy, never inherited block
+        // failures. Try a new valid corridor after sustained waiting.
+        if(recoverCongestedRoute(helper,b,crew))return;
         if(recoverBlockedRoute(helper,b))return;
         int[] ahead=null;
         BlockPos target=null;
@@ -1422,7 +1493,10 @@ public final class BuilderEvolutionAltCourseGameTest {
             b.backoffTicks=0;
             b.staticStalls=0;
             b.lastDistance=Double.POSITIVE_INFINITY;
-            if(Math.hypot(polite.vx(),polite.vz())<.002)return;
+            if(Math.hypot(polite.vx(),polite.vz())<.002){
+                b.trafficWaitTicks++;
+                return;
+            }
         }else b.trafficPrioritySlot=-1;
         vx=polite.vx();
         vz=polite.vz();
@@ -1452,12 +1526,21 @@ public final class BuilderEvolutionAltCourseGameTest {
         boolean hitsStaticBlock=world.getBlockCollisions(mob,
                 mob.getBoundingBox().move(vx,0,vz))
                 .iterator().hasNext();
-        if(realHorizontal<.11&&hitsStaticBlock)b.staticStalls++;
-        else if(realHorizontal>.15)b.staticStalls=0;
+        boolean teammateBlocking=teammateWithin(b,crew,1.20);
+        if(realHorizontal<.04&&teammateBlocking)
+            b.trafficWaitTicks++;
+        else if(realHorizontal>.11)b.trafficWaitTicks=0;
+        // Teammate contact must NEVER teach the genetics that a slab
+        // face is a permanent solid wall. Log static evidence only
+        // when a stationary body has no live neighbor blocking it.
+        if(realHorizontal<.11&&hitsStaticBlock&&!teammateBlocking)
+            b.staticStalls++;
+        else if(realHorizontal>.15||teammateBlocking)
+            b.staticStalls=0;
         if(mob.position().distanceToSqr(old)<.000004){
             b.movementMode="c";
             b.collisions++;
-            if(hitsStaticBlock&&b.immobile>3){
+            if(hitsStaticBlock&&!teammateBlocking&&b.immobile>3){
                 Edge blocked=new Edge(b.x,b.z,ahead[0],ahead[1]);
                 b.realBlockFailures.merge(blocked,1,Integer::sum);
             }
@@ -1786,6 +1869,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 trace.addProperty("trafficQueueTicks",b.trafficQueueTicks);
                 trace.addProperty("trafficCrossingTicks",b.trafficCrossingTicks);
                 trace.addProperty("trafficRecoveryTicks",b.trafficRecoveryTicks);
+                trace.addProperty("trafficReroutes",b.trafficReroutes);
                 trace.addProperty("safeCornerShortcuts",b.safeCornerShortcuts);
                 trace.addProperty("initialRouteUsesDoor",b.initialRouteUsesDoor);
                 trace.addProperty("distanceMeters",b.measuredDistance);
