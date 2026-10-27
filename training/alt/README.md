@@ -1,3 +1,42 @@
+## Individual knowledge pool and operable doors (October 27)
+
+The physical alt-course trainer now saves **per-golem improvements**, without
+waiting for 10/10. Each golem keeps its own personal-best 12-gene chromosome
+and score. A shared, persistent `knowledgePool` contains the **best three
+different golems** by measured fitness: reaching red wool sooner outranks a
+nonfinisher, while unfinished golems compete on physical course progress.
+The next generation preserves those three exact parents and breeds seven
+mutated descendants **only from these three**. No route coordinates or
+teammate thoughts are passed between simultaneous runners.
+
+The previous `personalBests` and `personalScores` are not thrown away:
+on first restore the new pool is seeded from the strongest stored personal
+results. Future validation runs restore pooled `nextPopulation` by default
+rather than silently replacing it with the latest successful ten-member team.
+The latest full-team population and fastest old champion stay separately
+preserved for reference. Use `GOLEMS_EVOLUTION_MODE=validate` only when
+explicitly requesting the historical full-team qualification.
+
+Each 260-tick real-entity generation durably saves the pool, individual
+scores, offspring, live movement replays and historic winning cohort.
+The CI merger unions competing checkpoint pools **by golem slot and
+physical fitness**, retaining the global best three across GitHub runs.
+Failed 10/10 attempts must not erase independent improvements.
+
+Wooden doors are now **actionable route nodes even when closed**. Workers
+have to approach within 1.7 blocks, open both vanilla door halves, and
+then physically pass through collision geometry. Iron doors and missing
+doors remain impassable. Two rotating independent workers per generation
+test the discoverable door alternative; the other eight use the regular
+geometry-based route. The course's original door state and blocks are
+unchanged outside of actual golem opening actions and isolated GameTests.
+
+**Verification:** these are code changes, not a claim of a successful
+11.2-second 10/10 run. The target remains 224 ticks for all ten real
+Minecraft golems; 260 ticks remains the historical 13-second reference.
+
+---
+
 ## Phone replay viewer — latest tests and automatic future updates
 
 - **[Download mobile replay viewer](https://github.com/CaszGamerMD/golems_plus/blob/feature/builder-evolutionary-alt-course-262/training/alt/replays/mobile-viewer.html)** — lightweight self-contained HTML; tap **Download raw file** on GitHub and open it with Android Chrome. Includes the newest **three GitHub Actions test bundles**, with all their actual 10-entity generations, even when physical qualification fails.
