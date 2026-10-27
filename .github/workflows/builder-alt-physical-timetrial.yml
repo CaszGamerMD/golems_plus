@@ -207,12 +207,9 @@ jobs:
           PY
           fi
           exit "${failures}"
-      - name: Generate bounded offline HTML while retaining all raw physical traces
-        if: always()
-        run: python3 scripts/export_alt_evolution_replays.py --session-prefix "" --viewer training/alt/replays/route-viewer.html
-      - name: Build mobile offline replay and online future-test feed
-        if: always()
-        run: python3 scripts/export_alt_mobile_replays.py --batches 3
+      # Viewer publication is intentionally paused at the user's request.
+      # Keep real physical replay JSON, checkpoints and logs for diagnosis,
+      # but do NOT repopulate HTML or the mobile-data feed.
       - name: Commit learned real-entity genes, EVEN IF the trial fails
         if: always() && (github.head_ref == 'feature/builder-evolutionary-alt-course-262' || github.ref == 'refs/heads/feature/builder-evolutionary-alt-course-262') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         shell: bash
@@ -231,8 +228,8 @@ jobs:
           if [[ -d training/alt/replays/live ]]; then
             cp -a training/alt/replays/live/. "$replay_backup/"
           fi
-          viewer_backup="$(mktemp)"
-          cp training/alt/replays/route-viewer.html "$viewer_backup"
+          # Only preserve learning state and raw physical traces; the
+          # optional replay viewer is not being maintained right now.
           # The GameTest workflow temporarily edits its Fabric test
           # manifest, and training edits tracked checkpoint files.
           # Reset this disposable checkout AFTER copying new learning.
@@ -244,16 +241,9 @@ jobs:
             python3 scripts/merge_alt_evolution_state.py "$local_state" training/alt/state
             mkdir -p training/alt/replays/live
             cp -an "$replay_backup/." training/alt/replays/live/
-            cp "$viewer_backup" training/alt/replays/route-viewer.html
-            # Rebuild the newest three bundles from local and remote traces.
-            # All historical JSON remains archived; unbounded inline HTML
-            # exceeded GitHub's 100 MiB limit and blocked every state push.
-            python3 scripts/export_alt_evolution_replays.py --session-prefix "" --viewer training/alt/replays/route-viewer.html
-            # Rebuild the newest test batches AFTER merging remote runs
-            # so the phone's fixed data URL always includes future tests,
-            # even when GameTest did not reach the 11.2-second goal.
-            python3 scripts/export_alt_mobile_replays.py --batches 3
-            git add -- training/alt/state/ training/alt/replays/live/ training/alt/replays/route-viewer.html training/alt/replays/mobile-viewer.html training/alt/replays/mobile-data.json
+            # The raw real-entity movement archive is retained for
+            # investigation; no HTML/mobile replay data is produced.
+            git add -- training/alt/state/ training/alt/replays/live/
             if git diff --cached --quiet; then
               echo 'No improved state over current remote.'
               exit 0
@@ -276,8 +266,6 @@ jobs:
             training/alt/state/
             build/timetrial-training/real-builder-trial-*.log
             training/alt/replays/live/
-            training/alt/replays/mobile-viewer.html
-            training/alt/replays/mobile-data.json
             build/gametest/
             build/reports/
             build/test-results/
