@@ -120,14 +120,35 @@ public final class NavigationStrategyMemory {
         }
         int decisions=0;
         for(Strategy strategy:Strategy.values())decisions+=visits(context,strategy);
-        // Four uses of the retained preference, one explicit exploration.
-        // New strategies gain evidence without rewriting the proven policy
-        // after every trial. Validation never explores.
-        if(!validationOnly&&available.size()>1&&decisions%5==4){
-            chosen=available.stream().min(Comparator
-                    .comparingInt((Strategy s)->visits(context,s))
-                    .thenComparingInt(Strategy::ordinal)).orElse(Strategy.DIRECT);
-            reason="exploration";
+        // Three preference uses, one controlled exploration. When a
+        // slab-to-door alternative repeatedly FINISHES faster than direct
+        // but has not proven equal reliability yet, try it within this
+        // bounded 25% experimental budget. Never declare it "learned"
+        // based only on quick survivors: failures remain scored as zero.
+        // No positions, saved routes or prior movement are replayed.
+        if(!validationOnly&&available.size()>1&&decisions%4==3){
+            Strategy promising=null;
+            double paceGain=8.0;
+            if(baseline.finished()>=2)
+                for(Strategy strategy:available){
+                    if(strategy==Strategy.DIRECT)continue;
+                    Summary candidate=summary(context,strategy);
+                    if(candidate.trials()<3||candidate.finished()<2
+                            ||candidate.finished()/(double)candidate.trials()<.20)
+                        continue;
+                    double gain=baseline.meanArrivalTicks()
+                            -candidate.meanArrivalTicks();
+                    if(gain>=paceGain){promising=strategy;paceGain=gain;}
+                }
+            if(promising!=null){
+                chosen=promising;
+                reason="pace-exploration";
+            }else{
+                chosen=available.stream().min(Comparator
+                        .comparingInt((Strategy s)->visits(context,s))
+                        .thenComparingInt(Strategy::ordinal)).orElse(Strategy.DIRECT);
+                reason="exploration";
+            }
         }
         int trials=summary(context,chosen).trials();
         pending.merge(new Key(context,chosen),1,Integer::sum);
