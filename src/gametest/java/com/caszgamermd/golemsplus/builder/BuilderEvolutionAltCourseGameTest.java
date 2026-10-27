@@ -2143,6 +2143,50 @@ public final class BuilderEvolutionAltCourseGameTest {
 
 
     /**
+     * A turning/merging worker must yield before the real 0.65-wide
+     * hitboxes overlap, even when the other golem is heading a
+     * different direction. Old logic waited until distance < 0.52.
+     * This evaluates the same live-entity courtesy calculation used
+     * by the main physical trial, with no artificial movement.
+     */
+    @GameTest(maxTicks=80,padding=18,skyAccess=true)
+    public void realBuildersYieldBeforePhysicalLaneMerge(
+            GameTestHelper helper){
+        for(int x=1;x<=10;x++)for(int z=1;z<=6;z++){
+            helper.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=5;y++)helper.setBlock(x,y,z,Blocks.AIR);
+        }
+        ServerLevel world=helper.getLevel();
+        BuilderGolem lead=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BuilderGolem follow=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos a=helper.absolutePos(new BlockPos(5,2,3));
+        BlockPos b=helper.absolutePos(new BlockPos(6,2,3));
+        lead.setPos(a.getX()+.5,a.getY(),a.getZ()+.5);
+        follow.setPos(b.getX()+.35,b.getY(),b.getZ()+.5);
+        world.addFreshEntity(lead);
+        world.addFreshEntity(follow);
+        Candidate front=new Candidate(0,lead,"N",5,3,
+                SAVED_PHYSICAL_CHAMPIONS[0],Map.of());
+        Candidate behind=new Candidate(1,follow,"WWWW",6,3,
+                SAVED_PHYSICAL_CHAMPIONS[1],Map.of());
+        front.originX=a.getX()-5;front.originZ=a.getZ()-3;
+        behind.originX=front.originX;behind.originZ=front.originZ;
+        double gap=Math.hypot(lead.getX()-follow.getX(),
+                lead.getZ()-follow.getZ());
+        TrafficMotion motion=coordinateTraffic(behind,
+                List.of(front,behind),-.2,0);
+        if(gap<=.65||!motion.yielding()
+                ||motion.vx()>=0||motion.vx()<=-.199
+                ||motion.leaderSlot()!=0)
+            helper.fail("Early slab-approach merge priority rejected: "
+                    +" gap="+gap+" yield="+motion.yielding()
+                    +" adjusted="+motion.vx());
+        else helper.succeed();
+        lead.discard();
+        follow.discard();
+    }
+
+    /**
      * Two ACTUAL Builder entities in a one-cell corridor: the forward
      * one must have right-of-way while the trailing one walks without
      * clipping, shoving or triggering backward stuck-recovery.
