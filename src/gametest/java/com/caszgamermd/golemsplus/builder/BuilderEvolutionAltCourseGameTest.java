@@ -53,6 +53,9 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class BuilderEvolutionAltCourseGameTest {
     private static final int DEADLINE=260;
+    // Preserve the original 13s physics benchmark and require a *real*
+    // 10-of-10 arrival by 11.2s to qualify this speed experiment.
+    private static final int SPEED_TARGET_TICKS=224;
     private static final int GENERATIONS=24;
     private static final long TRAINING_SEED=2026102602L;
     private static final double SPEED_CAP=0.2;
@@ -327,6 +330,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         boolean doorOffsetX;
         int slabTicks,reroutes,precisionTicks,staticStalls;
         int yieldingTicks,trafficQueueTicks,trafficCrossingTicks;
+        int safeCornerShortcuts;
         int trafficRecoveryTicks;
         int trafficPrioritySlot=-1;
         int lastRerouteTick=-1000;
@@ -960,6 +964,57 @@ public final class BuilderEvolutionAltCourseGameTest {
         return false;
     }
 
+    /**
+     * Shorten only turns that are demonstrably safe for the real
+     * 0.65 x 1.6 hitbox. Minecraft still resolves every meter using
+     * MoverType.SELF; this just avoids an artificial intermediate
+     * waypoint when the same floor supports a direct corner cut.
+     *
+     * Unlike grid A*, the continuous 25-step sweep checks ALL points
+     * between the entity's actual position and the following tile,
+     * including floor support. Any wall, slab lip, low overhead slab,
+     * door or missing floor rejects the shortcut; the normal
+     * individual-waypoint movement remains available.
+     */
+    private static boolean safeSupportedCornerCut(GameTestHelper helper,
+            ServerLevel world,BuilderGolem mob,
+            int fromX,int fromZ,int midX,int midZ,int endX,int endZ){
+        if(!walkableCell(endX,endZ)||!walkableCell(midX,midZ))return false;
+        if(MAZE[fromZ].charAt(fromX)=='D'
+                ||MAZE[midZ].charAt(midX)=='D'
+                ||MAZE[endZ].charAt(endX)=='D')return false;
+        if(precisionTransition(helper,world,fromX,fromZ,midX,midZ)
+                ||precisionTransition(helper,world,midX,midZ,endX,endZ))
+            return false;
+        double sy=standingY(helper,world,fromX,fromZ);
+        if(!Double.isFinite(sy)
+                ||Math.abs(sy-standingY(helper,world,midX,midZ))>.001
+                ||Math.abs(sy-standingY(helper,world,endX,endZ))>.001
+                ||Math.abs(mob.getY()-sy)>.08)
+            return false;
+        BlockPos origin=pos(helper,0,2,0);
+        double goalX=origin.getX()+endX+.5;
+        double goalZ=origin.getZ()+endZ+.5;
+        double startX=mob.getX(),startZ=mob.getZ();
+        double length=Math.hypot(goalX-startX,goalZ-startZ);
+        if(length>2.6||length<.12)return false;
+        double half=mob.getBbWidth()*.5;
+        for(int i=0;i<=25;i++){
+            double t=i/25.0;
+            double x=startX+(goalX-startX)*t;
+            double z=startZ+(goalZ-startZ)*t;
+            if(!clearBodyAt(world,mob,x,sy,z))return false;
+            // Real collision support: no jumping gaps or hovering
+            // across a fractional slab edge to save distance.
+            var support=new net.minecraft.world.phys.AABB(
+                    x-half+.02,sy-.085,z-half+.02,
+                    x+half-.02,sy-.015,z+half-.02);
+            if(!world.getBlockCollisions(mob,support).iterator().hasNext())
+                return false;
+        }
+        return true;
+    }
+
     /** Controller uses real Minecraft entity move + collisions; only
      * genes controlling WALK / JUMP / alignment can be selected.
      */
@@ -980,6 +1035,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         int[] ahead=null;
         BlockPos target=null;
         double dx=0,dz=0,distance=0;
+        boolean shortcutUsed=false;
         // DO NOT spend a full Minecraft tick at every waypoint just to
         // increment a route cursor. On a 50-60 block route that artificial
         // pause wastes up to three seconds and makes an 13s run impossible.
@@ -1017,6 +1073,26 @@ public final class BuilderEvolutionAltCourseGameTest {
                     b.x,b.z,ahead[0],ahead[1]);
             if(precise&&!enteringDoor&&!leavingDoor)
                 b.movementMode="p";
+            // Geometry-based string pulling, not a scripted course
+            // route. Skip ONE intermediate center on a turn only
+            // when the entire real-body direct line is safe.
+            if(!shortcutUsed&&!precise&&!diagonalStep
+                    &&distance<1.35&&b.cursor+1<b.route.length()
+                    &&b.route.charAt(b.cursor)!=b.route.charAt(b.cursor+1)){
+                int[] beyond=next(ahead[0],ahead[1],
+                        b.route.charAt(b.cursor+1));
+                if(safeSupportedCornerCut(helper,world,mob,
+                        b.x,b.z,ahead[0],ahead[1],beyond[0],beyond[1])){
+                    b.x=ahead[0];b.z=ahead[1];b.cursor++;
+                    b.bestCursor=Math.max(b.bestCursor,b.cursor);
+                    b.safeCornerShortcuts++;
+                    b.immobile=0;
+                    b.staticStalls=0;
+                    b.lastDistance=Double.POSITIVE_INFINITY;
+                    shortcutUsed=true;
+                    continue;
+                }
+            }
             // On a flat, cardinal, physically clear straightaway,
             // hand off to the NEXT waypoint before decelerating at
             // this cell center. Remain precise at corners, slabs,
@@ -1509,6 +1585,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 entry.addProperty("trafficQueueTicks",b.trafficQueueTicks);
                 entry.addProperty("trafficCrossingTicks",b.trafficCrossingTicks);
                 entry.addProperty("trafficRecoveryTicks",b.trafficRecoveryTicks);
+                entry.addProperty("safeCornerShortcuts",b.safeCornerShortcuts);
                 entry.addProperty("distanceMeters",b.measuredDistance);
                 physicalFitness.add(entry);
                 JsonObject trace=new JsonObject();
@@ -1532,6 +1609,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 trace.addProperty("trafficQueueTicks",b.trafficQueueTicks);
                 trace.addProperty("trafficCrossingTicks",b.trafficCrossingTicks);
                 trace.addProperty("trafficRecoveryTicks",b.trafficRecoveryTicks);
+                trace.addProperty("safeCornerShortcuts",b.safeCornerShortcuts);
                 trace.addProperty("distanceMeters",b.measuredDistance);
                 trace.add("genes",encode(b.dna));
                 trace.add("positions",b.movementSamples);
@@ -1652,7 +1730,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 }
             }
             if(roundTick<DEADLINE)return;
-            int finished=0;
+            int finished=0,finishedTarget=0;
             double mean=0;
             int collisions=0,jumps=0;
             int fastest=DEADLINE+1,slowest=0;
@@ -1662,6 +1740,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             for(Candidate b:bots){
                 if(b.arrivedTick>=0&&b.arrivedTick<=DEADLINE){
                     finished++;
+                    if(b.arrivedTick<=SPEED_TARGET_TICKS)finishedTarget++;
                     fastest=Math.min(fastest,b.arrivedTick);
                     slowest=Math.max(slowest,b.arrivedTick);
                 }else if(blockers.length()<550)
@@ -1684,6 +1763,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             System.out.println("[TIMETRIAL REAL GENETICS] gen="+generation
                     +" realBuilderGolems="+bots.size()
                     +" finish13s="+finished+"/"+bots.size()
+                    +" finish11_2s="+finishedTarget+"/"+bots.size()
                     +" best="+bestFinished
                     +" meanFitness="+Math.round(mean/bots.size())
                     +" collisions="+collisions+" jumps="+jumps
@@ -1746,7 +1826,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             // Always discard all real entities after their actual 13s
             // trial; the next generation must spawn physical golems.
             for(Candidate b:bots)if(b.mob.isAlive())b.mob.discard();
-            if(finished==bots.size()){
+            if(finishedTarget==bots.size()){
                 for(Candidate b:bots)
                     System.out.println("[TIMETRIAL REAL CHAMPION] slot="+b.index
                             +" arrivedTicks="+b.arrivedTick
@@ -1758,8 +1838,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                 helper.succeed();return;
             }
             if(generation+1>=GENERATIONS){
-                helper.fail("Physical evolution failed after "+GENERATIONS
-                        +" generations. Best REAL result="+bestFinished
+                helper.fail("Physical evolution did not qualify all 10"
+                        +" by 11.2s after "+GENERATIONS
+                        +" generations. Best REAL 13s result="+bestFinished
                         +"/"+bots.size()
                         +", latest="+finished+"/10; "
                         +"checkpoint saved for future runs; "+blockers);
