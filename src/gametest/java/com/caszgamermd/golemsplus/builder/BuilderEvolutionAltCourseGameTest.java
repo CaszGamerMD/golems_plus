@@ -2641,9 +2641,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                         !verifiedChampion.isEmpty()?verifiedChampion:
                         !lastSuccessfulPopulation.isEmpty()?lastSuccessfulPopulation:generationGenes);
                 generationGenes=new ArrayList<>(frozenPopulation);
-            }else if(!"validate".equalsIgnoreCase(
-                    System.getenv("GOLEMS_EVOLUTION_MODE")))
-                generationGenes=pinElites(generationGenes,knowledgePool);
+            }
             rng=new Random(TRAINING_SEED
                     +1000003L*(long)completedGenerations);
             releaseSimulation=holdCourseSimulation(helper);
@@ -2849,31 +2847,23 @@ public final class BuilderEvolutionAltCourseGameTest {
                     +" fastestTicks="+(finished>0?fastest:-1)
                     +" slowestTicks="+(finished>0?slowest:-1)
                     +" stalled="+blockers);
-            // Only REAL physical improvements feed the persistent,
-            // independent three-best knowledge pool. Preserve the top
-            // three EXACT genomes, then create seven mutated children
-            // exclusively from those three; no random unrelated seed,
-            // no ten-member team selection, no forgotten best result.
-            List<Genome> parents=knowledgePool.stream()
-                    .map(Knowledge::dna).toList();
-            if(parents.isEmpty()&&!consistencyMode)
-                throw new IllegalStateException("No verified physical knowledge");
-            List<Genome> offspring=new ArrayList<>();
-            if(!consistencyMode)for(int i=0;i<SELECTED_BOTS.length;i++){
-                final int slot=i;
-                Knowledge elite=knowledgePool.stream()
-                        .filter(k->k.slot()==slot).findFirst().orElse(null);
-                if(elite!=null)offspring.add(elite.dna());
-                else{
-                    Genome a=parents.get(rng.nextInt(parents.size()));
-                    Genome b=parents.get(rng.nextInt(parents.size()));
-                    // Most children refine one intact parent; retain some
-                    // crossover exploration without reshuffling every child.
-                    offspring.add(rng.nextInt(3)==0
-                            ?Genome.cross(a,b,rng).mutate(rng):a.mutate(rng));
-                }
+            // Three winners FROM THIS physical generation are exact
+            // parents; each has precisely TWO locally mutated offspring.
+            // Retain their route policies/templates across generations.
+            FamilyPlan families=consistencyMode?null:
+                    breedFamilies(knowledgePool,rng,SELECTED_BOTS.length);
+            List<Genome> offspring=consistencyMode
+                    ?new ArrayList<>(pendingExploration)
+                    :new ArrayList<>(families.genes());
+            if(!consistencyMode){
+                generationStrategies=new ArrayList<>(families.policies());
+                generationRoutes=new ArrayList<>(families.parentRoutes());
+                generationFamilyOrigins=new ArrayList<>(families.parentSlots());
+                System.out.println("[ALT NINE FAMILY BREED] generation="+generation
+                        +" parentSlots="+knowledgePool.stream().map(Knowledge::slot).toList()
+                        +" lineages="+generationFamilyOrigins
+                        +" policies="+generationStrategies);
             }
-            if(consistencyMode)offspring=new ArrayList<>(pendingExploration);
             // The complete 10/10 TEAM must survive intact, whether or
             // not it beats the protected historical speed record.
             // Crossing ten individually successful genes can produce a
@@ -2932,10 +2922,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                         +"checkpoint saved for future runs; "+blockers);
                 return;
             }
-            // Continue from the individual top-three pool on EVERY next
-            // generation. A previously verified full team remains in
-            // champion.json for explicit validation but cannot replace
-            // newly learned independent genes behind the user's back.
+            // Continue from this generation's three best physical
+            // routes and controllers, plus their six mutated children.
             if(!consistencyMode)generationGenes=offspring;
             generation++;
             generationStart=absoluteTick+1;
