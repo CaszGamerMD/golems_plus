@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#101725" />
+<title>Golems Plus · Alt Track Mobile Replay Viewer</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--paper:#121e31;--card:#18283d;--edge:#314159;--muted:#acbbca;--light:#eff6ff;--lime:#79e7aa;--bad:#ffb08a;--blue:#80bbfb}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--light);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}button,input,select{font:inherit}header{padding:18px 17px 12px;background:linear-gradient(140deg,#19324a,#142236 60%,#10202b);border-bottom:1px solid #32485d}.eyebrow{text-transform:uppercase;font-size:11px;letter-spacing:2px;color:var(--lime);font-weight:800}h1{font-size:23px;margin:3px 0 6px;letter-spacing:-.6px}header p{font-size:13px;color:#c7d4e4;margin:0;max-width:680px}.shell{max-width:920px;padding:13px;margin:auto}.panel{background:var(--paper);border:1px solid var(--edge);border-radius:14px;padding:12px;margin-bottom:12px}.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{background:var(--card);border:1px solid #2d3a52;padding:11px;border-radius:11px}.stat small{display:block;color:var(--muted);font-size:11px}.stat strong{font-size:22px;display:block;font-variant-numeric:tabular-nums}.stat em{font-style:normal;font-size:11px;color:var(--muted)}.stat.good strong{color:var(--lime)}.stat.warn strong{color:#ffc37c}h2{font-size:16px;margin:0 0 9px}label{display:block;color:var(--muted);font-size:13px;font-weight:600;margin:7px 0 4px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}button,select,input[type=number]{border:1px solid #3d5572;background:#213854;color:var(--light);border-radius:9px;padding:9px 11px;min-height:42px}button:active{transform:scale(.98)}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #8ac5f5;outline-offset:2px}button:disabled{opacity:.45}button.primary{background:#278659;border-color:#36ab75;font-weight:800}button.chip{font-size:12px;padding:6px 10px;min-height:35px}button.chip.active{background:#265d77;border-color:#79caff}select{max-width:100%;width:auto;flex:1}input[type=range]{width:100%;accent-color:#74d9aa;cursor:pointer;touch-action:pan-y}.small{font-size:12px;color:var(--muted)}.timerow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-variant-numeric:tabular-nums}.timerow strong{font-size:20px}.canvaspane{text-align:center}.mapbox{position:relative;max-width:440px;margin:0 auto;border:1px solid #3d5970;border-radius:11px;overflow:hidden;background:#111a24}canvas{display:block;width:100%;height:auto;touch-action:pan-y}.mapcaption{margin:8px 0 0;font-size:12px;color:var(--muted)}.legend{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 15px;font-size:12px;color:var(--muted);margin:10px 0 3px}.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:3px;vertical-align:-1px}.botgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.bot{min-width:0;text-align:left;background:var(--card);border:1px solid #304357;color:#e7eff9;border-radius:10px;padding:9px;min-height:56px}.bot.selected{border-color:#fff;box-shadow:0 0 0 1px white inset}.bot-top{font-weight:750;font-size:13px}.bot-bottom{font-size:12px;color:var(--muted)}.dot{height:10px;width:10px;border-radius:50%;display:inline-block;margin-right:5px}footer{padding:15px 10px 30px;text-align:center;color:var(--muted);font-size:12px}.warnline{padding:9px 11px;border-radius:10px;background:#513524;color:#ffd9a8;border:1px solid #8b5a36;display:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}@media(min-width:700px){.viewergrid{display:grid;grid-template-columns:minmax(300px,1fr) minmax(300px,380px);gap:12px;align-items:start}.viewergrid>div{min-width:0}.stats{grid-template-columns:repeat(4,1fr)}.botgrid{grid-template-columns:repeat(2,1fr)}header{padding-left:max(calc((100vw - 900px) / 2),24px)}}
+</style>
+</head>
+<body>
+<header><div class="eyebrow">Golems Plus · Actual Minecraft GameTests</div><h1>Alt Track Replay Viewer</h1><p>Mobile edition. <b id="embeddedCount">Recorded generations</b> are embedded in this file. Opens offline, no server or app needed. Tracks show actual recorded movements, not simulated routes.</p></header>
+<main class="shell">
+ <div class="warnline" id="errbox" role="alert"></div>
+ <section class="panel" aria-label="Choose generation">
+  <h2>Choose a generation</h2>
+  <div class="row"><button class="chip" id="firstGen">First</button><button class="chip" id="prevGen">◀ Previous</button><button class="chip" id="nextGen">Next ▶</button><button class="chip" id="lastGen">Latest</button></div>
+  <label for="runSelect">Choose a test (latest first)</label>
+  <div class="row"><select id="runSelect" aria-label="Choose alt-track test"></select><button class="chip" id="newest">Latest test</button></div>
+  <div class="row"><button class="chip" id="sync">↻ Check for new tests</button><span class="small" id="syncState">Offline replays ready</span></div>
+  <label for="gen">Recorded generation <span id="selGenLabel"></span></label>
+  <input id="gen" type="range" min="1" max="1" value="1" step="1" />
+  <div class="row"><input type="number" id="genNumber" min="1" max="1" step="1" value="1005" style="width:100px" aria-label="Go to generation"/><select id="genFilter" aria-label="Find generations"><option value="all">All recorded generations</option><option value="perfect">10/10 under 13 seconds</option><option value="door">Planned door route</option><option value="cross">Physical door crossing</option><option value="fast">Most golems under 11.2 seconds</option></select><button id="findPrev" class="chip">Find ◀</button><button id="findNext" class="chip">Find ▶</button></div>
+  <div class="small" id="runDesc">Loading data…</div>
+ </section>
+ <section class="stats" aria-label="Generation stats">
+  <div class="stat"><small>13s finishers</small><strong id="statFinished">—</strong><em>of 10 real golems</em></div>
+  <div class="stat"><small>11.2s finishers</small><strong id="statTarget">—</strong><em>224 tick goal</em></div>
+  <div class="stat"><small>Last finisher</small><strong id="statSlow">—</strong><em>ticks · of those finished</em></div>
+  <div class="stat"><small>Door route attempts</small><strong id="statDoor">—</strong><em>real planned routes</em></div>
+ </section>
+ <section class="viewergrid" style="margin-top:12px">
+  <div>
+   <section class="panel">
+    <h2>Playback</h2>
+    <div class="row"><button id="play" class="primary" style="min-width:110px">▶ Play</button><button id="restart">↺ Restart</button><select id="speed" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1× real time</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></div>
+    <label for="time">Replay timeline</label>
+    <input type="range" id="time" min="0" max="260" value="0" step="1"/>
+    <div class="timerow"><strong id="timeTxt">0.00s</strong><span id="tickTxt">Tick 0 / 260</span></div>
+    <label class="row" style="font-weight:normal;color:var(--muted);margin-top:9px"><input type="checkbox" id="trail" checked style="accent-color:#80bbfb"/> Show movement trails</label>
+   </section>
+   <section class="panel"><h2>Physical golems</h2><p class="small" style="margin-top:-4px">Tap a golem to highlight its planned route. Colored dots show its actual position at the selected tick. Golems are hidden after reaching the finish.</p><div class="botgrid" id="botGrid"></div></section>
+  </div>
+  <div><section class="panel canvaspane"><h2>Original 27 × 12 alt course</h2><div class="mapbox"><canvas id="map" width="468" height="1053" aria-label="Top-down Minecraft course with ten animated golem movements"></canvas></div><div class="legend"><span><i class="swatch" style="background:#2fa27b"></i> Green start</span><span><i class="swatch" style="background:#b75e6e"></i> Red finish</span><span><i class="swatch" style="background:#c79752"></i> Slabs</span><span><i class="swatch" style="background:#dbc37b"></i> Door</span></div><p class="mapcaption">The track is rotated vertically for portrait phones: start at the top, finish at the bottom. Landscape works too.</p></section></div>
+ </section>
+ <footer><b>Offline playback. Online refresh checks for new tests.</b> Real Minecraft movement samples; coordinates rounded to 1 cm for compact rendering, all ticks preserved. Original run archive generated in GitHub Actions. Best protected historical full-team time: 236 ticks. Offline playback uses browser gzip support (Android Chrome recommended).</footer>
+</main>
+<script>
+'use strict';
+const MAZE=["###########################","#GG............#.....#.#SS#","#GG...^^^......#..#..#..SS#","#GG.#.^^^.#.####..#..#.#SS#","#GG.#.^^^.#.#..^..#..#.#SS#","#GG.#.^^^.#.#..^..#....#SS#","#GG.#.^^^.#.#..^..#....#SS#","#GG.#.^^^...#..#..#..#.#SS#","#GG.#.###...#..#..#..#.#SS#","#GG.#....##....#..#..#..SS#","#GG.D.....#....#.#...#.#SS#","###########################"];
+let META=__MOBILE_META__;
+let PAYLOAD=__MOBILE_PAYLOAD__;
+let TOTAL=META.length;
+const COLORS=['#42c7eb','#f2a85f','#c1a6ff','#73e1a9','#ff82a1','#ecc762','#7dabff','#ffbbca','#8fddd1','#f1a0f3'];
+const $=(id)=>document.getElementById(id);
+const range=$('gen'),number=$('genNumber'),timeline=$('time'),ctx=$('map').getContext('2d');
+let current=TOTAL-1,tick=0,playing=false,speed=1,selectedBot=-1,decoded=null,loadId=0,frameTimer=null;
+let pixelScale=39; // 12 columns * 39 = 468 px
+const moveMap={N:[0,-1],S:[0,1],E:[1,0],W:[-1,0],'7':[-1,-1],'9':[1,-1],'1':[-1,1],'3':[1,1]};
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const fmtTick=t=>t<0?'—':(t/20).toFixed(2)+'s';
+const focused=()=>META[current];
+const RAW_URL='https://raw.githubusercontent.com/CaszGamerMD/golems_plus/feature/builder-evolutionary-alt-course-262/training/alt/replays/mobile-data.json';
+function error(message){const el=$('errbox');el.style.display='block';el.textContent=message;}
+async function decode(idx){
+ let raw=atob(PAYLOAD[idx]);let a=new Uint8Array(raw.length);
+ for(let i=0;i<raw.length;i++)a[i]=raw.charCodeAt(i);
+ if(typeof DecompressionStream==='undefined')throw new Error('This phone browser cannot read compressed offline replays. Open the HTML file in Android Chrome.');
+ const stream=new Blob([a]).stream().pipeThrough(new DecompressionStream('gzip'));
+ const bytes=await new Response(stream).arrayBuffer();const dv=new DataView(bytes);let offset=0,all=[];
+ for(let k=0;k<10;k++){
+  const frames=dv.getUint16(offset,true);offset+=2;
+  const p=new Float32Array(frames*2),m=new Uint8Array(frames);
+  for(let j=0;j<frames;j++){
+   p[j*2]=dv.getInt16(offset,true)/100;offset+=2;
+   p[j*2+1]=dv.getInt16(offset,true)/100;offset+=2;
+   m[j]=dv.getUint8(offset++);
+  }
+  all.push({p,m,n:frames});
+ }
+ return all;
+}
+function stats(info){const gen=info[0],trial=info[1],f=info[3],target=info[4],slow=info[5],bots=info[6];
+ $('runSelect').value=info[1];
+ $('selGenLabel').textContent=`#${gen} of ${TOTAL}`;
+ $('runDesc').textContent=`GitHub Actions ${trial} · local generation ${info[2]} · ${f===10?'Complete team':'Partial team'} · Minecraft physics`;
+ $('statFinished').textContent=f+'/10';$('statTarget').textContent=target+'/10';$('statSlow').textContent=slow<0?'—':slow+'t';
+ $('statDoor').textContent=bots.filter(b=>b[10]||b[6]>0).length;
+ for(const id of ['statFinished','statTarget'])$(id).parentElement.classList.toggle('good',id==='statFinished'?f===10:target===10);
+}
+async function loadGen(idx){
+ idx=clamp(Number(idx)||1,1,TOTAL)-1;
+ pause();current=idx;tick=0;timeline.value='0';range.value=String(idx+1);number.value=String(idx+1);stats(focused());decoded=null;draw();makeBotCards();
+ const mine=++loadId;
+ try{const frames=await decode(idx);if(mine!==loadId)return;decoded=frames;makeBotCards();draw();}
+ catch(e){if(mine!==loadId)return;error('Could not load this generation: '+e.message);}
+}
+function pause(){playing=false;$('play').textContent='▶ Play';if(frameTimer!==null){clearInterval(frameTimer);frameTimer=null;}}
+function play(){if(!decoded)return;if(playing){pause();return;}if(tick>=260)setTick(0);playing=true;$('play').textContent='⏸ Pause';let accumulator=0;let last=performance.now();frameTimer=setInterval(()=>{const now=performance.now(),elapsed=now-last;last=now;accumulator+=(elapsed/50)*speed;const steps=Math.floor(accumulator);accumulator-=steps;if(steps>0){setTick(Math.min(260,tick+steps));if(tick>=260)pause();}},32)}
+function setTick(v){tick=clamp(Math.round(v),0,260);timeline.value=String(tick);$('timeTxt').textContent=(tick/20).toFixed(2)+'s';$('tickTxt').textContent='Tick '+tick+' / 260';draw();updateBotCards();}
+function worldToScreen(x,z){return [z*pixelScale,(27-x)*pixelScale]}
+function centerOfCell(x,z){return worldToScreen(x+.5,z+.5)}
+function draw(){const canvas=$('map');ctx.clearRect(0,0,canvas.width,canvas.height);
+ for(let x=0;x<27;x++)for(let z=0;z<12;z++){
+  const code=MAZE[z][x];const c=centerOfCell(x,z);let fill='#294150';
+  if(code==='#')fill='#111d2d';else if(code==='G')fill='#2fa27b';else if(code==='S')fill='#ad535f';else if(code==='^')fill='#b68d57';else if(code==='D')fill='#d4b968';
+  ctx.fillStyle=fill;ctx.fillRect(c[0]-19.5,c[1]-19.5,38.6,38.6);
+  if(code==='D'){ctx.strokeStyle='#1f2d33';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(c[0]-11,c[1]+11);ctx.lineTo(c[0]+11,c[1]-11);ctx.stroke()}
+ }
+ // Tick and direction labels.
+ ctx.save();ctx.fillStyle='rgba(255,255,255,.84)';ctx.font='bold 14px system-ui';ctx.textAlign='center';ctx.fillText('START',pixelScale*6,pixelScale*1.2);ctx.fillText('FINISH',pixelScale*6,pixelScale*25.8);ctx.restore();
+ if(!decoded)return;
+ const bs=focused()[6];
+ if(selectedBot>=0){const b=bs[selectedBot];let x=b[1],z=b[2];ctx.save();ctx.strokeStyle=COLORS[selectedBot];ctx.lineWidth=3.1;ctx.setLineDash([7,5]);ctx.globalAlpha=.9;ctx.beginPath();let a=centerOfCell(x,z);ctx.moveTo(...a);for(const ch of b[4]){const delta=moveMap[ch];if(!delta)break;x+=delta[0];z+=delta[1];a=centerOfCell(x,z);ctx.lineTo(...a)}ctx.stroke();ctx.restore();}
+ if($('trail').checked){for(let i=0;i<10;i++){
+  const b=decoded[i];const n=Math.min(tick,b.n-1);if(n<=0)continue;
+  ctx.save();ctx.strokeStyle=COLORS[i];ctx.lineWidth=selectedBot===i?3.4:1.8;ctx.globalAlpha=selectedBot<0||selectedBot===i ? .58 : .14;
+  ctx.beginPath();let from=Math.max(0,n-35);for(let k=from;k<=n;k++){const [px,py]=worldToScreen(b.p[k*2],b.p[k*2+1]);if(k===from)ctx.moveTo(px,py);else ctx.lineTo(px,py)}ctx.stroke();ctx.restore();
+ }}
+ for(let i=0;i<10;i++){
+  const bot=bs[i],track=decoded[i],arr=bot[3];if(tick>=track.n||arr>=0&&tick>arr+1)continue;
+  const p=worldToScreen(track.p[tick*2],track.p[tick*2+1]);const focused=selectedBot===i;
+  ctx.save();ctx.globalAlpha=selectedBot<0||focused?1:.45;
+  ctx.shadowColor='rgba(0,0,0,.7)';ctx.shadowBlur=6;
+  ctx.fillStyle=COLORS[i];ctx.strokeStyle=focused?'#fff':'#0c1725';ctx.lineWidth=focused?4:2.4;ctx.beginPath();ctx.arc(p[0],p[1],focused?12:10,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.shadowBlur=0;
+  ctx.fillStyle='#061019';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 12px system-ui';ctx.fillText(String(i),p[0],p[1]+.4);ctx.restore();
+ }
+}
+function makeBotCards(){const box=$('botGrid');box.textContent='';const b=focused()[6];for(let i=0;i<10;i++){const m=b[i];const btn=document.createElement('button');btn.type='button';btn.className='bot'+(selectedBot===i?' selected':'');btn.dataset.slot=String(i);btn.innerHTML=`<div class="bot-top"><span class="dot" style="background:${COLORS[i]}"></span>Golem ${i}${m[10]?' · 🚪':''}</div><div class="bot-bottom" id="bstat${i}"></div>`;btn.addEventListener('click',()=>{selectedBot=selectedBot===i?-1:i;makeBotCards();draw();});box.append(btn);}updateBotCards();}
+function updateBotCards(){for(let i=0;i<10;i++){const el=$('bstat'+i);if(!el)continue;const b=focused()[6][i],arr=b[3];let state=arr<0?'DNF':arr<=224?'11.2s ✓':'13s ✓';let moved=decoded?Math.min(tick,decoded[i].n-1):0;const mode=decoded&&tick<decoded[i].n?String.fromCharCode(decoded[i].m[tick]):'';el.textContent=`${arr<0?'—':fmtTick(arr)} · ${state}${tick>0?' · tick '+moved:''}${mode==='d'?' · door':''}`;}}
+function search(direction){const filt=$('genFilter').value;const n=TOTAL;
+ let best=-1,bestGoal=-1;
+ if(filt==='fast'){for(let i=0;i<n;i++){let x=META[i][4];if(x>bestGoal){best=i;bestGoal=x;}}if(best>=0)loadGen(best+1);return;}
+ for(let step=1;step<=n;step++){let i=(current+direction*step+n*2)%n;const x=META[i];let matches=filt==='perfect'?x[3]===10:filt==='door'?x[6].some(b=>b[10]):filt==='cross'?x[6].some(b=>b[6]>0):true;
+  if(matches){loadGen(i+1);return;}}
+ error('There are no recorded generations matching this filter.');
+}
+function updateRuns(){
+ const list=[...new Set(META.map(x=>x[1]))].reverse();let e=$('runSelect');e.textContent='';
+ for(const name of list){let ids=META.filter(x=>x[1]===name),option=document.createElement('option');
+ option.value=name;option.textContent='Test '+name+' · '+ids.length+' generations';e.append(option);}
+ range.max=String(TOTAL);number.max=String(TOTAL);
+ $('genFilter').options[0].textContent='All '+TOTAL.toLocaleString()+' generations';
+ $('embeddedCount').textContent=TOTAL.toLocaleString()+' physical generations';
+}
+async function checkForNewTests(){let button=$('sync');button.disabled=true;$('syncState').textContent='Checking GitHub…';
+ try{let response=await fetch(RAW_URL+'?v='+Date.now(),{cache:'no-store'});if(!response.ok)throw new Error('HTTP '+response.status);
+ let fresh=await response.json();if(!Array.isArray(fresh.meta)||!Array.isArray(fresh.payload)||fresh.meta.length!==fresh.payload.length||!fresh.meta.length)throw new Error('Invalid replay feed');
+ const oldLast=META.at(-1)?.[0],nextLast=fresh.meta.at(-1)[0],oldCount=TOTAL;
+ if(nextLast>oldLast||fresh.meta.length!==oldCount){pause();META=fresh.meta;PAYLOAD=fresh.payload;TOTAL=META.length;updateRuns();loadGen(TOTAL);
+ $('syncState').textContent='Updated! Latest generation #'+nextLast;}else $('syncState').textContent='Up to date · #'+oldLast;
+ }catch(e){$('syncState').textContent='Offline data still works ('+e.message+')';}finally{button.disabled=false;}}
+$('runSelect').onchange=e=>{let i=META.findIndex(x=>x[1]===e.target.value);if(i>=0)loadGen(i+1)};
+$('newest').onclick=()=>loadGen(TOTAL);$('sync').onclick=checkForNewTests;
+range.addEventListener('input',e=>loadGen(e.target.value));number.addEventListener('change',e=>loadGen(e.target.value));timeline.addEventListener('input',e=>{pause();setTick(e.target.value)});$('play').onclick=play;$('restart').onclick=()=>{pause();setTick(0)};$('trail').onchange=draw;$('speed').onchange=e=>speed=Number(e.target.value);
+$('firstGen').onclick=()=>loadGen(1);$('lastGen').onclick=()=>loadGen(TOTAL);$('prevGen').onclick=()=>loadGen(current);$('nextGen').onclick=()=>loadGen(current+2);$('findPrev').onclick=()=>search(-1);$('findNext').onclick=()=>search(1);
+updateRuns();loadGen(TOTAL);checkForNewTests();
+</script>
+</body></html>
