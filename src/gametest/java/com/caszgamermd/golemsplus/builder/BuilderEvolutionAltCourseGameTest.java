@@ -329,8 +329,6 @@ public final class BuilderEvolutionAltCourseGameTest {
         int yieldingTicks,trafficQueueTicks,trafficCrossingTicks;
         int trafficRecoveryTicks;
         int trafficPrioritySlot=-1;
-        char trafficCourtesyHeading='?';
-        int courtesySpentThisCorridor;
         int lastRerouteTick=-1000;
         int doorTargetX=Integer.MIN_VALUE,doorTargetZ=Integer.MIN_VALUE;
         int exitTargetX=Integer.MIN_VALUE,exitTargetZ=Integer.MIN_VALUE;
@@ -851,24 +849,11 @@ public final class BuilderEvolutionAltCourseGameTest {
     private static TrafficMotion coordinateTraffic(Candidate self,
             List<Candidate> group,double vx,double vz){
         double speed=Math.hypot(vx,vz);
-        // Courtesy must never become a permanent stop. We allow
-        // at most four yield ticks in any shared long straight,
-        // with at most twelve TOTAL across the entire 260-tick
-        // generation. Early crossings must not consume all of the
-        // headroom-corridor right-of-way budget.
-        if(self.cursor<self.route.length()){
-            char direction=self.route.charAt(self.cursor);
-            int straight=0;
-            for(int i=self.cursor;i<self.route.length()
-                    &&self.route.charAt(i)==direction;i++)straight++;
-            if(straight>=3&&direction!=self.trafficCourtesyHeading){
-                self.trafficCourtesyHeading=direction;
-                self.courtesySpentThisCorridor=0;
-            }
-        }
-        if(speed<.00001||group.size()<2
-                ||self.yieldingTicks>=12
-                ||self.courtesySpentThisCorridor>=4)
+        // Courtesy never becomes a permanent stop. On a 260-tick
+        // physical course a queue that waits 60-120 ticks is worse
+        // than vanilla real-entity collision recovery. Four total
+        // courtesy ticks per golem, then continue actual walking.
+        if(speed<.00001||group.size()<2||self.yieldingTicks>=4)
             return new TrafficMotion(vx,vz,false,false,-1);
         double dirX=vx/speed,dirZ=vz/speed;
         double allowance=speed;
@@ -1179,7 +1164,6 @@ public final class BuilderEvolutionAltCourseGameTest {
         // jumping, backing off or pollute static collision memory.
         TrafficMotion polite=coordinateTraffic(b,crew,vx,vz);
         if(polite.yielding()){
-            b.courtesySpentThisCorridor++;
             b.movementMode=polite.queue()?"q":"y";
             b.trafficPrioritySlot=polite.leaderSlot();
             b.immobile=0;

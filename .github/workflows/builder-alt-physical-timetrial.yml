@@ -77,8 +77,7 @@ jobs:
           assert 'coordinateTraffic(b,crew,vx,vz)' in test
           assert 'remainingPathMeters' in test
           assert 'realBuildersQueueWithoutShoving' in test
-          assert 'self.yieldingTicks>=12' in test
-          assert 'courtesySpentThisCorridor>=4' in test
+          assert 'self.yieldingTicks>=4' in test
           assert 'teammateWithin(b,crew,1.15)' in test
           assert 'trafficRecoveryTicks' in test
           assert 'ordered.sort(Comparator' in test
