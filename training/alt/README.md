@@ -1,3 +1,13 @@
+## Contextual strategy experience — current experiment
+
+See [how strategy learning is saved and used](STRATEGY_LEARNING.md).
+The controller now supplements motor genes with persistent, coordinate-free
+experience for choosing ordinary A*, fewer-turn routing, or a legal door
+alternative. Repeated outcomes determine preferences; explicit exploration
+uses one decision in five. This replaces the old gene-threshold door probe
+described in earlier sections below. This is a new policy revision, not a
+claim that physical performance or generalization has improved.
+
 ## Replay publication recovery — October 27
 
 Run `40493141358` completed its three physical sessions, but did not meet

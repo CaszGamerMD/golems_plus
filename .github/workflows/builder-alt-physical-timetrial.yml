@@ -7,6 +7,8 @@ on:
       - feature/builder-evolutionary-alt-course-262
     paths:
       - src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderEvolutionAltCourseGameTest.java
+      - src/gametest/java/com/caszgamermd/golemsplus/builder/NavigationStrategyMemory.java
+      - scripts/tests/test_navigation_strategy_memory.py
       - .github/workflows/builder-alt-physical-timetrial.yml
       - scripts/export_alt_mobile_replays.py
       - scripts/tests/test_export_alt_mobile_replays.py
@@ -40,6 +42,7 @@ jobs:
       - name: Test gene persistence and no-regression champion merging
         run: |
           python3 -m unittest discover -s scripts/tests -p test_alt_genetic_selection.py -v
+          python3 -m unittest discover -s scripts/tests -p test_navigation_strategy_memory.py -v
           python3 -m unittest discover -s scripts/tests -p test_merge_real_evolution_state.py -v
           python3 -m unittest discover -s scripts/tests -p test_merge_alt_evolution_state.py -v
           python3 -m unittest discover -s scripts/tests -p test_export_real_evolution_replays.py -v
@@ -83,7 +86,7 @@ jobs:
           assert 'doorPlans=' in test
           assert 'doorCrossings=' in test
           assert 'Genome.cross(a,b,rng).mutate(rng)' in test
-          assert 'spawnGeneration(helper,generationGenes,collisionMemory)' in test
+          assert 'spawnGeneration(helper,generationGenes,collisionMemory,' in test
           assert 'realBlockFailures' in test
           assert 'planRoute(' in test
           assert 'walkOneTick(helper,b,bots)' in test
@@ -107,7 +110,9 @@ jobs:
           assert 'obj.add("knowledgePool",pool)' in test
           assert 'if(elite!=null)offspring.add(elite.dna())' in test
           assert 'generationGenes=pinElites(generationGenes,knowledgePool)' in test
-          assert 'genome.doorBias()>.075' in test
+          assert 'strategyMemory,strategyValidation' in test
+          assert 'strategyMemory.observe(new NavigationStrategyMemory.Observation(' in test
+          assert 'checkpoint.has("strategyMemory")' in test
           # Stepping up 0.5 blocks needs the native downward ground
           # probe; the old check incorrectly required zero vertical
           # movement and would reject the already-tested slab fix.

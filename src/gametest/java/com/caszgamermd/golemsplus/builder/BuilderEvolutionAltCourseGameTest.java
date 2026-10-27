@@ -19,6 +19,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Random;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
@@ -321,6 +322,8 @@ public final class BuilderEvolutionAltCourseGameTest {
         // a real obstruction; only the 12-gene logic is inherited.
         String route;
         final Genome dna;
+        String strategyContext;
+        NavigationStrategyMemory.Decision strategyDecision;
         final Map<Edge,Integer> inheritedBlockMemory;
         // Actual Minecraft positions are retained for EVERY physical generation,
         // including failed offspring, never simulated or interpolated.
@@ -975,8 +978,60 @@ public final class BuilderEvolutionAltCourseGameTest {
         return direct;
     }
 
+    private record StrategyPlan(String route,String context,
+                                NavigationStrategyMemory.Decision decision){}
+    private static double routeMeters(String route){
+        double result=0;
+        for(char step:route.toCharArray())
+            result+="7931".indexOf(step)>=0?Math.sqrt(2):1;
+        return result;
+    }
+    private static StrategyPlan chooseStrategy(int x,int z,Genome dna,
+            Map<Edge,Integer> blockMemory,GameTestHelper helper,
+            ServerLevel world,BuilderGolem mob,Map<Integer,Double> congestion,
+            NavigationStrategyMemory memory,boolean validation){
+        Map<NavigationStrategyMemory.Strategy,String> options=new LinkedHashMap<>();
+        String direct=planRouteTo(x,z,dna,blockMemory,helper,world,mob,
+                -1,-1,congestion);
+        options.put(NavigationStrategyMemory.Strategy.DIRECT,direct);
+        Genome smooth=new Genome(dna.drive(),dna.align(),dna.tolerance(),
+                dna.jumpLead(),dna.jumpPower(),dna.jumpCooldown(),
+                dna.stuckTimeout(),dna.backoff(),dna.slabAvoid(),
+                Math.max(1.2,dna.turnBias()),0,dna.doorBias());
+        String smoothRoute=planRouteTo(x,z,smooth,blockMemory,helper,world,mob,
+                -1,-1,congestion);
+        if(!options.containsValue(smoothRoute))
+            options.put(NavigationStrategyMemory.Strategy.SMOOTH,smoothRoute);
+        String doorRoute=exploratoryRoute(x,z,dna,blockMemory,helper,world,mob,
+                congestion,true);
+        boolean door=routeEntersDoor(x,z,doorRoute);
+        if(door&&!options.containsValue(doorRoute))
+            options.put(NavigationStrategyMemory.Strategy.DOOR,doorRoute);
+        // Abstract geometry/traffic only: no starting slot, coordinates,
+        // route string, course ID or historical successful route in the key.
+        int slabs=0,turns=0,px=x,pz=z;char last='?';
+        for(char step:direct.toCharArray()){
+            int[] at=next(px,pz,step);px=at[0];pz=at[1];
+            if(MAZE[pz].charAt(px)=='^')slabs++;
+            if(last!='?'&&last!=step)turns++;
+            last=step;
+        }
+        double ratio=routeMeters(doorRoute)/Math.max(1,routeMeters(direct));
+        String context="door="+(!door?"absent":ratio<=1.1?"near":"detour")
+                +";slabs="+(slabs>direct.length()/5?"many":"few")
+                +";turns="+(turns>direct.length()/3?"many":"few")
+                +";traffic="+(congestion.isEmpty()?"low":"reserved");
+        NavigationStrategyMemory.Decision choice=memory.choose(context,
+                new ArrayList<>(options.keySet()),validation);
+        System.out.println("[ALT STRATEGY CHOICE] context="+context
+                +" strategy="+choice.strategy()+" reason="+choice.reason()
+                +" priorPhysicalTrials="+choice.evidenceTrials());
+        return new StrategyPlan(options.get(choice.strategy()),context,choice);
+    }
+
     private static List<Candidate> spawnGeneration(GameTestHelper helper,
-            List<Genome> genomes,Map<Edge,Integer> blockMemory){
+            List<Genome> genomes,Map<Edge,Integer> blockMemory,
+            NavigationStrategyMemory strategyMemory,boolean validation){
         ServerLevel world=helper.getLevel();
         List<Candidate> bots=new ArrayList<>();
         Map<Integer,Double> slabEntryReservations=new HashMap<>();
@@ -998,11 +1053,13 @@ public final class BuilderEvolutionAltCourseGameTest {
                         "Wrong real BuilderGolem body: "+mob.getBbWidth()
                         +" x "+mob.getBbHeight());
             Genome genome=genomes.get(slot);
-            Candidate b=new Candidate(slot,mob,exploratoryRoute(start[0],
-                    start[1],genome,blockMemory,helper,world,mob,
-                    slabEntryReservations,
-                    genome.doorBias()>.075),
+            StrategyPlan plan=chooseStrategy(start[0],start[1],genome,
+                    blockMemory,helper,world,mob,slabEntryReservations,
+                    strategyMemory,validation);
+            Candidate b=new Candidate(slot,mob,plan.route(),
                     start[0],start[1],genome,blockMemory);
+            b.strategyContext=plan.context();
+            b.strategyDecision=plan.decision();
             // All entries are discovered by A* from actual geometry.
             // Spread simultaneous workers among several accessible slab
             // approaches rather than sending them to one doorway-sized
@@ -1738,6 +1795,18 @@ public final class BuilderEvolutionAltCourseGameTest {
             JsonObject checkpoint=read(checkpoint());
             JsonObject champion=read(champion());
             if(checkpoint!=null){
+                if(checkpoint.has("strategyMemory")){
+                    JsonObject memory=checkpoint.getAsJsonObject("strategyMemory");
+                    if(!NavigationStrategyMemory.FORMAT.equals(
+                            memory.get("format").getAsString()))
+                        throw new IllegalStateException("Unknown strategy memory format");
+                    for(NavigationStrategyMemory.Observation outcome:JSON.fromJson(
+                            memory.get("observations"),
+                            NavigationStrategyMemory.Observation[].class))
+                        run.strategyMemory.observe(outcome);
+                }
+                System.out.println("[ALT STRATEGY MEMORY] Restored actual episodes="
+                        +run.strategyMemory.observations().size());
                 // Exploration genomes are untested offspring and must
                 // NEVER displace a real complete 10/10 team for the
                 // next round's generation-zero reliability check.
@@ -1900,6 +1969,12 @@ public final class BuilderEvolutionAltCourseGameTest {
         static void save(Tournament run,List<Candidate> bots,int finished,
                          int slowest,double mean,List<Genome> nextPopulation){
             JsonObject obj=header();
+            obj.addProperty("policyRevision","context-strategy-v1");
+            JsonObject strategyMemory=new JsonObject();
+            strategyMemory.addProperty("format",NavigationStrategyMemory.FORMAT);
+            strategyMemory.add("observations",JSON.toJsonTree(
+                    run.strategyMemory.observations()));
+            obj.add("strategyMemory",strategyMemory);
             obj.addProperty("completedGenerations",run.completedGenerations+1);
             obj.addProperty("bestFinishedEver",run.bestFinished);
             obj.addProperty("lastCompleted",finished);
@@ -1975,6 +2050,10 @@ public final class BuilderEvolutionAltCourseGameTest {
                 entry.addProperty("slot",b.index);
                 entry.addProperty("arrivedTicks",b.arrivedTick);
                 entry.addProperty("fitness",b.fitness());
+                entry.addProperty("strategyContext",b.strategyContext);
+                entry.addProperty("strategy",b.strategyDecision.strategy().name());
+                entry.addProperty("strategyReason",b.strategyDecision.reason());
+                entry.addProperty("priorStrategyTrials",b.strategyDecision.evidenceTrials());
                 entry.addProperty("progressWaypoints",b.bestCursor);
                 entry.addProperty("collisions",b.collisions);
                 entry.addProperty("jumps",b.jumps);
@@ -1997,6 +2076,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                 physicalFitness.add(entry);
                 JsonObject trace=new JsonObject();
                 trace.addProperty("slot",b.index);
+                trace.addProperty("strategyContext",b.strategyContext);
+                trace.addProperty("strategy",b.strategyDecision.strategy().name());
+                trace.addProperty("strategyReason",b.strategyDecision.reason());
                 trace.addProperty("spawnIndex",SELECTED_BOTS[b.index]);
                 trace.addProperty("startX",STARTS[SELECTED_BOTS[b.index]][0]);
                 trace.addProperty("startZ",STARTS[SELECTED_BOTS[b.index]][1]);
@@ -2029,10 +2111,14 @@ public final class BuilderEvolutionAltCourseGameTest {
             obj.add("lastRealEntityResults",physicalFitness);
             // Save after EVERY scored generation, even if all 10 fail.
             writeAtomic(checkpoint(),obj);
+            JsonObject historyEntry=obj.deepCopy();
+            historyEntry.remove("strategyMemory");
+            historyEntry.addProperty("strategyObservationCount",
+                    run.strategyMemory.observations().size());
             try{
                 // JSONL requires exactly one compact JSON object per
                 // line. Pretty printing here made prior history invalid.
-                Files.writeString(history(),new Gson().toJson(obj)+"\n",
+                Files.writeString(history(),new Gson().toJson(historyEntry)+"\n",
                         StandardCharsets.UTF_8,
                         StandardOpenOption.CREATE,StandardOpenOption.APPEND);
             }catch(IOException e){
@@ -2049,6 +2135,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                         ||(slowest==run.bestChampionSlowest
                             &&meanArrival<run.bestChampionAverage)){
                     JsonObject winner=header();
+                    winner.addProperty("policyRevision","context-strategy-v1");
+                    winner.add("strategyMemory",strategyMemory.deepCopy());
                     winner.addProperty("wonAtCompletedGeneration",
                             run.completedGenerations+1);
                     winner.addProperty("slowestTicks",slowest);
@@ -2088,12 +2176,18 @@ public final class BuilderEvolutionAltCourseGameTest {
         // counter to make new exploratory mutations diverge across runs.
         final Random rng;
         final Map<Edge,Integer> collisionMemory=new HashMap<>();
+        final NavigationStrategyMemory strategyMemory=new NavigationStrategyMemory();
         final Genome[] champions=new Genome[SELECTED_BOTS.length];
         final double[] championScores=new double[SELECTED_BOTS.length];
         final List<Knowledge> knowledgePool=new ArrayList<>();
         List<Genome> generationGenes=new ArrayList<>();
         List<Candidate> bots=new ArrayList<>();
         int generation=0;
+        boolean ended;
+        final String strategySession=System.getenv("GOLEMS_EVOLUTION_SESSION")==null
+                ?"local-"+java.util.UUID.randomUUID():System.getenv("GOLEMS_EVOLUTION_SESSION");
+        final boolean strategyValidation="validate".equalsIgnoreCase(
+                System.getenv("GOLEMS_EVOLUTION_MODE"));
         long generationStart=0;
         int bestFinished=0;
         int completedGenerations=0;
@@ -2119,9 +2213,11 @@ public final class BuilderEvolutionAltCourseGameTest {
                 generationGenes=pinElites(generationGenes,knowledgePool);
             rng=new Random(TRAINING_SEED
                     +1000003L*(long)completedGenerations);
-            bots=spawnGeneration(helper,generationGenes,collisionMemory);
+            bots=spawnGeneration(helper,generationGenes,collisionMemory,
+                    strategyMemory,strategyValidation);
         }
         void tick(){
+            if(ended)return;
             long absoluteTick=helper.getTick();
             long roundTick=absoluteTick-generationStart;
             if(roundTick<0)return;
@@ -2168,6 +2264,22 @@ public final class BuilderEvolutionAltCourseGameTest {
                 mean+=b.fitness();
                 collisions+=b.collisions;
                 jumps+=b.jumps;
+                strategyMemory.observe(new NavigationStrategyMemory.Observation(
+                        strategySession+":g"+generation+":slot"+b.index,
+                        (long)(completedGenerations+1)*10+b.index,
+                        b.strategyContext,b.strategyDecision.strategy(),
+                        b.arrivedTick,DEADLINE,b.stationaryTicks,b.collisions,
+                        b.measuredDistance));
+                NavigationStrategyMemory.Summary evidence=strategyMemory.summary(
+                        b.strategyContext,b.strategyDecision.strategy());
+                System.out.println("[ALT STRATEGY OUTCOME] slot="+b.index
+                        +" context="+b.strategyContext
+                        +" strategy="+b.strategyDecision.strategy()
+                        +" arrival="+b.arrivedTick
+                        +" stationary="+b.stationaryTicks
+                        +" recentTrips="+evidence.trials()
+                        +" recentFinished="+evidence.finished()
+                        +" meanReward="+evidence.meanReward());
                 for(var edge:b.realBlockFailures.entrySet())
                     collisionMemory.merge(edge.getKey(),edge.getValue(),
                             (a,c)->Math.min(100,a+c));
@@ -2258,9 +2370,11 @@ public final class BuilderEvolutionAltCourseGameTest {
                 System.out.println("[TIMETRIAL MEMORY] Next validation "
                         +"run will START with all ten verified winning "
                         +"genes; exploratory offspring saved separately");
+                ended=true;
                 helper.succeed();return;
             }
             if(generation+1>=GENERATIONS){
+                ended=true;
                 helper.fail("Physical evolution did not qualify all 10"
                         +" by 11.2s after "+GENERATIONS
                         +" generations. Best REAL 13s result="+bestFinished
@@ -2276,7 +2390,8 @@ public final class BuilderEvolutionAltCourseGameTest {
             generationGenes=offspring;
             generation++;
             generationStart=absoluteTick+1;
-            bots=spawnGeneration(helper,generationGenes,collisionMemory);
+            bots=spawnGeneration(helper,generationGenes,collisionMemory,
+                    strategyMemory,strategyValidation);
         }
     }
 

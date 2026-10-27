@@ -14,6 +14,43 @@ FORMAT = "golems-plus-physical-genes-v1"
 COURSE = "timetrial-alt-vanilla-10-builders-260-ticks-v2"
 GENES = 12
 POPULATION = 10
+STRATEGY_FORMAT = "golems-context-strategies-v1"
+
+
+def merge_strategy_memory(*checkpoints):
+    episodes = {}
+    present = False
+    for checkpoint in checkpoints:
+        memory = (checkpoint or {}).get("strategyMemory")
+        if memory is None:
+            continue
+        present = True
+        if memory.get("format") != STRATEGY_FORMAT or not isinstance(memory.get("observations"), list):
+            raise ValueError("Invalid contextual navigation memory")
+        for episode in memory["observations"]:
+            identifier = episode.get("id")
+            deadline = episode.get("deadlineTicks")
+            if (not isinstance(identifier, str) or not identifier
+                    or not isinstance(episode.get("sequence"), int) or episode["sequence"] < 0
+                    or not isinstance(episode.get("context"), str)
+                    or not 1 <= len(episode["context"]) <= 200
+                    or episode.get("strategy") not in ("DIRECT", "SMOOTH", "DOOR")
+                    or deadline != 260
+                    or not isinstance(episode.get("arrivedTicks"), int)
+                    or not -1 <= episode["arrivedTicks"] <= deadline
+                    or not isinstance(episode.get("stationaryTicks"), int)
+                    or not 0 <= episode["stationaryTicks"] <= deadline
+                    or not isinstance(episode.get("collisions"), int) or episode["collisions"] < 0
+                    or not isinstance(episode.get("distanceMeters"), (int, float))
+                    or not math.isfinite(episode["distanceMeters"]) or episode["distanceMeters"] < 0):
+                raise ValueError("Invalid physical strategy episode")
+            if identifier in episodes and episodes[identifier] != episode:
+                raise ValueError("Conflicting physical strategy episode: " + identifier)
+            episodes[identifier] = episode
+    if not present:
+        return None
+    return dict(format=STRATEGY_FORMAT, observations=sorted(episodes.values(),
+                key=lambda e: (e["sequence"], e["id"])))
 
 
 def read(path):
@@ -56,6 +93,7 @@ def validate_champion(c):
 def validate_checkpoint(c):
     if c is None:
         return
+    merge_strategy_memory(c)
     genetic_population(c["nextPopulation"])
     keys = ("lastSuccessfulPopulation", "lastSuccessfulArrivalTicks",
             "lastSuccessfulGeneration", "lastSuccessfulSlowestTicks")
@@ -126,6 +164,9 @@ def merge_checkpoint(old, new, protected):
                 c["lastMeanFitness"])
     winning = new if merit(new) > merit(old) else old
     merged = dict(winning)
+    strategy_memory = merge_strategy_memory(old, new)
+    if strategy_memory is not None:
+        merged["strategyMemory"] = strategy_memory
     merged["completedGenerations"] = max(
         new["completedGenerations"], old["completedGenerations"])
     merged["bestFinishedEver"] = max(
