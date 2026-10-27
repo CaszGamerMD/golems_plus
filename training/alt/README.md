@@ -1,3 +1,14 @@
+## Phone replay viewer — latest tests and automatic future updates
+
+- **[Download mobile replay viewer](https://github.com/CaszGamerMD/golems_plus/blob/feature/builder-evolutionary-alt-course-262/training/alt/replays/mobile-viewer.html)** — lightweight self-contained HTML; tap **Download raw file** on GitHub and open it with Android Chrome. Includes the newest **three GitHub Actions test bundles**, with all their actual 10-entity generations, even when physical qualification fails.
+- **[Live update feed](https://raw.githubusercontent.com/CaszGamerMD/golems_plus/feature/builder-evolutionary-alt-course-262/training/alt/replays/mobile-data.json)** — when connected, tap **Check for new tests** inside an already-downloaded viewer. It fetches updated physical movement traces without reinstalling the HTML. Offline playback uses the original embedded snapshots.
+- **[Complete historical viewer](https://github.com/CaszGamerMD/golems_plus/blob/feature/builder-evolutionary-alt-course-262/training/alt/replays/route-viewer.html)** — all preserved generations, much larger than the mobile file.
+- **[Automatic test workflow](https://github.com/CaszGamerMD/golems_plus/actions/workflows/builder-alt-physical-timetrial.yml)** — after EVERY three-test bundle, successful or failed, the workflow merges current learning/replays and regenerates both the lightweight mobile HTML and its JSON feed from the latest three run IDs. The same links will always point to the latest published versions.
+
+No coordinate is simulated: the viewer uses positions captured from real BuilderGolem entities under native Minecraft collisions. The mobile app stores the last 3 bundles offline; historic batches remain in the full viewer and the per-generation JSON files. Publishing updates requires the test workflow to finish uploading its GitHub changes.
+
+---
+
 ## Bottom-slab shortcut investigation — current status (1,305 physical generations)
 
 The user identified two separate problems: the wide ground-level half-slab shortcut (x6–8, z2–7) was never selected, and golems gathered at a nearby corner even when the next tile looked open.
