@@ -1,3 +1,19 @@
+## Replay publication recovery — October 27
+
+Run `40493141358` completed its three physical sessions, but did not meet
+the 224-tick qualification. Best current-session 260-tick counts were
+**8/10, 2/10, 7/10**; final generations were **7/10, 0/10, 5/10**.
+The historical `bestFinishedEver=10` is inherited and is not a new success.
+
+The regenerated historical HTML grew to **109,110,415 bytes**, beyond
+GitHub's 100 MiB single-file limit, blocking publication of the entire
+checkpoint/replay commit. New physical evidence was recovered from the
+preserved run artifact. The inline desktop HTML now includes the newest
+three run bundles, matching the mobile viewer; every raw generation JSON
+remains archived. Recovered history is also retained in
+`state/history-recovered-40493141358.jsonl` and merged into ordinary history
+by the next checkpoint merge. The old fastest 236-tick champion is retained.
+
 ## Individual knowledge pool and operable doors (October 27)
 
 The physical alt-course trainer now saves **per-golem improvements**, without

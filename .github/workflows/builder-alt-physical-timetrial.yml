@@ -44,6 +44,7 @@ jobs:
           python3 -m unittest discover -s scripts/tests -p test_merge_alt_evolution_state.py -v
           python3 -m unittest discover -s scripts/tests -p test_export_real_evolution_replays.py -v
           python3 -m unittest discover -s scripts/tests -p test_export_alt_mobile_replays.py -v
+          python3 -m unittest discover -s scripts/tests -p test_export_alt_bounded_replays.py -v
       - name: Isolate the real-entity training course from other GameTest arenas
         run: |
           python3 - <<'PY'
@@ -137,7 +138,7 @@ jobs:
           done
           echo "Completed 3 physical trials; failures=${failures}"
           exit "${failures}"
-      - name: Generate offline HTML with every physical generation
+      - name: Generate bounded offline HTML while retaining all raw physical traces
         if: always()
         run: python3 scripts/export_alt_evolution_replays.py --session-prefix "" --viewer training/alt/replays/route-viewer.html
       - name: Build mobile offline replay and online future-test feed
@@ -175,8 +176,9 @@ jobs:
             mkdir -p training/alt/replays/live
             cp -an "$replay_backup/." training/alt/replays/live/
             cp "$viewer_backup" training/alt/replays/route-viewer.html
-            # Rebuild using BOTH locally captured and remotely published
-            # generations. CI runs must not hide older test routes.
+            # Rebuild the newest three bundles from local and remote traces.
+            # All historical JSON remains archived; unbounded inline HTML
+            # exceeded GitHub's 100 MiB limit and blocked every state push.
             python3 scripts/export_alt_evolution_replays.py --session-prefix "" --viewer training/alt/replays/route-viewer.html
             # Rebuild the newest test batches AFTER merging remote runs
             # so the phone's fixed data URL always includes future tests,

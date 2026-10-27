@@ -189,7 +189,10 @@ def merge_checkpoint(old, new, protected):
 
 def merge_history(old_path, incoming_path):
     rows, seen = [], set()
-    for path in (old_path, incoming_path):
+    paths = [old_path, incoming_path]
+    for parent in {old_path.parent, incoming_path.parent}:
+        paths.extend(sorted(parent.glob('history-recovered-*.jsonl')))
+    for path in paths:
         if not path.is_file():
             continue
         for line in path.read_text(encoding="utf8").splitlines():
@@ -204,6 +207,9 @@ def merge_history(old_path, incoming_path):
             if compact not in seen:
                 rows.append(compact)
                 seen.add(compact)
+    rows.sort(key=lambda line: (
+        json.loads(line).get("completedGenerations", 0),
+        json.loads(line).get("replayFile", ""), line))
     return "\n".join(rows) + ("\n" if rows else "")
 
 
