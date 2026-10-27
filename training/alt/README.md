@@ -1,3 +1,43 @@
+## Automatic physical results reporter — summaries instead of replay viewers
+
+The CI workflow now runs `scripts/report_alt_physical_results.py` after **every**
+three-trial real-Minecraft training bundle, including failed qualifications.
+Reports appear in the GitHub Actions **Summary** tab and the branch files
+[`training/alt/reports/latest.md`](reports/latest.md) and
+[`training/alt/reports/latest.json`](reports/latest.json).
+The report is compact; it never embeds entity movement coordinates.
+
+It compares the pre-test checkpoint with the scored checkpoint and reports:
+- 10-golem completion counts at 260 ticks (13.0 s) and 224 ticks (11.2 s)
+- best, first, and last generations, and a three-trial breakdown
+- verified changes to retained generations, independent best fitness and top-three gene pool
+- strategy observation growth separately from physical completion
+- slab entry/step-up stalls, door plans/crossings, collisions, and traffic replanning
+- ordered, evidence-based next-experiment notes, including warnings when the
+  test completed no scored generations or learning did not persist
+- historical champion **explicitly labeled historical**, never presented as this run's result
+
+Only physical GameTest output counts as a measured result. Absent sensors
+are labeled unavailable, not zero. A new GitHub workflow run may fail the
+11.2-second 10/10 goal and still publish its diagnostic summary and saved DNA.
+GitHub Actions retains full diagnostic artifacts for deeper investigations,
+and raw entity traces/checkpoints stay in the repository.
+
+The **HTML and phone replay viewers remain paused**. No viewer data is rebuilt.
+The results reporter does not automatically send a ChatGPT message; ask in
+this chat for a plain-English summary of the latest saved report.
+
+To run the reporter locally against an existing training workspace:
+
+```sh
+python3 scripts/report_alt_physical_results.py \\
+  --logs build/timetrial-training \\
+  --before build/timetrial-training/original-state.json \\
+  --state training/alt/state/checkpoint.json
+```
+
+---
+
 ## Replay viewer publication paused (October 27, 2026)
 
 At the user's request, the **desktop HTML viewer, mobile HTML viewer, and live
