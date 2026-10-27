@@ -1,33 +1,33 @@
 # Builder Golem physical training — latest results
 
-**GitHub Actions:** https://github.com/CaszGamerMD/golems_plus/actions/runs/40582003719
-**Run ID:** 40582003719
+**GitHub Actions:** https://github.com/CaszGamerMD/golems_plus/actions/runs/40584247050
+**Run ID:** 40584247050
 **Mode:** evolve | **Course:** existing alt course | **Real entities:** 10 per generation
 
 ## Results
 
-- **Best 13s (260 ticks):** 7/10; **best 11.2s (224 ticks):** 3/10.
-- **First → last 13s:** 4/10 → 6/10. Latest within 11.2s: 3/10.
+- **Best 13s (260 ticks):** 8/10; **best 11.2s (224 ticks):** 4/10.
+- **First → last 13s:** 4/10 → 7/10. Latest within 11.2s: 1/10.
 - **Physical generations scored in logs:** 72 across 3 trial logs.
-- **Checkpoint generation change:** 2208 → 2280 (72).
-- **Recorded strategy observations change:** 4320 → 5040 (720).
+- **Checkpoint generation change:** 2280 → 2352 (72).
+- **Recorded strategy observations change:** 5040 → 5760 (720).
 - **Personal-best improvements this run:** none verified.
 - **Shared top three:** golem 0 (100840.0), golem 4 (100840.0), golem 1 (100795.0); pool changed: no.
 - **Protected historical champion:** 236 ticks (10/10) — historical, NOT evidence of this run.
 
 ## Physical movement signals
 
-- Slab ascents: **1270**; slab-entry stalls: **1**.
-- Door plans: **84**; door crossing attempts: **80**.
-- Collision events: **3**; jump events: **85**; traffic replans: **170**.
+- Slab ascents: **1282**; slab-entry stalls: **0**.
+- Door plans: **79**; door crossing attempts: **62**.
+- Collision events: **443**; jump events: **4**; traffic replans: **197**.
 
 ## Trial breakdown
 
 | Trial | Generations | Best ≤260t | Best ≤224t | Final ≤260t |
 |---|---:|---:|---:|---:|
-| real-builder-trial-1.log | 24 | 7/10 | 3/10 | 7/10 |
-| real-builder-trial-2.log | 24 | 7/10 | 3/10 | 6/10 |
-| real-builder-trial-3.log | 24 | 7/10 | 3/10 | 6/10 |
+| real-builder-trial-1.log | 24 | 7/10 | 4/10 | 6/10 |
+| real-builder-trial-2.log | 24 | 8/10 | 4/10 | 7/10 |
+| real-builder-trial-3.log | 24 | 7/10 | 3/10 | 7/10 |
 
 ## Notes for improving the process
 

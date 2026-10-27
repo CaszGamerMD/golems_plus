@@ -1,12 +1,12 @@
 {
-  "runId": "40582003719",
+  "runId": "40584247050",
   "mode": "evolve",
   "trials": 3,
   "physicalGenerations": 72,
-  "max13s": 7,
-  "max11_2s": 3,
-  "latest13s": 6,
-  "latest11_2s": 3,
+  "max13s": 8,
+  "max11_2s": 4,
+  "latest13s": 7,
+  "latest11_2s": 1,
   "first13s": 4,
   "completedGenerationDelta": 72,
   "strategyEvidenceDelta": 720,
@@ -31,13 +31,13 @@
   ],
   "historicChampionSlowestTicks": 236,
   "totals": {
-    "doorPlans": 84,
-    "doorCrossings": 80,
-    "collisions": 3,
-    "jumps": 85,
-    "slabAscents": 1270,
-    "slabEntryStalls": 1,
-    "trafficReplans": 170
+    "doorPlans": 79,
+    "doorCrossings": 62,
+    "collisions": 443,
+    "jumps": 4,
+    "slabAscents": 1282,
+    "slabEntryStalls": 0,
+    "trafficReplans": 197
   },
   "hasSlabTelemetry": true,
   "perTrial": [
@@ -45,25 +45,25 @@
       "name": "real-builder-trial-1.log",
       "generations": 24,
       "best13s": 7,
-      "best11_2s": 3,
-      "final13s": 7,
+      "best11_2s": 4,
+      "final13s": 6,
       "final11_2s": 2
     },
     {
       "name": "real-builder-trial-2.log",
       "generations": 24,
-      "best13s": 7,
-      "best11_2s": 3,
-      "final13s": 6,
-      "final11_2s": 2
+      "best13s": 8,
+      "best11_2s": 4,
+      "final13s": 7,
+      "final11_2s": 3
     },
     {
       "name": "real-builder-trial-3.log",
       "generations": 24,
       "best13s": 7,
       "best11_2s": 3,
-      "final13s": 6,
-      "final11_2s": 3
+      "final13s": 7,
+      "final11_2s": 1
     }
   ],
   "recommendations": [
