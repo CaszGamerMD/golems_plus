@@ -1722,16 +1722,35 @@ public final class BuilderEvolutionAltCourseGameTest {
         boolean lowStep=stepRise>0&&stepRise<=.600001;
         double plannedRise=standingY(helper,world,ahead[0],ahead[1])
                 -standingY(helper,world,b.x,b.z);
-        boolean centerApproach=localRule(b)==NavigationRuleMemory.Rule.CENTER_STEP
+        // Every real Builder must dock squarely with a half-slab lip.
+        // Previously this alignment ran ONLY in experimental CENTER_STEP
+        // rounds, so ordinary evolution could approach a legal step
+        // obliquely, clip its 0.65-wide hitbox on the lip, then falsely
+        // learn that the whole slab shortcut was unreliable.
+        // A step is a cardinal approach onto a verified <=0.6 surface;
+        // never grant flight, a free Y displacement or obstacle clipping.
+        boolean cardinalApproach=(ahead[0]==b.x) != (ahead[1]==b.z);
+        boolean nativeSlabAscent=cardinalApproach
+                &&footState.getBlock() instanceof SlabBlock
+                &&footState.getValue(SlabBlock.TYPE)==SlabType.BOTTOM
+                &&plannedRise>.01&&plannedRise<=.600001
+                &&mob.getY()<standingY(helper,world,ahead[0],ahead[1])-.12;
+        boolean experimentalCenter=localRule(b)==NavigationRuleMemory.Rule.CENTER_STEP
                 &&(canOperateDoor(footState)||plannedRise>.01&&plannedRise<=.600001);
+        boolean centerApproach=nativeSlabAscent||experimentalCenter;
         if(centerApproach){
-            b.localEpisode.executed=true;
-            // Align perpendicular to the legal cardinal approach before
-            // entering the step/door. Keep native gravity and auto-step;
-            // never jump merely because the side of a corner was clipped.
-            if(ahead[0]!=b.x&&ahead[1]==b.z&&Math.abs(dz)>.025)dx=0;
-            else if(ahead[1]!=b.z&&ahead[0]==b.x&&Math.abs(dx)>.025)dz=0;
+            if(experimentalCenter&&b.localEpisode!=null)
+                b.localEpisode.executed=true;
+            // Align perpendicular to the low-step face BEFORE driving
+            // into it. The final 0.045-block tolerance keeps the entire
+            // hitbox safely inside a one-block-wide entrance.
+            double lateralTolerance=nativeSlabAscent?.045:.025;
+            if(ahead[0]!=b.x&&ahead[1]==b.z
+                    &&Math.abs(dz)>lateralTolerance)dx=0;
+            else if(ahead[1]!=b.z&&ahead[0]==b.x
+                    &&Math.abs(dx)>lateralTolerance)dz=0;
             distance=Math.hypot(dx,dz);
+            if(nativeSlabAscent)b.movementMode="p";
         }
         boolean tallObstacle=stepRise>.600001;
         boolean approachingRaisedCell=tallObstacle
