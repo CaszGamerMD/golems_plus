@@ -222,9 +222,13 @@ jobs:
             --run-id "${GITHUB_RUN_ID}" \
             --out training/alt/reports/latest.md \
             --json-out training/alt/reports/latest.json
-      # Viewer publication is intentionally paused at the user's request.
-      # Keep real physical replay JSON, checkpoints and logs for diagnosis,
-      # but do NOT repopulate HTML or the mobile-data feed.
+      - name: Build bounded 3-bundle replay viewers from real physical traces
+        if: always()
+        run: |
+          python3 scripts/export_alt_mobile_replays.py --batches 3
+          # Both phone and desktop addresses use the same compact viewer.
+          # Never embed the raw 90+ MiB historical replay archive again.
+          cp training/alt/replays/mobile-viewer.html training/alt/replays/route-viewer.html
       - name: Commit learned real-entity genes, EVEN IF the trial fails
         if: always() && (github.head_ref == 'feature/builder-evolutionary-alt-course-262' || github.ref == 'refs/heads/feature/builder-evolutionary-alt-course-262') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         shell: bash
@@ -247,8 +251,8 @@ jobs:
           if [[ -f training/alt/reports/latest.md && -f training/alt/reports/latest.json ]]; then
             cp training/alt/reports/latest.md training/alt/reports/latest.json "$report_backup/"
           fi
-          # Only preserve learning state and raw physical traces; the
-          # optional replay viewer is not being maintained right now.
+          # Viewer outputs are rebuilt AFTER merging against latest
+          # remote traces, so stale local data cannot replace new bundles.
           # The GameTest workflow temporarily edits its Fabric test
           # manifest, and training edits tracked checkpoint files.
           # Reset this disposable checkout AFTER copying new learning.
@@ -269,9 +273,11 @@ jobs:
             if [[ -f "$report_backup/latest.md" && -f "$report_backup/latest.json" ]]; then
               cp "$report_backup/latest.md" "$report_backup/latest.json" training/alt/reports/
             fi
-            # The raw real-entity movement archive is retained for
-            # investigation; no HTML/mobile replay data is produced.
-            git add -- training/alt/state/ training/alt/replays/live/ training/alt/reports/
+            # Publish exactly the latest THREE run bundles after merging,
+            # with identical bounded HTML at the mobile and desktop links.
+            python3 scripts/export_alt_mobile_replays.py --batches 3
+            cp training/alt/replays/mobile-viewer.html training/alt/replays/route-viewer.html
+            git add -- training/alt/state/ training/alt/replays/live/ training/alt/reports/ training/alt/replays/mobile-viewer.html training/alt/replays/mobile-data.json training/alt/replays/route-viewer.html
             if git diff --cached --quiet; then
               echo 'No improved state over current remote.'
               exit 0
@@ -295,6 +301,9 @@ jobs:
             build/timetrial-training/real-builder-trial-*.log
             training/alt/reports/
             training/alt/replays/live/
+            training/alt/replays/mobile-viewer.html
+            training/alt/replays/route-viewer.html
+            training/alt/replays/mobile-data.json
             build/gametest/
             build/reports/
             build/test-results/
