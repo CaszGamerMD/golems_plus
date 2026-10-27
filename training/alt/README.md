@@ -1,3 +1,21 @@
+## Replay viewer publication paused (October 27, 2026)
+
+At the user's request, the **desktop HTML viewer, mobile HTML viewer, and live
+mobile JSON feed have been cleared** and are not automatically refreshed.
+The files contain small paused/empty placeholders only. Earlier instructions
+about downloading and auto-refreshing viewer data below are historical.
+
+**Preserved for AI improvement and chat reports:** real physical per-generation
+JSON traces in `replays/live/`, checkpoint and elite gene pool in `state/`,
+strategy/rule memory, `history.jsonl`, historical champions, and CI test logs.
+No movement or learning logic was changed by the viewer cleanup. The workflow
+no longer rebuilds or commits HTML/mobile feeds. When requested, summarize
+actual test scores, slab entry diagnostics, door usage, and saved learning in
+chat from checkpoint/log evidence. Do not imply periodic chat updates occur
+automatically.
+
+---
+
 ## Native simulation qualification
 
 The full course receives temporary simulation tickets before spawning racers.
