@@ -582,25 +582,65 @@ public final class BuilderEvolutionAltCourseGameTest {
             int toX,int toZ){
         int loX=Math.min(fromX,toX),hiX=Math.max(fromX,toX);
         int loZ=Math.min(fromZ,toZ),hiZ=Math.max(fromZ,toZ);
+        // A diagonal must be across one continuous, LEVEL surface:
+        // all four cells must support the complete 0.65 x 1.6 body at
+        // the same Y. This enables safe diagonals ON a slab plateau,
+        // but prevents the fatal "free block on the other side" cut
+        // across the vertical EDGE of the first raised slab.
+        double y=standingY(helper,world,fromX,fromZ);
+        if(!Double.isFinite(y)
+                ||Math.abs(y-standingY(helper,world,toX,toZ))>.005)
+            return false;
         for(int x=loX;x<=hiX;x++)for(int z=loZ;z<=hiZ;z++){
-            if(!walkableCell(x,z))return false;
-            char type=MAZE[z].charAt(x);
-            if(type=='D'||type=='^')return false;
+            if(!walkableCell(x,z)||MAZE[z].charAt(x)=='D'
+                    ||Math.abs(y-standingY(helper,world,x,z))>.005
+                    ||!physicalCellOpen(helper,world,mob,x,z))
+                return false;
         }
         BlockPos origin=pos(helper,0,2,0);
         double half=mob.getBbWidth()*.5;
-        for(int i=0;i<=20;i++){
-            double t=i/20.0;
+        for(int i=0;i<=24;i++){
+            double t=i/24.0;
             double centerX=origin.getX()+fromX+.5+(toX-fromX)*t;
             double centerZ=origin.getZ()+fromZ+.5+(toZ-fromZ)*t;
-            var body=new net.minecraft.world.phys.AABB(
-                    centerX-half,origin.getY()+.01,centerZ-half,
-                    centerX+half,origin.getY()+mob.getBbHeight()-.025,
-                    centerZ+half);
-            if(world.getBlockCollisions(mob,body).iterator().hasNext())
+            if(!clearBodyAt(world,mob,centerX,y,centerZ))
+                return false;
+            // Require real floor collision support UNDER the moving
+            // footprint. An open diagonal destination does NOT prove
+            // that the physical body is supported on the corner cut.
+            var support=new net.minecraft.world.phys.AABB(
+                    centerX-half+.02,y-.08,centerZ-half+.02,
+                    centerX+half-.02,y-.015,centerZ+half-.02);
+            if(!world.getBlockCollisions(mob,support).iterator().hasNext())
                 return false;
         }
         return true;
+    }
+
+    /**
+     * Corners adjacent to a half-block floor STEP are hazardous even
+     * when both corner-waypoint centers are on clear flat ground.
+     * Do not blend directional steering or acquire a waypoint early
+     * beside one of these raised slab edges. This does not slow
+     * straight walking along a continuous slab plateau.
+     */
+    private static boolean nearGroundSlabEdge(GameTestHelper helper,
+            ServerLevel world,int x,int z){
+        BlockPos feet=pos(helper,x,2,z);
+        double centerY=standingY(helper,world,x,z);
+        if(!Double.isFinite(centerY))return true;
+        for(Direction side:new Direction[]{
+                Direction.NORTH,Direction.SOUTH,
+                Direction.EAST,Direction.WEST}){
+            BlockPos adjacent=feet.relative(side);
+            BlockState state=world.getBlockState(adjacent);
+            if(state.getBlock() instanceof SlabBlock
+                    &&Math.abs(centerY-(adjacent.getY()
+                        +state.getCollisionShape(world,adjacent)
+                            .max(Direction.Axis.Y)))>.01)
+                return true;
+        }
+        return false;
     }
 
     private record RouteNode(int x,int z,char heading){}
@@ -683,8 +723,18 @@ public final class BuilderEvolutionAltCourseGameTest {
                                 node.x(),node.z(),x,z)))
                     continue;
                 char tile=MAZE[z].charAt(x);
+                // Half slabs are WALKABLE terrain with normal 0.6
+                // auto-step. The prior per-tile slabAvoid (up to +5
+                // EACH tile) trained golems to take massive detours.
+                // Penalize only actual height transitions, lightly.
+                // Walking across a contiguous slab surface is priced
+                // like equally long flat ground, including diagonals
+                // when verified by the full-body physics sweep.
+                boolean heightChange=Math.abs(toY-fromY)>.01;
+                double transitionPenalty=heightChange
+                        ?Math.min(.25,dna.slabAvoid()*.05):0;
                 double weight=(diagonal?Math.sqrt(2):1.0)
-                        +(tile=='^'?dna.slabAvoid():0)
+                        +transitionPenalty
                         +(node.heading()!='?'&&node.heading()!=direction
                                 ?dna.turnBias():0);
                 // The door must be an EXPLORABLE alternative, not
@@ -1137,9 +1187,14 @@ public final class BuilderEvolutionAltCourseGameTest {
                         &&bodySweepClear(helper,world,mob,
                             ahead[0],ahead[1],after[0],after[1]);
             }
+            boolean nextTurn=b.cursor+1<b.route.length()
+                    &&b.route.charAt(b.cursor)!=b.route.charAt(b.cursor+1);
+            boolean raisedCorner=nearGroundSlabEdge(helper,world,
+                    b.x,b.z)||nearGroundSlabEdge(helper,world,
+                    ahead[0],ahead[1]);
             double acquisition=sameSafeStraight?.205:
-                    diagonalStep||precise
-                        ?Math.min(b.dna.tolerance(),.075)
+                    diagonalStep||precise||nextTurn&&raisedCorner
+                        ?Math.min(b.dna.tolerance(),.055)
                         :b.dna.tolerance();
             if(distance>=acquisition)break;
             b.x=ahead[0];
@@ -1251,6 +1306,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                     ahead[0],ahead[1],look[0],look[1]);
         }
         if(!precision&&!nextPrecision
+                &&!nearGroundSlabEdge(helper,world,b.x,b.z)
+                &&!nearGroundSlabEdge(helper,world,ahead[0],ahead[1])
                 &&!teammateWithin(b,crew,.90)
                 &&b.cursor+1<b.route.length()&&distance<.45){
             int[] corner=next(ahead[0],ahead[1],
@@ -2056,6 +2113,91 @@ public final class BuilderEvolutionAltCourseGameTest {
             helper.succeed();
         }
         mob.discard();
+    }
+
+    /**
+     * The original broad 3x6 bottom-slab field is a legal SHORTCUT.
+     * Assert both the low-slab entry/exit and a continuous same-height
+     * diagonal atop the slabs while disallowing diagonal cuts across
+     * the 0.5-high edge. No artificial track blocks are added.
+     */
+    @GameTest(maxTicks=120,padding=64,skyAccess=true)
+    public void realBuilderPrefersWideGroundSlabShortcut(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos at=pos(helper,9,2,5);
+        mob.setPos(at.getX()+.5,at.getY(),at.getZ()+.5);
+        world.addFreshEntity(mob);
+        boolean plateauDiagonal=diagonalBodyClear(helper,world,mob,
+                6,4,7,5);
+        boolean edgeDiagonal=diagonalBodyClear(helper,world,mob,
+                9,4,8,5);
+        String planned=planRouteTo(9,5,SAVED_PHYSICAL_CHAMPIONS[0],
+                Map.of(),helper,world,mob,5,5);
+        int x=9,z=5,slabCount=0;
+        for(int i=0;i<planned.length();i++){
+            int[] p=next(x,z,planned.charAt(i));
+            x=p[0];z=p[1];
+            if(x>=6&&x<=8&&z>=2&&z<=7)slabCount++;
+        }
+        System.out.println("[ALT WIDE SLAB ROUTING] route="+planned
+                +" slabCount="+slabCount
+                +" levelDiagonal="+plateauDiagonal
+                +" illegalEdgeDiagonal="+edgeDiagonal);
+        if(!plateauDiagonal||edgeDiagonal||slabCount<3
+                ||planned.length()>6||x!=5||z!=5)
+            helper.fail("Pathfinder is still avoiding safe slab"
+                +" shortcut, or allowing a blocked half-slab corner:"
+                +" route="+planned+" slabs="+slabCount
+                +" plateau="+plateauDiagonal
+                +" edge="+edgeDiagonal);
+        else helper.succeed();
+        mob.discard();
+    }
+
+    /**
+     * Movement is scored from an ACTUAL Builder entity walking
+     * horizontally onto, ACROSS and off the original bottom slabs.
+     * A continuous slab surface does not require jumping or detours.
+     */
+    @GameTest(maxTicks=115,padding=64,skyAccess=true)
+    public void realBuilderWalksAcrossWideBottomSlabField(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos at=pos(helper,9,2,5);
+        BlockPos end=pos(helper,5,2,5);
+        mob.setPos(at.getX()+.5,at.getY(),at.getZ()+.5);
+        mob.setNoGravity(false);
+        world.addFreshEntity(mob);
+        final int[] ticks={0},onPlateau={0};
+        helper.onEachTick(()->{
+            if(!mob.isAlive()){
+                helper.fail("Slab field walker disappeared");return;
+            }
+            if(mob.getY()>at.getY()+.45)onPlateau[0]++;
+            if(mob.getX()<end.getX()+.56
+                    &&Math.abs(mob.getY()-end.getY())<.12){
+                if(onPlateau[0]<3)
+                    helper.fail("Did not physically walk over slab field");
+                else{
+                    System.out.println("[ALT WIDE SLAB WALK] crossed in "
+                        +ticks[0]+" ticks, slabTicks="+onPlateau[0]);
+                    helper.succeed();
+                }
+                mob.discard();return;
+            }
+            if(ticks[0]++>=75){
+                helper.fail("Real golem stuck at wide bottom slabs: "
+                        +mob.position()+" elevatedTicks="+onPlateau[0]);
+                mob.discard();return;
+            }
+            mob.getNavigation().stop();
+            mob.move(MoverType.SELF,new Vec3(-.2,-.08,0));
+        });
     }
 
     @GameTest(maxTicks=120,padding=64,skyAccess=true)
