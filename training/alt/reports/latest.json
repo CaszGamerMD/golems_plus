@@ -1,20 +1,17 @@
 {
-  "runId": "40568092138",
+  "runId": "40582003719",
   "mode": "evolve",
   "trials": 3,
   "physicalGenerations": 72,
-  "max13s": 8,
+  "max13s": 7,
   "max11_2s": 3,
-  "latest13s": 4,
-  "latest11_2s": 1,
+  "latest13s": 6,
+  "latest11_2s": 3,
   "first13s": 4,
   "completedGenerationDelta": 72,
   "strategyEvidenceDelta": 720,
-  "improvedPersonalSlots": [
-    0,
-    4
-  ],
-  "poolChanged": true,
+  "improvedPersonalSlots": [],
+  "poolChanged": false,
   "pool": [
     {
       "slot": 0,
@@ -24,7 +21,7 @@
     {
       "slot": 4,
       "fitness": 100840.0,
-      "generation": 2138
+      "generation": 2164
     },
     {
       "slot": 1,
@@ -34,13 +31,13 @@
   ],
   "historicChampionSlowestTicks": 236,
   "totals": {
-    "doorPlans": 78,
-    "doorCrossings": 68,
-    "collisions": 1,
-    "jumps": 71,
-    "slabAscents": 1263,
-    "slabEntryStalls": 0,
-    "trafficReplans": 168
+    "doorPlans": 84,
+    "doorCrossings": 80,
+    "collisions": 3,
+    "jumps": 85,
+    "slabAscents": 1270,
+    "slabEntryStalls": 1,
+    "trafficReplans": 170
   },
   "hasSlabTelemetry": true,
   "perTrial": [
@@ -49,7 +46,7 @@
       "generations": 24,
       "best13s": 7,
       "best11_2s": 3,
-      "final13s": 4,
+      "final13s": 7,
       "final11_2s": 2
     },
     {
@@ -58,21 +55,22 @@
       "best13s": 7,
       "best11_2s": 3,
       "final13s": 6,
-      "final11_2s": 3
+      "final11_2s": 2
     },
     {
       "name": "real-builder-trial-3.log",
       "generations": 24,
-      "best13s": 8,
+      "best13s": 7,
       "best11_2s": 3,
-      "final13s": 4,
-      "final11_2s": 1
+      "final13s": 6,
+      "final11_2s": 3
     }
   ],
   "recommendations": [
     "**Slabs are physically accessible:** observed real ascents. Compare entry stalls and completion rates before changing slab route costs.",
     "**Door routes were attempted:** compare completion times of door users versus other routes before assigning a larger door preference.",
     "**Final generation regressed from the session best.** Keep the protected champion and individual top-three pool, then test gene changes against repeated identical conditions.",
-    "**Speed target not met:** optimize reliable 10/10 completion under 260 ticks before accepting faster individual records as team-wide improvement."
+    "**Speed target not met:** optimize reliable 10/10 completion under 260 ticks before accepting faster individual records as team-wide improvement.",
+    "**Knowledge pool unchanged:** new physical generations did not beat the retained personal-best leaders. Prefer controlled motor/strategy experiments instead of counting generation increments as improvement."
   ]
 }
