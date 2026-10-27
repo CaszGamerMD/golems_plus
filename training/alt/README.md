@@ -1,3 +1,26 @@
+## Replay viewers restored — latest 3 test bundles only (October 27, 2026)
+
+At the user's request, the Golem AI viewer is **enabled again**.
+Both [mobile-viewer.html](replays/mobile-viewer.html) and
+[route-viewer.html](replays/route-viewer.html) now use the **same compact
+real-entity playback viewer**, bounded to the three newest GitHub Actions
+run bundles (normally three real Minecraft trials per bundle).
+The [mobile-data.json](replays/mobile-data.json) refresh feed contains
+the exact same three bundles, so a previously downloaded mobile viewer
+can check for new tests while online.
+
+GitHub Actions repopulates these files after physical testing (even if
+the crew misses 11.2 seconds). The viewer-only restore workflow can
+also regenerate the latest three bundles immediately from already
+recorded physics without rerunning the Minecraft course. Older bundles
+are deliberately excluded from embedded HTML/feed, but their raw
+physical traces, saved rules, checkpoints and champions are retained.
+This supersedes earlier "viewer paused" notes below. The full unbounded
+desktop HTML viewer is **not** restored because it previously exceeded
+GitHub's file-size limit; the compact viewer works on mobile and desktop.
+
+---
+
 ## Automatic physical results reporter — summaries instead of replay viewers
 
 The CI workflow now runs `scripts/report_alt_physical_results.py` after **every**
