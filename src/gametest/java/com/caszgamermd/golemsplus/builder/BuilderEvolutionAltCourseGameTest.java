@@ -668,6 +668,17 @@ public final class BuilderEvolutionAltCourseGameTest {
                 helper,world,mob,-1,-1);
     }
 
+    // Temporary live-crew traffic costs are NOT permanent blocked edges
+    // and are never written into the genetic collision-memory checkpoint.
+    private static String planRouteTo(int startX,int startZ,Genome dna,
+                                    Map<Edge,Integer> realBlockFailures,
+                                    GameTestHelper helper,ServerLevel world,
+                                    BuilderGolem mob,int goalX,int goalZ,
+                                    Map<Integer,Double> crewCongestion){
+        return planRouteToCosted(startX,startZ,dna,realBlockFailures,
+                helper,world,mob,goalX,goalZ,crewCongestion);
+    }
+
     /**
      * A* from a current position to an optionally specified real
      * navigable cell; (-1,-1) still targets the original GREEN finish.
@@ -679,6 +690,15 @@ public final class BuilderEvolutionAltCourseGameTest {
                                     Map<Edge,Integer> realBlockFailures,
                                     GameTestHelper helper,ServerLevel world,
                                     BuilderGolem mob,int goalX,int goalZ){
+        return planRouteToCosted(startX,startZ,dna,realBlockFailures,
+                helper,world,mob,goalX,goalZ,Map.of());
+    }
+
+    private static String planRouteToCosted(int startX,int startZ,Genome dna,
+                                    Map<Edge,Integer> realBlockFailures,
+                                    GameTestHelper helper,ServerLevel world,
+                                    BuilderGolem mob,int goalX,int goalZ,
+                                    Map<Integer,Double> crewCongestion){
         RouteNode start=new RouteNode(startX,startZ,'?');
         PriorityQueue<Frontier> open=new PriorityQueue<>(
                 Comparator.comparingDouble(Frontier::cost));
@@ -740,10 +760,23 @@ public final class BuilderEvolutionAltCourseGameTest {
                 boolean heightChange=Math.abs(toY-fromY)>.01;
                 double transitionPenalty=heightChange
                         ?Math.min(.25,dna.slabAvoid()*.05):0;
+                // An actual unobstructed LEVEL slab plateau is no harder
+                // to cross diagonally than ordinary full-height ground.
+                // Prefer a legal diagonal over stair-step zigzags instead
+                // of charging a large turn penalty for every diagonal.
+                // The edge check above still forbids diagonal step-up,
+                // corner clipping and low-ceiling crossings.
+                boolean slabCruise=diagonal
+                        &&MAZE[z].charAt(x)=='^'
+                        &&MAZE[node.z()].charAt(node.x())=='^'
+                        &&Math.abs(toY-fromY)<.005;
+                double turnCost=node.heading()!='?'
+                        &&node.heading()!=direction
+                        ?(slabCruise?Math.min(.10,dna.turnBias())
+                                     :dna.turnBias()):0;
                 double weight=(diagonal?Math.sqrt(2):1.0)
-                        +transitionPenalty
-                        +(node.heading()!='?'&&node.heading()!=direction
-                                ?dna.turnBias():0);
+                        +transitionPenalty+turnCost
+                        -(slabCruise?.16:0);
                 // The door must be an EXPLORABLE alternative, not
                 // just a legal tile that no genome ever tries. Reuse
                 // the existing inherited/mutable signed doorBias gene:
@@ -786,6 +819,11 @@ public final class BuilderEvolutionAltCourseGameTest {
                             &&toFoot.getValue(SlabBlock.TYPE)==SlabType.BOTTOM;
                 if(!checkedBottomSlab)
                     weight+=Math.min(10,realBlockFailures.getOrDefault(edge,0)*.40);
+                // Reservations are soft, session-local hints that help a
+                // CREW spread across the six available slab entries. They
+                // never invalidate an otherwise legal route and do not
+                // overwrite proven fitness or inherited block evidence.
+                weight+=crewCongestion.getOrDefault(key,0.0);
                 RouteNode nextNode=new RouteNode(x,z,direction);
                 double cost=current.cost()+weight;
                 if(cost>=best.getOrDefault(nextNode,Double.POSITIVE_INFINITY))
@@ -829,8 +867,10 @@ public final class BuilderEvolutionAltCourseGameTest {
      */
     private static String exploratoryRoute(int startX,int startZ,
             Genome dna,Map<Edge,Integer> memory,GameTestHelper helper,
-            ServerLevel world,BuilderGolem mob){
-        String direct=planRoute(startX,startZ,dna,memory,helper,world,mob);
+            ServerLevel world,BuilderGolem mob,
+            Map<Integer,Double> crewCongestion){
+        String direct=planRouteTo(startX,startZ,dna,memory,helper,world,mob,
+                -1,-1,crewCongestion);
         // The speed-qualification suite must not force an unproven
         // detour into every promising team. A* remains free to PICK
         // open doors based on geometry and measured penalty. The
@@ -870,6 +910,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             List<Genome> genomes,Map<Edge,Integer> blockMemory){
         ServerLevel world=helper.getLevel();
         List<Candidate> bots=new ArrayList<>();
+        Map<Integer,Double> slabEntryReservations=new HashMap<>();
         for(int slot=0;slot<SELECTED_BOTS.length;slot++){
             int index=SELECTED_BOTS[slot];
             int[] start=STARTS[index];
@@ -889,8 +930,33 @@ public final class BuilderEvolutionAltCourseGameTest {
                         +" x "+mob.getBbHeight());
             Genome genome=genomes.get(slot);
             Candidate b=new Candidate(slot,mob,exploratoryRoute(start[0],
-                    start[1],genome,blockMemory,helper,world,mob),
+                    start[1],genome,blockMemory,helper,world,mob,
+                    slabEntryReservations),
                     start[0],start[1],genome,blockMemory);
+            // All entries are discovered by A* from actual geometry.
+            // Spread simultaneous workers among several accessible slab
+            // approaches rather than sending them to one doorway-sized
+            // tile. These costs are rebuilt every generation, NOT learned
+            // blocked-edge penalties or fixed routes.
+            int reservedX=start[0],reservedZ=start[1];
+            for(int i=0;i<b.route.length();i++){
+                int[] step=next(reservedX,reservedZ,b.route.charAt(i));
+                if(reservedX==9&&step[0]==8&&step[1]>=2
+                        &&step[1]<=7){
+                    int entrance=step[1]*MAZE[0].length()+step[0];
+                    slabEntryReservations.merge(entrance,1.3,Double::sum);
+                    // Also discourage everyone from clustering on two
+                    // adjacent entries. Both remain traversable.
+                    if(step[1]>2)
+                        slabEntryReservations.merge(entrance-MAZE[0].length(),
+                                .25,Double::sum);
+                    if(step[1]<7)
+                        slabEntryReservations.merge(entrance+MAZE[0].length(),
+                                .25,Double::sum);
+                    break;
+                }
+                reservedX=step[0];reservedZ=step[1];
+            }
             BlockPos origin=pos(helper,0,2,0);
             b.originX=origin.getX();
             b.originZ=origin.getZ();
