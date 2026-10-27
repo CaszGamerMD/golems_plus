@@ -70,6 +70,19 @@ class ActualJavaStrategySelection(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
+class PhysicalLearningConfiguration(unittest.TestCase):
+    def test_normal_minecraft_workflow_trains_genes_instead_of_freezing_them(self):
+        code=(ROOT / 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderEvolutionAltCourseGameTest.java').read_text()
+        workflow=(ROOT / '.github/workflows/builder-alt-physical-timetrial.yml').read_text()
+        self.assertIn('?"evolve":System.getenv("GOLEMS_EVOLUTION_MODE")',code)
+        self.assertIn('&&b.fitness()>championScores[b.index]',code)
+        self.assertIn('updateKnowledgePool(this,b)',code)
+        self.assertIn('if(!consistencyMode)generationGenes=offspring',code)
+        self.assertIn('if(generation>0)fillOriginalCourse(helper)',code)
+        self.assertIn("GOLEMS_EVOLUTION_MODE: ${{ github.event.inputs.mode || 'evolve' }}",workflow)
+        self.assertIn('Training did not collect independent physical strategy episodes',workflow)
+        self.assertNotIn('GOLEMS_EVOLUTION_MODE: consistency',workflow)
+
 class StrategyEvidenceMerge(unittest.TestCase):
     def memory(self, identifier, ticks):
         return dict(strategyMemory=dict(format=STRATEGY_FORMAT, observations=[dict(
