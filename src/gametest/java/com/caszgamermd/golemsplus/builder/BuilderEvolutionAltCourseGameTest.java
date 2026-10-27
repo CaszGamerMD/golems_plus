@@ -1820,6 +1820,30 @@ public final class BuilderEvolutionAltCourseGameTest {
                         .thenComparingInt(Knowledge::slot));
                 if(run.knowledgePool.size()>3)
                     run.knowledgePool.subList(3,run.knowledgePool.size()).clear();
+                // Migration: the older checkpoint's nextPopulation was
+                // produced by mixed, unrelated parents. Start the FIRST
+                // upgraded run from the preserved three personal bests.
+                // Once saved in the new format, continue its offspring.
+                if(!checkpoint.has("knowledgePool")
+                        &&!"validate".equalsIgnoreCase(
+                            System.getenv("GOLEMS_EVOLUTION_MODE"))
+                        &&!run.knowledgePool.isEmpty()){
+                    List<Genome> seed=run.knowledgePool.stream()
+                            .map(Knowledge::dna).toList();
+                    Random initial=new Random(TRAINING_SEED
+                            +1000003L*checkpoint.get(
+                                    "completedGenerations").getAsInt());
+                    run.generationGenes.clear();
+                    for(int i=0;i<SELECTED_BOTS.length;i++){
+                        if(i<seed.size())run.generationGenes.add(seed.get(i));
+                        else run.generationGenes.add(Genome.cross(
+                                seed.get(initial.nextInt(seed.size())),
+                                seed.get(initial.nextInt(seed.size())),
+                                initial).mutate(initial));
+                    }
+                    System.out.println("[ALT KNOWLEDGE POOL] Migrated legacy "
+                            +"nextPopulation to top-three parents");
+                }
                 System.out.println("[ALT KNOWLEDGE POOL] Restored "
                         +run.knowledgePool.size()+" independent physical elites");
                 run.completedGenerations=checkpoint.get("completedGenerations").getAsInt();
@@ -2623,6 +2647,66 @@ public final class BuilderEvolutionAltCourseGameTest {
                     +" onGround="+mob.onGround());
                 mob.discard();
                 return;
+            }
+            mob.getNavigation().stop();
+            mob.move(MoverType.SELF,new Vec3(-.2,-.08,0));
+        });
+    }
+
+    /**
+     * Closed wooden doors must be PLANNABLE and require an actual
+     * near-body opening action before native collision traversal.
+     * This isolated fixture never alters the scored user's schematic.
+     */
+    @GameTest(maxTicks=140,padding=64,skyAccess=true)
+    public void realBuilderOpensClosedDoorAndWalksThrough(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BlockPos door=pos(helper,4,2,10);
+        BlockState lower=world.getBlockState(door);
+        BlockState upper=world.getBlockState(door.above());
+        if(!canOperateDoor(lower)||!canOperateDoor(upper)){
+            helper.fail("Original birch door fixture is missing");return;
+        }
+        world.setBlock(door,lower.setValue(DoorBlock.OPEN,false),3);
+        world.setBlock(door.above(),
+                upper.setValue(DoorBlock.OPEN,false),3);
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos spawn=pos(helper,5,2,10);
+        mob.setPos(spawn.getX()+.5,spawn.getY(),spawn.getZ()+.5);
+        mob.setNoGravity(false);
+        world.addFreshEntity(mob);
+        boolean candidate=physicalCellOpen(helper,world,mob,4,10);
+        String route=planRouteTo(5,10,SAVED_PHYSICAL_CHAMPIONS[0],
+                Map.of(),helper,world,mob,4,10);
+        if(!candidate||route.isEmpty()||route.charAt(0)!='W'){
+            mob.discard();
+            helper.fail("Closed wooden door rejected as openable route: "+route);
+            return;
+        }
+        final int[] tick={0},openedAt={-1};
+        helper.onEachTick(()->{
+            if(!mob.isAlive())return;
+            if(tick[0]++>70){
+                helper.fail("Real Builder could not traverse opened door");
+                mob.discard();return;
+            }
+            if(!world.getBlockState(door).getValue(DoorBlock.OPEN)){
+                if(openDoorFromReach(world,mob,door))
+                    openedAt[0]=tick[0];
+            }
+            if(world.getBlockState(mob.blockPosition().below()).is(RED)){
+                if(openedAt[0]<0
+                        ||!world.getBlockState(door.above())
+                             .getValue(DoorBlock.OPEN))
+                    helper.fail("Worker crossed without opening both halves");
+                else {
+                    System.out.println("[ALT CLOSED DOOR WALK] opened tick="
+                            +openedAt[0]+" crossed tick="+tick[0]);
+                    helper.succeed();
+                }
+                mob.discard();return;
             }
             mob.getNavigation().stop();
             mob.move(MoverType.SELF,new Vec3(-.2,-.08,0));
