@@ -1809,7 +1809,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                 // never exposed an explicitly named top-three pool.
                 for(int slot=0;slot<SELECTED_BOTS.length;slot++){
                     if(run.champions[slot]==null)continue;
-                    if(run.knowledgePool.stream().anyMatch(p->p.slot()==slot))
+                    final int currentSlot=slot;
+                    if(run.knowledgePool.stream().anyMatch(
+                            p->p.slot()==currentSlot))
                         continue;
                     run.knowledgePool.add(new Knowledge(slot,run.champions[slot],
                             run.championScores[slot],-1,0,
