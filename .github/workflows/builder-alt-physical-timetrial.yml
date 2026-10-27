@@ -253,6 +253,11 @@ jobs:
           # manifest, and training edits tracked checkpoint files.
           # Reset this disposable checkout AFTER copying new learning.
           rm -rf training/alt/state
+          # A newer training job may already have committed reports at
+          # these paths. Their untracked local copies otherwise abort
+          # git checkout BEFORE checkpoint merge, losing all new DNA.
+          # Backups above preserve this run's independently scored report.
+          rm -f training/alt/reports/latest.md training/alt/reports/latest.json
           git reset --hard HEAD
           for attempt in 1 2 3; do
             git fetch origin "${TRAINING_BRANCH}"
