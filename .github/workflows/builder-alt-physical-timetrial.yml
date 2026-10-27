@@ -15,6 +15,13 @@ on:
       - scripts/tests/test_navigation_strategy_memory.py
       - scripts/report_alt_physical_results.py
       - scripts/tests/test_report_alt_physical_results.py
+      - scripts/merge_alt_nine_state.py
+      - scripts/tests/test_merge_alt_nine_state.py
+      - scripts/export_alt_nine_mobile.py
+      - scripts/tests/test_export_alt_nine_mobile.py
+      - scripts/report_alt_nine_results.py
+      - scripts/tests/test_report_alt_nine_results.py
+      - scripts/tests/test_alt_genetic_selection.py
       - .github/workflows/builder-alt-physical-timetrial.yml
       - scripts/export_alt_mobile_replays.py
       - scripts/tests/test_export_alt_mobile_replays.py
@@ -240,8 +247,14 @@ jobs:
             --json-out training/alt/reports/latest.json
       - name: Build bounded 3-bundle replay viewers from real physical traces
         if: always()
+        shell: bash
         run: |
-          python3 scripts/export_alt_nine_mobile.py --batches 3
+          if compgen -G 'training/alt/replays/live-nine/trial-*-generation-*.json' > /dev/null; then
+            python3 scripts/export_alt_nine_mobile.py --batches 3
+          else
+            echo 'No scored nine-golem physical generations yet; viewer still shows archived tests.'
+            exit 0
+          fi
           # Both phone and desktop addresses use the same compact viewer.
           # Never embed the raw 90+ MiB historical replay archive again.
           cp training/alt/replays/mobile-viewer.html training/alt/replays/route-viewer.html
@@ -291,8 +304,10 @@ jobs:
             fi
             # Publish exactly the latest THREE run bundles after merging,
             # with identical bounded HTML at the mobile and desktop links.
-            python3 scripts/export_alt_nine_mobile.py --batches 3
-            cp training/alt/replays/mobile-viewer.html training/alt/replays/route-viewer.html
+            if compgen -G 'training/alt/replays/live-nine/trial-*-generation-*.json' > /dev/null; then
+              python3 scripts/export_alt_nine_mobile.py --batches 3
+              cp training/alt/replays/mobile-viewer.html training/alt/replays/route-viewer.html
+            fi
             git add -- training/alt/state-nine/ training/alt/replays/live-nine/ training/alt/reports/ training/alt/replays/mobile-viewer.html training/alt/replays/mobile-data.json training/alt/replays/route-viewer.html
             if git diff --cached --quiet; then
               echo 'No improved state over current remote.'
