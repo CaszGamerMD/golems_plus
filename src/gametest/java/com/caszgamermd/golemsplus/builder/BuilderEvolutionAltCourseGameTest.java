@@ -1173,6 +1173,46 @@ public final class BuilderEvolutionAltCourseGameTest {
         return MAZE[z].charAt(x)=='G';
     }
 
+    /** A clone approaches a real terrain feature along its own A*
+     * prefix, then inherits its successful parent's validated remaining
+     * corridor. Mutation can improve the prefix (or switch policy).
+     * This is a geometry-checked ROUTE, not an entity-position replay.
+     */
+    private static String inheritedCorridorVariant(int fromX,int fromZ,
+            int parentSlot,String parentRoute,Genome dna,
+            Map<Edge,Integer> memory,GameTestHelper helper,
+            ServerLevel world,BuilderGolem mob,String baseline){
+        if(parentRoute==null||parentRoute.isBlank()
+                ||parentSlot<0||parentSlot>=SELECTED_BOTS.length)
+            return baseline;
+        int[] origin=STARTS[SELECTED_BOTS[parentSlot]];
+        int x=origin[0],z=origin[1];
+        for(int i=0;i<parentRoute.length();i++){
+            int[] step;
+            try{step=next(x,z,parentRoute.charAt(i));}
+            catch(IllegalArgumentException invalid){return baseline;}
+            x=step[0];z=step[1];
+            if(!walkableCell(x,z))return baseline;
+            // Discover shared terrain by BLOCK TYPE, not a recorded
+            // coordinate. The slab plateau is the reusable corridor.
+            if(MAZE[z].charAt(x)!='^')continue;
+            try{
+                String approach=planRouteTo(fromX,fromZ,dna,memory,
+                        helper,world,mob,x,z);
+                String result=approach+parentRoute.substring(i+1);
+                if(routeMeters(result)<=routeMeters(baseline)+12.0
+                        &&inheritedRouteLegal(fromX,fromZ,result,
+                                helper,world,mob))
+                    return result;
+            }catch(IllegalStateException inaccessible){
+                // Alternative parent corridor is not physically legal
+                // from this new start; use independently planned A*.
+            }
+            return baseline; // First terrain feature is the join point.
+        }
+        return baseline;
+    }
+
     private static List<Candidate> spawnGeneration(GameTestHelper helper,
             List<Genome> genomes,Map<Edge,Integer> blockMemory,
             NavigationStrategyMemory strategyMemory,boolean validation,
@@ -1212,13 +1252,30 @@ public final class BuilderEvolutionAltCourseGameTest {
             // The other six carry parent route INTENT and independently
             // replan legal entrances from different spawn positions.
             if(familyOrigins.size()==SELECTED_BOTS.length
-                    &&familyOrigins.get(slot)==slot
-                    &&inheritedRoutes.size()==SELECTED_BOTS.length
-                    &&inheritedRouteLegal(start[0],start[1],
-                            inheritedRoutes.get(slot),helper,world,mob)){
-                route=inheritedRoutes.get(slot);
-                System.out.println("[ALT EXACT PARENT ROUTE] slot="+slot
-                        +" preserved="+route);
+                    &&inheritedRoutes.size()==SELECTED_BOTS.length){
+                int parentSlot=familyOrigins.get(slot);
+                String parentRoute=inheritedRoutes.get(slot);
+                if(parentSlot==slot
+                        &&inheritedRouteLegal(start[0],start[1],
+                                parentRoute,helper,world,mob)){
+                    route=parentRoute;
+                    System.out.println("[ALT EXACT PARENT ROUTE] slot="+slot
+                            +" preserved="+route);
+                }else if(parentSlot!=slot
+                        &&inheritedStrategies.size()==SELECTED_BOTS.length
+                        &&inheritedStrategies.get(slot)
+                                ==inheritedStrategies.get(parentSlot)){
+                    String inherited=inheritedCorridorVariant(start[0],start[1],
+                            parentSlot,parentRoute,genome,blockMemory,
+                            helper,world,mob,route);
+                    if(!inherited.equals(route)){
+                        route=inherited;
+                        System.out.println("[ALT CLONE CORRIDOR] slot="+slot
+                                +" parent="+parentSlot
+                                +" geometryChecked=true"
+                                +" routeLength="+routeMeters(route));
+                    }
+                }
             }
             Candidate b=new Candidate(slot,mob,route,
                     start[0],start[1],genome,blockMemory);
