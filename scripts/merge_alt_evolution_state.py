@@ -15,6 +15,49 @@ COURSE = "timetrial-alt-vanilla-10-builders-260-ticks-v2"
 GENES = 12
 POPULATION = 10
 STRATEGY_FORMAT = "golems-context-strategies-v1"
+RULE_FORMAT = "golems-local-rules-v1"
+
+
+def merge_local_rule_memory(*checkpoints):
+    trials = {}
+    present = False
+    for checkpoint in checkpoints:
+        memory = (checkpoint or {}).get("localRuleMemory")
+        if memory is None:
+            continue
+        present = True
+        if memory.get("format") != RULE_FORMAT or not isinstance(memory.get("trials"), list):
+            raise ValueError("Invalid local navigation rule memory")
+        for trial in memory["trials"]:
+            if (not isinstance(trial.get("id"), str) or not trial["id"]
+                    or not isinstance(trial.get("sequence"), int) or trial["sequence"] < 0
+                    or not isinstance(trial.get("block"), str) or not trial["block"]
+                    or trial.get("repeat") not in (0, 1, 2)
+                    or not isinstance(trial.get("challenger"), bool)
+                    or not isinstance(trial.get("fingerprint"), str) or not trial["fingerprint"]
+                    or not isinstance(trial.get("finished"), int) or not 0 <= trial["finished"] <= 10
+                    or not isinstance(trial.get("meanArrivalTicks"), (int, float))
+                    or not math.isfinite(trial["meanArrivalTicks"]) or not 0 <= trial["meanArrivalTicks"] <= 260
+                    or not isinstance(trial.get("episodes"), list)):
+                raise ValueError("Invalid matched physical rule trial")
+            for episode in trial["episodes"]:
+                if (not isinstance(episode.get("id"), str) or not episode["id"]
+                        or not isinstance(episode.get("slot"), int) or not 0 <= episode["slot"] < 10
+                        or not isinstance(episode.get("context"), str) or not 1 <= len(episode["context"]) <= 200
+                        or episode.get("action") not in ("BASELINE", "STABLE_MERGE", "YIELD_ASIDE")
+                        or not isinstance(episode.get("cleared"), bool)
+                        or not isinstance(episode.get("elapsedTicks"), int) or not 1 <= episode["elapsedTicks"] <= 60
+                        or not isinstance(episode.get("stationaryTicks"), int)
+                        or not 0 <= episode["stationaryTicks"] <= episode["elapsedTicks"]
+                        or not isinstance(episode.get("collisions"), int) or episode["collisions"] < 0):
+                    raise ValueError("Invalid local obstacle episode")
+            identifier = trial["id"]
+            if identifier in trials and trials[identifier] != trial:
+                raise ValueError("Conflicting matched physical trial: " + identifier)
+            trials[identifier] = trial
+    if not present:
+        return None
+    return dict(format=RULE_FORMAT, trials=sorted(trials.values(), key=lambda t: (t["sequence"], t["id"])))
 
 
 def merge_strategy_memory(*checkpoints):
@@ -94,6 +137,12 @@ def validate_checkpoint(c):
     if c is None:
         return
     merge_strategy_memory(c)
+    merge_local_rule_memory(c)
+    if "consistencyPopulation" in c:
+        genetic_population(c["consistencyPopulation"])
+    if "consistencyStrategies" in c and (len(c["consistencyStrategies"]) != POPULATION
+            or any(s not in ("DIRECT", "SMOOTH", "DOOR") for s in c["consistencyStrategies"])):
+        raise ValueError("Invalid frozen route policy")
     genetic_population(c["nextPopulation"])
     keys = ("lastSuccessfulPopulation", "lastSuccessfulArrivalTicks",
             "lastSuccessfulGeneration", "lastSuccessfulSlowestTicks")
@@ -164,6 +213,15 @@ def merge_checkpoint(old, new, protected):
                 c["lastMeanFitness"])
     winning = new if merit(new) > merit(old) else old
     merged = dict(winning)
+    local_rules = merge_local_rule_memory(old, new)
+    if local_rules is not None:
+        merged["localRuleMemory"] = local_rules
+    for field in ("consistencyPopulation", "consistencyStrategies"):
+        if field not in merged:
+            for source in (new, old):
+                if field in source:
+                    merged[field] = source[field]
+                    break
     strategy_memory = merge_strategy_memory(old, new)
     if strategy_memory is not None:
         merged["strategyMemory"] = strategy_memory

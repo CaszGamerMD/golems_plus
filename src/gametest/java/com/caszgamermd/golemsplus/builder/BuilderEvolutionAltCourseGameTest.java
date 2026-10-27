@@ -321,7 +321,13 @@ public final class BuilderEvolutionAltCourseGameTest {
         // Routes may be replanned from CURRENT physical position after
         // a real obstruction; only the 12-gene logic is inherited.
         String route;
+        final String initialRoute;
         final Genome dna;
+        int controlTick,episodeSerial,episodeCooldown,holdingStage,holdingArrivalTick,holdingAttempts;
+        LocalEpisode localEpisode;
+        RuleRound ruleRound;
+        NavigationRightOfWay rightOfWay;
+        final List<NavigationRuleMemory.Episode> localEpisodes=new ArrayList<>();
         String strategyContext;
         NavigationStrategyMemory.Decision strategyDecision;
         final Map<Edge,Integer> inheritedBlockMemory;
@@ -389,6 +395,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             this.index=index;
             this.mob=mob;
             this.route=route;
+            this.initialRoute=route;
             this.x=x;this.z=z;
             this.dna=dna;
             this.inheritedBlockMemory=inheritedBlockMemory;
@@ -978,6 +985,20 @@ public final class BuilderEvolutionAltCourseGameTest {
         return direct;
     }
 
+    private record RuleRound(boolean challenger,NavigationRuleMemory.Rule variant,
+                             Map<String,NavigationRuleMemory.Binding> bindings){
+        NavigationRuleMemory.Rule choose(String context){
+            if(challenger)return variant;
+            NavigationRuleMemory.Binding rule=bindings.get(context);
+            return rule==null?NavigationRuleMemory.Rule.BASELINE:rule.action();
+        }
+    }
+    private static final class LocalEpisode {
+        String context,id;NavigationRuleMemory.Rule action;
+        int start,goalX,goalZ,startCollisions,startStationary;
+        double goalY;
+        boolean executed;
+    }
     private record StrategyPlan(String route,String context,
                                 NavigationStrategyMemory.Decision decision){}
     private static double routeMeters(String route){
@@ -989,7 +1010,8 @@ public final class BuilderEvolutionAltCourseGameTest {
     private static StrategyPlan chooseStrategy(int x,int z,Genome dna,
             Map<Edge,Integer> blockMemory,GameTestHelper helper,
             ServerLevel world,BuilderGolem mob,Map<Integer,Double> congestion,
-            NavigationStrategyMemory memory,boolean validation){
+            NavigationStrategyMemory memory,boolean validation,
+            NavigationStrategyMemory.Strategy forced){
         Map<NavigationStrategyMemory.Strategy,String> options=new LinkedHashMap<>();
         String direct=planRouteTo(x,z,dna,blockMemory,helper,world,mob,
                 -1,-1,congestion);
@@ -1021,8 +1043,11 @@ public final class BuilderEvolutionAltCourseGameTest {
                 +";slabs="+(slabs>direct.length()/5?"many":"few")
                 +";turns="+(turns>direct.length()/3?"many":"few")
                 +";traffic="+(congestion.isEmpty()?"low":"reserved");
-        NavigationStrategyMemory.Decision choice=memory.choose(context,
-                new ArrayList<>(options.keySet()),validation);
+        NavigationStrategyMemory.Decision choice=forced==null
+                ?memory.choose(context,new ArrayList<>(options.keySet()),validation)
+                :new NavigationStrategyMemory.Decision(
+                    options.containsKey(forced)?forced:NavigationStrategyMemory.Strategy.DIRECT,
+                    "frozen-comparison",memory.summary(context,forced).trials());
         System.out.println("[ALT STRATEGY CHOICE] context="+context
                 +" strategy="+choice.strategy()+" reason="+choice.reason()
                 +" priorPhysicalTrials="+choice.evidenceTrials());
@@ -1031,7 +1056,8 @@ public final class BuilderEvolutionAltCourseGameTest {
 
     private static List<Candidate> spawnGeneration(GameTestHelper helper,
             List<Genome> genomes,Map<Edge,Integer> blockMemory,
-            NavigationStrategyMemory strategyMemory,boolean validation){
+            NavigationStrategyMemory strategyMemory,boolean validation,
+            List<NavigationStrategyMemory.Strategy> frozenStrategies){
         ServerLevel world=helper.getLevel();
         List<Candidate> bots=new ArrayList<>();
         Map<Integer,Double> slabEntryReservations=new HashMap<>();
@@ -1055,7 +1081,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             Genome genome=genomes.get(slot);
             StrategyPlan plan=chooseStrategy(start[0],start[1],genome,
                     blockMemory,helper,world,mob,slabEntryReservations,
-                    strategyMemory,validation);
+                    strategyMemory,validation,frozenStrategies.isEmpty()?null:frozenStrategies.get(slot));
             Candidate b=new Candidate(slot,mob,plan.route(),
                     start[0],start[1],genome,blockMemory);
             b.strategyContext=plan.context();
@@ -1214,6 +1240,118 @@ public final class BuilderEvolutionAltCourseGameTest {
                                  boolean yielding,boolean queue,
                                  int leaderSlot){}
 
+    private static NavigationRuleMemory.Rule localRule(Candidate b){
+        return b.localEpisode==null?NavigationRuleMemory.Rule.BASELINE:b.localEpisode.action;
+    }
+    private static void beginLocalEpisode(GameTestHelper helper,Candidate b,List<Candidate> crew){
+        if(b.ruleRound==null||b.localEpisode!=null||b.holdingStage>0
+                ||b.controlTick<b.episodeCooldown||b.cursor>=b.route.length())return;
+        int[] target=next(b.x,b.z,b.route.charAt(b.cursor));
+        boolean door=MAZE[target[1]].charAt(target[0])=='D';
+        boolean step=standingY(helper,helper.getLevel(),target[0],target[1])
+                -standingY(helper,helper.getLevel(),b.x,b.z)>.1;
+        boolean turn=b.cursor+1<b.route.length()
+                &&b.route.charAt(b.cursor)!=b.route.charAt(b.cursor+1);
+        String traffic="clear";
+        int[] heading=next(0,0,b.route.charAt(b.cursor));
+        for(Candidate peer:crew){
+            if(peer==b||peer.arrivedTick>=0||!peer.mob.isAlive()
+                    ||Math.abs(peer.mob.getY()-b.mob.getY())>.7
+                    ||Math.hypot(peer.mob.getX()-b.mob.getX(),peer.mob.getZ()-b.mob.getZ())>1.2)
+                continue;
+            traffic="crossing";
+            if(peer.cursor<peer.route.length()){
+                int[] ph=next(0,0,peer.route.charAt(peer.cursor));
+                if(heading[0]==ph[0]&&heading[1]==ph[1])traffic="following";
+            }
+            break;
+        }
+        if(!door&&!step&&!turn&&traffic.equals("clear"))return;
+        LocalEpisode e=new LocalEpisode();
+        e.context="obstacle="+(door?"door":step?"step":turn?"turn":"lane")+";traffic="+traffic;
+        e.id="slot"+b.index+":episode"+(b.episodeSerial++);
+        e.action=b.ruleRound.choose(e.context);e.executed=e.action==NavigationRuleMemory.Rule.BASELINE;
+        e.start=b.controlTick;e.startCollisions=b.collisions;e.startStationary=b.stationaryTicks;
+        e.goalX=b.x;e.goalZ=b.z;
+        // Credit clearing two original route edges, not just leaving a queue
+        // or reaching a temporary holding spot. World coordinates are not saved.
+        for(int i=b.cursor;i<Math.min(b.route.length(),b.cursor+2);i++){
+            int[] at=next(e.goalX,e.goalZ,b.route.charAt(i));e.goalX=at[0];e.goalZ=at[1];
+        }
+        e.goalY=standingY(helper,helper.getLevel(),e.goalX,e.goalZ);
+        b.localEpisode=e;
+    }
+    private static void finishLocalEpisode(Candidate b,boolean endOfTrial){
+        LocalEpisode e=b.localEpisode;if(e==null)return;
+        int elapsed=b.controlTick-e.start;
+        boolean cleared=b.arrivedTick>=0||Math.hypot(
+                b.mob.getX()-b.originX-e.goalX-.5,b.mob.getZ()-b.originZ-e.goalZ-.5)<.4
+                &&Math.abs(b.mob.getY()-e.goalY)<.25;
+        if(elapsed<1||!cleared&&!endOfTrial&&elapsed<60)return;
+        b.localEpisodes.add(new NavigationRuleMemory.Episode(e.id,b.index,e.context,
+                e.executed?e.action:NavigationRuleMemory.Rule.BASELINE,cleared,
+                Math.min(60,elapsed),Math.min(Math.min(60,elapsed),
+                    Math.max(0,b.stationaryTicks-e.startStationary)),
+                Math.max(0,b.collisions-e.startCollisions)));
+        b.localEpisode=null;b.episodeCooldown=b.controlTick+4;
+    }
+    private static boolean tryHoldingRoute(GameTestHelper helper,Candidate b,List<Candidate> crew){
+        if(b.holdingStage>0||b.holdingAttempts>=2||b.trafficWaitTicks<8
+                ||localRule(b)!=NavigationRuleMemory.Rule.YIELD_ASIDE)return false;
+        b.holdingAttempts++;
+        ServerLevel world=helper.getLevel();
+        int x=(int)Math.floor(b.mob.getX()-b.originX),z=(int)Math.floor(b.mob.getZ()-b.originZ);
+        if(!physicalCellOpen(helper,world,b.mob,x,z))return false;
+        String best=null;double bestCost=Double.POSITIVE_INFINITY;
+        for(int dz=-2;dz<=2;dz++)for(int dx=-2;dx<=2;dx++){
+            int tx=x+dx,tz=z+dz;
+            if(dx==0&&dz==0||Math.hypot(dx,dz)>1.5||!walkableCell(tx,tz)
+                    ||MAZE[tz].charAt(tx)=='G'||!physicalCellOpen(helper,world,b.mob,tx,tz))continue;
+            try{
+                String path=planRouteTo(x,z,b.dna,b.inheritedBlockMemory,helper,world,b.mob,tx,tz);
+                if(path.isEmpty()||path.length()>3)continue;
+                boolean clear=true;int px=x,pz=z;
+                for(char direction:path.toCharArray()){
+                    int sx=px,sz=pz;
+                    int[] at=next(px,pz,direction);px=at[0];pz=at[1];
+                    for(Candidate peer:crew){
+                        if(peer==b||peer.arrivedTick>=0||!peer.mob.isAlive())continue;
+                        if(Math.hypot(px+.5-(peer.mob.getX()-peer.originX),
+                                pz+.5-(peer.mob.getZ()-peer.originZ))<.85)clear=false;
+                        for(double fraction:new double[]{.25,.5,.75})
+                            if(Math.hypot(sx+.5+(px-sx)*fraction-(peer.mob.getX()-peer.originX),
+                                    sz+.5+(pz-sz)*fraction-(peer.mob.getZ()-peer.originZ))<.75)clear=false;
+                        int qx=peer.x,qz=peer.z;
+                        for(int i=peer.cursor;i<Math.min(peer.route.length(),peer.cursor+2);i++){
+                            int[] q=next(qx,qz,peer.route.charAt(i));qx=q[0];qz=q[1];
+                            if(Math.hypot(px-qx,pz-qz)<.85)clear=false;
+                        }
+                    }
+                }
+                double cost=routeMeters(path);
+                if(clear&&cost<bestCost){best=path;bestCost=cost;}
+            }catch(IllegalStateException noHoldingRoute){/* no physically reachable holding space */}
+        }
+        if(best==null)return false;
+        b.localEpisode.executed=true;b.route=best;b.x=x;b.z=z;b.cursor=0;
+        b.holdingStage=1;b.trafficWaitTicks=0;b.immobile=0;b.backoffTicks=0;
+        b.lastDistance=Double.POSITIVE_INFINITY;
+        return true;
+    }
+    private static boolean resumeAfterHolding(GameTestHelper helper,Candidate b,List<Candidate> crew){
+        if(b.holdingStage!=2)return false;
+        if(b.controlTick-b.holdingArrivalTick<12&&teammateWithin(b,crew,1.35)){
+            b.movementMode="q";return true;
+        }
+        int x=(int)Math.floor(b.mob.getX()-b.originX),z=(int)Math.floor(b.mob.getZ()-b.originZ);
+        try{
+            b.route=planRoute(x,z,b.dna,b.inheritedBlockMemory,helper,helper.getLevel(),b.mob);
+            b.x=x;b.z=z;b.cursor=0;b.holdingStage=0;b.trafficWaitTicks=0;
+            b.immobile=0;b.lastDistance=Double.POSITIVE_INFINITY;
+        }catch(IllegalStateException blockedResume){b.movementMode="q";}
+        return true;
+    }
+
     /**
      * Physical corridor manners: no pushing through the 0.65-wide
      * golem ahead. The nearer-to-finish traveler owns the right of
@@ -1297,6 +1435,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                     yielding=true;
                     queue=true;
                     yieldingFor=peer.index;
+                    if(boundedTrafficRule(self))self.localEpisode.executed=true;
                 }
             }else if(gap<1.02&&ahead>-.18&&lateral<.64){
                 // Crossing/merging at slab entries must resolve BEFORE
@@ -1305,9 +1444,15 @@ public final class BuilderEvolutionAltCourseGameTest {
                 // breaker. The lower-priority traveler eases off while
                 // the other moves, avoiding mirrored stop/start dances.
                 double priority=remainingPathMeters(peer);
-                if(priority<ownPriority-.01
+                boolean peerOwns=priority<ownPriority-.01
                         ||(Math.abs(priority-ownPriority)<.01
-                            &&peer.index<self.index)){
+                            &&peer.index<self.index);
+                if(boundedTrafficRule(self)){
+                    peerOwns=self.rightOfWay.owner(self.index,ownPriority,
+                            peer.index,priority,self.controlTick)==peer.index;
+                    self.localEpisode.executed=true;
+                }
+                if(peerOwns){
                     allowance=Math.min(allowance,Math.max(0,gap-.72));
                     yielding=true;
                     yieldingFor=peer.index;
@@ -1340,6 +1485,10 @@ public final class BuilderEvolutionAltCourseGameTest {
         }
         return false;
     }
+    private static boolean boundedTrafficRule(Candidate b){
+        return b.rightOfWay!=null&&b.localEpisode!=null
+                &&b.localEpisode.action!=NavigationRuleMemory.Rule.BASELINE;
+    }
 
     /**
      * Dynamic teammate obstruction is NOT a failure of Minecraft floor
@@ -1351,6 +1500,7 @@ public final class BuilderEvolutionAltCourseGameTest {
      */
     private static boolean recoverCongestedRoute(GameTestHelper helper,
             Candidate self,List<Candidate> crew){
+        if(self.localEpisode!=null||self.holdingStage>0)return false;
         if(self.trafficWaitTicks<9||self.trafficReroutes>=2
                 ||self.cursor>=self.route.length())return false;
         int tick=(int)(helper.getTick()-self.birthTick);
@@ -1424,6 +1574,9 @@ public final class BuilderEvolutionAltCourseGameTest {
         }
         // Crew congestion uses live occupancy, never inherited block
         // failures. Try a new valid corridor after sustained waiting.
+        if(resumeAfterHolding(helper,b,crew))return;
+        beginLocalEpisode(helper,b,crew);
+        if(tryHoldingRoute(helper,b,crew))return;
         if(recoverCongestedRoute(helper,b,crew))return;
         if(recoverBlockedRoute(helper,b))return;
         int[] ahead=null;
@@ -1498,7 +1651,10 @@ public final class BuilderEvolutionAltCourseGameTest {
             b.immobile=0;
             b.lastDistance=Double.POSITIVE_INFINITY;
         }
-        if(b.cursor>=b.route.length())return;
+        if(b.cursor>=b.route.length()){
+            if(b.holdingStage==1){b.holdingStage=2;b.holdingArrivalTick=b.controlTick;}
+            return;
+        }
 
         if(distance<b.lastDistance-.015){
             b.immobile=0;
@@ -1795,6 +1951,18 @@ public final class BuilderEvolutionAltCourseGameTest {
             JsonObject checkpoint=read(checkpoint());
             JsonObject champion=read(champion());
             if(checkpoint!=null){
+                if(checkpoint.has("consistencyPopulation"))
+                    run.frozenPopulation=decodePopulation(checkpoint.getAsJsonArray("consistencyPopulation"));
+                if(checkpoint.has("consistencyStrategies"))
+                    run.frozenStrategies=List.of(JSON.fromJson(checkpoint.get("consistencyStrategies"),
+                            NavigationStrategyMemory.Strategy[].class));
+                if(checkpoint.has("localRuleMemory")){
+                    JsonObject local=checkpoint.getAsJsonObject("localRuleMemory");
+                    if(!NavigationRuleMemory.FORMAT.equals(local.get("format").getAsString()))
+                        throw new IllegalStateException("Unknown local rule format");
+                    for(NavigationRuleMemory.Trial trial:JSON.fromJson(local.get("trials"),
+                            NavigationRuleMemory.Trial[].class))run.ruleMemory.observe(trial);
+                }
                 if(checkpoint.has("strategyMemory")){
                     JsonObject memory=checkpoint.getAsJsonObject("strategyMemory");
                     if(!NavigationStrategyMemory.FORMAT.equals(
@@ -1969,7 +2137,16 @@ public final class BuilderEvolutionAltCourseGameTest {
         static void save(Tournament run,List<Candidate> bots,int finished,
                          int slowest,double mean,List<Genome> nextPopulation){
             JsonObject obj=header();
-            obj.addProperty("policyRevision","context-strategy-v1");
+            obj.addProperty("policyRevision",run.consistencyMode?"matched-local-rules-v1":"context-strategy-v1");
+            if(run.consistencyMode){
+                obj.add("consistencyPopulation",encodePopulation(run.frozenPopulation));
+                obj.add("consistencyStrategies",JSON.toJsonTree(run.frozenStrategies));
+                JsonObject local=new JsonObject();
+                local.addProperty("format",NavigationRuleMemory.FORMAT);
+                local.add("trials",JSON.toJsonTree(run.ruleMemory.trials()));
+                obj.add("localRuleMemory",local);
+                obj.add("experiment",run.experimentMetadata());
+            }
             JsonObject strategyMemory=new JsonObject();
             strategyMemory.addProperty("format",NavigationStrategyMemory.FORMAT);
             strategyMemory.add("observations",JSON.toJsonTree(
@@ -2042,6 +2219,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             replay.addProperty("generation",run.generation);
             replay.addProperty("completedGeneration",run.completedGenerations+1);
             replay.addProperty("finished",finished);
+            if(run.consistencyMode)replay.add("experiment",run.experimentMetadata());
             replay.addProperty("deadlineTicks",DEADLINE);
             JsonArray physicalTraces=new JsonArray();
             JsonArray physicalFitness=new JsonArray();
@@ -2054,6 +2232,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 entry.addProperty("strategy",b.strategyDecision.strategy().name());
                 entry.addProperty("strategyReason",b.strategyDecision.reason());
                 entry.addProperty("priorStrategyTrials",b.strategyDecision.evidenceTrials());
+                entry.add("localEpisodes",JSON.toJsonTree(b.localEpisodes));
                 entry.addProperty("progressWaypoints",b.bestCursor);
                 entry.addProperty("collisions",b.collisions);
                 entry.addProperty("jumps",b.jumps);
@@ -2083,7 +2262,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                 trace.addProperty("startX",STARTS[SELECTED_BOTS[b.index]][0]);
                 trace.addProperty("startZ",STARTS[SELECTED_BOTS[b.index]][1]);
                 trace.addProperty("arrivedTicks",b.arrivedTick);
-                trace.addProperty("plannedRoute",b.route);
+                trace.addProperty("plannedRoute",b.initialRoute);
+                trace.addProperty("finalRoute",b.route);
+                trace.add("localEpisodes",JSON.toJsonTree(b.localEpisodes));
                 trace.addProperty("collisions",b.collisions);
                 trace.addProperty("jumps",b.jumps);
                 trace.addProperty("reducedSpeedTicks",b.reducedSpeedTicks);
@@ -2113,6 +2294,8 @@ public final class BuilderEvolutionAltCourseGameTest {
             writeAtomic(checkpoint(),obj);
             JsonObject historyEntry=obj.deepCopy();
             historyEntry.remove("strategyMemory");
+            historyEntry.remove("localRuleMemory");
+            historyEntry.addProperty("localRuleTrialCount",run.ruleMemory.trials().size());
             historyEntry.addProperty("strategyObservationCount",
                     run.strategyMemory.observations().size());
             try{
@@ -2135,7 +2318,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                         ||(slowest==run.bestChampionSlowest
                             &&meanArrival<run.bestChampionAverage)){
                     JsonObject winner=header();
-                    winner.addProperty("policyRevision","context-strategy-v1");
+                    winner.addProperty("policyRevision",run.consistencyMode?"matched-local-rules-v1":"context-strategy-v1");
+                    if(run.consistencyMode)winner.add("localRuleMemory",obj.get("localRuleMemory").deepCopy());
                     winner.add("strategyMemory",strategyMemory.deepCopy());
                     winner.addProperty("wonAtCompletedGeneration",
                             run.completedGenerations+1);
@@ -2177,6 +2361,14 @@ public final class BuilderEvolutionAltCourseGameTest {
         final Random rng;
         final Map<Edge,Integer> collisionMemory=new HashMap<>();
         final NavigationStrategyMemory strategyMemory=new NavigationStrategyMemory();
+        final NavigationRuleMemory ruleMemory=new NavigationRuleMemory();
+        List<Genome> frozenPopulation=List.of();
+        List<NavigationStrategyMemory.Strategy> frozenStrategies=List.of();
+        Map<String,NavigationRuleMemory.Binding> blockBindings=Map.of();
+        final boolean consistencyMode=!"evolve".equalsIgnoreCase(System.getenv("GOLEMS_EVOLUTION_MODE"))
+                &&!"validate".equalsIgnoreCase(System.getenv("GOLEMS_EVOLUTION_MODE"));
+        final List<Integer> comparisonFinishes=new ArrayList<>();
+        String comparisonFingerprint;
         final Genome[] champions=new Genome[SELECTED_BOTS.length];
         final double[] championScores=new double[SELECTED_BOTS.length];
         final List<Knowledge> knowledgePool=new ArrayList<>();
@@ -2186,10 +2378,11 @@ public final class BuilderEvolutionAltCourseGameTest {
         boolean ended;
         final String strategySession=System.getenv("GOLEMS_EVOLUTION_SESSION")==null
                 ?"local-"+java.util.UUID.randomUUID():System.getenv("GOLEMS_EVOLUTION_SESSION");
-        final boolean strategyValidation="validate".equalsIgnoreCase(
+        final boolean strategyValidation=consistencyMode||"validate".equalsIgnoreCase(
                 System.getenv("GOLEMS_EVOLUTION_MODE"));
         long generationStart=0;
         int bestFinished=0;
+        int bestFinishedThisSession=0,targetQualifiedRounds;
         int completedGenerations=0;
         int bestChampionSlowest=Integer.MAX_VALUE;
         double bestChampionAverage=Double.POSITIVE_INFINITY;
@@ -2208,13 +2401,63 @@ public final class BuilderEvolutionAltCourseGameTest {
             // Preserve real progress from PREVIOUS GitHub Actions runs.
             // No headless scores may seed or qualify the physical test.
             TrainingMemory.restore(this);
-            if(!"validate".equalsIgnoreCase(
+            if(pendingExploration.isEmpty())pendingExploration=new ArrayList<>(generationGenes);
+            if(consistencyMode){
+                if(frozenPopulation.isEmpty())frozenPopulation=new ArrayList<>(
+                        !verifiedChampion.isEmpty()?verifiedChampion:
+                        !lastSuccessfulPopulation.isEmpty()?lastSuccessfulPopulation:generationGenes);
+                generationGenes=new ArrayList<>(frozenPopulation);
+            }else if(!"validate".equalsIgnoreCase(
                     System.getenv("GOLEMS_EVOLUTION_MODE")))
                 generationGenes=pinElites(generationGenes,knowledgePool);
             rng=new Random(TRAINING_SEED
                     +1000003L*(long)completedGenerations);
+            startRound();
+            generationStart=helper.getTick()+1;
+        }
+        private NavigationRuleMemory.Rule challengerRule(){
+            return switch((generation/6)%4){
+                case 0,3 -> NavigationRuleMemory.Rule.STABLE_MERGE;
+                case 1 -> NavigationRuleMemory.Rule.YIELD_ASIDE;
+                default -> NavigationRuleMemory.Rule.BASELINE;
+            };
+        }
+        private void startRound(){
+            if(consistencyMode){
+                fillOriginalCourse(helper); // exact fixture reset BETWEEN trials only
+                if(generation%6==0)blockBindings=ruleMemory.bindings();
+            }
             bots=spawnGeneration(helper,generationGenes,collisionMemory,
-                    strategyMemory,strategyValidation);
+                    strategyMemory,strategyValidation,consistencyMode?frozenStrategies:List.of());
+            if(consistencyMode){
+                if(frozenStrategies.isEmpty())frozenStrategies=bots.stream()
+                        .map(b->b.strategyDecision.strategy()).toList();
+                RuleRound round=new RuleRound(generation%2==1,challengerRule(),blockBindings);
+                NavigationRightOfWay leases=new NavigationRightOfWay();
+                for(Candidate b:bots){b.ruleRound=round;b.rightOfWay=leases;}
+                String signature=TrainingMemory.encodePopulation(generationGenes)+"|"
+                        +bots.stream().map(b->b.initialRoute).toList()+"|"
+                        +collisionMemory.entrySet().stream().map(e->e.getKey()+"="+e.getValue())
+                            .sorted().toList()+"|"+pos(helper,0,2,0);
+                try{
+                    comparisonFingerprint=java.util.HexFormat.of().formatHex(
+                            java.security.MessageDigest.getInstance("SHA-256").digest(
+                                signature.getBytes(StandardCharsets.UTF_8)));
+                }catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}
+            }
+        }
+        private JsonObject experimentMetadata(){
+            JsonObject data=new JsonObject();
+            data.addProperty("block",strategySession+":block"+(generation/6));
+            data.addProperty("repeat",(generation%6)/2);
+            data.addProperty("arm",generation%2==1?"challenger":"baseline");
+            data.addProperty("testedRule",challengerRule().name());
+            data.addProperty("fingerprint",comparisonFingerprint);
+            data.addProperty("frozenGenes",true);
+            data.addProperty("frozenRoutePolicy",true);
+            data.addProperty("frozenBlockedEdges",true);
+            data.addProperty("rememberedRules",ruleMemory.bindings().size());
+            return data;
         }
         void tick(){
             if(ended)return;
@@ -2234,8 +2477,10 @@ public final class BuilderEvolutionAltCourseGameTest {
                         BuilderEvolutionAltCourseGameTest::remainingPathMeters)
                     .thenComparingInt(b->b.index));
                 for(Candidate b:ordered){
+                    b.controlTick=(int)roundTick+1;
                     walkOneTick(helper,b,bots);
                     b.captureMovement((int)roundTick+1);
+                    finishLocalEpisode(b,false);
                 }
             }
             if(roundTick<DEADLINE)return;
@@ -2264,6 +2509,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                 mean+=b.fitness();
                 collisions+=b.collisions;
                 jumps+=b.jumps;
+                finishLocalEpisode(b,true);
+                if(!consistencyMode){
                 strategyMemory.observe(new NavigationStrategyMemory.Observation(
                         strategySession+":g"+generation+":slot"+b.index,
                         (long)(completedGenerations+1)*10+b.index,
@@ -2280,10 +2527,11 @@ public final class BuilderEvolutionAltCourseGameTest {
                         +" recentTrips="+evidence.trials()
                         +" recentFinished="+evidence.finished()
                         +" meanReward="+evidence.meanReward());
-                for(var edge:b.realBlockFailures.entrySet())
+                }
+                if(!consistencyMode)for(var edge:b.realBlockFailures.entrySet())
                     collisionMemory.merge(edge.getKey(),edge.getValue(),
                             (a,c)->Math.min(100,a+c));
-                if(b.fitness()>championScores[b.index]){
+                if(!consistencyMode&&b.fitness()>championScores[b.index]){
                     champions[b.index]=b.dna;
                     championScores[b.index]=b.fitness();
                     // An INDIVIDUAL improvement is retained even if the
@@ -2292,7 +2540,23 @@ public final class BuilderEvolutionAltCourseGameTest {
                 }
             }
             bestFinished=Math.max(bestFinished,finished);
-            System.out.println("[ALT INDEPENDENT LEARNING] gen="+generation
+            bestFinishedThisSession=Math.max(bestFinishedThisSession,finished);
+            if(finishedTarget==bots.size())targetQualifiedRounds++;
+            if(consistencyMode){
+                List<NavigationRuleMemory.Episode> episodes=bots.stream()
+                        .flatMap(b->b.localEpisodes.stream()).toList();
+                double meanArrival=bots.stream().mapToInt(b->b.arrivedTick<0?DEADLINE:b.arrivedTick)
+                        .average().orElse(DEADLINE);
+                ruleMemory.observe(new NavigationRuleMemory.Trial(
+                        strategySession+":round"+generation,completedGenerations+1L,
+                        strategySession+":block"+(generation/6),(generation%6)/2,generation%2==1,
+                        comparisonFingerprint,finished,meanArrival,episodes));
+                comparisonFinishes.add(finished);
+                System.out.println("[ALT MATCHED TRIAL] "+experimentMetadata()
+                        +" finished="+finished+" localEpisodes="+episodes.size());
+                if(generation%6==5)System.out.println("[ALT RULE BINDINGS] "+ruleMemory.bindings());
+            }
+            if(!consistencyMode)System.out.println("[ALT INDEPENDENT LEARNING] gen="+generation
                     +" pooledSlots="+knowledgePool.stream()
                         .map(k->Integer.toString(k.slot())).toList()
                     +" pooledFitness="+knowledgePool.stream()
@@ -2304,6 +2568,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                     +" doorPlans="+doorPlans
                     +" doorCrossings="+doorCrossings
                     +" best="+bestFinished
+                    +" bestThisSession="+bestFinishedThisSession
                     +" meanFitness="+Math.round(mean/bots.size())
                     +" collisions="+collisions+" jumps="+jumps
                     +" learnedBlockEdges="+collisionMemory.size()
@@ -2317,10 +2582,10 @@ public final class BuilderEvolutionAltCourseGameTest {
             // no ten-member team selection, no forgotten best result.
             List<Genome> parents=knowledgePool.stream()
                     .map(Knowledge::dna).toList();
-            if(parents.isEmpty())
+            if(parents.isEmpty()&&!consistencyMode)
                 throw new IllegalStateException("No verified physical knowledge");
             List<Genome> offspring=new ArrayList<>();
-            for(int i=0;i<SELECTED_BOTS.length;i++){
+            if(!consistencyMode)for(int i=0;i<SELECTED_BOTS.length;i++){
                 final int slot=i;
                 Knowledge elite=knowledgePool.stream()
                         .filter(k->k.slot()==slot).findFirst().orElse(null);
@@ -2334,6 +2599,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                             ?Genome.cross(a,b,rng).mutate(rng):a.mutate(rng));
                 }
             }
+            if(consistencyMode)offspring=new ArrayList<>(pendingExploration);
             // The complete 10/10 TEAM must survive intact, whether or
             // not it beats the protected historical speed record.
             // Crossing ten individually successful genes can produce a
@@ -2361,7 +2627,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             // Always discard all real entities after their actual 13s
             // trial; the next generation must spawn physical golems.
             for(Candidate b:bots)if(b.mob.isAlive())b.mob.discard();
-            if(finishedTarget==bots.size()){
+            if(!consistencyMode&&finishedTarget==bots.size()){
                 for(Candidate b:bots)
                     System.out.println("[TIMETRIAL REAL CHAMPION] slot="+b.index
                             +" arrivedTicks="+b.arrivedTick
@@ -2375,9 +2641,15 @@ public final class BuilderEvolutionAltCourseGameTest {
             }
             if(generation+1>=GENERATIONS){
                 ended=true;
+                if(consistencyMode){
+                    System.out.println("[ALT CONSISTENCY REPORT] finishes="+comparisonFinishes
+                            +" retainedRules="+ruleMemory.bindings()
+                            +" qualified224TickRounds="+targetQualifiedRounds);
+                    if(targetQualifiedRounds==GENERATIONS){helper.succeed();return;}
+                }
                 helper.fail("Physical evolution did not qualify all 10"
                         +" by 11.2s after "+GENERATIONS
-                        +" generations. Best REAL 13s result="+bestFinished
+                        +" generations. Best REAL 13s result="+bestFinishedThisSession
                         +"/"+bots.size()
                         +", latest="+finished+"/10; "
                         +"checkpoint saved for future runs; "+blockers);
@@ -2387,11 +2659,10 @@ public final class BuilderEvolutionAltCourseGameTest {
             // generation. A previously verified full team remains in
             // champion.json for explicit validation but cannot replace
             // newly learned independent genes behind the user's back.
-            generationGenes=offspring;
+            if(!consistencyMode)generationGenes=offspring;
             generation++;
             generationStart=absoluteTick+1;
-            bots=spawnGeneration(helper,generationGenes,collisionMemory,
-                    strategyMemory,strategyValidation);
+            startRound();
         }
     }
 
@@ -2975,6 +3246,50 @@ public final class BuilderEvolutionAltCourseGameTest {
             if(Math.abs(mob.getX()-before.x)>.05
                     &&Math.abs(mob.getZ()-before.z)>.05)
                 diagonalMoves[0]++;
+        });
+    }
+
+    @GameTest(maxTicks=100,padding=64,skyAccess=true)
+    public void realBuilderUsesClearHoldingSpace(GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        List<Candidate> crew=new ArrayList<>();
+        for(int slot=0;slot<2;slot++){
+            int x=10-slot,z=7;
+            BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+            BlockPos at=pos(helper,x,2,z);
+            mob.setPos(at.getX()+.5,at.getY(),at.getZ()+.5);world.addFreshEntity(mob);
+            Candidate bot=new Candidate(slot,mob,"WWW",x,z,SAVED_PHYSICAL_CHAMPIONS[0],Map.of());
+            BlockPos origin=pos(helper,0,2,0);bot.originX=origin.getX();bot.originZ=origin.getZ();
+            bot.birthTick=helper.getTick();bot.controlTick=1;
+            bot.ruleRound=new RuleRound(true,NavigationRuleMemory.Rule.YIELD_ASIDE,Map.of());
+            crew.add(bot);
+        }
+        Candidate moving=crew.get(0),waiting=crew.get(1);
+        moving.trafficWaitTicks=8;
+        beginLocalEpisode(helper,moving,crew);
+        if(!tryHoldingRoute(helper,moving,crew)){
+            helper.fail("No legal holding route beside a real blocked lane");
+            for(Candidate bot:crew)bot.mob.discard();return;
+        }
+        final boolean[] holdingTestEnded={false};
+        helper.onEachTick(()->{
+            if(holdingTestEnded[0])return;
+            moving.controlTick++;
+            walkOneTick(helper,moving,crew);
+            if(moving.mob.getBoundingBox().intersects(waiting.mob.getBoundingBox())){
+                holdingTestEnded[0]=true;
+                helper.fail("Holding golem entered another golem's body");
+                for(Candidate bot:crew)bot.mob.discard();return;
+            }
+            if(moving.holdingStage==2){
+                holdingTestEnded[0]=true;
+                helper.succeed();for(Candidate bot:crew)bot.mob.discard();
+            }else if(helper.getTick()>80){
+                holdingTestEnded[0]=true;
+                helper.fail("Real golem did not reach its holding space");
+                for(Candidate bot:crew)bot.mob.discard();
+            }
         });
     }
 

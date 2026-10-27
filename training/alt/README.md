@@ -1,4 +1,13 @@
-## Contextual strategy experience — current experiment
+## Current experiment: consistency and obstacle-level rules
+
+See [controlled comparisons and remembered local rules](CONSISTENCY_AND_RULES.md).
+Default tests freeze the full cohort, route policy and static memory, then
+run three matched baseline/challenger pairs per block. Useful obstacle-level
+condition/action bindings require repeated local improvement without crew
+regression. Genetic breeding is paused in this mode. Earlier sections below
+describe prior revisions and must not be read as current test results.
+
+## Contextual strategy experience — previous experiment
 
 See [how strategy learning is saved and used](STRATEGY_LEARNING.md).
 The controller now supplements motor genes with persistent, coordinate-free

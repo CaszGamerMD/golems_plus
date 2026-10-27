@@ -28,6 +28,7 @@ class MobilePhysicalReplayViewerTests(unittest.TestCase):
                                 "arrivedTicks": 220 if i < 5 else -1,
                                 "plannedRoute": "W7W", "doorTicks": i == 0,
                                 "distanceMeters": 2.0,
+                                "localEpisodes": [dict(action="STABLE_MERGE", cleared=True)],
                                 "positions": [[0, 24500, 1500, "w"],
                                               [1, 24300, 1600, "p"]],
                             })
@@ -38,6 +39,8 @@ class MobilePhysicalReplayViewerTests(unittest.TestCase):
                             "generation": generation,
                             "trial": f"{run}-{trial}", "finished": 5, "bots": bots
                         }
+                        record["experiment"] = dict(arm="challenger", repeat=1,
+                                                    testedRule="STABLE_MERGE", rememberedRules=2)
                         (traces / f"trial-{run}-{trial}-generation-{completed}.json").write_text(json.dumps(record))
             output = root / "viewer.html"
             feed = root / "mobile-data.json"
@@ -48,6 +51,8 @@ class MobilePhysicalReplayViewerTests(unittest.TestCase):
             self.assertNotIn("7001-1", output.read_text())
             self.assertEqual(data, json.loads(feed.read_text()))
             self.assertEqual(5, data["meta"][-1][4])
+            self.assertEqual("challenger", data["meta"][-1][7]["arm"])
+            self.assertEqual([1, 1, ["STABLE_MERGE"]], data["meta"][-1][6][0][12])
             original = gzip.decompress(base64.b64decode(data["payload"][-1]))
             self.assertEqual(2, struct.unpack_from("<H", original, 0)[0])
             self.assertEqual((2450, 150, ord("w")),

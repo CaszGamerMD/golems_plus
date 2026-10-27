@@ -1,5 +1,5 @@
 name: 11.2s goal on real alt track — 10 actual Builder Golems (13s baseline preserved)
-# Qualification run: re-test the preserved real-entity winning cohort in three unchanged alt-track trials; no navigation/genes altered.
+# Matched local-rule trials: frozen crew/routes; 3 baseline/challenger pairs per block.
 
 on:
   push:
@@ -8,6 +8,9 @@ on:
     paths:
       - src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderEvolutionAltCourseGameTest.java
       - src/gametest/java/com/caszgamermd/golemsplus/builder/NavigationStrategyMemory.java
+      - src/gametest/java/com/caszgamermd/golemsplus/builder/NavigationRuleMemory.java
+      - src/gametest/java/com/caszgamermd/golemsplus/builder/NavigationRightOfWay.java
+      - scripts/tests/test_navigation_local_rules.py
       - scripts/tests/test_navigation_strategy_memory.py
       - .github/workflows/builder-alt-physical-timetrial.yml
       - scripts/export_alt_mobile_replays.py
@@ -43,6 +46,7 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/tests -p test_alt_genetic_selection.py -v
           python3 -m unittest discover -s scripts/tests -p test_navigation_strategy_memory.py -v
+          python3 -m unittest discover -s scripts/tests -p test_navigation_local_rules.py -v
           python3 -m unittest discover -s scripts/tests -p test_merge_real_evolution_state.py -v
           python3 -m unittest discover -s scripts/tests -p test_merge_alt_evolution_state.py -v
           python3 -m unittest discover -s scripts/tests -p test_export_real_evolution_replays.py -v
@@ -113,6 +117,9 @@ jobs:
           assert 'strategyMemory,strategyValidation' in test
           assert 'strategyMemory.observe(new NavigationStrategyMemory.Observation(' in test
           assert 'checkpoint.has("strategyMemory")' in test
+          assert 'checkpoint.has("localRuleMemory")' in test
+          assert 'realBuilderUsesClearHoldingSpace' in test
+          assert 'ruleMemory.observe(new NavigationRuleMemory.Trial(' in test
           # Stepping up 0.5 blocks needs the native downward ground
           # probe; the old check incorrectly required zero vertical
           # movement and would reject the already-tested slab fix.
@@ -125,6 +132,7 @@ jobs:
         env:
           GOLEMS_EVOLUTION_STATE_DIR: ${{ github.workspace }}/training/alt/state
           GOLEMS_EVOLUTION_REPLAY_DIR: ${{ github.workspace }}/training/alt/replays/live
+          GOLEMS_EVOLUTION_MODE: consistency
         run: |
           set -o pipefail
           mkdir -p build/timetrial-training training/alt/replays/live
