@@ -670,6 +670,18 @@ public final class BuilderEvolutionAltCourseGameTest {
                         +(tile=='^'?dna.slabAvoid():0)
                         +(node.heading()!='?'&&node.heading()!=direction
                                 ?dna.turnBias():0);
+                // The door must be an EXPLORABLE alternative, not
+                // just a legal tile that no genome ever tries. Reuse
+                // the existing inherited/mutable signed doorBias gene:
+                // positive bias slightly rewards using an OPEN door,
+                // negative bias avoids it. No 13th gene / checkpoint
+                // migration and NO forced or memorized door route.
+                // The cap keeps every A* edge positive (>=0.20) and
+                // the actual 10 real golems decide the winning policy
+                // with physical arrival fitness, not expected geometry.
+                if(tile=='D')
+                    weight-=Math.max(-.80,Math.min(.80,
+                            dna.doorBias()*5.0));
                 // Deterministic genetic corridor preferences. Small
                 // positive perturbations prevent repeatedly selecting
                 // exactly the same equally costly route across a crew.
