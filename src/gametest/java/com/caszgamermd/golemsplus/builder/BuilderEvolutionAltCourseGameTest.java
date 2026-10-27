@@ -2201,6 +2201,27 @@ public final class BuilderEvolutionAltCourseGameTest {
                 run.pendingExploration=decodePopulation(
                         checkpoint.getAsJsonArray("nextPopulation"));
                 run.generationGenes=new ArrayList<>(run.pendingExploration);
+                if(checkpoint.has("nextStrategies")){
+                    NavigationStrategyMemory.Strategy[] policies=JSON.fromJson(
+                            checkpoint.get("nextStrategies"),
+                            NavigationStrategyMemory.Strategy[].class);
+                    String[] routes=JSON.fromJson(checkpoint.get("nextFamilyRoutes"),
+                            String[].class);
+                    Integer[] origins=JSON.fromJson(checkpoint.get("nextFamilyOrigins"),
+                            Integer[].class);
+                    if(policies.length!=SELECTED_BOTS.length
+                            ||routes.length!=SELECTED_BOTS.length
+                            ||origins.length!=SELECTED_BOTS.length)
+                        throw new IllegalStateException("Invalid nine-family route inheritance");
+                    for(int i=0;i<SELECTED_BOTS.length;i++){
+                        if(policies[i]==null||routes[i]==null||origins[i]==null
+                                ||origins[i]<0||origins[i]>=SELECTED_BOTS.length)
+                            throw new IllegalStateException("Broken saved family lineage");
+                    }
+                    run.generationStrategies=new ArrayList<>(java.util.Arrays.asList(policies));
+                    run.generationRoutes=new ArrayList<>(java.util.Arrays.asList(routes));
+                    run.generationFamilyOrigins=new ArrayList<>(java.util.Arrays.asList(origins));
+                }
                 if(checkpoint.has("lastSuccessfulPopulation")){
                     List<Genome> fullTeam=decodePopulation(checkpoint
                             .getAsJsonArray("lastSuccessfulPopulation"));
@@ -2346,10 +2367,50 @@ public final class BuilderEvolutionAltCourseGameTest {
                         +run.completedGenerations+" best="+run.bestFinished
                         +" edges="+run.collisionMemory.size());
             }else{
-                for(int i=0;i<SELECTED_BOTS.length;i++)
+                // Migrate useful REAL 10-worker learning into nine-worker
+                // genes only. Old 10/10 results and checkpoint history stay
+                // untouched at training/alt/state/, and are NOT compared
+                // to nine-worker fitness or claimed as nine-worker wins.
+                Path legacy=Path.of("training/alt/state/checkpoint.json");
+                List<Knowledge> seedParents=new ArrayList<>();
+                if(Files.exists(legacy))try{
+                    JsonObject prior=JsonParser.parseString(
+                            Files.readString(legacy)).getAsJsonObject();
+                    if(prior.get("bots").getAsInt()==10
+                            &&prior.get("physicalEntities").getAsBoolean()
+                            &&"timetrial-alt-vanilla-10-builders-260-ticks-v2"
+                                .equals(prior.get("course").getAsString())){
+                        for(JsonElement row:prior.getAsJsonArray("lastRealEntityResults")){
+                            JsonObject e=row.getAsJsonObject();
+                            int slot=e.get("slot").getAsInt();
+                            if(slot<0||slot>=SELECTED_BOTS.length)continue;
+                            seedParents.add(new Knowledge(slot,
+                                decode(e.get("genes")),e.get("fitness").getAsDouble(),
+                                e.get("arrivedTicks").getAsInt(),
+                                e.get("progressWaypoints").getAsDouble(),0,
+                                NavigationStrategyMemory.Strategy.valueOf(
+                                    e.get("strategy").getAsString()),""));
+                        }
+                        seedParents.sort(Comparator.comparingDouble(
+                                Knowledge::fitness).reversed());
+                    }
+                }catch(IOException|RuntimeException unreadable){
+                    System.out.println("[ALT NINE FAMILY] Legacy seed not usable: "
+                            +unreadable.getMessage());
+                }
+                if(seedParents.size()<3)for(int i=0;i<SELECTED_BOTS.length;i++)
                     run.generationGenes.add(SAVED_PHYSICAL_CHAMPIONS[i]);
-                System.out.println("[TIMETRIAL MEMORY] seeded from 10 previously "
-                        +"real-entity-verified fallback genomes");
+                else{
+                    run.knowledgePool.addAll(seedParents.subList(0,3));
+                    FamilyPlan first=breedFamilies(run.knowledgePool,
+                            new Random(TRAINING_SEED),SELECTED_BOTS.length);
+                    run.generationGenes=new ArrayList<>(first.genes());
+                    run.generationStrategies=new ArrayList<>(first.policies());
+                    run.generationRoutes=new ArrayList<>(first.parentRoutes());
+                    run.generationFamilyOrigins=new ArrayList<>(first.parentSlots());
+                    System.out.println("[ALT NINE FAMILY] Seeded from archived "
+                            +"physical 10-worker finishers, without inherited 10/10 claim");
+                }
             }
             if(champion!=null){
                 List<Genome> gold=decodePopulation(
@@ -2405,6 +2466,12 @@ public final class BuilderEvolutionAltCourseGameTest {
             // full-crew 10/10 winner is always saved unchanged until a
             // NEW complete physical success replaces it.
             obj.add("nextPopulation",encodePopulation(nextPopulation));
+            if(!run.consistencyMode){
+                obj.add("nextStrategies",JSON.toJsonTree(run.generationStrategies));
+                obj.add("nextFamilyRoutes",JSON.toJsonTree(run.generationRoutes));
+                obj.add("nextFamilyOrigins",JSON.toJsonTree(run.generationFamilyOrigins));
+                obj.addProperty("familyModel","three-parents-two-mutated-children-v1");
+            }
             if(run.lastSuccessfulPopulation.size()==SELECTED_BOTS.length){
                 obj.add("lastSuccessfulPopulation",
                         encodePopulation(run.lastSuccessfulPopulation));
