@@ -83,6 +83,29 @@ def validate_checkpoint(c):
                 raise ValueError("Bad lane champion")
     if any(not math.isfinite(v) for v in c["personalScores"]):
         raise ValueError("Invalid physical fitness score")
+    pool = c.get("knowledgePool", [])
+    if not isinstance(pool, list) or len(pool) > 3:
+        raise ValueError("Knowledge pool must contain at most 3 real workers")
+    slots = set()
+    for member in pool:
+        slot, score = member.get("slot"), member.get("fitness")
+        if (not isinstance(slot, int) or isinstance(slot, bool)
+                or not 0 <= slot < POPULATION or slot in slots
+                or not isinstance(score, (float, int))
+                or not math.isfinite(score)
+                or not isinstance(member.get("arrivedTick"), int)
+                or not -1 <= member["arrivedTick"] <= 260
+                or not isinstance(member.get("progress"), (float, int))
+                or not math.isfinite(member["progress"])
+                or not isinstance(member.get("generation"), int)
+                or not 0 <= member["generation"] <= c["completedGenerations"]):
+            raise ValueError("Invalid saved individual knowledge")
+        slots.add(slot)
+        genome = member.get("genes")
+        if (not isinstance(genome, list) or len(genome) != GENES
+                or any(not isinstance(n, (int, float))
+                       or not math.isfinite(n) for n in genome)):
+            raise ValueError("Invalid knowledge-pool chromosome")
 
 
 def champion_key(c):
@@ -114,6 +137,30 @@ def merge_checkpoint(old, new, protected):
         personal.append(choice["personalBests"][index])
         scores.append(choice["personalScores"][index])
     merged["personalBests"], merged["personalScores"] = personal, scores
+    # Both checkouts can improve DIFFERENT golems. Union independent
+    # physical evidence by worker slot and preserve the global top THREE
+    # even if either checkout came from a failed 10/10 generation.
+    candidates = {}
+    for source in (old, new):
+        for member in source.get("knowledgePool", []):
+            slot = member["slot"]
+            if (slot not in candidates or
+                    member["fitness"] > candidates[slot]["fitness"]):
+                candidates[slot] = member
+    # Legacy physical checkpoints already retain independent personal
+    # best genes. Migrate them without inventing a completed arrival.
+    for slot, genes in enumerate(personal):
+        if genes is None:
+            continue
+        score = scores[slot]
+        if slot not in candidates or score > candidates[slot]["fitness"]:
+            candidates[slot] = {
+                "slot": slot, "fitness": score, "genes": genes,
+                "arrivedTick": -1, "progress": 0,
+                "generation": merged["completedGenerations"],
+            }
+    merged["knowledgePool"] = sorted(
+        candidates.values(), key=lambda m: (-m["fitness"], m["slot"]))[:3]
     # Independently preserve the MOST RECENT successful 10/10 team.
     # A later failed checkout can never erase its full ten genes, and
     # the faster historical best remains separately in champion.json.
