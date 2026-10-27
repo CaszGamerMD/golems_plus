@@ -1487,7 +1487,8 @@ public final class BuilderEvolutionAltCourseGameTest {
     }
     private static boolean boundedTrafficRule(Candidate b){
         return b.rightOfWay!=null&&b.localEpisode!=null
-                &&b.localEpisode.action!=NavigationRuleMemory.Rule.BASELINE;
+                &&(b.localEpisode.action==NavigationRuleMemory.Rule.STABLE_MERGE
+                    ||b.localEpisode.action==NavigationRuleMemory.Rule.YIELD_ASIDE);
     }
 
     /**
@@ -1699,6 +1700,19 @@ public final class BuilderEvolutionAltCourseGameTest {
                 :nextFeet.getY()+obstacleShape.max(Direction.Axis.Y)
                         -mob.getY();
         boolean lowStep=stepRise>0&&stepRise<=.600001;
+        double plannedRise=standingY(helper,world,ahead[0],ahead[1])
+                -standingY(helper,world,b.x,b.z);
+        boolean centerApproach=localRule(b)==NavigationRuleMemory.Rule.CENTER_STEP
+                &&(canOperateDoor(footState)||plannedRise>.01&&plannedRise<=.600001);
+        if(centerApproach){
+            b.localEpisode.executed=true;
+            // Align perpendicular to the legal cardinal approach before
+            // entering the step/door. Keep native gravity and auto-step;
+            // never jump merely because the side of a corner was clipped.
+            if(ahead[0]!=b.x&&ahead[1]==b.z&&Math.abs(dz)>.025)dx=0;
+            else if(ahead[1]!=b.z&&ahead[0]==b.x&&Math.abs(dx)>.025)dz=0;
+            distance=Math.hypot(dx,dz);
+        }
         boolean tallObstacle=stepRise>.600001;
         boolean approachingRaisedCell=tallObstacle
                 &&distance<=b.dna.jumpLead();
@@ -1712,7 +1726,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         boolean solidAhead=world.getBlockCollisions(mob,
                 mob.getBoundingBox().move(proposedX,0,proposedZ))
                 .iterator().hasNext();
-        if((approachingRaisedCell||solidAhead&&!lowStep&&b.immobile>4)
+        if(!centerApproach&&(approachingRaisedCell||solidAhead&&!lowStep&&b.immobile>4)
                 &&grounded&&b.ticksSinceJump>=b.dna.jumpCooldown()){
             mob.setDeltaMovement(0,b.dna.jumpPower(),0);
             b.movementMode="j";
@@ -1745,7 +1759,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         // Turn anticipation helps on open ground, but offsets the
         // body into slab lips and overhead openings. Maintain a
         // centered line until fully clear of any height constraint.
-        boolean precision=precisionTransition(helper,world,
+        boolean precision=centerApproach||precisionTransition(helper,world,
                 b.x,b.z,ahead[0],ahead[1]);
         boolean nextPrecision=false;
         if(b.cursor+1<b.route.length()){
@@ -1894,7 +1908,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         private static JsonObject read(Path path){
             if(!Files.exists(path))return null;
             try(var reader=Files.newBufferedReader(path,StandardCharsets.UTF_8)){
-                if(Files.size(path)>1_000_000)
+                if(Files.size(path)>64L*1024*1024)
                     throw new IllegalArgumentException("Checkpoint too large: "+path);
                 JsonObject obj=JsonParser.parseReader(reader).getAsJsonObject();
                 if(!FORMAT.equals(obj.get("format").getAsString())
@@ -2143,7 +2157,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                 obj.add("consistencyStrategies",JSON.toJsonTree(run.frozenStrategies));
                 JsonObject local=new JsonObject();
                 local.addProperty("format",NavigationRuleMemory.FORMAT);
-                local.add("trials",JSON.toJsonTree(run.ruleMemory.trials()));
+                local.add("trials",JSON.toJsonTree(run.ruleMemory.checkpointTrials()));
+                local.add("bindings",JSON.toJsonTree(run.ruleMemory.bindings().values()));
                 obj.add("localRuleMemory",local);
                 obj.add("experiment",run.experimentMetadata());
             }
@@ -2417,9 +2432,10 @@ public final class BuilderEvolutionAltCourseGameTest {
         }
         private NavigationRuleMemory.Rule challengerRule(){
             return switch((generation/6)%4){
-                case 0,3 -> NavigationRuleMemory.Rule.STABLE_MERGE;
+                case 0 -> NavigationRuleMemory.Rule.STABLE_MERGE;
                 case 1 -> NavigationRuleMemory.Rule.YIELD_ASIDE;
-                default -> NavigationRuleMemory.Rule.BASELINE;
+                case 2 -> NavigationRuleMemory.Rule.BASELINE;
+                default -> NavigationRuleMemory.Rule.CENTER_STEP;
             };
         }
         private void startRound(){
@@ -3289,6 +3305,35 @@ public final class BuilderEvolutionAltCourseGameTest {
                 holdingTestEnded[0]=true;
                 helper.fail("Real golem did not reach its holding space");
                 for(Candidate bot:crew)bot.mob.discard();
+            }
+        });
+    }
+
+    @GameTest(maxTicks=160,padding=64,skyAccess=true)
+    public void realBuilderCentersAtSlabCorner(GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos at=pos(helper,9,2,7),origin=pos(helper,0,2,0);
+        // Deliberately approach off-center beside the slab field's wall.
+        mob.setPos(at.getX()+.9,at.getY(),at.getZ()+.78);world.addFreshEntity(mob);
+        Candidate bot=new Candidate(0,mob,"WWWW",9,7,SAVED_PHYSICAL_CHAMPIONS[0],Map.of());
+        bot.originX=origin.getX();bot.originZ=origin.getZ();bot.birthTick=helper.getTick();
+        bot.ruleRound=new RuleRound(true,NavigationRuleMemory.Rule.CENTER_STEP,Map.of());
+        final boolean[] done={false};
+        helper.onEachTick(()->{
+            if(done[0])return;
+            bot.controlTick++;
+            walkOneTick(helper,bot,List.of(bot));
+            bot.captureMovement(bot.controlTick);
+            finishLocalEpisode(bot,false);
+            if(mob.getX()-bot.originX<6){
+                done[0]=true;
+                System.out.println("[ALT CENTER STEP] Real off-center slab corner cleared; ticks="
+                        +bot.controlTick+" jumps="+bot.jumps);
+                helper.succeed();mob.discard();
+            }else if(helper.getTick()>140){
+                done[0]=true;helper.fail("Centered real Builder did not clear the slab corner");mob.discard();
             }
         });
     }

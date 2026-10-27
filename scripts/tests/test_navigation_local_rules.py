@@ -52,6 +52,14 @@ class ActualJavaLocalRules(unittest.TestCase):
         }
         check(restored.bindings().get(context).evidenceBlock().equals("good"),
               "A later failed experiment must not erase a proven rule");
+        for(int block=0;block<10;block++)for(int i=0;i<3;i++){
+            restored.observe(example("later"+block,i,false,9,true,"cohort"));
+            restored.observe(example("later"+block,i,true,8,false,"cohort"));
+        }
+        NavigationRuleMemory compact=new NavigationRuleMemory();
+        for(Trial t:restored.checkpointTrials())compact.observe(t);
+        check(compact.bindings().equals(restored.bindings())&&compact.trials().size()<=18,
+              "Compaction must retain every proven rule and bound working evidence");
         NavigationRuleMemory mismatch=new NavigationRuleMemory();
         NavigationRuleMemory worseCrew=new NavigationRuleMemory();
         for(int i=0;i<3;i++){
@@ -105,6 +113,25 @@ class LocalRuleMerge(unittest.TestCase):
             merge_local_rule_memory(self.memory(), self.memory(elapsed=25))
         with self.assertRaises(ValueError):
             merge_local_rule_memory(self.memory(elapsed=61))
+
+    def test_checkpoint_compaction_retains_proof_blocks_and_recent_work(self):
+        source = self.memory()
+        trials = []
+        import copy
+        for block in range(10):
+            for repeat in range(3):
+                for challenger in (False, True):
+                    trial = copy.deepcopy(source['localRuleMemory']['trials'][0])
+                    trial.update(id=f'{block}-{repeat}-{challenger}', block=f'block{block}',
+                                 sequence=block*6+repeat*2+challenger, repeat=repeat,
+                                 challenger=challenger)
+                    trials.append(trial)
+        source['localRuleMemory']['trials'] = trials
+        source['localRuleMemory']['bindings'] = [dict(context='obstacle=step;traffic=crossing',
+                action='STABLE_MERGE', evidenceBlock='block0', matchedPairs=3)]
+        result = merge_local_rule_memory(source)
+        self.assertEqual({t['block'] for t in result['trials']}, {'block0', 'block8', 'block9'})
+        self.assertEqual(len(result['trials']), 18)
 
 
 if __name__ == '__main__':

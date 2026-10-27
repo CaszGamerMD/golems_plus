@@ -119,6 +119,7 @@ jobs:
           assert 'checkpoint.has("strategyMemory")' in test
           assert 'checkpoint.has("localRuleMemory")' in test
           assert 'realBuilderUsesClearHoldingSpace' in test
+          assert 'realBuilderCentersAtSlabCorner' in test
           assert 'ruleMemory.observe(new NavigationRuleMemory.Trial(' in test
           # Stepping up 0.5 blocks needs the native downward ground
           # probe; the old check incorrectly required zero vertical

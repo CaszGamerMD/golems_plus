@@ -13,7 +13,7 @@ import java.util.Map;
  */
 public final class NavigationRuleMemory {
     public static final String FORMAT="golems-local-rules-v1";
-    public enum Rule { BASELINE, STABLE_MERGE, YIELD_ASIDE }
+    public enum Rule { BASELINE, STABLE_MERGE, YIELD_ASIDE, CENTER_STEP }
     public record Episode(String id,int slot,String context,Rule action,
             boolean cleared,int elapsedTicks,int stationaryTicks,int collisions) {
         public Episode {
@@ -48,6 +48,19 @@ public final class NavigationRuleMemory {
     }
     public List<Trial> trials(){return trials.values().stream().sorted(Comparator
             .comparingLong(Trial::sequence).thenComparing(Trial::id)).toList();}
+    public List<Trial> checkpointTrials(){
+        // Keep proof for EVERY current rule, plus the two newest comparison
+        // blocks (including an in-progress block). Full episodes also live
+        // in immutable per-round replay files, so working memory stays bounded.
+        java.util.Set<String> keep=new java.util.HashSet<>();
+        for(Binding b:bindings().values())keep.add(b.evidenceBlock());
+        List<String> ordered=new ArrayList<>();
+        for(Trial t:trials()){
+            ordered.remove(t.block());ordered.add(t.block());
+        }
+        keep.addAll(ordered.subList(Math.max(0,ordered.size()-2),ordered.size()));
+        return trials().stream().filter(t->keep.contains(t.block())).toList();
+    }
     private static int medianFinished(List<Trial> rows){
         return rows.stream().mapToInt(Trial::finished).sorted().toArray()[1];
     }

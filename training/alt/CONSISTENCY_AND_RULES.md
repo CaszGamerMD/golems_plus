@@ -21,7 +21,8 @@ round records a SHA-256 fingerprint of its actual initial routes, genes,
 static memory and arena origin. Mismatched fingerprints cannot prove a rule.
 
 The challengers test stable right-of-way, yielding into a legal holding
-space, and reverting to baseline behavior. Baseline rounds use only rules
+space, reverting to baseline behavior, and centering before a legal step/door.
+Baseline rounds use only rules
 promoted before the block. New rules can first affect a subsequent block.
 All rounds are retained, including failed experiments. The session does
 not stop after a single lucky finish.
@@ -50,8 +51,10 @@ The challenger must also preserve the crew's median and minimum completion
 counts and full-crew pass count; mean arrival time, counting nonfinishers
 as 260 ticks, may worsen by at most one tick. Incomplete comparisons,
 different cohorts and later failed experiments cannot erase a proven rule.
-The checkpoint stores immutable physical trials; restore derives the same
-bindings. The merger unions trial IDs and rejects conflicting evidence.
+The checkpoint stores immutable physical proof trials and the two latest
+comparison blocks; full raw replay files retain all older outcomes. Restore
+derives the same bindings from retained proofs. The merger unions trial IDs,
+preserves rule proofs while compacting working evidence, and rejects conflicts.
 
 ## Recovery primitives
 
@@ -69,6 +72,9 @@ trip bound recovery; no flight, teleportation, block edits or noclip.
 
 The new real-Minecraft holding-space regression checks that an actual
 Builder moves aside without overlapping the stationary Builder in its lane.
+An additional regression starts a real Builder off-center beside the slab
+field's corner. CENTER_STEP aligns perpendicular to the legal approach,
+keeps native gravity/auto-step, and suppresses unnecessary step/door jumps.
 Unit tests execute the real Java rule/lease logic and check rule creation,
 restore/deduplication, cohort mismatch, tail regression and bounded ownership.
 Unit fixtures are not movement passes.

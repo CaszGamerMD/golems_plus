@@ -21,6 +21,8 @@ RULE_FORMAT = "golems-local-rules-v1"
 def merge_local_rule_memory(*checkpoints):
     trials = {}
     present = False
+    binding_candidates = []
+    has_binding_snapshot = False
     for checkpoint in checkpoints:
         memory = (checkpoint or {}).get("localRuleMemory")
         if memory is None:
@@ -28,6 +30,11 @@ def merge_local_rule_memory(*checkpoints):
         present = True
         if memory.get("format") != RULE_FORMAT or not isinstance(memory.get("trials"), list):
             raise ValueError("Invalid local navigation rule memory")
+        if "bindings" in memory:
+            has_binding_snapshot = True
+            if not isinstance(memory["bindings"], list):
+                raise ValueError("Invalid local rule binding snapshot")
+            binding_candidates.extend(memory["bindings"])
         for trial in memory["trials"]:
             if (not isinstance(trial.get("id"), str) or not trial["id"]
                     or not isinstance(trial.get("sequence"), int) or trial["sequence"] < 0
@@ -44,7 +51,7 @@ def merge_local_rule_memory(*checkpoints):
                 if (not isinstance(episode.get("id"), str) or not episode["id"]
                         or not isinstance(episode.get("slot"), int) or not 0 <= episode["slot"] < 10
                         or not isinstance(episode.get("context"), str) or not 1 <= len(episode["context"]) <= 200
-                        or episode.get("action") not in ("BASELINE", "STABLE_MERGE", "YIELD_ASIDE")
+                        or episode.get("action") not in ("BASELINE", "STABLE_MERGE", "YIELD_ASIDE", "CENTER_STEP")
                         or not isinstance(episode.get("cleared"), bool)
                         or not isinstance(episode.get("elapsedTicks"), int) or not 1 <= episode["elapsedTicks"] <= 60
                         or not isinstance(episode.get("stationaryTicks"), int)
@@ -57,7 +64,27 @@ def merge_local_rule_memory(*checkpoints):
             trials[identifier] = trial
     if not present:
         return None
-    return dict(format=RULE_FORMAT, trials=sorted(trials.values(), key=lambda t: (t["sequence"], t["id"])))
+    result = dict(format=RULE_FORMAT, trials=sorted(trials.values(), key=lambda t: (t["sequence"], t["id"])))
+    if has_binding_snapshot:
+        blocks = {}
+        for trial in result["trials"]:
+            blocks[trial["block"]] = max(blocks.get(trial["block"], -1), trial["sequence"])
+        keep = set(sorted(blocks, key=lambda b: (blocks[b], b))[-2:])
+        newest_bindings = {}
+        for binding in binding_candidates:
+            if (not isinstance(binding.get("context"), str) or not binding["context"]
+                    or binding.get("action") not in ("BASELINE", "STABLE_MERGE", "YIELD_ASIDE", "CENTER_STEP")
+                    or binding.get("evidenceBlock") not in blocks
+                    or not isinstance(binding.get("matchedPairs"), int) or binding["matchedPairs"] < 3):
+                raise ValueError("Invalid local navigation proof reference")
+            block = binding["evidenceBlock"]
+            keep.add(block)  # Retain both forks' proofs; Java rechecks every proof.
+            prior = newest_bindings.get(binding["context"])
+            if prior is None or blocks[block] > blocks[prior["evidenceBlock"]]:
+                newest_bindings[binding["context"]] = binding
+        result["trials"] = [t for t in result["trials"] if t["block"] in keep]
+        result["bindings"] = sorted(newest_bindings.values(), key=lambda b: b["context"])
+    return result
 
 
 def merge_strategy_memory(*checkpoints):
