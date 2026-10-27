@@ -296,6 +296,54 @@ public final class BuilderEvolutionAltCourseGameTest {
         for(Knowledge elite:pool)pinned.set(elite.slot(),elite.dna());
         return pinned;
     }
+    /** 3 actual winning parents + 2 independently mutated descendants each.
+     * Parents keep their original lane, route template and controller DNA;
+     * children inherit a parent's route intent but replan from their own
+     * location under actual Minecraft collision geometry.
+     */
+    private record FamilyPlan(List<Genome> genes,
+            List<NavigationStrategyMemory.Strategy> policies,
+            List<String> parentRoutes,List<Integer> parentSlots){}
+    private static FamilyPlan breedFamilies(List<Knowledge> winners,
+                                             Random rng,int size){
+        if(winners.size()!=3||size!=9)
+            throw new IllegalArgumentException("Nine-golem family needs exactly 3 parents");
+        List<Genome> genes=new ArrayList<>(java.util.Collections.nCopies(size,null));
+        List<NavigationStrategyMemory.Strategy> policies=
+                new ArrayList<>(java.util.Collections.nCopies(size,null));
+        List<String> routes=new ArrayList<>(java.util.Collections.nCopies(size,null));
+        List<Integer> lineage=new ArrayList<>(java.util.Collections.nCopies(size,-1));
+        for(Knowledge parent:winners){
+            int slot=parent.slot();
+            if(slot<0||slot>=size||genes.get(slot)!=null)
+                throw new IllegalArgumentException("Parents need distinct physical lanes");
+            genes.set(slot,parent.dna());
+            policies.set(slot,parent.policy());
+            routes.set(slot,parent.route());
+            lineage.set(slot,slot);
+        }
+        List<Integer> vacancies=new ArrayList<>();
+        for(int i=0;i<size;i++)if(genes.get(i)==null)vacancies.add(i);
+        int cursor=0;
+        for(Knowledge parent:winners)for(int clone=0;clone<2;clone++){
+            int slot=vacancies.get(cursor++);
+            genes.set(slot,parent.dna().mutate(rng));
+            // A route experiment is a different legal A* preference,
+            // never a copy/paste of route steps from another start tile.
+            var policy=parent.policy();
+            if(clone==1&&rng.nextInt(4)==0)
+                policy=policy==NavigationStrategyMemory.Strategy.DOOR
+                        ?NavigationStrategyMemory.Strategy.DIRECT
+                        :NavigationStrategyMemory.Strategy.DOOR;
+            policies.set(slot,policy);
+            routes.set(slot,parent.route());
+            lineage.set(slot,parent.slot());
+        }
+        if(genes.stream().anyMatch(java.util.Objects::isNull))
+            throw new IllegalStateException("Unfilled family slot");
+        return new FamilyPlan(genes,policies,routes,lineage);
+    }
+
     private static void updateKnowledgePool(Tournament run,Candidate b){
         double score=b.fitness();
         Knowledge record=new Knowledge(b.index,b.dna,score,b.arrivedTick,
@@ -2176,7 +2224,10 @@ public final class BuilderEvolutionAltCourseGameTest {
                                 decode(k.get("genes")),fitness,
                                 k.get("arrivedTick").getAsInt(),
                                 k.get("progress").getAsDouble(),
-                                k.get("generation").getAsInt()));
+                                k.get("generation").getAsInt(),
+                                NavigationStrategyMemory.Strategy.valueOf(
+                                        k.get("strategy").getAsString()),
+                                k.get("route").getAsString()));
                     }
                     if(run.knowledgePool.size()>3)
                         throw new IllegalStateException("Knowledge pool exceeds three");
@@ -2192,7 +2243,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                         continue;
                     run.knowledgePool.add(new Knowledge(slot,run.champions[slot],
                             run.championScores[slot],-1,0,
-                            checkpoint.get("completedGenerations").getAsInt()));
+                            checkpoint.get("completedGenerations").getAsInt(),
+                            NavigationStrategyMemory.Strategy.DIRECT,""));
                 }
                 run.knowledgePool.sort(Comparator
                         .comparingDouble(Knowledge::fitness).reversed()
