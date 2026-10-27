@@ -271,6 +271,36 @@ public final class BuilderEvolutionAltCourseGameTest {
     };
 
     private record Edge(int x,int z,int toX,int toZ){}
+
+    /** Independent REAL-entity result in a shared persistent top-three pool.
+     * One record per starting slot prevents a single spawn from crowding
+     * out the learnings of the other nine workers.
+     */
+    private record Knowledge(int slot,Genome dna,double fitness,
+                             int arrivedTick,double progress,int generation){}
+    private static void updateKnowledgePool(Tournament run,Candidate b){
+        double score=b.fitness();
+        Knowledge record=new Knowledge(b.index,b.dna,score,b.arrivedTick,
+                b.bestCursor+(b.cursor<b.route.length() ? 0.0 : 1.0),
+                run.completedGenerations+1);
+        // Per-slot improvement is graded by finish time first, then by
+        // physical forward progress when unfinished. Do not require 10/10.
+        Knowledge previous=run.knowledgePool.stream()
+                .filter(k->k.slot()==b.index).findFirst().orElse(null);
+        if(previous!=null&&previous.fitness()>=score)return;
+        run.knowledgePool.removeIf(k->k.slot()==b.index);
+        run.knowledgePool.add(record);
+        run.knowledgePool.sort(Comparator
+                .comparingDouble(Knowledge::fitness).reversed()
+                .thenComparingInt(Knowledge::slot));
+        if(run.knowledgePool.size()>3)
+            run.knowledgePool.subList(3,run.knowledgePool.size()).clear();
+        System.out.println("[ALT KNOWLEDGE POOL] slot="+b.index
+                +" improved fitness="+score+" arrived="+b.arrivedTick
+                +" topThree="+run.knowledgePool.stream()
+                    .map(k->Integer.toString(k.slot())).toList());
+    }
+
     private static final class Candidate {
         final Map<Edge,Integer> realBlockFailures=new HashMap<>();
         final int index;
@@ -1700,12 +1730,11 @@ public final class BuilderEvolutionAltCourseGameTest {
                     run.lastSuccessfulPopulation=new ArrayList<>(fullTeam);
                     run.lastSuccessfulArrivalTicks=ticks;
                     run.lastSuccessfulGeneration=generation;
-                    // Default three-test suite is a repeated real
-                    // PHYSICAL qualification of the latest winning
-                    // chromosomes, not a replay of a stored route.
-                    // Run GOLEMS_EVOLUTION_MODE=explore to start with
-                    // the distinct mutated offspring pool instead.
-                    if(!run.exploreMode){
+                    // Explicit validation can replay the historically
+                    // successful TEN genes, but normal training must
+                    // restore independent pooled offspring instead.
+                    if("validate".equalsIgnoreCase(
+                            System.getenv("GOLEMS_EVOLUTION_MODE"))){
                         run.generationGenes=new ArrayList<>(fullTeam);
                         System.out.println("[TIMETRIAL MEMORY] GEN0 "
                             +"restoring latest VERIFIED 10/10 cohort from "
@@ -1724,6 +1753,42 @@ public final class BuilderEvolutionAltCourseGameTest {
                     if(!Double.isFinite(run.championScores[i]))
                         throw new IllegalStateException("Invalid fitness checkpoint");
                 }
+                if(checkpoint.has("knowledgePool")){
+                    for(JsonElement member:checkpoint.getAsJsonArray("knowledgePool")){
+                        JsonObject k=member.getAsJsonObject();
+                        int slot=k.get("slot").getAsInt();
+                        double fitness=k.get("fitness").getAsDouble();
+                        if(slot<0||slot>=SELECTED_BOTS.length
+                                ||!Double.isFinite(fitness)
+                                ||run.knowledgePool.stream().anyMatch(p->p.slot()==slot))
+                            throw new IllegalStateException("Invalid independent pool member");
+                        run.knowledgePool.add(new Knowledge(slot,
+                                decode(k.get("genes")),fitness,
+                                k.get("arrivedTick").getAsInt(),
+                                k.get("progress").getAsDouble(),
+                                k.get("generation").getAsInt()));
+                    }
+                    if(run.knowledgePool.size()>3)
+                        throw new IllegalStateException("Knowledge pool exceeds three");
+                }
+                // Migrate the original physically scored PERSONAL bests.
+                // Older checkpoints used the same real-entity fitness but
+                // never exposed an explicitly named top-three pool.
+                for(int slot=0;slot<SELECTED_BOTS.length;slot++){
+                    if(run.champions[slot]==null)continue;
+                    if(run.knowledgePool.stream().anyMatch(p->p.slot()==slot))
+                        continue;
+                    run.knowledgePool.add(new Knowledge(slot,run.champions[slot],
+                            run.championScores[slot],-1,0,
+                            checkpoint.get("completedGenerations").getAsInt()));
+                }
+                run.knowledgePool.sort(Comparator
+                        .comparingDouble(Knowledge::fitness).reversed()
+                        .thenComparingInt(Knowledge::slot));
+                if(run.knowledgePool.size()>3)
+                    run.knowledgePool.subList(3,run.knowledgePool.size()).clear();
+                System.out.println("[ALT KNOWLEDGE POOL] Restored "
+                        +run.knowledgePool.size()+" independent physical elites");
                 run.completedGenerations=checkpoint.get("completedGenerations").getAsInt();
                 run.bestFinished=checkpoint.get("bestFinishedEver").getAsInt();
                 if(run.completedGenerations<0||run.bestFinished<0
@@ -1796,6 +1861,18 @@ public final class BuilderEvolutionAltCourseGameTest {
             }
             obj.add("personalBests",personal);
             obj.add("personalScores",scores);
+            JsonArray pool=new JsonArray();
+            for(Knowledge k:run.knowledgePool){
+                JsonObject member=new JsonObject();
+                member.addProperty("slot",k.slot());
+                member.addProperty("fitness",k.fitness());
+                member.addProperty("arrivedTick",k.arrivedTick());
+                member.addProperty("progress",k.progress());
+                member.addProperty("generation",k.generation());
+                member.add("genes",encode(k.dna()));
+                pool.add(member);
+            }
+            obj.add("knowledgePool",pool);
             JsonArray edges=new JsonArray();
             for(var edge:run.collisionMemory.entrySet()){
                 JsonObject e=new JsonObject();
@@ -1943,6 +2020,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         final Map<Edge,Integer> collisionMemory=new HashMap<>();
         final Genome[] champions=new Genome[SELECTED_BOTS.length];
         final double[] championScores=new double[SELECTED_BOTS.length];
+        final List<Knowledge> knowledgePool=new ArrayList<>();
         List<Genome> generationGenes=new ArrayList<>();
         List<Candidate> bots=new ArrayList<>();
         int generation=0;
@@ -2023,9 +2101,17 @@ public final class BuilderEvolutionAltCourseGameTest {
                 if(b.fitness()>championScores[b.index]){
                     champions[b.index]=b.dna;
                     championScores[b.index]=b.fitness();
+                    // An INDIVIDUAL improvement is retained even if the
+                    // other nine workers fail, without team qualification.
+                    updateKnowledgePool(this,b);
                 }
             }
             bestFinished=Math.max(bestFinished,finished);
+            System.out.println("[ALT INDEPENDENT LEARNING] gen="+generation
+                    +" pooledSlots="+knowledgePool.stream()
+                        .map(k->Integer.toString(k.slot())).toList()
+                    +" pooledFitness="+knowledgePool.stream()
+                        .map(Knowledge::fitness).toList());
             System.out.println("[TIMETRIAL REAL GENETICS] gen="+generation
                     +" realBuilderGolems="+bots.size()
                     +" finish13s="+finished+"/"+bots.size()
@@ -2039,30 +2125,20 @@ public final class BuilderEvolutionAltCourseGameTest {
                     +" fastestTicks="+(finished>0?fastest:-1)
                     +" slowestTicks="+(finished>0?slowest:-1)
                     +" stalled="+blockers);
-            // Genetic selection uses ONLY actual Minecraft entities and
-            // their measured arrivals, traversed waypoints and collisions.
-            // Breed a NEXT population even when the current run succeeds:
-            // saving this mutation is what makes the NEXT run grow.
-            List<Genome> parents=new ArrayList<>();
-            int eliteCount=Math.min(4,ranked.size());
-            for(int i=0;i<eliteCount;i++)parents.add(ranked.get(i).dna);
-            for(Genome elite:champions)if(elite!=null)parents.add(elite);
-            // Keep the entire previously proven winning lineage in
-            // the mating pool. Never discard it after an unlucky run.
-            parents.addAll(verifiedChampion);
+            // Only REAL physical improvements feed the persistent,
+            // independent three-best knowledge pool. Preserve the top
+            // three EXACT genomes, then create seven mutated children
+            // exclusively from those three; no random unrelated seed,
+            // no ten-member team selection, no forgotten best result.
+            List<Genome> parents=knowledgePool.stream()
+                    .map(Knowledge::dna).toList();
+            if(parents.isEmpty())
+                throw new IllegalStateException("No verified physical knowledge");
             List<Genome> offspring=new ArrayList<>();
             for(int i=0;i<SELECTED_BOTS.length;i++){
-                double roll=rng.nextDouble();
-                if(roll<.12&&champions[i]!=null){
-                    // Individual elite preservation, but do NOT freeze
-                    // every once-successful slot forever: we need to
-                    // keep exploring faster and more reliable genes.
-                    offspring.add(champions[i]);
-                }else if(roll<.20){
-                    offspring.add(Genome.random(rng));
-                }else{
-                    Genome a=champions[i]!=null&&rng.nextBoolean()
-                            ?champions[i]:parents.get(rng.nextInt(parents.size()));
+                if(i<parents.size())offspring.add(parents.get(i));
+                else{
+                    Genome a=parents.get(rng.nextInt(parents.size()));
                     Genome b=parents.get(rng.nextInt(parents.size()));
                     offspring.add(Genome.cross(a,b,rng).mutate(rng));
                 }
@@ -2114,27 +2190,11 @@ public final class BuilderEvolutionAltCourseGameTest {
                         +"checkpoint saved for future runs; "+blockers);
                 return;
             }
-            // Learning should keep exploring, but never forget a genuine
-            // complete 10/10 lineage. Periodically place all ten
-            // physically proven chromosomes back into a full REAL-ENTITY
-            // reference generation. The other generations still breed
-            // from mutations, and the champion itself is not a saved route.
-            // A reference does not earn credit unless all 10 live golems
-            // physically complete THIS run under the same time limit.
-            if((generation+1)%7==0
-                    &&verifiedChampion.size()==SELECTED_BOTS.length){
-                generationGenes=new ArrayList<>(verifiedChampion);
-                System.out.println("[TIMETRIAL REAL GENETICS] Revalidating "
-                        +"protected full champion DNA with 10 real golems "
-                        +"after 7 exploratory generations");
-            }else if(generation==0&&!exploreMode
-                    &&pendingExploration.size()==SELECTED_BOTS.length){
-                // If qualification failed, resume the mutations saved
-                // BEFORE this run, instead of trying to rediscover the
-                // same team repeatedly. Never throw away exploring.
-                generationGenes=new ArrayList<>(pendingExploration);
-                pendingExploration=List.of();
-            }else generationGenes=offspring;
+            // Continue from the individual top-three pool on EVERY next
+            // generation. A previously verified full team remains in
+            // champion.json for explicit validation but cannot replace
+            // newly learned independent genes behind the user's back.
+            generationGenes=offspring;
             generation++;
             generationStart=absoluteTick+1;
             bots=spawnGeneration(helper,generationGenes,collisionMemory);
