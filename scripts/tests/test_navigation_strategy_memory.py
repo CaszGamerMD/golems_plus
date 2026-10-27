@@ -59,6 +59,38 @@ class ActualJavaStrategySelection(unittest.TestCase):
         int probes=0;
         for(int i=0;i<100;i++)if(exploration.choose(context,options,false).reason().equals("exploration"))probes++;
         check(probes==20,"Exploration must be bounded to one in five decisions");
+        // Route through the wide slabs and then the door may arrive much
+        // sooner without a higher finish percentage. Its speed should be
+        // learned provided reliability remains close to the direct route.
+        NavigationStrategyMemory shortcut=new NavigationStrategyMemory();
+        String slabDoor="door=near;slabs=many;turns=few;traffic=reserved";
+        for(int i=0;i<10;i++){
+            shortcut.observe(example("direct"+i,200+i,slabDoor,Strategy.DIRECT,
+                    i<8?234:-1));
+            shortcut.observe(example("door"+i,220+i,slabDoor,Strategy.DOOR,
+                    i<7?213:-1));
+        }
+        Decision fast=shortcut.choose(slabDoor,
+                List.of(Strategy.DIRECT,Strategy.DOOR),true);
+        check(fast.strategy()==Strategy.DOOR
+                &&fast.reason().equals("faster-physical-arrivals"),
+              "Repeated 21-tick faster door arrivals should overcome a small reliability gap");
+        NavigationStrategyMemory persisted=new NavigationStrategyMemory();
+        for(Observation o:shortcut.observations())persisted.observe(o);
+        check(persisted.choose(slabDoor,List.of(Strategy.DIRECT,Strategy.DOOR),
+                true).strategy()==Strategy.DOOR,
+              "Learned faster door shortcut must survive checkpoint restoration");
+        NavigationStrategyMemory unreliable=new NavigationStrategyMemory();
+        for(int i=0;i<10;i++){
+            unreliable.observe(example("d"+i,300+i,slabDoor,Strategy.DIRECT,
+                    i<8?234:-1));
+            unreliable.observe(example("r"+i,320+i,slabDoor,Strategy.DOOR,
+                    i<5?199:-1));
+        }
+        check(unreliable.choose(slabDoor,
+                List.of(Strategy.DIRECT,Strategy.DOOR),true)
+                    .strategy()==Strategy.DIRECT,
+              "Fast but much less reliable door route must not displace baseline");
         System.out.println("Repeated outcomes alter rules; restore retains them; failures adapt them");
     }
 '''
