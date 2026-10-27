@@ -34,7 +34,7 @@ class PhysicalResultsReporterTests(unittest.TestCase):
                       "knowledgePool": [{"slot": 1, "fitness": 9}]}
             after = {"completedGenerations": 1804, "strategyMemory": {
                      "observations": [None] * 94},
-                     "personalScores": [5, 5, 5, 6, 5, 5, 5, 5, 5, 5],
+                     "personalScores": [5, 5, 5, 6, 5, 5, 5, 5, 5],
                      "knowledgePool": [{"slot": 3, "fitness": 11}]}
             md, summary = report(trials, before, after, {"slowestTicks": 236},
                                  "123", "https://github.com/example/actions/123", "evolve")
@@ -75,7 +75,7 @@ class PhysicalResultsReporterTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Inconsistent"):
                 read_trials(Path(d))
             path.write_text(row(0, 4, 2).replace("realBuilderGolems=9",
-                                                 "realBuilderGolems=9")+"\n")
+                                                 "realBuilderGolems=8")+"\n")
             with self.assertRaisesRegex(ValueError, "Invalid physical-crew"):
                 read_trials(Path(d))
 
