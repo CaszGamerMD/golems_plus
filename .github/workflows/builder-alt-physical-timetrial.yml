@@ -62,6 +62,7 @@ jobs:
           python3 -m unittest discover -s scripts/tests -p test_export_real_evolution_replays.py -v
           python3 -m unittest discover -s scripts/tests -p test_export_alt_mobile_replays.py -v
           python3 -m unittest discover -s scripts/tests -p test_export_alt_bounded_replays.py -v
+          python3 -m unittest discover -s scripts/tests -p test_report_alt_physical_results.py -v
       - name: Isolate the real-entity training course from other GameTest arenas
         run: |
           python3 - <<'PY'
@@ -164,7 +165,9 @@ jobs:
           Path('build/timetrial-training/original-state.json').write_text(
               json.dumps({
                   'completedGenerations': state['completedGenerations'],
-                  'strategyObservations': len(state.get('strategyMemory',{}).get('observations',[]))
+                  'strategyObservations': len(state.get('strategyMemory',{}).get('observations',[])),
+                  'personalScores': state.get('personalScores', []),
+                  'knowledgePool': state.get('knowledgePool', [])
               }))
           PY
           failures=0
@@ -207,6 +210,16 @@ jobs:
           PY
           fi
           exit "${failures}"
+      - name: Report physical results and prioritized improvements
+        if: always()
+        shell: bash
+        env:
+          GOLEMS_EVOLUTION_MODE: ${{ github.event.inputs.mode || 'evolve' }}
+        run: |
+          python3 scripts/report_alt_physical_results.py \
+            --run-id "${GITHUB_RUN_ID}" \
+            --out training/alt/reports/latest.md \
+            --json-out training/alt/reports/latest.json
       # Viewer publication is intentionally paused at the user's request.
       # Keep real physical replay JSON, checkpoints and logs for diagnosis,
       # but do NOT repopulate HTML or the mobile-data feed.
@@ -228,6 +241,10 @@ jobs:
           if [[ -d training/alt/replays/live ]]; then
             cp -a training/alt/replays/live/. "$replay_backup/"
           fi
+          report_backup="$(mktemp -d)"
+          if [[ -f training/alt/reports/latest.md && -f training/alt/reports/latest.json ]]; then
+            cp training/alt/reports/latest.md training/alt/reports/latest.json "$report_backup/"
+          fi
           # Only preserve learning state and raw physical traces; the
           # optional replay viewer is not being maintained right now.
           # The GameTest workflow temporarily edits its Fabric test
@@ -241,9 +258,13 @@ jobs:
             python3 scripts/merge_alt_evolution_state.py "$local_state" training/alt/state
             mkdir -p training/alt/replays/live
             cp -an "$replay_backup/." training/alt/replays/live/
+            mkdir -p training/alt/reports/
+            if [[ -f "$report_backup/latest.md" && -f "$report_backup/latest.json" ]]; then
+              cp "$report_backup/latest.md" "$report_backup/latest.json" training/alt/reports/
+            fi
             # The raw real-entity movement archive is retained for
             # investigation; no HTML/mobile replay data is produced.
-            git add -- training/alt/state/ training/alt/replays/live/
+            git add -- training/alt/state/ training/alt/replays/live/ training/alt/reports/
             if git diff --cached --quiet; then
               echo 'No improved state over current remote.'
               exit 0
@@ -265,6 +286,7 @@ jobs:
           path: |
             training/alt/state/
             build/timetrial-training/real-builder-trial-*.log
+            training/alt/reports/
             training/alt/replays/live/
             build/gametest/
             build/reports/
