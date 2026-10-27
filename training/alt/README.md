@@ -1,3 +1,14 @@
+## Bottom-slab shortcut investigation — current status (1,305 physical generations)
+
+The user identified two separate problems: the wide ground-level half-slab shortcut (x6–8, z2–7) was never selected, and golems gathered at a nearby corner even when the next tile looked open.
+
+**Confirmed root cause:** old physically collected `blockedEdges` memory records 81–100 failures on the x9→8 bottom-slab entrances and 100 on several x16→15 steps. The A* planner added up to +10 cost per such edge, effectively excluding them long after physical grounded movement was fixed. Previously it ALSO added `slabAvoid` on every bottom slab and disallowed all diagonal movements on bottom slabs. Commits `303642b` and `0ae3c98` fix the geometric cost and remove obsolete blockage penalties *only* for live-geometry-verified bottom-slab edges. Historical records are retained, not deleted.
+
+**Verified Minecraft regressions** (same original schematic): `realBuilderPrefersWideGroundSlabShortcut` selects four westward steps crossing 3 bottom slab cells even when supplied an old 100-failure entry edge; `realBuilderWalksAcrossWideBottomSlabField` physically crosses the 4-block field in 22–25 ticks via native entity movement and .6 block step-up; `realBuilderFindsGlobalBottomSlabShortcutWithoutDoor` discovers a 21-step path across 6 slab cells without the slower open birch door; `diagonalBodyClear` allows diagonals on a level, supported slab plateau but rejects an unsafe diagonal across the raised edge.
+
+**Still failing at full crew level:** full three-session run [40465513613](https://github.com/CaszGamerMD/golems_plus/actions/runs/40465513613) and regression-enhanced [40465597880](https://github.com/CaszGamerMD/golems_plus/actions/runs/40465597880) both failed the 224-tick 10/10 qualification. Latest 40465597880 generation-0 physical 13s completions: 5/10, 5/10, 5/10; 224-tick completions: 3/10, 2/10, 3/10. The replay shows multiple runners meeting and remaining near x16,z2, with no static-block collision counted. The planner now *does* choose slab routes, but live teammates crowd a turning lane upstream. The existing courtesy budget of four lifetime ticks and `teammateWithin` stuck reset prevents reverse dance yet can also leave teams stationary. **Next work:** cooperative corridor occupancy and temporary congestion-aware replanning/arrival ordering, WITHOUT reinstating old half-slab penalties or treating teammates as permanent walls. The protected physically verified 236-tick historical champion is unchanged, and both mutant and successful-crew chromosomes remain separate. Never claim 224-tick qualification succeeded.
+
+---
 ## Physical confirmation of complete-crew retention
 
 [GitHub Actions run 40419002888](https://github.com/CaszGamerMD/golems_plus/actions/runs/40419002888) tested the restored, verified 10/10 cohort on the unchanged vanilla 13-second course:
