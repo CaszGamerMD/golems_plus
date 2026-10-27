@@ -126,6 +126,9 @@ jobs:
           assert 'realBuilderRejectsLowCeilingSlabButCanUseOpenHalfSlab' in test
           assert 'realBuilderCrossesExistingSingleOpenBirchDoor' in test
           assert 'realBuilderOpensClosedDoorAndWalksThrough' in test
+          assert 'realControllerEntersDoorOffCenterWithoutJumping' in test
+          assert 'int doorEntryAlignTicks,doorEntryStalls' in test
+          assert '&&!enteringDoorCell&&!leavingDoorCell' in test
           assert 'openDoorFromReach(world,mob,target)' in test
           assert 'updateKnowledgePool(this,b)' in test
           assert 'parents=knowledgePool.stream()' in test
