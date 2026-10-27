@@ -58,7 +58,29 @@ class ActualJavaStrategySelection(unittest.TestCase):
         NavigationStrategyMemory exploration=new NavigationStrategyMemory();
         int probes=0;
         for(int i=0;i<100;i++)if(exploration.choose(context,options,false).reason().equals("exploration"))probes++;
-        check(probes==20,"Exploration must be bounded to one in five decisions");
+        check(probes==25,"Exploration must be bounded to one in four decisions");
+        // Faster door journeys prompt more REAL test attempts even if
+        // failed door runners keep the strategy from becoming default.
+        NavigationStrategyMemory investigate=new NavigationStrategyMemory();
+        for(int i=0;i<16;i++){
+            investigate.observe(example("baselineSafe"+i,400+i,context,
+                    Strategy.DIRECT,i<12?235:-1));
+            investigate.observe(example("doorRisk"+i,450+i,context,
+                    Strategy.DOOR,i<5?214:-1));
+        }
+        check(investigate.choose(context,options,true).strategy()==Strategy.DIRECT,
+              "A substantially less reliable door route cannot be the default");
+        int doorProbes=0;
+        for(int i=0;i<40;i++){
+            Decision experiment=investigate.choose(context,options,false);
+            if(experiment.reason().equals("pace-exploration")){
+                check(experiment.strategy()==Strategy.DOOR,
+                      "Faster physical door completion must be sampled experimentally");
+                doorProbes++;
+            }
+        }
+        check(doorProbes==10,
+              "Faster but risky door route should get a bounded 25% trial budget");
         // Route through the wide slabs and then the door may arrive much
         // sooner without a higher finish percentage. Its speed should be
         // learned provided reliability remains close to the direct route.
