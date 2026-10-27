@@ -1187,14 +1187,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                         &&bodySweepClear(helper,world,mob,
                             ahead[0],ahead[1],after[0],after[1]);
             }
-            boolean nextTurn=b.cursor+1<b.route.length()
-                    &&b.route.charAt(b.cursor)!=b.route.charAt(b.cursor+1);
-            boolean raisedCorner=nearGroundSlabEdge(helper,world,
-                    b.x,b.z)||nearGroundSlabEdge(helper,world,
-                    ahead[0],ahead[1]);
             double acquisition=sameSafeStraight?.205:
-                    diagonalStep||precise||nextTurn&&raisedCorner
-                        ?Math.min(b.dna.tolerance(),.055)
+                    diagonalStep||precise
+                        ?Math.min(b.dna.tolerance(),.075)
                         :b.dna.tolerance();
             if(distance>=acquisition)break;
             b.x=ahead[0];
@@ -1306,8 +1301,6 @@ public final class BuilderEvolutionAltCourseGameTest {
                     ahead[0],ahead[1],look[0],look[1]);
         }
         if(!precision&&!nextPrecision
-                &&!nearGroundSlabEdge(helper,world,b.x,b.z)
-                &&!nearGroundSlabEdge(helper,world,ahead[0],ahead[1])
                 &&!teammateWithin(b,crew,.90)
                 &&b.cursor+1<b.route.length()&&distance<.45){
             int[] corner=next(ahead[0],ahead[1],
