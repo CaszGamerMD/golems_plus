@@ -107,7 +107,7 @@ jobs:
           assert 'for(int clone=0;clone<2;clone++)' in test
           assert 'obj.add("nextStrategies"' in test
           assert 'inheritedRouteLegal(' in test
-          assert '0,2,4,6,8,11,13,15,17,19' in test
+          assert '0,2,4,6,8,11,13,15,17' in test
           assert 'if(finished==bots.size()){' in test
           assert 'helper.succeed();return;' in test
           assert 'Physical evolution did not qualify all 9' in test
@@ -117,7 +117,7 @@ jobs:
           assert 'realBuilderPlannerDiscoversOpenBirchDoor' in test
           assert 'doorPlans=' in test
           assert 'doorCrossings=' in test
-          assert 'Genome.cross(a,b,rng).mutate(rng)' in test
+          assert 'genes.set(slot,parent.dna().mutate(rng));' in test
           assert 'spawnGeneration(helper,generationGenes,collisionMemory,' in test
           assert 'realBlockFailures' in test
           assert 'planRoute(' in test
