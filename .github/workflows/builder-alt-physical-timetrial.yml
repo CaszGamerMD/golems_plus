@@ -81,7 +81,7 @@ jobs:
           assert 'Physical evolution did not qualify all 10' in test
           assert 'private static final int SPEED_TARGET_TICKS=224;' in test
           assert 'finish11_2s=' in test
-          assert 'exploratoryRoute(start[0]' in test
+          assert 'StrategyPlan plan=chooseStrategy(start[0],start[1],genome,' in test
           assert 'realBuilderPlannerDiscoversOpenBirchDoor' in test
           assert 'doorPlans=' in test
           assert 'doorCrossings=' in test
