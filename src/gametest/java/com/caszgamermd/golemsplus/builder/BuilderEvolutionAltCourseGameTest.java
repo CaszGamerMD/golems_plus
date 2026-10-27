@@ -392,6 +392,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         // Physical evidence for actual low-step learning, NOT a planned
         // slab route or a replay interpolation.
         int slabApproachTicks,successfulSlabAscents,slabEntryStalls;
+        int doorEntryAlignTicks,doorEntryStalls;
         int yieldingTicks,trafficQueueTicks,trafficCrossingTicks;
         int trafficWaitTicks,trafficReroutes,lastTrafficRerouteTick=-1000;
         int safeCornerShortcuts;
@@ -1778,6 +1779,24 @@ public final class BuilderEvolutionAltCourseGameTest {
             distance=Math.hypot(dx,dz);
             if(nativeSlabAscent)b.movementMode="p";
         }
+        // A 0.65-wide body must be centered on the door's verified
+        // collision-safe lane BEFORE driving into its leaf. The old
+        // controller drove forward while drifting sideways, clipped the
+        // door edge, and sometimes jumped to unstick itself. Preserve
+        // Minecraft collision for all real movement: align on the
+        // approach tile, then proceed through both door faces.
+        boolean enteringDoorCell=MAZE[ahead[1]].charAt(ahead[0])=='D';
+        boolean leavingDoorCell=MAZE[b.z].charAt(b.x)=='D';
+        if(enteringDoorCell&&!leavingDoorCell&&distance<1.55){
+            if(ahead[0]!=b.x&&ahead[1]==b.z&&Math.abs(dz)>.045){
+                dx=0;
+                b.doorEntryAlignTicks++;
+            }else if(ahead[1]!=b.z&&ahead[0]==b.x&&Math.abs(dx)>.045){
+                dz=0;
+                b.doorEntryAlignTicks++;
+            }
+            distance=Math.hypot(dx,dz);
+        }
         boolean tallObstacle=stepRise>.600001;
         boolean approachingRaisedCell=tallObstacle
                 &&distance<=b.dna.jumpLead();
@@ -1791,7 +1810,8 @@ public final class BuilderEvolutionAltCourseGameTest {
         boolean solidAhead=world.getBlockCollisions(mob,
                 mob.getBoundingBox().move(proposedX,0,proposedZ))
                 .iterator().hasNext();
-        if(!centerApproach&&(approachingRaisedCell||solidAhead&&!lowStep&&b.immobile>4)
+        if(!centerApproach&&!enteringDoorCell&&!leavingDoorCell
+                &&(approachingRaisedCell||solidAhead&&!lowStep&&b.immobile>4)
                 &&grounded&&b.ticksSinceJump>=b.dna.jumpCooldown()){
             mob.setDeltaMovement(0,b.dna.jumpPower(),0);
             b.movementMode="j";
@@ -1887,6 +1907,9 @@ public final class BuilderEvolutionAltCourseGameTest {
         if(nativeSlabAscent&&Math.hypot(mob.getX()-old.x,
                 mob.getZ()-old.z)<.035)
             b.slabEntryStalls++;
+        if((enteringDoorCell||leavingDoorCell)
+                &&Math.hypot(mob.getX()-old.x,mob.getZ()-old.z)<.035)
+            b.doorEntryStalls++;
         // Count arrival on the SAME game tick as the physical move,
         // not on the following tick (which could be tick 361).
         if(world.getBlockState(mob.blockPosition().below()).is(RED)){
@@ -2369,6 +2392,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                 entry.addProperty("slabApproachTicks",b.slabApproachTicks);
                 entry.addProperty("successfulSlabAscents",b.successfulSlabAscents);
                 entry.addProperty("slabEntryStalls",b.slabEntryStalls);
+                entry.addProperty("doorEntryAlignTicks",b.doorEntryAlignTicks);
+                entry.addProperty("doorEntryStalls",b.doorEntryStalls);
                 entry.addProperty("precisionTicks",b.precisionTicks);
                 entry.addProperty("reroutes",b.reroutes);
                 entry.addProperty("yieldingTicks",b.yieldingTicks);
@@ -2404,6 +2429,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                 trace.addProperty("slabApproachTicks",b.slabApproachTicks);
                 trace.addProperty("successfulSlabAscents",b.successfulSlabAscents);
                 trace.addProperty("slabEntryStalls",b.slabEntryStalls);
+                trace.addProperty("doorEntryAlignTicks",b.doorEntryAlignTicks);
+                trace.addProperty("doorEntryStalls",b.doorEntryStalls);
                 trace.addProperty("precisionTicks",b.precisionTicks);
                 trace.addProperty("reroutes",b.reroutes);
                 trace.addProperty("yieldingTicks",b.yieldingTicks);
@@ -2750,6 +2777,10 @@ public final class BuilderEvolutionAltCourseGameTest {
                         .mapToInt(b->b.successfulSlabAscents).sum()
                     +" slabEntryStalls="+bots.stream()
                         .mapToInt(b->b.slabEntryStalls).sum()
+                    +" doorEntryAlignTicks="+bots.stream()
+                        .mapToInt(b->b.doorEntryAlignTicks).sum()
+                    +" doorEntryStalls="+bots.stream()
+                        .mapToInt(b->b.doorEntryStalls).sum()
                     +" fastestTicks="+(finished>0?fastest:-1)
                     +" slowestTicks="+(finished>0?slowest:-1)
                     +" stalled="+blockers);
