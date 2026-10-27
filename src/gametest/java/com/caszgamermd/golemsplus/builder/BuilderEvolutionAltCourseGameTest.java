@@ -332,6 +332,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         int yieldingTicks,trafficQueueTicks,trafficCrossingTicks;
         int safeCornerShortcuts;
         int trafficRecoveryTicks;
+        boolean initialRouteUsesDoor;
         int trafficPrioritySlot=-1;
         int lastRerouteTick=-1000;
         int doorTargetX=Integer.MIN_VALUE,doorTargetZ=Integer.MIN_VALUE;
@@ -461,7 +462,19 @@ public final class BuilderEvolutionAltCourseGameTest {
                                     int x,int z){
         if(!walkableCell(x,z))return Double.NaN;
         BlockPos feet=pos(helper,x,2,z);
-        var shape=world.getBlockState(feet).getCollisionShape(world,feet);
+        BlockState state=world.getBlockState(feet);
+        // Vertical OPEN door leaves are not floor surfaces! The
+        // generic max(Y)=1.0 check wrongly rejected the entire door
+        // as an impossible step, even though real Builders can cross.
+        // Preserve separate live full-body clearance and door-lane
+        // handling; don't allow closed or missing doors.
+        if(MAZE[z].charAt(x)=='D'){
+            if(!(state.getBlock() instanceof DoorBlock)
+                    ||!state.getValue(DoorBlock.OPEN))
+                return Double.NaN;
+            return feet.getY();
+        }
+        var shape=state.getCollisionShape(world,feet);
         double rise=shape.isEmpty()?0:shape.max(Direction.Axis.Y);
         if(rise>.600001)return Double.NaN;
         return feet.getY()+rise;
@@ -689,6 +702,19 @@ public final class BuilderEvolutionAltCourseGameTest {
         return route.reverse().toString();
     }
 
+    /** True only if this independently planned route ACTUALLY enters
+     * the open door's grid cell. This is a diagnostic, not route forcing.
+     */
+    private static boolean routeEntersDoor(int fromX,int fromZ,String route){
+        int x=fromX,z=fromZ;
+        for(int i=0;i<route.length();i++){
+            int[] ahead=next(x,z,route.charAt(i));
+            x=ahead[0];z=ahead[1];
+            if(MAZE[z].charAt(x)=='D')return true;
+        }
+        return false;
+    }
+
     private static List<Candidate> spawnGeneration(GameTestHelper helper,
             List<Genome> genomes,Map<Edge,Integer> blockMemory){
         ServerLevel world=helper.getLevel();
@@ -718,6 +744,11 @@ public final class BuilderEvolutionAltCourseGameTest {
             b.originX=origin.getX();
             b.originZ=origin.getZ();
             b.birthTick=helper.getTick();
+            b.initialRouteUsesDoor=routeEntersDoor(
+                    start[0],start[1],b.route);
+            if(b.initialRouteUsesDoor)
+                System.out.println("[ALT OPEN DOOR OPTION] slot="+slot
+                        +" planner discovered legal open door route");
             b.captureMovement(0);
             bots.add(b);
         }
@@ -1606,6 +1637,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 entry.addProperty("trafficCrossingTicks",b.trafficCrossingTicks);
                 entry.addProperty("trafficRecoveryTicks",b.trafficRecoveryTicks);
                 entry.addProperty("safeCornerShortcuts",b.safeCornerShortcuts);
+                entry.addProperty("initialRouteUsesDoor",b.initialRouteUsesDoor);
                 entry.addProperty("distanceMeters",b.measuredDistance);
                 physicalFitness.add(entry);
                 JsonObject trace=new JsonObject();
@@ -1630,6 +1662,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 trace.addProperty("trafficCrossingTicks",b.trafficCrossingTicks);
                 trace.addProperty("trafficRecoveryTicks",b.trafficRecoveryTicks);
                 trace.addProperty("safeCornerShortcuts",b.safeCornerShortcuts);
+                trace.addProperty("initialRouteUsesDoor",b.initialRouteUsesDoor);
                 trace.addProperty("distanceMeters",b.measuredDistance);
                 trace.add("genes",encode(b.dna));
                 trace.add("positions",b.movementSamples);
@@ -1751,6 +1784,10 @@ public final class BuilderEvolutionAltCourseGameTest {
             }
             if(roundTick<DEADLINE)return;
             int finished=0,finishedTarget=0;
+            long doorPlans=bots.stream().filter(b->b.initialRouteUsesDoor)
+                    .count();
+            long doorCrossings=bots.stream().filter(b->b.doorTicks>0)
+                    .count();
             double mean=0;
             int collisions=0,jumps=0;
             int fastest=DEADLINE+1,slowest=0;
@@ -1784,6 +1821,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                     +" realBuilderGolems="+bots.size()
                     +" finish13s="+finished+"/"+bots.size()
                     +" finish11_2s="+finishedTarget+"/"+bots.size()
+                    +" doorPlans="+doorPlans
+                    +" doorCrossings="+doorCrossings
                     +" best="+bestFinished
                     +" meanFitness="+Math.round(mean/bots.size())
                     +" collisions="+collisions+" jumps="+jumps
@@ -1953,6 +1992,46 @@ public final class BuilderEvolutionAltCourseGameTest {
                 lead.discard();follow.discard();
             }
         });
+    }
+
+    /**
+     * Regression for the exact real OPEN birch door, which the A*
+     * planner previously misclassified as a one-block floor riser.
+     * This test asserts availability and natural route discovery.
+     * The separate real door traversal test proves entity collision.
+     */
+    @GameTest(maxTicks=120,padding=64,skyAccess=true)
+    public void realBuilderPlannerDiscoversOpenBirchDoor(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos start=pos(helper,5,2,10);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(mob);
+        double floor=standingY(helper,world,4,10);
+        boolean physicallyOpen=physicalCellOpen(helper,world,mob,4,10);
+        String planned;
+        try{
+            planned=planRoute(5,10,SAVED_PHYSICAL_CHAMPIONS[0],
+                    Map.of(),helper,world,mob);
+        }catch(RuntimeException e){
+            helper.fail("Real door cannot be considered by planner: "+e);
+            mob.discard();
+            return;
+        }
+        if(!Double.isFinite(floor)||!physicallyOpen
+                ||!routeEntersDoor(5,10,planned)){
+            helper.fail("Open door erroneously excluded by planner: "
+                    +" floor="+floor+" bodyOpen="+physicallyOpen
+                    +" route="+planned);
+        }else{
+            System.out.println("[ALT OPEN DOOR REGRESSION] Planner "
+                    +"discovered open door via real physical geometry: "
+                    +planned);
+            helper.succeed();
+        }
+        mob.discard();
     }
 
     /**
