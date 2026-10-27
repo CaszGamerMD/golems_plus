@@ -105,7 +105,7 @@ def export(source, template, viewer, feed, batches=3):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--live", type=Path, default=Path("training/alt/replays/live-nine"))
-    parser.add_argument("--template", type=Path, default=Path("training/alt/replays/mobile-template.html"))
+    parser.add_argument("--template", type=Path, default=Path("training/alt/replays/mobile-nine-template.html"))
     parser.add_argument("--viewer", type=Path, default=Path("training/alt/replays/mobile-viewer.html"))
     parser.add_argument("--feed", type=Path, default=Path("training/alt/replays/mobile-data.json"))
     parser.add_argument("--batches", type=int, default=3)
