@@ -2688,6 +2688,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             return;
         }
         final int[] tick={0},openedAt={-1};
+        final double[] safeLane={Double.NaN};
         helper.onEachTick(()->{
             if(!mob.isAlive())return;
             if(tick[0]++>70){
@@ -2710,8 +2711,21 @@ public final class BuilderEvolutionAltCourseGameTest {
                 }
                 mob.discard();return;
             }
+            // Maintain a single verified centerline through BOTH
+            // faces of the opened door, as the production controller
+            // does. A blind central trajectory may clip its door leaf.
+            if(Double.isNaN(safeLane[0]))
+                safeLane[0]=safeDoorLane(world,mob,door,
+                        SAVED_PHYSICAL_CHAMPIONS[0],false);
+            double goalX=pos(helper,2,2,10).getX()+.5;
+            double goalZ=door.getZ()+.5+safeLane[0];
+            double dx=goalX-mob.getX(),dz=goalZ-mob.getZ();
+            double distance=Math.hypot(dx,dz);
+            double advance=Math.min(.2,distance);
             mob.getNavigation().stop();
-            mob.move(MoverType.SELF,new Vec3(-.2,-.08,0));
+            mob.move(MoverType.SELF,new Vec3(
+                    advance*dx/Math.max(.00001,distance),-.08,
+                    advance*dz/Math.max(.00001,distance)));
         });
     }
 
