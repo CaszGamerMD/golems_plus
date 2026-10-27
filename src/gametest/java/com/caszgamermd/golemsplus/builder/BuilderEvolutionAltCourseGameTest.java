@@ -2151,7 +2151,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         boolean edgeDiagonal=diagonalBodyClear(helper,world,mob,
                 9,4,8,5);
         String planned=planRouteTo(9,5,SAVED_PHYSICAL_CHAMPIONS[0],
-                Map.of(),helper,world,mob,5,5);
+                Map.of(new Edge(9,5,8,5),100),helper,world,mob,5,5);
         int x=9,z=5,slabCount=0;
         for(int i=0;i<planned.length();i++){
             int[] p=next(x,z,planned.charAt(i));
