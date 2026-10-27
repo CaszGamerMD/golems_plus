@@ -8,6 +8,9 @@ on:
     paths:
       - src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderEvolutionAltCourseGameTest.java
       - .github/workflows/builder-alt-physical-timetrial.yml
+      - scripts/export_alt_mobile_replays.py
+      - scripts/tests/test_export_alt_mobile_replays.py
+      - training/alt/replays/mobile-template.html
   workflow_dispatch:
 
 permissions:
@@ -39,6 +42,7 @@ jobs:
           python3 -m unittest discover -s scripts/tests -p test_merge_real_evolution_state.py -v
           python3 -m unittest discover -s scripts/tests -p test_merge_alt_evolution_state.py -v
           python3 -m unittest discover -s scripts/tests -p test_export_real_evolution_replays.py -v
+          python3 -m unittest discover -s scripts/tests -p test_export_alt_mobile_replays.py -v
       - name: Isolate the real-entity training course from other GameTest arenas
         run: |
           python3 - <<'PY'
@@ -120,6 +124,9 @@ jobs:
       - name: Generate offline HTML with every physical generation
         if: always()
         run: python3 scripts/export_alt_evolution_replays.py --session-prefix "" --viewer training/alt/replays/route-viewer.html
+      - name: Build mobile offline replay and online future-test feed
+        if: always()
+        run: python3 scripts/export_alt_mobile_replays.py --batches 3
       - name: Commit learned real-entity genes, EVEN IF the trial fails
         if: always() && (github.head_ref == 'feature/builder-evolutionary-alt-course-262' || github.ref == 'refs/heads/feature/builder-evolutionary-alt-course-262') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         shell: bash
@@ -155,7 +162,11 @@ jobs:
             # Rebuild using BOTH locally captured and remotely published
             # generations. CI runs must not hide older test routes.
             python3 scripts/export_alt_evolution_replays.py --session-prefix "" --viewer training/alt/replays/route-viewer.html
-            git add -- training/alt/state/ training/alt/replays/live/ training/alt/replays/route-viewer.html
+            # Rebuild the newest test batches AFTER merging remote runs
+            # so the phone's fixed data URL always includes future tests,
+            # even when GameTest did not reach the 11.2-second goal.
+            python3 scripts/export_alt_mobile_replays.py --batches 3
+            git add -- training/alt/state/ training/alt/replays/live/ training/alt/replays/route-viewer.html training/alt/replays/mobile-viewer.html training/alt/replays/mobile-data.json
             if git diff --cached --quiet; then
               echo 'No improved state over current remote.'
               exit 0
@@ -178,6 +189,8 @@ jobs:
             training/alt/state/
             build/timetrial-training/real-builder-trial-*.log
             training/alt/replays/live/
+            training/alt/replays/mobile-viewer.html
+            training/alt/replays/mobile-data.json
             build/gametest/
             build/reports/
             build/test-results/
