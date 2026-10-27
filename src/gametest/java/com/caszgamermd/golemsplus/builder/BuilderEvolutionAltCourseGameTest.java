@@ -301,6 +301,10 @@ public final class BuilderEvolutionAltCourseGameTest {
                 slabTicks++;
             if("p".equals(movementMode))precisionTicks++;
             if("c".equals(movementMode))blockedTicks++;
+            if("q".equals(movementMode)||"y".equals(movementMode))
+                yieldingTicks++;
+            if("q".equals(movementMode))trafficQueueTicks++;
+            if("y".equals(movementMode))trafficCrossingTicks++;
             JsonArray sample=new JsonArray();
             sample.add(tick);
             sample.add((int)Math.round((realX-originX)*1000));
@@ -321,6 +325,8 @@ public final class BuilderEvolutionAltCourseGameTest {
         double doorLaneShift;
         boolean doorOffsetX;
         int slabTicks,reroutes,precisionTicks,staticStalls;
+        int yieldingTicks,trafficQueueTicks,trafficCrossingTicks;
+        int trafficPrioritySlot=-1;
         int lastRerouteTick=-1000;
         int doorTargetX=Integer.MIN_VALUE,doorTargetZ=Integer.MIN_VALUE;
         int exitTargetX=Integer.MIN_VALUE,exitTargetZ=Integer.MIN_VALUE;
@@ -796,10 +802,105 @@ public final class BuilderEvolutionAltCourseGameTest {
         }
     }
 
+    /**
+     * Estimated distance ALONG each independently chosen route, used
+     * only to establish traffic right-of-way. Not an arrival score,
+     * not a saved path and not an evolution shortcut. Closest to the
+     * end moves first so followers can take vacated physical space.
+     */
+    private static double remainingPathMeters(Candidate bot){
+        double distance=0;
+        int x=bot.x,z=bot.z;
+        for(int n=bot.cursor;n<bot.route.length();n++){
+            char step=bot.route.charAt(n);
+            int[] next=next(x,z,step);
+            distance+=Math.hypot(next[0]-x,next[1]-z);
+            x=next[0];z=next[1];
+        }
+        if(bot.cursor<bot.route.length()){
+            int[] next=next(bot.x,bot.z,
+                    bot.route.charAt(bot.cursor));
+            double fromCenter=Math.hypot(next[0]-bot.x,next[1]-bot.z);
+            double toWaypoint=Math.hypot(next[0]+.5
+                    -(bot.mob.getX()-bot.originX),next[1]+.5
+                    -(bot.mob.getZ()-bot.originZ));
+            distance+=toWaypoint-fromCenter;
+        }
+        return Math.max(0,distance);
+    }
+
+    private record TrafficMotion(double vx,double vz,
+                                 boolean yielding,boolean queue,
+                                 int leaderSlot){}
+
+    /**
+     * Physical corridor manners: no pushing through the 0.65-wide
+     * golem ahead. The nearer-to-finish traveler owns the right of
+     * way. A follower makes room in a single-file queue without
+     * backtracking or marking the FLOOR as an impassable block.
+     * We inspect only ACTUAL living entities; no imaginary blocks
+     * or scripted waypoint route is introduced.
+     *
+     * Movement calls are ordered front-to-back each tick. This
+     * lets a leader vacate a place before a queued golem advances.
+     */
+    private static TrafficMotion coordinateTraffic(Candidate self,
+            List<Candidate> group,double vx,double vz){
+        double speed=Math.hypot(vx,vz);
+        if(speed<.00001||group.size()<2)
+            return new TrafficMotion(vx,vz,false,false,-1);
+        double dirX=vx/speed,dirZ=vz/speed;
+        double allowance=speed;
+        boolean yielding=false,queue=false;
+        int yieldingFor=-1;
+        double ownPriority=remainingPathMeters(self);
+        for(Candidate peer:group){
+            if(peer==self||peer.arrivedTick>=0||!peer.mob.isAlive()
+                    ||Math.abs(peer.mob.getY()-self.mob.getY())>.65)
+                continue;
+            double rx=peer.mob.getX()-self.mob.getX();
+            double rz=peer.mob.getZ()-self.mob.getZ();
+            double gap=Math.hypot(rx,rz);
+            if(gap>1.35)continue;
+            double ahead=rx*dirX+rz*dirZ;
+            double lateral=Math.abs(rx*dirZ-rz*dirX);
+            if(lateral>=.68)continue;
+            // A peer already ahead of us owns its position. Stay
+            // 0.70 blocks apart horizontally: slightly more than
+            // the true 0.65 collision diameter, not an entire tile.
+            if(ahead>.03&&ahead<1.3){
+                double legal=Math.max(0,ahead-.70);
+                if(legal<allowance){
+                    allowance=legal;
+                    yielding=true;
+                    queue=true;
+                    yieldingFor=peer.index;
+                }
+            }else if(ahead>=-.12&&gap<.75){
+                // Two players approach the same corner sideways:
+                // grant fixed deterministic right-of-way and avoid
+                // mirror-image attempts to escape simultaneously.
+                double priority=remainingPathMeters(peer);
+                if(priority<ownPriority-.01
+                        ||(Math.abs(priority-ownPriority)<.01
+                            &&peer.index<self.index)){
+                    allowance=0;
+                    yielding=true;
+                    yieldingFor=peer.index;
+                }
+            }
+        }
+        if(!yielding)return new TrafficMotion(vx,vz,false,false,-1);
+        double ratio=Math.min(1,Math.max(0,allowance/speed));
+        return new TrafficMotion(vx*ratio,vz*ratio,
+                true,queue,yieldingFor);
+    }
+
     /** Controller uses real Minecraft entity move + collisions; only
      * genes controlling WALK / JUMP / alignment can be selected.
      */
-    private static void walkOneTick(GameTestHelper helper,Candidate b){
+    private static void walkOneTick(GameTestHelper helper,Candidate b,
+                                     List<Candidate> crew){
         BuilderGolem mob=b.mob;
         b.movementMode="w";
         if(!mob.isAlive()||b.arrivedTick>=0)return;
@@ -977,6 +1078,22 @@ public final class BuilderEvolutionAltCourseGameTest {
             vx*=SPEED_CAP/norm;
             vz*=SPEED_CAP/norm;
         }
+        // Respect a traveling golem ahead rather than letting native
+        // entity pushing turn the whole convoy into a collision dance.
+        // These traffic holds are NOT stuck ticks and must not trigger
+        // jumping, backing off or pollute static collision memory.
+        TrafficMotion polite=coordinateTraffic(b,crew,vx,vz);
+        if(polite.yielding()){
+            b.movementMode=polite.queue()?"q":"y";
+            b.trafficPrioritySlot=polite.leaderSlot();
+            b.immobile=0;
+            b.backoffTicks=0;
+            b.staticStalls=0;
+            b.lastDistance=Double.POSITIVE_INFINITY;
+            if(Math.hypot(polite.vx(),polite.vz())<.002)return;
+        }else b.trafficPrioritySlot=-1;
+        vx=polite.vx();
+        vz=polite.vz();
         // Actual mob collision resolver, not a simulated tile hop.
         mob.setNoGravity(false);
         mob.getNavigation().stop();
@@ -1308,6 +1425,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                 entry.addProperty("slabTicks",b.slabTicks);
                 entry.addProperty("precisionTicks",b.precisionTicks);
                 entry.addProperty("reroutes",b.reroutes);
+                entry.addProperty("yieldingTicks",b.yieldingTicks);
+                entry.addProperty("trafficQueueTicks",b.trafficQueueTicks);
+                entry.addProperty("trafficCrossingTicks",b.trafficCrossingTicks);
                 entry.addProperty("distanceMeters",b.measuredDistance);
                 physicalFitness.add(entry);
                 JsonObject trace=new JsonObject();
@@ -1327,6 +1447,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                 trace.addProperty("slabTicks",b.slabTicks);
                 trace.addProperty("precisionTicks",b.precisionTicks);
                 trace.addProperty("reroutes",b.reroutes);
+                trace.addProperty("yieldingTicks",b.yieldingTicks);
+                trace.addProperty("trafficQueueTicks",b.trafficQueueTicks);
+                trace.addProperty("trafficCrossingTicks",b.trafficCrossingTicks);
                 trace.addProperty("distanceMeters",b.measuredDistance);
                 trace.add("genes",encode(b.dna));
                 trace.add("positions",b.movementSamples);
@@ -1431,11 +1554,21 @@ public final class BuilderEvolutionAltCourseGameTest {
             if(roundTick<0)return;
             // End at exactly 260 ticks, without allowing another
             // movement after the deadline.
-            if(roundTick<DEADLINE)
-                for(Candidate b:bots){
-                    walkOneTick(helper,b);
+            if(roundTick<DEADLINE){
+                // The crew shares one traffic plan; closer-to-goal
+                // golems clear the corridor before their followers.
+                // Genetics, real collisions and end conditions stay
+                // unchanged, only cooperative dispatch order differs.
+                List<Candidate> ordered=new ArrayList<>(bots);
+                ordered.sort(Comparator
+                    .comparingDouble(
+                        BuilderEvolutionAltCourseGameTest::remainingPathMeters)
+                    .thenComparingInt(b->b.index));
+                for(Candidate b:ordered){
+                    walkOneTick(helper,b,bots);
                     b.captureMovement((int)roundTick+1);
                 }
+            }
             if(roundTick<DEADLINE)return;
             int finished=0;
             double mean=0;
@@ -1575,6 +1708,60 @@ public final class BuilderEvolutionAltCourseGameTest {
             generationStart=absoluteTick+1;
             bots=spawnGeneration(helper,generationGenes,collisionMemory);
         }
+    }
+
+
+    /**
+     * Two ACTUAL Builder entities in a one-cell corridor: the forward
+     * one must have right-of-way while the trailing one walks without
+     * clipping, shoving or triggering backward stuck-recovery.
+     */
+    @GameTest(maxTicks=100,padding=18,skyAccess=true)
+    public void realBuildersQueueWithoutShoving(GameTestHelper helper){
+        for(int x=1;x<=11;x++)for(int z=1;z<=5;z++){
+            helper.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=5;y++)helper.setBlock(x,y,z,Blocks.AIR);
+        }
+        ServerLevel world=helper.getLevel();
+        BuilderGolem lead=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BuilderGolem follow=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos a=helper.absolutePos(new BlockPos(6,2,3));
+        BlockPos b=helper.absolutePos(new BlockPos(7,2,3));
+        lead.setPos(a.getX()+.50,a.getY(),a.getZ()+.5);
+        follow.setPos(b.getX()+.30,b.getY(),b.getZ()+.5);
+        world.addFreshEntity(lead);
+        world.addFreshEntity(follow);
+        Candidate first=new Candidate(0,lead,"WWWWW",6,3,
+                SAVED_PHYSICAL_CHAMPIONS[0],Map.of());
+        Candidate second=new Candidate(1,follow,"WWWWW",7,3,
+                SAVED_PHYSICAL_CHAMPIONS[1],Map.of());
+        first.originX=a.getX()-6;first.originZ=a.getZ()-3;
+        second.originX=first.originX;second.originZ=first.originZ;
+        List<Candidate> crew=List.of(first,second);
+        final int[] ticks={0},yielded={0};
+        helper.onEachTick(()->{
+            if(ticks[0]++>=15){
+                if(yielded[0]<1)helper.fail("Follower never yielded to leader");
+                else if(lead.getX()>=a.getX()+.5-1.0)
+                    helper.fail("Leader could not make forward progress");
+                else helper.succeed();
+                lead.discard();follow.discard();return;
+            }
+            // Native movement only. Sort front-to-back before moving.
+            TrafficMotion ahead=coordinateTraffic(first,crew,-.2,0);
+            TrafficMotion behind=coordinateTraffic(second,crew,-.2,0);
+            if(behind.yielding())yielded[0]++;
+            if(!ahead.yielding()){
+                lead.move(MoverType.SELF,new Vec3(ahead.vx(),-.08,ahead.vz()));
+            }
+            if(behind.vx()<-.001)
+                follow.move(MoverType.SELF,new Vec3(
+                        behind.vx(),-.08,behind.vz()));
+            if(follow.getX()<lead.getX()+.64){
+                helper.fail("Golems overlapped, convoy order not respected");
+                lead.discard();follow.discard();
+            }
+        });
     }
 
     /**
