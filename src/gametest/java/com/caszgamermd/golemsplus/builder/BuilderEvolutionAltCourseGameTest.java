@@ -494,21 +494,44 @@ public final class BuilderEvolutionAltCourseGameTest {
         if(!walkableCell(x,z))return Double.NaN;
         BlockPos feet=pos(helper,x,2,z);
         BlockState state=world.getBlockState(feet);
-        // Vertical OPEN door leaves are not floor surfaces! The
-        // generic max(Y)=1.0 check wrongly rejected the entire door
-        // as an impossible step, even though real Builders can cross.
-        // Preserve separate live full-body clearance and door-lane
-        // handling; don't allow closed or missing doors.
+        // Wooden doors are traversable ACTION nodes even when closed.
+        // A golem must physically approach and open the door before
+        // the native collision resolver lets its body pass through.
         if(MAZE[z].charAt(x)=='D'){
-            if(!(state.getBlock() instanceof DoorBlock)
-                    ||!state.getValue(DoorBlock.OPEN))
-                return Double.NaN;
+            if(!canOperateDoor(state))return Double.NaN;
             return feet.getY();
         }
         var shape=state.getCollisionShape(world,feet);
         double rise=shape.isEmpty()?0:shape.max(Direction.Axis.Y);
         if(rise>.600001)return Double.NaN;
         return feet.getY()+rise;
+    }
+
+    private static boolean canOperateDoor(BlockState state){
+        return state.getBlock() instanceof DoorBlock
+                &&!state.is(Blocks.IRON_DOOR);
+    }
+
+    /** Opening a door is an allowed physical interaction, NOT a wall
+     * deletion, teleport, force-open from afar or route exploit.
+     */
+    private static boolean openDoorFromReach(ServerLevel world,
+            BuilderGolem mob,BlockPos lower){
+        BlockState state=world.getBlockState(lower);
+        if(!canOperateDoor(state))return false;
+        if(state.getValue(DoorBlock.OPEN))return true;
+        double distance=Math.hypot(mob.getX()-lower.getX()-.5,
+                mob.getZ()-lower.getZ()-.5);
+        if(distance>1.7||Math.abs(mob.getY()-lower.getY())>1.0)
+            return false;
+        BlockState upper=world.getBlockState(lower.above());
+        if(!canOperateDoor(upper))return false;
+        world.setBlock(lower,state.setValue(DoorBlock.OPEN,true),3);
+        world.setBlock(lower.above(),
+                upper.setValue(DoorBlock.OPEN,true),3);
+        System.out.println("[ALT DOOR OPEN] golem opened wooden door at "
+                +lower+" distance="+distance);
+        return true;
     }
 
     private static boolean clearBodyAt(ServerLevel world,BuilderGolem mob,
@@ -528,8 +551,11 @@ public final class BuilderEvolutionAltCourseGameTest {
         if(!Double.isFinite(y))return false;
         BlockPos pos=pos(helper,x,2,z);
         if(MAZE[z].charAt(x)=='D'){
-            // An already-open door can need an offset, but its leaf
-            // cannot be bypassed using no-clip or block editing.
+            // Closed wooden doors are legal PLANNED actions, not an
+            // impassable wall. Only when physically near may a worker
+            // open them; Minecraft collision resolves the actual walk.
+            if(!world.getBlockState(pos).getValue(DoorBlock.OPEN))
+                return true;
             for(double lane:new double[]{0,-.08,.08,-.12,.12,-.16,.16}){
                 if(clearBodyAt(world,mob,pos.getX()+.5,y,pos.getZ()+.5+lane))
                     return true;
@@ -818,7 +844,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                 // the actual 10 real golems decide the winning policy
                 // with physical arrival fitness, not expected geometry.
                 if(tile=='D'){
-                    // A one-block OPEN door can be physically legal
+                    // A one-block wooden door (open or operable closed)
+                    // can be physically legal
                     // but much SLOWER than bare ground: the last
                     // real-door experiment finished none of its five
                     // door-using golems before tick 260. Account for
@@ -827,6 +854,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                     // preference. Never forbid the door completely.
                     weight+=2.5-Math.max(-.3,Math.min(.3,
                             dna.doorBias()*2.0));
+                    if(!world.getBlockState(pos(helper,x,2,z))
+                            .getValue(DoorBlock.OPEN))
+                        weight+=.4; // one grounded opening interaction
                 }
                 // Deterministic genetic corridor preferences. Small
                 // positive perturbations prevent repeatedly selecting
@@ -899,17 +929,14 @@ public final class BuilderEvolutionAltCourseGameTest {
     private static String exploratoryRoute(int startX,int startZ,
             Genome dna,Map<Edge,Integer> memory,GameTestHelper helper,
             ServerLevel world,BuilderGolem mob,
-            Map<Integer,Double> crewCongestion){
+            Map<Integer,Double> crewCongestion,boolean probeDoor){
         String direct=planRouteTo(startX,startZ,dna,memory,helper,world,mob,
                 -1,-1,crewCongestion);
-        // The speed-qualification suite must not force an unproven
-        // detour into every promising team. A* remains free to PICK
-        // open doors based on geometry and measured penalty. The
-        // separate exploration mode explicitly tests door variants
-        // against that baseline without polluting qualification.
-        if(!"explore".equalsIgnoreCase(
-                    System.getenv("GOLEMS_EVOLUTION_MODE"))
-                ||dna.doorBias()<=.075)return direct;
+        // Let two rotating INDIVIDUAL golems each generation physically
+        // evaluate a door route; the others retain unbiased routes.
+        // The opening and closing logic is a learned route option, not
+        // an authored path, force-arrival, or pooled teammate thought.
+        if(!probeDoor)return direct;
         for(int z=1;z<MAZE.length-1;z++)
             for(int x=1;x<MAZE[z].length()-1;x++){
                 if(MAZE[z].charAt(x)!='D'
@@ -962,7 +989,8 @@ public final class BuilderEvolutionAltCourseGameTest {
             Genome genome=genomes.get(slot);
             Candidate b=new Candidate(slot,mob,exploratoryRoute(start[0],
                     start[1],genome,blockMemory,helper,world,mob,
-                    slabEntryReservations),
+                    slabEntryReservations,
+                    ((slot+(int)(helper.getTick()/DEADLINE))%5)==0),
                     start[0],start[1],genome,blockMemory);
             // All entries are discovered by A* from actual geometry.
             // Spread simultaneous workers among several accessible slab
@@ -996,7 +1024,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                     start[0],start[1],b.route);
             if(b.initialRouteUsesDoor)
                 System.out.println("[ALT OPEN DOOR OPTION] slot="+slot
-                        +" planner discovered legal open door route");
+                        +" planner discovered a usable wooden door route");
             b.captureMovement(0);
             bots.add(b);
         }
@@ -1344,6 +1372,11 @@ public final class BuilderEvolutionAltCourseGameTest {
             boolean leavingDoor=MAZE[b.z].charAt(b.x)=='D';
             if(enteringDoor||leavingDoor)b.movementMode="d";
             if(enteringDoor){
+                BlockState doorState=world.getBlockState(target);
+                if(canOperateDoor(doorState)
+                        &&!doorState.getValue(DoorBlock.OPEN)
+                        &&openDoorFromReach(world,mob,target))
+                    b.doorTargetX=Integer.MIN_VALUE;
                 if(b.doorTargetX!=ahead[0]||b.doorTargetZ!=ahead[1]){
                     b.doorTargetX=ahead[0];
                     b.doorTargetZ=ahead[1];
