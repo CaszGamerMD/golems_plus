@@ -63,6 +63,7 @@ def encode_trace(record):
              sum(e.get("cleared") is True for e in bot.get("localEpisodes", [])),
              sorted({e["action"] for e in bot.get("localEpisodes", [])})],
             bot.get("nativeEntityTicks"),
+            bot.get("familyParentSlot", -1),bot.get("familyRole", "seed"),
         ])
     arrivals = [bot["arrivedTicks"] for bot in record["bots"] if bot["arrivedTicks"] >= 0]
     meta = [
