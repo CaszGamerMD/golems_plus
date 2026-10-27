@@ -847,7 +847,11 @@ public final class BuilderEvolutionAltCourseGameTest {
     private static TrafficMotion coordinateTraffic(Candidate self,
             List<Candidate> group,double vx,double vz){
         double speed=Math.hypot(vx,vz);
-        if(speed<.00001||group.size()<2)
+        // Courtesy never becomes a permanent stop. On a 260-tick
+        // physical course a queue that waits 60-120 ticks is worse
+        // than vanilla real-entity collision recovery. Four total
+        // courtesy ticks per golem, then continue actual walking.
+        if(speed<.00001||group.size()<2||self.yieldingTicks>=4)
             return new TrafficMotion(vx,vz,false,false,-1);
         double dirX=vx/speed,dirZ=vz/speed;
         double allowance=speed;
@@ -885,8 +889,27 @@ public final class BuilderEvolutionAltCourseGameTest {
             // destination. Side-by-side, head-on and crossing golems
             // must NOT wait for one another until their real body
             // envelopes genuinely overlap.
-            if(headingAgreement>.80&&lateral<.42
-                    &&ahead>.03&&ahead<1.30){
+            // Restrict single-file queuing to a true shared STRAIGHT
+            // corridor, not mixed-angle turns or green spawn lanes.
+            // Both participants must be committed to the same next
+            // three steps. The native movement solver still owns any
+            // other real entity contact.
+            int selfStraight=0,peerStraight=0;
+            if(self.cursor<self.route.length()){
+                char ownDirection=self.route.charAt(self.cursor);
+                for(int i=self.cursor;i<self.route.length()
+                        &&self.route.charAt(i)==ownDirection;i++)
+                    selfStraight++;
+            }
+            if(peer.cursor<peer.route.length()){
+                char theirDirection=peer.route.charAt(peer.cursor);
+                for(int i=peer.cursor;i<peer.route.length()
+                        &&peer.route.charAt(i)==theirDirection;i++)
+                    peerStraight++;
+            }
+            if(headingAgreement>.92&&lateral<.28
+                    &&selfStraight>=3&&peerStraight>=3
+                    &&ahead>.03&&ahead<.95){
                 double legal=Math.max(0,ahead-.70);
                 if(legal<allowance){
                     allowance=legal;
@@ -894,7 +917,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                     queue=true;
                     yieldingFor=peer.index;
                 }
-            }else if(gap<.63&&ahead>-.12){
+            }else if(gap<.52&&ahead>-.12){
                 // Already within the real 0.65-wide body diameter:
                 // only then assign crossing right-of-way, breaking
                 // mirrored reactions with a fixed tie-breaker.
