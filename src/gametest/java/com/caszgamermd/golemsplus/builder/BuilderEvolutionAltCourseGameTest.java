@@ -3378,6 +3378,56 @@ public final class BuilderEvolutionAltCourseGameTest {
      * near-body opening action before native collision traversal.
      * This isolated fixture never alters the scored user's schematic.
      */
+    /**
+     * Use the actual evolutionary movement controller when entering the
+     * real birch door slightly off-center. The old code repeatedly drove
+     * its hitbox into the open door leaf and then jumped before finally
+     * clearing it. A direct-move-only door test did not catch that.
+     */
+    @GameTest(maxTicks=100,padding=64,skyAccess=true)
+    public void realControllerEntersDoorOffCenterWithoutJumping(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BlockPos start=pos(helper,5,2,10),origin=pos(helper,0,2,0);
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.26);
+        mob.setNoGravity(false);
+        world.addFreshEntity(mob);
+        Candidate b=new Candidate(0,mob,"WWWW",5,10,
+                SAVED_PHYSICAL_CHAMPIONS[0],Map.of());
+        b.originX=origin.getX();b.originZ=origin.getZ();
+        b.birthTick=helper.getTick();
+        final int[] ticks={0};
+        final boolean[] done={false};
+        helper.onEachTick(()->{
+            if(done[0])return;
+            if(b.arrivedTick>=0){
+                done[0]=true;
+                System.out.println("[ALT REAL CONTROLLER DOOR] ticks="+ticks[0]
+                        +" jumps="+b.jumps
+                        +" stalls="+b.doorEntryStalls
+                        +" alignTicks="+b.doorEntryAlignTicks);
+                if(b.jumps!=0||b.doorEntryStalls>2||ticks[0]>33)
+                    helper.fail("Actual controller stuttered entering door:"
+                            +" ticks="+ticks[0]+" jumps="+b.jumps
+                            +" stalls="+b.doorEntryStalls);
+                else helper.succeed();
+                return;
+            }
+            if(!mob.isAlive()||ticks[0]++>40){
+                done[0]=true;
+                helper.fail("Actual controller failed to cross off-center "
+                        +"door, ticks="+ticks[0]+" position="+mob.position()
+                        +" cursor="+b.cursor+" jumps="+b.jumps
+                        +" stalls="+b.doorEntryStalls);
+                mob.discard();return;
+            }
+            b.controlTick++;
+            walkOneTick(helper,b,List.of(b));
+        });
+    }
+
     @GameTest(maxTicks=140,padding=64,skyAccess=true)
     public void realBuilderOpensClosedDoorAndWalksThrough(
             GameTestHelper helper){
