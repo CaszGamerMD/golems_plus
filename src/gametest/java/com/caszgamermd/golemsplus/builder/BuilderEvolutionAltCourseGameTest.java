@@ -301,6 +301,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 slabTicks++;
             if("p".equals(movementMode))precisionTicks++;
             if("c".equals(movementMode))blockedTicks++;
+            if("t".equals(movementMode))trafficRecoveryTicks++;
             if("q".equals(movementMode)||"y".equals(movementMode))
                 yieldingTicks++;
             if("q".equals(movementMode))trafficQueueTicks++;
@@ -326,6 +327,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         boolean doorOffsetX;
         int slabTicks,reroutes,precisionTicks,staticStalls;
         int yieldingTicks,trafficQueueTicks,trafficCrossingTicks;
+        int trafficRecoveryTicks;
         int trafficPrioritySlot=-1;
         int lastRerouteTick=-1000;
         int doorTargetX=Integer.MIN_VALUE,doorTargetZ=Integer.MIN_VALUE;
@@ -937,6 +939,27 @@ public final class BuilderEvolutionAltCourseGameTest {
                 true,queue,yieldingFor);
     }
 
+    /**
+     * Distinguish traffic from static obstacles using REAL live
+     * teammate positions, never a cached map of guessed walls.
+     * It is normal for several 0.65-wide golems to approach the
+     * same turning point; their mutual push must not trigger
+     * backing into each other or permanent blocked-edge mutations.
+     */
+    private static boolean teammateWithin(Candidate self,
+            List<Candidate> crew,double radius){
+        for(Candidate other:crew){
+            if(other==self||!other.mob.isAlive()
+                    ||other.arrivedTick>=0
+                    ||Math.abs(other.mob.getY()-self.mob.getY())>.75)
+                continue;
+            if(Math.hypot(other.mob.getX()-self.mob.getX(),
+                    other.mob.getZ()-self.mob.getZ())<radius)
+                return true;
+        }
+        return false;
+    }
+
     /** Controller uses real Minecraft entity move + collisions; only
      * genes controlling WALK / JUMP / alignment can be selected.
      */
@@ -1032,12 +1055,19 @@ public final class BuilderEvolutionAltCourseGameTest {
         if(b.immobile>=b.dna.stuckTimeout()){
             b.immobile=0;
             b.lastDistance=Double.POSITIVE_INFINITY;
-            b.backoffTicks=3;
-            b.collisions++;
-            // If the door's first approach was obstructed by another
-            // mob, allow a new physical clearance probe on recovery.
-            b.doorTargetX=Integer.MIN_VALUE;
-            b.exitTargetX=Integer.MIN_VALUE;
+            if(teammateWithin(b,crew,1.15)){
+                // Polite congestion, not a failed nav edge. NEVER
+                // reverse into the very neighbor causing the pause.
+                b.backoffTicks=0;
+                b.movementMode="t";
+                b.trafficRecoveryTicks++;
+            }else{
+                b.backoffTicks=3;
+                b.collisions++;
+                // Reprobe only on genuine obstruction recovery.
+                b.doorTargetX=Integer.MIN_VALUE;
+                b.exitTargetX=Integer.MIN_VALUE;
+            }
         }
         b.ticksSinceJump++;
         // GameTest's explicit horizontal move(MoverType.SELF,...) can
@@ -1085,9 +1115,17 @@ public final class BuilderEvolutionAltCourseGameTest {
         // Driving back for 3 ticks breaks a collision lock without
         // passing through solid blocks.
         if(b.backoffTicks>0){
-            b.movementMode="b";
-            step=-Math.min(b.dna.backoff(),SPEED_CAP);
-            b.backoffTicks--;
+            if(teammateWithin(b,crew,1.15)){
+                // A formerly empty escape lane now contains a
+                // teammate. Cancel the reversal instead of shoving.
+                b.backoffTicks=0;
+                b.movementMode="t";
+                b.trafficRecoveryTicks++;
+            }else{
+                b.movementMode="b";
+                step=-Math.min(b.dna.backoff(),SPEED_CAP);
+                b.backoffTicks--;
+            }
         }
         double vx=step*dx/Math.max(.00001,distance);
         double vz=step*dz/Math.max(.00001,distance);
@@ -1107,6 +1145,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                     ahead[0],ahead[1],look[0],look[1]);
         }
         if(!precision&&!nextPrecision
+                &&!teammateWithin(b,crew,.90)
                 &&b.cursor+1<b.route.length()&&distance<.45){
             int[] corner=next(ahead[0],ahead[1],
                     b.route.charAt(b.cursor+1));
@@ -1469,6 +1508,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 entry.addProperty("yieldingTicks",b.yieldingTicks);
                 entry.addProperty("trafficQueueTicks",b.trafficQueueTicks);
                 entry.addProperty("trafficCrossingTicks",b.trafficCrossingTicks);
+                entry.addProperty("trafficRecoveryTicks",b.trafficRecoveryTicks);
                 entry.addProperty("distanceMeters",b.measuredDistance);
                 physicalFitness.add(entry);
                 JsonObject trace=new JsonObject();
@@ -1491,6 +1531,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 trace.addProperty("yieldingTicks",b.yieldingTicks);
                 trace.addProperty("trafficQueueTicks",b.trafficQueueTicks);
                 trace.addProperty("trafficCrossingTicks",b.trafficCrossingTicks);
+                trace.addProperty("trafficRecoveryTicks",b.trafficRecoveryTicks);
                 trace.addProperty("distanceMeters",b.measuredDistance);
                 trace.add("genes",encode(b.dna));
                 trace.add("positions",b.movementSamples);
