@@ -1,4 +1,4 @@
-name: 13s VANILLA alternate track — 10 actual Builder Golems
+name: 11.2s goal on real alt track — 10 actual Builder Golems (13s baseline preserved)
 # Qualification run: re-test the preserved real-entity winning cohort in three unchanged alt-track trials; no navigation/genes altered.
 
 on:
@@ -69,7 +69,10 @@ jobs:
           assert '0,2,4,6,8,11,13,15,17,19' in test
           assert 'if(finished==bots.size()){' in test
           assert 'helper.succeed();return;' in test
-          assert 'Physical evolution failed after ' in test
+          assert 'Physical evolution did not qualify all 10' in test
+          assert 'private static final int SPEED_TARGET_TICKS=224;' in test
+          assert 'finish11_2s=' in test
+          assert 'safeSupportedCornerCut(helper,world,mob' in test
           assert 'Genome.cross(a,b,rng).mutate(rng)' in test
           assert 'spawnGeneration(helper,generationGenes,collisionMemory)' in test
           assert 'realBlockFailures' in test
