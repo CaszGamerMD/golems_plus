@@ -285,7 +285,9 @@ public final class BuilderEvolutionAltCourseGameTest {
      * out the learnings of the other nine workers.
      */
     private record Knowledge(int slot,Genome dna,double fitness,
-                             int arrivedTick,double progress,int generation){}
+                             int arrivedTick,double progress,int generation,
+                             NavigationStrategyMemory.Strategy policy,
+                             String route){}
 
     /** An elite's evidence belongs to its original starting slot. */
     private static List<Genome> pinElites(List<Genome> population,
@@ -298,12 +300,11 @@ public final class BuilderEvolutionAltCourseGameTest {
         double score=b.fitness();
         Knowledge record=new Knowledge(b.index,b.dna,score,b.arrivedTick,
                 b.bestCursor+(b.cursor<b.route.length() ? 0.0 : 1.0),
-                run.completedGenerations+1);
-        // Per-slot improvement is graded by finish time first, then by
-        // physical forward progress when unfinished. Do not require 10/10.
-        Knowledge previous=run.knowledgePool.stream()
-                .filter(k->k.slot()==b.index).findFirst().orElse(null);
-        if(previous!=null&&previous.fitness()>=score)return;
+                run.completedGenerations+1,
+                b.strategyDecision.strategy(),b.initialRoute);
+        // Rank THIS generation's physical finishers, not historical lane
+        // champions. Failed runs are ranked by genuine forward progress.
+        // Exactly three distinct parents feed the next nine-golem cohort.
         run.knowledgePool.removeIf(k->k.slot()==b.index);
         run.knowledgePool.add(record);
         run.knowledgePool.sort(Comparator
@@ -2299,7 +2300,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             if(run.legacyStrategyMemory!=null)obj.add("legacyStrategyMemory",run.legacyStrategyMemory.deepCopy());
             if(run.legacyGeneticKnowledge!=null)obj.add("legacyGeneticKnowledge",run.legacyGeneticKnowledge.deepCopy());
             obj.addProperty("lastCompleted",finished);
-            obj.addProperty("lastSlowestTicks",finished==10?slowest:-1);
+            obj.addProperty("lastSlowestTicks",finished==SELECTED_BOTS.length?slowest:-1);
             obj.addProperty("lastMeanFitness",mean);
             obj.addProperty("lastGenerationIndex",run.generation);
             // Both lineages are retained separately: nextPopulation
@@ -2337,6 +2338,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                 member.addProperty("progress",k.progress());
                 member.addProperty("generation",k.generation());
                 member.add("genes",encode(k.dna()));
+                member.addProperty("strategy",k.policy().name());
+                member.addProperty("route",k.route());
                 pool.add(member);
             }
             obj.add("knowledgePool",pool);
@@ -2560,6 +2563,9 @@ public final class BuilderEvolutionAltCourseGameTest {
         List<Genome> lastSuccessfulPopulation=List.of();
         List<Integer> lastSuccessfulArrivalTicks=List.of();
         List<Genome> pendingExploration=List.of();
+        List<NavigationStrategyMemory.Strategy> generationStrategies=new ArrayList<>();
+        List<String> generationRoutes=new ArrayList<>();
+        List<Integer> generationFamilyOrigins=new ArrayList<>();
         int lastSuccessfulGeneration;
         boolean lastSuccessfulNativeVerified;
         final boolean exploreMode="explore".equalsIgnoreCase(
@@ -2737,8 +2743,15 @@ public final class BuilderEvolutionAltCourseGameTest {
                     championScores[b.index]=b.fitness();
                     // An INDIVIDUAL improvement is retained even if the
                     // other nine workers fail, without team qualification.
-                    updateKnowledgePool(this,b);
                 }
+            }
+            if(!consistencyMode){
+                // Parents are the THREE best real entities that just ran.
+                // Historical personal bests remain separately protected.
+                knowledgePool.clear();
+                for(Candidate b:bots)updateKnowledgePool(this,b);
+                if(knowledgePool.size()!=3)
+                    throw new IllegalStateException("Expected three real generation parents");
             }
             bestFinished=Math.max(bestFinished,finished);
             bestFinishedThisSession=Math.max(bestFinishedThisSession,finished);
