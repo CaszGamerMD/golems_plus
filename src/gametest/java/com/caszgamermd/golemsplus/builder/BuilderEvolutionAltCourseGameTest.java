@@ -986,6 +986,23 @@ public final class BuilderEvolutionAltCourseGameTest {
         if(precisionTransition(helper,world,fromX,fromZ,midX,midZ)
                 ||precisionTransition(helper,world,midX,midZ,endX,endZ))
             return false;
+        // An apparently open corner can feed into a tight 0.5-step
+        // slab/overhead opening a moment later. Keep centerline
+        // discipline through a generous TWO-BLOCK buffer around
+        // every slab or door, not only the current grid edge.
+        for(int[] vertex:new int[][]{{fromX,fromZ},{midX,midZ},{endX,endZ}}){
+            BlockPos center=pos(helper,vertex[0],2,vertex[1]);
+            for(int ax=-2;ax<=2;ax++)for(int az=-2;az<=2;az++){
+                BlockPos nearby=center.offset(ax,0,az);
+                BlockState feet=world.getBlockState(nearby);
+                BlockState head=world.getBlockState(nearby.above());
+                if(feet.getBlock() instanceof SlabBlock
+                        ||head.getBlock() instanceof SlabBlock
+                        ||feet.getBlock() instanceof DoorBlock
+                        ||head.getBlock() instanceof DoorBlock)
+                    return false;
+            }
+        }
         double sy=standingY(helper,world,fromX,fromZ);
         if(!Double.isFinite(sy)
                 ||Math.abs(sy-standingY(helper,world,midX,midZ))>.001
@@ -1077,7 +1094,10 @@ public final class BuilderEvolutionAltCourseGameTest {
             // route. Skip ONE intermediate center on a turn only
             // when the entire real-body direct line is safe.
             if(!shortcutUsed&&!precise&&!diagonalStep
-                    &&distance<1.35&&b.cursor+1<b.route.length()
+                    &&distance<.70
+                    &&!teammateWithin(b,crew,1.3)
+                    &&b.cursor+1<b.route.length()
+                    &&("NESW".indexOf(b.route.charAt(b.cursor+1))>=0)
                     &&b.route.charAt(b.cursor)!=b.route.charAt(b.cursor+1)){
                 int[] beyond=next(ahead[0],ahead[1],
                         b.route.charAt(b.cursor+1));
