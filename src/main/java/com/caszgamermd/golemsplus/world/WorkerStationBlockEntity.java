@@ -1169,7 +1169,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     public boolean startPlacedBuilder(UUID actor){
         if(!canConfigure(actor)||!isBuilder()||!hasPlacedSchematic()
-                ||activeOrder!=null||warehouse==null
+                ||activeOrder!=null||(warehouse==null&&builderMaterialStorage==null)
                 ||builderWorkerIds().isEmpty()||builderBlocks<1)return false;
         activeOrder=UUID.randomUUID();builderCursor=0;completedAhead=0;
         builderClearCursor=0;builderClearByFile.put(builderFile,0);
