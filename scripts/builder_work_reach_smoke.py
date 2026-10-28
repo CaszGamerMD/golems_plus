@@ -18,7 +18,8 @@ assert "BuilderPlacementSpace.invalidateApproach(worker,pos)" in work
 assert "routeTo(level,worker,pos,.85)" in work
 assert "return;" in work
 assert "for(int dx=-3;dx<=3;dx++)" in space
-assert "for(int dy:new int[]{0,1,-1,2,-2})" in space
+assert "for(int dy:sameHeight?new int[]{0}:new int[]{0,1,-1,2,-2})" in space
+assert "public static BlockPos approachAtTargetY(" in space
 assert "p.distSqr(target)>=14" in space
 assert "rejected.put(worker,new Rejected(" in space
 assert "WorkerNavigation.canReachExact(level,worker,p)" in space
