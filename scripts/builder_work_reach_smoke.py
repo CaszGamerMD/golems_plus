@@ -23,7 +23,10 @@ assert "public static void invalidateApproach(" in space
 assert "endsAtExactTile(Path path,BlockPos target)" in nav
 assert "last.x==target.getX()&&last.z==target.getZ()" in nav
 assert "return endsAtExactTile(path,target)&&safePath(level,mob,path,false)" in nav
-assert "if(!endsAtExactTile(path,target)||!safePath" in nav
+assert "WorkerRoutePlanner.Route plan=WorkerRoutePlanner.plan(" in nav
+assert "List.of(target)" in nav
+assert "if(!endsAtExactTile(path,waypoint)" in nav
+assert "||!safePath(level,mob,path,false)" in nav
 assert "public static String debugStatus(PathfinderMob mob)" in nav
 assert "debugStatus(worker)" in service
 print("PASS: builders outside five-to-six block placement range continue toward exact reachable standing tiles")
