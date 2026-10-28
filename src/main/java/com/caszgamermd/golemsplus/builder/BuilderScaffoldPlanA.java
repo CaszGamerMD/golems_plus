@@ -217,13 +217,29 @@ public final class BuilderScaffoldPlanA {
                     +" player="+owner.getGameProfile().name());
             return Result.NO_SAFE_ROUTE;
         }
+        // Use the known real scaffold connection to compute the native
+        // initial support distance. Placing defaultBlockState() briefly
+        // installs distance=7 (unsupported); Minecraft updates neighbours
+        // later. A new, valid horizontal bridge can be rejected/fall before
+        // that scheduled update. A column has distance 0; horizontal
+        // cantilevers inherit 1..6 from their attached neighbouring cell.
+        var parent=level.getBlockState(previous);
+        int distance=parent.getValue(
+                net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE)+1;
+        if(distance>MAX_HORIZONTAL_SCAFFOLD_SPAN)
+            return Result.NO_SAFE_ROUTE;
+        var state=Blocks.SCAFFOLDING.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,
+                        distance)
+                .setValue(net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM,
+                        !level.getBlockState(at.below()).is(Blocks.SCAFFOLDING));
         var load=BuilderSupplyInventory.loadScaffold(level,worker,table,1);
         if(load==BuilderSupplyInventory.ScaffoldLoad.MOVING)return Result.MOVING;
         if(load==BuilderSupplyInventory.ScaffoldLoad.MISSING)
             return Result.NEED_MATERIALS;
         var receipt=BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING);
         if(receipt==null)return Result.NEED_MATERIALS;
-        if(!level.setBlock(at,Blocks.SCAFFOLDING.defaultBlockState(),3)
+        if(!level.setBlock(at,state,3)
                 ||!level.getBlockState(at).is(Blocks.SCAFFOLDING)){
             BuilderSupplyInventory.refund(table,receipt);
             return Result.NO_SAFE_ROUTE;
