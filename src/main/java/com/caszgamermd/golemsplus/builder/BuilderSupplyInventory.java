@@ -262,7 +262,7 @@ public final class BuilderSupplyInventory {
         if(depot==null||storage==null)return LoadStatus.MISSING;
         if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                 depot.getZ()+.5)>12){
-            if(BuilderScaffolding.descendForTravel(level,worker,table))
+            if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
                 return LoadStatus.MOVING;
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                     level,worker,depot,.83);
@@ -277,12 +277,9 @@ public final class BuilderSupplyInventory {
             if(next.requiredItem()!=null)
                 materials.merge(next.requiredItem(),1,Integer::sum);
         }
-        // A few scaffold blocks for elevated assignments; ordinary ground
-        // work has no reason to fill a worker's pouch with scaffolding.
-        if(highest-worker.getY()>2.5)
-            materials.merge("minecraft:scaffolding",Math.min(32,
-                    Math.max(4,highest-worker.blockPosition().getY()+2)),
-                    Math::max);
+        // Plan B needs one reusable real item per Builder, not consumable
+        // scaffold blocks. Keep that tool in the 9-slot pouch on every trip.
+        materials.put("golems_plus:grapple_hook",1);
         // Preserve enough actual items for the requested cells, unload the
         // rest. A full OnSite Storage never deletes carried block inventory.
         for(int slot=0;slot<worker.getContainerSize();slot++){
@@ -388,7 +385,7 @@ public final class BuilderSupplyInventory {
             if(site==null||depot==null)return LoadStatus.MISSING;
             if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                     depot.getZ()+.5)>12){
-                if(BuilderScaffolding.descendForTravel(level,worker,table))
+                if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
                     return LoadStatus.MOVING;
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                         level,worker,depot,.83);
@@ -429,7 +426,7 @@ public final class BuilderSupplyInventory {
                     continue;
                 if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                         depot.getZ()+.5)>12){
-                    if(BuilderScaffolding.descendForTravel(level,worker,table))
+                    if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
                         return LoadStatus.MOVING;
                     com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                             level,worker,depot,.83);
@@ -628,6 +625,27 @@ public final class BuilderSupplyInventory {
         }
         return all;
     }
+    /** Physically fetch one reusable Grapple Hook from OnSite Storage. */
+    public static LoadStatus loadGrapple(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table){
+        Item tool=com.caszgamermd.golemsplus.world.WorksiteContent.GRAPPLE_HOOK;
+        if(worker.carriedCount(tool)>0)return LoadStatus.READY;
+        BlockPos depot=table.builderUnloadingStorage();
+        if(depot==null||selectedStorage(table)==null
+                ||!containsInSources(table,tool))return LoadStatus.MISSING;
+        if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                depot.getZ()+.5)>12){
+            if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
+                return LoadStatus.MOVING;
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                    level,worker,depot,.83);
+            return LoadStatus.MOVING;
+        }
+        if(room(worker,new ItemStack(tool))<=0)return LoadStatus.MISSING;
+        drawFromSources(table,worker,tool,1);
+        return worker.carriedCount(tool)>0?LoadStatus.READY:LoadStatus.MISSING;
+    }
+
     public enum ScaffoldLoad { READY, MOVING, MISSING }
     /** Fetch scaffolding with the same real chest/pouch contract as build
      * materials. No tower block can be purchased from a distant container.
@@ -641,7 +659,7 @@ public final class BuilderSupplyInventory {
         if(source==null)return ScaffoldLoad.MISSING;
         BlockPos pos=table.builderUnloadingStorage();
         if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>12){
-            if(BuilderScaffolding.descendForTravel(level,worker,table))
+            if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
                 return ScaffoldLoad.MOVING;
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                     level,worker,pos,.82);

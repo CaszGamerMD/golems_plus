@@ -112,17 +112,12 @@ public final class BuilderSiteClearance {
             BuilderChunkTickets.destination(world,worker,pos);
             boolean surfaceSnow=existing.is(Blocks.SNOW);
             if(!surfaceSnow&&pos.getY()-worker.getY()>2.5){
-                var reach=BuilderScaffolding.reach(
-                        world,worker,table,owner,pos,construction);
-                if(reach==BuilderScaffolding.Result.NEED_MATERIALS){
-                    table.setProblem("CLEARING: needs supplied scaffolding at "+pos);
-                    BuilderWarehouseCoordinator.requestScaffolding(
-                            world,worker,table,owner,construction);
-                    return false;
-                }
-                if(reach!=BuilderScaffolding.Result.NOT_NEEDED){
-                    if(reach==BuilderScaffolding.Result.NO_SAFE_TOWER)
-                        table.setProblem("CLEARING: no safe scaffold column "+pos);
+                var reach=BuilderGrappleAccess.reach(world,worker,table,pos);
+                if(reach!=BuilderGrappleAccess.Result.READY){
+                    if(reach==BuilderGrappleAccess.Result.NEED_HOOK)
+                        table.setProblem("CLEARING: needs physical Grapple Hook "+pos);
+                    else if(reach==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR)
+                        table.setProblem("CLEARING: no safe grapple anchor "+pos);
                     return false;
                 }
             }
