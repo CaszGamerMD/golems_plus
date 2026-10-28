@@ -14,7 +14,9 @@
       "com.caszgamermd.golemsplus.builder.BuilderDoorwayGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderDoorCrowdGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderWorkAccessGameTest",
-      "com.caszgamermd.golemsplus.builder.BuilderSafeScaffoldGameTest"
+      "com.caszgamermd.golemsplus.builder.BuilderSafeScaffoldGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderScaffoldBridgeGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderScaffoldCourseChestGameTest"
     ]
   }
 }

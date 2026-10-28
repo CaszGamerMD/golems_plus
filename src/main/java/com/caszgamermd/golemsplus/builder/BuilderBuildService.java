@@ -496,6 +496,19 @@ public final class BuilderBuildService {
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
             if(workDistance>14){
+                // Build a bounded, reversible scaffold walkway from an
+                // OWNED tower when the job is horizontally out of reach.
+                // Real placements consume inventory and reserve a safe
+                // path back to the tower before the first extension.
+                var bridge=BuilderScaffolding.bridgeTowardWork(
+                        level,worker,table,owner,pos,plan.steps());
+                if(bridge==BuilderScaffolding.Result.CLIMBING)return;
+                if(bridge==BuilderScaffolding.Result.NEED_MATERIALS){
+                    table.setProblem("Needs scaffolding for a safe bridge to "+pos);
+                    BuilderWarehouseCoordinator.requestScaffolding(
+                            level,worker,table,owner,plan.steps());
+                    return;
+                }
                 // Leave a completed scaffold onto an adjacent solid upper
                 // walkway BEFORE asking vanilla A* to path from its
                 // non-walkable scaffolding node. This is crucial for

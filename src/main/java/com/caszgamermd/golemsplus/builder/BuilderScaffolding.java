@@ -66,6 +66,8 @@ public final class BuilderScaffolding {
                                BlockPos groundExit,long until){}
     private static final java.util.Map<BuilderGolem,AccessRoute> access=
             new java.util.WeakHashMap<>();
+    private static final java.util.Map<BuilderGolem,
+            BuilderScaffoldBridgePlanner.Route> bridges=new java.util.WeakHashMap<>();
     private BuilderScaffolding(){}
 
     private static void clearMotion(BuilderGolem worker){
@@ -110,6 +112,7 @@ public final class BuilderScaffolding {
         returning.remove(worker);
         exiting.remove(worker);
         access.remove(worker);
+        bridges.remove(worker);
     }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
         ClimbSession session=sessions.get(worker);
@@ -449,7 +452,117 @@ public final class BuilderScaffolding {
         if(exit==null)return false;
         clearMotion(worker);
         access.remove(worker);
+        BuilderScaffoldTrialStats.landed(worker);
         exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));
+        return true;
+    }
+
+    /** Physically construct a bounded, reversible scaffold walkway
+     * outward from an EXISTING owned top-of-ladder scaffold. The trained
+     * navigation system remains the only route selector; this handles
+     * scaffold construction, not an independent walking navigator.
+     */
+    public static Result bridgeTowardWork(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            ServerPlayer owner,BlockPos target,
+            List<BuilderConstructionPlan.Step> plan){
+        if(exiting.containsKey(worker))return Result.CLIMBING;
+        BlockPos feet=worker.blockPosition();
+        BlockPos under=feet.below();
+        var current=bridges.get(worker);
+        if(current!=null&&!current.work().equals(target)){
+            // A new construction assignment cannot silently discard the
+            // return path. Descend and replan from real ground instead.
+            return returnAlongBridge(level,worker,table)
+                    ?Result.CLIMBING:Result.NO_SAFE_TOWER;
+        }
+        if(current==null){
+            if(!level.getBlockState(under).is(Blocks.SCAFFOLDING)
+                    ||!table.scaffoldPositions(worker.getUUID()).contains(under))
+                return Result.NOT_NEEDED;
+            current=BuilderScaffoldBridgePlanner.choose(level,worker,
+                    table,owner,under,target,
+                    BuilderScaffoldBridgePlanner.reserved(plan));
+            if(current==null){
+                BuilderScaffoldTrialStats.rejected(worker);
+                return Result.NOT_NEEDED;
+            }
+            bridges.put(worker,current);
+            BuilderScaffoldTrialStats.selected(worker,current);
+        }
+        var ordered=current.cells();
+        BlockPos here=worker.blockPosition().below();
+        int index=here.equals(current.anchor())?-1:ordered.indexOf(here);
+        if(!here.equals(current.anchor())&&index<0){
+            // The current footing disappeared; do not create a magic
+            // horizontal route or resume until physically supported.
+            return Result.NO_SAFE_TOWER;
+        }
+        if(index==ordered.size()-1)return Result.NOT_NEEDED;
+        BlockPos next=ordered.get(index+1);
+        BlockPos nextFeet=next.above();
+        if(!table.scaffoldPositions(worker.getUUID()).contains(next)){
+            if(!level.hasChunkAt(next)||!level.mayInteract(owner,next)
+                    ||!level.getBlockState(next).isAir()
+                    ||!level.getBlockState(nextFeet).isAir())
+                return Result.NO_SAFE_TOWER;
+            var supply=BuilderSupplyInventory.loadScaffold(level,worker,table,1);
+            if(supply==BuilderSupplyInventory.ScaffoldLoad.MOVING)
+                return Result.CLIMBING;
+            if(supply==BuilderSupplyInventory.ScaffoldLoad.MISSING)
+                return Result.NEED_MATERIALS;
+            // Every bridge segment must attach to the physical previous
+            // scaffold. Maximum six segments (vanilla scaffold support);
+            // no diagonal placement, floating jump or free materials.
+            BlockPos prior=index<0?current.anchor():ordered.get(index);
+            if(next.distManhattan(prior)!=1
+                    ||!level.getBlockState(prior).is(Blocks.SCAFFOLDING))
+                return Result.NO_SAFE_TOWER;
+            var receipt=BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING);
+            if(receipt==null)return Result.NEED_MATERIALS;
+            if(!level.setBlock(next,Blocks.SCAFFOLDING.defaultBlockState(),3)){
+                BuilderSupplyInventory.refund(table,receipt);
+                return Result.NO_SAFE_TOWER;
+            }
+            if(!table.trackScaffold(worker.getUUID(),next)){
+                level.setBlock(next,Blocks.AIR.defaultBlockState(),3);
+                BuilderSupplyInventory.refund(table,receipt);
+                return Result.NO_SAFE_TOWER;
+            }
+            BuilderScaffoldTrialStats.placed(worker);
+        }else if(!level.getBlockState(next).is(Blocks.SCAFFOLDING))
+            return Result.NO_SAFE_TOWER;
+        if(!stepToPlatform(level,worker,nextFeet))
+            return Result.NO_SAFE_TOWER;
+        return Result.CLIMBING;
+    }
+
+    /** Bridge descent goes from last plank to first, then the genuine
+     * vertical scaffold column. Keep the walkway intact until feet are
+     * back on its anchor. The existing top-down retrieval can later
+     * reclaim all tracked scaffold materials when on solid ground.
+     */
+    private static boolean returnAlongBridge(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table){
+        var route=bridges.get(worker);
+        if(route==null)return false;
+        BlockPos footing=worker.blockPosition().below();
+        if(footing.equals(route.anchor())){
+            bridges.remove(worker);
+            return false; // continue into the true vertical descent
+        }
+        int index=route.cells().indexOf(footing);
+        if(index<0){
+            // Never claim a safe scaffold return from an unrecognized
+            // midair position. Preserve the plan for physical recovery.
+            return false;
+        }
+        BlockPos back=index==0?route.anchor():route.cells().get(index-1);
+        if(!table.scaffoldPositions(worker.getUUID()).contains(back)
+                ||!level.getBlockState(back).is(Blocks.SCAFFOLDING))
+            return false;
+        if(!stepToPlatform(level,worker,back.above()))return false;
+        BuilderScaffoldTrialStats.retreat(worker);
         return true;
     }
 
@@ -471,6 +584,10 @@ public final class BuilderScaffolding {
             return true;
         }
         if(exiting.containsKey(worker))return true;
+        // A temporary walkway is a reversible route TO the vertical
+        // ladder. Never begin a vertical descent from its unsupported
+        // far edge. Retrace placed segments one at a time first.
+        if(returnAlongBridge(level,worker,table))return true;
         var found=towers(level,table,worker);
         if(found.isEmpty()){
             returning.remove(worker);access.remove(worker);return false;
