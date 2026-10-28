@@ -502,6 +502,15 @@ public final class BuilderBuildService {
                 // circling buildings after reaching the required height.
                 if(BuilderScaffolding.stepOffTowardWork(level,worker,table,pos))
                     return;
+                // If no supported upper landing exists, return down the
+                // Builder's own real scaffold and dismount before invoking
+                // horizontal A*. Never route off the edge from midair.
+                BlockPos under=worker.blockPosition().below();
+                if(level.getBlockState(under).is(
+                            net.minecraft.world.level.block.Blocks.SCAFFOLDING)
+                        &&table.scaffoldPositions(worker.getUUID()).contains(under)
+                        &&BuilderScaffolding.descendForTravel(level,worker,table))
+                    return;
                 // The NEXT job step is not in physical placing range yet.
                 // Regardless of the previous navigation state, continue
                 // approaching until the distance check genuinely passes.
