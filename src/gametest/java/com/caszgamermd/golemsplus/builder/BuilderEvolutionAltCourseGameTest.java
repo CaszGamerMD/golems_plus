@@ -3819,8 +3819,34 @@ public final class BuilderEvolutionAltCourseGameTest {
                     throw new IllegalStateException(
                             "Door toggled because of teammate congestion");
             }
+            // Three blocked ticks followed by REAL forward motion
+            // must reset the timer instead of changing the door state.
+            b.doorNoForwardTicks=3;
+            double oldX=mob.getX(),oldZ=mob.getZ();
+            mob.move(MoverType.SELF,new Vec3(-.08,-.08,0));
+            if(mob.getX()>=oldX-.01)
+                throw new IllegalStateException("Real approach movement failed");
+            int retriesBefore=b.doorStateRetries;
+            boolean stateBefore=world.getBlockState(door).getValue(DoorBlock.OPEN);
+            recordDoorForwardProgress(b,world,door,oldX,oldZ,4,10,false,false);
+            if(b.doorNoForwardTicks!=0||b.doorStateRetries!=retriesBefore
+                    ||world.getBlockState(door).getValue(DoorBlock.OPEN)!=stateBefore)
+                throw new IllegalStateException("Actual forward motion caused a flip");
+
+            // Two workers may share one door. If another worker changes
+            // its state, the old three-tick count cannot trigger a flip.
+            b.doorNoForwardTicks=3;
+            BlockState current=world.getBlockState(door);
+            BlockState currentUpper=world.getBlockState(door.above());
+            world.setBlock(door,current.setValue(DoorBlock.OPEN,!stateBefore),3);
+            world.setBlock(door.above(),
+                    currentUpper.setValue(DoorBlock.OPEN,!stateBefore),3);
+            recordDoorForwardProgress(b,world,door,
+                    mob.getX(),mob.getZ(),4,10,false,false);
+            if(b.doorStateRetries!=retriesBefore||b.doorNoForwardTicks!=1)
+                throw new IllegalStateException("Stale worker reversed peer's door");
             System.out.println("[ALT FOUR-TICK DOOR RETRY] "
-                    +"both start states and teammate exclusion verified");
+                    +"both start states, physical progress and teammate exclusion verified");
             helper.succeed();
         }catch(IllegalStateException failure){
             helper.fail(failure.getMessage());
