@@ -47,12 +47,48 @@ final class WorkerRoutePlannerTest {
         BlockPos old=from;
         for(BlockPos next:route.steps()){
             assertTrue(floor.contains(next));
-            assertEquals(1,Math.abs(old.getX()-next.getX())
-                    +Math.abs(old.getZ()-next.getZ()));
+            // Eight-direction policy permits swept, corner-safe
+            // diagonals, but each actual coordinate still advances no
+            // more than one horizontal tile per step.
+            int dx=Math.abs(old.getX()-next.getX());
+            int dz=Math.abs(old.getZ()-next.getZ());
+            assertTrue(dx<=1&&dz<=1&&dx+dz>=1);
+            if(dx==1&&dz==1){
+                assertTrue(floor.contains(at(next.getX(),64,old.getZ())));
+                assertTrue(floor.contains(at(old.getX(),64,next.getZ())));
+            }
             old=next;
         }
         assertEquals(target,old);
-        assertEquals(8,route.steps().size());
+        assertTrue(route.steps().size()<=8);
+    }
+    @Test void usesFastDiagonalsAcrossPhysicallyClearSlabSizedOpenings(){
+        BlockPos from=at(0,64,0),goal=at(3,64,3);
+        Set<BlockPos> flat=new HashSet<>();
+        for(int x=0;x<=3;x++)for(int z=0;z<=3;z++)
+            flat.add(at(x,64,z));
+        var plan=find(from,List.of(goal),flat);
+        assertNotNull(plan);assertTrue(plan.complete());
+        assertEquals(3,plan.steps().size());
+        assertEquals(42,plan.cost(),"Three collision-valid diagonals beat six straight moves");
+    }
+    @Test void neverCornersThroughSolidBlocksEvenWhenDiagonalGoalIsFree(){
+        BlockPos from=at(0,64,0),goal=at(1,64,1);
+        assertNull(find(from,List.of(goal),Set.of(from,goal)),
+                "Both cardinal clearance cells must be walkable for a diagonal");
+    }
+    @Test void trainedDoorCostSelectsCollisionValidLongerRoute(){
+        BlockPos from=at(0,64,0),goal=at(4,64,0);
+        Set<BlockPos> floor=new HashSet<>();
+        for(int x=0;x<=4;x++)for(int z=0;z<=1;z++)
+            floor.add(at(x,64,z));
+        BlockPos door=at(2,64,0);
+        var plan=WorkerRoutePlanner.plan(from,List.of(goal),floor::contains,
+                BlockPos::getY,BlockPos.ZERO,
+                p->p.equals(door)?2.5:0.0);
+        assertNotNull(plan);assertTrue(plan.complete());
+        assertFalse(plan.steps().contains(door),
+                "An open slab-side alternative should beat a time-consuming door");
     }
     @Test void unreachableNearTargetMustNotBeCalledProgress(){
         BlockPos start=at(0,64,0),target=at(3,64,0);

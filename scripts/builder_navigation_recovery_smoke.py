@@ -8,12 +8,13 @@ scaffolds=(root/"builder/BuilderScaffolding.java").read_text()
 assert "getBlockCollisions(mob,body).iterator().hasNext()" in navigation
 assert "world.noCollision(mob,body)" in navigation
 assert "world.getBlockCollisions" in navigation
-assert "MAX_DESTINATION_PATHS*2" in navigation
-assert "best!=null&&checked>8" in navigation
+assert "WorkerRoutePlanner.plan(" in navigation
+assert "at->trainedTerrainCost(level,at)" in navigation
 assert "mob.blockPosition().equals(feet)" in navigation
 assert "Math.abs(a-b)>.60)continue;" in navigation
 # Walking to a depot/doorway must NEVER be short-circuited by placing reach.
-assert "if(option.feet().equals(mob.blockPosition()))continue;" in navigation
+assert "One native A* only for a SHORT portion" in navigation
+assert "int[]{3,2,1}" in navigation
 assert "&&mob.distanceToSqr(target.getX()+.5" not in navigation
 assert "public static boolean retryScheduled(PathfinderMob mob)" in navigation
 assert 'WorkerNavigation' in building

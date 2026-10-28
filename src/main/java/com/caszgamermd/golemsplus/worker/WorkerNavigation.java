@@ -153,6 +153,24 @@ public final class WorkerNavigation {
      * architectural blocks are legitimate floor. Avoid using only the
      * maximum Y of the block below as a fake full-block obstruction.
      */
+    private static double trainedTerrainCost(ServerLevel level,BlockPos feet){
+        BlockState state=level.getBlockState(feet);
+        // Reusable lessons from the real nine-Builder trials: door leaf
+        // alignment/queueing costs time; half-slabs are fast real ground;
+        // scaffold transit is a deliberate owned vertical manoeuvre.
+        // These are penalties in block lengths, never stored routes.
+        if(state.getBlock() instanceof DoorBlock
+                ||state.getBlock() instanceof FenceGateBlock
+                ||level.getBlockState(feet.above()).getBlock()
+                        instanceof DoorBlock)return 1.5;
+        if(state.is(Blocks.SCAFFOLDING)
+                ||level.getBlockState(feet.below()).is(Blocks.SCAFFOLDING))
+            return 1.0;
+        if(state.getBlock() instanceof StairBlock
+                ||level.getBlockState(feet.below()).getBlock() instanceof StairBlock)
+            return .12;
+        return 0;
+    }
     private static boolean partialFloor(BlockState state){
         return state.getBlock() instanceof StairBlock
                 ||state.getBlock() instanceof SlabBlock
@@ -308,9 +326,10 @@ public final class WorkerNavigation {
         return candidates;
     }
 
-    /** Job workers request goals about every 10-40 ticks. Maintain the
-     * current validated vanilla A* route, except when five-tick inspection
-     * detects a newly placed obstacle. All workers share this policy.
+    /** One live navigation policy for every worker: collision-swept
+     * eight-direction A* with trained door/slab/scaffold/turn costs.
+     * Native Minecraft only moves along short physically validated legs.
+     * There is no legacy native-only route selector or V1 fallback.
      */
     /** Only placement evacuation requires an exact destination. Ordinary
      * navigation may stop two blocks short of the goal; doing that while
@@ -358,7 +377,7 @@ public final class WorkerNavigation {
             speed=1.0; // nominal 4 m/s from Builder movement attribute .40
         if(target==null||!level.hasChunkAt(target))return false;
         Progress p=state(mob);
-        boolean same=target.equals(p.requested)&&target.equals(p.approach);
+        boolean same=target.equals(p.requested);
         if(same&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
@@ -370,14 +389,31 @@ public final class WorkerNavigation {
             p.requested=target.immutable();p.approach=target.immutable();
             return true;
         }
-        Path path=mob.getNavigation().createPath(target,0);
-        if(!endsAtExactTile(path,target)||!safePath(level,mob,path,false)
-                ||!mob.getNavigation().moveTo(path,speed))return false;
-        p.requested=target.immutable();p.approach=target.immutable();
-        p.weightedRoute=List.of();p.routeCursor=0;
-        p.stalled=0;p.unsafeChecks=0;p.wait=0;p.lastBad=null;
-        p.nextRoute=mob.tickCount+CHECK_TICKS;
-        return true;
+        if(!standingTile(level,mob,target))return false;
+        // Exact destinations also use the ONE trained planner. A
+        // native navigation path is used solely to physically execute
+        // a short already-scored waypoint, not as an alternate AI.
+        WorkerRoutePlanner.Route plan=WorkerRoutePlanner.plan(
+                mob.blockPosition(),List.of(target),
+                at->standingTile(level,mob,at),
+                at->floorAt(level,at),p.lastBad,
+                at->trainedTerrainCost(level,at));
+        if(plan==null||plan.steps().isEmpty())return false;
+        for(int span:new int[]{3,2,1}){
+            BlockPos waypoint=plan.steps().get(Math.min(
+                    plan.steps().size(),span)-1);
+            Path path=mob.getNavigation().createPath(waypoint,0);
+            if(!endsAtExactTile(path,waypoint)
+                    ||!safePath(level,mob,path,false)
+                    ||!mob.getNavigation().moveTo(path,speed))continue;
+            p.requested=target.immutable();p.approach=waypoint.immutable();
+            p.weightedRoute=plan.steps();
+            p.routeCursor=Math.min(plan.steps().size(),span);
+            p.stalled=0;p.unsafeChecks=0;p.wait=0;p.lastBad=null;
+            p.nextRoute=mob.tickCount+CHECK_TICKS;
+            return true;
+        }
+        return false;
     }
 
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
@@ -415,46 +451,9 @@ public final class WorkerNavigation {
         if(p.lastBad!=null&&mob.tickCount>=p.avoidUntil)
             p.lastBad=null;
 
-        // Nearby destinations should NOT pay for a new 2,800-node
-        // global search or blindly take the first roundabout candidate.
-        // Compare a handful of validated native paths by actual path
-        // length and choose the shortest legal one; the weighted search
-        // remains the fallback for distant or blocked corridors.
-        if(p.weightedRoute.isEmpty()
-                &&mob.blockPosition().distSqr(target)<=20*20){
-            Path best=null;BlockPos bestGoal=null;
-            double bestCost=Double.MAX_VALUE;
-            int checked=0;
-            // Inspect more than the old five nearest cells. A wall at the
-            // target can obstruct those five while a sixth (or tenth)
-            // position on the same flat surface is easily reachable.
-            for(Candidate option:candidateGoals(level,mob,target,
-                    p.attempts==0?0:(p.attempts%4)+1)){
-                if(++checked>MAX_DESTINATION_PATHS*2
-                        ||best!=null&&checked>8)break;
-                // A Builder within placement reach has NOT necessarily
-                // arrived at a real movement target (door, depot, route
-                // waypoint). Only the job itself may skip walking if its
-                // placement is already within reach.
-                if(option.feet().equals(mob.blockPosition()))continue;
-                Path candidate=mob.getNavigation().createPath(option.feet(),0);
-                if(!safePath(level,mob,candidate,false))continue;
-                // Distances along the actual path, then distance from its
-                // reachable endpoint to the requested work location.
-                double cost=candidate.getNodeCount()*10
-                        +Math.sqrt(option.feet().distSqr(target))*4
-                        +(neighborOccupied(level,mob,option.feet())?90:0);
-                if(cost<bestCost){
-                    best=candidate;bestGoal=option.feet();bestCost=cost;
-                }
-            }
-            if(best!=null&&mob.getNavigation().moveTo(best,speed)){
-                p.approach=bestGoal;
-                p.stalled=0;p.unsafeChecks=0;p.lastBad=null;
-                p.nextRoute=mob.tickCount+CHECK_TICKS;
-                return true;
-            }
-        }
+        // Every live route now uses ONE trained, terrain-weighted policy.
+        // Vanilla may execute validated short legs, but it no longer
+        // independently picks a competing native-only route.
         // Retain the same route across job updates. The old fan of 24/16/10
         // straight-line waypoints repeatedly chose the same dead end next
         // to a wall. Instead use one bounded lowest-cost search starting
@@ -474,14 +473,27 @@ public final class WorkerNavigation {
         if(p.weightedRoute.isEmpty()){
             int avoid=p.attempts==0?0:(p.attempts%4)+1;
             List<BlockPos> goals=new ArrayList<>();
-            for(Candidate candidate:candidateGoals(level,mob,target,avoid)){
-                if(goals.size()>=16)break;
-                goals.add(candidate.feet());
+            // Real-entity doorway regression: a requested walkable tile
+            // MUST be the destination. Treating every nearby tile as a
+            // goal lets A* stop on the near side of a door with no next
+            // waypoint, even though the actual goal is clear.
+            if(standingTile(level,mob,target)){
+                goals.add(target.immutable());
+            }else{
+                // Solid workstation / future placement block: choose a
+                // collision-valid approach near the structure rather than
+                // trying to walk INTO solid blocks. This is never a
+                // fallback to the old native path-selection algorithm.
+                for(Candidate candidate:candidateGoals(level,mob,target,avoid)){
+                    if(goals.size()>=16)break;
+                    goals.add(candidate.feet());
+                }
             }
             WorkerRoutePlanner.Route route=WorkerRoutePlanner.plan(
                     mob.blockPosition(),goals,
                     at->standingTile(level,mob,at),
-                    at->floorAt(level,at),p.lastBad);
+                    at->floorAt(level,at),p.lastBad,
+                    at->trainedTerrainCost(level,at));
             // Never report an empty physical route as success solely
             // because the Builder is within placement range of target.
             // Storage, doorway and return-to-tower movements require
@@ -497,7 +509,7 @@ public final class WorkerNavigation {
         // cheapest route. Trying shorter checkpoints prevents false "cannot
         // path" reports from the vanilla navigation radius.
         int count=p.weightedRoute.size();
-        for(int distance:new int[]{10,6,3,1}){
+        for(int distance:new int[]{3,2,1}){
             int index=Math.min(count-1,p.routeCursor+distance-1);
             if(index<p.routeCursor)continue;
             BlockPos waypoint=p.weightedRoute.get(index);
@@ -602,11 +614,13 @@ public final class WorkerNavigation {
         }
         if(p.requested!=null&&!mob.getNavigation().isDone()
                 &&yieldToWorker(level,mob,p)){
-            p.wait=15+(Math.floorMod(mob.getId(),4)*5);
+            // Brief courtesy pause; preserve the trained plan. Traffic
+            // is NOT a terrain failure, so there is no route mutation,
+            // abandoned waypoint or new global search on every encounter.
+            p.wait=5+Math.floorMod(mob.getId(),4);
             mob.getNavigation().stop();
-            // Keep requested target so the next evaluation resumes.
-            p.nextRoute=0;p.stalled=STALL_TICKS;
-            p.weightedRoute=List.of();p.routeCursor=0;
+            p.nextRoute=0;p.stalled=0;
+            p.routeCursor=Math.max(0,p.routeCursor-3);
             return;
         }
         // Open door based on actual next-step or desired route direction,
@@ -923,7 +937,27 @@ public final class WorkerNavigation {
             if(forwardDist<.15||forwardDist>1.5||delta.lengthSqr()>1.5*1.5)
                 continue;
             if(other.getNavigation().isDone())continue;
-            // An asymmetric tie break ensures both workers don't yield.
+            // Trial 3 discovery: slot/UUID priority alone makes a
+            // FOLLOWER block a LEADER on narrow one-way corridors.
+            // Only the rear worker yields in a same-direction convoy.
+            // At head-on approaches, deterministic UUID priority prevents
+            // reciprocal yielding (the failed 5/9 experiment).
+            Path peer=other.getNavigation().getPath();
+            Vec3 heading=other.getDeltaMovement();
+            if(peer!=null&&peer.getNextNodeIndex()<peer.getNodeCount()){
+                Node node=peer.getNode(peer.getNextNodeIndex());
+                heading=new Vec3(node.x+.5-other.getX(),0,
+                        node.z+.5-other.getZ());
+            }
+            Vec3 flatHeading=new Vec3(heading.x,0,heading.z);
+            boolean sameDirection=flatHeading.lengthSqr()>.01
+                    &&flatHeading.normalize().dot(forward)>.70;
+            if(sameDirection){
+                // Do not park a convoy for 15+ ticks when the golem in
+                // front is moving away. Yield only on actual close contact.
+                if(forwardDist<.85)return true;
+                continue;
+            }
             if(mob.getUUID().compareTo(other.getUUID())>0)
                 return true;
         }

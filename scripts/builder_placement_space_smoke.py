@@ -18,7 +18,10 @@ assert "public static boolean routeToExact(" in navigation
 assert "public static boolean canReachExact(" in navigation
 exact=navigation[navigation.index("public static boolean routeToExact("):
                  navigation.index("public static boolean routeTo(",navigation.index("public static boolean routeToExact("))]
-assert "createPath(target,0)" in exact
+assert "WorkerRoutePlanner.plan(" in exact
+assert "List.of(target)" in exact
+assert "at->trainedTerrainCost(level,at)" in exact
+assert "createPath(waypoint,0)" in exact
 assert "safePath(level,mob,path,false)" in exact
 assert "moveTo(path,speed)" in exact
 assert "candidateGoals(" not in exact
