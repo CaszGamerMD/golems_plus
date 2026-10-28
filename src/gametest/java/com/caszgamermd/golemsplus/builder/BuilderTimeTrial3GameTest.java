@@ -265,9 +265,20 @@ public final class BuilderTimeTrial3GameTest {
             if(other==r||other.arrival>=0||!other.mob.isAlive())continue;
             if(Math.abs(other.mob.getY()-mob.getY())>1.25)continue;
             if(Math.hypot(mob.getX()+vx-other.mob.getX(),
-                          mob.getZ()+vz-other.mob.getZ())<.68
-                    &&r.slot>other.slot){
-                r.waits++;r.stalls=0;return;
+                          mob.getZ()+vz-other.mob.getZ())<.68){
+                // Front-to-back right of way. On a one-wide bridge,
+                // preferring lower slot indices even when they are
+                // physically BEHIND someone made both golems stall.
+                // Use the actual proposed movement axis: a peer in
+                // front keeps going; only the rear yields. Slot order
+                // breaks ties for opposing/side-on approaches.
+                double ahead=(other.mob.getX()-mob.getX())*vx
+                             +(other.mob.getZ()-mob.getZ())*vz;
+                boolean peerAhead=ahead>.004;
+                boolean sidelong=Math.abs(ahead)<=.004;
+                if(peerAhead||sidelong&&r.slot>other.slot){
+                    r.waits++;r.stalls=0;return;
+                }
             }
         }
         Vec3 old=mob.position();
