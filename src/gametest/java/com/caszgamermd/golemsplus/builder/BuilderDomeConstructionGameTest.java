@@ -93,6 +93,17 @@ public final class BuilderDomeConstructionGameTest {
             helper.fail("Dome Planner configuration was rejected");return;
         }
         table.setBuilderMaterialsForFile(filename,data.required());
+        Path actualFile=folder.resolve(table.builderFile()).normalize();
+        System.out.println("[DOME FILE] saved="+table.builderFile()
+                +" folder="+folder.toAbsolutePath()
+                +" exists="+Files.isRegularFile(actualFile)
+                +" length="+(Files.isRegularFile(actualFile)?fileSize(actualFile):-1));
+        if(!Files.isRegularFile(actualFile)){
+            helper.fail("Dome schematic failed immediate staging; "
+                +"input="+filename+" saved="+table.builderFile()
+                +" expected="+actualFile.toAbsolutePath());
+            return;
+        }
         // The tested OnSite chest handles ALL actual stock. The stub
         // warehouse link merely satisfies the existing manual Planner
         // start guard; it does not create shulkers or free items.
@@ -206,7 +217,8 @@ public final class BuilderDomeConstructionGameTest {
                         "Dome stalled after "+tick+" ticks | clear="+
                         table.builderClearCursor()+" | contiguous="+table.builderCursor()
                         +" | totalCompleted="+physicalCount
-                        +"/"+steps.size()+" | problem="+table.problem());
+                        +"/"+steps.size()+" | problem="+table.problem()
+                        +stageDiagnostic(folder,table));
                 for(BuilderGolem worker:crew)
                     message.append(" | ").append(worker.getName().getString())
                         .append(" @ ").append(worker.blockPosition())
@@ -216,6 +228,14 @@ public final class BuilderDomeConstructionGameTest {
         });
     }
 
+    private static long fileSize(Path path){
+        try{return Files.size(path);}catch(Exception ignored){return -1;}
+    }
+    private static String stageDiagnostic(Path folder,WorkerStationBlockEntity table){
+        Path file=folder.resolve(table.builderFile()).normalize();
+        return " file="+table.builderFile()+" resolved="+file.toAbsolutePath()
+                +" exists="+Files.isRegularFile(file)+" bytes="+fileSize(file);
+    }
     private static int physicallyCorrect(ServerLevel level,
             List<BuilderConstructionPlan.Step> plan){
         int count=0;
