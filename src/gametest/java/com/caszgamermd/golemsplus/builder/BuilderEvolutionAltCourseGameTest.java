@@ -3353,6 +3353,35 @@ public final class BuilderEvolutionAltCourseGameTest {
      * The separate real door traversal test proves entity collision.
      */
     @GameTest(maxTicks=120,padding=64,skyAccess=true)
+    public void realBuilderDoorRouteIgnoresOldStutterPenalties(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos start=pos(helper,5,2,10);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(mob);
+        try{
+            Genome dna=SAVED_PHYSICAL_CHAMPIONS[0];
+            String clean=planRouteTo(5,10,dna,Map.of(),
+                    helper,world,mob,3,10);
+            Map<Edge,Integer> oldStalls=Map.of(
+                    new Edge(5,10,4,10),100,
+                    new Edge(4,10,3,10),100);
+            String retained=planRouteTo(5,10,dna,oldStalls,
+                    helper,world,mob,3,10);
+            if(!routeEntersDoor(5,10,clean)
+                    ||!routeEntersDoor(5,10,retained)
+                    ||!clean.equals(retained))
+                helper.fail("Historical door stutter still blocks live "
+                        +"door route: clean="+clean+" old="+retained);
+            else helper.succeed();
+        }catch(RuntimeException error){
+            helper.fail("Could not plan a physical door route: "+error);
+        }finally{mob.discard();}
+    }
+
+    @GameTest(maxTicks=120,padding=64,skyAccess=true)
     public void realBuilderPlannerDiscoversOpenBirchDoor(
             GameTestHelper helper){
         fillOriginalCourse(helper);
