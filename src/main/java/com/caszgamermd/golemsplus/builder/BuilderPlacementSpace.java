@@ -87,7 +87,13 @@ public final class BuilderPlacementSpace {
      */
     private static double[] precisionStep(ServerLevel level,BuilderGolem mob,
             BlockPos target){
-        if(!mob.onGround()||!placementHeight(target,mob))
+        // Even when a Builder's feet are ONE BELOW the placement Y,
+        // its 1.62-high head may intersect a solid block being placed
+        // by another Builder. It must be able to step sideways too.
+        if(!mob.onGround()
+                ||!(placementHeight(target,mob)
+                    ||mob.blockPosition().getY()==target.getY()-1
+                        &&mob.getBoundingBox().maxY>target.getY()))
             return null;
         double cx=target.getX()+.5,cz=target.getZ()+.5;
         double x=mob.getX(),z=mob.getZ();
@@ -196,7 +202,15 @@ public final class BuilderPlacementSpace {
         AABB shifted=worker.getBoundingBox().move(
                 at.getX()+.5-worker.getX(),at.getY()-worker.getY(),
                 at.getZ()+.5-worker.getZ());
-        if(shifted.intersects(volume(obstructed))
+        // Never choose the Builder's EXISTING blocked tile as its
+        // escape; that silently routes it back to the obstacle forever.
+        // Candidate centers must clear 0.8m in X/Z even if the body
+        // overlaps from the layer below, not just avoid an AABB contact.
+        if(at.equals(worker.blockPosition())
+                &&occupied(obstructed,worker))return false;
+        if(edgeDistance(obstructed,at.getX()+.5,at.getZ()+.5)
+                    <MIN_EDGE_CLEARANCE
+                ||shifted.intersects(volume(obstructed))
                 ||!level.noCollision(worker,shifted))return false;
         for(var other:yielding.entrySet())
             if(other.getKey()!=worker
