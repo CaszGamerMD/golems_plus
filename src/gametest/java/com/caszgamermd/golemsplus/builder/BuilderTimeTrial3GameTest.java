@@ -326,7 +326,14 @@ public final class BuilderTimeTrial3GameTest {
         double feetY=target.level==0?p.getY():supportedFeetY(t.getLevel(),p);
         if(Math.hypot(mob.getX()-x,mob.getZ()-z)<r.gene.tolerance
                 &&Math.abs(mob.getY()-feetY)<.32){
-            r.cursor++;r.stalls=0;r.selectedDoor=null;return;
+            r.cursor++;r.stalls=0;r.selectedDoor=null;
+            // Advance to the NEXT legal waypoint on this SAME native
+            // Minecraft tick. Previously an already-reached tile wasted
+            // an entire 50ms tick, repeated at every turn/scaffold cell.
+            // Recursion never moves a body twice: this branch made no
+            // move and merely consumed an already-reached waypoint.
+            if(r.cursor<r.route.size())tick(t,r,crew,tick);
+            return;
         }
         drive(r,crew,x,z,door);
         if(r.stalls>=14){
@@ -457,6 +464,9 @@ public final class BuilderTimeTrial3GameTest {
             one.addProperty("doorStalls",r.doorStalls);
             one.addProperty("scaffoldActions",r.climbs);
             one.addProperty("replans",r.replans);
+            one.addProperty("trafficWaitTicks",r.waits);
+            one.addProperty("routeCells",r.route.size());
+            one.addProperty("nativeEntityTicks",r.mob.tickCount-r.spawnEntityTick);
             JsonArray frames=new JsonArray();
             for(double[] f:r.frames){
                 JsonArray a=new JsonArray();
