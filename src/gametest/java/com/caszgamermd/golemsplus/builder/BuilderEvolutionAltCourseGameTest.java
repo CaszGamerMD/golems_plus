@@ -1020,29 +1020,18 @@ public final class BuilderEvolutionAltCourseGameTest {
                 double weight=(diagonal?Math.sqrt(2):1.0)
                         +transitionPenalty+turnCost
                         -(slabCruise?.16:0);
-                // The door must be an EXPLORABLE alternative, not
-                // just a legal tile that no genome ever tries. Reuse
-                // the existing inherited/mutable signed doorBias gene:
-                // positive bias slightly rewards using an OPEN door,
-                // negative bias avoids it. No 13th gene / checkpoint
-                // migration and NO forced or memorized door route.
-                // The cap keeps every A* edge positive (>=0.20) and
-                // the actual 10 real golems decide the winning policy
-                // with physical arrival fitness, not expected geometry.
+                // Villager-style: a hand-openable wooden door is an
+                // ordinary legal path node plus a SMALL interaction
+                // cost, not a 2.5-block detour penalty inherited from
+                // the old stuttering controller. Keep the saved doorBias
+                // gene and physical time-trial feedback; never force an
+                // otherwise slower doorway on the whole nine-golem crew.
                 if(tile=='D'){
-                    // A one-block wooden door (open or operable closed)
-                    // can be physically legal
-                    // but much SLOWER than bare ground: the last
-                    // real-door experiment finished none of its five
-                    // door-using golems before tick 260. Account for
-                    // the narrow leaf alignment using a modest 2.5m
-                    // traversal cost, modulated by the saved mutable
-                    // preference. Never forbid the door completely.
-                    weight+=2.5-Math.max(-.3,Math.min(.3,
+                    weight+=.65-Math.max(-.3,Math.min(.3,
                             dna.doorBias()*2.0));
                     if(!world.getBlockState(pos(helper,x,2,z))
                             .getValue(DoorBlock.OPEN))
-                        weight+=.4; // one grounded opening interaction
+                        weight+=.25; // opening an in-reach door action
                 }
                 // Deterministic genetic corridor preferences. Small
                 // positive perturbations prevent repeatedly selecting
@@ -1064,7 +1053,13 @@ public final class BuilderEvolutionAltCourseGameTest {
                             &&fromFoot.getValue(SlabBlock.TYPE)==SlabType.BOTTOM
                         ||toFoot.getBlock() instanceof SlabBlock
                             &&toFoot.getValue(SlabBlock.TYPE)==SlabType.BOTTOM;
-                if(!checkedBottomSlab)
+                // Historical door-edge failures came from repeated
+                // closing/reopening rather than a permanent wall. Keep
+                // the evidence on disk, but do not poison operable door
+                // nodes or their exit edges with stale static penalties.
+                boolean actionableDoor=tile=='D'
+                        ||MAZE[node.z()].charAt(node.x())=='D';
+                if(!checkedBottomSlab&&!actionableDoor)
                     weight+=Math.min(10,realBlockFailures.getOrDefault(edge,0)*.40);
                 // Reservations are soft, session-local hints that help a
                 // CREW spread across the six available slab entries. They
