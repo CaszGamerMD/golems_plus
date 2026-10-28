@@ -468,82 +468,69 @@ public final class BuilderBuildService {
                     return;
                 }
             }
-            double horizontal=Math.pow(worker.getX()-(pos.getX()+.5),2)
-                    +Math.pow(worker.getZ()-(pos.getZ()+.5),2);
-            double distToTarget=worker.distanceToSqr(
-                    pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
-            if(pos.getY()-worker.getY()>2.5
-                    ||pos.getY()-worker.getY()>1.35&&distToTarget>14){
-                // Even targets only two blocks up may need scaffolding
-                // when no walkable route can bring the worker into reach.
-                // Select a safe ascent beside the desired X/Z
-                // and travel to it on foot before placing scaffolding.
-                var climbing=BuilderScaffolding.reach(level,worker,table,owner,pos,
-                        plan.steps());
-                if(climbing==BuilderScaffolding.Result.NEED_MATERIALS){
-                    table.setProblem("Needs scaffolding for height "+pos.getY()
-                            +" (minecraft:scaffolding)");
-                    if(BuilderWarehouseCoordinator.requestScaffolding(level,worker,
-                            table,owner,plan.steps()))return;
+            // PLAN A: the golem's physical feet MUST match the block Y.
+            // Ordinary one-block steps (up OR down) use the trained A*
+            // and Minecraft's real walking/jumping physics. Larger climbs
+            // require a 3-axis scaffold tower + two-cell top bridge.
+            int yDiff=pos.getY()-worker.blockPosition().getY();
+            if(BuilderScaffoldPlanA.hasPlan(worker)||yDiff>1){
+                var access=BuilderScaffoldPlanA.reach(
+                        level,worker,table,owner,pos,plan.steps());
+                if(access==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
+                    table.setProblem("Plan A needs scaffolding for "+pos);
+                    if(BuilderWarehouseCoordinator.requestScaffolding(
+                            level,worker,table,owner,plan.steps()))return;
                     return;
                 }
-                if(climbing==BuilderScaffolding.Result.NO_SAFE_TOWER){
-                    table.setProblem("No clear scaffold column beside "+pos);
+                if(access==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE){
+                    table.setProblem("Plan A cannot find a safe X/Z axis-3 "
+                            +"tower, two-cell bridge and descent for "+pos);
                     return;
                 }
-                if(climbing==BuilderScaffolding.Result.CLIMBING)return;
+                if(access==BuilderScaffoldPlanA.Result.MOVING)return;
             }
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
-            if(workDistance>14){
-                // Leave a completed scaffold onto an adjacent solid upper
-                // walkway BEFORE asking vanilla A* to path from its
-                // non-walkable scaffolding node. This is crucial for
-                // circling buildings after reaching the required height.
-                if(BuilderScaffolding.stepOffTowardWork(level,worker,table,pos))
-                    return;
-                // If no supported upper landing exists, return down the
-                // Builder's own real scaffold and dismount before invoking
-                // horizontal A*. Never route off the edge from midair.
-                BlockPos under=worker.blockPosition().below();
-                if(level.getBlockState(under).is(
-                            net.minecraft.world.level.block.Blocks.SCAFFOLDING)
-                        &&table.scaffoldPositions(worker.getUUID()).contains(under)
-                        &&BuilderScaffolding.descendForTravel(level,worker,table))
-                    return;
-                // The NEXT job step is not in physical placing range yet.
-                // Regardless of the previous navigation state, continue
-                // approaching until the distance check genuinely passes.
-                // An idle vanilla path at five/six blocks is not arrival.
+            if(worker.blockPosition().getY()!=pos.getY()
+                    ||workDistance>14){
+                // Find ONLY reachable same-Y work stands; a position
+                // below a wall is never a legal place-from position.
                 activity.phase=Action.MOVE_TO_WORK;
-                // Do not drive Builders into the center of their own
-                // future flower/cobblestone placement. Close approaches
-                // stop alongside an unoccupied, genuinely reachable tile.
-                BlockPos approach=workDistance<=100
-                        ?BuilderPlacementSpace.approach(level,worker,pos):null;
+                BlockPos approach=BuilderPlacementSpace.approachAtTargetY(
+                        level,worker,pos);
                 if(approach!=null){
-                    // A Builder must arrive at its exact reachable side
-                    // tile, NOT an approximate pathfinder endpoint that can
-                    // be too far away to place the block. This was why a
-                    // MOVE_TO_WORK Builder showed nav=idle at range=6.
-                    boolean moving=com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .routeToExact(level,worker,approach,1.0);
-                    if(!moving){
-                        // The selected spot may have become unavailable;
-                        // immediately try moving toward the job and choose
-                        // another exact landing on the next evaluation.
-                        // Never count a stopped navigation as task progress.
+                    if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .routeToExact(level,worker,approach,1.0)){
                         BuilderPlacementSpace.invalidateApproach(worker,pos);
                         com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                .routeTo(level,worker,pos,.85);
+                                .routeTo(level,worker,approach,.85);
                     }
-                }else{
-                    // Long-distance travel still uses bounded multi-leg A*.
-                    com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .routeTo(level,worker,pos,.85);
+                    return;
                 }
+                if(yDiff>0){
+                    // If the direct one-step jump is obstructed, a real
+                    // scaffold bridge is still required, not a jump
+                    // through a solid wall.
+                    var alternate=BuilderScaffoldPlanA.reach(
+                            level,worker,table,owner,pos,plan.steps());
+                    if(alternate==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
+                        table.setProblem("Plan A needs scaffolding for "+pos);
+                        return;
+                    }
+                    if(alternate==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE)
+                        table.setProblem("No safe Plan A scaffold access at "+pos);
+                    return;
+                }
+                if(yDiff<0 && BuilderScaffolding.descendForTravel(
+                        level,worker,table))return;
+                // A downward target without owned scaffold uses the
+                // normal collision-safe walkable route, never a fall.
+                com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeTo(level,worker,pos,.85);
                 return;
             }
+            // Enforce target-Y placement even for blocks within normal
+            // interaction reach. This is independent of which tool is held.
             activity.phase=Action.PLACE;
             // Travel and placement are mutually exclusive for THIS worker:
             // stop the previous A* path and horizontal momentum before a

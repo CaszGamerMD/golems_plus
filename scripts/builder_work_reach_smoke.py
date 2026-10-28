@@ -7,16 +7,19 @@ space=(root/"builder/BuilderPlacementSpace.java").read_text()
 nav=(root/"worker/WorkerNavigation.java").read_text()
 work=service[service.index("double workDistance=worker.distanceToSqr("):
              service.index("activity.phase=Action.PLACE;",service.index("double workDistance=worker.distanceToSqr("))]
-assert "if(workDistance>14)" in work
+assert "worker.blockPosition().getY()!=pos.getY()" in work
+assert "||workDistance>14" in work
 assert "activity.phase=Action.MOVE_TO_WORK" in work
-assert "BuilderPlacementSpace.approach(level,worker,pos)" in work
+assert "BuilderPlacementSpace.approachAtTargetY(" in work
 assert "routeToExact(level,worker,approach,1.0)" in work
-assert "if(!moving)" in work
+assert "if(!com.caszgamermd.golemsplus.worker.WorkerNavigation" in work
+assert "BuilderPlacementSpace.invalidateApproach(worker,pos)" in work
 assert "BuilderPlacementSpace.invalidateApproach(worker,pos)" in work
 assert "routeTo(level,worker,pos,.85)" in work
 assert "return;" in work
 assert "for(int dx=-3;dx<=3;dx++)" in space
-assert "for(int dy:new int[]{0,1,-1,2,-2})" in space
+assert "for(int dy:sameHeight?new int[]{0}:new int[]{0,1,-1,2,-2})" in space
+assert "public static BlockPos approachAtTargetY(" in space
 assert "p.distSqr(target)>=14" in space
 assert "rejected.put(worker,new Rejected(" in space
 assert "WorkerNavigation.canReachExact(level,worker,p)" in space

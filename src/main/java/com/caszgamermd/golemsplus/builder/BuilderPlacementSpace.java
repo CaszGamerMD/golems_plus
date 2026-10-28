@@ -144,9 +144,22 @@ public final class BuilderPlacementSpace {
      */
     public static BlockPos approach(ServerLevel level,BuilderGolem worker,
             BlockPos target){
+        return approachWithHeight(level,worker,target,false);
+    }
+    /** Plan A: the Builder's actual FEET must be at the placed block's
+     * Y, never one or two layers below just because it can reach an item.
+     * Preserve the general approach method for other legacy use cases.
+     */
+    public static BlockPos approachAtTargetY(ServerLevel level,
+            BuilderGolem worker,BlockPos target){
+        return approachWithHeight(level,worker,target,true);
+    }
+    private static BlockPos approachWithHeight(ServerLevel level,
+            BuilderGolem worker,BlockPos target,boolean sameHeight){
         long now=level.getGameTime();
         Approach cached=workApproaches.get(worker);
         if(cached!=null&&cached.target().equals(target)
+                &&(!sameHeight||cached.destination().getY()==target.getY())
                 &&cached.until()>now
                 &&cached.destination().distSqr(target)<14
                 &&!(cached.destination().equals(worker.blockPosition())
@@ -164,7 +177,7 @@ public final class BuilderPlacementSpace {
         // two blocks above/below the target even if same-level floor is
         // sealed by completed walls. Do not insist on a jump or teleport.
         for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
-            for(int dy:new int[]{0,1,-1,2,-2}){
+            for(int dy:sameHeight?new int[]{0}:new int[]{0,1,-1,2,-2}){
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos p=target.offset(dx,dy,dz);
                 if(p.distSqr(target)>=14
