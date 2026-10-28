@@ -308,12 +308,25 @@ public final class BuilderScaffoldPlanA {
                 ?Math.min(.23,Math.max(.12,rise/5))
                 :Math.min(0,worker.getDeltaMovement().y);
         worker.getMoveControl().setWantedPosition(tx,destination.getY(),tz,1.0);
-        if(level.noCollision(worker,worker.getBoundingBox().move(mx,0,mz))){
-            worker.setDeltaMovement(mx,vy,mz);
-        }else if(rise>.08
-                &&level.noCollision(worker,worker.getBoundingBox().move(0,.10,0))){
-            worker.setDeltaMovement(0,vy,0);
+        // Scaffolding is a climb-through block. Once the Builder has stepped
+        // into its first horizontal cell, its collision box intersects the
+        // scaffold's own shape. World.noCollision() against that *existing*
+        // intersection is false even when the next movement is legal: the
+        // old guard therefore suppressed every upward impulse and stranded
+        // a real Builder one block below the planned work elevation.
+        //
+        // Exactly as with a vertical scaffold climb, send bounded velocity
+        // into Minecraft's normal entity movement/collision solver. Actual
+        // blocks still stop the movement. Both bridge supports, headroom,
+        // item receipts and the reserved return path were checked first.
+        // Do not teleport, disable gravity, or invoke a fallback pathfinder.
+        if(!level.hasChunkAt(destination)
+                ||!level.getBlockState(destination).isAir()
+                ||!level.getBlockState(destination.above()).isAir()){
+            worker.setDeltaMovement(0,Math.min(0,worker.getDeltaMovement().y),0);
+            return true;
         }
+        worker.setDeltaMovement(mx,vy,mz);
         return true;
     }
     public static Result reach(ServerLevel level,BuilderGolem worker,
