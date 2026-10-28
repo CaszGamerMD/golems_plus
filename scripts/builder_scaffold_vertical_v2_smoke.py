@@ -9,7 +9,8 @@ assert "private static final int MAX_HEIGHT=48" not in sc
 assert "int top=ScaffoldVerticalRoute.stageTop(" in sc
 assert "int existingTop=existing.stream()" in sc
 assert "int wantedTop=target.getY()-1" in sc
-assert "int previewTop=ScaffoldVerticalRoute.stageTop(" in sc
+assert "for(int y=base.getY();y<=wantedTop;y++)" in sc
+assert "safeGroundExit(level,worker,base,reserved)" in sc
 assert "return top<wantedTop?Result.CLIMBING:Result.NOT_NEEDED;" in sc
 assert "BuilderSupplyInventory.loadScaffold(level,worker,table,needed)" in sc
 assert "BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING)" in sc
