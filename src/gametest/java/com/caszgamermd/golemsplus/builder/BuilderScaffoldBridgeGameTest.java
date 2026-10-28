@@ -20,9 +20,20 @@ import net.minecraft.world.level.block.Blocks;
 public final class BuilderScaffoldBridgeGameTest {
     @GameTest(maxTicks=1300,skyAccess=true)
     public void buildsCrossesRetracesAndDescendsBridge(GameTestHelper helper){
+        run(helper,false);
+    }
+    @GameTest(maxTicks=1300,skyAccess=true)
+    public void buildsTurningBridgeAroundSolidObstacle(GameTestHelper helper){
+        run(helper,true);
+    }
+
+    private static void run(GameTestHelper helper,boolean obstructed){
         ServerLevel level=helper.getLevel();
         for(int x=0;x<8;x++)for(int z=0;z<8;z++)
             if(x<2||x>5||z!=3)helper.setBlock(x,1,z,Blocks.STONE);
+        // Obstructing an aerial cell forces a corner; the valid answer
+        // is NOT a memorized straight bridge from the other test.
+        if(obstructed)helper.setBlock(2,6,3,Blocks.COBBLESTONE);
         helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
         BlockPos home=helper.absolutePos(new BlockPos(0,2,0));
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
@@ -78,7 +89,7 @@ public final class BuilderScaffoldBridgeGameTest {
                     }
                 }
                 boolean reached=builder.distanceToSqr(
-                        goal.getX()+.5,goal.getY()+.5,goal.getZ()+.5)<10
+                        goal.getX()+.5,goal.getY()+.5,goal.getZ()+.5)<=10.05
                         &&builder.onGround();
                 if(reached){
                     int built=table.scaffoldPositions(builder.getUUID()).size()-5;
@@ -97,7 +108,8 @@ public final class BuilderScaffoldBridgeGameTest {
                         &&level.getBlockState(under).is(Blocks.STONE)){
                     var metrics=BuilderScaffoldTrialStats.snapshot(builder);
                     if(metrics.plans()<1||metrics.scaffoldPlaced()<2
-                            ||metrics.retreatSteps()<2||metrics.landed()<1){
+                            ||metrics.retreatSteps()<2||metrics.landed()<1
+                            ||obstructed&&metrics.turns()<1){
                         helper.fail("Scaffold physically finished but training metrics "+
                                 "were lost: "+metrics);
                         return;
