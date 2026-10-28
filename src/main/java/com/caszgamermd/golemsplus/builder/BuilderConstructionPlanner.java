@@ -63,36 +63,54 @@ public final class BuilderConstructionPlanner {
                         .getBlockPos().equals(target);
     }
 
-    /** The future target is treated as impassable now, before placing it.
-     * At least one OTHER genuinely supported cardinal departure cell must
-     * remain free, and must also keep the golem away from the target block.
-     * This is a local exit guarantee, not a claim that an arbitrary maze
-     * has a full A* route home after thousands of future placements.
+    /** Verify a one-step PHYSICAL exit after the intended block exists.
+     * Builders can walk cardinally/diagonally and can climb/descend one
+     * block without a hook. A same-Y-only cardinal check wrongly rejected
+     * almost every useful dome ledge and pinned entire construction zones.
+     *
+     * This is only a local exit proof. We never claim this proves every
+     * possible maze has a path all the way back to OnSite.
      */
     static boolean exitAfterPlacement(ServerLevel world,BuilderGolem builder,
             BlockPos stance,BlockPos target){
-        for(Direction side:Direction.Plane.HORIZONTAL){
-            BlockPos exit=stance.relative(side);
-            if(exit.getX()==target.getX()&&exit.getZ()==target.getZ()
-                    &&Math.abs(exit.getY()-target.getY())<=1)continue;
-            if(!WorkerNavigation.canStandOn(world,builder,exit))continue;
-            // A full bounding box at the exit must not intersect the
-            // future cube even across the Y-1/Y+1 boundary.
-            var moved=builder.getBoundingBox().move(
-                    exit.getX()+.5-builder.getX(),
-                    exit.getY()-builder.getY(),
-                    exit.getZ()+.5-builder.getZ());
-            if(moved.intersects(new net.minecraft.world.phys.AABB(target)
-                    .inflate(.12,0,.12)))continue;
-            // Center-to-edge >=0.8, same exact margin as during placing.
-            double dx=Math.max(0,Math.max(
-                    target.getX()-(exit.getX()+.5),
-                    exit.getX()+.5-(target.getX()+1)));
-            double dz=Math.max(0,Math.max(
-                    target.getZ()-(exit.getZ()+.5),
-                    exit.getZ()+.5-(target.getZ()+1)));
-            if(Math.hypot(dx,dz)<.80)continue;
-            return true;
+        var future=new net.minecraft.world.phys.AABB(target)
+                .inflate(.10,0,.10);
+        var base=builder.getBoundingBox().move(
+                stance.getX()+.5-builder.getX(),
+                stance.getY()-builder.getY(),
+                stance.getZ()+.5-builder.getZ());
+        for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++){
+            if(dx==0&&dz==0)continue;
+            for(int dy:new int[]{0,-1,1}){
+                BlockPos dest=stance.offset(dx,dy,dz);
+                if(!WorkerNavigation.canStandOn(world,builder,dest))
+                    continue;
+                // Every candidate uses exactly the real 0.8m clearance,
+                // including when its feet stand above or below the new cube.
+                double px=dest.getX()+.5,pz=dest.getZ()+.5;
+                double ex=Math.max(0,Math.max(
+                        target.getX()-px,px-target.getX()-1));
+                double ez=Math.max(0,Math.max(
+                        target.getZ()-pz,pz-target.getZ()-1));
+                if(Math.hypot(ex,ez)<.8)continue;
+                boolean free=true;
+                for(int i=1;i<=4;i++){
+                    double t=i/4.0;
+                    // A real jump rises BEFORE moving across the next
+                    // block's solid face. A drop steps over the rim and
+                    // then lowers. Plain walks interpolate both axes.
+                    double horizontal=dy>0?Math.max(0,2*t-1):
+                            dy<0?Math.min(1,2*t):t;
+                    double rise=dy>0?Math.min(1,2*t):
+                            dy<0?-Math.max(0,2*t-1):0;
+                    var moved=base.move(dx*horizontal,rise,dz*horizontal);
+                    if(moved.intersects(future)
+                            ||!world.noCollision(builder,moved)){
+                        free=false;break;
+                    }
+                }
+                if(free)return true;
+            }
         }
         return false;
     }
