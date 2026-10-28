@@ -88,9 +88,20 @@ public final class BuilderScaffoldBridgeGameTest {
                         return;
                     }
                 }
+                // A Builder standing on vanilla scaffolding can have
+                // onGround=false while its feet are still physically
+                // supported at the correct top elevation. Require real
+                // tracked scaffold directly underfoot instead of trusting
+                // vanilla's full-block ground flag for the turning bridge.
+                BlockPos underFeet=builder.blockPosition().below();
+                boolean supported=builder.onGround()
+                        ||level.getBlockState(underFeet).is(Blocks.SCAFFOLDING)
+                          &&table.scaffoldPositions(builder.getUUID())
+                                .contains(underFeet);
                 boolean reached=builder.distanceToSqr(
                         goal.getX()+.5,goal.getY()+.5,goal.getZ()+.5)<=10.05
-                        &&builder.onGround();
+                        &&Math.abs(builder.getY()-goal.getY())<.3
+                        &&supported;
                 if(reached){
                     int built=table.scaffoldPositions(builder.getUUID()).size()-5;
                     if(built<2||builder.carriedCount(Items.SCAFFOLDING)>=initial){
