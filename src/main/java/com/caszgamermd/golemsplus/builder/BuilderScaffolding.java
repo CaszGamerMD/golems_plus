@@ -58,6 +58,14 @@ public final class BuilderScaffolding {
     private record ExitRoute(BlockPos ground,long expires){}
     private static final java.util.Map<BuilderGolem,ExitRoute> exiting=
             new java.util.WeakHashMap<>();
+    /** A job-specific, retained route UP and BACK DOWN. The exit must
+     * exist BEFORE the first scaffold is purchased or built. Never
+     * store a world-specific fixed path as the navigation algorithm.
+     */
+    private record AccessRoute(BlockPos target,BlockPos base,
+                               BlockPos groundExit,long until){}
+    private static final java.util.Map<BuilderGolem,AccessRoute> access=
+            new java.util.WeakHashMap<>();
     private BuilderScaffolding(){}
 
     private static void clearMotion(BuilderGolem worker){
@@ -101,6 +109,7 @@ public final class BuilderScaffolding {
         clearMotion(worker);
         returning.remove(worker);
         exiting.remove(worker);
+        access.remove(worker);
     }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
         ClimbSession session=sessions.get(worker);
@@ -434,6 +443,7 @@ public final class BuilderScaffolding {
         BlockPos exit=exitGround(level,worker,column);
         if(exit==null)return false;
         clearMotion(worker);
+        access.remove(worker);
         exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));
         return true;
     }
@@ -458,7 +468,15 @@ public final class BuilderScaffolding {
         if(exiting.containsKey(worker))return true;
         var found=towers(level,table,worker);
         if(found.isEmpty()){
-            returning.remove(worker);return false;
+            returning.remove(worker);access.remove(worker);return false;
+        }
+        AccessRoute selected=access.get(worker);
+        if(selected!=null){
+            // The work access column was already checked for a real
+            // dismount before the ascent. Prefer returning by that SAME
+            // column, rather than switching to a nearby unrelated tower.
+            found.sort(Comparator.comparingInt(t->
+                    t.base().equals(selected.base())?0:1));
         }
         for(Tower tower:found){
             BlockPos base=tower.base();
@@ -536,10 +554,23 @@ public final class BuilderScaffolding {
         // valid vanilla walking nodes, so repeatedly reconsidering a
         // path to an upper platform can abandon an active ascent.
         var existing=table.scaffoldPositions(worker.getUUID());
-        BlockPos base=towers(level,table,worker).stream()
+        // Prefer the retained legal access choice across job ticks.
+        // If construction changes the approach, expire only this site
+        // choice, and choose another safe route without moving the worker.
+        AccessRoute chosen=access.get(worker);
+        BlockPos base=null;
+        if(chosen!=null&&chosen.target().equals(target)
+                &&level.getGameTime()<chosen.until()
+                &&!avoided(level,worker,chosen.base())
+                &&BuilderScaffoldSiteScore.withinReach(chosen.base(),target)
+                &&safeGroundExit(level,worker,chosen.base())!=null)
+            base=chosen.base();
+        else access.remove(worker);
+        if(base==null)base=towers(level,table,worker).stream()
                 .map(Tower::base)
                 .filter(p->!avoided(level,worker,p)
-                        &&BuilderScaffoldSiteScore.withinReach(p,target))
+                        &&BuilderScaffoldSiteScore.withinReach(p,target)
+                        &&safeGroundExit(level,worker,p)!=null)
                 .min(Comparator.comparingDouble(p->
                         BuilderScaffoldSiteScore.score(p,worker.blockPosition(),
                                 target,0,0,0,true))).orElse(null);
@@ -581,6 +612,12 @@ public final class BuilderScaffolding {
         // physical candidates; no fixed learned route is stored.
         if(base==null)base=findBase(level,worker,target,feet,table,plan);
         if(base==null)return Result.NO_SAFE_TOWER;
+        BlockPos exit=safeGroundExit(level,worker,base);
+        if(exit==null)return Result.NO_SAFE_TOWER;
+        // Reserve a real return route BEFORE ascent, not after reaching
+        // the top. This prevents choosing an unsafe dead-end column.
+        access.put(worker,new AccessRoute(target.immutable(),base.immutable(),
+                exit.immutable(),level.getGameTime()+180));
         double bx=base.getX()+.5,bz=base.getZ()+.5;
         double approachX=worker.getX()-bx,approachZ=worker.getZ()-bz;
         // Position at the foot of the selected column *first*. The old
@@ -680,21 +717,30 @@ public final class BuilderScaffolding {
         // evaluation will extend the SAME owned tower, not walk away.
         return top<wantedTop?Result.CLIMBING:Result.NOT_NEEDED;
     }
+    /** Verify a real safe return endpoint before spending scaffold.
+     * It is never enough to build a vertical column with no place to
+     * step off on solid ground. Use the Builder's own collision shape.
+     */
+    private static BlockPos safeGroundExit(ServerLevel level,
+            BuilderGolem worker,BlockPos base){
+        BlockPos landing=exitGround(level,worker,base);
+        if(landing==null||landing.getY()<base.getY()-1
+                ||landing.getY()>base.getY()+1)return null;
+        return landing;
+    }
+
+    private record Site(BlockPos base,double score){}
     private static BlockPos findBase(ServerLevel level,BuilderGolem worker,
             BlockPos target,int feet,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> plan){
-        // Reject candidates overlapping actual schematic geometry BEFORE
-        // ranking. This full 3D set matters for domes with a completed
-        // lower shell and empty upper air where a new tower could later
-        // collide with a scheduled building block.
         java.util.Set<BlockPos> reserved=new java.util.HashSet<>();
         for(var step:plan)if(!step.ignorePlant())
             reserved.add(new BlockPos(step.x(),step.y(),step.z()));
-        BlockPos winner=null;
-        double best=Double.POSITIVE_INFINITY;
-        // A new tower never needs to be more than sqrt(13) horizontally
-        // from this placement. Rank actual safe column foundations; do
-        // not simply choose the first cardinal or diagonal candidate.
+        java.util.List<Site> candidates=new java.util.ArrayList<>();
+        // The whole eventual shaft must remain clear through the TOP of
+        // this work height. Checking only the first 16-block extension
+        // could seal a column inside the finished dome before the Builder
+        // could descend, so no partial shaft may be approved blindly.
         for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
             int reach=dx*dx+dz*dz;
             if(reach<1||reach>13)continue;
@@ -706,45 +752,46 @@ public final class BuilderScaffolding {
                         ||!level.hasChunkAt(base)
                         ||!level.hasChunkAt(base.below())
                         ||!level.getBlockState(base.below()).isFaceSturdy(
-                                level,base.below(),Direction.UP))continue;
-                int top=ScaffoldVerticalRoute.stageTop(
-                        base.getY(),base.getY()-1,target.getY()-1);
-                boolean free=true;
-                for(int y=base.getY();y<=top;y++){
+                                level,base.below(),Direction.UP)
+                        ||safeGroundExit(level,worker,base)==null)continue;
+                int wantedTop=target.getY()-1;
+                boolean clear=true;
+                for(int y=base.getY();y<=wantedTop;y++){
                     BlockPos at=new BlockPos(base.getX(),y,base.getZ());
                     if(!level.hasChunkAt(at)
                             ||!level.getBlockState(at).isAir()
                             ||table.isTrackedScaffold(at)
                             ||reserved.contains(at)){
-                        free=false;break;
+                        clear=false;break;
                     }
                 }
-                if(!free)continue;
-                // A tower must be approachable on foot without teleport,
-                // even if its proposed blocks are entirely air. Returning
-                // an unreachable base made the Builder report CLIMBING
-                // forever while standing motionless behind a completed
-                // wall. This is not a fallback to legacy routing.
-                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .canReachExact(level,worker,base))continue;
+                if(!clear)continue;
                 int nearby=0;
                 for(var step:plan){
                     if(step.ignorePlant()||step.y()<target.getY()
                             ||step.y()>target.getY()+2)continue;
                     int sx=step.x()-base.getX(),sz=step.z()-base.getZ();
-                    if(sx*sx+sz*sz<=13){
-                        if(++nearby>=12)break;
-                    }
+                    if(sx*sx+sz*sz<=13&&++nearby>=12)break;
                 }
-                int material=Math.max(0,top-base.getY()+1);
-                double score=BuilderScaffoldSiteScore.score(base,
-                        worker.blockPosition(),target,material,nearby,0,false);
-                if(score<best){
-                    winner=base;best=score;
-                }
+                int material=wantedTop-base.getY()+1;
+                candidates.add(new Site(base,
+                        BuilderScaffoldSiteScore.score(base,
+                                worker.blockPosition(),target,
+                                material,nearby,0,false)));
             }
         }
-        return winner;
+        candidates.sort(Comparator.comparingDouble(Site::score));
+        // Bound expensive path probes and select by physically reachable
+        // cost, not arbitrary (x,z) scan order. An inaccessible tower
+        // with cheap theoretical distance must never win.
+        int probed=0;
+        for(Site candidate:candidates){
+            if(++probed>20)break;
+            if(com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .canReachExact(level,worker,candidate.base()))
+                return candidate.base();
+        }
+        return null;
     }
     /**
      * Instant top-down removal only when worker is safely on the ground.
