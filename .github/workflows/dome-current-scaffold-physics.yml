@@ -1,0 +1,40 @@
+name: Current Main Scaffold AI — Full Physical Dome
+run-name: "3,537-block Dome / four real Builders / released Navigation AI"
+on:
+  push:
+    branches: [test/dome-main-safe-scaffold-262]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  physical-dome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Validate real schematic and latest safe ascent / return code
+        run: |
+          test -f src/gametest/resources/golems_plus_dome/segment0.txt
+          test -f src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderDomeConstructionGameTest.java
+          grep -q 'private record AccessRoute' src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffolding.java
+          grep -q 'future.contains(p)||future.contains(p.above())' src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffolding.java
+      - name: Physically build original 3537-block dome with four Minecraft Builder Golems
+        run: gradle --no-daemon runGameTest
+      - name: Keep world diagnostics and failure reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dome-released-safe-scaffold-real-evidence
+          if-no-files-found: ignore
+          path: |
+            build/gametest/
+            build/reports/
+            build/test-results/
+            build/run/gameTest/logs/
