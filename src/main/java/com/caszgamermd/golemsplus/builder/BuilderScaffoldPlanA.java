@@ -520,8 +520,18 @@ public final class BuilderScaffoldPlanA {
             j.phase=Phase.DISMOUNT;
         }
         if(j.phase==Phase.DISMOUNT){
-            if(close(worker,j.exit)&&worker.onGround()){
-                jobs.remove(worker);return false;
+            // Once the worker is physically standing on SOLID ground at
+            // the tower's base elevation, its descent is complete; the
+            // exact compass-side exit is no longer a mandatory position.
+            // Continuing to steer toward a specific exit can push a
+            // landed worker through its own standing scaffold tower.
+            BlockPos below=worker.blockPosition().below();
+            if(worker.onGround()
+                    &&Math.abs(worker.getY()-j.base.getY())<.26
+                    &&level.getBlockState(below).isFaceSturdy(
+                            level,below,Direction.UP)){
+                jobs.remove(worker);
+                return false;
             }
             if(!BuilderScaffolding.isControllingMovement(worker)){
                 BuilderScaffolding.dismountAtBase(level,worker,j.base);
