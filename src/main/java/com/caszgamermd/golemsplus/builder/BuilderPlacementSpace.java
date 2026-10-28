@@ -55,13 +55,30 @@ public final class BuilderPlacementSpace {
         double dz=Math.max(0,Math.max(block.getZ()-z,z-(block.getZ()+1.0)));
         return Math.hypot(dx,dz);
     }
+    /** Builders may work from the target layer OR one grounded block
+     * above it. Layer-by-layer assignments are unchanged; this defines
+     * where their FEET may stand, not which schematic Y is unlocked.
+     */
+    public static boolean placementHeight(BlockPos target,BuilderGolem worker){
+        int feetY=worker.blockPosition().getY();
+        return feetY==target.getY() || feetY==target.getY()+1
+                &&worker.onGround()&&!worker.isNoGravity();
+    }
+    /** The same horizontal margin applies when placing DOWN one block.
+     * Being vertically above an AIR target is NOT an exemption: otherwise
+     * a Builder could keep its feet directly over the future block.
+     */
+    public static boolean horizontalClear(BlockPos target,BuilderGolem worker){
+        return edgeDistance(target,worker.getX(),worker.getZ())
+                >=MIN_EDGE_CLEARANCE-.015;
+    }
     private static boolean occupied(BlockPos target,BuilderGolem worker){
-        return worker.isAlive()
-                &&worker.getBoundingBox().maxY>target.getY()
-                &&worker.getBoundingBox().minY<target.getY()+1
-                &&(worker.getBoundingBox().intersects(volume(target))
-                    ||edgeDistance(target,worker.getX(),worker.getZ())
-                            <MIN_EDGE_CLEARANCE-.015);
+        if(!worker.isAlive())return false;
+        boolean overlapsHeight=worker.getBoundingBox().maxY>target.getY()
+                &&worker.getBoundingBox().minY<target.getY()+1;
+        boolean aboveWork=worker.blockPosition().getY()==target.getY()+1;
+        return overlapsHeight && worker.getBoundingBox().intersects(volume(target))
+                ||(overlapsHeight||aboveWork)&&!horizontalClear(target,worker);
     }
     /** Choose a REAL per-tick lateral movement that clears the target.
      * Try more than the nearest face: a nearby slab, wall or teammate
@@ -70,7 +87,7 @@ public final class BuilderPlacementSpace {
      */
     private static double[] precisionStep(ServerLevel level,BuilderGolem mob,
             BlockPos target){
-        if(!mob.onGround()||mob.blockPosition().getY()!=target.getY())
+        if(!mob.onGround()||!placementHeight(target,mob))
             return null;
         double cx=target.getX()+.5,cz=target.getZ()+.5;
         double x=mob.getX(),z=mob.getZ();
@@ -236,9 +253,9 @@ public final class BuilderPlacementSpace {
             BlockPos target){
         return approachWithHeight(level,worker,target,false);
     }
-    /** Plan A: the Builder's actual FEET must be at the placed block's
-     * Y, never one or two layers below just because it can reach an item.
-     * Preserve the general approach method for other legacy use cases.
+    /** Plan B work stance: feet on target Y or one Y ABOVE, with real
+     * footing and at least 0.8 horizontal clearance from the new block.
+     * This does not authorize claiming any higher schematic Y layer.
      */
     public static BlockPos approachAtTargetY(ServerLevel level,
             BuilderGolem worker,BlockPos target){
@@ -249,7 +266,8 @@ public final class BuilderPlacementSpace {
         long now=level.getGameTime();
         Approach cached=workApproaches.get(worker);
         if(cached!=null&&cached.target().equals(target)
-                &&(!sameHeight||cached.destination().getY()==target.getY())
+                &&(!sameHeight||cached.destination().getY()==target.getY()
+                        ||cached.destination().getY()==target.getY()+1)
                 &&cached.until()>now
                 &&cached.destination().distSqr(target)<14
                 &&!(cached.destination().equals(worker.blockPosition())
@@ -267,7 +285,7 @@ public final class BuilderPlacementSpace {
         // two blocks above/below the target even if same-level floor is
         // sealed by completed walls. Do not insist on a jump or teleport.
         for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
-            for(int dy:sameHeight?new int[]{0}:new int[]{0,1,-1,2,-2}){
+            for(int dy:sameHeight?new int[]{0,1}:new int[]{0,1,-1,2,-2}){
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos p=target.offset(dx,dy,dz);
                 if(edgeDistance(target,p.getX()+.5,p.getZ()+.5)
@@ -363,7 +381,7 @@ public final class BuilderPlacementSpace {
             WorkerStationBlockEntity table,BlockPos target,
             BlockPos schematicOrigin){
         List<BuilderGolem> blocking=level.getEntitiesOfClass(
-                BuilderGolem.class,volume(target).inflate(1,0,1),
+                BuilderGolem.class,volume(target).inflate(1,1,1),
                 g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID())
                         &&occupied(target,g));
         if(blocking.isEmpty())return "none";
@@ -385,7 +403,7 @@ public final class BuilderPlacementSpace {
             WorkerStationBlockEntity table,BlockPos target){
         AABB area=volume(target);
         List<BuilderGolem> blockers=level.getEntitiesOfClass(
-                BuilderGolem.class,area.inflate(1,0,1),
+                BuilderGolem.class,area.inflate(1,1,1),
                 g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID())
                         &&occupied(target,g));
         if(blockers.isEmpty()){
@@ -409,6 +427,10 @@ public final class BuilderPlacementSpace {
             // center that still intersects the future placement cube.
             BlockPos destination=canPrecisionStep(level,blocker,target)
                     ?blocker.blockPosition():escape(level,blocker,target);
+            // An old stand candidate at the AIR target itself would have
+            // walked the blocker INTO the block it was supposed to clear.
+            if(destination!=null
+                    &&destination.equals(target))destination=null;
             if(destination==null){
                 found=false;
                 continue;
