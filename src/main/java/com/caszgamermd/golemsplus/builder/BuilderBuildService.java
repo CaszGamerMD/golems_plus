@@ -344,15 +344,15 @@ public final class BuilderBuildService {
             int index=table.claimBuilderZoneStep(worker.getUUID(),
                     zone,plan.steps());
             if(index<0){
-                // Finished means ALL assigned schematic cells are done,
-                // not simply that the current Y batch has no runnable
-                // steps. A finished Builder must get off the structure and
-                // wait near OnSite while other crew zones keep building.
-                if(table.builderZoneDone(zone)){
-                    activityForFinished(worker);
-                    parkAtOnSite(level,worker,table);
-                }
-                return; // deferred access/support can still retry later
+                // A Builder is allowed onto the structure ONLY while
+                // actively constructing. A zone can be truly finished OR
+                // temporarily out of reachable work because some cells
+                // are deferred. In BOTH cases it physically returns to
+                // OnSite, freeing all future collision volumes. Deferred
+                // cells stay unfinished and can be retried after cooldown.
+                if(table.builderZoneDone(zone))activityForFinished(worker);
+                parkAtOnSite(level,worker,table);
+                return;
             }
             var activity=action(worker,index);
             var step=plan.steps().get(index);
