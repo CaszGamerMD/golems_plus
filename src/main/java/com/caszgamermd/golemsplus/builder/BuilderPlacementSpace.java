@@ -265,7 +265,7 @@ public final class BuilderPlacementSpace {
      */
     public static BlockPos approach(ServerLevel level,BuilderGolem worker,
             BlockPos target){
-        return approachWithHeight(level,worker,target,false);
+        return approachWithHeight(level,worker,target,false,p->true);
     }
     /** Plan B work stance: feet on target Y or one Y ABOVE, with real
      * footing and at least 0.8 horizontal clearance from the new block.
@@ -273,16 +273,27 @@ public final class BuilderPlacementSpace {
      */
     public static BlockPos approachAtTargetY(ServerLevel level,
             BuilderGolem worker,BlockPos target){
-        return approachWithHeight(level,worker,target,true);
+        return approachWithHeight(level,worker,target,true,p->true);
+    }
+    /** Builder construction planner can validate line of sight, immediate
+     * post-placement exit and teammate reservations BEFORE committing
+     * materials. Never return a cached work stance that violates them.
+     */
+    public static BlockPos approachWithRules(ServerLevel level,
+            BuilderGolem worker,BlockPos target,
+            java.util.function.Predicate<BlockPos> safe){
+        return approachWithHeight(level,worker,target,true,safe);
     }
     private static BlockPos approachWithHeight(ServerLevel level,
-            BuilderGolem worker,BlockPos target,boolean sameHeight){
+            BuilderGolem worker,BlockPos target,boolean sameHeight,
+            java.util.function.Predicate<BlockPos> safe){
         long now=level.getGameTime();
         Approach cached=workApproaches.get(worker);
         if(cached!=null&&cached.target().equals(target)
                 &&(!sameHeight||cached.destination().getY()==target.getY()
                         ||cached.destination().getY()==target.getY()+1)
                 &&cached.until()>now
+                &&safe.test(cached.destination())
                 &&cached.destination().distSqr(target)<14
                 &&!(cached.destination().equals(worker.blockPosition())
                     &&worker.distanceToSqr(target.getX()+.5,
@@ -302,7 +313,8 @@ public final class BuilderPlacementSpace {
             for(int dy:sameHeight?new int[]{0,1}:new int[]{0,1,-1,2,-2}){
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos p=target.offset(dx,dy,dz);
-                if(edgeDistance(target,p.getX()+.5,p.getZ()+.5)
+                if(!safe.test(p)
+                        ||edgeDistance(target,p.getX()+.5,p.getZ()+.5)
                             <MIN_EDGE_CLEARANCE
                         ||p.distSqr(target)>=14
                         ||p.equals(worker.blockPosition())
@@ -325,6 +337,10 @@ public final class BuilderPlacementSpace {
                 .comparingDouble((BlockPos p)->
                         p.distSqr(worker.blockPosition())*1.3
                         +Math.abs(p.getY()-worker.blockPosition().getY())*4
+                        // Builder preference: walk in direct skylight
+                        // rather than inside newly enclosed dome pockets.
+                        // It is a cost only, NEVER an access prohibition.
+                        +(level.canSeeSky(p.above())?0:5.0)
                         +p.distSqr(target)*1.20
                         +Math.pow(Math.max(0,p.distSqr(target)-8),2)*3)
                 .thenComparingInt(BlockPos::getX)
