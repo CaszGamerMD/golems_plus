@@ -48,6 +48,13 @@ public final class BuilderDomeConstructionGameTest {
             if(steps.size()!=3537)
                 throw new IllegalStateException("Incorrect Dome blueprint count "+steps.size());
         }catch(Exception e){helper.fail("Could not plan Dome "+e);return;}
+        // Minecraft GameTest allocates the containing world at a random
+        // coordinate. The *schematic's own coordinate frame* starts at
+        // (0,0,0), the ground supporting Y=0 is local Y=-1, and ALL
+        // human-readable test reports prioritize this stable local frame.
+        System.out.println("[DOME FRAME] schematic=(0,0,0)"
+                +" baseY=0 groundY=-1 "
+                +" dimensions=(39,39) absoluteGameTestOriginHidden");
         // A full size test structure is essential. The default 8x8
         // GameTest room causes invisible barrier-block path failures.
         for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
@@ -130,12 +137,35 @@ public final class BuilderDomeConstructionGameTest {
             // Count genuine placed world states, including independent
             // out-of-order zone completion; don't use obsolete ledger fields.
             int physicalCount=physicallyCorrect(level,steps);
+            int sharedY=table.builderActiveLayer(steps);
+            // Fail immediately if a Builder receives an out-of-layer
+            // construction assignment; no silent progress on upper Y
+            // while an indexed lower-Y cell remains unfinished.
+            for(BuilderGolem member:crew){
+                int assigned=table.claimedStep(member.getUUID());
+                if(assigned>=0&&assigned<steps.size()
+                        &&steps.get(assigned).y()>sharedY){
+                    helper.fail("Y LAYER VIOLATION: assigned Y="
+                            +(steps.get(assigned).y()-table.builderOrigin().getY())
+                            +" above active Y="
+                            +(sharedY-table.builderOrigin().getY())
+                            +" worker="+member.getName().getString());
+                    return;
+                }
+            }
             if(tick%400==0)
                 System.out.println("[DOME PROGRESS] tick="+tick
                     +" realBlocks="+physicalCount+"/"+steps.size()
+                    +" activeY="+(sharedY-table.builderOrigin().getY())
                     +" clear="+table.builderClearCursor()
                     +" cursor="+table.builderCursor()
                     +" problem="+table.problem());
+            // When progress becomes intermittent, record each golem's
+            // world/dome-relative location and the exact occupied build
+            // cell BEFORE the final stall. This is read-only telemetry.
+            if(tick%400==0&&tick-lastProgress[0]>800)
+                System.out.println("[DOME CREW] tick="+tick
+                        +crewCoordinates(level,table,crew,steps));
             // Replenish the 27-slot CHEST, never worker inventories.
             Set<Item> needs=new LinkedHashSet<>();
             needs.add(WorksiteContent.GRAPPLE_HOOK);
@@ -224,9 +254,49 @@ public final class BuilderDomeConstructionGameTest {
                     message.append(" | ").append(worker.getName().getString())
                         .append(" @ ").append(worker.blockPosition())
                         .append(" ").append(BuilderBuildService.debugStatus(level,worker));
+                message.append(crewCoordinates(level,table,crew,steps));
                 helper.fail(message.toString());
             }
         });
+    }
+
+    /** A stationary screenshot of the real physical dome worksite:
+     * absolute world coordinates are retained, and offsets use the
+     * schematic's actual chosen origin, not GameTest's random world seed.
+     */
+    private static String crewCoordinates(ServerLevel level,
+            WorkerStationBlockEntity table,List<BuilderGolem> crew,
+            List<BuilderConstructionPlan.Step> steps){
+        BlockPos origin=table.builderOrigin();
+        StringBuilder out=new StringBuilder(" | schematic=(0,0,0)"
+                +" (world position omitted; use local XYZ)");
+        for(BuilderGolem mob:crew){
+            BlockPos at=mob.blockPosition();
+            int index=table.claimedStep(mob.getUUID());
+            out.append("\n[DOME COORD] golem=").append(mob.getName().getString())
+                    .append(" XYZ=").append(at.subtract(origin).toShortString())
+                    .append(" preciseXYZ=").append(String.format(
+                            java.util.Locale.ROOT,"(%.3f,%.3f,%.3f)",
+                            mob.getX()-origin.getX(),
+                            mob.getY()-origin.getY(),
+                            mob.getZ()-origin.getZ()))
+                    .append(" claimedStep=").append(index)
+                    .append(" held=").append(BuilderPlacementSpace.debugYield(
+                            level,mob,origin))
+                    .append(" grapple=").append(BuilderGrappleAccess.debug(mob));
+            if(index>=0&&index<steps.size()){
+                var step=steps.get(index);
+                BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+                out.append(" targetXYZ=")
+                        .append(target.subtract(origin).toShortString())
+                        .append(" blockNow=")
+                        .append(level.getBlockState(target))
+                        .append(" occupants=")
+                        .append(BuilderPlacementSpace.debugOccupants(
+                                level,table,target,origin));
+            }
+        }
+        return out.toString();
     }
 
     private static long fileSize(Path path){
