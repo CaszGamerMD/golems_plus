@@ -55,3 +55,11 @@ The user-facing requirement is that a Golem should occupy build-site space only 
 ## Strict shared-layer regression
 
 The two-Builder Fabric GameTest `BuilderLayerGateGameTest` verifies independent X/Z zone ownership, a delayed lower-Y step, and that neither Builder can claim higher-Y work while ANY lower-Y block is incomplete. After the lower step is physically reported complete, both Builders may claim the next layer. The full 3,537-step dome test stays separate from these focused navigation regressions. Test results should be checked before claiming an end-to-end dome completion.
+
+## One-block-below placement stance (Oct 28)
+
+Builders may place an assigned schematic block at **feetY-1** as well as at their own feetY. This is **not** permission to start constructing the next Y layer: global `builderActiveLayer` gating continues to restrict *assigned target blocks* to the lowest unfinished Y across the crew.
+
+A downward placement is legal only when the Builder is **physically grounded** one block above the assigned block, within the existing work reach, with **at least 0.8 blocks of horizontal X/Z clearance from the nearest edge of the future block**. The same margin applies to same-Y placements. All Builders whose bodies intersect the future cube, or whose centers violate the X/Z margin even from a higher ledge, must step aside before payment or `setBlock`. The upper Builder is not instructed to rappel down unnecessarily; stand selection searches Y and Y+1 for actual collision-safe, reachable footing. No flight, teleportation or scaffolding fallback.
+
+Physical test cases in `BuilderPlaceOneBelowGameTest`: grounded upper ledge at 0.85 margin (accept); 0.60 margin (reject, physically sidestep and then place); feet at Y+2 (reject). Dome GameTest shares these rules with the focused physical tests.
