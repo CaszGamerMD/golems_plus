@@ -29,6 +29,19 @@ import net.minecraft.world.phys.AABB;
 public final class BuilderScaffoldBridgePlanner {
     public static final int MAX_SPAN=6;
     private static final int REACH_SQUARED=10; // margin inside 14 actual reach
+    /** Trainable preferences. These weights may change between course
+     * generations; hard support, blueprint, headroom, and six-block
+     * safety limits CANNOT be changed by training.
+     */
+    public record Weights(double itemCost,double turnCost,double endGapCost){
+        public Weights {
+            if(!Double.isFinite(itemCost)||itemCost<0
+                    ||!Double.isFinite(turnCost)||turnCost<0
+                    ||!Double.isFinite(endGapCost)||endGapCost<0)
+                throw new IllegalArgumentException("Unsafe scaffold policy weights");
+        }
+    }
+    public static final Weights BASELINE=new Weights(5.0,1.5,.3);
     private BuilderScaffoldBridgePlanner(){}
 
     public record Route(BlockPos anchor,List<BlockPos> cells,
@@ -59,6 +72,10 @@ public final class BuilderScaffoldBridgePlanner {
      */
     public static Route search(BlockPos anchor,BlockPos work,
             java.util.function.Predicate<BlockPos> safe){
+        return search(anchor,work,safe,BASELINE);
+    }
+    public static Route search(BlockPos anchor,BlockPos work,
+            java.util.function.Predicate<BlockPos> safe,Weights weights){
         if(withinPlacementRange(anchor,work))return null;
         record Node(BlockPos at,List<BlockPos> cells){}
         var queue=new ArrayDeque<Node>();
@@ -70,8 +87,18 @@ public final class BuilderScaffoldBridgePlanner {
             Node node=queue.removeFirst();
             if(!node.cells().isEmpty()
                     &&withinPlacementRange(node.at(),work)){
-                double score=node.cells().size()*5.0
-                        +node.at().distSqr(work)*.3;
+                int turns=0;
+                BlockPos previous=anchor;
+                int pdx=0,pdz=0;
+                for(BlockPos cell:node.cells()){
+                    int ndx=cell.getX()-previous.getX();
+                    int ndz=cell.getZ()-previous.getZ();
+                    if(previous!=anchor&&(ndx!=pdx||ndz!=pdz))turns++;
+                    pdx=ndx;pdz=ndz;previous=cell;
+                }
+                double score=node.cells().size()*weights.itemCost()
+                        +turns*weights.turnCost()
+                        +node.at().distSqr(work)*weights.endGapCost();
                 if(best==null||score<best.score())
                     best=new Route(anchor,node.cells(),work,score);
             }
