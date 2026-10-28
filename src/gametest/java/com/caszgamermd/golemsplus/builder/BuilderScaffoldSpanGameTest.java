@@ -13,9 +13,15 @@ public final class BuilderScaffoldSpanGameTest {
     @GameTest(maxTicks=100,skyAccess=true)
     public void horizontalScaffoldAllowsSixButSeventhFalls(GameTestHelper helper) {
         helper.setBlock(0,1,3,Blocks.STONE);
-        helper.setBlock(0,2,3,Blocks.SCAFFOLDING);
+        helper.setBlock(0,2,3,Blocks.SCAFFOLDING.defaultBlockState()
+                .setValue(ScaffoldingBlock.DISTANCE,0)
+                .setValue(ScaffoldingBlock.BOTTOM,false));
+        // Model real placements with the same native distance and bottom
+        // properties as a player/Builder placing from a supported tower.
         for(int n=1;n<=7;n++)
-            helper.setBlock(n,2,3,Blocks.SCAFFOLDING);
+            helper.setBlock(n,2,3,Blocks.SCAFFOLDING.defaultBlockState()
+                    .setValue(ScaffoldingBlock.DISTANCE,n)
+                    .setValue(ScaffoldingBlock.BOTTOM,true));
         helper.onEachTick(()->{
             if(helper.getTick()<25)return;
             for(int n=1;n<=BuilderScaffoldPlanA.MAX_HORIZONTAL_SCAFFOLD_SPAN;n++){
