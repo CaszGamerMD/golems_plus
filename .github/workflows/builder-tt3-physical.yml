@@ -1,0 +1,94 @@
+name: Time Trial 3 — 25-second real Builder evolution
+run-name: Trial 3 · 9 real golems · 500 ticks · 6 generations
+on:
+  push:
+    branches:
+      - feature/builder-timetrial3-physical-500t-262
+    paths:
+      - src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderTimeTrial3GameTest.java
+      - training/tt3/courses/**
+      - scripts/verify_timetrial3.py
+      - .github/workflows/builder-tt3-physical.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: physical-timetrial3-unique-checkpoint
+  cancel-in-progress: false
+jobs:
+  real-trial3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Verify every original Sponge schematic block
+        run: python3 scripts/verify_timetrial3.py
+      - name: Isolate actual Trial 3 physical GameTest world
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          mod=json.loads(p.read_text())
+          mod['entrypoints']['fabric-gametest']=[
+              'com.caszgamermd.golemsplus.builder.BuilderTimeTrial3GameTest'
+          ]
+          p.write_text(json.dumps(mod,indent=2)+'\n')
+          PY
+      - name: Real nine-entity 25-second genetic training
+        id: physical
+        continue-on-error: true
+        run: gradle --no-daemon runGameTest
+      - name: Preserve independent TT3 checkpoint and physical replay evidence
+        if: always()
+        shell: bash
+        env:
+          TRAINING_BRANCH: feature/builder-timetrial3-physical-500t-262
+        run: |
+          set -euo pipefail
+          if [[ ! -s training/tt3/state/checkpoint.json ]]; then
+            echo 'NO scored physical checkpoint; not a training pass.'
+            exit 0
+          fi
+          git config user.name 'golems-evolution[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mkdir -p "$RUNNER_TEMP/tt3"
+          cp training/tt3/state/checkpoint.json "$RUNNER_TEMP/tt3/checkpoint.json"
+          cp -a training/tt3/replays "$RUNNER_TEMP/tt3/replays"
+          rm -rf training/tt3/state training/tt3/replays
+          git reset --hard HEAD
+          git fetch origin "$TRAINING_BRANCH"
+          git checkout -B physical-tt3-publish "origin/$TRAINING_BRANCH"
+          mkdir -p training/tt3/state training/tt3/replays
+          python3 scripts/merge_timetrial3_state.py \
+            training/tt3/state/checkpoint.json "$RUNNER_TEMP/tt3/checkpoint.json" \
+            training/tt3/state/checkpoint.json
+          cp -n "$RUNNER_TEMP/tt3/replays/"*.json training/tt3/replays/ || true
+          git add -- training/tt3/state training/tt3/replays
+          if ! git diff --cached --quiet; then
+            git commit -m 'Preserve physically scored Trial 3 genes and real nine-golem replays [skip ci]'
+            git push origin HEAD:"$TRAINING_BRANCH"
+          fi
+      - name: Upload real movement diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: timetrial3-500-tick-physical-entity-diagnostics
+          path: |
+            training/tt3/state/
+            training/tt3/replays/
+            build/gametest/
+            build/reports/
+          if-no-files-found: ignore
+      - name: Require successful physical 25-second qualification
+        if: steps.physical.outcome == 'failure'
+        run: |
+          echo 'TT3 9/9 within 500 ticks not yet verified; checkpoint preserved.'
+          exit 1
