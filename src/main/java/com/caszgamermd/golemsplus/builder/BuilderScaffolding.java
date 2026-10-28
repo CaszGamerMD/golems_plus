@@ -103,9 +103,11 @@ public final class BuilderScaffolding {
      * a verified arrival/dismount (or after a safe abort).
      */
     public static boolean isControllingMovement(BuilderGolem worker){
-        return sessions.containsKey(worker)||exiting.containsKey(worker);
+        return sessions.containsKey(worker)||exiting.containsKey(worker)
+                ||BuilderScaffoldPlanA.controlsMotion(worker);
     }
     public static void cancel(BuilderGolem worker){
+        BuilderScaffoldPlanA.cancel(worker);
         clearMotion(worker);
         returning.remove(worker);
         exiting.remove(worker);
@@ -460,6 +462,9 @@ public final class BuilderScaffolding {
      */
     public static boolean descendForTravel(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
+        // Return across a physical Plan-A bridge BEFORE descending the
+        // column. Native A* cannot safely cross untracked scaffold air.
+        if(BuilderScaffoldPlanA.returnToGround(level,worker,table))return true;
         // A long tower may require more than 30 ticks of descent.
         // Renew the permit while this worker's material/lower-floor task
         // still requests descent, without restarting the physics session.
