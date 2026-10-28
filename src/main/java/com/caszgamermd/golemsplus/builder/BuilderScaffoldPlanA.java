@@ -287,10 +287,22 @@ public final class BuilderScaffoldPlanA {
         double dx=tx-worker.getX(),dz=tz-worker.getZ();
         double mx=Math.max(-.12,Math.min(.12,dx*.3));
         double mz=Math.max(-.12,Math.min(.12,dz*.3));
+        // Minecraft scaffolding is climb-through material, not a solid
+        // slab. When bridging sideways a real mob can settle INSIDE the
+        // next scaffold and lose one block of feet elevation. Maintain
+        // climbing contact while walking, with the same bounded upward
+        // impulse as our ordinary scaffold ascent. Never disable gravity,
+        // jump over the bridge, setPos, or bypass collision.
+        double rise=destination.getY()-worker.getY();
+        double vy=rise>.08
+                ?Math.min(.23,Math.max(.12,rise/5))
+                :Math.min(0,worker.getDeltaMovement().y);
+        worker.getMoveControl().setWantedPosition(tx,destination.getY(),tz,1.0);
         if(level.noCollision(worker,worker.getBoundingBox().move(mx,0,mz))){
-            worker.getMoveControl().setWantedPosition(tx,destination.getY(),tz,1.0);
-            var v=worker.getDeltaMovement();
-            worker.setDeltaMovement(mx,v.y,mz);
+            worker.setDeltaMovement(mx,vy,mz);
+        }else if(rise>.08
+                &&level.noCollision(worker,worker.getBoundingBox().move(0,.10,0))){
+            worker.setDeltaMovement(0,vy,0);
         }
         return true;
     }
