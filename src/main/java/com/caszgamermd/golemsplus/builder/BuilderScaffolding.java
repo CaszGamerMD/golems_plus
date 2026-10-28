@@ -731,7 +731,7 @@ public final class BuilderScaffolding {
      * It is never enough to build a vertical column with no place to
      * step off on solid ground. Use the Builder's own collision shape.
      */
-    private static BlockPos safeGroundExit(ServerLevel level,
+    static BlockPos safeGroundExit(ServerLevel level,
             BuilderGolem worker,BlockPos base,
             java.util.Set<BlockPos> future){
         BlockPos best=null;
