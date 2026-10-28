@@ -1168,8 +1168,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
         phase=WorkerPhase.READY;sync();return true;
     }
     public boolean startPlacedBuilder(UUID actor){
+        // OnSite chest-only supply is a supported live mode. A
+        // remote warehouse must not be mandatory when real materials
+        // already exist at an explicitly configured Planner chest.
         if(!canConfigure(actor)||!isBuilder()||!hasPlacedSchematic()
-                ||activeOrder!=null||warehouse==null
+                ||activeOrder!=null||(warehouse==null&&builderMaterialStorage==null)
                 ||builderWorkerIds().isEmpty()||builderBlocks<1)return false;
         activeOrder=UUID.randomUUID();builderCursor=0;completedAhead=0;
         builderClearCursor=0;builderClearByFile.put(builderFile,0);
