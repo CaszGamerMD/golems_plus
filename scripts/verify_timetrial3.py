@@ -34,5 +34,19 @@ finishes=sum(block(x,0,z)=='minecraft:red_wool' for x in range(w) for z in range
 lower=sum('acacia_door' in block(x,1,z) for x in range(w) for z in range(l))
 assert (starts,finishes,lower)==(20,20,7)
 assert 'static final int LIMIT=500, GENERATIONS=6, COUNT=9;' in src
+# Enforce the user-requested whole-column, zero-jump behavior even if
+# future refactors keep compiling and the course geometry stays identical.
+scaffolding=(root/'src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffolding.java').read_text()
+assert 'getJumpControl().jump()' not in scaffolding
+assert 'setJumping(true)' not in scaffolding
+assert 'worker.setJumping(false)' in scaffolding
+assert 'worker.setDeltaMovement(0,Math.min(.23,Math.max(.12,remain/5)),0);' in scaffolding
+assert 'scaffold-complete-up-down-no-jump-v1' in src
+assert 'r.fullAscents!=1||r.fullDescents!=1' in src
+assert 'r.verticalViolations>0' in src
+assert 'mob.onGround()' in src
+assert 'floorFeet+.125' in src
+assert 'training/tt3/strict/state/checkpoint.json' in src
+
 print(f'Exact original Trial 3 validated: {w}x{h}x{l}, {starts} starts, '
       f'{finishes} goals, {lower} closed acacia doors, 500 ticks, nine real entities')
