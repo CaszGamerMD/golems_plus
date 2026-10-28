@@ -120,7 +120,10 @@ public final class BuilderDomeConstructionGameTest {
         final boolean[] inspected={false},checkpoint={false};
         helper.onEachTick(()->{
             long tick=helper.getTick();
-            if(tick%5!=0)return;
+            if(tick%20!=0)return;
+            // Count genuine placed world states, including independent
+            // out-of-order zone completion; don't use obsolete ledger fields.
+            int physicalCount=physicallyCorrect(level,steps);
             // Replenish the 27-slot CHEST, never worker inventories.
             Set<Item> needs=new LinkedHashSet<>();
             needs.add(Items.SCAFFOLDING);
@@ -145,13 +148,13 @@ public final class BuilderDomeConstructionGameTest {
             // pinned. Watching only builderCursor falsely calls that a stall.
             if(lastCursor[0]!=table.builderCursor()
                     ||lastCleared[0]!=table.builderClearCursor()
-                    ||lastCompleted[0]!=table.builderCompletedCount()){
+                    ||lastCompleted[0]!=physicalCount){
                 lastCursor[0]=table.builderCursor();
                 lastCleared[0]=table.builderClearCursor();
-                lastCompleted[0]=table.builderCompletedCount();
+                lastCompleted[0]=physicalCount;
                 lastProgress[0]=tick;
             }
-            if(!checkpoint[0]&&table.builderCompletedCount()>=1700){
+            if(!checkpoint[0]&&physicalCount>=1700){
                 // This intermediate acceptance checkpoint is independent
                 // of eventual 3537/3537 completion. It must verify all
                 // four actual entities are alive (not merely scheduled).
@@ -202,7 +205,7 @@ public final class BuilderDomeConstructionGameTest {
                 StringBuilder message=new StringBuilder(
                         "Dome stalled after "+tick+" ticks | clear="+
                         table.builderClearCursor()+" | contiguous="+table.builderCursor()
-                        +" | totalCompleted="+table.builderCompletedCount()
+                        +" | totalCompleted="+physicalCount
                         +"/"+steps.size()+" | problem="+table.problem());
                 for(BuilderGolem worker:crew)
                     message.append(" | ").append(worker.getName().getString())
@@ -211,6 +214,21 @@ public final class BuilderDomeConstructionGameTest {
                 helper.fail(message.toString());
             }
         });
+    }
+
+    private static int physicallyCorrect(ServerLevel level,
+            List<BuilderConstructionPlan.Step> plan){
+        int count=0;
+        for(var step:plan){
+            if(step.ignorePlant())continue;
+            var expected=BuilderBlockResolver.resolve(step.encodedState(),
+                    BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+            if(expected==null)continue;
+            if(BuilderPlacementState.matches(
+                    level.getBlockState(new BlockPos(step.x(),step.y(),step.z())),
+                    expected.state()))count++;
+        }
+        return count;
     }
 
     private static void addItem(Set<Item> requested,BuilderConstructionPlan.Step s){
