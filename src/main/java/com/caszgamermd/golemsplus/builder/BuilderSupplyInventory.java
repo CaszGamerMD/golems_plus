@@ -638,10 +638,12 @@ public final class BuilderSupplyInventory {
                 ||!containsInSources(table,tool))return LoadStatus.MISSING;
         if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                 depot.getZ()+.5)>12){
-            if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
-                return LoadStatus.MOVING;
-            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                    level,worker,depot,.83);
+            // Missing grapple equipment cannot summon its own rappel.
+            // It must follow a REAL reachable walking route, otherwise
+            // signal missing access instead of recursive self-calls.
+            if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeTo(level,worker,depot,.83))
+                return LoadStatus.MISSING;
             return LoadStatus.MOVING;
         }
         if(room(worker,new ItemStack(tool))<=0)return LoadStatus.MISSING;
