@@ -671,8 +671,14 @@ public final class BuilderBuildService {
             return previous;
         if(!table.hasPlacedSchematic())
             throw new IllegalArgumentException("No placed schematic");
+        // A GameTest/Fabric config path may contain a literal "./".
+        // Normalize BOTH sides of the containment check. Previously the
+        // requested file existed, but normalizing only the resolved file
+        // caused Path.startsWith(folder) to reject every real schematic.
+        // The containment check remains mandatory for path traversal.
         Path folder=FabricLoader.getInstance().getConfigDir()
-                .resolve("golems_plus").resolve("schematics");
+                .resolve("golems_plus").resolve("schematics")
+                .toAbsolutePath().normalize();
         Path file=folder.resolve(table.builderFile()).normalize();
         if(!file.startsWith(folder)||!Files.isRegularFile(file))
             throw new IllegalArgumentException("Saved schematic missing");
