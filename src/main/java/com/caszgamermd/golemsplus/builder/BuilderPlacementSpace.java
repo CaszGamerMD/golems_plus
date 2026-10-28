@@ -44,8 +44,91 @@ public final class BuilderPlacementSpace {
         return new AABB(pos).inflate(.10,0,.10);
     }
 
+    // Clearance is measured from the Golem's CENTER to the closest edge
+    // of the *future* target block in X/Z, not from block-center to
+    // block-center. A 0.65-wide Builder at x=targetMaxX+.80 keeps its full
+    // shoulder outside the new cube. Tile centers only 0.5 from the
+    // nearest edge are NOT sufficient.
+    static final double MIN_EDGE_CLEARANCE=.80;
+    private static double edgeDistance(BlockPos block,double x,double z){
+        double dx=Math.max(0,Math.max(block.getX()-x,x-(block.getX()+1.0)));
+        double dz=Math.max(0,Math.max(block.getZ()-z,z-(block.getZ()+1.0)));
+        return Math.hypot(dx,dz);
+    }
     private static boolean occupied(BlockPos target,BuilderGolem worker){
-        return worker.isAlive()&&worker.getBoundingBox().intersects(volume(target));
+        return worker.isAlive()
+                &&worker.getBoundingBox().maxY>target.getY()
+                &&worker.getBoundingBox().minY<target.getY()+1
+                &&(worker.getBoundingBox().intersects(volume(target))
+                    ||edgeDistance(target,worker.getX(),worker.getZ())
+                            <MIN_EDGE_CLEARANCE-.015);
+    }
+    /** Choose a REAL per-tick lateral movement that clears the target.
+     * Try more than the nearest face: a nearby slab, wall or teammate
+     * may block the obvious side even though another side is available.
+     * Keep exact physical collision and ground support for every choice.
+     */
+    private static double[] precisionStep(ServerLevel level,BuilderGolem mob,
+            BlockPos target){
+        if(!mob.onGround()||mob.blockPosition().getY()!=target.getY())
+            return null;
+        double cx=target.getX()+.5,cz=target.getZ()+.5;
+        double x=mob.getX(),z=mob.getZ();
+        double[][] candidates={
+                {x>=cx?1:-1,0},{0,z>=cz?1:-1},
+                {x>=cx?-1:1,0},{0,z>=cz?-1:1}
+        };
+        // The near-side movement is preferred, but any cardinal path
+        // that increases separation is valid when it has real footing.
+        double bestScore=Double.POSITIVE_INFINITY;
+        double[] best=null;
+        BlockPos oldFoot=mob.blockPosition();
+        for(double[] direction:candidates){
+            double vx=direction[0]*.115,vz=direction[1]*.115;
+            double newX=x+vx,newZ=z+vz;
+            BlockPos foot=BlockPos.containing(newX,mob.getY(),newZ);
+            if(!level.hasChunkAt(foot)||!level.hasChunkAt(foot.below()))
+                continue;
+            // On the same block we already have true physical footing.
+            // On another tile, check for a real block or partial-block
+            // collision surface below rather than requiring a FULL
+            // face-sturdy block; that incorrectly rejected slabs.
+            if(!foot.equals(oldFoot)
+                    &&level.getBlockState(foot.below())
+                        .getCollisionShape(level,foot.below()).isEmpty()
+                    &&level.getBlockState(foot)
+                        .getCollisionShape(level,foot).isEmpty())
+                continue;
+            if(!level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz)))
+                continue;
+            double desiredX=direction[0]>0?target.getX()+1.84:target.getX()-.84;
+            double desiredZ=direction[1]>0?target.getZ()+1.84:target.getZ()-.84;
+            double distance=direction[0]!=0
+                    ?Math.abs(desiredX-newX):Math.abs(desiredZ-newZ);
+            double score=distance;
+            if(direction[0]!=0&&direction[0]*(x-cx)<0
+                    ||direction[1]!=0&&direction[1]*(z-cz)<0)
+                score+=2.0;
+            if(score<bestScore){bestScore=score;best=new double[]{vx,vz};}
+        }
+        return best;
+    }
+    private static boolean canPrecisionStep(ServerLevel level,BuilderGolem mob,
+            BlockPos target){
+        return precisionStep(level,mob,target)!=null;
+    }
+    /** This phase operates every real entity tick before Minecraft physics.
+     * No snaps, flight, teleportation or unsafe instant block placements.
+     */
+    public static boolean tickPrecisionYield(ServerLevel level,BuilderGolem mob){
+        Yield hold=yielding.get(mob);
+        if(hold==null||!occupied(hold.target(),mob))return false;
+        double[] step=precisionStep(level,mob,hold.target());
+        if(step==null)return false;
+        WorkerNavigation.stop(mob);
+        var velocity=mob.getDeltaMovement();
+        mob.setDeltaMovement(step[0],Math.min(0,velocity.y),step[1]);
+        return true;
     }
 
     /** Run before ANY ordinary Builder assignment/courier/navigation tick. */
@@ -62,8 +145,11 @@ public final class BuilderPlacementSpace {
             yielding.remove(worker);
             return false;
         }
-        // Yielded Builders keep walking away even when their assigned
-        // construction task would otherwise repeatedly override the path.
+        // The last fraction of a block is a continuous physics-controlled
+        // precision move; an exact tile-center path would stop too close.
+        if(occupied(hold.target(),worker)
+                &&canPrecisionStep(level,worker,hold.target()))return true;
+        // Otherwise the worker must take a normal collision-safe A* path.
         if(occupied(hold.target(),worker)
                 ||worker.distanceToSqr(hold.destination().getX()+.5,
                         hold.destination().getY(),hold.destination().getZ()+.5)>2.25)
@@ -75,7 +161,11 @@ public final class BuilderPlacementSpace {
 
     private static boolean canStand(ServerLevel level,BuilderGolem worker,
             BlockPos at,BlockPos obstructed){
-        if(at.closerThan(obstructed,1.8)
+        // An adjacent cardinal tile is safe when the FULL mob bounding
+        // box clears the future block (checked below). Rejecting every
+        // tile closer than 1.8 forced Builders on narrow upper ledges to
+        // search across non-existent two-block-wide platforms forever.
+        if(at.closerThan(obstructed,1.0)
                 ||!level.hasChunkAt(at)||!level.hasChunkAt(at.above())
                 ||!level.hasChunkAt(at.below()))return false;
         BlockState feet=level.getBlockState(at);
@@ -111,7 +201,7 @@ public final class BuilderPlacementSpace {
         // wall, leaving builders stalled despite clear floor two blocks away.
         // Eight directions x three heights x three radii is bounded; only
         // the best candidates below perform expensive navigation probes.
-        for(int radius=2;radius<=4;radius++){
+        for(int radius=1;radius<=4;radius++){
             int[][] offsets={
                     {radius,0},{-radius,0},{0,radius},{0,-radius},
                     {radius,radius},{radius,-radius},
@@ -180,7 +270,9 @@ public final class BuilderPlacementSpace {
             for(int dy:sameHeight?new int[]{0}:new int[]{0,1,-1,2,-2}){
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos p=target.offset(dx,dy,dz);
-                if(p.distSqr(target)>=14
+                if(edgeDistance(target,p.getX()+.5,p.getZ()+.5)
+                            <MIN_EDGE_CLEARANCE
+                        ||p.distSqr(target)>=14
                         ||p.equals(worker.blockPosition())
                             &&worker.distanceToSqr(target.getX()+.5,
                                 target.getY()+.5,target.getZ()+.5)>13.0
@@ -233,13 +325,69 @@ public final class BuilderPlacementSpace {
         }
     }
 
+    /** Release an expired self-placement reservation when the current
+     * step is deferred. Only that worker's hold is removed; other crew
+     * reservations and pending work remain intact.
+     */
+    public static void cancelYield(BuilderGolem worker){
+        if(yielding.remove(worker)!=null)WorkerNavigation.stop(worker);
+    }
+
+    /** Read-only diagnostic for stuck workers. Capture the exact held
+     * placement cell and reserved escape, including expiry, without
+     * changing a route or claiming a build step.
+     */
+    public static String debugYield(ServerLevel level,BuilderGolem worker){
+        return debugYield(level,worker,BlockPos.ZERO);
+    }
+    public static String debugYield(ServerLevel level,BuilderGolem worker,
+            BlockPos schematicOrigin){
+        Yield hold=yielding.get(worker);
+        if(hold==null)return "yield=none";
+        return "yieldTargetXYZ="+hold.target().subtract(schematicOrigin).toShortString()
+                +" escapeXYZ="+hold.destination().subtract(schematicOrigin).toShortString()
+                +" expiresIn="+Math.max(0,hold.until()-level.getGameTime())+"t"
+                +" stillTooClose="+occupied(hold.target(),worker)
+                +" escapeStandable="+WorkerNavigation.canStandOn(
+                        level,worker,hold.destination());
+    }
+
+    /** Precise occupants of the intended block's collision volume.
+     * This is for reporting only, never an alternative movement policy.
+     */
+    public static String debugOccupants(ServerLevel level,
+            WorkerStationBlockEntity table,BlockPos target){
+        return debugOccupants(level,table,target,BlockPos.ZERO);
+    }
+    public static String debugOccupants(ServerLevel level,
+            WorkerStationBlockEntity table,BlockPos target,
+            BlockPos schematicOrigin){
+        List<BuilderGolem> blocking=level.getEntitiesOfClass(
+                BuilderGolem.class,volume(target).inflate(1,0,1),
+                g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID())
+                        &&occupied(target,g));
+        if(blocking.isEmpty())return "none";
+        List<String> details=new ArrayList<>();
+        for(BuilderGolem g:blocking)
+            details.add(g.getName().getString()
+                    +" XYZ="+g.blockPosition().subtract(schematicOrigin).toShortString()
+                    +" feetXYZ="+String.format(java.util.Locale.ROOT,
+                            "(%.2f,%.2f,%.2f)",
+                            g.getX()-schematicOrigin.getX(),
+                            g.getY()-schematicOrigin.getY(),
+                            g.getZ()-schematicOrigin.getZ())
+                    +" "+debugYield(level,g,schematicOrigin));
+        return String.join("; ",details);
+    }
+
     /** @return true only when the future block volume is clear of workers. */
     public static boolean ready(ServerLevel level,BuilderGolem placing,
             WorkerStationBlockEntity table,BlockPos target){
         AABB area=volume(target);
         List<BuilderGolem> blockers=level.getEntitiesOfClass(
-                BuilderGolem.class,area,
-                g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID()));
+                BuilderGolem.class,area.inflate(1,0,1),
+                g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID())
+                        &&occupied(target,g));
         if(blockers.isEmpty()){
             // A player/other mob must also never be suffocated by placement.
             List<LivingEntity> others=level.getEntitiesOfClass(
@@ -256,7 +404,11 @@ public final class BuilderPlacementSpace {
             Yield old=yielding.get(blocker);
             if(old!=null&&old.target().equals(target)
                     &&old.until()>level.getGameTime())continue;
-            BlockPos destination=escape(level,blocker,target);
+            // When standing adjacent on real ground, do a precise
+            // horizontal edge-clearance move instead of targeting a tile
+            // center that still intersects the future placement cube.
+            BlockPos destination=canPrecisionStep(level,blocker,target)
+                    ?blocker.blockPosition():escape(level,blocker,target);
             if(destination==null){
                 found=false;
                 continue;

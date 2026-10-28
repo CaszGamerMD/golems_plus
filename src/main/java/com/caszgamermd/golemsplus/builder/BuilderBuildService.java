@@ -48,9 +48,11 @@ public final class BuilderBuildService {
     private static final class WorkerAction {
         int index=-1;
         Action phase=Action.STAGE_MATERIALS;
+        long blockedSince=-1;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
+                blockedSince=-1;
             }
         }
     }
@@ -66,6 +68,29 @@ public final class BuilderBuildService {
     // seconds caused visible freezes while a PTP was temporarily busy.
     private static final Map<WorkerStationBlockEntity,Cache>
             cachedWarehousePlans=new WeakHashMap<>();
+    /** Completed Builders must never camp on the structure or occupy
+     * another zone's future blocks. The OnSite buffer is outside the
+     * schematic; return via a genuine hook descent, then ordinary A*.
+     * Do not retire or despawn a worker while the other zones run.
+     */
+    private static void parkAtOnSite(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table){
+        BlockPos depot=table.builderUnloadingStorage();
+        if(depot==null)depot=table.getBlockPos();
+        if(BuilderGrappleAccess.rappelToward(level,worker,table,depot))
+            return;
+        if(worker.distanceToSqr(depot.getX()+.5,depot.getY(),
+                depot.getZ()+.5)>4.0){
+            com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeTo(level,worker,depot,.8);
+        }else{
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+        }
+    }
+    private static void activityForFinished(BuilderGolem worker){
+        var a=workerActions.get(worker);
+        if(a!=null)a.phase=Action.COMPLETE;
+    }
     private BuilderBuildService(){}
     /** Start the warehouse packing reservation as soon as the user
      * presses Start, before any Builder Golem has reached the first block.
@@ -318,7 +343,17 @@ public final class BuilderBuildService {
             // Plan B does not place or navigate any new scaffold towers.
             int index=table.claimBuilderZoneStep(worker.getUUID(),
                     zone,plan.steps());
-            if(index<0)return; // only this zone's pending dependencies
+            if(index<0){
+                // A Builder is allowed onto the structure ONLY while
+                // actively constructing. A zone can be truly finished OR
+                // temporarily out of reachable work because some cells
+                // are deferred. In BOTH cases it physically returns to
+                // OnSite, freeing all future collision volumes. Deferred
+                // cells stay unfinished and can be retried after cooldown.
+                if(table.builderZoneDone(zone))activityForFinished(worker);
+                parkAtOnSite(level,worker,table);
+                return;
+            }
             var activity=action(worker,index);
             var step=plan.steps().get(index);
             if(step.ignorePlant()){
@@ -468,8 +503,10 @@ public final class BuilderBuildService {
                     return;
                 }
                 if(access==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR){
-                    table.setProblem("No safe 20-block grapple anchor / open cardinal face for "
-                            +pos);
+                    table.waitForBuilderAccess(worker.getUUID(),index,
+                            level.getGameTime());
+                    table.setProblem("Deferred inaccessible grapple work "+pos
+                            +" (other heights in this zone may continue)");
                     return;
                 }
                 if(access==BuilderGrappleAccess.Result.MOVING)return;
@@ -487,8 +524,10 @@ public final class BuilderBuildService {
                     if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .routeToExact(level,worker,approach,1.0)){
                         BuilderPlacementSpace.invalidateApproach(worker,pos);
-                        com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                .routeTo(level,worker,approach,.85);
+                        if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .routeTo(level,worker,approach,.85))
+                            table.waitForBuilderAccess(worker.getUUID(),index,
+                                    level.getGameTime());
                     }
                     return;
                 }
@@ -496,17 +535,23 @@ public final class BuilderBuildService {
                     var access=BuilderGrappleAccess.reach(level,worker,table,pos);
                     if(access==BuilderGrappleAccess.Result.NEED_HOOK)
                         table.setProblem("Builder needs a Grapple Hook");
-                    else if(access==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR)
-                        table.setProblem("No safe grapple anchor for blocked one-step rise "
-                                +pos);
+                    else if(access==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR){
+                        table.waitForBuilderAccess(worker.getUUID(),index,
+                                level.getGameTime());
+                        table.setProblem("Deferred blocked one-step rise "+pos);
+                    }else if(access==BuilderGrappleAccess.Result.READY)
+                        table.waitForBuilderAccess(worker.getUUID(),index,
+                                level.getGameTime());
                     return;
                 }
                 if(yDiff<0 && BuilderGrappleAccess.rappelToward(
                         level,worker,table,pos))return;
                 // A downward target without owned scaffold uses the
                 // normal collision-safe walkable route, never a fall.
-                com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .routeTo(level,worker,pos,.85);
+                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeTo(level,worker,pos,.85))
+                    table.waitForBuilderAccess(worker.getUUID(),index,
+                            level.getGameTime());
                 return;
             }
             // Enforce target-Y placement even for blocks within normal
@@ -521,7 +566,24 @@ public final class BuilderBuildService {
             worker.setDeltaMovement(0,velocity.y,0);
             // Never place into any Builder's body. Check before spending
             // the item so waiting for a teammate to move consumes nothing.
-            if(!BuilderPlacementSpace.ready(level,worker,table,pos))return;
+            if(!BuilderPlacementSpace.ready(level,worker,table,pos)){
+                // Waiting at an impossible collision envelope must not
+                // pin one target or one Y-level forever. Give genuine
+                // sidesteps 100 ticks, then preserve the unfinished index
+                // and try a different zone cell (including other heights).
+                if(activity.blockedSince<0)
+                    activity.blockedSince=level.getGameTime();
+                if(level.getGameTime()-activity.blockedSince>=100){
+                    BuilderPlacementSpace.cancelYield(worker);
+                    table.waitForBuilderAccess(worker.getUUID(),index,
+                            level.getGameTime());
+                    table.setProblem("Deferred block "+pos
+                            +" until a safe 0.8m placement stance is reachable");
+                    activity.blockedSince=-1;
+                }
+                return;
+            }
+            activity.blockedSince=-1;
             // Upper door halves do not consume another door item; the
             // lower half was already placed and paid for in the prior
             // layer. Keep refund logic for all ordinary materials.

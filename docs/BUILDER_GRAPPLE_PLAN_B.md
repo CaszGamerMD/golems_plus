@@ -40,3 +40,14 @@ Each Builder takes one Grapple Hook from its physical OnSite Storage chest (incl
 4. **Future game tests:** create a narrow shared-ledge four-Builder occupancy deadlock fixture based on these logs; verify it first, then repeat the same full dome.
 
 Do not modify the trained A* with an unverified fallback, teleport, noclip, unsafe gravity drop, or fake construction inventory.
+
+## Revised placement and independent-height rules (Oct 28)
+
+- **Schematic-local coordinate frame** for all future dome GameTest reports: the Litematica placement origin is reported as `(0,0,0)`, construction starts at local Y=0 and support terrain is Y=-1. Fabric GameTest still generates at an arbitrary actual world coordinate, but progress, targets, feet, and yield escapes are reported as stable schematic-relative XYZ. [Latest normalized dome test](https://github.com/CaszGamerMD/golems_plus/actions/runs/40682000149).
+- **0.8-block clearance:** every new solid schematic block requires the center of every nearby Builder to be at least 0.8m outside its nearest X/Z face and the actual 0.65-wide entity bounding box not to intersect the future block. Stand selection considers this margin; a precision sidestep uses collision-checked horizontal Minecraft entity movement each tick, including alternative cardinal choices and partial-block/slab footing.
+- **No per-Y hold:** `WorkerStationBlockEntity.claimBuilderZoneStep` no longer assembles exclusively same-Y staging batches. A physically blocked, unsupported, or inaccessible task is retained and deferred for retry while the worker can continue other tasks at different heights within its independent X/Z zone; no crew-wide height barrier or old pathfinding fallback.
+- **Return to OnSite:** an assigned Builder with no currently runnable tasks (whether fully finished or temporarily deferred) returns via physical Grapple Hook descent and trained A* to its designated OnSite Storage area. It remains available for retries, not abandoned in the structure.
+- **Blocked grapple recovery:** a repeatedly blocked top landing initiates controlled rope retreat back to grounded entry, and temporarily blacklists that actual anchor before choosing a new one. Never drop the worker or teleport.
+- **Physical clearance proof:** [dome CI #40682000149](https://github.com/CaszGamerMD/golems_plus/actions/runs/40682000149) logged a focused live Builder self-clearance test at ~0.94m, no teleportation/collision, passed. Dome E2E still FAILED at 821/3537; narrow construction work stances remain a separate problem and must not be represented as solved.
+
+The user-facing requirement is that a Golem should occupy build-site space only while it has a runnable physical construction assignment; otherwise it should return OnSite. The actual Minecraft GameTest world coordinate cannot be forced to absolute world `(0,0,0)` without replacing the isolated GameTest runner; logs make the Litematica-local `(0,0,0)` coordinate system authoritative.
