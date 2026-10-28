@@ -34,8 +34,9 @@ public final class BuilderConstructionFrontierGameTest {
         var table=(WorkerStationBlockEntity)level.getBlockEntity(at);
         var owner=h.makeMockServerPlayerInLevel();
         if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),1)
                 ||!table.setPlacedBuilderPlan(owner.getUUID(),
-                    "frontier-fixture.litematic","Frontier",at,0,0,
+                    "placed-frontier-fixture.litematic","Frontier",at,0,0,
                     taskCount,0)
                 ||!table.setBuilderMaterialStorage(owner.getUUID(),depot)
                 ||!table.registerBuilderWorker(worker.getUUID())
