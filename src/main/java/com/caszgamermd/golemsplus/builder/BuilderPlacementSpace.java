@@ -31,6 +31,8 @@ public final class BuilderPlacementSpace {
     // 12-tick updates. Recomputing the nearest spot from a moving golem
     // makes it switch sides every few steps and continually resets A*.
     private record Approach(BlockPos target,BlockPos destination,long until){}
+    private record Rejected(BlockPos target,BlockPos destination,long until){}
+    private static final Map<BuilderGolem,Rejected> rejected=new WeakHashMap<>();
     private static final Map<BuilderGolem,Approach> workApproaches=
             new WeakHashMap<>();
 
@@ -142,43 +144,53 @@ public final class BuilderPlacementSpace {
      */
     public static BlockPos approach(ServerLevel level,BuilderGolem worker,
             BlockPos target){
+        long now=level.getGameTime();
         Approach cached=workApproaches.get(worker);
         if(cached!=null&&cached.target().equals(target)
-                &&cached.until()>level.getGameTime()
-                &&cached.destination().distSqr(target)<=9
+                &&cached.until()>now
+                &&cached.destination().distSqr(target)<14
                 &&WorkerNavigation.canStandOn(level,worker,cached.destination()))
             return cached.destination();
+        Rejected bad=rejected.get(worker);
+        if(bad!=null&&bad.until()<=now){
+            rejected.remove(worker);bad=null;
+        }
         List<BlockPos> candidates=new ArrayList<>();
-        // Nearest cardinal cells first, including legal one-block steps,
-        // then a two-block perimeter. These are work positions, not the
-        // larger stand-clear buffer used when vacating a new solid block.
-        for(int radius=1;radius<=3;radius++)
-            for(int dx=-radius;dx<=radius;dx++)
-                for(int dz=-radius;dz<=radius;dz++){
-                    if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)continue;
-                    for(int dy:new int[]{0,1,-1}){
-                        BlockPos p=target.offset(dx,dy,dz);
-                        if(p.distSqr(target)>9
-                                ||!WorkerNavigation.canStandOn(level,worker,p))
-                            continue;
-                        AABB shifted=worker.getBoundingBox().move(
-                                p.getX()+.5-worker.getX(),p.getY()-worker.getY(),
-                                p.getZ()+.5-worker.getZ());
-                        if(shifted.intersects(volume(target))
-                                ||!level.noCollision(worker,shifted))continue;
-                        candidates.add(p);
-                    }
-                }
+        // Physical work reach is a 14-squared sphere, not a flat
+        // 3x3 rectangle. In a layered Dome, useful upper ledges may be
+        // two blocks above/below the target even if same-level floor is
+        // sealed by completed walls. Do not insist on a jump or teleport.
+        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+            for(int dy:new int[]{0,1,-1,2,-2}){
+                if(dx==0&&dz==0&&dy==0)continue;
+                BlockPos p=target.offset(dx,dy,dz);
+                if(p.distSqr(target)>=14
+                        ||!WorkerNavigation.canStandOn(level,worker,p)
+                        ||bad!=null&&bad.target().equals(target)
+                            &&bad.destination().equals(p))continue;
+                AABB shifted=worker.getBoundingBox().move(
+                        p.getX()+.5-worker.getX(),p.getY()-worker.getY(),
+                        p.getZ()+.5-worker.getZ());
+                if(shifted.intersects(volume(target))
+                        ||!level.noCollision(worker,shifted))continue;
+                candidates.add(p);
+            }
+        // Prefer real ground near the worker, but also prefer a work
+        // stance that actually faces the target instead of an extremely
+        // remote diagonal. A measured reach check always outranks score.
         candidates.sort(java.util.Comparator
-                .comparingDouble((BlockPos p)->p.distSqr(worker.blockPosition())
-                        +Math.abs(p.getY()-worker.blockPosition().getY())*2)
-                .thenComparingDouble(p->p.distSqr(target)));
+                .comparingDouble((BlockPos p)->
+                        p.distSqr(worker.blockPosition())*1.3
+                        +Math.abs(p.getY()-worker.blockPosition().getY())*4
+                        +p.distSqr(target)*.55)
+                .thenComparingInt(BlockPos::getX)
+                .thenComparingInt(BlockPos::getZ));
         int attempted=0;
         for(BlockPos p:candidates){
-            if(++attempted>16)break;
+            if(++attempted>40)break;
             if(!WorkerNavigation.canReachExact(level,worker,p))continue;
             workApproaches.put(worker,new Approach(target,p.immutable(),
-                    level.getGameTime()+100));
+                    now+75));
             return p.immutable();
         }
         workApproaches.remove(worker);
@@ -191,8 +203,14 @@ public final class BuilderPlacementSpace {
      */
     public static void invalidateApproach(BuilderGolem worker,BlockPos target){
         Approach approach=workApproaches.get(worker);
-        if(approach!=null&&approach.target().equals(target))
+        if(approach!=null&&approach.target().equals(target)){
             workApproaches.remove(worker);
+            // A moving wall, nearby Builder or scaffold landing can make
+            // one stance temporarily inaccessible. Remember THIS failed
+            // position, not the target or all floor cells; retry others.
+            rejected.put(worker,new Rejected(target,
+                    approach.destination(),worker.level().getGameTime()+80));
+        }
     }
 
     /** @return true only when the future block volume is clear of workers. */
