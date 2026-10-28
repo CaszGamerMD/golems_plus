@@ -67,4 +67,61 @@ public final class BuilderPlacementClearanceGameTest {
             }else helper.fail("Builder remains inside the placed solid block");
         });
     }
+
+    @GameTest(maxTicks=230,skyAccess=true)
+    public void physicallyClearsHeadWhenWorkingOneLevelBelowNextBlock(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        var table=(WorkerStationBlockEntity)level.getBlockEntity(
+                helper.absolutePos(new BlockPos(0,2,0)));
+        BlockPos upperTarget=helper.absolutePos(new BlockPos(3,3,3));
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        // Feet at targetY-1, head protrudes into the future AIR cell.
+        worker.setPos(upperTarget.getX()+1.5,
+                upperTarget.getY()-1,upperTarget.getZ()+.5);
+        level.addFreshEntity(worker);
+        if(!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Worker registration failed");return;
+        }
+        final boolean[] blocked={false};
+        final double[] lastX={worker.getX()};
+        helper.onEachTick(()->{
+            double delta=Math.abs(worker.getX()-lastX[0]);
+            lastX[0]=worker.getX();
+            if(delta>.30){
+                helper.fail("Worker teleported while avoiding overhead block");
+                return;
+            }
+            if(helper.getTick()<8)return;
+            if(!worker.onGround()
+                    ||worker.blockPosition().getY()!=upperTarget.getY()-1){
+                helper.fail("Worker must stay on the real lower floor");return;
+            }
+            if(helper.getTick()%5!=0)return;
+            boolean ready=BuilderPlacementSpace.ready(
+                    level,worker,table,upperTarget);
+            if(!ready){blocked[0]=true;return;}
+            double gap=worker.getX()-(upperTarget.getX()+1.0);
+            if(!blocked[0]||gap<.8-.015){
+                helper.fail("Didn't move lower Builder 0.8 away: gap="+gap);
+                return;
+            }
+            if(!level.setBlock(upperTarget,
+                    Blocks.IRON_BLOCK.defaultBlockState(),3)){
+                helper.fail("World refused overhead block placement");return;
+            }
+            if(worker.getBoundingBox().intersects(
+                    new net.minecraft.world.phys.AABB(upperTarget))){
+                helper.fail("Builder's head overlaps the overhead cube");
+                return;
+            }
+            System.out.println("[CLEARANCE BELOW] PASS feet at Y-1, "
+                    +"head-clear sidestep to 0.8+ gap="+gap
+                    +" with physical ground/collision");
+            helper.succeed();
+        });
+    }
 }
