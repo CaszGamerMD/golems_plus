@@ -263,8 +263,9 @@ public final class BuilderScaffoldPlanA {
             default->null;
         };
         if(destination==null)return false;
-        if(!present(level,(WorkerStationBlockEntity)level.getBlockEntity(
-                worker.home()),worker,destination.below())){
+        if(!(level.getBlockEntity(worker.home())
+                instanceof WorkerStationBlockEntity table)
+                ||!present(level,table,worker,destination.below())){
             return true; // never deliberately step onto unsupported air
         }
         worker.getNavigation().stop();
@@ -322,7 +323,14 @@ public final class BuilderScaffoldPlanA {
             }
             case CLIMB -> {
                 if(worker.getY()<j.target.getY()-.15){
-                    // Full vertical column, no mandatory jump while climbing.
+                    // Extend long shafts in real sixteen-block inventory
+                    // stages, after physically finishing the prior climb.
+                    if(!BuilderScaffolding.climbingNow(level,worker)
+                            &&Math.abs(worker.getX()-j.base.getX()-.5)<.35
+                            &&Math.abs(worker.getZ()-j.base.getZ()-.5)<.35){
+                        j.phase=Phase.BUILD;
+                        return shaft(level,worker,table,j);
+                    }
                     return Result.MOVING;
                 }
                 if(j.top>j.target.getY()-1)return Result.NO_SAFE_ROUTE;
@@ -365,6 +373,14 @@ public final class BuilderScaffoldPlanA {
             j.phase=Phase.RETURN_FIRST;
             return true;
         }
+        if(j.phase==Phase.EXTEND_SECOND||j.phase==Phase.WALK_FIRST){
+            j.phase=Phase.RETURN_TOWER;
+            return true;
+        }
+        if(j.phase==Phase.EXTEND_FIRST){
+            j.phase=Phase.DESCEND;
+            return true;
+        }
         if(j.phase==Phase.RETURN_FIRST||j.phase==Phase.RETURN_TOWER)
             return true;
         if(j.phase==Phase.CLIMB){
@@ -375,7 +391,12 @@ public final class BuilderScaffoldPlanA {
             return true;
         }
         if(j.phase==Phase.DESCEND){
-            if(worker.getY()>j.base.getY()+1.16)return true;
+            if(worker.getY()>j.base.getY()+1.16){
+                if(!BuilderScaffolding.climbingNow(level,worker))
+                    BuilderScaffolding.begin(level,worker,j.base,
+                            j.base.getY()+1.0,true);
+                return true;
+            }
             j.phase=Phase.DISMOUNT;
         }
         if(j.phase==Phase.DISMOUNT){
