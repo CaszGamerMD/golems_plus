@@ -35,6 +35,36 @@ final class BuilderScaffoldPolicyTrainerTest {
         var next=BuilderScaffoldPolicyTrainer.nextGeneration(trials,0);
         assertEquals(w(1),next.get(0));
     }
+    @Test void emptyHandedCourseFinishCannotBeCountedAsPassing(){
+        var fake=new BuilderScaffoldPolicyTrainer.CourseTrial(w(1),
+                5,3,0,0,5,true,true,0,50);
+        assertFalse(fake.passed());
+        var unreturned=new BuilderScaffoldPolicyTrainer.CourseTrial(w(1),
+                5,3,2,5,5,false,true,0,50);
+        assertFalse(unreturned.passed());
+        var success=new BuilderScaffoldPolicyTrainer.CourseTrial(w(1),
+                5,3,3,5,5,true,true,0,420);
+        assertTrue(success.passed());
+        var duped=new BuilderScaffoldPolicyTrainer.CourseTrial(w(1),
+                5,3,4,6,5,true,true,0,90);
+        assertFalse(duped.passed());
+    }
+    @Test void singleBuilderCourseEvolutionPreservesSafeElite(){
+        var results=new ArrayList<BuilderScaffoldPolicyTrainer.CourseTrial>();
+        for(int i=1;i<=9;i++){
+            boolean passed=i==4||i==8||i==9;
+            results.add(new BuilderScaffoldPolicyTrainer.CourseTrial(w(i),
+                    5,3,passed?3:0,passed?5:0,5,
+                    true,true,0,200-i));
+        }
+        var ranked=BuilderScaffoldPolicyTrainer.nextGenerationFromCourse(
+                results,4321L);
+        assertEquals(9,ranked.size());
+        assertEquals(w(9),ranked.get(0));
+        assertEquals(w(8),ranked.get(3));
+        assertEquals(w(4),ranked.get(6));
+    }
+
     @Test void weightsMayChangeButSafetyNeverChanges(){
         for(int i=0;i<200;i++){
             var trials=new ArrayList<BuilderScaffoldPolicyTrainer.Trial>();
