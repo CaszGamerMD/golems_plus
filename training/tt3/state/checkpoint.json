@@ -3,7 +3,7 @@
   "nativeSimulationProtocol": "course-entity-ticking-v1",
   "limit": 500,
   "physicalBuilders": 9,
-  "completedGenerations": 12,
+  "completedGenerations": 18,
   "bestFinishers": 0,
   "bestCrewTicks": -1,
   "history": [
@@ -90,6 +90,48 @@
       "slowestTicks": -1,
       "doorStalls": 0,
       "scaffoldActions": 9
+    },
+    {
+      "generation": 13,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 9
+    },
+    {
+      "generation": 14,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 9
+    },
+    {
+      "generation": 15,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 9
+    },
+    {
+      "generation": 16,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 9
+    },
+    {
+      "generation": 17,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 9
+    },
+    {
+      "generation": 18,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 9
     }
   ],
   "nextPopulation": [
@@ -106,9 +148,9 @@
       -0.06
     ],
     [
-      1.3948202498554612,
+      1.5,
       1.0,
-      0.11,
+      0.1263087666266459,
       0.06
     ],
     [
@@ -120,32 +162,32 @@
     [
       1.5,
       1.0,
+      0.10421760685367853,
+      0.06
+    ],
+    [
+      1.5,
+      1.0,
+      0.08622686317690503,
+      0.06
+    ],
+    [
+      1.43809698040612,
+      1.0,
       0.11,
-      0.10265512242422958
-    ],
-    [
-      1.5,
-      1.0,
-      0.1199982960897106,
       0.06
-    ],
-    [
-      1.5,
-      1.0,
-      0.0851965147334123,
-      0.06
-    ],
-    [
-      1.2,
-      1.7,
-      0.12070935282094294,
-      -0.06
     ],
     [
       1.2,
       1.7,
       0.1,
-      -0.08544296272233616
+      -0.025375932394753394
+    ],
+    [
+      1.2,
+      1.9459378925285902,
+      0.1,
+      -0.06
     ]
   ]
 }
