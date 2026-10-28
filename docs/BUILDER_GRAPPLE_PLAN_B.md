@@ -63,3 +63,15 @@ Builders may place an assigned schematic block at **feetY-1** as well as at thei
 A downward placement is legal only when the Builder is **physically grounded** one block above the assigned block, within the existing work reach, with **at least 0.8 blocks of horizontal X/Z clearance from the nearest edge of the future block**. The same margin applies to same-Y placements. All Builders whose bodies intersect the future cube, or whose centers violate the X/Z margin even from a higher ledge, must step aside before payment or `setBlock`. The upper Builder is not instructed to rappel down unnecessarily; stand selection searches Y and Y+1 for actual collision-safe, reachable footing. No flight, teleportation or scaffolding fallback.
 
 Physical test cases in `BuilderPlaceOneBelowGameTest`: grounded upper ledge at 0.85 margin (accept); 0.60 margin (reject, physically sidestep and then place); feet at Y+2 (reject). Dome GameTest shares these rules with the focused physical tests.
+
+## One-block jump precedence and grapple disengage (Oct 28)
+
+**Normal movement first:** Before starting a grapple, Builders test the existing trained, physically walkable route, including real one-block vanilla jumps/steps and single-block drops. A valid ground route wins, even when the Builder carries a hook; unreachable jumps do not become free flight. Grapples are reserved for vertical changes without such a safe path.
+
+**Actual-motion timeout:** A hooked Builder is judged by change in its real server position every tick, not by successful navigation or velocity commands. A hooked climb/rappel without meaningful motion for 45 ticks enters a physical recovery phase.
+
+**Climb fails:** Retract onto the same open cardinal rope column, descend to the original real grounded foot position, and only then release the rope. Reject this specific anchor AND face for 300 ticks before planning the next hook.
+
+**Rappel fails:** Follow the same rope **back up**, slightly above the original anchor, physically step onto the supported upper ledge and only then release. Reject the failed anchor/face for 300 ticks, leaving alternate anchors/faces available. Never teleport, disable collision, turn on creative flight, free-fall, or drop rope support while suspended. If the route itself becomes obstructed during recovery, keep the rope attached and emit an explicit safety diagnostic instead of silently abandoning the golem midair.
+
+**Regression coverage:** `BuilderGrappleRecoveryGameTest` tests real native one-block jump, normal one-block drop, obstructed ascent returning to original ground, and obstructed rappel climbing back up and selecting a different face. Existing 20-block range, equipment ownership, rooftop return, shared Y-layer construction and 0.8 X/Z placement tests remain in the same Fabric GameTest suite.
