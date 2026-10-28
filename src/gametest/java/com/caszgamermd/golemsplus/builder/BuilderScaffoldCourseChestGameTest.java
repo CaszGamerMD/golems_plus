@@ -53,8 +53,8 @@ public final class BuilderScaffoldCourseChestGameTest {
                 ||!(level.getBlockEntity(finishChest) instanceof Container finish)){
             helper.fail("Actual chest block inventories did not spawn");return;
         }
-        source.setItem(0,new ItemStack(Items.SCAFFOLDING,REQUIRED));
-        source.setChanged();
+        // Stock during the actual physical test tick, AFTER the arena
+        // has finished placing all its block entities.
         helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
         if(!(level.getBlockEntity(helper.absolutePos(new BlockPos(0,2,0)))
                 instanceof WorkerStationBlockEntity table)){
@@ -93,11 +93,20 @@ public final class BuilderScaffoldCourseChestGameTest {
             }
             switch(phase[0]){
                 case 0 -> {
+                    // GameTest structure assembly can replace the chest
+                    // block entity after this setup method returns. Always
+                    // stock and inspect the CURRENT live world inventory.
+                    if(!(level.getBlockEntity(start) instanceof Container liveSource)){
+                        helper.fail("Start chest missing in physical course tick");
+                        return;
+                    }
+                    liveSource.setItem(0,new ItemStack(Items.SCAFFOLDING,REQUIRED));
+                    liveSource.setChanged();
                     int withdrawn=course.collect(level,builder,REQUIRED);
-                    if(withdrawn!=REQUIRED||source.getItem(0).getCount()!=0){
+                    if(withdrawn!=REQUIRED||liveSource.getItem(0).getCount()!=0){
                         helper.fail("Starting chest did not physically debit five scaffolds"
                                 +" moved="+withdrawn
-                                +" source="+source.getItem(0)
+                                +" source="+((Container)level.getBlockEntity(start)).getItem(0)
                                 +" worker="+builder.carriedCount(Items.SCAFFOLDING)
                                 +" at="+builder.position()
                                 +" chest="+start
@@ -161,8 +170,8 @@ public final class BuilderScaffoldCourseChestGameTest {
                         int transferred=course.deliver(level,builder,REQUIRED);
                         if(course.unlocked()){
                             if(transferred!=REQUIRED
-                                    ||countItems(finish)!=REQUIRED
-                                    ||source.getItem(0).getCount()!=0){
+                                    ||countItems((Container)level.getBlockEntity(finishChest))!=REQUIRED
+                                    ||((Container)level.getBlockEntity(start)).getItem(0).getCount()!=0){
                                 helper.fail("Finish chest did not receive exact original material quota");
                                 return;
                             }
