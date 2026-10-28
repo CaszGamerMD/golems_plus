@@ -93,9 +93,17 @@ public final class BuilderScaffoldCourseChestGameTest {
             }
             switch(phase[0]){
                 case 0 -> {
-                    if(course.collect(level,builder,REQUIRED)!=REQUIRED
-                            ||source.getItem(0).getCount()!=0){
-                        helper.fail("Starting chest did not physically debit five scaffolds");
+                    int withdrawn=course.collect(level,builder,REQUIRED);
+                    if(withdrawn!=REQUIRED||source.getItem(0).getCount()!=0){
+                        helper.fail("Starting chest did not physically debit five scaffolds"
+                                +" moved="+withdrawn
+                                +" source="+source.getItem(0)
+                                +" worker="+builder.carriedCount(Items.SCAFFOLDING)
+                                +" at="+builder.position()
+                                +" chest="+start
+                                +" distance="+builder.distanceToSqr(
+                                    start.getX()+.5,start.getY()+.5,start.getZ()+.5)
+                                +" slots="+builder.getContainerSize());
                         return;
                     }
                     if(course.deliver(level,builder,REQUIRED)!=0
