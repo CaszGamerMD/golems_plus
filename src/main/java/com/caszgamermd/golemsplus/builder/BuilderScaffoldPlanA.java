@@ -53,9 +53,11 @@ public final class BuilderScaffoldPlanA {
         }
         BlockPos first(){return base.relative(towardTarget).atY(top);}
         BlockPos second(){return base.relative(towardTarget,2).atY(top);}
-        BlockPos firstSupport(){return first().below();}
-        BlockPos secondSupport(){return second().below();}
     }
+    // Vanilla scaffolding stays structurally anchored up to six
+    // horizontal blocks from its supporting tower. Distance seven falls.
+    // The underside/bottom flag describes its shape, NOT an invalid span.
+    static final int MAX_HORIZONTAL_SCAFFOLD_SPAN=6;
     private static final Map<BuilderGolem,Job> jobs=new WeakHashMap<>();
     private BuilderScaffoldPlanA(){}
 
@@ -92,22 +94,21 @@ public final class BuilderScaffoldPlanA {
             WorkerStationBlockEntity table,BuilderGolem worker){
         for(int n=1;n<=2;n++){
             BlockPos p=base.relative(toward,n).atY(workY-1);
-            // Minecraft's *bottom=true* cantilevered scaffold behaves
-            // differently from a vertical climb column: a real Builder
-            // settling inside it cannot climb back onto its top reliably.
-            // Pay for a supporting scaffold directly under EACH bridge
-            // deck cell so the walked-on deck is bottom=false.
-            BlockPos under=p.below();
-            if(!world.hasChunkAt(p)||!world.hasChunkAt(under)
-                    ||reserved.contains(p)||reserved.contains(under)
+            // A sideways scaffold requires no blocks beneath it while
+            // within six horizontal cells of its tower. Validate the
+            // actual extension distance, ownership, headroom and blueprint
+            // reservation, not the BOTTOM flag.
+            if(n>MAX_HORIZONTAL_SCAFFOLD_SPAN
+                    ||!world.hasChunkAt(p)||reserved.contains(p)
                     ||reserved.contains(p.above())
                     ||reserved.contains(p.above(2)))return false;
-            for(BlockPos cell:List.of(under,p)){
-                if(world.getBlockState(cell).is(Blocks.SCAFFOLDING)){
-                    if(!table.scaffoldPositions(worker.getUUID()).contains(cell))
-                        return false;
-                }else if(!world.getBlockState(cell).isAir())return false;
-            }
+            if(world.getBlockState(p).is(Blocks.SCAFFOLDING)){
+                if(!table.scaffoldPositions(worker.getUUID()).contains(p)
+                        ||world.getBlockState(p).getValue(
+                                net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE)
+                                >=MAX_HORIZONTAL_SCAFFOLD_SPAN+1)
+                    return false;
+            }else if(!world.getBlockState(p).isAir())return false;
             if(!world.getBlockState(p.above()).isAir()
                     ||!world.getBlockState(p.above(2)).isAir())return false;
         }
@@ -155,16 +156,13 @@ public final class BuilderScaffoldPlanA {
                     if(level.getBlockState(base.atY(y)).is(Blocks.SCAFFOLDING))
                         existing++;
                 }
-                for(int n=1;n<=2;n++){
-                    BlockPos deck=base.relative(inward,n).atY(top);
-                    if(level.getBlockState(deck).is(Blocks.SCAFFOLDING))
+                for(int n=1;n<=2;n++)
+                    if(level.getBlockState(base.relative(inward,n)
+                            .atY(top)).is(Blocks.SCAFFOLDING))
                         existing++;
-                    if(level.getBlockState(deck.below()).is(Blocks.SCAFFOLDING))
-                        existing++;
-                }
                 double score=BuilderScaffoldSiteScore.score(base,
                         worker.blockPosition(),target,
-                        Math.max(0,top-base.getY()+5-existing),0,0,
+                        Math.max(0,top-base.getY()+3-existing),0,0,
                         existing>0);
                 // Extra credit for not changing X/Z aisle from worker.
                 score+=Math.abs(worker.getX()-base.getX()-.5)
@@ -187,6 +185,12 @@ public final class BuilderScaffoldPlanA {
                     level,worker,candidate.base))return candidate;
         }
         return null;
+    }
+    private static boolean structurallySupported(ServerLevel level,BlockPos at){
+        var state=level.getBlockState(at);
+        return state.is(Blocks.SCAFFOLDING)
+                &&state.getValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE)
+                        <=MAX_HORIZONTAL_SCAFFOLD_SPAN;
     }
     private static boolean present(ServerLevel level,WorkerStationBlockEntity table,
             BuilderGolem worker,BlockPos at){
@@ -414,28 +418,18 @@ public final class BuilderScaffoldPlanA {
                 j.phase=Phase.EXTEND_FIRST;
             }
             case EXTEND_FIRST -> {
-                Result support=place(level,worker,table,owner,
-                        j.firstSupport(),j.base.atY(j.top-1));
-                if(support!=Result.READY)return support;
-                Result result=place(level,worker,table,owner,
-                        j.first(),j.firstSupport());
+                Result result=place(level,worker,table,owner,j.first(),
+                        j.base.atY(j.top));
                 if(result!=Result.READY)return result;
-                // Never step onto an unsupported, bottom=true bridge.
-                if(level.getBlockState(j.first()).getValue(
-                        net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM))
+                if(!structurallySupported(level,j.first()))
                     return Result.NO_SAFE_ROUTE;
                 j.phase=Phase.WALK_FIRST;
                 return Result.MOVING;
             }
             case EXTEND_SECOND -> {
-                Result support=place(level,worker,table,owner,
-                        j.secondSupport(),j.firstSupport());
-                if(support!=Result.READY)return support;
-                Result result=place(level,worker,table,owner,
-                        j.second(),j.secondSupport());
+                Result result=place(level,worker,table,owner,j.second(),j.first());
                 if(result!=Result.READY)return result;
-                if(level.getBlockState(j.second()).getValue(
-                        net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM))
+                if(!structurallySupported(level,j.second()))
                     return Result.NO_SAFE_ROUTE;
                 j.phase=Phase.WALK_SECOND;
                 return Result.MOVING;
