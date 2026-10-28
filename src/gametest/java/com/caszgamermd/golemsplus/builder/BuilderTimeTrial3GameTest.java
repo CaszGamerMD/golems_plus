@@ -232,6 +232,16 @@ public final class BuilderTimeTrial3GameTest {
                 &&!ceiling.getValue(TrapDoorBlock.OPEN))
             world.setBlock(p.above(),ceiling.setValue(TrapDoorBlock.OPEN,true),3);
     }
+    private static double supportedFeetY(ServerLevel world,BlockPos destination){
+        // Scaffold has a 1/8-block physical top, NOT a full-height
+        // walking surface. The previous fixed Y=20 arrival check
+        // rejected the actual native physics height Y=19.125 even
+        // after runners had traversed onto the upper platform.
+        BlockPos support=destination.below();
+        var shape=world.getBlockState(support).getCollisionShape(world,support);
+        return shape.isEmpty()?destination.getY():
+                support.getY()+shape.max(Direction.Axis.Y);
+    }
     private static void drive(Runner r,List<Runner> crew,double x,double z,
                               boolean enteringDoor){
         BuilderGolem mob=r.mob;
@@ -306,8 +316,9 @@ public final class BuilderTimeTrial3GameTest {
             if(previous.x!=target.x)z+=r.lane;
             else x+=r.lane;
         }
+        double feetY=target.level==0?p.getY():supportedFeetY(t.getLevel(),p);
         if(Math.hypot(mob.getX()-x,mob.getZ()-z)<r.gene.tolerance
-                &&Math.abs(mob.getY()-p.getY())<.65){
+                &&Math.abs(mob.getY()-feetY)<.32){
             r.cursor++;r.stalls=0;r.selectedDoor=null;return;
         }
         drive(r,crew,x,z,door);
