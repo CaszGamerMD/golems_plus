@@ -48,8 +48,9 @@ for direction in ("{radius,0}", "{-radius,0}", "{0,radius}", "{0,-radius}",
     assert direction in space, f"missing safe sidestep direction: {direction}"
 assert "!path.canReach()" in navigation
 assert "boolean" not in space[space.index("private record Yield"):space.index("private static final Map")] or "placingWorker" in space
-assert "workDistance<=100" in build
-assert "BuilderPlacementSpace.approach(level,worker,pos)" in build
+assert "worker.blockPosition().getY()!=pos.getY()" in build
+assert "BuilderScaffoldPlanA.reach(" in build
+assert "BuilderPlacementSpace.approachAtTargetY(" in build
 table=(root.parent/"world/WorkerStationBlockEntity.java").read_text()
 supplies=(root/"BuilderSupplyInventory.java").read_text()
 assert "public boolean reassignBuilderStep(UUID requester,UUID stocked,int index)" in table
