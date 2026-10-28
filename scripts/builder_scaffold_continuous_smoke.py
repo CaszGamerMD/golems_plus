@@ -22,9 +22,11 @@ assert "sessions.put(worker,new ClimbSession(" in sc
 assert "clearMotion(worker);" in sc
 assert "if(Math.abs(worker.getX()-cx)>1.15" in sc
 assert "target.getY()-worker.getY()<=1.35" in sc
-assert "dx*dx+dz*dz<=5&&!avoided(level,worker,p);" in sc
-assert "if(base==null)for(Direction side:Direction.Plane.HORIZONTAL)" in sc
-assert "if(base==null)base=findBase(level,worker,target,feet,table,plan)" in sc
+assert "BuilderScaffoldSiteScore.withinReach(p,target)" in sc
+assert "safeGroundExit(level,worker,p,future)!=null" in sc
+assert "if(base==null){" in sc
+assert "landings.sort(Comparator.comparingDouble(p->" in sc
+assert "if(base==null)base=findBase(level,worker,target,feet,table,plan,future)" in sc
 assert "begin(level,worker,base,top+1.0,false)" in sc
 assert "begin(level,worker,base,bottom,true)" in sc
 assert "BuilderScaffolding.tickMotion(climbWorld,this)" in golem
