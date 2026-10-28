@@ -518,10 +518,11 @@ public final class BuilderBuildService {
             }
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
-            if(worker.blockPosition().getY()!=pos.getY()
+            if(!BuilderPlacementSpace.placementHeight(pos,worker)
                     ||workDistance>14){
-                // Find ONLY reachable same-Y work stands; a position
-                // below a wall is never a legal place-from position.
+                // A real standing position may be on target Y OR one
+                // block above it. Never stand below the block or let
+                // the physical working reach exceed its 14-squared range.
                 activity.phase=Action.MOVE_TO_WORK;
                 BlockPos approach=BuilderPlacementSpace.approachAtTargetY(
                         level,worker,pos);
@@ -549,18 +550,29 @@ public final class BuilderBuildService {
                                 level.getGameTime());
                     return;
                 }
-                if(yDiff<0 && BuilderGrappleAccess.rappelToward(
+                if(yDiff< -1 && BuilderGrappleAccess.rappelToward(
                         level,worker,table,pos))return;
-                // A downward target without owned scaffold uses the
-                // normal collision-safe walkable route, never a fall.
+                if(yDiff==-1){
+                    // A worker already one block above its assigned
+                    // schematic layer must look for a safe upper/same-Y
+                    // stance, not unnecessarily rappel off the structure.
+                    table.waitForBuilderAccess(worker.getUUID(),index,
+                            level.getGameTime());
+                    table.setProblem("No grounded side stance at Y or Y+1 "
+                            +"with 0.8 X/Z margin for "+pos);
+                    return;
+                }
+                // Larger downward changes still require collision-safe
+                // navigation, not a free fall.
                 if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .routeTo(level,worker,pos,.85))
                     table.waitForBuilderAccess(worker.getUUID(),index,
                             level.getGameTime());
                 return;
             }
-            // Enforce target-Y placement even for blocks within normal
-            // interaction reach. This is independent of which tool is held.
+            // A Builder may place from its assigned layer or from one
+            // grounded block ABOVE that layer. This changes only its
+            // physical feet height, never the crew-wide Y work gate.
             activity.phase=Action.PLACE;
             // Travel and placement are mutually exclusive for THIS worker:
             // stop the previous A* path and horizontal momentum before a
@@ -589,6 +601,12 @@ public final class BuilderBuildService {
                 return;
             }
             activity.blockedSince=-1;
+            if(!BuilderPlacementSpace.horizontalClear(pos,worker)){
+                // Defense-in-depth against a self-collision regression.
+                // Vertical separation NEVER waives the X/Z 0.8 margin.
+                table.setProblem("Builder still within 0.8 X/Z of "+pos);
+                return;
+            }
             // Upper door halves do not consume another door item; the
             // lower half was already placed and paid for in the prior
             // layer. Keep refund logic for all ordinary materials.
