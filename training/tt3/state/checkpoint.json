@@ -3,7 +3,7 @@
   "nativeSimulationProtocol": "course-entity-ticking-v1",
   "limit": 500,
   "physicalBuilders": 9,
-  "completedGenerations": 6,
+  "completedGenerations": 12,
   "bestFinishers": 0,
   "bestCrewTicks": -1,
   "history": [
@@ -48,6 +48,48 @@
       "slowestTicks": -1,
       "doorStalls": 0,
       "scaffoldActions": 9
+    },
+    {
+      "generation": 7,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 9
+    },
+    {
+      "generation": 8,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 9
+    },
+    {
+      "generation": 9,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 9
+    },
+    {
+      "generation": 10,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 9
+    },
+    {
+      "generation": 11,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 9
+    },
+    {
+      "generation": 12,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 9
     }
   ],
   "nextPopulation": [
@@ -64,19 +106,7 @@
       -0.06
     ],
     [
-      1.5,
-      1.1962833183092298,
-      0.11,
-      0.06
-    ],
-    [
-      1.5,
-      1.0,
-      0.11,
-      0.06
-    ],
-    [
-      1.4039562467302429,
+      1.3948202498554612,
       1.0,
       0.11,
       0.06
@@ -85,25 +115,37 @@
       1.5,
       1.0,
       0.11,
-      0.006113098600552473
+      0.06
     ],
     [
       1.5,
       1.0,
-      0.12556516454678782,
+      0.11,
+      0.10265512242422958
+    ],
+    [
+      1.5,
+      1.0,
+      0.1199982960897106,
       0.06
+    ],
+    [
+      1.5,
+      1.0,
+      0.0851965147334123,
+      0.06
+    ],
+    [
+      1.2,
+      1.7,
+      0.12070935282094294,
+      -0.06
     ],
     [
       1.2,
       1.7,
       0.1,
-      -0.0550235343825659
-    ],
-    [
-      1.2,
-      1.7,
-      0.09238020981805113,
-      -0.06
+      -0.08544296272233616
     ]
   ]
 }
