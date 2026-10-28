@@ -3747,6 +3747,115 @@ public final class BuilderEvolutionAltCourseGameTest {
         });
     }
 
+    /**
+     * A real wooden door should toggle after exactly FOUR attempts with
+     * zero forward progress, regardless of whether it started OPEN or
+     * CLOSED. Check both Minecraft halves and a protected teammate queue.
+     * This drives the same state machine as the real entity controller.
+     */
+    @GameTest(maxTicks=80,padding=64,skyAccess=true)
+    public void realDoorRetryAlternatesStatesAfterFourStalledTicks(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BlockPos door=pos(helper,4,2,10),start=pos(helper,5,2,10);
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(mob);
+        Candidate b=new Candidate(0,mob,"WWWW",5,10,
+                SAVED_PHYSICAL_CHAMPIONS[0],Map.of());
+        try{
+            for(boolean startingOpen:new boolean[]{false,true}){
+                BlockState lower=world.getBlockState(door);
+                BlockState upper=world.getBlockState(door.above());
+                if(!canOperateDoor(lower)||!canOperateDoor(upper))
+                    throw new IllegalStateException("Real birch door missing");
+                world.setBlock(door,lower.setValue(DoorBlock.OPEN,startingOpen),3);
+                world.setBlock(door.above(),
+                        upper.setValue(DoorBlock.OPEN,startingOpen),3);
+                b.doorNoForwardTicks=0;
+                int before=b.doorStateRetries;
+                for(int tick=1;tick<=4;tick++){
+                    // Physically stationary body; no invented forward
+                    // displacement. The doorway collision is unchanged.
+                    recordDoorForwardProgress(b,world,door,
+                            mob.getX(),mob.getZ(),4,10,false,false);
+                    boolean expected=tick<4?startingOpen:!startingOpen;
+                    if(world.getBlockState(door).getValue(DoorBlock.OPEN)!=expected
+                            ||world.getBlockState(door.above())
+                                  .getValue(DoorBlock.OPEN)!=expected)
+                        throw new IllegalStateException("Door state changed at "
+                                +tick+" stalled ticks instead of four");
+                }
+                if(b.doorStateRetries!=before+1||b.doorNoForwardTicks!=0)
+                    throw new IllegalStateException(
+                            "Door retry counter did not reset after toggling");
+                // A teammate waiting in the opening cannot provoke
+                // rapid door flips while the controller politely yields.
+                for(int tick=0;tick<6;tick++)
+                    recordDoorForwardProgress(b,world,door,
+                            mob.getX(),mob.getZ(),4,10,true,false);
+                if(b.doorStateRetries!=before+1)
+                    throw new IllegalStateException(
+                            "Door toggled because of teammate congestion");
+            }
+            System.out.println("[ALT FOUR-TICK DOOR RETRY] "
+                    +"both start states and teammate exclusion verified");
+            helper.succeed();
+        }catch(IllegalStateException failure){
+            helper.fail(failure.getMessage());
+        }finally{mob.discard();}
+    }
+
+    /** The production WALK controller must retry a physically closed
+     * door after four stalled attempts and finish without jumping.
+     */
+    @GameTest(maxTicks=110,padding=64,skyAccess=true)
+    public void realControllerRetriesClosedDoorWithoutJumping(
+            GameTestHelper helper){
+        fillOriginalCourse(helper);
+        ServerLevel world=helper.getLevel();
+        BlockPos door=pos(helper,4,2,10);
+        BlockState lower=world.getBlockState(door);
+        BlockState upper=world.getBlockState(door.above());
+        world.setBlock(door,lower.setValue(DoorBlock.OPEN,false),3);
+        world.setBlock(door.above(),
+                upper.setValue(DoorBlock.OPEN,false),3);
+        BlockPos at=pos(helper,5,2,10),origin=pos(helper,0,2,0);
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(at.getX()+.5,at.getY(),at.getZ()+.5);
+        mob.setNoGravity(false);world.addFreshEntity(mob);
+        Candidate b=new Candidate(0,mob,"WWWW",5,10,
+                SAVED_PHYSICAL_CHAMPIONS[0],Map.of());
+        b.originX=origin.getX();b.originZ=origin.getZ();
+        b.birthTick=helper.getTick();
+        final int[] ticks={0};
+        final boolean[] done={false};
+        helper.onEachTick(()->{
+            if(done[0])return;
+            if(b.arrivedTick>=0){
+                done[0]=true;
+                System.out.println("[ALT CLOSED DOOR PHYSICAL RETRY] "
+                        +"ticks="+ticks[0]+" flips="+b.doorStateRetries
+                        +" stalls="+b.doorEntryStalls+" jumps="+b.jumps);
+                if(b.jumps>0||b.doorStateRetries<1
+                        ||b.doorEntryStalls<4||ticks[0]>55)
+                    helper.fail("Closed-door retry did not work physically");
+                else helper.succeed();
+                return;
+            }
+            if(!mob.isAlive()||ticks[0]++>60){
+                done[0]=true;
+                helper.fail("Closed-door controller stuck after "
+                        +ticks[0]+" ticks, toggles="+b.doorStateRetries
+                        +" position="+mob.position());
+                mob.discard();return;
+            }
+            b.controlTick++;
+            walkOneTick(helper,b,List.of(b));
+        });
+    }
+
     @GameTest(maxTicks=140,padding=64,skyAccess=true)
     public void realBuilderOpensClosedDoorAndWalksThrough(
             GameTestHelper helper){
