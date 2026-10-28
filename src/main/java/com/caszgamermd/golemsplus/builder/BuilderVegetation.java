@@ -24,7 +24,12 @@ public final class BuilderVegetation {
         Block block=BuiltInRegistries.BLOCK.getValue(id);
         if(block instanceof BushBlock)return true;
         String path=id.getPath();
-        return path.equals("wheat")||path.equals("carrots")
+        // Azalea is non-solid ground vegetation in the user's actual
+        // Dome schematic. Fabric 26.2 does not classify every variant
+        // as BushBlock; missing this trapped all four workers waiting
+        // for support during an Ignore Crops/Plants build.
+        return path.equals("azalea")||path.equals("flowering_azalea")
+                ||path.equals("wheat")||path.equals("carrots")
                 ||path.equals("potatoes")||path.equals("beetroots")
                 ||path.equals("nether_wart")||path.equals("cocoa")
                 ||path.equals("sugar_cane")||path.equals("bamboo")
