@@ -61,6 +61,8 @@ public final class BuilderScaffoldPlanAGameTest {
                         +" placed="+table.scaffoldPositions(mob.getUUID()).size()
                         +" first="+level.getBlockState(tower.east().atY(target.getY()-1))
                         +" second="+level.getBlockState(tower.east(2).atY(target.getY()-1))
+                        +" support1="+level.getBlockState(tower.east().atY(target.getY()-2))
+                        +" support2="+level.getBlockState(tower.east(2).atY(target.getY()-2))
                         +" below="+level.getBlockState(mob.blockPosition())
                         +" vy="+mob.getDeltaMovement().y);
                 return;
@@ -84,14 +86,22 @@ public final class BuilderScaffoldPlanAGameTest {
                 BlockPos bridgeB=tower.east(2).atY(target.getY()-1);
                 if(!level.getBlockState(bridgeA).is(Blocks.SCAFFOLDING)
                         ||!level.getBlockState(bridgeB).is(Blocks.SCAFFOLDING)
+                        ||!level.getBlockState(bridgeA.below()).is(Blocks.SCAFFOLDING)
+                        ||!level.getBlockState(bridgeB.below()).is(Blocks.SCAFFOLDING)
+                        ||level.getBlockState(bridgeA).getValue(
+                                net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM)
+                        ||level.getBlockState(bridgeB).getValue(
+                                net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM)
                         ||!table.scaffoldPositions(mob.getUUID()).contains(bridgeA)
                         ||!table.scaffoldPositions(mob.getUUID()).contains(bridgeB)
+                        ||!table.scaffoldPositions(mob.getUUID()).contains(bridgeA.below())
+                        ||!table.scaffoldPositions(mob.getUUID()).contains(bridgeB.below())
                         ||Math.abs(mob.getX()-bridgeB.getX()-.5)>.4){
                     helper.fail("Builder didn't physically reach a real paid bridge: "+
                             mob.position()+" "+BuilderScaffoldPlanA.status(mob));
                     return;
                 }
-                if(initial[0]-mob.carriedCount(Items.SCAFFOLDING)<6){
+                if(initial[0]-mob.carriedCount(Items.SCAFFOLDING)<8){
                     helper.fail("Scaffold items weren't genuinely consumed");return;
                 }
                 phase[0]=1;since[0]=helper.getTick();
@@ -101,7 +111,7 @@ public final class BuilderScaffoldPlanAGameTest {
                 if(!BuilderScaffoldPlanA.hasPlan(mob)
                         &&mob.onGround()
                         &&Math.abs(mob.getY()-tower.getY())<.25){
-                    System.out.println("[PLAN A] PASS real shaft+2 scaffolds"
+                    System.out.println("[PLAN A] PASS real shaft+supported 2-cell bridge"
                             +" feetY="+target.getY()+" safe return tick="+helper.getTick());
                     helper.succeed();
                 }
