@@ -325,6 +325,14 @@ public final class BuilderPlacementSpace {
         }
     }
 
+    /** Release an expired self-placement reservation when the current
+     * step is deferred. Only that worker's hold is removed; other crew
+     * reservations and pending work remain intact.
+     */
+    public static void cancelYield(BuilderGolem worker){
+        if(yielding.remove(worker)!=null)WorkerNavigation.stop(worker);
+    }
+
     /** Read-only diagnostic for stuck workers. Capture the exact held
      * placement cell and reserved escape, including expiry, without
      * changing a route or claiming a build step.
