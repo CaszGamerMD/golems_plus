@@ -268,6 +268,26 @@ public final class BuilderScaffoldPlanA {
                 ||!present(level,table,worker,destination.below())){
             return true; // never deliberately step onto unsupported air
         }
+        // Before walking sideways, physically finish the current
+        // scaffold climb. A Builder at the tower lip can drop INSIDE
+        // the bottom=true horizontal scaffold, and pure horizontal
+        // steering cannot lift it back to the work Y. Reuse the same
+        // scaffold climb controller for whichever owned cell it occupies.
+        if(BuilderScaffolding.climbingNow(level,worker))return false;
+        if(worker.getY()<destination.getY()-.12){
+            BlockPos column=worker.blockPosition().atY(destination.getY()-1);
+            if(!present(level,table,worker,column)){
+                // When the feet are inside scaffold, the current tile
+                // itself may be the support column (not below).
+                column=worker.blockPosition();
+            }
+            if(present(level,table,worker,column)){
+                BuilderScaffolding.begin(level,worker,column,
+                        destination.getY(),false);
+                return false; // BuilderGolem.tick invokes vertical physics.
+            }
+            return true; // unsupported: never step horizontally into air
+        }
         worker.getNavigation().stop();
         worker.setJumping(false);
         worker.setShiftKeyDown(false);
