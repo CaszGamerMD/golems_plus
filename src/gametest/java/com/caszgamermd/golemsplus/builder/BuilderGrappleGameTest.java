@@ -127,4 +127,73 @@ public final class BuilderGrappleGameTest {
         }
         helper.succeed();
     }
+    @GameTest(maxTicks=900,skyAccess=true)
+    public void climbsExactlyTwentyBlocksThenRappelsSafely(
+            GameTestHelper helper){
+        ServerLevel world=helper.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        var table=(WorkerStationBlockEntity)world.getBlockEntity(
+                helper.absolutePos(new BlockPos(0,2,0)));
+        BlockPos floor=helper.absolutePos(new BlockPos(5,2,3));
+        BlockPos anchor=helper.absolutePos(new BlockPos(4,21,3));
+        BlockPos top=anchor.above();
+        if(top.getY()-floor.getY()!=20){
+            helper.fail("Fixture is not exactly a 20-block climb");return;
+        }
+        helper.setBlock(4,21,3,PURPLE);
+        helper.setBlock(5,1,3,LIME);
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(floor.getX()+.5,floor.getY(),floor.getZ()+.5);
+        mob.setItem(0,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        world.addFreshEntity(mob);
+        final int[] phase={0};
+        final long[] since={helper.getTick()};
+        final double[] lastY={mob.getY()};
+        helper.onEachTick(()->{
+            long now=helper.getTick();
+            double drop=lastY[0]-mob.getY();
+            lastY[0]=mob.getY();
+            if(!mob.isAlive()||drop>.65){
+                helper.fail("20-block line dropped Builder "+drop);return;
+            }
+            if(now-since[0]>370){
+                helper.fail("20-block "+phase[0]+" traversal stalled at "
+                        +mob.position()+" "+BuilderGrappleAccess.debug(mob));
+                return;
+            }
+            if(phase[0]==0){
+                if(now%5==0){
+                    var result=BuilderGrappleAccess.reach(world,mob,table,top);
+                    if(result==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR
+                            ||result==BuilderGrappleAccess.Result.NEED_HOOK){
+                        helper.fail("Denied valid 20-block grapple "+result);
+                        return;
+                    }
+                }
+                if(mob.onGround()&&!BuilderGrappleAccess.active(mob)
+                        &&mob.blockPosition().getY()==top.getY()){
+                    phase[0]=1;since[0]=now;
+                    System.out.println("[GRAPPLE LIMIT] reached full 20 blocks tick="+now);
+                }
+            }else if(phase[0]==1){
+                if(!BuilderGrappleAccess.rappelToward(world,mob,table,floor)){
+                    helper.fail("Failed full 20-block rappel");return;
+                }
+                phase[0]=2;since[0]=now;
+            }else if(mob.onGround()
+                    &&mob.blockPosition().getY()==floor.getY()
+                    &&!BuilderGrappleAccess.active(mob)){
+                if(mob.carriedCount(WorksiteContent.GRAPPLE_HOOK)!=1
+                        ||!world.getBlockState(anchor).is(PURPLE)){
+                    helper.fail("Full-range traverse damaged item or anchor");
+                    return;
+                }
+                System.out.println("[GRAPPLE LIMIT] PASS 20 up / 20 down tick="+now);
+                helper.succeed();
+            }
+        });
+    }
+
 }
