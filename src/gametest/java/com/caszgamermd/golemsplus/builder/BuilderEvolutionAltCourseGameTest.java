@@ -1027,7 +1027,11 @@ public final class BuilderEvolutionAltCourseGameTest {
                 // gene and physical time-trial feedback; never force an
                 // otherwise slower doorway on the whole nine-golem crew.
                 if(tile=='D'){
-                    weight+=.65-Math.max(-.3,Math.min(.3,
+                    // A single-width doorway needs approach alignment
+                    // and passage through both leaf faces. Those
+                    // real turns cost time even after opening became
+                    // proactive; do not treat a door as free flat floor.
+                    weight+=1.65-Math.max(-.3,Math.min(.3,
                             dna.doorBias()*2.0));
                     if(!world.getBlockState(pos(helper,x,2,z))
                             .getValue(DoorBlock.OPEN))
@@ -1430,15 +1434,20 @@ public final class BuilderEvolutionAltCourseGameTest {
         double best=Double.POSITIVE_INFINITY;
         double chosen=0;
         for(double offset:candidates){
-            double goalX=door.getX()+.5+(offsetX?offset:0);
-            double goalZ=door.getZ()+.5+(offsetX?0:offset);
+            double centerX=door.getX()+.5+(offsetX?offset:0);
+            double centerZ=door.getZ()+.5+(offsetX?0:offset);
             boolean clear=true;
-            // Probe an ACTUAL 1.6-tall body along both faces of the
-            // open, single-wide vanilla door. Use the perpendicular
-            // axis to movement, never a fixed world Z offset.
-            for(double t:new double[]{.55,.75,.95,1,1.13}){
-                double x=mob.getX()+(goalX-mob.getX())*t;
-                double z=mob.getZ()+(goalZ-mob.getZ())*t;
+            // Test a FIXED corridor through BOTH faces of the OPEN
+            // wooden door, independent of where this worker currently
+            // stands. The previous ray from mob -> door -> 1.13*door
+            // picked different lanes depending on its starting offset
+            // and sometimes returned the colliding centerline (zero).
+            // Actual Minecraft 0.65-wide body and block collisions
+            // decide which side of the hinged door leaf is available.
+            for(int sample=-8;sample<=8;sample++){
+                double along=sample*.10;
+                double x=centerX+(offsetX?0:along);
+                double z=centerZ+(offsetX?along:0);
                 if(!clearBodyAt(world,mob,x,mob.getY(),z)){
                     clear=false;break;
                 }
@@ -1984,6 +1993,13 @@ public final class BuilderEvolutionAltCourseGameTest {
                 b.backoffTicks=0;
                 b.movementMode="t";
                 b.trafficRecoveryTicks++;
+            }else if(MAZE[ahead[1]].charAt(ahead[0])=='D'
+                    ||MAZE[b.z].charAt(b.x)=='D'){
+                // Unlike a static wall, a door is an actionable path
+                // node. Never reverse away from the opening on a
+                // generic immobility timer; the 4-tick door controller
+                // checks actual forward progress and collision-safe lanes.
+                b.backoffTicks=0;
             }else{
                 b.backoffTicks=3;
                 b.collisions++;
@@ -2053,15 +2069,25 @@ public final class BuilderEvolutionAltCourseGameTest {
         // approach tile, then proceed through both door faces.
         boolean enteringDoorCell=MAZE[ahead[1]].charAt(ahead[0])=='D';
         boolean leavingDoorCell=MAZE[b.z].charAt(b.x)=='D';
-        if(enteringDoorCell&&!leavingDoorCell&&distance<1.55){
-            if(ahead[0]!=b.x&&ahead[1]==b.z&&Math.abs(dz)>.045){
-                dx=0;
-                b.doorEntryAlignTicks++;
-            }else if(ahead[1]!=b.z&&ahead[0]==b.x&&Math.abs(dx)>.045){
-                dz=0;
-                b.doorEntryAlignTicks++;
+        if(enteringDoorCell&&!leavingDoorCell){
+            double axial=ahead[0]!=b.x
+                    ?Math.abs(target.getX()+.5-mob.getX())
+                    :Math.abs(target.getZ()+.5-mob.getZ());
+            // Dock laterally BEFORE the hitbox reaches the hinge leaf.
+            // Axis distance, not total diagonal distance, decides when
+            // alignment starts; a sideways-offset entrant must not
+            // begin driving forward while still outside the safe lane.
+            if(axial<1.55){
+                if(ahead[0]!=b.x&&ahead[1]==b.z&&Math.abs(dz)>.035){
+                    dx=0;
+                    b.doorEntryAlignTicks++;
+                }else if(ahead[1]!=b.z&&ahead[0]==b.x
+                        &&Math.abs(dx)>.035){
+                    dz=0;
+                    b.doorEntryAlignTicks++;
+                }
+                distance=Math.hypot(dx,dz);
             }
-            distance=Math.hypot(dx,dz);
         }
         boolean tallObstacle=stepRise>.600001;
         boolean approachingRaisedCell=tallObstacle
@@ -2173,7 +2199,11 @@ public final class BuilderEvolutionAltCourseGameTest {
         if(nativeSlabAscent&&Math.hypot(mob.getX()-old.x,
                 mob.getZ()-old.z)<.035)
             b.slabEntryStalls++;
+        // Only count a true blocked DOOR movement: a deliberately
+        // tiny final alignment, near-waypoint acquisition or queue
+        // hold is not a physical collision stall.
         if((enteringDoorCell||leavingDoorCell)
+                &&Math.hypot(vx,vz)>.06
                 &&Math.hypot(mob.getX()-old.x,mob.getZ()-old.z)<.035)
             b.doorEntryStalls++;
         BlockPos activeDoor=enteringDoorCell?target:
