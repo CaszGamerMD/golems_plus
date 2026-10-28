@@ -261,6 +261,17 @@ public final class BuilderGrappleAccess {
         }
         return false;
     }
+    /** Read-only preflight for the construction planner. A legal grapple
+     * is not a magic work stance: it needs a real carried hook, a valid
+     * upper ledge with clear side/headroom and an A*-reachable grounded
+     * entry to the vertical rope. Never attaches or changes navigation.
+     */
+    public static boolean canPlanAscent(ServerLevel level,
+            BuilderGolem worker,BlockPos target){
+        return hasHook(worker)&&!active.containsKey(worker)
+                &&chooseAscent(level,worker,target)!=null;
+    }
+
     /** Called when construction requires higher feet. Ordinary jumps and
      * safe A* stair paths are attempted BEFORE making a grapple decision.
      */
