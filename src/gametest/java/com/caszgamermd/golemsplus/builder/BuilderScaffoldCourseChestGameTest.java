@@ -32,14 +32,15 @@ public final class BuilderScaffoldCourseChestGameTest {
         ServerLevel level=helper.getLevel();
         for(int x=0;x<8;x++)for(int z=0;z<8;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
-        // Unopened iron door is the only opening in a real two-high wall.
+        // The finish gate is the only opening in a real two-high wall.
+        // A wooden door stays CLOSED until the material quota is met.
         for(int z=0;z<8;z++)for(int y=2;y<=3;y++)
             helper.setBlock(6,y,z,Blocks.COBBLESTONE);
-        helper.setBlock(6,2,3,Blocks.IRON_DOOR.defaultBlockState()
+        helper.setBlock(6,2,3,Blocks.OAK_DOOR.defaultBlockState()
                 .setValue(DoorBlock.FACING,Direction.EAST)
                 .setValue(DoorBlock.OPEN,false)
                 .setValue(DoorBlock.HALF,DoubleBlockHalf.LOWER));
-        helper.setBlock(6,3,3,Blocks.IRON_DOOR.defaultBlockState()
+        helper.setBlock(6,3,3,Blocks.OAK_DOOR.defaultBlockState()
                 .setValue(DoorBlock.FACING,Direction.EAST)
                 .setValue(DoorBlock.OPEN,false)
                 .setValue(DoorBlock.HALF,DoubleBlockHalf.UPPER));
@@ -88,7 +89,10 @@ public final class BuilderScaffoldCourseChestGameTest {
                         +" delivered="+course.delivered()
                         +" tracked="+table.scaffoldPositions(builder.getUUID()).size()
                         +" climb="+BuilderScaffolding.debugClimb(builder)
-                        +" nav="+WorkerNavigation.debugStatus(builder));
+                        +" nav="+WorkerNavigation.debugStatus(builder)
+                        +" door="+level.getBlockState(door)
+                        +" upper="+level.getBlockState(door.above())
+                        +" nearDoor="+WorkerNavigation.canStandOn(level,builder,door));
                 return;
             }
             switch(phase[0]){
