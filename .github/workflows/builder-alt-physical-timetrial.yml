@@ -147,10 +147,12 @@ jobs:
           assert '&&!enteringDoorCell&&!leavingDoorCell' in test
           assert 'recordDoorForwardProgress(b,world,activeDoor,old.x,old.z,' in test
           assert 'if(++b.doorNoForwardTicks>=4' in test
-          assert 'toggleDoorFromReach(world,b.mob,door)' in test
-          assert 'realDoorRetryAlternatesStatesAfterFourStalledTicks' in test
+          assert 'toggleDoorFromReach(world,b.mob,door)' not in test
+          assert 'if(!currentOpen&&openDoorFromReach(world,b.mob,door))' in test
+          assert 'if(!checkedBottomSlab&&!actionableDoor)' in test
+          assert 'realDoorRetryOpensClosedAndPreservesOpenPassage' in test
           assert 'realControllerRetriesClosedDoorWithoutJumping' in test
-          assert 'openDoorFromReach(world,mob,target)' not in test
+          assert 'openDoorFromReach(world,mob,target)' in test
           assert 'updateKnowledgePool(this,b)' in test
           assert 'knowledgePool.clear();' in test
           assert 'obj.add("knowledgePool",pool)' in test
