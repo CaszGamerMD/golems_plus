@@ -28,7 +28,20 @@ public final class BuilderBlockResolver {
         if(identifier==null||!BuiltInRegistries.BLOCK.containsKey(identifier))return null;
         Block block=BuiltInRegistries.BLOCK.getValue(identifier);
         Item item=block.asItem();
-        if(item==Items.AIR || block instanceof EntityBlock)return null;
+        // Vanilla wall signs are block entities with no obtainable
+        // wall-sign item. Their physical inventory item is the matching
+        // standing sign. A blank sign is a legal single-placement block
+        // even though text/NBT are intentionally not restored here.
+        boolean sign=id.endsWith("_sign")||id.endsWith("_hanging_sign");
+        if(id.endsWith("_wall_sign")||id.endsWith("_wall_hanging_sign")){
+            String itemName=id.replace("_wall_hanging_sign","_hanging_sign")
+                    .replace("_wall_sign","_sign");
+            Identifier itemId=Identifier.tryParse(itemName);
+            if(itemId==null||!BuiltInRegistries.ITEM.containsKey(itemId))
+                return null;
+            item=BuiltInRegistries.ITEM.getValue(itemId);
+        }
+        if(item==Items.AIR || block instanceof EntityBlock&&!sign)return null;
         // Door halves are represented by two successive schematic cells.
         // Lower block consumes the single physical door item; upper half
         // is placed after its lower support, without duplicating materials.
