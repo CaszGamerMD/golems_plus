@@ -447,6 +447,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         int doorNoForwardTicks,doorStateRetries;
         int attemptedDoorX=Integer.MIN_VALUE,attemptedDoorZ=Integer.MIN_VALUE;
         Boolean observedDoorOpen;
+        int lastDoorAttemptTick=-100;
         int yieldingTicks,trafficQueueTicks,trafficCrossingTicks;
         int trafficWaitTicks,trafficReroutes,lastTrafficRerouteTick=-1000;
         int safeCornerShortcuts;
@@ -672,6 +673,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             b.attemptedDoorX=Integer.MIN_VALUE;
             b.attemptedDoorZ=Integer.MIN_VALUE;
             b.observedDoorOpen=null;
+            b.lastDoorAttemptTick=-100;
             return;
         }
         if(b.attemptedDoorX!=door.getX()
@@ -681,6 +683,11 @@ public final class BuilderEvolutionAltCourseGameTest {
             b.doorNoForwardTicks=0;
             b.observedDoorOpen=null;
         }
+        // A teammate hold or a replanning tick interrupted forward
+        // movement: require four *consecutive* physical movement ticks.
+        if(b.lastDoorAttemptTick+1!=b.controlTick)
+            b.doorNoForwardTicks=0;
+        b.lastDoorAttemptTick=b.controlTick;
         BlockState state=world.getBlockState(door);
         if(!canOperateDoor(state))return;
         if(Math.hypot(b.mob.getX()-door.getX()-.5,
@@ -3798,6 +3805,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 for(int tick=1;tick<=4;tick++){
                     // Physically stationary body; no invented forward
                     // displacement. The doorway collision is unchanged.
+                    b.controlTick++;
                     recordDoorForwardProgress(b,world,door,
                             mob.getX(),mob.getZ(),4,10,false,false);
                     boolean expected=tick<4?startingOpen:!startingOpen;
@@ -3812,9 +3820,11 @@ public final class BuilderEvolutionAltCourseGameTest {
                             "Door retry counter did not reset after toggling");
                 // A teammate waiting in the opening cannot provoke
                 // rapid door flips while the controller politely yields.
-                for(int tick=0;tick<6;tick++)
+                for(int tick=0;tick<6;tick++){
+                    b.controlTick++;
                     recordDoorForwardProgress(b,world,door,
                             mob.getX(),mob.getZ(),4,10,true,false);
+                }
                 if(b.doorStateRetries!=before+1)
                     throw new IllegalStateException(
                             "Door toggled because of teammate congestion");
@@ -3828,6 +3838,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 throw new IllegalStateException("Real approach movement failed");
             int retriesBefore=b.doorStateRetries;
             boolean stateBefore=world.getBlockState(door).getValue(DoorBlock.OPEN);
+            b.controlTick++;
             recordDoorForwardProgress(b,world,door,oldX,oldZ,4,10,false,false);
             if(b.doorNoForwardTicks!=0||b.doorStateRetries!=retriesBefore
                     ||world.getBlockState(door).getValue(DoorBlock.OPEN)!=stateBefore)
@@ -3841,6 +3852,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             world.setBlock(door,current.setValue(DoorBlock.OPEN,!stateBefore),3);
             world.setBlock(door.above(),
                     currentUpper.setValue(DoorBlock.OPEN,!stateBefore),3);
+            b.controlTick++;
             recordDoorForwardProgress(b,world,door,
                     mob.getX(),mob.getZ(),4,10,false,false);
             if(b.doorStateRetries!=retriesBefore||b.doorNoForwardTicks!=1)
