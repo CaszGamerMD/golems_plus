@@ -136,6 +136,12 @@ public final class BuilderDomeConstructionGameTest {
                     +" clear="+table.builderClearCursor()
                     +" cursor="+table.builderCursor()
                     +" problem="+table.problem());
+            // When progress becomes intermittent, record each golem's
+            // world/dome-relative location and the exact occupied build
+            // cell BEFORE the final stall. This is read-only telemetry.
+            if(tick%400==0&&tick-lastProgress[0]>800)
+                System.out.println("[DOME CREW] tick="+tick
+                        +crewCoordinates(level,table,crew,steps));
             // Replenish the 27-slot CHEST, never worker inventories.
             Set<Item> needs=new LinkedHashSet<>();
             needs.add(WorksiteContent.GRAPPLE_HOOK);
@@ -224,9 +230,49 @@ public final class BuilderDomeConstructionGameTest {
                     message.append(" | ").append(worker.getName().getString())
                         .append(" @ ").append(worker.blockPosition())
                         .append(" ").append(BuilderBuildService.debugStatus(level,worker));
+                message.append(crewCoordinates(level,table,crew,steps));
                 helper.fail(message.toString());
             }
         });
+    }
+
+    /** A stationary screenshot of the real physical dome worksite:
+     * absolute world coordinates are retained, and offsets use the
+     * schematic's actual chosen origin, not GameTest's random world seed.
+     */
+    private static String crewCoordinates(ServerLevel level,
+            WorkerStationBlockEntity table,List<BuilderGolem> crew,
+            List<BuilderConstructionPlan.Step> steps){
+        BlockPos origin=table.builderOrigin();
+        StringBuilder out=new StringBuilder(" | blueprintOrigin=")
+                .append(origin.toShortString());
+        for(BuilderGolem mob:crew){
+            BlockPos at=mob.blockPosition();
+            int index=table.claimedStep(mob.getUUID());
+            out.append("\n[DOME COORD] golem=").append(mob.getName().getString())
+                    .append(" world=").append(at.toShortString())
+                    .append(" local=").append(at.subtract(origin).toShortString())
+                    .append(" precise=").append(String.format(
+                            java.util.Locale.ROOT,"(%.3f,%.3f,%.3f)",
+                            mob.getX(),mob.getY(),mob.getZ()))
+                    .append(" claimedStep=").append(index)
+                    .append(" held=").append(BuilderPlacementSpace.debugYield(
+                            level,mob))
+                    .append(" grapple=").append(BuilderGrappleAccess.debug(mob));
+            if(index>=0&&index<steps.size()){
+                var step=steps.get(index);
+                BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+                out.append(" targetWorld=").append(target.toShortString())
+                        .append(" targetLocal=")
+                        .append(target.subtract(origin).toShortString())
+                        .append(" blockNow=")
+                        .append(level.getBlockState(target))
+                        .append(" occupants=")
+                        .append(BuilderPlacementSpace.debugOccupants(
+                                level,table,target));
+            }
+        }
+        return out.toString();
     }
 
     private static long fileSize(Path path){
