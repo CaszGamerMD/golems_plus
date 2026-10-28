@@ -131,6 +131,42 @@ public final class BuilderConstructionPlanner {
                 +(grapple?24:0);        // never hook if walking works
     }
 
+    /** Human-readable diagnostic in SCHEMATIC-LOCAL XYZ. This never
+     * changes claims or tests artificial standability. It records exact
+     * unfinished inputs and their real-world support so failures are
+     * actionable rather than "pathfinding failed" with random test XZ.
+     */
+    public static String blockedSummary(ServerLevel world,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
+        int layer=table.builderActiveLayer(steps);
+        BlockPos origin=table.builderOrigin();
+        int pending=0;
+        List<String> examples=new ArrayList<>();
+        for(int idx:zone){
+            if(idx<0||idx>=steps.size()
+                    ||steps.get(idx).y()!=layer
+                    ||!table.builderStepReadyForClaim(idx))continue;
+            pending++;
+            if(examples.size()>=4)continue;
+            var step=steps.get(idx);
+            BlockPos p=new BlockPos(step.x(),step.y(),step.z());
+            var expected=BuilderBlockResolver.resolve(step.encodedState(),
+                    BuildSite.Rotation.values()[table.builderRotation()/90],
+                    BuildSite.Mirror.values()[table.builderMirror()]);
+            String reason=!world.hasChunkAt(p)?"chunk unloaded":
+                    expected==null?"unsupported block state":
+                    !expected.state().canSurvive(world,p)
+                        ?"missing physical support":
+                    "no confirmed reachable work stance/exit";
+            examples.add("#"+idx+" XYZ="+p.subtract(origin).toShortString()
+                    +" state="+step.encodedState()
+                    +" reason="+reason);
+        }
+        return "Y="+(layer-origin.getY())+" pending="+pending
+                +" next=["+String.join("; ",examples)+"]";
+    }
+
     /** Select the most promising same-layer cell in the worker's OWN
      * zone. Readiness is checked against persistent step completion and
      * cooldown state. We look beyond the first blocked strip element;
