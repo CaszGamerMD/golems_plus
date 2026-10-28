@@ -819,7 +819,12 @@ public final class WorkerNavigation {
         double side=out.getStepX()==0
                 ?Math.abs(mob.getX()-door.getX()-.5)
                 :Math.abs(mob.getZ()-door.getZ()-.5);
-        if(side>.24)return false;
+        // An actual mob can drift ~0.3 blocks sideways while queued
+        // beside the open leaf. Abandoning the exit escort at .24
+        // stranded the head just OUTSIDE the threshold and held the
+        // other three workers forever. Continue steering toward the
+        // centered exit; collision checks below still prevent phasing.
+        if(side>.46)return false;
         double before=(mob.getX()-door.getX()-.5)*out.getStepX()
                 +(mob.getZ()-door.getZ()-.5)*out.getStepZ();
         if(before>2.75||before<-4.0)return false;
