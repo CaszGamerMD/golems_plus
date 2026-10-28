@@ -262,13 +262,13 @@ public final class BuilderSupplyInventory {
         if(depot==null||storage==null)return LoadStatus.MISSING;
         if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                 depot.getZ()+.5)>12){
-            // NEVER ask for a rappel to fetch the missing grapple hook:
-            // rappelToward() itself requests this equipment and doing so
-            // recurses until a StackOverflowError kills the server.
-            // Only take a truly reachable trained A* route on foot.
-            if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeTo(level,worker,depot,.83))
-                return LoadStatus.MISSING;
+            // This is an ordinary construction-material trip. If the
+            // worker ALREADY owns its hook, controlled rappel is valid;
+            // otherwise try the trained A* route without inventing tools.
+            if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
+                return LoadStatus.MOVING;
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                    level,worker,depot,.83);
             return LoadStatus.MOVING;
         }
         Map<String,Integer> materials=new LinkedHashMap<>();
