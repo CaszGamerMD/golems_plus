@@ -938,34 +938,58 @@ public final class WorkerStationBlockEntity extends BlockEntity
         sync();
     }
 
-    /** Each worker owns its entire zone in the compiled plan. Return the
-     * SAME claimed step until it is completed or deliberately deferred.
-     * Only visit the OnSite depot at the boundary of a physical staging
-     * window; every window is drawn in order from this fixed worker plan.
-     *
-     * No full-schematic scans, no assignment stealing, no crew-wide barrier.
+    /** A finished zone has NO outstanding schematic coordinates, across
+     * ALL heights. This is not the same as a temporarily empty stage after
+     * a support/access/material retry. A finished worker returns OnSite.
+     */
+    public boolean builderZoneDone(java.util.List<Integer> fullZone){
+        if(fullZone==null||fullZone.isEmpty())return true;
+        for(int idx:fullZone)
+            if(idx>=builderCursor&&!builderFinishedSteps.contains(idx))
+                return false;
+        return true;
+    }
+
+    /** Each Builder keeps exclusive ownership of its full X/Z zone.
+     * Lower Y is a travel preference, NOT a hard stop or crew barrier.
+     * A failed lower coordinate is deferred, so the SAME worker may
+     * continue other safe cells at ANY Y while it waits for materials,
+     * reachable working positions, or support. Never mark deferred work
+     * complete. Old completed indexed cells remain persisted.
      */
     public int claimBuilderZoneStep(UUID worker,java.util.List<Integer> fullZone,
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(activeOrder==null||!builderWorkerIds().contains(worker)
                 ||fullZone==null||fullZone.isEmpty())return -1;
         int current=builderClaims.getOrDefault(worker,-1);
+        long now=level==null?0:level.getGameTime();
         if(current>=0&&current<steps.size()
-                &&!builderFinishedSteps.contains(current))return current;
+                &&current>=builderCursor&&!builderFinishedSteps.contains(current)
+                &&builderMissingRetries.getOrDefault(current,0L)<=now)
+            return current;
         builderClaims.remove(worker);
         var stage=builderWorkOrders.get(worker);
-        if(stage==null||stage.isEmpty()){
-            int lowest=Integer.MAX_VALUE;
-            for(int idx:fullZone){
-                if(idx>=0&&idx<steps.size()&&!builderFinishedSteps.contains(idx)){
-                    lowest=steps.get(idx).y();break;
+        if(stage!=null){
+            boolean runnable=false;
+            for(int idx:stage)
+                if(idx>=builderCursor&&!builderFinishedSteps.contains(idx)
+                        &&builderMissingRetries.getOrDefault(idx,0L)<=now){
+                    runnable=true;break;
                 }
+            if(!runnable){
+                // Re-stage independently even when one lower task has a
+                // delayed retry. No global or worker-wide Y barrier.
+                builderWorkOrders.remove(worker);
+                builderPreparedOrders.remove(worker);
+                stage=null;
             }
-            if(lowest==Integer.MAX_VALUE)return -1;
+        }
+        if(stage==null||stage.isEmpty()){
             var newStage=new java.util.ArrayList<Integer>(BUILDER_STAGE_SIZE);
             for(int idx:fullZone){
-                if(idx<0||idx>=steps.size()||builderFinishedSteps.contains(idx))continue;
-                if(steps.get(idx).y()!=lowest)break;
+                if(idx<builderCursor||idx>=steps.size()
+                        ||builderFinishedSteps.contains(idx)
+                        ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
                 newStage.add(idx);
                 if(newStage.size()>=BUILDER_STAGE_SIZE)break;
             }
@@ -973,16 +997,26 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderWorkOrders.put(worker,newStage);
             builderPreparedOrders.remove(worker);
             stage=newStage;
-            sync(); // Only on stage refresh, not on each coordinate.
+            sync();
         }
-        long now=level==null?0:level.getGameTime();
         for(int idx:stage){
-            if(builderFinishedSteps.contains(idx)
+            if(idx<builderCursor||idx>=steps.size()
+                    ||builderFinishedSteps.contains(idx)
                     ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
             builderClaims.put(worker,idx);
             return idx;
         }
-        return -1; // deferred dependencies remain in this zone's layer
+        return -1;
+    }
+    /** No route or anchor is currently valid for a claimed cell. Keep
+     * the exact unfinished index to retry, but unblock the rest of the
+     * zone (including other Y levels) for a bounded 60-tick interval.
+     */
+    public void waitForBuilderAccess(UUID worker,int step,long tick){
+        if(builderClaims.getOrDefault(worker,-1)!=step)return;
+        builderClaims.remove(worker);
+        builderMissingRetries.put(step,tick+60);
+        setChanged();
     }
 
     /** Move one exact same-layer coordinate to a worker who already holds
