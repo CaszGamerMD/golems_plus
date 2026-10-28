@@ -149,6 +149,9 @@ public final class BuilderPlacementSpace {
         if(cached!=null&&cached.target().equals(target)
                 &&cached.until()>now
                 &&cached.destination().distSqr(target)<14
+                &&!(cached.destination().equals(worker.blockPosition())
+                    &&worker.distanceToSqr(target.getX()+.5,
+                            target.getY()+.5,target.getZ()+.5)>13.0)
                 &&WorkerNavigation.canStandOn(level,worker,cached.destination()))
             return cached.destination();
         Rejected bad=rejected.get(worker);
@@ -165,6 +168,9 @@ public final class BuilderPlacementSpace {
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos p=target.offset(dx,dy,dz);
                 if(p.distSqr(target)>=14
+                        ||p.equals(worker.blockPosition())
+                            &&worker.distanceToSqr(target.getX()+.5,
+                                target.getY()+.5,target.getZ()+.5)>13.0
                         ||!WorkerNavigation.canStandOn(level,worker,p)
                         ||bad!=null&&bad.target().equals(target)
                             &&bad.destination().equals(p))continue;
@@ -182,7 +188,8 @@ public final class BuilderPlacementSpace {
                 .comparingDouble((BlockPos p)->
                         p.distSqr(worker.blockPosition())*1.3
                         +Math.abs(p.getY()-worker.blockPosition().getY())*4
-                        +p.distSqr(target)*.55)
+                        +p.distSqr(target)*1.20
+                        +Math.pow(Math.max(0,p.distSqr(target)-8),2)*3)
                 .thenComparingInt(BlockPos::getX)
                 .thenComparingInt(BlockPos::getZ));
         int attempted=0;
