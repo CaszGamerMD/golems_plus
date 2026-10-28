@@ -182,9 +182,9 @@ public final class BuilderConstructionFrontierGameTest {
         var mob=worker(h,h.absolutePos(new BlockPos(3,2,3)));
         BlockPos current=mob.blockPosition();
         BlockPos target=current.east(2);
-        // A work stance with three solid walls has only its future
-        // target-side corridor is too close to the future block (under
-        // 0.8m margin). It is NOT an exit once the block is placed.
+        // This fixture must physically block ALL four exit directions.
+        // Being less than 0.8m away is insufficient reason to reject an
+        // exit AFTER placing the block; actual swept collision decides.
         h.setBlock(2,2,3,Blocks.STONE);
         h.setBlock(3,2,2,Blocks.STONE);
         h.setBlock(3,2,4,Blocks.STONE);
@@ -193,6 +193,8 @@ public final class BuilderConstructionFrontierGameTest {
         h.setBlock(2,3,3,Blocks.STONE);
         h.setBlock(3,3,2,Blocks.STONE);
         h.setBlock(3,3,4,Blocks.STONE);
+        h.setBlock(4,2,3,Blocks.STONE);
+        h.setBlock(4,3,3,Blocks.STONE);
         if(BuilderConstructionPlanner.exitAfterPlacement(
                 world,mob,current,target)){
             h.fail("Planner sealed the last physical escape corridor");return;
