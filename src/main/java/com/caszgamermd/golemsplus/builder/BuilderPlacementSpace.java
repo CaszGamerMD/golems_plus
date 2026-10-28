@@ -265,9 +265,12 @@ public final class BuilderPlacementSpace {
                     level.getGameTime()+60,blocker==placing));
             WorkerNavigation.routeToExact(level,blocker,destination,.9);
         }
+        // An AIR cell is not being mined here. Before placing a new solid
+        // schematic block into it, real golems occupying that space must
+        // walk away so the new block cannot suffocate them.
         table.setProblem(found
-                ?"Clearing placement space "+target.toShortString()
-                        +" (Builders stepping aside)"
+                ?"Waiting for Builders to vacate placement cell "
+                        +target.toShortString()
                 :"Waiting for safe standing space near "+target.toShortString());
         return false;
     }
