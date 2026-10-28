@@ -181,11 +181,17 @@ public final class BuilderConstructionFrontierGameTest {
         h.setBlock(2,2,3,Blocks.STONE);
         h.setBlock(3,2,2,Blocks.STONE);
         h.setBlock(3,2,4,Blocks.STONE);
+        // Block jumping ON TOP of the three walls. Without the upper
+        // halves a real 1-block jump is an entirely legal alternate exit.
+        h.setBlock(2,3,3,Blocks.STONE);
+        h.setBlock(3,3,2,Blocks.STONE);
+        h.setBlock(3,3,4,Blocks.STONE);
         if(BuilderConstructionPlanner.exitAfterPlacement(
                 world,mob,current,target)){
             h.fail("Planner sealed the last physical escape corridor");return;
         }
         h.setBlock(3,2,2,Blocks.AIR);
+        h.setBlock(3,3,2,Blocks.AIR);
         if(!BuilderConstructionPlanner.exitAfterPlacement(
                 world,mob,current,target)){
             h.fail("Opening a real exit did not make pose usable");return;
