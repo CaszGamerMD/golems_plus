@@ -125,8 +125,17 @@ public final class WorkerDoorTraffic {
         }
         return false;
     }
-    /** Deprioritize a stationary head without allowing it to cut back
-     * into the same FIFO on its next navigation tick.
+    /** A worker genuinely INSIDE this threshold has priority to exit.
+     * The 0.35-block collision overlap guard prevents releasing an owner
+     * into a different worker before its body is free of the door.
+     */
+    public static boolean inside(ServerLevel level,BlockPos position,
+                                 PathfinderMob worker){
+        BlockPos door=canonical(level,position);
+        return worker.getBoundingBox().intersects(new AABB(door).inflate(.15));
+    }
+    /** Deprioritize an immobile head that is OUTSIDE the threshold.
+     * Never release or evict a physically occupying worker.
      */
     public static void yieldStalled(ServerLevel level,BlockPos position,
                                     PathfinderMob worker){
@@ -135,9 +144,11 @@ public final class WorkerDoorTraffic {
         Lane lane=map.get(canonical(level,position));
         if(lane==null)return;
         UUID id=worker.getUUID();
+        if(inside(level,position,worker))return;
         lane.queue.release(id);
         lane.entry.remove(id);
-        lane.cooldown.put(id,level.getGameTime()+60);
+        // Bounded courtesy, then rejoin the queue with the SAME job.
+        lane.cooldown.put(id,level.getGameTime()+25);
     }
     public static void release(ServerLevel level,BlockPos position,PathfinderMob worker){
         Map<BlockPos,Lane> map=doors.get(level);
