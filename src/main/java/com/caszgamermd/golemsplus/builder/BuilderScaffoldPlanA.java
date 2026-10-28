@@ -39,6 +39,8 @@ public final class BuilderScaffoldPlanA {
         Phase phase=Phase.APPROACH;
         long lastProgress;
         int lastTick;
+        int bridgeTicks,reclimbs;
+        double highest=-Double.MAX_VALUE;
         double lastDistance=Double.POSITIVE_INFINITY;
         Job(BlockPos target,BlockPos base,BlockPos exit,
                 Direction direction,int top,long now){
@@ -69,7 +71,9 @@ public final class BuilderScaffoldPlanA {
         Job j=jobs.get(worker);
         return j==null?"NONE":"PLAN_A "+j.phase+" tower="+j.base.toShortString()
                 +" bridge="+j.first().toShortString()+","+j.second().toShortString()
-                +" targetY="+j.target.getY()+" exit="+j.exit.toShortString();
+                +" targetY="+j.target.getY()+" exit="+j.exit.toShortString()
+                +" ticks="+j.bridgeTicks+" reclimbs="+j.reclimbs
+                +" highest="+String.format(java.util.Locale.ROOT,"%.2f",j.highest);
     }
     public static void cancel(BuilderGolem worker){jobs.remove(worker);}
 
@@ -271,6 +275,8 @@ public final class BuilderScaffoldPlanA {
     public static boolean tickMotion(ServerLevel level,BuilderGolem worker){
         Job j=jobs.get(worker);
         if(j==null)return false;
+        j.bridgeTicks++;
+        j.highest=Math.max(j.highest,worker.getY());
         BlockPos destination=switch(j.phase){
             case WALK_FIRST,RETURN_FIRST->j.first().above();
             case WALK_SECOND->j.second().above();
@@ -297,6 +303,7 @@ public final class BuilderScaffoldPlanA {
                 column=worker.blockPosition();
             }
             if(present(level,table,worker,column)){
+                j.reclimbs++;
                 BuilderScaffolding.begin(level,worker,column,
                         destination.getY(),false);
                 return false; // BuilderGolem.tick invokes vertical physics.
