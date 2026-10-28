@@ -1,0 +1,35 @@
+name: Physical Builder Work-Position Access
+on:
+  push:
+    branches: [test/builder-work-access-physical-262]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Run pure scaffold-site scoring unit tests
+        run: gradle --no-daemon test
+      - name: Test physical Builder positioning on elevated work rim
+        run: gradle --no-daemon runGameTest
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: builder-work-position-physical-proof
+          path: |
+            build/gametest/
+            build/reports/
+            build/test-results/
+            build/run/gameTest/logs/
+          if-no-files-found: ignore
