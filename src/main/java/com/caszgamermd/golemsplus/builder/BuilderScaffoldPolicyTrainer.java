@@ -34,6 +34,49 @@ public final class BuilderScaffoldPolicyTrainer {
         }
     }
 
+    /** Single-Builder physical course result. A positive outcome must
+     * demonstrate ALL of: chest withdrawal, actual scaffold placement,
+     * physical pickup, credited deposit, and passage through the unlocked
+     * finish door. A worker that races to the end empty-handed FAILS.
+     */
+    public record CourseTrial(BuilderScaffoldBridgePlanner.Weights weights,
+            int withdrawn,int placed,int recovered,int deposited,
+            int minimumRequired,boolean crossedFinishDoor,
+            boolean groundedAlive,int collisions,int ticks){
+        public CourseTrial {
+            if(weights==null||withdrawn<0||placed<0||recovered<0
+                    ||deposited<0||minimumRequired<=0||collisions<0
+                    ||ticks<0)
+                throw new IllegalArgumentException("Invalid real course trial");
+        }
+        public boolean passed(){
+            return withdrawn>0&&placed>0&&recovered>0
+                    &&recovered<=placed&&deposited>=minimumRequired
+                    &&deposited<=withdrawn&&crossedFinishDoor
+                    &&groundedAlive&&collisions==0;
+        }
+    }
+
+    /** Exactly NINE measured sequential, SINGLE-GOLEM attempts: the
+     * runtime must reset the course/chests between attempts. No concurrent
+     * crew can accidentally provide items or paths to another trial.
+     * Continue retaining the three best policy rules, not their paths.
+     */
+    public static List<BuilderScaffoldBridgePlanner.Weights>
+            nextGenerationFromCourse(List<CourseTrial> measured,long seed){
+        if(measured==null||measured.size()!=POPULATION
+                ||measured.stream().anyMatch(x->x==null))
+            throw new IllegalArgumentException(
+                    "Require nine separately measured single-Builder course attempts");
+        List<Trial> converted=new ArrayList<>();
+        for(CourseTrial result:measured)
+            converted.add(new Trial(result.weights(),result.passed(),
+                    result.groundedAlive()&&result.passed(),
+                    result.placed(),Math.max(0,result.minimumRequired()-result.deposited()),
+                    result.collisions(),result.ticks()));
+        return nextGeneration(converted,seed);
+    }
+
     public static List<BuilderScaffoldBridgePlanner.Weights> nextGeneration(
             List<Trial> measured,long seed){
         if(measured==null||measured.size()!=POPULATION
