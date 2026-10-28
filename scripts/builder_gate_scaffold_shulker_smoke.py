@@ -12,7 +12,9 @@ assert "FenceGateBlock.FACING" in nav
 assert "FenceGateBlock.OPEN" in nav
 assert "setPassageOpen(level,mob,p.queuedDoor,true)" in nav
 assert "if(!isOpenPassage(entrance))" in nav
-assert "setPassageOpen(level,mob,doorPos,true)" in nav
+assert "setPassageOpen(level,mob,door,true)" in nav
+assert "BlockPos door=imminentDoor(level,mob,p)" in nav
+assert "if(!onExistingPath)" in nav
 assert "setPassageOpen(level,mob,door,false)" in nav
 # Don't attempt to path to a height that can only be reached with scaffolds.
 assert "pos.getY()-worker.getY()>1.35&&distToTarget>14" in builder

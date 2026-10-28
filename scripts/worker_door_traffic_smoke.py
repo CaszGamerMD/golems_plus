@@ -22,7 +22,9 @@ assert "private static BlockPos doorStandby(" in nav
 assert "radius<2||radius>3.35" in nav
 assert "if(doorTrafficTick(level,mob,p))" in nav
 assert "if(p.waitingDoor||p.finishingDoor)return true" in nav
-assert "WorkerDoorTraffic.request(level,local,mob)" in nav
+assert "WorkerDoorTraffic.request(level,door,mob)" in nav
+assert "if(!onExistingPath)" in nav
+assert "if(p.waitingDoor||p.finishingDoor)return true" in nav
 assert "if(WorkerDoorTraffic.count(level,door)>0)return;" in nav
 assert "1.5*1.5" in nav
 assert "neighborOccupied(level,mob,p)?90:0" in nav
