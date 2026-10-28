@@ -10,6 +10,7 @@
   },
   "entrypoints": {
     "fabric-gametest": [
+      "com.caszgamermd.golemsplus.builder.BuilderPlacementClearanceGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderDomeConstructionGameTest"
     ]
   }
