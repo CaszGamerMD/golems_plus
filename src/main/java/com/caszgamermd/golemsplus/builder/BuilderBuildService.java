@@ -501,8 +501,8 @@ public final class BuilderBuildService {
                                 +pos);
                     return;
                 }
-                if(yDiff<0 && BuilderScaffolding.descendForTravel(
-                        level,worker,table))return;
+                if(yDiff<0 && BuilderGrappleAccess.rappelToward(
+                        level,worker,table,pos))return;
                 // A downward target without owned scaffold uses the
                 // normal collision-safe walkable route, never a fall.
                 com.caszgamermd.golemsplus.worker.WorkerNavigation

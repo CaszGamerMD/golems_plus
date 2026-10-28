@@ -255,19 +255,19 @@ public final class BuilderGrappleAccess {
         boolean moved=true;
         switch(r.phase){
             case CLIMB -> {
-                if(mob.getY()>=r.topY()-.06){
+                if(mob.getY()>=r.topY()+.17){
                     r.phase=Phase.STEP_ON_TOP;
                 }else{
-                    moved=steer(level,mob,x,r.topY(),z,.16,true);
+                    moved=steer(level,mob,x,r.topY()+.22,z,.16,true);
                 }
             }
             case STEP_ON_TOP -> {
                 moved=steer(level,mob,
-                        r.anchor.getX()+.5,r.topY(),
+                        r.anchor.getX()+.5,r.topY()+.12,
                         r.anchor.getZ()+.5,.15,true);
                 if(Math.abs(mob.getX()-r.anchor.getX()-.5)<.18
                         &&Math.abs(mob.getZ()-r.anchor.getZ()-.5)<.18
-                        &&Math.abs(mob.getY()-r.topY())<.18){
+                        &&mob.getY()>=r.topY()+.055){
                     active.remove(mob);
                     mob.setNoGravity(false);
                     mob.setDeltaMovement(0,0,0);
@@ -282,8 +282,7 @@ public final class BuilderGrappleAccess {
                     r.phase=Phase.RAPPEL;
             }
             case RAPPEL -> {
-                if(mob.onGround()
-                        &&mob.getY()<=r.landing.getY()+.20){
+                if(mob.getY()<=r.landing.getY()+.055){
                     active.remove(mob);
                     mob.setNoGravity(false);
                     mob.setDeltaMovement(0,0,0);
