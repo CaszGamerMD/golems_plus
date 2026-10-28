@@ -202,13 +202,13 @@ public final class BuilderBuildService {
         // A teammate may need the block space currently occupied by this
         // Builder. Honor its short physical sidestep before resuming the
         // current 10-coordinate assignment or warehouse courier route.
+        if(BuilderGrappleAccess.active(worker))return;
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
             // On job completion a Builder may still be on its LAST
             // scaffold tower. It must return to ground and dismount
             // BEFORE reclaiming blocks, delivering tools or going home.
-            if(BuilderScaffolding.isControllingMovement(worker)
-                    ||BuilderScaffolding.descendForTravel(level,worker,table))
+            if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
                 return;
             worker.setNoGravity(false);
             BuilderScaffolding.retrieve(level,worker,table,false);
@@ -257,14 +257,12 @@ public final class BuilderBuildService {
             return;
         }
         if(table.phase()==WorkerPhase.PAUSED){
-            BuilderScaffolding.cancel(worker);
+            BuilderGrappleAccess.cancel(worker);
             worker.getNavigation().stop();
             worker.setNoGravity(false);return;
         }
-        // Do not let a fresh route to supplies/work overwrite the last
-        // meter of ascent, descent, or dismount. The per-entity-tick
-        // scaffold controller alone owns movement until safe arrival.
-        if(BuilderScaffolding.isControllingMovement(worker))return;
+        // Plan B owns the rope maneuver exclusively until landing.
+        if(BuilderGrappleAccess.active(worker))return;
         int membership=table.builderWorkerIds().indexOf(worker.getUUID());
         if(membership>=table.crewTarget()&&table.claimedStep(worker.getUUID())<0
                 &&!worker.hasSupplyBox()){
@@ -317,12 +315,7 @@ public final class BuilderBuildService {
             // arbitrate between Builders on each move or block placement.
             var assigned=zoneSchedule(table,plan);
             var zone=assigned.tasks().steps(worker.getUUID());
-            // Retrieve temporary towers at a work-order boundary, never
-            // after each block: workers should complete all ten cells on
-            // their current scaffolding before returning for more stock.
-            if(table.builderWorkOrder(worker.getUUID()).isEmpty()
-                    &&!table.scaffoldPositions(worker.getUUID()).isEmpty())
-                BuilderScaffolding.retrieve(level,worker,table,false);
+            // Plan B does not place or navigate any new scaffold towers.
             int index=table.claimBuilderZoneStep(worker.getUUID(),
                     zone,plan.steps());
             if(index<0)return; // only this zone's pending dependencies
@@ -375,11 +368,8 @@ public final class BuilderBuildService {
                 // dismantle the nearby scaffold to rebuild them.
                 return;
             }
-            // Finish the *actual* scaffold landing before a short
-            // remaining vertical distance causes the normal work route
-            // or depot order to cancel the last block of ascent.
-            if(BuilderScaffolding.finishActiveAscent(level,worker))
-                return;
+            // The hook controller retains exclusive movement until
+            // physically landed; do not issue an overlapping work route.
             // Every real Builder goes to the chosen OnSite depot ONCE per
             // exclusive ten-coordinate batch, unloads other materials and
             // collects actual stock (including flowers within shulkers).
@@ -388,7 +378,7 @@ public final class BuilderBuildService {
                 activity.phase=Action.STAGE_MATERIALS;
                 // An A* route from the TOP of a temporary scaffold to
                 // OnSite Storage can never discover the vertical descent.
-                if(BuilderScaffolding.descendForTravel(level,worker,table))
+                if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
                     return;
                 var prep=BuilderSupplyInventory.prepareWorkOrder(
                         level,worker,table,plan.steps());
@@ -404,7 +394,7 @@ public final class BuilderBuildService {
             // A newly assigned low cell may be underneath an old tower.
             // Descent belongs to this worker, not a global path command.
             if(step.y()+1.5<worker.getY()
-                    &&BuilderScaffolding.descendForTravel(level,worker,table))
+                    &&BuilderGrappleAccess.rappelForTravel(level,worker,table))
                 return;
             // Check the replacement's survival BEFORE clearing an existing
             // block. Clearing first destroyed a useful piece of completed
@@ -468,26 +458,21 @@ public final class BuilderBuildService {
                     return;
                 }
             }
-            // PLAN A: the golem's physical feet MUST match the block Y.
-            // Ordinary one-block steps (up OR down) use the trained A*
-            // and Minecraft's real walking/jumping physics. Larger climbs
-            // require a 3-axis scaffold tower + two-cell top bridge.
+            // PLAN B: physical Grapple Hook up to 20 blocks, never a
+            // scaffold/flying/teleport fallback. Ordinary slopes use A*.
             int yDiff=pos.getY()-worker.blockPosition().getY();
-            if(BuilderScaffoldPlanA.hasPlan(worker)||yDiff>1){
-                var access=BuilderScaffoldPlanA.reach(
-                        level,worker,table,owner,pos,plan.steps());
-                if(access==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
-                    table.setProblem("Plan A needs scaffolding for "+pos);
-                    if(BuilderWarehouseCoordinator.requestScaffolding(
-                            level,worker,table,owner,plan.steps()))return;
+            if(yDiff>1){
+                var access=BuilderGrappleAccess.reach(level,worker,table,pos);
+                if(access==BuilderGrappleAccess.Result.NEED_HOOK){
+                    table.setProblem("Builder needs a Grapple Hook in OnSite Storage");
                     return;
                 }
-                if(access==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE){
-                    table.setProblem("Plan A cannot find a safe X/Z axis-3 "
-                            +"tower, two-cell bridge and descent for "+pos);
+                if(access==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR){
+                    table.setProblem("No safe 20-block grapple anchor / open cardinal face for "
+                            +pos);
                     return;
                 }
-                if(access==BuilderScaffoldPlanA.Result.MOVING)return;
+                if(access==BuilderGrappleAccess.Result.MOVING)return;
             }
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
@@ -508,17 +493,12 @@ public final class BuilderBuildService {
                     return;
                 }
                 if(yDiff>0){
-                    // If the direct one-step jump is obstructed, a real
-                    // scaffold bridge is still required, not a jump
-                    // through a solid wall.
-                    var alternate=BuilderScaffoldPlanA.reach(
-                            level,worker,table,owner,pos,plan.steps());
-                    if(alternate==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
-                        table.setProblem("Plan A needs scaffolding for "+pos);
-                        return;
-                    }
-                    if(alternate==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE)
-                        table.setProblem("No safe Plan A scaffold access at "+pos);
+                    var access=BuilderGrappleAccess.reach(level,worker,table,pos);
+                    if(access==BuilderGrappleAccess.Result.NEED_HOOK)
+                        table.setProblem("Builder needs a Grapple Hook");
+                    else if(access==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR)
+                        table.setProblem("No safe grapple anchor for blocked one-step rise "
+                                +pos);
                     return;
                 }
                 if(yDiff<0 && BuilderScaffolding.descendForTravel(
