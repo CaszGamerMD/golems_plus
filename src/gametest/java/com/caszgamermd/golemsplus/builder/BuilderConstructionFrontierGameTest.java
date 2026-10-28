@@ -162,10 +162,10 @@ public final class BuilderConstructionFrontierGameTest {
         var world=h.getLevel();
         var mob=worker(h,h.absolutePos(new BlockPos(3,2,3)));
         BlockPos current=mob.blockPosition();
-        BlockPos target=current.east();
+        BlockPos target=current.east(2);
         // A work stance with three solid walls has only its future
-        // target to walk into. It is NOT an escape once the target is
-        // filled, even though it is safely 0.8m from that block.
+        // target-side corridor is too close to the future block (under
+        // 0.8m margin). It is NOT an exit once the block is placed.
         h.setBlock(2,2,3,Blocks.STONE);
         h.setBlock(3,2,2,Blocks.STONE);
         h.setBlock(3,2,4,Blocks.STONE);
