@@ -446,6 +446,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         int doorEntryAlignTicks,doorEntryStalls;
         int doorNoForwardTicks,doorStateRetries;
         int attemptedDoorX=Integer.MIN_VALUE,attemptedDoorZ=Integer.MIN_VALUE;
+        Boolean observedDoorOpen;
         int yieldingTicks,trafficQueueTicks,trafficCrossingTicks;
         int trafficWaitTicks,trafficReroutes,lastTrafficRerouteTick=-1000;
         int safeCornerShortcuts;
@@ -670,6 +671,7 @@ public final class BuilderEvolutionAltCourseGameTest {
             b.doorNoForwardTicks=0;
             b.attemptedDoorX=Integer.MIN_VALUE;
             b.attemptedDoorZ=Integer.MIN_VALUE;
+            b.observedDoorOpen=null;
             return;
         }
         if(b.attemptedDoorX!=door.getX()
@@ -677,7 +679,17 @@ public final class BuilderEvolutionAltCourseGameTest {
             b.attemptedDoorX=door.getX();
             b.attemptedDoorZ=door.getZ();
             b.doorNoForwardTicks=0;
+            b.observedDoorOpen=null;
         }
+        BlockState state=world.getBlockState(door);
+        if(!canOperateDoor(state))return;
+        boolean currentOpen=state.getValue(DoorBlock.OPEN);
+        if(b.observedDoorOpen!=null&&b.observedDoorOpen!=currentOpen){
+            // Another golem changed this door between our ticks.
+            // Don't immediately reverse its state using stale stalls.
+            b.doorNoForwardTicks=0;
+        }
+        b.observedDoorOpen=currentOpen;
         if(teammateBlocking||aligning){
             // Courtesy queues and deliberate sideways docking are not
             // physical doorway failures; never flip under a teammate.
@@ -696,6 +708,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 &&toggleDoorFromReach(world,b.mob,door)){
             b.doorNoForwardTicks=0;
             b.doorStateRetries++;
+            b.observedDoorOpen=!currentOpen;
             b.doorTargetX=Integer.MIN_VALUE;
             b.lastDistance=Double.POSITIVE_INFINITY;
             b.immobile=0;
