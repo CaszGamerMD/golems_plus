@@ -15,8 +15,10 @@ assert "if(!moving)" in work
 assert "BuilderPlacementSpace.invalidateApproach(worker,pos)" in work
 assert "routeTo(level,worker,pos,.85)" in work
 assert "return;" in work
-assert "for(int radius=1;radius<=3;radius++)" in space
-assert "p.distSqr(target)>9" in space
+assert "for(int dx=-3;dx<=3;dx++)" in space
+assert "for(int dy:new int[]{0,1,-1,2,-2})" in space
+assert "p.distSqr(target)>=14" in space
+assert "rejected.put(worker,new Rejected(" in space
 assert "WorkerNavigation.canReachExact(level,worker,p)" in space
 assert "shifted.intersects(volume(target))" in space
 assert "public static void invalidateApproach(" in space
