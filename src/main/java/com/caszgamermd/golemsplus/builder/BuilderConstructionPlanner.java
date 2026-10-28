@@ -6,6 +6,8 @@ import com.caszgamermd.golemsplus.world.WorksiteContent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -34,6 +36,13 @@ public final class BuilderConstructionPlanner {
     private BuilderConstructionPlanner(){}
     private static final int MAX_EXAMINED=32;
     private static final int MAX_FEASIBLE=5;
+    /** A worker must EVENTUALLY inspect the whole current layer, not
+     * repeatedly inspect the same nearest 32 inaccessible cells. This
+     * is search progress (not a saved route) and resets on a Y change.
+     */
+    private record SearchWindow(int layer,int offset){}
+    private static final Map<BuilderGolem,SearchWindow> windows=
+            new WeakHashMap<>();
     private static final int REACH_SQUARED=14;
 
     /** Ray from a real Builder's eye at the planned stance to the block
@@ -133,9 +142,14 @@ public final class BuilderConstructionPlanner {
                 .thenComparingInt(Integer::intValue));
         Choice best=null;
         double bestScore=Double.POSITIVE_INFINITY;
+        SearchWindow previous=windows.get(worker);
+        int offset=previous!=null&&previous.layer()==y
+                ?previous.offset():0;
         int examined=0,feasible=0;
-        for(int idx:pending){
-            if(examined++>=MAX_EXAMINED)break;
+        int count=Math.min(MAX_EXAMINED,pending.size());
+        for(int attempt=0;attempt<count;attempt++){
+            int idx=pending.get((offset+attempt)%pending.size());
+            examined++;
             var step=steps.get(idx);
             BlockPos target=new BlockPos(step.x(),step.y(),step.z());
             if(!world.hasChunkAt(target))continue;
@@ -173,6 +187,11 @@ public final class BuilderConstructionPlanner {
             }
             if(++feasible>=MAX_FEASIBLE)break;
         }
+        // A fully blocked nearby strip must never monopolize this Y.
+        // Subsequent passes explore another bounded window until every
+        // pending cell gets its own physical work-position opportunity.
+        windows.put(worker,new SearchWindow(y,best!=null?0
+                :(offset+Math.max(1,examined))%Math.max(1,pending.size())));
         return best;
     }
 }
