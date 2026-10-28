@@ -38,8 +38,9 @@ public final class BuilderTimeTrial3GameTest {
     static final String COURSE_HASH="d86ad9d206729c188300460463f8e1e727c097f4291a4116292d94497d36a337";
     // Gradle GameTests run from a different CWD than the Git checkout.
     static final Path ROOT=Path.of(System.getenv().getOrDefault("GITHUB_WORKSPACE","."));
-    static final Path STATE=ROOT.resolve("training/tt3/state/checkpoint.json");
-    static final Path REPLAY=ROOT.resolve("training/tt3/replays");
+    static final Path STATE=ROOT.resolve("training/tt3/strict/state/checkpoint.json");
+    static final Path REPLAY=ROOT.resolve("training/tt3/strict/replays");
+    static final String RULE_PROTOCOL="scaffold-complete-up-down-no-jump-v1";
     static final int[][] STARTS={{24,1},{24,3},{24,5},{24,7},{24,9},
                                   {25,2},{25,4},{25,6},{25,10}};
     // Base-36 Sponge palette IDs, in original (y,z,x) order. Exact block
@@ -191,7 +192,10 @@ public final class BuilderTimeTrial3GameTest {
         final List<double[]> frames=new ArrayList<>();
         final Set<String> blocked=new HashSet<>();
         List<Node> route;int cursor=1,arrival=-1,stalls,doorStalls;
-        int waits,climbs,replans;boolean climbing;
+        int waits,climbs,replans;
+        int fullAscents,fullDescents,verticalViolations;
+        boolean climbing,dismounting;
+        double tallestDuringClimb,lowestDuringDescent=Double.POSITIVE_INFINITY;
         double lane,score;
         Node selectedDoor;
         Runner(int slot,BuilderGolem mob,Gene gene,Node start){
@@ -252,6 +256,8 @@ public final class BuilderTimeTrial3GameTest {
     private static void drive(Runner r,List<Runner> crew,double x,double z,
                               boolean enteringDoor){
         BuilderGolem mob=r.mob;
+        // Horizontal speed control may never initiate a jump.
+        mob.setJumping(false);
         double dx=x-mob.getX(),dz=z-mob.getZ();
         if(enteringDoor&&r.cursor<r.route.size()){
             Node before=r.route.get(r.cursor-1),after=r.route.get(r.cursor);
@@ -310,21 +316,56 @@ public final class BuilderTimeTrial3GameTest {
         Node previous=r.route.get(r.cursor-1),target=r.route.get(r.cursor);
         BlockPos base=pos(t,target.x,1,target.z);
         if(previous.level!=target.level){
+            // A scaffold is an indivisible vertical transit edge.
+            // No route can leave the middle of a tower; a landing must
+            // first be reached at the TOP for ascent or at the FLOOR
+            // before any horizontal movement during descent.
+            final double centerDist=Math.hypot(mob.getX()-base.getX()-.5,
+                                               mob.getZ()-base.getZ()-.5);
+            final double topFeet=pos(t,target.x,5,target.z).getY();
+            final double floorFeet=base.getY();
+            if(r.dismounting){
+                // BuilderScaffolding controls only the short final step
+                // OFF the BOTTOM. The route does not advance until the
+                // entity actually stands on the ground beside the tower.
+                if(!BuilderScaffolding.isControllingMovement(mob)
+                        &&mob.onGround()
+                        &&Math.abs(mob.getY()-floorFeet)<.30
+                        &&centerDist>.58){
+                    r.cursor++;
+                    r.climbing=false;r.dismounting=false;
+                    r.fullDescents++;
+                }
+                return;
+            }
             if(!r.climbing){
-                if(Math.hypot(mob.getX()-base.getX()-.5,mob.getZ()-base.getZ()-.5)>.20){
-                    drive(r,crew,base.getX()+.5,base.getZ()+.5,false);return;
+                if(centerDist>.20){
+                    drive(r,crew,base.getX()+.5,base.getZ()+.5,false);
+                    return;
                 }
                 BuilderScaffolding.begin(t.getLevel(),mob,base,
-                    previous.level==0?pos(t,target.x,5,target.z).getY()
-                        :base.getY()+1,previous.level==1);
+                    previous.level==0?topFeet:floorFeet+.125,
+                    previous.level==1);
                 r.climbing=true;r.climbs++;
             }
-            if(previous.level==0
-                    &&mob.getY()>=pos(t,target.x,5,target.z).getY()-.16){
-                r.cursor++;r.climbing=false;BuilderScaffolding.cancel(mob);
-            }else if(previous.level==1&&mob.getY()<=base.getY()+1.17){
-                if(BuilderScaffolding.dismountAtBase(t.getLevel(),mob,base)){
-                    r.cursor++;r.climbing=false;
+            // Validation against actual coordinates, not a path label.
+            // An early lateral step at mid-height is a hard failure.
+            if(mob.getY()>floorFeet+.35
+                    &&mob.getY()<topFeet-.25
+                    &&centerDist>.48)r.verticalViolations++;
+            if(previous.level==0){
+                r.tallestDuringClimb=Math.max(r.tallestDuringClimb,mob.getY());
+                if(mob.getY()>=topFeet-.16&&centerDist<.48){
+                    r.cursor++;r.climbing=false;r.fullAscents++;
+                    BuilderScaffolding.cancel(mob);
+                }
+            }else{
+                r.lowestDuringDescent=Math.min(r.lowestDuringDescent,mob.getY());
+                if(mob.getY()<=floorFeet+.27&&centerDist<.48){
+                    // Do not cancel a descent and sidestep from 1+ blocks
+                    // above the ground. Only the true bottom can dismount.
+                    if(BuilderScaffolding.dismountAtBase(t.getLevel(),mob,base))
+                        r.dismounting=true;
                 }
             }
             return;
@@ -373,12 +414,19 @@ public final class BuilderTimeTrial3GameTest {
     private static List<Gene> initial(){
         // Motor/door behavior learned on Trial 2, but NOT its route
         // coordinates or fitness. Each of three families can mutate.
+        // Seed only the *genes* from the historical 327-tick Trial 3
+        // champion. That score used the older climb protocol and is
+        // NOT carried into the strict no-jump qualification.
         return new ArrayList<>(List.of(
-            new Gene(1.5,1.0,.11,.06),new Gene(1.2,1.7,.10,-.06),
-            new Gene(1.7,.7,.095,0),new Gene(1.5,1.0,.11,.06),
-            new Gene(1.2,1.7,.10,-.06),new Gene(1.7,.7,.095,0),
-            new Gene(1.5,1.0,.11,.06),new Gene(1.2,1.7,.10,-.06),
-            new Gene(1.7,.7,.095,0)));
+            new Gene(1.5,.5648324500591366,.12770956970654965,.06),
+            new Gene(1.7951378326685261,.7564782592724381,.12770956970654965,.06),
+            new Gene(1.5,.36385289024822526,.12770956970654965,.06),
+            new Gene(1.5,1,.11,.06),
+            new Gene(1.5,.7564782592724381,.12770956970654965,.06),
+            new Gene(1.5,1.3362387730303125,.11,.06),
+            new Gene(1.5,1,.11,.09412837912811357),
+            new Gene(1.7951378326685261,.7564782592724381,.12770956970654965,.055713077972940554),
+            new Gene(1.7951378326685261,.7564782592724381,.1317912192604239,.06)));
     }
     private static JsonArray jsonGenes(List<Gene> genes){
         JsonArray arr=new JsonArray();
@@ -404,7 +452,9 @@ public final class BuilderTimeTrial3GameTest {
     private static List<Gene> load(JsonObject checkpoint){
         if(checkpoint==null)return initial();
         if(!COURSE_HASH.equals(checkpoint.get("courseHash").getAsString())
-                ||checkpoint.get("limit").getAsInt()!=LIMIT)
+                ||checkpoint.get("limit").getAsInt()!=LIMIT
+                ||!checkpoint.has("scaffoldRuleProtocol")
+                ||!RULE_PROTOCOL.equals(checkpoint.get("scaffoldRuleProtocol").getAsString()))
             throw new IllegalStateException("Refusing mismatched Time Trial 3 checkpoint");
         return genesFromJson(checkpoint.getAsJsonArray("nextPopulation"));
     }
@@ -413,7 +463,9 @@ public final class BuilderTimeTrial3GameTest {
             if(Files.exists(STATE)){
                 JsonObject prior=JsonParser.parseString(Files.readString(STATE)).getAsJsonObject();
                 if("course-entity-ticking-v1".equals(prior.has("nativeSimulationProtocol")
-                        ?prior.get("nativeSimulationProtocol").getAsString():"")){
+                        ?prior.get("nativeSimulationProtocol").getAsString():"")
+                        &&prior.has("scaffoldRuleProtocol")
+                        &&RULE_PROTOCOL.equals(prior.get("scaffoldRuleProtocol").getAsString())){
                     return prior;
                 }
                 System.out.println("[TT3 PROTOCOL MIGRATION] Old pre-native samples "
@@ -423,6 +475,7 @@ public final class BuilderTimeTrial3GameTest {
         JsonObject result=new JsonObject();
         result.addProperty("courseHash",COURSE_HASH);
         result.addProperty("nativeSimulationProtocol","course-entity-ticking-v1");
+        result.addProperty("scaffoldRuleProtocol",RULE_PROTOCOL);
         result.addProperty("limit",LIMIT);
         result.addProperty("physicalBuilders",COUNT);
         result.addProperty("completedGenerations",0);
@@ -493,6 +546,11 @@ public final class BuilderTimeTrial3GameTest {
             one.addProperty("trafficWaitTicks",r.waits);
             one.addProperty("routeCells",r.route.size());
             one.addProperty("nativeEntityTicks",r.mob.tickCount-r.spawnEntityTick);
+            one.addProperty("fullAscents",r.fullAscents);
+            one.addProperty("fullDescents",r.fullDescents);
+            one.addProperty("midColumnLateralViolations",r.verticalViolations);
+            one.addProperty("lowestDuringDescent",Double.isFinite(r.lowestDuringDescent)
+                    ?r.lowestDuringDescent:null);
             JsonArray frames=new JsonArray();
             for(double[] f:r.frames){
                 JsonArray a=new JsonArray();
@@ -507,6 +565,7 @@ public final class BuilderTimeTrial3GameTest {
         history.addProperty("slowestTicks",completed==COUNT?slowest:-1);
         history.addProperty("doorStalls",stalls);
         history.addProperty("scaffoldActions",climbs);
+        history.addProperty("fullColumnRule",RULE_PROTOCOL);
         state.getAsJsonArray("history").add(history);
         state.addProperty("completedGenerations",generation);
         state.addProperty("bestFinishers",Math.max(completed,state.get("bestFinishers").getAsInt()));
@@ -582,6 +641,22 @@ public final class BuilderTimeTrial3GameTest {
                     }
                     t.fail("Unqualified TT3 entity: slot="+r.slot+" expected "
                             +expected+" native ticks but got "+actual);
+                    return;
+                }
+            }
+            // An apparent finish is not legitimate if a runner skipped
+            // the full ascent or full descent, or moved sideways halfway.
+            for(Runner r:racers[0]){
+                if(r.verticalViolations>0||r.arrival>=0
+                        &&(r.fullAscents!=1||r.fullDescents!=1)){
+                    release.run();
+                    for(Runner peer:racers[0]){
+                        BuilderScaffolding.cancel(peer.mob);
+                        if(peer.mob.isAlive())peer.mob.discard();
+                    }
+                    t.fail("TT3 invalid scaffold transit: slot="+r.slot
+                            +" fullUp="+r.fullAscents+" fullDown="+r.fullDescents
+                            +" midColumnLateral="+r.verticalViolations);
                     return;
                 }
             }
