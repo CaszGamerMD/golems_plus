@@ -12,7 +12,8 @@ assert "||workDistance>14" in work
 assert "activity.phase=Action.MOVE_TO_WORK" in work
 assert "BuilderPlacementSpace.approachAtTargetY(" in work
 assert "routeToExact(level,worker,approach,1.0)" in work
-assert "if(!moving)" in work
+assert "if(!com.caszgamermd.golemsplus.worker.WorkerNavigation" in work
+assert "BuilderPlacementSpace.invalidateApproach(worker,pos)" in work
 assert "BuilderPlacementSpace.invalidateApproach(worker,pos)" in work
 assert "routeTo(level,worker,pos,.85)" in work
 assert "return;" in work
