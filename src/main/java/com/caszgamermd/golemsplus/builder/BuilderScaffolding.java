@@ -543,22 +543,38 @@ public final class BuilderScaffolding {
                 .min(Comparator.comparingDouble(p->
                         BuilderScaffoldSiteScore.score(p,worker.blockPosition(),
                                 target,0,0,0,true))).orElse(null);
-        if(base==null)for(Direction side:Direction.Plane.HORIZONTAL){
-            BlockPos landing=target.relative(side).below();
-            if(!level.hasChunkAt(landing))continue;
-            if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .canReachExact(level,worker,landing))continue;
-            // When a Builder is already on a viable existing platform,
-            // it must continue to PLACE rather than re-requesting a route
-            // to its own feet and returning CLIMBING forever.
-            if(worker.distanceToSqr(landing.getX()+.5,
-                    landing.getY()+.5,landing.getZ()+.5)<2.25){
-                clearMotion(worker);
-                return Result.NOT_NEEDED;
+        if(base==null){
+            // An existing platform is cheaper than a scaffold, but the
+            // old code queried target.relative(side).below() ONLY.
+            // That is often the SOLID FLOOR BLOCK rather than walkable
+            // FEET SPACE, causing false "no clear scaffold column".
+            // Check physical feet elevations on the neighbouring rim.
+            java.util.List<BlockPos> landings=new java.util.ArrayList<>();
+            for(Direction side:Direction.Plane.HORIZONTAL)
+                for(int dy:new int[]{0,1,-1,-2}){
+                    BlockPos landing=target.relative(side).offset(0,dy,0);
+                    if(landing.distSqr(target)>=14
+                            ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                    .canStandOn(level,worker,landing))continue;
+                    landings.add(landing);
+                }
+            landings.sort(Comparator.comparingDouble(p->
+                    p.distSqr(worker.blockPosition())*1.5
+                            +p.distSqr(target)*.25));
+            for(BlockPos landing:landings){
+                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canReachExact(level,worker,landing))continue;
+                if(worker.distanceToSqr(landing.getX()+.5,
+                        landing.getY(),landing.getZ()+.5)<.5
+                        &&worker.distanceToSqr(target.getX()+.5,
+                                target.getY()+.5,target.getZ()+.5)<=14){
+                    clearMotion(worker);
+                    return Result.NOT_NEEDED;
+                }
+                if(com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeToExact(level,worker,landing,1.0))
+                    return Result.CLIMBING;
             }
-            if(com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeToExact(level,worker,landing,1.0))
-                return Result.CLIMBING;
         }
         // Reuse any owned tower within TRUE placement reach before
         // spending new scaffold. Both reuse and selection score the same
