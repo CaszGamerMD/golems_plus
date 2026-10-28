@@ -3,7 +3,7 @@
   "nativeSimulationProtocol": "course-entity-ticking-v1",
   "limit": 500,
   "physicalBuilders": 9,
-  "completedGenerations": 30,
+  "completedGenerations": 36,
   "bestFinishers": 9,
   "bestCrewTicks": 372,
   "history": [
@@ -216,61 +216,103 @@
       "slowestTicks": 478,
       "doorStalls": 0,
       "scaffoldActions": 18
+    },
+    {
+      "generation": 31,
+      "finishedBy500Ticks": 5,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 10
+    },
+    {
+      "generation": 32,
+      "finishedBy500Ticks": 5,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 10
+    },
+    {
+      "generation": 33,
+      "finishedBy500Ticks": 5,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 10
+    },
+    {
+      "generation": 34,
+      "finishedBy500Ticks": 6,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 12
+    },
+    {
+      "generation": 35,
+      "finishedBy500Ticks": 6,
+      "slowestTicks": -1,
+      "doorStalls": 4,
+      "scaffoldActions": 12
+    },
+    {
+      "generation": 36,
+      "finishedBy500Ticks": 5,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 10
     }
   ],
   "nextPopulation": [
     [
       1.5,
-      1.0,
-      0.11,
-      0.06
-    ],
-    [
-      1.5,
-      1.0,
+      0.4274320363805195,
       0.12770956970654965,
       0.06
     ],
     [
-      1.1413104229104905,
-      1.0,
-      0.11,
-      0.06
-    ],
-    [
-      1.5,
-      1.0,
-      0.11,
-      0.06
-    ],
-    [
-      1.4120283654805275,
-      1.0,
-      0.11,
-      0.06
-    ],
-    [
-      1.5,
-      1.0,
-      0.11,
-      0.06966453330101131
-    ],
-    [
-      1.5,
-      1.0,
-      0.11,
-      0.049726602151660776
-    ],
-    [
-      1.5,
-      1.4036083400552588,
+      1.7951378326685261,
+      0.7564782592724381,
       0.12770956970654965,
       0.06
     ],
     [
       1.5,
       1.0,
-      0.12724713581237412,
+      0.11,
+      0.05255332598614335
+    ],
+    [
+      1.5,
+      1.0,
+      0.11,
+      0.06
+    ],
+    [
+      1.5,
+      0.7564782592724381,
+      0.12770956970654965,
+      0.06
+    ],
+    [
+      1.4365611542605168,
+      1.0,
+      0.11,
+      0.06
+    ],
+    [
+      1.5,
+      0.20037596590120077,
+      0.12770956970654965,
+      0.06
+    ],
+    [
+      1.5,
+      1.0335786971676133,
+      0.12770956970654965,
+      0.06
+    ],
+    [
+      1.5,
+      0.7229816398531473,
+      0.12770956970654965,
       0.06
     ]
   ],
