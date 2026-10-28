@@ -8,6 +8,8 @@ import java.util.*;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.MoverType;
@@ -26,6 +28,12 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class BuilderTimeTrial3GameTest {
     static final int LIMIT=500, GENERATIONS=6, COUNT=9;
+    private static Block registry(String name){
+        return BuiltInRegistries.BLOCK.getValue(Identifier.tryParse("minecraft:"+name));
+    }
+    private static final Block GRAY=registry("light_gray_concrete");
+    private static final Block RED=registry("red_wool");
+    private static final Block GREEN=registry("green_wool");
     static final String COURSE_HASH="d86ad9d206729c188300460463f8e1e727c097f4291a4116292d94497d36a337";
     static final Path STATE=Path.of("training/tt3/state/checkpoint.json");
     static final Path REPLAY=Path.of("training/tt3/replays");
@@ -63,10 +71,10 @@ public final class BuilderTimeTrial3GameTest {
     private static boolean door(char c){return c=='9'||c=='b'||c=='c'||c=='d';}
     private static BlockState block(char c){
         return switch(c){
-            case '0'->Blocks.LIGHT_GRAY_CONCRETE.defaultBlockState();
-            case '1'->Blocks.RED_WOOL.defaultBlockState();
+            case '0'->GRAY.defaultBlockState();
+            case '1'->RED.defaultBlockState();
             case '2'->Blocks.STONE.defaultBlockState();
-            case '3'->Blocks.GREEN_WOOL.defaultBlockState();
+            case '3'->GREEN.defaultBlockState();
             case '4'->Blocks.GLASS.defaultBlockState();
             case '5'->Blocks.AIR.defaultBlockState();
             case '6'->Blocks.JUNGLE_PLANKS.defaultBlockState();
@@ -233,7 +241,7 @@ public final class BuilderTimeTrial3GameTest {
     private static void tick(GameTestHelper t,Runner r,List<Runner> crew,int tick){
         if(r.arrival>=0)return;
         BuilderGolem mob=r.mob;
-        if(t.getLevel().getBlockState(mob.blockPosition().below()).is(Blocks.RED_WOOL)){
+        if(t.getLevel().getBlockState(mob.blockPosition().below()).is(RED)){
             r.arrival=tick;mob.discard();return;
         }
         if(r.route.isEmpty()||r.cursor>=r.route.size())return;
@@ -356,7 +364,7 @@ public final class BuilderTimeTrial3GameTest {
         List<Runner> crew=new ArrayList<>();
         for(int i=0;i<COUNT;i++){
             int[] start=STARTS[i];BlockPos p=pos(t,start[0],1,start[1]);
-            if(!t.getLevel().getBlockState(p.below()).is(Blocks.GREEN_WOOL))
+            if(!t.getLevel().getBlockState(p.below()).is(GREEN))
                 throw new IllegalStateException("Trial 3 start must be original GREEN wool");
             BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,t.getLevel());
             mob.setPos(p.getX()+.5,p.getY(),p.getZ()+.5);
