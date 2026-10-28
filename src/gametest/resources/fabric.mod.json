@@ -15,7 +15,8 @@
       "com.caszgamermd.golemsplus.builder.BuilderGrappleReturnGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderLayerGateGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderPlaceOneBelowGameTest",
-      "com.caszgamermd.golemsplus.builder.BuilderGrappleRecoveryGameTest"
+      "com.caszgamermd.golemsplus.builder.BuilderGrappleRecoveryGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderConstructionFrontierGameTest"
     ]
   }
 }
