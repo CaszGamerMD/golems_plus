@@ -1,0 +1,108 @@
+{
+  "courseHash": "d86ad9d206729c188300460463f8e1e727c097f4291a4116292d94497d36a337",
+  "limit": 500,
+  "physicalBuilders": 9,
+  "completedGenerations": 6,
+  "bestFinishers": 0,
+  "bestCrewTicks": -1,
+  "history": [
+    {
+      "generation": 1,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 5
+    },
+    {
+      "generation": 2,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 5
+    },
+    {
+      "generation": 3,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 5
+    },
+    {
+      "generation": 4,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 5
+    },
+    {
+      "generation": 5,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 5
+    },
+    {
+      "generation": 6,
+      "finishedBy500Ticks": 0,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 5
+    }
+  ],
+  "nextPopulation": [
+    [
+      1.5,
+      1.0,
+      0.11,
+      0.06
+    ],
+    [
+      1.2,
+      1.7,
+      0.1,
+      -0.06
+    ],
+    [
+      1.7,
+      0.8962833183092298,
+      0.095,
+      0.0
+    ],
+    [
+      1.6039562467302428,
+      0.7,
+      0.095,
+      0.0
+    ],
+    [
+      1.5,
+      1.0,
+      0.11,
+      0.006113098600552473
+    ],
+    [
+      1.7,
+      0.7,
+      0.095,
+      0.0
+    ],
+    [
+      1.5,
+      1.0,
+      0.12556516454678782,
+      0.06
+    ],
+    [
+      1.2,
+      1.7,
+      0.1,
+      -0.0550235343825659
+    ],
+    [
+      1.2,
+      1.7,
+      0.09238020981805113,
+      -0.06
+    ]
+  ]
+}
