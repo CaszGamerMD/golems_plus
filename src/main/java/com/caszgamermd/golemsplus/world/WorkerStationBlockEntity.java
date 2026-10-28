@@ -1031,6 +1031,57 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         return -1;
     }
+    /** The Frontier Planner may inspect pending work without claiming it.
+     * All previous completion, retries and strict shared-Y checks still
+     * belong to this authoritative persistent Planner, never the client.
+     */
+    public boolean builderStepReadyForClaim(int index){
+        long now=level==null?0:level.getGameTime();
+        return activeOrder!=null&&index>=builderCursor
+                &&index<builderBlocks&&!builderFinishedSteps.contains(index)
+                &&builderMissingRetries.getOrDefault(index,0L)<=now;
+    }
+
+    /** Claim one PREVALIDATED same-Y frontier cell instead of blindly
+     * taking the first indexed block in the ten-block batch.
+     *
+     * No remote item movement: restaging clears the prepared flag only.
+     * The real Builder pouch and any already completed cell remain saved.
+     * A previously blocked worker can select another physically feasible
+     * block from its OWN X/Z zone, on the SAME strict global Y.
+     */
+    public int claimPreferredBuilderZoneStep(UUID worker,List<Integer> fullZone,
+            List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
+            int preferred){
+        if(activeOrder==null||!builderWorkerIds().contains(worker)
+                ||steps==null||fullZone==null||preferred<0
+                ||preferred>=steps.size()||!fullZone.contains(preferred)
+                ||steps.get(preferred).y()!=builderActiveLayer(steps)
+                ||!builderStepReadyForClaim(preferred))return -1;
+        int active=builderClaims.getOrDefault(worker,-1);
+        if(active==preferred)return active;
+        var stage=builderWorkOrders.get(worker);
+        boolean inStage=stage!=null&&stage.contains(preferred);
+        if(!inStage){
+            // The incoming frontier cell must be the FIRST staged item,
+            // so it can begin while the other nine are merely stocked.
+            var fresh=new java.util.ArrayList<Integer>(BUILDER_STAGE_SIZE);
+            fresh.add(preferred);
+            for(int idx:fullZone){
+                if(fresh.size()>=BUILDER_STAGE_SIZE)break;
+                if(idx==preferred||idx<0||idx>=steps.size()
+                        ||steps.get(idx).y()!=steps.get(preferred).y()
+                        ||!builderStepReadyForClaim(idx))continue;
+                fresh.add(idx);
+            }
+            builderWorkOrders.put(worker,fresh);
+            builderPreparedOrders.remove(worker);
+        }
+        builderClaims.put(worker,preferred);
+        sync();
+        return preferred;
+    }
+
     /** No route or anchor is currently valid for a claimed cell. Keep
      * the exact unfinished index to retry, while other Builders may
      * work on the SAME shared Y. Higher Y remains locked until done.
