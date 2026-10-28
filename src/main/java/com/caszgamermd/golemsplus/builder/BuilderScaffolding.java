@@ -140,8 +140,8 @@ public final class BuilderScaffolding {
     }
     /** Runs on every ENTITY tick. Repeating a vertical impulse only every
      * 5 ticks allowed gravity/collision to cancel it, leaving golems beside
-     * scaffold columns indefinitely. Using normal gravity and the mob's
-     * jump/sneak controls lets vanilla resolve scaffold collisions.
+     * scaffold columns indefinitely. Using normal gravity and vertical movement/sneak controls lets
+     * vanilla resolve scaffold collisions without jumping.
      */
     public static boolean tickMotion(ServerLevel level,BuilderGolem worker){
         ExitRoute exit=exiting.get(worker);
@@ -284,11 +284,10 @@ public final class BuilderScaffolding {
             worker.setDeltaMovement(0,-Math.min(.16,Math.max(.07,-remain/4)),0);
         }else{
             worker.setShiftKeyDown(false);
-            worker.setJumping(true);
-            worker.getJumpControl().jump();
-            // Keep the climb moving every tick while preserving physical
-            // collision: unlike noGravity the worker cannot hover when
-            // support or its assignment disappears.
+            // Real scaffold transit is a full column climb, not a hop.
+            // Retain native gravity and collision, clear lateral velocity,
+            // and do NOT issue a jump command at any point in the ascent.
+            worker.setJumping(false);
             worker.setDeltaMovement(0,Math.min(.23,Math.max(.12,remain/5)),0);
         }
         return true;
