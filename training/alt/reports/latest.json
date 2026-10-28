@@ -1,45 +1,48 @@
 {
-  "runId": "40589130589",
+  "runId": "40605605348",
   "mode": "evolve",
   "trials": 3,
   "physicalGenerations": 72,
   "max13s": 9,
   "max11_2s": 4,
-  "latest13s": 6,
+  "latest13s": 8,
   "latest11_2s": 2,
-  "first13s": 6,
+  "first13s": 9,
   "completedGenerationDelta": 72,
   "strategyEvidenceDelta": 648,
-  "improvedPersonalSlots": [],
-  "poolChanged": null,
+  "improvedPersonalSlots": [
+    3,
+    7
+  ],
+  "poolChanged": true,
   "pool": [
     {
       "slot": 4,
-      "fitness": 100915.0,
-      "generation": 72
+      "fitness": 100945.0,
+      "generation": 144
     },
     {
       "slot": 0,
-      "fitness": 100810.0,
-      "generation": 72
+      "fitness": 100825.0,
+      "generation": 144
     },
     {
       "slot": 5,
-      "fitness": 100452.0,
-      "generation": 72
+      "fitness": 100482.0,
+      "generation": 144
     }
   ],
   "historicChampionSlowestTicks": null,
   "totals": {
-    "doorPlans": 585,
-    "doorCrossings": 492,
-    "collisions": 503,
-    "jumps": 1,
-    "slabAscents": 1256,
-    "slabEntryStalls": 1,
-    "doorEntryAlignTicks": 627,
-    "doorEntryStalls": 519,
-    "trafficReplans": 93
+    "doorPlans": 597,
+    "doorCrossings": 489,
+    "collisions": 563,
+    "jumps": 0,
+    "slabAscents": 1247,
+    "slabEntryStalls": 0,
+    "doorEntryAlignTicks": 669,
+    "doorEntryStalls": 560,
+    "trafficReplans": 89
   },
   "hasSlabTelemetry": true,
   "hasDoorTelemetry": true,
@@ -49,8 +52,8 @@
       "generations": 24,
       "best13s": 9,
       "best11_2s": 4,
-      "final13s": 8,
-      "final11_2s": 4
+      "final13s": 5,
+      "final11_2s": 2
     },
     {
       "name": "real-builder-trial-2.log",
@@ -65,7 +68,7 @@
       "generations": 24,
       "best13s": 9,
       "best11_2s": 4,
-      "final13s": 6,
+      "final13s": 8,
       "final11_2s": 2
     }
   ],

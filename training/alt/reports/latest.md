@@ -1,34 +1,34 @@
 # Builder Golem physical training — latest results
 
-**GitHub Actions:** https://github.com/CaszGamerMD/golems_plus/actions/runs/40589130589
-**Run ID:** 40589130589
+**GitHub Actions:** https://github.com/CaszGamerMD/golems_plus/actions/runs/40605605348
+**Run ID:** 40605605348
 **Mode:** evolve | **Course:** existing alt course | **Real entities:** 9 per generation
 
 ## Results
 
 - **Best 13s (260 ticks):** 9/9; **best 11.2s (224 ticks):** 4/9.
-- **First → last 13s:** 6/9 → 6/9. Latest within 11.2s: 2/9.
+- **First → last 13s:** 9/9 → 8/9. Latest within 11.2s: 2/9.
 - **Physical generations scored in logs:** 72 across 3 trial logs.
-- **Checkpoint generation change:** 0 → 72 (72).
-- **Recorded strategy observations change:** 0 → 648 (648).
-- **Personal-best improvements this run:** none verified.
-- **Shared top three:** golem 4 (100915.0), golem 0 (100810.0), golem 5 (100452.0); pool changed: unknown.
+- **Checkpoint generation change:** 72 → 144 (72).
+- **Recorded strategy observations change:** 1296 → 1944 (648).
+- **Personal-best improvements this run:** golem 3, golem 7.
+- **Shared top three:** golem 4 (100945.0), golem 0 (100825.0), golem 5 (100482.0); pool changed: yes.
 - **Historical champion:** unavailable.
 
 ## Physical movement signals
 
-- Slab ascents: **1256**; slab-entry stalls: **1**.
-- Door plans: **585**; door crossing attempts: **492**.
-- Door alignment ticks: **627**; door-entry stalls: **519**.
-- Collision events: **503**; jump events: **1**; traffic replans: **93**.
+- Slab ascents: **1247**; slab-entry stalls: **0**.
+- Door plans: **597**; door crossing attempts: **489**.
+- Door alignment ticks: **669**; door-entry stalls: **560**.
+- Collision events: **563**; jump events: **0**; traffic replans: **89**.
 
 ## Trial breakdown
 
 | Trial | Generations | Best ≤260t | Best ≤224t | Final ≤260t |
 |---|---:|---:|---:|---:|
-| real-builder-trial-1.log | 24 | 9/9 | 4/9 | 8/9 |
+| real-builder-trial-1.log | 24 | 9/9 | 4/9 | 5/9 |
 | real-builder-trial-2.log | 24 | 9/9 | 4/9 | 9/9 |
-| real-builder-trial-3.log | 24 | 9/9 | 4/9 | 6/9 |
+| real-builder-trial-3.log | 24 | 9/9 | 4/9 | 8/9 |
 
 ## Notes for improving the process
 
