@@ -130,7 +130,9 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         return n;
     }
     @Override public void tick(){
-        boolean grappling=level() instanceof ServerLevel grappleWorld
+        boolean precisionYield=level() instanceof ServerLevel precisionWorld
+                &&BuilderPlacementSpace.tickPrecisionYield(precisionWorld,this);
+        boolean grappling=!precisionYield&&level() instanceof ServerLevel grappleWorld
                 &&BuilderGrappleAccess.tickMotion(grappleWorld,this);
         // Never retain the old no-gravity state after switching jobs,
         // unloading, leaving a tower, or reloading an entity from disk.
@@ -154,7 +156,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         if(level() instanceof ServerLevel server){
             BuilderChunkTickets.track(server,this);
             // Grapple motion owns vertical travel; trained A* owns walking.
-            if(!grappling)
+            if(!grappling&&!precisionYield)
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
         }
         // Each Builder evaluates its own long-lived task state four times
