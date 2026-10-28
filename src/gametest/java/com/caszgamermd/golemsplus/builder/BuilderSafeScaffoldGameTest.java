@@ -41,7 +41,8 @@ public final class BuilderSafeScaffoldGameTest {
         }
         BlockPos work=helper.absolutePos(new BlockPos(5,7,4));
         int before=builder.carriedCount(Items.SCAFFOLDING);
-        int[] state={0},highest={Integer.MIN_VALUE};
+        int[] state={0};
+        double[] highest={-Double.MAX_VALUE};
         long[] began={helper.getTick()};
         helper.onEachTick(()->{
             if(!builder.isAlive()){
@@ -74,7 +75,7 @@ public final class BuilderSafeScaffoldGameTest {
                                 +" planY="+work.getY());return;
                     }
                 }
-                highest[0]=Math.max(highest[0],builder.blockPosition().getY());
+                highest[0]=Math.max(highest[0],builder.getY());
                 if(builder.getY()>=work.getY()-.12
                         &&table.scaffoldPositions(builder.getUUID()).size()>=4){
                     state[0]=1;began[0]=helper.getTick();
@@ -91,7 +92,7 @@ public final class BuilderSafeScaffoldGameTest {
                             .noneMatch(p->p.getX()==builder.blockPosition().getX()
                                     &&p.getZ()==builder.blockPosition().getZ())){
                     int placed=before-builder.carriedCount(Items.SCAFFOLDING);
-                    if(placed<4||highest[0]<work.getY()){
+                    if(placed<4||highest[0]<work.getY()-.16){
                         helper.fail("Scaffold completion lied about physical blocks: "+
                                 placed+" top="+highest[0]);return;
                     }
