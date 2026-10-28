@@ -182,4 +182,49 @@ public final class BuilderConstructionFrontierGameTest {
                 +"before target placement");
         h.succeed();
     }
+
+    @GameTest(maxTicks=120,skyAccess=true)
+    public void blockedNearStripCannotStarveDistantSameLayerWork(
+            GameTestHelper h){
+        floor(h);
+        var world=h.getLevel();
+        var mob=worker(h,h.absolutePos(new BlockPos(3,2,3)));
+        BlockPos realStone=h.absolutePos(new BlockPos(7,2,7));
+        var tasks=new java.util.ArrayList<BuilderConstructionPlan.Step>();
+        for(int x=2;x<=7;x++)for(int z=2;z<=7;z++){
+            BlockPos p=h.absolutePos(new BlockPos(x,2,z));
+            if(p.equals(realStone))continue;
+            // Every ladder lacks the needed WALL on its back: these
+            // nearer cells must be held, but they cannot prevent the
+            // one distant supported stone from eventually being found.
+            tasks.add(new BuilderConstructionPlan.Step(
+                    p.getX(),p.getY(),p.getZ(),
+                    "minecraft:ladder[facing=north]","minecraft:ladder"));
+        }
+        tasks.add(new BuilderConstructionPlan.Step(
+                realStone.getX(),realStone.getY(),realStone.getZ(),
+                "minecraft:stone","minecraft:stone"));
+        var table=planner(h,mob,tasks.size());
+        var zone=new java.util.ArrayList<Integer>();
+        for(int i=0;i<tasks.size();i++)zone.add(i);
+        BuilderConstructionPlanner.Choice found=null;
+        int trials=0;
+        for(;trials<4;trials++){
+            var choice=BuilderConstructionPlanner.choose(world,mob,table,
+                    tasks,zone);
+            if(choice!=null){found=choice;break;}
+        }
+        if(found==null||found.index()!=tasks.size()-1){
+            h.fail("Repeated nearest blocked candidates starved supported "
+                    +"frontier after "+trials+" passes: "+found);return;
+        }
+        if(table.claimPreferredBuilderZoneStep(
+                mob.getUUID(),zone,tasks,found.index())!=tasks.size()-1){
+            h.fail("Planned distant frontier was not claimable");return;
+        }
+        System.out.println("[FRONTIER] PASS rotated physically impossible "
+                +"nearest 32 and found reachable distant same-Y block "
+                +"after "+(trials+1)+" scans");
+        h.succeed();
+    }
 }
