@@ -665,14 +665,15 @@ public final class BuilderScaffolding {
     private static BlockPos findBase(ServerLevel level,BuilderGolem worker,
             BlockPos target,int feet,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> plan){
-        // A completed wall can occupy every directly adjacent column.
-        // Search nearby 1-2 block offsets for an existing safe foundation.
-        // The farthest columns remain within the Builder's placing reach
-        // after it climbs to target Y-1.
+        // A curved dome can seal every column within two blocks.
+        // Search all cardinal/diagonal foundations within sqrt(10)
+        // horizontal distance, still within the Builder's real 14-squared
+        // work distance after fully climbing to target Y-1. Never make
+        // a scaffold through finished or future schematic cells.
         java.util.List<BlockPos> offsets=new java.util.ArrayList<>();
-        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
             int distance=dx*dx+dz*dz;
-            if(distance<1||distance>5)continue;
+            if(distance<1||distance>10)continue;
             offsets.add(target.offset(dx,0,dz));
         }
         offsets.sort(Comparator.comparingDouble(at->
