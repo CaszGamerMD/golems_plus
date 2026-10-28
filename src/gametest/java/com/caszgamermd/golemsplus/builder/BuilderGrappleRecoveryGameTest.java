@@ -157,4 +157,40 @@ public final class BuilderGrappleRecoveryGameTest {
                     +" feet="+g.position()+" blocked="+blocked[0]);
         });
     }
+
+    @GameTest(maxTicks=240,skyAccess=true)
+    public void oneBlockDropWalksWithoutGrappling(
+            GameTestHelper h){
+        ground(h);
+        ServerLevel world=h.getLevel();
+        h.setBlock(4,2,3,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(4,3,3));
+        BlockPos groundFoot=h.absolutePos(new BlockPos(5,2,3));
+        var table=(WorkerStationBlockEntity)world.getBlockEntity(
+                h.absolutePos(new BlockPos(0,2,0)));
+        BuilderGolem g=golem(h,start);
+        final boolean[] traversed={false};
+        h.onEachTick(()->{
+            int tick=(int)h.getTick();
+            if(tick<10)return;
+            if(g.blockPosition().getY()==groundFoot.getY()
+                    &&g.onGround()&&!BuilderGrappleAccess.active(g)){
+                System.out.println("[GRAPPLE JUMP] PASS normal one-block descent "
+                        +"without attaching a rope, tick="+tick);
+                h.succeed();
+                return;
+            }
+            if(tick%5==0){
+                boolean grapple=BuilderGrappleAccess.rappelToward(
+                        world,g,table,groundFoot);
+                if(grapple||BuilderGrappleAccess.active(g)){
+                    h.fail("Used Grapple Hook for reachable one-block drop");
+                    return;
+                }
+                traversed[0]=true;
+            }
+            if(tick>=160)h.fail("Normal one-block descent stuck at "
+                    +g.position()+" checked="+traversed[0]);
+        });
+    }
 }
