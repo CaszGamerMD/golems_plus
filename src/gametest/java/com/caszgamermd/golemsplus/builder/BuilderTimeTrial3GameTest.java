@@ -12,6 +12,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.BlockState;
@@ -111,6 +112,16 @@ public final class BuilderTimeTrial3GameTest {
         for(int y=0;y<10;y++)for(int z=0;z<12;z++)for(int x=0;x<27;x++)
             t.setBlock(x+3,y+1,z+3,block(at(x,y,z)));
     }
+    private static Runnable holdCourseSimulation(GameTestHelper t){
+        BlockPos a=pos(t,-1,2,-1),b=pos(t,27,2,12);
+        Set<ChunkPos> chunks=new HashSet<>();
+        for(int x=Math.min(a.getX(),b.getX())>>4;
+                x<=(Math.max(a.getX(),b.getX())>>4);x++)
+            for(int z=Math.min(a.getZ(),b.getZ())>>4;
+                    z<=(Math.max(a.getZ(),b.getZ())>>4);z++)
+                chunks.add(new ChunkPos(x,z));
+        return BuilderChunkTickets.simulationLease(t.getLevel(),chunks);
+    }
     private record Node(int x,int z,int level){}
     private record Step(Node node,double cost){}
     private record Gene(double doorCost,double scaffoldCost,double tolerance,double lane){
@@ -176,6 +187,7 @@ public final class BuilderTimeTrial3GameTest {
     }
     private static final class Runner {
         final int slot;final BuilderGolem mob;final Gene gene;
+        final int spawnEntityTick;
         final List<double[]> frames=new ArrayList<>();
         final Set<String> blocked=new HashSet<>();
         List<Node> route;int cursor=1,arrival=-1,stalls,doorStalls;
@@ -183,7 +195,9 @@ public final class BuilderTimeTrial3GameTest {
         double lane,score;
         Node selectedDoor;
         Runner(int slot,BuilderGolem mob,Gene gene,Node start){
-            this.slot=slot;this.mob=mob;this.gene=gene;route=plan(start,gene,blocked);
+            this.slot=slot;this.mob=mob;this.gene=gene;
+            this.spawnEntityTick=mob.tickCount;
+            route=plan(start,gene,blocked);
         }
         void capture(int tick){frames.add(new double[]{tick,mob.getX(),mob.getY(),mob.getZ()});}
     }
@@ -345,11 +359,19 @@ public final class BuilderTimeTrial3GameTest {
     }
     private static JsonObject checkpoint(){
         try{
-            if(Files.exists(STATE))
-                return JsonParser.parseString(Files.readString(STATE)).getAsJsonObject();
+            if(Files.exists(STATE)){
+                JsonObject prior=JsonParser.parseString(Files.readString(STATE)).getAsJsonObject();
+                if("course-entity-ticking-v1".equals(prior.has("nativeSimulationProtocol")
+                        ?prior.get("nativeSimulationProtocol").getAsString():"")){
+                    return prior;
+                }
+                System.out.println("[TT3 PROTOCOL MIGRATION] Old pre-native samples "
+                        +"archived; no unverified fitness imported into true physical training.");
+            }
         }catch(IOException ex){throw new IllegalStateException(ex);}
         JsonObject result=new JsonObject();
         result.addProperty("courseHash",COURSE_HASH);
+        result.addProperty("nativeSimulationProtocol","course-entity-ticking-v1");
         result.addProperty("limit",LIMIT);
         result.addProperty("physicalBuilders",COUNT);
         result.addProperty("completedGenerations",0);
@@ -462,6 +484,10 @@ public final class BuilderTimeTrial3GameTest {
         Random random=new Random(2026102703L+startGen*97L);
         final List<Gene>[] dna=new List[]{load(state)};
         fill(t);
+        // GameTest structure chunks do not necessarily tick real entities.
+        // A physical scaffold climb cannot work without an explicit
+        // simulation lease; baseline course demonstrated this empirically.
+        final Runnable release=holdCourseSimulation(t);
         final List<Runner>[] racers=new List[]{spawn(t,dna[0])};
         final int[] ticks={0},completed={0};
         long runId=0;
@@ -479,9 +505,26 @@ public final class BuilderTimeTrial3GameTest {
                 if(r.arrival>=0)arrivals++;
             }
             if(ticks[0]<LIMIT&&arrivals<COUNT)return;
+            // Refuse to breed from coordinates driven by GameTest alone
+            // if native Minecraft entity ticks did not actually run.
+            for(Runner r:racers[0]){
+                int expected=r.arrival<0?LIMIT:r.arrival;
+                int actual=r.mob.tickCount-r.spawnEntityTick;
+                if(actual<expected-2){
+                    release.run();
+                    for(Runner peer:racers[0]){
+                        BuilderScaffolding.cancel(peer.mob);
+                        if(peer.mob.isAlive())peer.mob.discard();
+                    }
+                    t.fail("Unqualified TT3 entity: slot="+r.slot+" expected "
+                            +expected+" native ticks but got "+actual);
+                    return;
+                }
+            }
             finish(t,racers[0],state,startGen+completed[0]+1,random,run);
             completed[0]++;ticks[0]=0;
             if(completed[0]>=GENERATIONS){
+                release.run();
                 if(state.get("bestFinishers").getAsInt()==COUNT)t.succeed();
                 else t.fail("TT3 25-second qualification not yet met: best="
                           +state.get("bestFinishers").getAsInt()+"/9; physics and DNA saved");
