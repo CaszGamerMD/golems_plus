@@ -33,7 +33,7 @@ public final class BuilderScaffoldPlanA {
         RETURN_FIRST, RETURN_TOWER, DESCEND, DISMOUNT
     }
     private static final class Job {
-        final BlockPos target,base,exit;
+        final BlockPos target,base,exit,planner;
         final Direction towardTarget;
         final int top;
         Phase phase=Phase.APPROACH;
@@ -43,10 +43,11 @@ public final class BuilderScaffoldPlanA {
         double highest=-Double.MAX_VALUE;
         double lastDistance=Double.POSITIVE_INFINITY;
         Job(BlockPos target,BlockPos base,BlockPos exit,
-                Direction direction,int top,long now){
+                BlockPos planner,Direction direction,int top,long now){
             this.target=target.immutable();
             this.base=base.immutable();
             this.exit=exit.immutable();
+            this.planner=planner.immutable();
             this.towardTarget=direction;
             this.top=top;
             this.lastProgress=now;
@@ -167,8 +168,8 @@ public final class BuilderScaffoldPlanA {
                 // Extra credit for not changing X/Z aisle from worker.
                 score+=Math.abs(worker.getX()-base.getX()-.5)
                         +Math.abs(worker.getZ()-base.getZ()-.5);
-                Job candidate=new Job(target,base,exit,inward,top,
-                        level.getGameTime());
+                Job candidate=new Job(target,base,exit,
+                        table.getBlockPos(),inward,top,level.getGameTime());
                 candidate.lastDistance=score;
                 options.add(candidate);
             }
@@ -288,7 +289,7 @@ public final class BuilderScaffoldPlanA {
             default->null;
         };
         if(destination==null)return false;
-        if(!(level.getBlockEntity(worker.home())
+        if(!(level.getBlockEntity(j.planner)
                 instanceof WorkerStationBlockEntity table)
                 ||!present(level,table,worker,destination.below())){
             return true; // never deliberately step onto unsupported air
