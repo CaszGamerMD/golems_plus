@@ -1,0 +1,172 @@
+{
+  "courseHash": "d86ad9d206729c188300460463f8e1e727c097f4291a4116292d94497d36a337",
+  "nativeSimulationProtocol": "course-entity-ticking-v1",
+  "scaffoldRuleProtocol": "scaffold-complete-up-down-no-jump-v1",
+  "limit": 500,
+  "physicalBuilders": 9,
+  "completedGenerations": 6,
+  "bestFinishers": 9,
+  "bestCrewTicks": 316,
+  "history": [
+    {
+      "generation": 1,
+      "finishedBy500Ticks": 9,
+      "slowestTicks": 316,
+      "doorStalls": 0,
+      "scaffoldActions": 18,
+      "fullColumnRule": "scaffold-complete-up-down-no-jump-v1"
+    },
+    {
+      "generation": 2,
+      "finishedBy500Ticks": 9,
+      "slowestTicks": 324,
+      "doorStalls": 0,
+      "scaffoldActions": 18,
+      "fullColumnRule": "scaffold-complete-up-down-no-jump-v1"
+    },
+    {
+      "generation": 3,
+      "finishedBy500Ticks": 9,
+      "slowestTicks": 324,
+      "doorStalls": 0,
+      "scaffoldActions": 18,
+      "fullColumnRule": "scaffold-complete-up-down-no-jump-v1"
+    },
+    {
+      "generation": 4,
+      "finishedBy500Ticks": 9,
+      "slowestTicks": 324,
+      "doorStalls": 0,
+      "scaffoldActions": 18,
+      "fullColumnRule": "scaffold-complete-up-down-no-jump-v1"
+    },
+    {
+      "generation": 5,
+      "finishedBy500Ticks": 9,
+      "slowestTicks": 324,
+      "doorStalls": 0,
+      "scaffoldActions": 18,
+      "fullColumnRule": "scaffold-complete-up-down-no-jump-v1"
+    },
+    {
+      "generation": 6,
+      "finishedBy500Ticks": 9,
+      "slowestTicks": 324,
+      "doorStalls": 0,
+      "scaffoldActions": 18,
+      "fullColumnRule": "scaffold-complete-up-down-no-jump-v1"
+    }
+  ],
+  "nextPopulation": [
+    [
+      1.5,
+      0.9527615775816679,
+      0.12770956970654965,
+      0.06
+    ],
+    [
+      1.4039562467302429,
+      0.7564782592724381,
+      0.12770956970654965,
+      0.06
+    ],
+    [
+      1.5,
+      1.0,
+      0.11,
+      0.006113098600552473
+    ],
+    [
+      1.5,
+      1.0,
+      0.11,
+      0.06
+    ],
+    [
+      1.5,
+      0.7564782592724381,
+      0.12770956970654965,
+      0.06
+    ],
+    [
+      1.5,
+      1.0,
+      0.12556516454678782,
+      0.06
+    ],
+    [
+      1.7951378326685261,
+      0.7564782592724381,
+      0.1317912192604239,
+      0.0649764656174341
+    ],
+    [
+      1.7951378326685261,
+      0.7564782592724381,
+      0.12417142907847502,
+      0.06
+    ],
+    [
+      1.7951378326685261,
+      0.7564782592724381,
+      0.1317912192604239,
+      0.06
+    ]
+  ],
+  "championGenes": [
+    [
+      1.5,
+      0.5648324500591366,
+      0.12770956970654965,
+      0.06
+    ],
+    [
+      1.7951378326685261,
+      0.7564782592724381,
+      0.12770956970654965,
+      0.06
+    ],
+    [
+      1.5,
+      0.36385289024822526,
+      0.12770956970654965,
+      0.06
+    ],
+    [
+      1.5,
+      1.0,
+      0.11,
+      0.06
+    ],
+    [
+      1.5,
+      0.7564782592724381,
+      0.12770956970654965,
+      0.06
+    ],
+    [
+      1.5,
+      1.3362387730303125,
+      0.11,
+      0.06
+    ],
+    [
+      1.5,
+      1.0,
+      0.11,
+      0.09412837912811357
+    ],
+    [
+      1.7951378326685261,
+      0.7564782592724381,
+      0.12770956970654965,
+      0.055713077972940554
+    ],
+    [
+      1.7951378326685261,
+      0.7564782592724381,
+      0.1317912192604239,
+      0.06
+    ]
+  ]
+}
