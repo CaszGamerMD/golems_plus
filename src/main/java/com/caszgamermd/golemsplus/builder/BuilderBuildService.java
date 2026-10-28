@@ -344,18 +344,23 @@ public final class BuilderBuildService {
             int index=table.claimBuilderZoneStep(worker.getUUID(),
                     zone,plan.steps());
             if(index<0){
-                // A Builder is allowed onto the structure ONLY while
-                // actively constructing. A zone can be truly finished OR
-                // temporarily out of reachable work because some cells
-                // are deferred. In BOTH cases it physically returns to
-                // OnSite, freeing all future collision volumes. Deferred
-                // cells stay unfinished and can be retried after cooldown.
+                // No tasks in this worker's zone on the CURRENT shared Y,
+                // or every task on that Y is awaiting a safe retry.
+                // Remain available at OnSite; do not start higher layers.
                 if(table.builderZoneDone(zone))activityForFinished(worker);
                 parkAtOnSite(level,worker,table);
                 return;
             }
             var activity=action(worker,index);
             var step=plan.steps().get(index);
+            int activeLayer=table.builderActiveLayer(plan.steps());
+            if(step.y()!=activeLayer){
+                // Defensive execution guard: even a stale claim from a
+                // previous build version must not break the Y-layer rule.
+                table.setProblem("Builder waiting for completion of Y="+activeLayer
+                        +" before Y="+step.y());
+                return;
+            }
             if(step.ignorePlant()){
                 // The position stays in the saved indexed work order, but
                 // the requested crop/flower is never placed or debited.
@@ -506,7 +511,7 @@ public final class BuilderBuildService {
                     table.waitForBuilderAccess(worker.getUUID(),index,
                             level.getGameTime());
                     table.setProblem("Deferred inaccessible grapple work "+pos
-                            +" (other heights in this zone may continue)");
+                            +" (other cells on Y="+activeLayer+" continue)");
                     return;
                 }
                 if(access==BuilderGrappleAccess.Result.MOVING)return;
@@ -570,7 +575,7 @@ public final class BuilderBuildService {
                 // Waiting at an impossible collision envelope must not
                 // pin one target or one Y-level forever. Give genuine
                 // sidesteps 100 ticks, then preserve the unfinished index
-                // and try a different zone cell (including other heights).
+                // and retry another SAFE cell on the same current Y.
                 if(activity.blockedSince<0)
                     activity.blockedSince=level.getGameTime();
                 if(level.getGameTime()-activity.blockedSince>=100){
