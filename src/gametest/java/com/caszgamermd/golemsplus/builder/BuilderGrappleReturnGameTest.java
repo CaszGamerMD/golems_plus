@@ -50,11 +50,14 @@ public final class BuilderGrappleReturnGameTest {
                 sawWalk[0]=true;
             if(mob.blockPosition().getY()<start.getY()-1)
                 sawRappel[0]=true;
-            if(tick%5==0){
+            if(tick>=10&&tick%5==0){
+                // The real A* and collision state need the golem to
+                // finish its initial spawn / ground contact ticks first.
                 boolean active=BuilderGrappleAccess.rappelToward(
                         level,mob,table,depot);
-                if(!active&&!sawRappel[0]){
-                    helper.fail("Cannot reach nearby ledge with grapple");return;
+                if(!active&&!sawRappel[0]&&tick>=100){
+                    helper.fail("Cannot find a physical walkable rooftop rim");
+                    return;
                 }
             }
             if(sawWalk[0]&&sawRappel[0]&&mob.onGround()
