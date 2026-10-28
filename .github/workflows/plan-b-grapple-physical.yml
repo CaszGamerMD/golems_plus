@@ -1,0 +1,36 @@
+name: Plan B — Real Grapple Hook Training
+run-name: "Real Builder / physical 20-block hook / ascend + rappel"
+on:
+  push:
+    branches: [feature/plan-b-grapple-hook-262]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  grapple:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Compile and run unit tests
+        run: gradle --no-daemon test
+      - name: Physically test real Builder ascent and safe rappel
+        run: gradle --no-daemon runGameTest
+      - name: Keep Minecraft GameTest reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-b-grapple-physical-evidence
+          if-no-files-found: ignore
+          path: |
+            build/gametest/
+            build/test-results/
+            build/reports/
+            build/run/gameTest/logs/
