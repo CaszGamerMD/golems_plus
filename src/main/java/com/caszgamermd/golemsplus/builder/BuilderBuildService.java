@@ -48,9 +48,11 @@ public final class BuilderBuildService {
     private static final class WorkerAction {
         int index=-1;
         Action phase=Action.STAGE_MATERIALS;
+        long blockedSince=-1;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
+                blockedSince=-1;
             }
         }
     }
@@ -564,7 +566,24 @@ public final class BuilderBuildService {
             worker.setDeltaMovement(0,velocity.y,0);
             // Never place into any Builder's body. Check before spending
             // the item so waiting for a teammate to move consumes nothing.
-            if(!BuilderPlacementSpace.ready(level,worker,table,pos))return;
+            if(!BuilderPlacementSpace.ready(level,worker,table,pos)){
+                // Waiting at an impossible collision envelope must not
+                // pin one target or one Y-level forever. Give genuine
+                // sidesteps 100 ticks, then preserve the unfinished index
+                // and try a different zone cell (including other heights).
+                if(activity.blockedSince<0)
+                    activity.blockedSince=level.getGameTime();
+                if(level.getGameTime()-activity.blockedSince>=100){
+                    BuilderPlacementSpace.cancelYield(worker);
+                    table.waitForBuilderAccess(worker.getUUID(),index,
+                            level.getGameTime());
+                    table.setProblem("Deferred block "+pos
+                            +" until a safe 0.8m placement stance is reachable");
+                    activity.blockedSince=-1;
+                }
+                return;
+            }
+            activity.blockedSince=-1;
             // Upper door halves do not consume another door item; the
             // lower half was already placed and paid for in the prior
             // layer. Keep refund logic for all ordinary materials.
