@@ -87,12 +87,11 @@ public final class BuilderConstructionPlanner {
                     continue;
                 // Every candidate uses exactly the real 0.8m clearance,
                 // including when its feet stand above or below the new cube.
-                double px=dest.getX()+.5,pz=dest.getZ()+.5;
-                double ex=Math.max(0,Math.max(
-                        target.getX()-px,px-target.getX()-1));
-                double ez=Math.max(0,Math.max(
-                        target.getZ()-pz,pz-target.getZ()-1));
-                if(Math.hypot(ex,ez)<.8)continue;
+                // The 0.8 m placement margin applies to the work pose,
+                // NOT to a later escape move. A physically collidable
+                // 0.65-wide Golem can safely pass beside the new block
+                // with less arm/placement clearance. The swept AABB
+                // against the FUTURE block below is the safety check.
                 boolean free=true;
                 for(int i=1;i<=4;i++){
                     double t=i/4.0;
@@ -154,7 +153,9 @@ public final class BuilderConstructionPlanner {
             var expected=BuilderBlockResolver.resolve(step.encodedState(),
                     BuildSite.Rotation.values()[table.builderRotation()/90],
                     BuildSite.Mirror.values()[table.builderMirror()]);
-            String reason=!world.hasChunkAt(p)?"chunk unloaded":
+            String reason=step.ignorePlant()
+                    ?"ignored vegetation: no physical support required":
+                    !world.hasChunkAt(p)?"chunk unloaded":
                     expected==null?"unsupported block state":
                     !expected.state().canSurvive(world,p)
                         ?"missing physical support":
@@ -184,6 +185,13 @@ public final class BuilderConstructionPlanner {
                     ||!table.builderStepReadyForClaim(idx))continue;
             pending.add(idx);
         }
+        // Ignored vegetation is paperwork, not a world placement.
+        // Complete these regardless of footing/line of sight. This
+        // prevents a full 32-cell blocked strip from starving azaleas
+        // and making an irrelevant "missing support" a permanent stop.
+        for(int idx:pending)
+            if(steps.get(idx).ignorePlant())
+                return new Choice(idx,null,false,true,0);
         // Prefer a near reachable frontier; scan bounded work even for
         // 100,000-block schematics. Future calls search new geometry.
         pending.sort(Comparator
