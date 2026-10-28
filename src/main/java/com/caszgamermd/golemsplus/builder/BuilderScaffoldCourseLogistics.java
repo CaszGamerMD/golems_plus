@@ -3,6 +3,7 @@ package com.caszgamermd.golemsplus.builder;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
@@ -35,6 +36,7 @@ public final class BuilderScaffoldCourseLogistics {
         private final BlockPos startChest,finishChest,door;
         private final int required;
         private int withdrawn,recovered,delivered;
+        private UUID trialWorker;
         private boolean unlocked;
         public Session(BlockPos startChest,BlockPos finishChest,
                        BlockPos door,int minimumDeposit){
@@ -46,6 +48,12 @@ public final class BuilderScaffoldCourseLogistics {
             this.door=door.immutable();
             this.required=minimumDeposit;
         }
+        private void checkWorker(BuilderGolem worker){
+            if(trialWorker==null)trialWorker=worker.getUUID();
+            else if(!trialWorker.equals(worker.getUUID()))
+                throw new IllegalStateException(
+                        "Single-golem course session cannot be shared by a second Builder");
+        }
         public int withdrawn(){return withdrawn;}
         public int recovered(){return recovered;}
         public int delivered(){return delivered;}
@@ -53,6 +61,7 @@ public final class BuilderScaffoldCourseLogistics {
         public boolean unlocked(){return unlocked;}
         public boolean passed(ServerLevel level,BuilderGolem worker,
                               BlockPos finish){
+            checkWorker(worker);
             return unlocked&&delivered>=required
                     &&worker.onGround()
                     &&worker.distanceToSqr(finish.getX()+.5,
@@ -63,6 +72,7 @@ public final class BuilderScaffoldCourseLogistics {
          * proof that a transfer occurred, not an arbitrary score.
          */
         public int collect(ServerLevel level,BuilderGolem worker,int max){
+            checkWorker(worker);
             int moved=withdraw(level,worker,startChest,max);
             withdrawn+=moved;
             return moved;
@@ -70,6 +80,7 @@ public final class BuilderScaffoldCourseLogistics {
         /** Reclaim actual owned world scaffolds AFTER a safe dismount. */
         public int reclaim(ServerLevel level,BuilderGolem worker,
                            WorkerStationBlockEntity table){
+            checkWorker(worker);
             int moved=recover(level,worker,table);
             recovered+=moved;
             return moved;
@@ -77,6 +88,7 @@ public final class BuilderScaffoldCourseLogistics {
         /** Transfers physical inventory to the finish chest; only
          * newly deposited items count toward the door unlock. */
         public int deliver(ServerLevel level,BuilderGolem worker,int max){
+            checkWorker(worker);
             int moved=deposit(level,worker,finishChest,max);
             delivered+=moved;
             if(delivered>=required){
@@ -201,6 +213,10 @@ public final class BuilderScaffoldCourseLogistics {
             if(!level.hasChunkAt(at)
                     ||!level.getBlockState(at).is(Blocks.SCAFFOLDING)
                     ||free(worker)<1)continue;
+            // No remote deconstruction: the golem must physically
+            // stand close enough to reach this scaffold block.
+            if(worker.distanceToSqr(at.getX()+.5,
+                    at.getY()+.5,at.getZ()+.5)>20.25)continue;
             if(Math.abs(at.getX()+.5-worker.getX())<.9
                     &&Math.abs(at.getZ()+.5-worker.getZ())<.9)
                 continue; // never remove a physically supporting column
