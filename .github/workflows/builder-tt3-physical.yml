@@ -71,7 +71,20 @@ jobs:
           python3 scripts/merge_timetrial3_state.py \
             training/tt3/state/checkpoint.json "$RUNNER_TEMP/tt3/checkpoint.json" \
             training/tt3/state/checkpoint.json
-          cp -n "$RUNNER_TEMP/tt3/replays/"*.json training/tt3/replays/ || true
+          # Pre-native runs used the same generation filenames and could
+          # silently overwrite playback evidence. Archive them separately.
+          if [[ -f training/tt3/state/pre-native-six-unqualified.json
+                && ! -f training/tt3/replays/pre-native/archive-complete.txt ]]; then
+            mkdir -p training/tt3/replays/pre-native
+            for old in training/tt3/replays/generation-{1..6}.json; do
+              if [[ -f "$old" ]]; then
+                mv "$old" training/tt3/replays/pre-native/
+              fi
+            done
+            echo 'Pre-native 0/9 traces; never score as native physical evidence.' \
+              > training/tt3/replays/pre-native/archive-complete.txt
+          fi
+          cp -f "$RUNNER_TEMP/tt3/replays/"*.json training/tt3/replays/ || true
           git add -- training/tt3/state training/tt3/replays
           if ! git diff --cached --quiet; then
             git commit -m 'Preserve physically scored Trial 3 genes and real nine-golem replays [skip ci]'
