@@ -57,6 +57,55 @@ public final class BuilderGrappleAccess {
         double topY(){return anchor.getY()+1.0;}
     }
     private static final Map<BuilderGolem,Rope> active=new WeakHashMap<>();
+    // A stable one-block step-down intermediate waypoint prevents an idle
+    // Builder from grappling an upper roof simply because the faraway
+    // OnSite chest is not EXACT-path-reachable in one A* search.
+    private record NormalDrop(BlockPos goal,BlockPos landing,long until){}
+    private static final Map<BuilderGolem,NormalDrop> normalDrops=
+            new WeakHashMap<>();
+    private static boolean tryLocalOneBlockDrop(ServerLevel level,
+            BuilderGolem mob,BlockPos goal){
+        if(!mob.onGround())return false;
+        NormalDrop hold=normalDrops.get(mob);
+        if(hold!=null){
+            if(mob.blockPosition().getY()<=hold.landing().getY()
+                    ||level.getGameTime()>hold.until()
+                    ||!hold.goal().equals(goal)){
+                normalDrops.remove(mob);
+            }else if(WorkerNavigation.canStandOn(level,mob,hold.landing())
+                    &&WorkerNavigation.routeToExact(
+                            level,mob,hold.landing(),1.0))
+                return true;
+        }
+        BlockPos origin=mob.blockPosition();
+        List<BlockPos> landings=new ArrayList<>();
+        for(int radius=1;radius<=4;radius++)
+            for(int dx=-radius;dx<=radius;dx++)
+                for(int dz=-radius;dz<=radius;dz++){
+                    if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)
+                        continue;
+                    BlockPos at=origin.offset(dx,-1,dz);
+                    if(!headroom(level,at)||!solidTop(level,at.below()))
+                        continue;
+                    landings.add(at);
+                }
+        landings.sort(Comparator.comparingDouble(p->
+                p.distSqr(origin)+p.distSqr(goal)*.05));
+        int probes=0;
+        for(BlockPos landing:landings){
+            if(++probes>24)break;
+            if(!WorkerNavigation.canReachExact(level,mob,landing))
+                continue;
+            if(!WorkerNavigation.routeToExact(level,mob,landing,1.0))
+                continue;
+            normalDrops.put(mob,new NormalDrop(goal.immutable(),
+                    landing.immutable(),level.getGameTime()+100));
+            System.out.println("[GRAPPLE] NORMAL ONE-BLOCK STEP DOWN "
+                    +"via="+landing+" instead of hook to "+goal);
+            return true;
+        }
+        return false;
+    }
     // Keep short-lived failures by BOTH ledge and face. A failed hook
     // cannot immediately be reselected; other sides/ledges remain open.
     private record FailedAnchor(BlockPos anchor,Direction side,long until){}
@@ -313,8 +362,12 @@ public final class BuilderGrappleAccess {
         if(diff<1)return false;
         // One-block drops are normal ground navigation first. Do not
         // grapple for a step that the trained pathfinder can traverse.
-        if(diff==1&&tryGroundRoute(level,worker,goal,false))
-            return false;
+        if(diff==1){
+            if(tryGroundRoute(level,worker,goal,false))
+                return false; // caller may continue ordinary A* to OnSite
+            if(tryLocalOneBlockDrop(level,worker,goal))
+                return true; // existing normal A* owns the intermediate step
+        }
         if(!hasHook(worker)){
             var load=BuilderSupplyInventory.loadGrapple(level,worker,table);
             return load!=BuilderSupplyInventory.LoadStatus.MISSING;
