@@ -488,7 +488,7 @@ public final class BuilderScaffolding {
         var ordered=current.cells();
         BlockPos here=worker.blockPosition().below();
         int index=here.equals(current.anchor())?-1:ordered.indexOf(here);
-        if(index< -1){
+        if(!here.equals(current.anchor())&&index<0){
             // The current footing disappeared; do not create a magic
             // horizontal route or resume until physically supported.
             return Result.NO_SAFE_TOWER;
