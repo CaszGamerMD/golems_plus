@@ -206,8 +206,17 @@ public final class BuilderScaffoldPlanA {
                 ||!level.getBlockState(at).isAir()
                 ||!present(level,table,worker,previous)
                 ||!level.getBlockState(at.above()).isAir()
-                ||!level.getBlockState(at.above(2)).isAir())
+                ||!level.getBlockState(at.above(2)).isAir()){
+            System.out.println("[PLAN A PLACE] rejected at="+at
+                    +" block="+level.getBlockState(at)
+                    +" previous="+previous+" state="+level.getBlockState(previous)
+                    +" prevTracked="+table.scaffoldPositions(worker.getUUID())
+                            .contains(previous)
+                    +" head1="+level.getBlockState(at.above())
+                    +" head2="+level.getBlockState(at.above(2))
+                    +" player="+owner.getGameProfile().name());
             return Result.NO_SAFE_ROUTE;
+        }
         var load=BuilderSupplyInventory.loadScaffold(level,worker,table,1);
         if(load==BuilderSupplyInventory.ScaffoldLoad.MOVING)return Result.MOVING;
         if(load==BuilderSupplyInventory.ScaffoldLoad.MISSING)
