@@ -930,52 +930,44 @@ public final class WorkerNavigation {
         return false;
     }
     private static void openApproachDoor(ServerLevel level,PathfinderMob mob,Progress p){
-        // Follow the *next actual path node*, not a straight line drawn
-        // through walls to the faraway workstation.
-        Path path=mob.getNavigation().getPath();
-        Vec3 goal;
-        if(path!=null&&!mob.getNavigation().isDone()
-                &&path.getNextNodeIndex()<path.getNodeCount()){
-            Node next=path.getNode(path.getNextNodeIndex());
-            goal=new Vec3(next.x+.5-mob.getX(),0,next.z+.5-mob.getZ());
-        }else{
-            BlockPos destination=p.approach==null?p.requested:p.approach;
-            goal=new Vec3(destination.getX()+.5-mob.getX(),0,
-                    destination.getZ()+.5-mob.getZ());
+        if(p.requested==null)return;
+        // Like a villager's path-driven door task, use the CURRENT route.
+        // Only fall back to a nearby doorway when no route was found yet;
+        // do not open unrelated decorative doors beside a job site.
+        BlockPos door=imminentDoor(level,mob,p);
+        if(door==null||!handDoor(level,door))return;
+        // The worker has to physically reach the door before touching it.
+        if(mob.distanceToSqr(door.getX()+.5,door.getY()+.5,
+                door.getZ()+.5)>1.7*1.7)return;
+        if(isOpenPassage(level.getBlockState(door)))return;
+        p.queuedDoor=door;
+        if(!WorkerDoorTraffic.request(level,door,mob)){
+            p.waitingDoor=true;
+            return; // keep the other worker's route and door undisturbed
         }
-        if(goal.lengthSqr()<.09)return;
-        Vec3 ahead=goal.normalize();
-        BlockPos origin=mob.blockPosition();
-        BlockPos doorPos=null;
-        double closest=Double.MAX_VALUE;
-        for(int dx=-3;dx<=3;dx++)for(int dy=-1;dy<=1;dy++)
-            for(int dz=-3;dz<=3;dz++){
-                BlockPos probe=origin.offset(dx,dy,dz);
-                if(!handDoor(level,probe))continue;
-                BlockState state=level.getBlockState(probe);
-                if(isOpenPassage(state))continue;
-                Vec3 delta=new Vec3(probe.getX()+.5-mob.getX(),0,
-                        probe.getZ()+.5-mob.getZ());
-                double along=delta.dot(ahead);
-                double side=Math.abs(delta.x*ahead.z-delta.z*ahead.x);
-                if(along<-.3||along>3.5||side>1.20)continue;
-                double score=delta.lengthSqr()+side*2;
-                if(score<closest){doorPos=probe;closest=score;}
+        setPassageOpen(level,mob,door,true);
+        p.openedDoor=door.immutable();p.doorAge=0;
+        updateDoorClearance(level,mob,p);
+        p.stalled=0;p.unsafeChecks=0;
+        // Opening the door is NOT itself a blocked path. A native route
+        // already passing through this door should keep running: stopping
+        // and re-A*-ing it on each open/close transition causes stutter.
+        Path path=mob.getNavigation().getPath();
+        boolean onExistingPath=false;
+        if(path!=null&&!mob.getNavigation().isDone()){
+            for(int i=path.getNextNodeIndex();i<path.getNodeCount();i++){
+                Node node=path.getNode(i);
+                if(node.x==door.getX()&&node.z==door.getZ()
+                        &&Math.abs(node.y-door.getY())<=1){
+                    onExistingPath=true;
+                    break;
+                }
             }
-        if(doorPos!=null
-                &&requiresDoorCrossing(level,mob,p,doorPos)){
-            BlockPos local=WorkerDoorTraffic.canonical(level,doorPos);
-            p.queuedDoor=local;
-            if(!WorkerDoorTraffic.request(level,local,mob)){
-                p.waitingDoor=true;
-                return; // only the head of this door's queue can open it
-            }
-            setPassageOpen(level,mob,doorPos,true);
-            p.openedDoor=doorPos.immutable();p.doorAge=0;
-            updateDoorClearance(level,mob,p);
-            // Path planned while the door was closed may be impossible.
-            // Re-evaluate only once after opening it.
-            p.stalled=0;p.nextRoute=0;
+        }
+        if(!onExistingPath){
+            // The former closed gate may have stopped the native planner.
+            // Replan ONCE, after opening; retain the exact work target.
+            p.nextRoute=0;
             mob.getNavigation().stop();
         }
     }
