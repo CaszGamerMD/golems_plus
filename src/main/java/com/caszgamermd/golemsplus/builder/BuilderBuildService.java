@@ -436,7 +436,16 @@ public final class BuilderBuildService {
             // exclusive ten-coordinate batch, unloads other materials and
             // collects actual stock (including flowers within shulkers).
             // It does not visit the Planning Table for assignments.
-            if(!table.builderOrderPrepared(worker.getUUID())){
+            // A frontier choice can change the ten/32-cell stage.
+            // That invalidates the prior *batch* marker, not the physical
+            // blocks ALREADY in this golem's persisted pouch. If it has
+            // the exact item needed for this step, proceed with that real
+            // inventory rather than repeatedly rappelling back to OnSite.
+            // The normal per-step load below will still require a genuine
+            // depot visit when a later item is actually missing.
+            if(!table.builderOrderPrepared(worker.getUUID())
+                    &&step.requiredItem()!=null
+                    &&worker.carriedCount(state.item())<=0){
                 activity.phase=Action.STAGE_MATERIALS;
                 // An A* route from the TOP of a temporary scaffold to
                 // OnSite Storage can never discover the vertical descent.
