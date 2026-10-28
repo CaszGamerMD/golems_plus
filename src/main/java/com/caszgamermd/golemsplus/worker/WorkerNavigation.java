@@ -473,9 +473,21 @@ public final class WorkerNavigation {
         if(p.weightedRoute.isEmpty()){
             int avoid=p.attempts==0?0:(p.attempts%4)+1;
             List<BlockPos> goals=new ArrayList<>();
-            for(Candidate candidate:candidateGoals(level,mob,target,avoid)){
-                if(goals.size()>=16)break;
-                goals.add(candidate.feet());
+            // Real-entity doorway regression: a requested walkable tile
+            // MUST be the destination. Treating every nearby tile as a
+            // goal lets A* stop on the near side of a door with no next
+            // waypoint, even though the actual goal is clear.
+            if(standingTile(level,mob,target)){
+                goals.add(target.immutable());
+            }else{
+                // Solid workstation / future placement block: choose a
+                // collision-valid approach near the structure rather than
+                // trying to walk INTO solid blocks. This is never a
+                // fallback to the old native path-selection algorithm.
+                for(Candidate candidate:candidateGoals(level,mob,target,avoid)){
+                    if(goals.size()>=16)break;
+                    goals.add(candidate.feet());
+                }
             }
             WorkerRoutePlanner.Route route=WorkerRoutePlanner.plan(
                     mob.blockPosition(),goals,
