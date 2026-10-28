@@ -196,4 +196,55 @@ public final class BuilderGrappleGameTest {
         });
     }
 
+
+    @GameTest(maxTicks=80,skyAccess=true)
+    public void missingRooftopHookCannotRecursivelyRequestItself(
+            GameTestHelper helper){
+        ServerLevel world=helper.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        helper.setBlock(1,2,0,Blocks.CHEST);
+        helper.setBlock(3,6,3,Blocks.STONE);
+        BlockPos planner=helper.absolutePos(new BlockPos(0,2,0));
+        BlockPos depot=helper.absolutePos(new BlockPos(1,2,0));
+        var table=(WorkerStationBlockEntity)world.getBlockEntity(planner);
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),
+                        "placed-missing-hook-test.litematic","Test",
+                        planner,0,0,1,0)
+                ||!table.setBuilderMaterialStorage(owner.getUUID(),depot)){
+            helper.fail("Cannot stage real OnSite chest test");return;
+        }
+        if(!(world.getBlockEntity(depot) instanceof net.minecraft.world.Container chest)){
+            helper.fail("Missing OnSite chest");return;
+        }
+        chest.setItem(0,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos roof=helper.absolutePos(new BlockPos(3,7,3));
+        mob.setPos(roof.getX()+.5,roof.getY(),roof.getZ()+.5);
+        world.addFreshEntity(mob);
+        // In the original bug, rappelToward -> loadGrapple ->
+        // rappelForTravel -> rappelToward recursed to StackOverflowError
+        // when equipment existed in the chest but not on the golem.
+        helper.onEachTick(()->{
+            if(helper.getTick()<10)return;
+            if(helper.getTick()%5!=0)return;
+            BuilderGrappleAccess.rappelToward(world,mob,table,depot);
+            if(mob.carriedCount(WorksiteContent.GRAPPLE_HOOK)!=0){
+                helper.fail("Remote hook acquired without visiting OnSite");
+                return;
+            }
+            if(BuilderGrappleAccess.active(mob)){
+                helper.fail("Started a rappel without carrying any hook");
+                return;
+            }
+            if(helper.getTick()>=30){
+                System.out.println("[GRAPPLE SAFETY] PASS missing hook on roof "
+                        +"did not recurse, teleport item or create a rope");
+                helper.succeed();
+            }
+        });
+    }
 }
