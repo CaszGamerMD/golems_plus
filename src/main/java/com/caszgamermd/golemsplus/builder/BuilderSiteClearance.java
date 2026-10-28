@@ -67,17 +67,18 @@ public final class BuilderSiteClearance {
                 table.setProblem("CLEARING: loading construction chunk "+pos);
                 return false;
             }
-            if(!world.mayInteract(owner,pos)){
-                table.setProblem("CLEARING: protected site location "+pos);
-                return false;
-            }
-            // An empty position needs no schematic-state parser at all.
-            // Previously a spruce door at a future empty position was
-            // rejected before checking the existing world block.
+            // Air is already clear. Do not route a Builder, equip a tool,
+            // check removal permissions, or attempt to destroy the cell.
+            // Still verify schematic AIR cells: a non-air obstruction in
+            // one of those cells MUST be removed before building.
             BlockState existing=world.getBlockState(pos);
             if(existing.isAir()){
                 table.completeBuilderClear(worker.getUUID(),index,false);
                 continue;
+            }
+            if(!world.mayInteract(owner,pos)){
+                table.setProblem("CLEARING: protected site location "+pos);
+                return false;
             }
             BlockState expected=Blocks.AIR.defaultBlockState();
             // The vegetation toggle skips only S C H E M A T I C plant
