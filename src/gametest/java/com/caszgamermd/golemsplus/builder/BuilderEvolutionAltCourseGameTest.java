@@ -1898,13 +1898,27 @@ public final class BuilderEvolutionAltCourseGameTest {
                 // Follow a single stable planned path, as villagers do.
                 // Opening the nearby door is an action on that path,
                 // not a reason to throw it away or stop for four ticks.
-                openDoorFromReach(world,mob,target);
+                boolean wasOpen=world.getBlockState(target)
+                        .getValue(DoorBlock.OPEN);
+                if(!wasOpen&&openDoorFromReach(world,mob,target))
+                    b.doorTargetX=Integer.MIN_VALUE;
+                // A door outside interaction range can still be CLOSED.
+                // Do not lock in a centerline estimated against its CLOSED
+                // collision shape. Once close and opened, sample the real
+                // available lane exactly once and keep it through the exit.
+                double doorDistance=Math.hypot(
+                        mob.getX()-target.getX()-.5,
+                        mob.getZ()-target.getZ()-.5);
                 if(b.doorTargetX!=ahead[0]||b.doorTargetZ!=ahead[1]){
-                    b.doorTargetX=ahead[0];
-                    b.doorTargetZ=ahead[1];
                     b.doorOffsetX=ahead[0]==b.x;
-                    b.doorLaneShift=safeDoorLane(world,mob,target,b.dna,
-                            b.doorOffsetX);
+                    b.doorLaneShift=0;
+                    if(doorDistance<2.7&&world.getBlockState(target)
+                            .getValue(DoorBlock.OPEN)){
+                        b.doorLaneShift=safeDoorLane(world,mob,target,b.dna,
+                                b.doorOffsetX);
+                        b.doorTargetX=ahead[0];
+                        b.doorTargetZ=ahead[1];
+                    }
                 }
                 centerShift=b.doorLaneShift;
             }else if(leavingDoor){
