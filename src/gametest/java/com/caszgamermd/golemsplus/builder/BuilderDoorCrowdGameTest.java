@@ -21,11 +21,11 @@ import net.minecraft.world.phys.AABB;
  * enter the exact one-wide threshold and leave it on the far side.
  */
 public final class BuilderDoorCrowdGameTest {
-    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=2200,skyAccess=true)
+    @GameTest(maxTicks=2200,skyAccess=true)
     public void fourWorkersCrossOneOakDoor(GameTestHelper helper){
         run(helper,false);
     }
-    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=2200,skyAccess=true)
+    @GameTest(maxTicks=2200,skyAccess=true)
     public void fourWorkersCrossOneFenceGate(GameTestHelper helper){
         run(helper,true);
     }
