@@ -238,6 +238,13 @@ public final class BuilderTimeTrial3GameTest {
         // rejected the actual native physics height Y=19.125 even
         // after runners had traversed onto the upper platform.
         BlockPos support=destination.below();
+        // The full scaffold shape includes 1-block-tall SIDE POSTS. A
+        // generic VoxelShape.max(Y) therefore gives 1.0 and strands
+        // walkers exactly at the 1/8-high center surface. Native
+        // positions from generations 7-18 prove the center support
+        // is supportY+0.125, while max(shape) incorrectly reads 1.0.
+        if(world.getBlockState(support).is(Blocks.SCAFFOLDING))
+            return support.getY()+.125;
         var shape=world.getBlockState(support).getCollisionShape(world,support);
         return shape.isEmpty()?destination.getY():
                 support.getY()+shape.max(Direction.Axis.Y);
