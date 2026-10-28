@@ -59,8 +59,9 @@ public final class WorkerNavigation {
         // cross-door or cross-site global lock.
         BlockPos queuedDoor,doorStandby,doorExit;
         boolean waitingDoor,parkingAtDoor,finishingDoor;
-        int doorLastProgressTick;
+        int doorLastProgressTick,doorReservationYields;
         double doorLastDistance=Double.POSITIVE_INFINITY;
+        Vec3 doorLastPoint;
         // Cached weighted route is transient: the actual job and cargo
         // remain persisted on the worker and may safely resume after reload.
         List<BlockPos> weightedRoute=List.of();
@@ -170,6 +171,35 @@ public final class WorkerNavigation {
                 ||level.getBlockState(feet.below()).getBlock() instanceof StairBlock)
             return .12;
         return 0;
+    }
+    private static List<Vec3> nearbyWorkers(ServerLevel level,PathfinderMob worker){
+        List<Vec3> positions=new ArrayList<>();
+        for(PathfinderMob other:level.getEntitiesOfClass(
+                PathfinderMob.class,worker.getBoundingBox().inflate(12,5,12),
+                e->e!=worker&&e.isAlive()&&(
+                        e instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
+                        ||e instanceof com.caszgamermd.golemsplus.trader.TraderGolem
+                        ||e instanceof com.caszgamermd.golemsplus.beekeeper.BeekeeperGolem
+                        ||e instanceof com.caszgamermd.golemsplus.cooking.ChefGolem
+                        ||e instanceof com.caszgamermd.golemsplus.fishing.FisherGolem)))
+            positions.add(other.position());
+        return positions;
+    }
+    /** Mutable teammates are SOFT costs rather than blocked terrain.
+     * The A* can choose a parallel aisle when available, but may still
+     * plan the only legal narrow corridor and use door reservations there.
+     * Snapshot positions once per search, not once per expanded cell.
+     */
+    private static double crowdCost(BlockPos at,List<Vec3> neighbors){
+        double price=0;
+        for(Vec3 other:neighbors){
+            if(Math.abs(at.getY()-other.y)>1.2)continue;
+            double dx=at.getX()+.5-other.x,dz=at.getZ()+.5-other.z;
+            double horizontal=dx*dx+dz*dz;
+            if(horizontal<.90*.90)price+=7.0;
+            else if(horizontal<1.55*1.55)price+=1.8;
+        }
+        return Math.min(18,price);
     }
     private static boolean partialFloor(BlockState state){
         return state.getBlock() instanceof StairBlock
@@ -363,6 +393,7 @@ public final class WorkerNavigation {
         p.queuedDoor=null;p.doorStandby=null;p.doorExit=null;
         p.waitingDoor=false;p.parkingAtDoor=false;p.finishingDoor=false;
         p.doorLastDistance=Double.POSITIVE_INFINITY;
+        p.doorLastPoint=null;
         p.doorLastProgressTick=mob.tickCount;
     }
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
@@ -372,6 +403,10 @@ public final class WorkerNavigation {
                 &&progress.requested!=null&&!target.equals(progress.requested))
             clearDoor(level,mob,progress);
         if(progress.waitingDoor||progress.finishingDoor)return true;
+        // Exact evac/stock routes must honor the SAME brief peer courtesy
+        // pause as ordinary routes. Previously they restarted the native
+        // path immediately, canceling the yield and causing doorway dances.
+        if(progress.wait>0)return true;
         // Retain original work target while this worker clears the door.
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem)
             speed=1.0; // nominal 4 m/s from Builder movement attribute .40
@@ -393,11 +428,12 @@ public final class WorkerNavigation {
         // Exact destinations also use the ONE trained planner. A
         // native navigation path is used solely to physically execute
         // a short already-scored waypoint, not as an alternate AI.
+        List<Vec3> crowds=nearbyWorkers(level,mob);
         WorkerRoutePlanner.Route plan=WorkerRoutePlanner.plan(
                 mob.blockPosition(),List.of(target),
                 at->standingTile(level,mob,at),
                 at->floorAt(level,at),p.lastBad,
-                at->trainedTerrainCost(level,at));
+                at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
         if(plan==null||plan.steps().isEmpty())return false;
         for(int span:new int[]{3,2,1}){
             BlockPos waypoint=plan.steps().get(Math.min(
@@ -489,11 +525,12 @@ public final class WorkerNavigation {
                     goals.add(candidate.feet());
                 }
             }
+            List<Vec3> crowds=nearbyWorkers(level,mob);
             WorkerRoutePlanner.Route route=WorkerRoutePlanner.plan(
                     mob.blockPosition(),goals,
                     at->standingTile(level,mob,at),
                     at->floorAt(level,at),p.lastBad,
-                    at->trainedTerrainCost(level,at));
+                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
             // Never report an empty physical route as success solely
             // because the Builder is within placement range of target.
             // Storage, doorway and return-to-tower movements require
@@ -551,6 +588,7 @@ public final class WorkerNavigation {
         return "goal="+requested+" via="+destination
                 +" retry="+remaining+"t attempts="+p.attempts
                 +" stalled="+p.stalled+" unsafe="+p.unsafeChecks
+                +" doorYields="+p.doorReservationYields
                 +(p.queuedDoor==null?"":" door="+p.queuedDoor.toShortString()
                     +(p.waitingDoor?" WAIT":p.finishingDoor?" EXIT":" CROSS")
                     +" q#"+rank);
@@ -601,10 +639,15 @@ public final class WorkerNavigation {
                 p.unsafeChecks++;
                 p.attempts++;
                 Path old=mob.getNavigation().getPath();
-                if(old!=null&&old.getNextNodeIndex()<old.getNodeCount()){
+                if(blocked&&old!=null&&old.getNextNodeIndex()<old.getNodeCount()){
                     Node node=old.getNode(old.getNextNodeIndex());
                     p.lastBad=new BlockPos(node.x,node.y,node.z);
                     p.avoidUntil=mob.tickCount+60;
+                }else if(!blocked){
+                    // A teammate blocking an aisle is not an invalid
+                    // floor tile: keep every legal movement available
+                    // and use soft crowd cost for the next plan instead.
+                    p.lastBad=null;
                 }
                 p.weightedRoute=List.of();p.routeCursor=0;
                 p.nextRoute=mob.tickCount+CHECK_TICKS;
@@ -761,7 +804,8 @@ public final class WorkerNavigation {
                 mob.getY(),door.getZ()+.5);
         if(dist>16.0)return false;
         if(!p.finishingDoor&&!mob.getNavigation().isDone()
-                &&p.stalled<STALL_TICKS)return false;
+                &&p.stalled<STALL_TICKS
+                &&!WorkerDoorTraffic.inside(level,door,mob))return false;
         BlockState gate=level.getBlockState(door);
         if(!handDoor(level,door))return false;
         Direction facing=entranceFacing(gate);
@@ -853,25 +897,32 @@ public final class WorkerNavigation {
                 p.queuedDoor=upcoming;
                 p.doorLastProgressTick=mob.tickCount;
                 p.doorLastDistance=Double.POSITIVE_INFINITY;
+                p.doorLastPoint=mob.position();
             }
         }
         if(p.queuedDoor==null)return false;
         double doorDistance=mob.distanceToSqr(
                 p.queuedDoor.getX()+.5,p.queuedDoor.getY()+.5,
                 p.queuedDoor.getZ()+.5);
-        // A door owner whose approach has not moved in five seconds must
-        // not block the whole queue indefinitely. Yield its position,
-        // apply a cooldown, and use the next path evaluation to recover.
+        // Door ownership requires REAL MOTION. The previous timeout
+        // applied only beyond four blocks; a stationary head right next
+        // to the door could monopolize a whole crew indefinitely.
         if(WorkerDoorTraffic.owns(level,p.queuedDoor,mob)){
-            if(doorDistance<p.doorLastDistance-.20){
+            boolean moved=p.doorLastPoint==null
+                    ||mob.position().distanceToSqr(p.doorLastPoint)>.025;
+            if(moved||doorDistance<p.doorLastDistance-.08){
+                p.doorLastPoint=mob.position();
                 p.doorLastDistance=doorDistance;
                 p.doorLastProgressTick=mob.tickCount;
-            }else if(mob.tickCount-p.doorLastProgressTick>100
-                    &&doorDistance>16.0){
+            }else if(mob.tickCount-p.doorLastProgressTick>=45
+                    &&!WorkerDoorTraffic.inside(level,p.queuedDoor,mob)){
                 WorkerDoorTraffic.yieldStalled(level,p.queuedDoor,mob);
+                p.doorReservationYields++;
                 p.waitingDoor=true;
                 p.doorStandby=null;p.parkingAtDoor=false;
                 p.doorLastProgressTick=mob.tickCount;
+                p.nextRoute=0;
+                p.weightedRoute=List.of();p.routeCursor=0;
                 mob.getNavigation().stop();
                 return true;
             }
