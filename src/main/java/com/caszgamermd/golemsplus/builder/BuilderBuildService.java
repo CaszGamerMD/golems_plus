@@ -502,6 +502,16 @@ public final class BuilderBuildService {
                 // circling buildings after reaching the required height.
                 if(BuilderScaffolding.stepOffTowardWork(level,worker,table,pos))
                     return;
+                // If the only platform exit is blocked, a worker cannot
+                // start an ordinary A* route from the middle/top of a
+                // scaffold column. Descend the WHOLE OWNED COLUMN, dismount
+                // on real ground, then search the work approach again.
+                // This never jumps, teleports, or abandons the job step.
+                BlockPos under=worker.blockPosition().below();
+                if(level.getBlockState(under).is(Blocks.SCAFFOLDING)
+                        &&table.scaffoldPositions(worker.getUUID()).contains(under)
+                        &&BuilderScaffolding.descendForTravel(level,worker,table))
+                    return;
                 // The NEXT job step is not in physical placing range yet.
                 // Regardless of the previous navigation state, continue
                 // approaching until the distance check genuinely passes.
