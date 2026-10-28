@@ -107,6 +107,39 @@ public final class BuilderSafeScaffoldGameTest {
     }
 
     @GameTest(maxTicks=100,skyAccess=true)
+    public void plannedFutureWallsCannotSealGroundExit(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos base=helper.absolutePos(new BlockPos(3,2,3));
+        BuilderGolem builder=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        builder.setPos(base.getX()+.5,base.getY(),base.getZ()+.5);
+        level.addFreshEntity(builder);
+        if(BuilderScaffolding.safeGroundExit(level,builder,base,
+                java.util.Set.of())==null){
+            helper.fail("Open ground exit was wrongly rejected");return;
+        }
+        var future=new java.util.HashSet<BlockPos>();
+        for(net.minecraft.core.Direction side:net.minecraft.core.Direction.Plane.HORIZONTAL){
+            BlockPos foot=base.relative(side);
+            future.add(foot);
+            future.add(foot.above());
+        }
+        if(BuilderScaffolding.safeGroundExit(level,builder,base,future)!=null){
+            helper.fail("Builder approved tower whose future walls seal all exits");
+            return;
+        }
+        future.remove(base.east());
+        future.remove(base.east().above());
+        BlockPos allowed=BuilderScaffolding.safeGroundExit(level,builder,base,future);
+        if(allowed==null||!allowed.equals(base.east())){
+            helper.fail("Planner did not choose its sole surviving east exit: "+allowed);
+            return;
+        }
+        helper.succeed();
+    }
+
+    @GameTest(maxTicks=100,skyAccess=true)
     public void neverBuildsTowerWithoutGroundDismount(GameTestHelper helper){
         ServerLevel level=helper.getLevel();
         helper.setBlock(3,1,3,Blocks.STONE);
