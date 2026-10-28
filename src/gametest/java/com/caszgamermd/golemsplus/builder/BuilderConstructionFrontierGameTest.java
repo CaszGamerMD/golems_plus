@@ -203,9 +203,13 @@ public final class BuilderConstructionFrontierGameTest {
         var mob=worker(h,h.absolutePos(new BlockPos(3,2,3)));
         BlockPos realStone=h.absolutePos(new BlockPos(7,2,7));
         var tasks=new java.util.ArrayList<BuilderConstructionPlan.Step>();
-        for(int x=2;x<=7;x++)for(int z=2;z<=7;z++){
+        // 35 genuinely separate interior ladder cells, none adjacent
+        // to the arena's edge walls or the OnSite station/chest. This
+        // prevents incidental test-world support from making a ladder
+        // legal when the planner should skip it.
+        for(int x=1;x<=6;x++)for(int z=1;z<=6;z++){
+            if(x==1&&z==1)continue; // nearest station/chest
             BlockPos p=h.absolutePos(new BlockPos(x,2,z));
-            if(p.equals(realStone))continue;
             // Every ladder lacks the needed WALL on its back: these
             // nearer cells must be held, but they cannot prevent the
             // one distant supported stone from eventually being found.
