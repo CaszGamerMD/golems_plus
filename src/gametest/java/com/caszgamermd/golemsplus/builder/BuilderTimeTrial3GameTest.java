@@ -275,8 +275,19 @@ public final class BuilderTimeTrial3GameTest {
                 double ahead=(other.mob.getX()-mob.getX())*vx
                              +(other.mob.getZ()-mob.getZ())*vz;
                 boolean peerAhead=ahead>.004;
-                boolean sidelong=Math.abs(ahead)<=.004;
-                if(peerAhead||sidelong&&r.slot>other.slot){
+                // Only a SAME-DIRECTION convoy can use front-to-back
+                // priority. Opposing/merging golems can both see the
+                // other 'ahead' and mutually yield for 450+ ticks;
+                // return to deterministic slot priority for crossings.
+                Node peerBefore=other.route.isEmpty()?null:
+                        other.route.get(Math.max(0,other.cursor-1));
+                Node peerNext=other.cursor>=other.route.size()?null:
+                        other.route.get(other.cursor);
+                boolean sameDirection=peerBefore!=null&&peerNext!=null
+                        &&(peerNext.x-peerBefore.x)*vx
+                             +(peerNext.z-peerBefore.z)*vz>.01;
+                if((sameDirection&&peerAhead)
+                        ||(!sameDirection&&r.slot>other.slot)){
                     r.waits++;r.stalls=0;return;
                 }
             }
@@ -378,13 +389,9 @@ public final class BuilderTimeTrial3GameTest {
         }
         return arr;
     }
-    private static List<Gene> load(JsonObject checkpoint){
-        if(checkpoint==null)return initial();
-        if(!COURSE_HASH.equals(checkpoint.get("courseHash").getAsString())
-                ||checkpoint.get("limit").getAsInt()!=LIMIT)
-            throw new IllegalStateException("Refusing mismatched Time Trial 3 checkpoint");
-        JsonArray population=checkpoint.getAsJsonArray("nextPopulation");
-        if(population.size()!=COUNT)throw new IllegalStateException("Nine real genomes required");
+    private static List<Gene> genesFromJson(JsonArray population){
+        if(population==null||population.size()!=COUNT)
+            throw new IllegalStateException("Nine real genomes required");
         List<Gene> out=new ArrayList<>();
         for(JsonElement v:population){
             JsonArray a=v.getAsJsonArray();
@@ -392,6 +399,14 @@ public final class BuilderTimeTrial3GameTest {
                     a.get(2).getAsDouble(),a.get(3).getAsDouble()));
         }
         return out;
+    }
+
+    private static List<Gene> load(JsonObject checkpoint){
+        if(checkpoint==null)return initial();
+        if(!COURSE_HASH.equals(checkpoint.get("courseHash").getAsString())
+                ||checkpoint.get("limit").getAsInt()!=LIMIT)
+            throw new IllegalStateException("Refusing mismatched Time Trial 3 checkpoint");
+        return genesFromJson(checkpoint.getAsJsonArray("nextPopulation"));
     }
     private static JsonObject checkpoint(){
         try{
@@ -500,7 +515,17 @@ public final class BuilderTimeTrial3GameTest {
             state.addProperty("bestCrewTicks",slowest);
             state.add("championGenes",jsonGenes(crew.stream().map(r->r.gene).toList()));
         }
-        state.add("nextPopulation",jsonGenes(breed(crew,random)));save(state);
+        // A disastrous new mutation cannot erase a VERIFIED all-nine
+        // winning team. The following physical generation returns to
+        // the actual champion population, not a stored route replay.
+        // Once 9/9 is restored, breed three real parents again.
+        List<Gene> offspring=completed==COUNT||!state.has("championGenes")
+                ?breed(crew,random)
+                :genesFromJson(state.getAsJsonArray("championGenes"));
+        if(completed<COUNT&&state.has("championGenes"))
+            System.out.println("[TT3 CHAMPION RETAINED] Restoring fastest "
+                    +"verified 9/9 cohort after mutation regression");
+        state.add("nextPopulation",jsonGenes(offspring));save(state);
         JsonObject record=new JsonObject();
         record.addProperty("courseHash",COURSE_HASH);
         record.addProperty("generation",generation);
