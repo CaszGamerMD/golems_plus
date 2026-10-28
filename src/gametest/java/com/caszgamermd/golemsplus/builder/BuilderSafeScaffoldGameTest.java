@@ -61,7 +61,17 @@ public final class BuilderSafeScaffoldGameTest {
                     if(next==BuilderScaffolding.Result.NO_SAFE_TOWER
                             ||next==BuilderScaffolding.Result.NEED_MATERIALS){
                         helper.fail("Rejected real safe scaffold: "+next
-                                +" pos="+builder.position());return;
+                                +" pos="+builder.position()
+                                +" standSpawn="+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                    .canStandOn(level,builder,spawn)
+                                +" reachSpawn="+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                    .canReachExact(level,builder,spawn)
+                                +" baseSupport="+level.getBlockState(spawn.below())
+                                +" exitStand="+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                    .canStandOn(level,builder,spawn.east())
+                                +" reachExit="+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                    .canReachExact(level,builder,spawn.east())
+                                +" planY="+work.getY());return;
                     }
                 }
                 highest[0]=Math.max(highest[0],builder.blockPosition().getY());
