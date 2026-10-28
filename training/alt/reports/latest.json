@@ -1,53 +1,81 @@
 {
-  "runId": "40606633148",
+  "runId": "40610057893",
   "mode": "evolve",
-  "trials": 0,
-  "physicalGenerations": 0,
-  "max13s": null,
-  "max11_2s": null,
-  "latest13s": null,
-  "latest11_2s": null,
-  "first13s": null,
-  "completedGenerationDelta": null,
-  "strategyEvidenceDelta": null,
+  "trials": 3,
+  "physicalGenerations": 72,
+  "max13s": 9,
+  "max11_2s": 5,
+  "latest13s": 8,
+  "latest11_2s": 4,
+  "first13s": 9,
+  "completedGenerationDelta": 72,
+  "strategyEvidenceDelta": 648,
   "improvedPersonalSlots": [],
-  "poolChanged": null,
+  "poolChanged": true,
   "pool": [
     {
       "slot": 4,
-      "fitness": 100915.0,
-      "generation": 72
+      "fitness": 100945.0,
+      "generation": 216
     },
     {
       "slot": 0,
-      "fitness": 100810.0,
-      "generation": 72
+      "fitness": 100840.0,
+      "generation": 216
     },
     {
       "slot": 5,
-      "fitness": 100452.0,
-      "generation": 72
+      "fitness": 100735.0,
+      "generation": 216
     }
   ],
   "historicChampionSlowestTicks": null,
   "totals": {
-    "doorPlans": 0,
-    "doorCrossings": 0,
-    "collisions": 0,
+    "doorPlans": 592,
+    "doorCrossings": 488,
+    "collisions": 518,
     "jumps": 0,
-    "slabAscents": 0,
+    "slabAscents": 1252,
     "slabEntryStalls": 0,
-    "doorEntryAlignTicks": 0,
-    "doorEntryStalls": 0,
-    "doorStateRetries": 0,
-    "trafficReplans": 0
+    "doorEntryAlignTicks": 632,
+    "doorEntryStalls": 537,
+    "doorStateRetries": 19,
+    "trafficReplans": 84
   },
-  "hasSlabTelemetry": false,
-  "hasDoorTelemetry": false,
-  "perTrial": [],
+  "hasSlabTelemetry": true,
+  "hasDoorTelemetry": true,
+  "perTrial": [
+    {
+      "name": "real-builder-trial-1.log",
+      "generations": 24,
+      "best13s": 9,
+      "best11_2s": 4,
+      "final13s": 9,
+      "final11_2s": 4
+    },
+    {
+      "name": "real-builder-trial-2.log",
+      "generations": 24,
+      "best13s": 9,
+      "best11_2s": 4,
+      "final13s": 9,
+      "final11_2s": 4
+    },
+    {
+      "name": "real-builder-trial-3.log",
+      "generations": 24,
+      "best13s": 9,
+      "best11_2s": 5,
+      "final13s": 8,
+      "final11_2s": 4
+    }
+  ],
   "recommendations": [
-    "**Experience retention warning:** no new persisted strategy observations were verified. Inspect observation capture and checkpoint merge.",
-    "**Training retention warning:** completed generation count did not advance (or the checkpoint is missing). Inspect state save and merge.",
-    "**No scored generations found.** Inspect Minecraft startup, compilation, and GameTest errors; do not claim training occurred."
+    "**Slabs are physically accessible:** observed real ascents. Compare entry stalls and completion rates before changing slab route costs.",
+    "**Door stall recovery activated:** physical Golems changed door state after four consecutive blocked forward attempts. Compare retries per successful crossing; if they rise without improving completion, inspect door alignment and corridor traffic.",
+    "**Door-entry hesitation observed:** check collision-safe alignment and congestion at door lips; require the real-controller no-jump regression to pass.",
+    "**Door routes were attempted:** compare completion times of door users versus other routes before assigning a larger door preference.",
+    "**Final generation regressed from the session best.** Keep the protected champion and individual top-three pool, then test gene changes against repeated identical conditions.",
+    "**Speed target not met:** optimize reliable 9/9 completion under 260 ticks before accepting faster individual records as team-wide improvement."
   ]
 }
