@@ -26,7 +26,7 @@ import net.minecraft.world.phys.AABB;
 public final class BuilderGrappleAccess {
     public static final int MAX_REACH=20;
     public enum Result { MOVING, READY, NEED_HOOK, NO_SAFE_ANCHOR }
-    private enum Phase { WALK_TO_LINE, CLIMB, STEP_ON_TOP, STEP_OFF, RAPPEL }
+    private enum Phase { WALK_TO_LINE, CLIMB, STEP_ON_TOP, STEP_OFF, RAPPEL, RETREAT }
     private static final class Rope {
         final BlockPos anchor,column,landing,goal;
         final Direction side;
@@ -49,6 +49,11 @@ public final class BuilderGrappleAccess {
         double topY(){return anchor.getY()+1.0;}
     }
     private static final Map<BuilderGolem,Rope> active=new WeakHashMap<>();
+    // A physically blocked ledge is not an anchor to retry every five
+    // ticks. Retain this short-lived rejection as navigation knowledge.
+    private record FailedAnchor(BlockPos anchor,long until){}
+    private static final Map<BuilderGolem,FailedAnchor> blockedAnchors=
+            new WeakHashMap<>();
     private BuilderGrappleAccess(){}
 
     public static boolean active(BuilderGolem worker){return active.containsKey(worker);}
@@ -110,7 +115,10 @@ public final class BuilderGrappleAccess {
         int startY=worker.blockPosition().getY();
         if(goal.getY()-startY>MAX_REACH||goal.getY()-startY<2)return null;
         List<Rope> candidates=new ArrayList<>();
+        FailedAnchor bad=blockedAnchors.get(worker);
         for(BlockPos anchor:solidAnchors(level,goal)){
+            if(bad!=null&&bad.until()>level.getGameTime()
+                    &&bad.anchor().equals(anchor))continue;
             for(Direction side:Direction.Plane.HORIZONTAL){
                 BlockPos column=anchor.relative(side);
                 BlockPos entry=column.atY(startY);
@@ -281,6 +289,27 @@ public final class BuilderGrappleAccess {
                         &&Math.abs(mob.getZ()-z)<.12)
                     r.phase=Phase.RAPPEL;
             }
+            case RETREAT -> {
+                // Never release the rope above a drop. If a block has
+                // appeared inside the return column, stay attached until
+                // a genuinely safe way down exists.
+                if(!lineClear(level,r.column,r.landing.getY(),
+                        Math.max(r.landing.getY(),mob.blockPosition().getY())))
+                    moved=false;
+                else if(Math.abs(mob.getX()-x)>.09
+                        ||Math.abs(mob.getZ()-z)>.09)
+                    moved=steer(level,mob,x,r.topY()+.22,z,.12,true);
+                else if(mob.getY()>r.landing.getY()+.045)
+                    moved=steer(level,mob,x,r.landing.getY(),z,.14,true);
+                else {
+                    active.remove(mob);
+                    mob.setNoGravity(false);
+                    mob.setDeltaMovement(0,0,0);
+                    WorkerNavigation.stop(mob);
+                    System.out.println("[GRAPPLE] RETURNED SAFELY after failed ledge "
+                            +r.anchor+" at "+mob.position());
+                }
+            }
             case RAPPEL -> {
                 if(mob.getY()<=r.landing.getY()+.055){
                     active.remove(mob);
@@ -296,6 +325,14 @@ public final class BuilderGrappleAccess {
         }
         if(!moved)r.stalledTicks++;
         else r.stalledTicks=0;
+        if(!r.down&&r.phase==Phase.STEP_ON_TOP&&r.stalledTicks>=45){
+            blockedAnchors.put(mob,new FailedAnchor(r.anchor,
+                    level.getGameTime()+300));
+            r.phase=Phase.RETREAT;
+            r.stalledTicks=0;
+            System.out.println("[GRAPPLE] BLOCKED TOP, return on same rope "
+                    +"anchor="+r.anchor+" landing="+r.landing);
+        }
         return true;
     }
 }
