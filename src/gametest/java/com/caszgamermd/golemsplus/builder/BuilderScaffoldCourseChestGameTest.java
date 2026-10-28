@@ -44,11 +44,11 @@ public final class BuilderScaffoldCourseChestGameTest {
                 .setValue(DoorBlock.OPEN,false)
                 .setValue(DoorBlock.HALF,DoubleBlockHalf.UPPER));
         BlockPos start=helper.absolutePos(new BlockPos(1,2,2));
-        BlockPos finishChest=helper.absolutePos(new BlockPos(5,2,2));
+        BlockPos finishChest=helper.absolutePos(new BlockPos(5,2,5));
         BlockPos door=helper.absolutePos(new BlockPos(6,2,3));
         BlockPos goal=helper.absolutePos(new BlockPos(7,2,3));
         helper.setBlock(1,2,2,Blocks.CHEST);
-        helper.setBlock(5,2,2,Blocks.CHEST);
+        helper.setBlock(5,2,5,Blocks.CHEST);
         if(!(level.getBlockEntity(start) instanceof Container source)
                 ||!(level.getBlockEntity(finishChest) instanceof Container finish)){
             helper.fail("Actual chest block inventories did not spawn");return;
