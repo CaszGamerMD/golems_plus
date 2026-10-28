@@ -48,7 +48,18 @@ public final class BuilderScaffoldPlanAGameTest {
         }
         final int[] phase={0},initial={mob.carriedCount(Items.SCAFFOLDING)};
         final long[] since={helper.getTick()};
+        final double[] priorY={mob.getY()};
         helper.onEachTick(()->{
+            // A truly safe return must not hide a four-block fall behind
+            // a successful final ground position.
+            double fallen=priorY[0]-mob.getY();
+            priorY[0]=mob.getY();
+            if(phase[0]==1&&fallen>.65){
+                helper.fail("Unsafe uncontrolled scaffold drop="+fallen
+                        +" from="+(mob.getY()+fallen)+" to="+mob.getY()
+                        +" "+BuilderScaffoldPlanA.status(mob));
+                return;
+            }
             if(!mob.isAlive()){
                 helper.fail("Real Builder disappeared");return;
             }
