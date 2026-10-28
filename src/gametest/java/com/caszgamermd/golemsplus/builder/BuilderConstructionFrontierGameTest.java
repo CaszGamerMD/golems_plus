@@ -67,6 +67,10 @@ public final class BuilderConstructionFrontierGameTest {
                         upper.getX(),upper.getY(),upper.getZ(),
                         "minecraft:stone","minecraft:stone"));
         var zone=List.of(0,1,2);
+        // A real Builder must finish its first grounded entity tick
+        // before exact A* probes can be trusted.
+        h.onEachTick(()->{
+        if(h.getTick()!=16)return;
         var choice=BuilderConstructionPlanner.choose(world,mob,table,steps,zone);
         if(choice==null||choice.index()!=1||choice.stance()==null){
             h.fail("Planner should choose REAL reachable stone, not unsupported "
@@ -87,7 +91,7 @@ public final class BuilderConstructionFrontierGameTest {
         }
         // This support turns the previously inaccessible first layer
         // cell into a physically placeable ladder.
-        world.setBlock(unsupported.north(),Blocks.STONE.defaultBlockState(),3);
+        world.setBlock(unsupported.south(),Blocks.STONE.defaultBlockState(),3);
         choice=BuilderConstructionPlanner.choose(world,mob,table,steps,zone);
         if(choice==null||choice.index()!=0){
             h.fail("Missing support did not cause previously blocked cell "
@@ -107,6 +111,7 @@ public final class BuilderConstructionFrontierGameTest {
                 +"cell, built reachable second, held Y, retried first after "
                 +"support appeared, then unlocked Y+1");
         h.succeed();
+        });
     }
 
     @GameTest(maxTicks=130,skyAccess=true)
@@ -114,15 +119,18 @@ public final class BuilderConstructionFrontierGameTest {
             GameTestHelper h){
         floor(h);
         ServerLevel world=h.getLevel();
-        var mob=worker(h,h.absolutePos(new BlockPos(3,2,6)));
+        var mob=worker(h,h.absolutePos(new BlockPos(6,2,6)));
         var table=planner(h,mob,2);
-        // An entire two-high wall divides the grounded game arena.
-        for(int x=0;x<8;x++){
-            h.setBlock(x,2,4,Blocks.STONE);
-            h.setBlock(x,3,4,Blocks.STONE);
+        // Seal the first target in a TWO-high 3x3 ring. It has no
+        // reachable position with a clear sightline, regardless of
+        // whether the GameTest world has ground beyond its arena.
+        for(int x=2;x<=4;x++)for(int z=2;z<=4;z++){
+            if(x==3&&z==3)continue;
+            h.setBlock(x,2,z,Blocks.STONE);
+            h.setBlock(x,3,z,Blocks.STONE);
         }
         BlockPos sealed=h.absolutePos(new BlockPos(3,2,3));
-        BlockPos open=h.absolutePos(new BlockPos(4,2,6));
+        BlockPos open=h.absolutePos(new BlockPos(5,2,6));
         var steps=List.of(
                 new BuilderConstructionPlan.Step(
                         sealed.getX(),sealed.getY(),sealed.getZ(),
@@ -131,6 +139,8 @@ public final class BuilderConstructionFrontierGameTest {
                         open.getX(),open.getY(),open.getZ(),
                         "minecraft:stone","minecraft:stone"));
         var zone=List.of(0,1);
+        h.onEachTick(()->{
+        if(h.getTick()!=16)return;
         var chosen=BuilderConstructionPlanner.choose(world,mob,table,steps,zone);
         if(chosen==null||chosen.index()!=1
                 ||chosen.stance()==null){
@@ -154,6 +164,7 @@ public final class BuilderConstructionFrontierGameTest {
         System.out.println("[FRONTIER] PASS blocked line of sight rejected; "
                 +"safe same-Y block claimed; no fake route through wall");
         h.succeed();
+        });
     }
 
     @GameTest(maxTicks=80,skyAccess=true)
@@ -208,6 +219,8 @@ public final class BuilderConstructionFrontierGameTest {
         var table=planner(h,mob,tasks.size());
         var zone=new java.util.ArrayList<Integer>();
         for(int i=0;i<tasks.size();i++)zone.add(i);
+        h.onEachTick(()->{
+        if(h.getTick()!=16)return;
         BuilderConstructionPlanner.Choice found=null;
         int trials=0;
         for(;trials<4;trials++){
@@ -227,5 +240,6 @@ public final class BuilderConstructionFrontierGameTest {
                 +"nearest 32 and found reachable distant same-Y block "
                 +"after "+(trials+1)+" scans");
         h.succeed();
+        });
     }
 }
