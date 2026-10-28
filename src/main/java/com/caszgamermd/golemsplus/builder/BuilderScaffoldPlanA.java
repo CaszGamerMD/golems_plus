@@ -294,7 +294,17 @@ public final class BuilderScaffoldPlanA {
         // impulse as our ordinary scaffold ascent. Never disable gravity,
         // jump over the bridge, setPos, or bypass collision.
         double rise=destination.getY()-worker.getY();
-        double vy=rise>.08
+        // A horizontal scaffold can be flagged bottom=true: the mob
+        // may settle inside it, one block below the work level. Plan A
+        // explicitly permits a real ONE-BLOCK jump, never larger hops.
+        // This is not the tall scaffold climb: it is a short ground-level
+        // hop to regain the supported bridge surface.
+        boolean hop=rise>.55&&rise<=1.1;
+        if(hop){
+            worker.getJumpControl().jump();
+            worker.setJumping(true);
+        }
+        double vy=hop?.42:rise>.08
                 ?Math.min(.23,Math.max(.12,rise/5))
                 :Math.min(0,worker.getDeltaMovement().y);
         worker.getMoveControl().setWantedPosition(tx,destination.getY(),tz,1.0);
