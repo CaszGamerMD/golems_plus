@@ -12,6 +12,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 
 /**
  * Physical single-Builder scaffold training-course logistics.
@@ -241,9 +242,19 @@ public final class BuilderScaffoldCourseLogistics {
         var state=level.getBlockState(at);
         if(!(state.getBlock() instanceof DoorBlock)
                 ||!state.hasProperty(DoorBlock.OPEN))return false;
-        // Update both halves via the one actual vanilla door state.
-        // No redstone or free items are synthesized.
-        if(state.getValue(DoorBlock.OPEN)==open)return true;
-        return level.setBlock(at,state.setValue(DoorBlock.OPEN,open),3);
+        // Both physical halves must agree. Merely toggling the lower
+        // half left the upper collision shape shut, causing a real
+        // Builder to pay the finish quota but get stuck at the door.
+        BlockPos partner=state.getValue(DoorBlock.HALF)==DoubleBlockHalf.LOWER
+                ?at.above():at.below();
+        var other=level.getBlockState(partner);
+        if(!(other.getBlock() instanceof DoorBlock)
+                ||!other.hasProperty(DoorBlock.OPEN))return false;
+        if(other.getValue(DoorBlock.OPEN)!=open)
+            level.setBlock(partner,other.setValue(DoorBlock.OPEN,open),3);
+        if(state.getValue(DoorBlock.OPEN)!=open)
+            level.setBlock(at,state.setValue(DoorBlock.OPEN,open),3);
+        return level.getBlockState(at).getValue(DoorBlock.OPEN)==open
+                &&level.getBlockState(partner).getValue(DoorBlock.OPEN)==open;
     }
 }
