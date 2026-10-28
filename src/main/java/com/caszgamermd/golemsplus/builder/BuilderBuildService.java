@@ -341,12 +341,34 @@ public final class BuilderBuildService {
             var assigned=zoneSchedule(table,plan);
             var zone=assigned.tasks().steps(worker.getUUID());
             // Plan B does not place or navigate any new scaffold towers.
-            int index=table.claimBuilderZoneStep(worker.getUUID(),
-                    zone,plan.steps());
+            // Construction intelligence runs BEFORE step claiming:
+            // assign only a frontier cell with an actually reachable,
+            // collision-safe work stance and a route out after placing.
+            // A currently claimed task is kept during physical travel;
+            // failed tasks are explicitly deferred and then reselected.
+            int index=table.claimedStep(worker.getUUID());
+            int layer=table.builderActiveLayer(plan.steps());
+            if(index<0||index>=plan.steps().size()
+                    ||!zone.contains(index)
+                    ||plan.steps().get(index).y()!=layer
+                    ||!table.builderStepReadyForClaim(index)){
+                var next=BuilderConstructionPlanner.choose(
+                        level,worker,table,plan.steps(),zone);
+                index=next==null?-1:table.claimPreferredBuilderZoneStep(
+                        worker.getUUID(),zone,plan.steps(),next.index());
+            }
             if(index<0){
-                // No tasks in this worker's zone on the CURRENT shared Y,
-                // or every task on that Y is awaiting a safe retry.
-                // Remain available at OnSite; do not start higher layers.
+                // No safely reachable or runnable cell on this same Y
+                // in this worker's zone. Do NOT accept a random index or
+                // climb to a higher construction layer. Get out of the
+                // active construction volume so another Builder can work.
+                if(level.getGameTime()%80==0){
+                    BlockPos origin=table.builderOrigin();
+                    table.setProblem("FRONTIER: no reachable safe work stand "
+                            +"in this Builder's zone on Y="
+                            +(layer-origin.getY())
+                            +"; preserving unfinished same-layer blocks");
+                }
                 if(table.builderZoneDone(zone))activityForFinished(worker);
                 parkAtOnSite(level,worker,table);
                 return;
@@ -519,13 +541,19 @@ public final class BuilderBuildService {
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
             if(!BuilderPlacementSpace.placementHeight(pos,worker)
-                    ||workDistance>14){
-                // A real standing position may be on target Y OR one
-                // block above it. Never stand below the block or let
-                // the physical working reach exceed its 14-squared range.
+                    ||workDistance>14
+                    ||!BuilderPlacementSpace.horizontalClear(pos,worker)
+                    ||!BuilderConstructionPlanner.safeStand(
+                            level,worker,pos,worker.blockPosition())){
+                // Even when within arm's reach, a Builder must first
+                // occupy a PREVALIDATED work stance. This prevents the
+                // repeated old deadlock where it arrived next to an AIR
+                // cell, then had to escape its own placement volume.
                 activity.phase=Action.MOVE_TO_WORK;
-                BlockPos approach=BuilderPlacementSpace.approachAtTargetY(
-                        level,worker,pos);
+                BlockPos approach=BuilderPlacementSpace.approachWithRules(
+                        level,worker,pos,
+                        at->BuilderConstructionPlanner.safeStand(
+                                level,worker,pos,at));
                 if(approach!=null){
                     if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .routeToExact(level,worker,approach,1.0)){
@@ -553,13 +581,14 @@ public final class BuilderBuildService {
                 if(yDiff< -1 && BuilderGrappleAccess.rappelToward(
                         level,worker,table,pos))return;
                 if(yDiff==-1){
-                    // A worker already one block above its assigned
-                    // schematic layer must look for a safe upper/same-Y
-                    // stance, not unnecessarily rappel off the structure.
+                    // One layer above the block is legal ONLY when a
+                    // physical standing location, side clearance and
+                    // post-placement exit all exist. Don't grapple down
+                    // unnecessarily or invent an unreachable stance.
                     table.waitForBuilderAccess(worker.getUUID(),index,
                             level.getGameTime());
-                    table.setProblem("No grounded side stance at Y or Y+1 "
-                            +"with 0.8 X/Z margin for "+pos);
+                    table.setProblem("FRONTIER: no safe Y+1 work stance at "
+                            +pos+" (line of sight / exit / clearance)");
                     return;
                 }
                 // Larger downward changes still require collision-safe
@@ -581,6 +610,17 @@ public final class BuilderBuildService {
             com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
             var velocity=worker.getDeltaMovement();
             worker.setDeltaMovement(0,velocity.y,0);
+            // Re-evaluate the real work pose immediately before spending
+            // any item: a teammate or a new schematic block may have
+            // invalidated the cached approach while this worker walked.
+            if(!BuilderConstructionPlanner.safeStand(
+                    level,worker,pos,worker.blockPosition())){
+                BuilderPlacementSpace.invalidateApproach(worker,pos);
+                table.waitForBuilderAccess(worker.getUUID(),index,
+                        level.getGameTime());
+                table.setProblem("FRONTIER: lost safe pose or exit at "+pos);
+                return;
+            }
             // Never place into any Builder's body. Check before spending
             // the item so waiting for a teammate to move consumes nothing.
             if(!BuilderPlacementSpace.ready(level,worker,table,pos)){
