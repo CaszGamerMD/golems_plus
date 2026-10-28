@@ -7,13 +7,14 @@ import unittest
 from scripts.report_alt_nine_results import read_trials, report
 
 
-def row(gen, finished, quick, *, stalls=0, ascents=0, doors=0, crossings=0, collisions=0, door_stalls=0, door_align=0):
+def row(gen, finished, quick, *, stalls=0, ascents=0, doors=0, crossings=0, collisions=0, door_stalls=0, door_align=0, door_retries=0):
     return (f"[Server thread/INFO] (Minecraft) [STDOUT]: "
             f"[TIMETRIAL REAL GENETICS] gen={gen} realBuilderGolems=9 "
             f"finish13s={finished}/9 finish11_2s={quick}/9 "
             f"doorPlans={doors} doorCrossings={crossings} collisions={collisions} "
             f"jumps=0 slabAscents={ascents} slabEntryStalls={stalls} "
             f"doorEntryAlignTicks={door_align} doorEntryStalls={door_stalls} "
+            f"doorStateRetries={door_retries} "
             "fastestTicks=218 slowestTicks=259 stalled= #2 step=9/20")
 
 
@@ -22,7 +23,7 @@ class PhysicalResultsReporterTests(unittest.TestCase):
         with TemporaryDirectory() as d:
             root = Path(d)
             (root / "real-builder-trial-1.log").write_text(
-                row(0, 6, 2, ascents=2, stalls=5, doors=1, collisions=30, door_stalls=3, door_align=4)+"\n"+
+                row(0, 6, 2, ascents=2, stalls=5, doors=1, collisions=30, door_stalls=3, door_align=4, door_retries=2)+"\n"+
                 row(1, 8, 4, ascents=3, stalls=8, doors=1, collisions=22)+"\n")
             (root / "real-builder-trial-2.log").write_text(
                 row(0, 3, 0, ascents=0, stalls=10, doors=2, collisions=20)+"\n")
@@ -46,6 +47,8 @@ class PhysicalResultsReporterTests(unittest.TestCase):
             self.assertEqual(summary["totals"]["slabAscents"], 7)
             self.assertEqual(summary["totals"]["doorPlans"], 5)
             self.assertEqual(summary["totals"]["doorEntryStalls"], 3)
+            self.assertEqual(summary["totals"]["doorStateRetries"], 2)
+            self.assertIn("Four-tick door state retries: **2**", md)
             self.assertEqual(summary["totals"]["doorEntryAlignTicks"], 4)
             self.assertTrue(summary["hasDoorTelemetry"])
             self.assertIn("Door-entry hesitation observed", md)
