@@ -728,6 +728,8 @@ public final class BuilderBuildService {
                     +" | stage="+table.builderWorkOrder(worker.getUUID()).size()
                     +" | "+BuilderConstructionPlanner.blockedSummary(
                             level,table,plan.steps(),zone)
+                    +BuilderConstructionPlanner.diagnoseBlockedZone(
+                            level,worker,table,plan.steps(),zone)
                     +" | "+table.problem();
             var current=plan.steps().get(index);
             BlockPos target=new BlockPos(current.x(),current.y(),current.z());
