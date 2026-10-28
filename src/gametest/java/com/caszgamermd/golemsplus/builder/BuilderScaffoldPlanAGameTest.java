@@ -58,7 +58,11 @@ public final class BuilderScaffoldPlanAGameTest {
                         BuilderScaffoldPlanA.status(mob)
                         +" climb="+BuilderScaffolding.debugClimb(mob)
                         +" nav="+WorkerNavigation.debugStatus(mob)
-                        +" placed="+table.scaffoldPositions(mob.getUUID()).size());
+                        +" placed="+table.scaffoldPositions(mob.getUUID()).size()
+                        +" first="+level.getBlockState(tower.east().atY(target.getY()-1))
+                        +" second="+level.getBlockState(tower.east(2).atY(target.getY()-1))
+                        +" below="+level.getBlockState(mob.blockPosition())
+                        +" vy="+mob.getDeltaMovement().y);
                 return;
             }
             if(phase[0]==0){
