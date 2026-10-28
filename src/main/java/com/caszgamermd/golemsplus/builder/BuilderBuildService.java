@@ -726,6 +726,8 @@ public final class BuilderBuildService {
             String stage=action==null?"AWAITING TASK":action.phase.name();
             if(index<0)return stage+" | zone tasks="+zone.size()
                     +" | stage="+table.builderWorkOrder(worker.getUUID()).size()
+                    +" | "+BuilderConstructionPlanner.blockedSummary(
+                            level,table,plan.steps(),zone)
                     +" | "+table.problem();
             var current=plan.steps().get(index);
             BlockPos target=new BlockPos(current.x(),current.y(),current.z());
