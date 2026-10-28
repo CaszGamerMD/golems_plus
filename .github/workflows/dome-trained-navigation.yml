@@ -1,0 +1,46 @@
+name: Real Dome Construction — Trained Navigation
+run-name: Original 3,537-block Dome · four real Builders · trained unified navigation
+on:
+  push:
+    branches: [test/dome-trained-navigation-262]
+    paths:
+      - 'src/gametest/**'
+      - '.github/workflows/dome-trained-navigation.yml'
+      - 'src/main/java/com/caszgamermd/golemsplus/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  original-dome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Prove test uses the current single live navigation implementation
+        shell: bash
+        run: |
+          test -f src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderDomeConstructionGameTest.java
+          grep -Fq "WorkerRoutePlanner.Route route=WorkerRoutePlanner.plan(" src/main/java/com/caszgamermd/golemsplus/worker/WorkerNavigation.java
+          grep -Fq 'worker.setJumping(false)' src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffolding.java
+          test "$(grep -c 'getJumpControl().jump()' src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffolding.java || true)" -eq 0
+      - name: Minecraft real Builder Golem Dome construction and full schematic verification
+        run: gradle --no-daemon runGameTest
+      - name: Publish GameTest proof and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-navigation-original-dome-physical-evidence
+          path: |
+            build/gametest/
+            build/reports/
+            build/test-results/
+            run/gametest/
+            run/logs/
+          if-no-files-found: ignore
