@@ -10,6 +10,15 @@ def read(p):
 a,b=read(older),read(local)
 if b is None:
     raise ValueError('No physically observed TT3 results to persist')
+PROTOCOL = 'course-entity-ticking-v1'
+# The first six attempts had no native mob ticks. They are separately
+# archived as pre-native-six-unqualified.json and MUST NOT become a parent,
+# champion, or scored generation in the actual Minecraft training history.
+if a is not None and a.get('nativeSimulationProtocol') != PROTOCOL:
+    print('Ignoring pre-native unqualified TT3 checkpoint; archival retained.')
+    a = None
+if b.get('nativeSimulationProtocol') != PROTOCOL:
+    raise ValueError('Refusing to merge TT3 without proven native entity ticks')
 for obj in (a,b):
     if obj is None:continue
     assert obj['courseHash']=='d86ad9d206729c188300460463f8e1e727c097f4291a4116292d94497d36a337'
