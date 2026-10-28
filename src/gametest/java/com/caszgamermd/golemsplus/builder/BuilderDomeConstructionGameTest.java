@@ -137,9 +137,26 @@ public final class BuilderDomeConstructionGameTest {
             // Count genuine placed world states, including independent
             // out-of-order zone completion; don't use obsolete ledger fields.
             int physicalCount=physicallyCorrect(level,steps);
+            int sharedY=table.builderActiveLayer(steps);
+            // Fail immediately if a Builder receives an out-of-layer
+            // construction assignment; no silent progress on upper Y
+            // while an indexed lower-Y cell remains unfinished.
+            for(BuilderGolem member:crew){
+                int assigned=table.claimedStep(member.getUUID());
+                if(assigned>=0&&assigned<steps.size()
+                        &&steps.get(assigned).y()>sharedY){
+                    helper.fail("Y LAYER VIOLATION: assigned Y="
+                            +(steps.get(assigned).y()-table.builderOrigin().getY())
+                            +" above active Y="
+                            +(sharedY-table.builderOrigin().getY())
+                            +" worker="+member.getName().getString());
+                    return;
+                }
+            }
             if(tick%400==0)
                 System.out.println("[DOME PROGRESS] tick="+tick
                     +" realBlocks="+physicalCount+"/"+steps.size()
+                    +" activeY="+(sharedY-table.builderOrigin().getY())
                     +" clear="+table.builderClearCursor()
                     +" cursor="+table.builderCursor()
                     +" problem="+table.problem());
