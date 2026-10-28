@@ -363,11 +363,11 @@ public final class BuilderBuildService {
                 // climb to a higher construction layer. Get out of the
                 // active construction volume so another Builder can work.
                 if(level.getGameTime()%80==0){
-                    BlockPos origin=table.builderOrigin();
-                    table.setProblem("FRONTIER: no reachable safe work stand "
-                            +"in this Builder's zone on Y="
-                            +(layer-origin.getY())
-                            +"; preserving unfinished same-layer blocks");
+                    String report=BuilderConstructionPlanner.blockedSummary(
+                            level,table,plan.steps(),zone);
+                    table.setProblem("FRONTIER: "+report);
+                    System.out.println("[FRONTIER BLOCKED] "
+                            +worker.getName().getString()+" "+report);
                 }
                 if(table.builderZoneDone(zone))activityForFinished(worker);
                 parkAtOnSite(level,worker,table);
