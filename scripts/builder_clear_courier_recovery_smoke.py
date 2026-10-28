@@ -19,6 +19,6 @@ assert "if(existing.isAir()){" in clear
 assert "if(BuilderPlacementState.matches(existing,expected)){" in clear
 assert "(neighborOccupied(level,mob,p)?90:0)" in nav
 assert "1.5*1.5" in nav
-assert "if(++checked>MAX_DESTINATION_PATHS*2" in nav
-assert "best!=null&&checked>8)break;" in nav
+assert "WorkerRoutePlanner.Route route=WorkerRoutePlanner.plan(" in nav
+assert "at->trainedTerrainCost(level,at)" in nav
 print("PASS Builder clearing failover, solo courier prioritization, no chunk ticket churn, navigation goals")
