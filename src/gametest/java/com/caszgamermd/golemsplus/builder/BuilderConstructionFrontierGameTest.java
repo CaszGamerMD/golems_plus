@@ -161,6 +161,13 @@ public final class BuilderConstructionFrontierGameTest {
         if(table.builderActiveLayer(steps)!=sealed.getY()){
             h.fail("Inaccessible lower Y wrongly unlocked higher Y");return;
         }
+        String diagnosis=BuilderConstructionPlanner.blockedSummary(
+                world,table,steps,zone);
+        if(!diagnosis.contains("#0 XYZ=3, 0, 3")
+                ||!diagnosis.contains("no confirmed reachable work stance")){
+            h.fail("Missing schematic-local blocked target diagnostics: "
+                    +diagnosis);return;
+        }
         System.out.println("[FRONTIER] PASS blocked line of sight rejected; "
                 +"safe same-Y block claimed; no fake route through wall");
         h.succeed();
