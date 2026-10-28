@@ -17,7 +17,7 @@ GEN = re.compile(
     r" finish11_2s=(?P<finish112>\d+)/(?P<den112>\d+)"
 )
 FIELDS = ("doorPlans", "doorCrossings", "collisions", "jumps",
-          "slabAscents", "slabEntryStalls", "doorEntryAlignTicks", "doorEntryStalls", "fastestTicks", "slowestTicks")
+          "slabAscents", "slabEntryStalls", "doorEntryAlignTicks", "doorEntryStalls", "doorStateRetries", "fastestTicks", "slowestTicks")
 VALUE = re.compile(r"\b([A-Za-z][A-Za-z0-9]*)=(-?\d+)\b")
 
 
@@ -86,7 +86,7 @@ def report(trials, before, after, champion, run_id="", run_url="", mode="evolve"
     champion_tick = champion.get("slowestTicks") if isinstance(champion, dict) else None
     summed = {field: sum(g.get(field, 0) for g in generations) for field
               in ("doorPlans", "doorCrossings", "collisions", "jumps",
-                  "slabAscents", "slabEntryStalls", "doorEntryAlignTicks", "doorEntryStalls")}
+                  "slabAscents", "slabEntryStalls", "doorEntryAlignTicks", "doorEntryStalls", "doorStateRetries")}
     summed["trafficReplans"] = sum(t["trafficReplans"] for t in trials)
     has_slab_telemetry = bool(generations) and all(
         "slabAscents" in g and "slabEntryStalls" in g for g in generations)
@@ -124,6 +124,8 @@ def report(trials, before, after, champion, run_id="", run_url="", mode="evolve"
             notes.append("**Slabs are physically accessible:** observed real ascents. Compare entry stalls and completion rates before changing slab route costs.")
         elif has_slab_telemetry:
             notes.append("**Slab skill not demonstrated in the scored crew:** no recorded native ascents. Check whether plans enter slabs, then check approach geometry and instrumentation.")
+        if has_door_telemetry and summed["doorStateRetries"]>0:
+            notes.append("**Door stall recovery activated:** physical Golems changed door state after four consecutive blocked forward attempts. Compare retries per successful crossing; if they rise without improving completion, inspect door alignment and corridor traffic.")
         if has_door_telemetry and summed["doorEntryStalls"] > 0:
             notes.append("**Door-entry hesitation observed:** check collision-safe alignment and congestion at door lips; require the real-controller no-jump regression to pass.")
         if summed["doorPlans"] > 0 and summed["doorCrossings"] == 0:
@@ -174,6 +176,9 @@ def report(trials, before, after, champion, run_id="", run_url="", mode="evolve"
         f"- Door plans: **{summed['doorPlans']}**; door crossing attempts: **{summed['doorCrossings']}**.",
         (f"- Door alignment ticks: **{summed['doorEntryAlignTicks']}**; door-entry stalls: **{summed['doorEntryStalls']}**."
          if has_door_telemetry else "- Door-entry alignment/stalls: telemetry unavailable in this run."),
+        (f"- Four-tick door state retries: **{summed['doorStateRetries']}**."
+         if all("doorStateRetries" in g for g in generations) and generations
+         else "- Four-tick door state retries: telemetry unavailable in this run."),
         f"- Collision events: **{summed['collisions']}**; jump events: **{summed['jumps']}**; traffic replans: **{summed['trafficReplans']}**.",
         "", "## Trial breakdown", "",
         "| Trial | Generations | Best ≤260t | Best ≤224t | Final ≤260t |",
