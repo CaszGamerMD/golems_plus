@@ -281,7 +281,15 @@ public final class BuilderScaffoldPlanA {
                 return Result.NO_SAFE_ROUTE;
             var item=BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING);
             if(item==null)return Result.NEED_MATERIALS;
-            if(!level.setBlock(at,Blocks.SCAFFOLDING.defaultBlockState(),3)
+            // Native Minecraft requires a supported vertical shaft to
+            // carry DISTANCE=0. The block default is DISTANCE=7, which
+            // makes the first horizontal extension incorrectly conclude
+            // its real tower has no support before its scheduled updates.
+            var anchored=Blocks.SCAFFOLDING.defaultBlockState()
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,0)
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM,
+                            !level.getBlockState(at.below()).is(Blocks.SCAFFOLDING));
+            if(!level.setBlock(at,anchored,3)
                     ||!table.trackScaffold(worker.getUUID(),at)){
                 if(level.getBlockState(at).is(Blocks.SCAFFOLDING))
                     level.setBlock(at,Blocks.AIR.defaultBlockState(),3);
