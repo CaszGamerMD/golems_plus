@@ -440,7 +440,12 @@ public final class BuilderScaffolding {
      */
     static boolean dismountAtBase(ServerLevel level,BuilderGolem worker,
                                    BlockPos column){
-        BlockPos exit=exitGround(level,worker,column);
+        AccessRoute planned=access.get(worker);
+        BlockPos exit=planned!=null
+                &&planned.base().equals(column)
+                &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canStandOn(level,worker,planned.groundExit())
+                ?planned.groundExit():exitGround(level,worker,column);
         if(exit==null)return false;
         clearMotion(worker);
         access.remove(worker);
@@ -554,6 +559,11 @@ public final class BuilderScaffolding {
         // valid vanilla walking nodes, so repeatedly reconsidering a
         // path to an upper platform can abandon an active ascent.
         var existing=table.scaffoldPositions(worker.getUUID());
+        // Future schematic blocks must not enclose the reserved route
+        // DOWN or block the Builder's two-block-high ground exit.
+        java.util.Set<BlockPos> future=new java.util.HashSet<>();
+        for(var cell:plan)if(!cell.ignorePlant())
+            future.add(new BlockPos(cell.x(),cell.y(),cell.z()));
         // Prefer the retained legal access choice across job ticks.
         // If construction changes the approach, expire only this site
         // choice, and choose another safe route without moving the worker.
@@ -563,14 +573,14 @@ public final class BuilderScaffolding {
                 &&level.getGameTime()<chosen.until()
                 &&!avoided(level,worker,chosen.base())
                 &&BuilderScaffoldSiteScore.withinReach(chosen.base(),target)
-                &&safeGroundExit(level,worker,chosen.base())!=null)
+                &&safeGroundExit(level,worker,chosen.base(),future)!=null)
             base=chosen.base();
         else access.remove(worker);
         if(base==null)base=towers(level,table,worker).stream()
                 .map(Tower::base)
                 .filter(p->!avoided(level,worker,p)
                         &&BuilderScaffoldSiteScore.withinReach(p,target)
-                        &&safeGroundExit(level,worker,p)!=null)
+                        &&safeGroundExit(level,worker,p,future)!=null)
                 .min(Comparator.comparingDouble(p->
                         BuilderScaffoldSiteScore.score(p,worker.blockPosition(),
                                 target,0,0,0,true))).orElse(null);
@@ -610,9 +620,9 @@ public final class BuilderScaffolding {
         // Reuse any owned tower within TRUE placement reach before
         // spending new scaffold. Both reuse and selection score the same
         // physical candidates; no fixed learned route is stored.
-        if(base==null)base=findBase(level,worker,target,feet,table,plan);
+        if(base==null)base=findBase(level,worker,target,feet,table,plan,future);
         if(base==null)return Result.NO_SAFE_TOWER;
-        BlockPos exit=safeGroundExit(level,worker,base);
+        BlockPos exit=safeGroundExit(level,worker,base,future);
         if(exit==null)return Result.NO_SAFE_TOWER;
         // Reserve a real return route BEFORE ascent, not after reaching
         // the top. This prevents choosing an unsafe dead-end column.
@@ -722,20 +732,30 @@ public final class BuilderScaffolding {
      * step off on solid ground. Use the Builder's own collision shape.
      */
     private static BlockPos safeGroundExit(ServerLevel level,
-            BuilderGolem worker,BlockPos base){
-        BlockPos landing=exitGround(level,worker,base);
-        if(landing==null||landing.getY()<base.getY()-1
-                ||landing.getY()>base.getY()+1)return null;
-        return landing;
+            BuilderGolem worker,BlockPos base,
+            java.util.Set<BlockPos> future){
+        BlockPos best=null;
+        double score=Double.POSITIVE_INFINITY;
+        for(Direction side:Direction.Plane.HORIZONTAL)
+            for(int dy:new int[]{0,-1}){
+                BlockPos p=base.relative(side).offset(0,dy,0);
+                if(future.contains(p)||future.contains(p.above())
+                        ||p.getY()<base.getY()-1
+                        ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .canStandOn(level,worker,p))continue;
+                double candidate=worker.distanceToSqr(
+                        p.getX()+.5,base.getY(),p.getZ()+.5)
+                        +Math.abs(dy)*2.0;
+                if(candidate<score){best=p;score=candidate;}
+            }
+        return best;
     }
 
     private record Site(BlockPos base,double score){}
     private static BlockPos findBase(ServerLevel level,BuilderGolem worker,
             BlockPos target,int feet,WorkerStationBlockEntity table,
-            List<BuilderConstructionPlan.Step> plan){
-        java.util.Set<BlockPos> reserved=new java.util.HashSet<>();
-        for(var step:plan)if(!step.ignorePlant())
-            reserved.add(new BlockPos(step.x(),step.y(),step.z()));
+            List<BuilderConstructionPlan.Step> plan,
+            java.util.Set<BlockPos> reserved){
         java.util.List<Site> candidates=new java.util.ArrayList<>();
         // The whole eventual shaft must remain clear through the TOP of
         // this work height. Checking only the first 16-block extension
@@ -753,7 +773,7 @@ public final class BuilderScaffolding {
                         ||!level.hasChunkAt(base.below())
                         ||!level.getBlockState(base.below()).isFaceSturdy(
                                 level,base.below(),Direction.UP)
-                        ||safeGroundExit(level,worker,base)==null)continue;
+                        ||safeGroundExit(level,worker,base,reserved)==null)continue;
                 int wantedTop=target.getY()-1;
                 boolean clear=true;
                 for(int y=base.getY();y<=wantedTop;y++){
