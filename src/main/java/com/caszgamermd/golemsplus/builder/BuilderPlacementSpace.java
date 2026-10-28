@@ -63,47 +63,71 @@ public final class BuilderPlacementSpace {
                     ||edgeDistance(target,worker.getX(),worker.getZ())
                             <MIN_EDGE_CLEARANCE-.015);
     }
+    /** Choose a REAL per-tick lateral movement that clears the target.
+     * Try more than the nearest face: a nearby slab, wall or teammate
+     * may block the obvious side even though another side is available.
+     * Keep exact physical collision and ground support for every choice.
+     */
+    private static double[] precisionStep(ServerLevel level,BuilderGolem mob,
+            BlockPos target){
+        if(!mob.onGround()||mob.blockPosition().getY()!=target.getY())
+            return null;
+        double cx=target.getX()+.5,cz=target.getZ()+.5;
+        double x=mob.getX(),z=mob.getZ();
+        double[][] candidates={
+                {x>=cx?1:-1,0},{0,z>=cz?1:-1},
+                {x>=cx?-1:1,0},{0,z>=cz?-1:1}
+        };
+        // The near-side movement is preferred, but any cardinal path
+        // that increases separation is valid when it has real footing.
+        double bestScore=Double.POSITIVE_INFINITY;
+        double[] best=null;
+        BlockPos oldFoot=mob.blockPosition();
+        for(double[] direction:candidates){
+            double vx=direction[0]*.115,vz=direction[1]*.115;
+            double newX=x+vx,newZ=z+vz;
+            BlockPos foot=BlockPos.containing(newX,mob.getY(),newZ);
+            if(!level.hasChunkAt(foot)||!level.hasChunkAt(foot.below()))
+                continue;
+            // On the same block we already have true physical footing.
+            // On another tile, check for a real block or partial-block
+            // collision surface below rather than requiring a FULL
+            // face-sturdy block; that incorrectly rejected slabs.
+            if(!foot.equals(oldFoot)
+                    &&level.getBlockState(foot.below())
+                        .getCollisionShape(level,foot.below()).isEmpty()
+                    &&level.getBlockState(foot)
+                        .getCollisionShape(level,foot).isEmpty())
+                continue;
+            if(!level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz)))
+                continue;
+            double desiredX=direction[0]>0?target.getX()+1.84:target.getX()-.84;
+            double desiredZ=direction[1]>0?target.getZ()+1.84:target.getZ()-.84;
+            double distance=direction[0]!=0
+                    ?Math.abs(desiredX-newX):Math.abs(desiredZ-newZ);
+            double score=distance;
+            if(direction[0]!=0&&direction[0]*(x-cx)<0
+                    ||direction[1]!=0&&direction[1]*(z-cz)<0)
+                score+=2.0;
+            if(score<bestScore){bestScore=score;best=new double[]{vx,vz};}
+        }
+        return best;
+    }
     private static boolean canPrecisionStep(ServerLevel level,BuilderGolem mob,
             BlockPos target){
-        if(!mob.onGround()||mob.blockPosition().getY()!=target.getY())return false;
-        double dx=mob.getX()-(target.getX()+.5);
-        double dz=mob.getZ()-(target.getZ()+.5);
-        boolean xAxis=Math.abs(dx)>=Math.abs(dz);
-        double x=xAxis?(dx>=0?target.getX()+1.84:target.getX()-.84):mob.getX();
-        double z=xAxis?mob.getZ():(dz>=0?target.getZ()+1.84:target.getZ()-.84);
-        BlockPos foot=BlockPos.containing(x,mob.getY(),z);
-        if(!level.hasChunkAt(foot)||!level.hasChunkAt(foot.below())
-                ||!level.getBlockState(foot.below()).isFaceSturdy(
-                        level,foot.below(),net.minecraft.core.Direction.UP))
-            return false;
-        return level.getBlockState(foot).getCollisionShape(level,foot).isEmpty()
-                &&level.getBlockState(foot.above())
-                        .getCollisionShape(level,foot.above()).isEmpty();
+        return precisionStep(level,mob,target)!=null;
     }
-    /** This precision phase is called every entity tick BEFORE physics.
-     * A* reaches a work stand; the last 0.3-0.8m is a deliberate, real
-     * collision-checked sidestep away from the new block's exact edge.
-     * No coordinate snapping, teleport, noclip, or vertical flying.
+    /** This phase operates every real entity tick before Minecraft physics.
+     * No snaps, flight, teleportation or unsafe instant block placements.
      */
     public static boolean tickPrecisionYield(ServerLevel level,BuilderGolem mob){
         Yield hold=yielding.get(mob);
-        if(hold==null||!occupied(hold.target(),mob)
-                ||!canPrecisionStep(level,mob,hold.target()))return false;
-        BlockPos target=hold.target();
-        double dx=mob.getX()-(target.getX()+.5);
-        double dz=mob.getZ()-(target.getZ()+.5);
-        boolean xAxis=Math.abs(dx)>=Math.abs(dz);
-        double desired=xAxis?(dx>=0?target.getX()+1.84:target.getX()-.84)
-                :(dz>=0?target.getZ()+1.84:target.getZ()-.84);
-        double distance=desired-(xAxis?mob.getX():mob.getZ());
-        if(Math.abs(distance)<.012)return false;
-        double step=Math.copySign(Math.min(.12,Math.abs(distance)),distance);
-        var next=mob.getBoundingBox().move(xAxis?step:0,0,xAxis?0:step);
-        if(!level.noCollision(mob,next))return false;
+        if(hold==null||!occupied(hold.target(),mob))return false;
+        double[] step=precisionStep(level,mob,hold.target());
+        if(step==null)return false;
         WorkerNavigation.stop(mob);
         var velocity=mob.getDeltaMovement();
-        mob.setDeltaMovement(xAxis?step:0,Math.min(0,velocity.y),
-                xAxis?0:step);
+        mob.setDeltaMovement(step[0],Math.min(0,velocity.y),step[1]);
         return true;
     }
 
