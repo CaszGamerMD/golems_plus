@@ -609,8 +609,8 @@ public final class BuilderEvolutionAltCourseGameTest {
     }
 
     private static boolean canOperateDoor(BlockState state){
-        return state.getBlock() instanceof DoorBlock
-                &&!state.is(Blocks.IRON_DOOR);
+        return state.getBlock() instanceof DoorBlock door
+                &&door.type().canOpenByHand();
     }
 
     /** Opening a door is an allowed physical interaction, NOT a wall
@@ -635,34 +635,12 @@ public final class BuilderEvolutionAltCourseGameTest {
         return true;
     }
 
-    /** Retry the real wooden doorway by flipping the SAME door in both
-     * block halves. Do not use setBlock(AIR), noclip or instant movement.
-     * Auto-opening in walkOneTick would immediately undo a flip, so the
-     * controller only operates doors after four genuinely stalled attempts.
-     */
-    private static boolean toggleDoorFromReach(ServerLevel world,
-            BuilderGolem mob,BlockPos lower){
-        BlockState state=world.getBlockState(lower);
-        BlockState upper=world.getBlockState(lower.above());
-        if(!canOperateDoor(state)||!canOperateDoor(upper))return false;
-        double distance=Math.hypot(mob.getX()-lower.getX()-.5,
-                mob.getZ()-lower.getZ()-.5);
-        if(distance>1.7||Math.abs(mob.getY()-lower.getY())>1.0)
-            return false;
-        boolean next=!state.getValue(DoorBlock.OPEN);
-        world.setBlock(lower,state.setValue(DoorBlock.OPEN,next),3);
-        world.setBlock(lower.above(),
-                upper.setValue(DoorBlock.OPEN,next),3);
-        System.out.println("[ALT DOOR RETRY] toggled real door to "
-                +(next?"OPEN":"CLOSED")+" at "+lower+" from "+mob.position());
-        return true;
-    }
-
     /** A doorway attempt counts only FORWARD displacement along the
      * planned entering/exiting axis, not lateral alignment, jumping, or
      * another worker's movement. A collision-free step resets its clock.
-     * Four genuine consecutive failed attempts toggle the active door,
-     * then the controller continues physically trying that new state.
+     * Four consecutive failed attempts open a CLOSED wooden door. An
+     * already-open passage stays OPEN; re-evaluate lateral clearance
+     * instead of closing a door onto a worker in the doorway.
      */
     private static void recordDoorForwardProgress(Candidate b,
             ServerLevel world,BlockPos door,double oldX,double oldZ,
@@ -718,12 +696,24 @@ public final class BuilderEvolutionAltCourseGameTest {
             b.doorNoForwardTicks=0;
             return;
         }
-        if(++b.doorNoForwardTicks>=4
-                &&toggleDoorFromReach(world,b.mob,door)){
+        if(++b.doorNoForwardTicks>=4){
             b.doorNoForwardTicks=0;
-            b.doorStateRetries++;
-            b.observedDoorOpen=!currentOpen;
-            b.doorTargetX=Integer.MIN_VALUE;
+            if(!currentOpen&&openDoorFromReach(world,b.mob,door)){
+                b.doorStateRetries++;
+                b.observedDoorOpen=true;
+                // Keep the chosen path. Re-evaluate the lane now that
+                // the real collision shape of the door has changed.
+                b.doorTargetX=Integer.MIN_VALUE;
+            }else if(currentOpen){
+                // Villager-style: an open door is a traversable path
+                // node, not a switch to repeatedly close and reopen.
+                // Try a different REAL collision-checked lane without
+                // replacing any previously learned route or genome.
+                double alternate=safeDoorLane(world,b.mob,door,
+                        b.doorLaneShift>=0?-.12:.12,b.doorOffsetX);
+                if(Math.abs(alternate-b.doorLaneShift)>.01)
+                    b.doorLaneShift=alternate;
+            }
             b.lastDistance=Double.POSITIVE_INFINITY;
             b.immobile=0;
             b.backoffTicks=0;
@@ -1435,6 +1425,12 @@ public final class BuilderEvolutionAltCourseGameTest {
     private static double safeDoorLane(ServerLevel world,BuilderGolem mob,
                                        BlockPos door,Genome dna,
                                        boolean offsetX){
+        return safeDoorLane(world,mob,door,dna.doorBias(),offsetX);
+    }
+
+    private static double safeDoorLane(ServerLevel world,BuilderGolem mob,
+                                       BlockPos door,double preferred,
+                                       boolean offsetX){
         double[] candidates={0,-.08,.08,-.12,.12,-.16,.16};
         double best=Double.POSITIVE_INFINITY;
         double chosen=0;
@@ -1453,7 +1449,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 }
             }
             if(!clear)continue;
-            double penalty=Math.abs(offset-dna.doorBias())
+            double penalty=Math.abs(offset-preferred)
                     +Math.abs(offset)*.04;
             if(penalty<best){best=penalty;chosen=offset;}
         }
@@ -1479,6 +1475,9 @@ public final class BuilderEvolutionAltCourseGameTest {
         if(!physicalCellOpen(helper,world,b.mob,fromX,fromZ))
             return false;
         int[] ahead=next(b.x,b.z,b.route.charAt(b.cursor));
+        // A doorway is a reversible interaction, not a permanently
+        // obstructed stone edge. Never contaminate learned terrain costs.
+        if(MAZE[ahead[1]].charAt(ahead[0])=='D')return false;
         Edge blocked=new Edge(fromX,fromZ,ahead[0],ahead[1]);
         b.realBlockFailures.merge(blocked,15,(a,c)->Math.min(100,a+c));
         Map<Edge,Integer> evidence=new HashMap<>(b.inheritedBlockMemory);
@@ -1896,8 +1895,10 @@ public final class BuilderEvolutionAltCourseGameTest {
             boolean leavingDoor=MAZE[b.z].charAt(b.x)=='D';
             if(enteringDoor||leavingDoor)b.movementMode="d";
             if(enteringDoor){
-                // Attempt to walk through either open OR closed state.
-                // Never undo the stall-recovery toggle immediately.
+                // Follow a single stable planned path, as villagers do.
+                // Opening the nearby door is an action on that path,
+                // not a reason to throw it away or stop for four ticks.
+                openDoorFromReach(world,mob,target);
                 if(b.doorTargetX!=ahead[0]||b.doorTargetZ!=ahead[1]){
                     b.doorTargetX=ahead[0];
                     b.doorTargetZ=ahead[1];
@@ -1907,6 +1908,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                 }
                 centerShift=b.doorLaneShift;
             }else if(leavingDoor){
+                // Another worker must not inadvertently close a passage
+                // around a body that is currently exiting the threshold.
+                openDoorFromReach(world,mob,pos(helper,b.x,2,b.z));
                 // Maintain the SAME verified alignment through the EXIT
                 // face. Re-solving on the far side causes side-to-side
                 // oscillation in a single door.
@@ -2194,14 +2198,17 @@ public final class BuilderEvolutionAltCourseGameTest {
         // Teammate contact must NEVER teach the genetics that a slab
         // face is a permanent solid wall. Log static evidence only
         // when a stationary body has no live neighbor blocking it.
-        if(realHorizontal<.11&&hitsStaticBlock&&!teammateBlocking)
+        if(enteringDoorCell||leavingDoorCell)
+            b.staticStalls=0; // actionable door, not a learned static wall
+        else if(realHorizontal<.11&&hitsStaticBlock&&!teammateBlocking)
             b.staticStalls++;
         else if(realHorizontal>.15||teammateBlocking)
             b.staticStalls=0;
         if(mob.position().distanceToSqr(old)<.000004){
             b.movementMode="c";
             b.collisions++;
-            if(hitsStaticBlock&&!teammateBlocking&&b.immobile>3){
+            if(hitsStaticBlock&&!teammateBlocking&&b.immobile>3
+                    &&!enteringDoorCell&&!leavingDoorCell){
                 Edge blocked=new Edge(b.x,b.z,ahead[0],ahead[1]);
                 b.realBlockFailures.merge(blocked,1,Integer::sum);
             }
