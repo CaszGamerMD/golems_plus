@@ -63,7 +63,8 @@ public final class BuilderDoorCrowdGameTest {
             level.addFreshEntity(mob);
             crew.add(mob);destinations.add(target);
         }
-        final int[] lastCompleted={0},lastProgress={0};
+        final int[] lastCompleted={0};
+        final long[] lastProgress={0};
         final double[] lastPositions=new double[8];
         for(int i=0;i<4;i++){
             lastPositions[2*i]=crew.get(i).getX();
