@@ -207,7 +207,7 @@ public final class BuilderScaffoldCourseLogistics {
                         .is(Blocks.SCAFFOLDING))
             return 0;
         var positions=new ArrayList<>(table.scaffoldPositions(worker.getUUID()));
-        positions.sort(Comparator.comparingInt(BlockPos::getY).reversed());
+        positions.sort(Comparator.comparingInt((BlockPos at)->at.getY()).reversed());
         int recovered=0;
         for(BlockPos at:positions){
             if(!level.hasChunkAt(at)
