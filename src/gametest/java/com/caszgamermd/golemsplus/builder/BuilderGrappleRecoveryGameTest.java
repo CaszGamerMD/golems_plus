@@ -193,4 +193,46 @@ public final class BuilderGrappleRecoveryGameTest {
                     +g.position()+" checked="+traversed[0]);
         });
     }
+
+    @GameTest(maxTicks=240,skyAccess=true)
+    public void distantDepotDoesNotForceHookForNearbyOneBlockDrop(
+            GameTestHelper h){
+        ground(h);
+        var world=h.getLevel();
+        h.setBlock(4,2,3,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(4,3,3));
+        // OnSite's distant coordinates are intentionally outside this
+        // small course. The Builder must reach the local floor first,
+        // instead of repeatedly hooking the roof for a one-block drop.
+        BlockPos farGoal=h.absolutePos(new BlockPos(20,2,20));
+        var table=(WorkerStationBlockEntity)world.getBlockEntity(
+                h.absolutePos(new BlockPos(0,2,0)));
+        BuilderGolem g=golem(h,start);
+        final boolean[] moving={false};
+        h.onEachTick(()->{
+            if(h.getTick()<10)return;
+            if(BuilderGrappleAccess.active(g)){
+                h.fail("Attached a hook for a supported one-block local drop");
+                return;
+            }
+            if(g.onGround()&&g.blockPosition().getY()==start.getY()-1){
+                if(!moving[0]){
+                    h.fail("Worker fell down without a planned physical path");
+                    return;
+                }
+                System.out.println("[GRAPPLE RETURN] PASS distant storage "
+                        +"uses nearby trained A* one-block drop, not rope, "
+                        +"tick="+h.getTick());
+                h.succeed();
+                return;
+            }
+            if(h.getTick()%5==0){
+                moving[0]=BuilderGrappleAccess.rappelToward(
+                        world,g,table,farGoal)||moving[0];
+            }
+            if(h.getTick()>=170)
+                h.fail("Could not walk safely off nearby one-block ledge "
+                        +g.position());
+        });
+    }
 }
