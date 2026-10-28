@@ -1,0 +1,34 @@
+name: One Real Builder — Scaffold Chest Course
+on:
+  push:
+    branches: [test/single-builder-scaffold-chest-course-262]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-single-builder:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Test nine-policy training rewards real chest quota
+        run: gradle --no-daemon test
+      - name: Run isolated one-golem physical start chest, scaffolding and finish-door test
+        run: gradle --no-daemon runGameTest
+      - name: Save real-course traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-golem-scaffold-chest-course
+          path: |
+            build/reports/
+            build/test-results/
+            build/run/gameTest/logs/
+          if-no-files-found: ignore
