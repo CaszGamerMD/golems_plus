@@ -452,6 +452,7 @@ public final class BuilderScaffolding {
         if(exit==null)return false;
         clearMotion(worker);
         access.remove(worker);
+        BuilderScaffoldTrialStats.landed(worker);
         exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));
         return true;
     }
@@ -482,8 +483,12 @@ public final class BuilderScaffolding {
             current=BuilderScaffoldBridgePlanner.choose(level,worker,
                     table,owner,under,target,
                     BuilderScaffoldBridgePlanner.reserved(plan));
-            if(current==null)return Result.NOT_NEEDED;
+            if(current==null){
+                BuilderScaffoldTrialStats.rejected(worker);
+                return Result.NOT_NEEDED;
+            }
             bridges.put(worker,current);
+            BuilderScaffoldTrialStats.selected(worker,current);
         }
         var ordered=current.cells();
         BlockPos here=worker.blockPosition().below();
@@ -524,6 +529,7 @@ public final class BuilderScaffolding {
                 BuilderSupplyInventory.refund(table,receipt);
                 return Result.NO_SAFE_TOWER;
             }
+            BuilderScaffoldTrialStats.placed(worker);
         }else if(!level.getBlockState(next).is(Blocks.SCAFFOLDING))
             return Result.NO_SAFE_TOWER;
         if(!stepToPlatform(level,worker,nextFeet))
@@ -555,7 +561,9 @@ public final class BuilderScaffolding {
         if(!table.scaffoldPositions(worker.getUUID()).contains(back)
                 ||!level.getBlockState(back).is(Blocks.SCAFFOLDING))
             return false;
-        return stepToPlatform(level,worker,back.above());
+        if(!stepToPlatform(level,worker,back.above()))return false;
+        BuilderScaffoldTrialStats.retreat(worker);
+        return true;
     }
 
     /** Return physically to a worker's own upper scaffold landing,
