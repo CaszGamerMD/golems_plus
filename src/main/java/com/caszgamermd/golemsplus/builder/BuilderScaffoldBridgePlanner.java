@@ -79,9 +79,13 @@ public final class BuilderScaffoldBridgePlanner {
         if(withinPlacementRange(anchor,work))return null;
         record Node(BlockPos at,List<BlockPos> cells){}
         var queue=new ArrayDeque<Node>();
-        var visited=new HashSet<BlockPos>();
+        // Enumerate bounded SIMPLE routes rather than permanently
+        // marking a coordinate visited. Reaching one cell from a
+        // different direction can yield fewer turns; permanent visited
+        // flags made the trainable turn-cost weight ineffective.
+        // At <=6 steps there are only a few thousand alternatives.
+        var safeCache=new HashMap<BlockPos,Boolean>();
         queue.addLast(new Node(anchor,List.of()));
-        visited.add(anchor);
         Route best=null;
         while(!queue.isEmpty()){
             Node node=queue.removeFirst();
@@ -105,8 +109,9 @@ public final class BuilderScaffoldBridgePlanner {
             if(node.cells().size()>=MAX_SPAN)continue;
             for(Direction side:Direction.Plane.HORIZONTAL){
                 BlockPos next=node.at().relative(side);
-                if(next.getY()!=anchor.getY()||!visited.add(next)
-                        ||!safe.test(next))continue;
+                if(next.getY()!=anchor.getY()||next.equals(anchor)
+                        ||node.cells().contains(next)
+                        ||!safeCache.computeIfAbsent(next,safe::test))continue;
                 var cells=new ArrayList<>(node.cells());
                 cells.add(next.immutable());
                 queue.addLast(new Node(next,List.copyOf(cells)));
