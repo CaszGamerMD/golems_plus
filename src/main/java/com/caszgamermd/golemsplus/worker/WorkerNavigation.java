@@ -385,6 +385,10 @@ public final class WorkerNavigation {
     public static boolean canReachExact(ServerLevel level,PathfinderMob mob,
                                         BlockPos target){
         if(target==null||!level.hasChunkAt(target))return false;
+        // Exact in-place standing must work even before Minecraft has
+        // produced its first navigation path for this real entity.
+        if(mob.blockPosition().equals(target)
+                &&standingTile(level,mob,target))return true;
         Path path=mob.getNavigation().createPath(target,0);
         return endsAtExactTile(path,target)&&safePath(level,mob,path,false);
     }
