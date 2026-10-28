@@ -385,6 +385,12 @@ public final class WorkerNavigation {
     public static boolean canReachExact(ServerLevel level,PathfinderMob mob,
                                         BlockPos target){
         if(target==null||!level.hasChunkAt(target))return false;
+        // A newly spawned golem can ask for a path to its OWN tile
+        // before vanilla initializes its ground navigator. No movement
+        // is needed when its physical feet are already there; rejecting
+        // this also incorrectly discards valid scaffold foundation sites.
+        if(mob.blockPosition().equals(target)
+                &&standingTile(level,mob,target))return true;
         Path path=mob.getNavigation().createPath(target,0);
         return endsAtExactTile(path,target)&&safePath(level,mob,path,false);
     }
