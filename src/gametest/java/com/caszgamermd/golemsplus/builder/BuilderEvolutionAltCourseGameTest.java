@@ -3808,11 +3808,22 @@ public final class BuilderEvolutionAltCourseGameTest {
     @GameTest(maxTicks=100,padding=64,skyAccess=true)
     public void realControllerEntersDoorOffCenterWithoutJumping(
             GameTestHelper helper){
+        checkControllerDoorEntry(helper,-.24);
+    }
+
+    @GameTest(maxTicks=100,padding=64,skyAccess=true)
+    public void realControllerEntersDoorFromOppositeOffsetWithoutStalling(
+            GameTestHelper helper){
+        checkControllerDoorEntry(helper,.24);
+    }
+
+    private static void checkControllerDoorEntry(GameTestHelper helper,
+                                                  double lateral){
         fillOriginalCourse(helper);
         ServerLevel world=helper.getLevel();
         BlockPos start=pos(helper,5,2,10),origin=pos(helper,0,2,0);
         BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
-        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.26);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5+lateral);
         mob.setNoGravity(false);
         world.addFreshEntity(mob);
         Candidate b=new Candidate(0,mob,"WWWW",5,10,
@@ -3821,18 +3832,22 @@ public final class BuilderEvolutionAltCourseGameTest {
         b.birthTick=helper.getTick();
         final int[] ticks={0};
         final boolean[] done={false};
+        final int[] backward={0};
         helper.onEachTick(()->{
             if(done[0])return;
             if(b.arrivedTick>=0){
                 done[0]=true;
                 System.out.println("[ALT REAL CONTROLLER DOOR] ticks="+ticks[0]
-                        +" jumps="+b.jumps
+                        +" lateral="+lateral+" jumps="+b.jumps
                         +" stalls="+b.doorEntryStalls
+                        +" backtracks="+backward[0]
                         +" alignTicks="+b.doorEntryAlignTicks);
-                if(b.jumps!=0||b.doorEntryStalls>2||ticks[0]>33)
-                    helper.fail("Actual controller stuttered entering door:"
-                            +" ticks="+ticks[0]+" jumps="+b.jumps
-                            +" stalls="+b.doorEntryStalls);
+                if(b.jumps!=0||b.doorEntryStalls>2
+                        ||backward[0]!=0||ticks[0]>33)
+                    helper.fail("Door crossing still stuttered:"
+                            +" ticks="+ticks[0]+" lateral="+lateral
+                            +" jumps="+b.jumps+" stalls="+b.doorEntryStalls
+                            +" backwards="+backward[0]);
                 else helper.succeed();
                 return;
             }
@@ -3840,12 +3855,16 @@ public final class BuilderEvolutionAltCourseGameTest {
                 done[0]=true;
                 helper.fail("Actual controller failed to cross off-center "
                         +"door, ticks="+ticks[0]+" position="+mob.position()
-                        +" cursor="+b.cursor+" jumps="+b.jumps
+                        +" cursor="+b.cursor+" lateral="+lateral
                         +" stalls="+b.doorEntryStalls);
                 mob.discard();return;
             }
             b.controlTick++;
+            double beforeX=mob.getX();
             walkOneTick(helper,b,List.of(b));
+            // This fixture advances WEST through a single doorway.
+            // No generic obstacle recovery may drive it backwards.
+            if(b.cursor<4&&mob.getX()-beforeX>.015)backward[0]++;
         });
     }
 
