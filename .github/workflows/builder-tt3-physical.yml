@@ -8,6 +8,7 @@ on:
       - src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderTimeTrial3GameTest.java
       - training/tt3/courses/**
       - scripts/verify_timetrial3.py
+      - scripts/merge_timetrial3_state.py
       - .github/workflows/builder-tt3-physical.yml
   workflow_dispatch:
 permissions:
