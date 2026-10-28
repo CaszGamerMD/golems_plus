@@ -683,6 +683,13 @@ public final class BuilderEvolutionAltCourseGameTest {
         }
         BlockState state=world.getBlockState(door);
         if(!canOperateDoor(state))return;
+        if(Math.hypot(b.mob.getX()-door.getX()-.5,
+                b.mob.getZ()-door.getZ()-.5)>1.7
+                ||Math.abs(b.mob.getY()-door.getY())>1.0){
+            // A distant obstruction cannot be blamed on this doorway.
+            b.doorNoForwardTicks=0;
+            return;
+        }
         boolean currentOpen=state.getValue(DoorBlock.OPEN);
         if(b.observedDoorOpen!=null&&b.observedDoorOpen!=currentOpen){
             // Another golem changed this door between our ticks.
