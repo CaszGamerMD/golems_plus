@@ -1,6 +1,5 @@
 package com.caszgamermd.golemsplus.builder;
 
-import com.caszgamermd.golemsplus.warehouse.WarehouseAssignment;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import com.caszgamermd.golemsplus.world.WorksiteContent;
 import com.caszgamermd.golemsplus.worker.WorkerPhase;
@@ -104,12 +103,8 @@ public final class BuilderDomeConstructionGameTest {
                 +" expected="+actualFile.toAbsolutePath());
             return;
         }
-        // The tested OnSite chest handles ALL actual stock. The stub
-        // warehouse link merely satisfies the existing manual Planner
-        // start guard; it does not create shulkers or free items.
-        table.setWarehouse(id,new WarehouseAssignment(
-                level.dimension().identifier().toString(),
-                supplyPos.getX(),supplyPos.getY(),supplyPos.getZ()));
+        // Genuine chest-only job; no fake warehouse connection.
+        // Workers must walk to the real 27-slot OnSite crate to load.
         final List<BuilderGolem> crew=new ArrayList<>();
         for(int i=0;i<4;i++){
             BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
