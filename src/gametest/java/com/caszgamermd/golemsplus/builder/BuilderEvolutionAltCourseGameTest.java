@@ -3782,13 +3782,13 @@ public final class BuilderEvolutionAltCourseGameTest {
     }
 
     /**
-     * A real wooden door should toggle after exactly FOUR attempts with
-     * zero forward progress, regardless of whether it started OPEN or
-     * CLOSED. Check both Minecraft halves and a protected teammate queue.
-     * This drives the same state machine as the real entity controller.
+     * Vanilla-style door handling: a closed, hand-operable door may be
+     * opened after four genuinely stalled attempts, but an OPEN door is
+     * never shut to recover from a collision. Both halves must agree.
+     * Teammate congestion and genuine forward movement reset the timer.
      */
     @GameTest(maxTicks=80,padding=64,skyAccess=true)
-    public void realDoorRetryAlternatesStatesAfterFourStalledTicks(
+    public void realDoorRetryOpensClosedAndPreservesOpenPassage(
             GameTestHelper helper){
         fillOriginalCourse(helper);
         ServerLevel world=helper.getLevel();
@@ -3796,7 +3796,7 @@ public final class BuilderEvolutionAltCourseGameTest {
         BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         world.addFreshEntity(mob);
-        Candidate b=new Candidate(0,mob,"WWWW",5,10,
+        Candidate runner=new Candidate(0,mob,"WWWW",5,10,
                 SAVED_PHYSICAL_CHAMPIONS[0],Map.of());
         try{
             for(boolean startingOpen:new boolean[]{false,true}){
@@ -3807,73 +3807,62 @@ public final class BuilderEvolutionAltCourseGameTest {
                 world.setBlock(door,lower.setValue(DoorBlock.OPEN,startingOpen),3);
                 world.setBlock(door.above(),
                         upper.setValue(DoorBlock.OPEN,startingOpen),3);
-                b.doorNoForwardTicks=0;
-                int before=b.doorStateRetries;
-                for(int tick=1;tick<=4;tick++){
-                    // Physically stationary body; no invented forward
-                    // displacement. The doorway collision is unchanged.
-                    b.controlTick++;
-                    recordDoorForwardProgress(b,world,door,
+                runner.doorNoForwardTicks=0;
+                runner.observedDoorOpen=null;
+                runner.lastDoorAttemptTick=-100;
+                int before=runner.doorStateRetries;
+                for(int tick=1;tick<=8;tick++){
+                    runner.controlTick++;
+                    recordDoorForwardProgress(runner,world,door,
                             mob.getX(),mob.getZ(),4,10,false,false);
-                    boolean expected=tick<4?startingOpen:!startingOpen;
+                    boolean expected=startingOpen||tick>=4;
                     if(world.getBlockState(door).getValue(DoorBlock.OPEN)!=expected
                             ||world.getBlockState(door.above())
-                                  .getValue(DoorBlock.OPEN)!=expected)
-                        throw new IllegalStateException("Door state changed at "
-                                +tick+" stalled ticks instead of four");
+                                 .getValue(DoorBlock.OPEN)!=expected)
+                        throw new IllegalStateException("Door changed incorrectly at "
+                                +tick+" stalled ticks, startOpen="+startingOpen);
                 }
-                if(b.doorStateRetries!=before+1||b.doorNoForwardTicks!=0)
+                int expectedRetries=startingOpen?0:1;
+                if(runner.doorStateRetries!=before+expectedRetries)
                     throw new IllegalStateException(
-                            "Door retry counter did not reset after toggling");
-                // A teammate waiting in the opening cannot provoke
-                // rapid door flips while the controller politely yields.
+                            "Open door was flipped or closed door never opened");
+                // Waiting behind another real worker cannot flip the door.
                 for(int tick=0;tick<6;tick++){
-                    b.controlTick++;
-                    recordDoorForwardProgress(b,world,door,
+                    runner.controlTick++;
+                    recordDoorForwardProgress(runner,world,door,
                             mob.getX(),mob.getZ(),4,10,true,false);
                 }
-                if(b.doorStateRetries!=before+1)
+                if(runner.doorStateRetries!=before+expectedRetries
+                        ||!world.getBlockState(door).getValue(DoorBlock.OPEN))
                     throw new IllegalStateException(
-                            "Door toggled because of teammate congestion");
+                            "A waiting worker altered the open passage");
             }
-            // Three blocked ticks followed by REAL forward motion
-            // must reset the timer instead of changing the door state.
-            b.doorNoForwardTicks=3;
+            // A real movement step resets a three-tick stalled attempt.
+            runner.doorNoForwardTicks=3;
             double oldX=mob.getX(),oldZ=mob.getZ();
             mob.move(MoverType.SELF,new Vec3(-.08,-.08,0));
             if(mob.getX()>=oldX-.01)
                 throw new IllegalStateException("Real approach movement failed");
-            int retriesBefore=b.doorStateRetries;
-            boolean stateBefore=world.getBlockState(door).getValue(DoorBlock.OPEN);
-            b.controlTick++;
-            recordDoorForwardProgress(b,world,door,oldX,oldZ,4,10,false,false);
-            if(b.doorNoForwardTicks!=0||b.doorStateRetries!=retriesBefore
-                    ||world.getBlockState(door).getValue(DoorBlock.OPEN)!=stateBefore)
-                throw new IllegalStateException("Actual forward motion caused a flip");
-
-            // Two workers may share one door. If another worker changes
-            // its state, the old three-tick count cannot trigger a flip.
-            b.doorNoForwardTicks=3;
-            BlockState current=world.getBlockState(door);
-            BlockState currentUpper=world.getBlockState(door.above());
-            world.setBlock(door,current.setValue(DoorBlock.OPEN,!stateBefore),3);
-            world.setBlock(door.above(),
-                    currentUpper.setValue(DoorBlock.OPEN,!stateBefore),3);
-            b.controlTick++;
-            recordDoorForwardProgress(b,world,door,
-                    mob.getX(),mob.getZ(),4,10,false,false);
-            if(b.doorStateRetries!=retriesBefore||b.doorNoForwardTicks!=1)
-                throw new IllegalStateException("Stale worker reversed peer's door");
-            System.out.println("[ALT FOUR-TICK DOOR RETRY] "
-                    +"both start states, physical progress and teammate exclusion verified");
+            int retriesBefore=runner.doorStateRetries;
+            runner.controlTick++;
+            recordDoorForwardProgress(runner,world,door,
+                    oldX,oldZ,4,10,false,false);
+            if(runner.doorNoForwardTicks!=0
+                    ||runner.doorStateRetries!=retriesBefore
+                    ||!world.getBlockState(door).getValue(DoorBlock.OPEN))
+                throw new IllegalStateException(
+                        "Forward movement incorrectly changed open door");
+            System.out.println("[ALT VILLAGER DOOR RETRY] open retained, "
+                    +"closed opened, progress and queue exclusions verified");
             helper.succeed();
         }catch(IllegalStateException failure){
             helper.fail(failure.getMessage());
         }finally{mob.discard();}
     }
 
-    /** The production WALK controller must retry a physically closed
-     * door after four stalled attempts and finish without jumping.
+    /** The production WALK controller should OPEN a reachable closed
+     * wooden door proactively, retain its planned path, and finish
+     * without jumping or slamming the door shut during passage.
      */
     @GameTest(maxTicks=110,padding=64,skyAccess=true)
     public void realControllerRetriesClosedDoorWithoutJumping(
@@ -3903,9 +3892,9 @@ public final class BuilderEvolutionAltCourseGameTest {
                 System.out.println("[ALT CLOSED DOOR PHYSICAL RETRY] "
                         +"ticks="+ticks[0]+" flips="+b.doorStateRetries
                         +" stalls="+b.doorEntryStalls+" jumps="+b.jumps);
-                if(b.jumps>0||b.doorStateRetries<1
-                        ||b.doorEntryStalls<4||ticks[0]>55)
-                    helper.fail("Closed-door retry did not work physically");
+                if(b.jumps>0||!world.getBlockState(door)
+                        .getValue(DoorBlock.OPEN)||ticks[0]>55)
+                    helper.fail("Villager-style closed-door crossing failed");
                 else helper.succeed();
                 return;
             }
