@@ -130,6 +130,14 @@ public final class BuilderScaffoldBridgePlanner {
             WorkerStationBlockEntity table,ServerPlayer owner,
             BlockPos anchor,BlockPos target,
             Set<BlockPos> future){
+        return choose(level,builder,table,owner,anchor,target,future,BASELINE);
+    }
+    /** Course experiments can supply measured/scored policies while
+     * leaving EVERY physical world validity guard unchanged. */
+    public static Route choose(ServerLevel level,BuilderGolem builder,
+            WorkerStationBlockEntity table,ServerPlayer owner,
+            BlockPos anchor,BlockPos target,
+            Set<BlockPos> future,Weights weights){
         if(!level.getBlockState(anchor).is(Blocks.SCAFFOLDING)
                 ||!table.scaffoldPositions(builder.getUUID()).contains(anchor)
                 ||!level.mayInteract(owner,anchor))return null;
@@ -158,6 +166,6 @@ public final class BuilderScaffoldBridgePlanner {
                     y+1-builder.getY(),
                     next.getZ()+.5-builder.getZ());
             return level.noCollision(builder,futureBody);
-        });
+        },weights);
     }
 }
