@@ -344,6 +344,19 @@ public final class BuilderGrappleAccess {
     public static boolean tickMotion(ServerLevel level,BuilderGolem mob){
         Rope r=active.get(mob);
         if(r==null)return false;
+        // Failed to WALK to a grapple attachment point. No line was
+        // thrown, so grounded cancellation is safe. Forget this face
+        // temporarily instead of making the worker hold a dead route.
+        if(r.phase==Phase.WALK_TO_LINE
+                &&level.getGameTime()-r.started>=TRAVEL_TIMEOUT
+                &&mob.onGround()){
+            reject(level,mob,r);
+            active.remove(mob);
+            WorkerNavigation.stop(mob);
+            System.out.println("[GRAPPLE] ATTACHMENT ROUTE TIMED OUT; "
+                    +"trying alternate anchor after grounded abort "+r.anchor);
+            return false;
+        }
         if(r.phase==Phase.WALK_TO_EDGE){
             BlockPos edge=r.anchor.above();
             if(mob.blockPosition().getY()!=edge.getY()
