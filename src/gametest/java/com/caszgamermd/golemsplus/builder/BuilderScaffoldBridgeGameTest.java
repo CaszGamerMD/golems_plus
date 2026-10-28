@@ -95,10 +95,18 @@ public final class BuilderScaffoldBridgeGameTest {
                 if(builder.onGround()
                         &&Math.abs(builder.getY()-base.getY())<.28
                         &&level.getBlockState(under).is(Blocks.STONE)){
+                    var metrics=BuilderScaffoldTrialStats.snapshot(builder);
+                    if(metrics.plans()<1||metrics.scaffoldPlaced()<2
+                            ||metrics.retreatSteps()<2||metrics.landed()<1){
+                        helper.fail("Scaffold physically finished but training metrics "+
+                                "were lost: "+metrics);
+                        return;
+                    }
                     System.out.println("[SCAFFOLD BRIDGE] PASS placed="+
                             (table.scaffoldPositions(builder.getUUID()).size()-5)
                             +" returned-ground="+builder.position()
-                            +" tick="+helper.getTick());
+                            +" tick="+helper.getTick()
+                            +" courseMetrics="+metrics);
                     helper.succeed();
                 }
             }
