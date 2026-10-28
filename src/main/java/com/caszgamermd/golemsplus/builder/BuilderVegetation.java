@@ -29,6 +29,15 @@ public final class BuilderVegetation {
         // as BushBlock; missing this trapped all four workers waiting
         // for support during an Ignore Crops/Plants build.
         return path.equals("azalea")||path.equals("flowering_azalea")
+                // 26.2 vanilla flowers are not consistently BushBlock;
+                // a schematic's Ignore Crops/Plants must skip them all.
+                ||path.endsWith("_tulip")||path.equals("poppy")
+                ||path.equals("dandelion")||path.equals("blue_orchid")
+                ||path.equals("allium")||path.equals("azure_bluet")
+                ||path.equals("oxeye_daisy")||path.equals("cornflower")
+                ||path.equals("lily_of_the_valley")||path.equals("wither_rose")
+                ||path.equals("torchflower")||path.equals("open_eyeblossom")
+                ||path.equals("closed_eyeblossom")
                 ||path.equals("wheat")||path.equals("carrots")
                 ||path.equals("potatoes")||path.equals("beetroots")
                 ||path.equals("nether_wart")||path.equals("cocoa")
