@@ -238,9 +238,13 @@ public final class BuilderGrappleAccess {
     private static boolean tryGroundRoute(ServerLevel level,BuilderGolem mob,
             BlockPos goal,boolean ascent){
         if(!mob.onGround())return false;
-        // The schematic target may itself be AIR waiting for placement.
-        // Try genuine adjacent standing cells with support and headroom.
+        // A target ledge itself can be a valid footing. It was missing
+        // from this probe, causing the one-block jump to be incorrectly
+        // denied unless an adjacent block was also already built.
+        // A schematic AIR target is simply skipped until support exists.
         List<BlockPos> choices=new ArrayList<>();
+        if(headroom(level,goal)&&solidTop(level,goal.below()))
+            choices.add(goal);
         for(Direction dir:Direction.Plane.HORIZONTAL){
             BlockPos at=goal.relative(dir);
             if(!headroom(level,at)||!solidTop(level,at.below()))continue;
@@ -249,7 +253,7 @@ public final class BuilderGrappleAccess {
         choices.sort(Comparator.comparingDouble(p->p.distSqr(mob.blockPosition())));
         int attempts=0;
         for(BlockPos p:choices){
-            if(++attempts>4)break;
+            if(++attempts>5)break;
             if(p.equals(mob.blockPosition()))return true;
             if(WorkerNavigation.canReachExact(level,mob,p)
                     &&WorkerNavigation.routeToExact(level,mob,p,1.0))
