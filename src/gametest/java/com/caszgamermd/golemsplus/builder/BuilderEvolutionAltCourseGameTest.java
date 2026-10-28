@@ -444,6 +444,8 @@ public final class BuilderEvolutionAltCourseGameTest {
         // slab route or a replay interpolation.
         int slabApproachTicks,successfulSlabAscents,slabEntryStalls;
         int doorEntryAlignTicks,doorEntryStalls;
+        int doorNoForwardTicks,doorStateRetries;
+        int attemptedDoorX=Integer.MIN_VALUE,attemptedDoorZ=Integer.MIN_VALUE;
         int yieldingTicks,trafficQueueTicks,trafficCrossingTicks;
         int trafficWaitTicks,trafficReroutes,lastTrafficRerouteTick=-1000;
         int safeCornerShortcuts;
@@ -629,6 +631,76 @@ public final class BuilderEvolutionAltCourseGameTest {
         System.out.println("[ALT DOOR OPEN] golem opened wooden door at "
                 +lower+" distance="+distance);
         return true;
+    }
+
+    /** Retry the real wooden doorway by flipping the SAME door in both
+     * block halves. Do not use setBlock(AIR), noclip or instant movement.
+     * Auto-opening in walkOneTick would immediately undo a flip, so the
+     * controller only operates doors after four genuinely stalled attempts.
+     */
+    private static boolean toggleDoorFromReach(ServerLevel world,
+            BuilderGolem mob,BlockPos lower){
+        BlockState state=world.getBlockState(lower);
+        BlockState upper=world.getBlockState(lower.above());
+        if(!canOperateDoor(state)||!canOperateDoor(upper))return false;
+        double distance=Math.hypot(mob.getX()-lower.getX()-.5,
+                mob.getZ()-lower.getZ()-.5);
+        if(distance>1.7||Math.abs(mob.getY()-lower.getY())>1.0)
+            return false;
+        boolean next=!state.getValue(DoorBlock.OPEN);
+        world.setBlock(lower,state.setValue(DoorBlock.OPEN,next),3);
+        world.setBlock(lower.above(),
+                upper.setValue(DoorBlock.OPEN,next),3);
+        System.out.println("[ALT DOOR RETRY] toggled real door to "
+                +(next?"OPEN":"CLOSED")+" at "+lower+" from "+mob.position());
+        return true;
+    }
+
+    /** A doorway attempt counts only FORWARD displacement along the
+     * planned entering/exiting axis, not lateral alignment, jumping, or
+     * another worker's movement. A collision-free step resets its clock.
+     * Four genuine consecutive failed attempts toggle the active door,
+     * then the controller continues physically trying that new state.
+     */
+    private static void recordDoorForwardProgress(Candidate b,
+            ServerLevel world,BlockPos door,double oldX,double oldZ,
+            int toX,int toZ,boolean teammateBlocking,
+            boolean aligning){
+        if(door==null){
+            b.doorNoForwardTicks=0;
+            b.attemptedDoorX=Integer.MIN_VALUE;
+            b.attemptedDoorZ=Integer.MIN_VALUE;
+            return;
+        }
+        if(b.attemptedDoorX!=door.getX()
+                ||b.attemptedDoorZ!=door.getZ()){
+            b.attemptedDoorX=door.getX();
+            b.attemptedDoorZ=door.getZ();
+            b.doorNoForwardTicks=0;
+        }
+        if(teammateBlocking||aligning){
+            // Courtesy queues and deliberate sideways docking are not
+            // physical doorway failures; never flip under a teammate.
+            b.doorNoForwardTicks=0;
+            return;
+        }
+        int axisX=Integer.compare(toX,b.x);
+        int axisZ=Integer.compare(toZ,b.z);
+        double forward=(b.mob.getX()-oldX)*axisX
+                +(b.mob.getZ()-oldZ)*axisZ;
+        if(forward>.01){
+            b.doorNoForwardTicks=0;
+            return;
+        }
+        if(++b.doorNoForwardTicks>=4
+                &&toggleDoorFromReach(world,b.mob,door)){
+            b.doorNoForwardTicks=0;
+            b.doorStateRetries++;
+            b.doorTargetX=Integer.MIN_VALUE;
+            b.lastDistance=Double.POSITIVE_INFINITY;
+            b.immobile=0;
+            b.backoffTicks=0;
+        }
     }
 
     private static boolean clearBodyAt(ServerLevel world,BuilderGolem mob,
@@ -1797,11 +1869,8 @@ public final class BuilderEvolutionAltCourseGameTest {
             boolean leavingDoor=MAZE[b.z].charAt(b.x)=='D';
             if(enteringDoor||leavingDoor)b.movementMode="d";
             if(enteringDoor){
-                BlockState doorState=world.getBlockState(target);
-                if(canOperateDoor(doorState)
-                        &&!doorState.getValue(DoorBlock.OPEN)
-                        &&openDoorFromReach(world,mob,target))
-                    b.doorTargetX=Integer.MIN_VALUE;
+                // Attempt to walk through either open OR closed state.
+                // Never undo the stall-recovery toggle immediately.
                 if(b.doorTargetX!=ahead[0]||b.doorTargetZ!=ahead[1]){
                     b.doorTargetX=ahead[0];
                     b.doorTargetZ=ahead[1];
@@ -2067,6 +2136,18 @@ public final class BuilderEvolutionAltCourseGameTest {
         if((enteringDoorCell||leavingDoorCell)
                 &&Math.hypot(mob.getX()-old.x,mob.getZ()-old.z)<.035)
             b.doorEntryStalls++;
+        BlockPos activeDoor=enteringDoorCell?target:
+                leavingDoorCell?pos(helper,b.x,2,b.z):null;
+        boolean isAligning=enteringDoorCell&&!leavingDoorCell
+                &&((ahead[0]!=b.x&&ahead[1]==b.z
+                        &&Math.abs(target.getZ()+.5
+                                +(b.doorOffsetX?0:b.doorLaneShift)-mob.getZ())>.045)
+                    ||(ahead[1]!=b.z&&ahead[0]==b.x
+                        &&Math.abs(target.getX()+.5
+                                +(b.doorOffsetX?b.doorLaneShift:0)-mob.getX())>.045));
+        recordDoorForwardProgress(b,world,activeDoor,old.x,old.z,
+                ahead[0],ahead[1],teammateWithin(b,crew,1.15),
+                isAligning);
         // Count arrival on the SAME game tick as the physical move,
         // not on the following tick (which could be tick 361).
         if(world.getBlockState(mob.blockPosition().below()).is(RED)){
@@ -2626,6 +2707,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 entry.addProperty("slabEntryStalls",b.slabEntryStalls);
                 entry.addProperty("doorEntryAlignTicks",b.doorEntryAlignTicks);
                 entry.addProperty("doorEntryStalls",b.doorEntryStalls);
+                entry.addProperty("doorStateRetries",b.doorStateRetries);
                 entry.addProperty("precisionTicks",b.precisionTicks);
                 entry.addProperty("reroutes",b.reroutes);
                 entry.addProperty("yieldingTicks",b.yieldingTicks);
@@ -2665,6 +2747,7 @@ public final class BuilderEvolutionAltCourseGameTest {
                 trace.addProperty("slabEntryStalls",b.slabEntryStalls);
                 trace.addProperty("doorEntryAlignTicks",b.doorEntryAlignTicks);
                 trace.addProperty("doorEntryStalls",b.doorEntryStalls);
+                trace.addProperty("doorStateRetries",b.doorStateRetries);
                 trace.addProperty("precisionTicks",b.precisionTicks);
                 trace.addProperty("reroutes",b.reroutes);
                 trace.addProperty("yieldingTicks",b.yieldingTicks);
@@ -3025,6 +3108,8 @@ public final class BuilderEvolutionAltCourseGameTest {
                         .mapToInt(b->b.doorEntryAlignTicks).sum()
                     +" doorEntryStalls="+bots.stream()
                         .mapToInt(b->b.doorEntryStalls).sum()
+                    +" doorStateRetries="+bots.stream()
+                        .mapToInt(b->b.doorStateRetries).sum()
                     +" fastestTicks="+(finished>0?fastest:-1)
                     +" slowestTicks="+(finished>0?slowest:-1)
                     +" stalled="+blockers);
