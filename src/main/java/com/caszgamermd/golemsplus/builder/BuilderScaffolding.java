@@ -536,12 +536,13 @@ public final class BuilderScaffolding {
         // valid vanilla walking nodes, so repeatedly reconsidering a
         // path to an upper platform can abandon an active ascent.
         var existing=table.scaffoldPositions(worker.getUUID());
-        BlockPos base=existing.stream()
-                .filter(p->{
-                    int dx=p.getX()-target.getX(),dz=p.getZ()-target.getZ();
-                    return dx*dx+dz*dz<=5&&!avoided(level,worker,p);
-                })
-                .min(Comparator.comparingInt(BlockPos::getY)).orElse(null);
+        BlockPos base=towers(level,table,worker).stream()
+                .map(Tower::base)
+                .filter(p->!avoided(level,worker,p)
+                        &&BuilderScaffoldSiteScore.withinReach(p,target))
+                .min(Comparator.comparingDouble(p->
+                        BuilderScaffoldSiteScore.score(p,worker.blockPosition(),
+                                target,0,0,0,true))).orElse(null);
         if(base==null)for(Direction side:Direction.Plane.HORIZONTAL){
             BlockPos landing=target.relative(side).below();
             if(!level.hasChunkAt(landing))continue;
@@ -559,8 +560,9 @@ public final class BuilderScaffolding {
                     .routeToExact(level,worker,landing,1.0))
                 return Result.CLIMBING;
         }
-        // The complete 2-block perimeter (including diagonal offsets)
-        // must match both selection AND reuse, or towers are forgotten.
+        // Reuse any owned tower within TRUE placement reach before
+        // spending new scaffold. Both reuse and selection score the same
+        // physical candidates; no fixed learned route is stored.
         if(base==null)base=findBase(level,worker,target,feet,table,plan);
         if(base==null)return Result.NO_SAFE_TOWER;
         double bx=base.getX()+.5,bz=base.getZ()+.5;
@@ -665,52 +667,68 @@ public final class BuilderScaffolding {
     private static BlockPos findBase(ServerLevel level,BuilderGolem worker,
             BlockPos target,int feet,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> plan){
-        // A curved dome can seal every column within two blocks.
-        // Search all cardinal/diagonal foundations within sqrt(10)
-        // horizontal distance, still within the Builder's real 14-squared
-        // work distance after fully climbing to target Y-1. Never make
-        // a scaffold through finished or future schematic cells.
-        java.util.List<BlockPos> offsets=new java.util.ArrayList<>();
+        // Reject candidates overlapping actual schematic geometry BEFORE
+        // ranking. This full 3D set matters for domes with a completed
+        // lower shell and empty upper air where a new tower could later
+        // collide with a scheduled building block.
+        java.util.Set<BlockPos> reserved=new java.util.HashSet<>();
+        for(var step:plan)if(!step.ignorePlant())
+            reserved.add(new BlockPos(step.x(),step.y(),step.z()));
+        BlockPos winner=null;
+        double best=Double.POSITIVE_INFINITY;
+        // A new tower never needs to be more than sqrt(13) horizontally
+        // from this placement. Rank actual safe column foundations; do
+        // not simply choose the first cardinal or diagonal candidate.
         for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
-            int distance=dx*dx+dz*dz;
-            if(distance<1||distance>10)continue;
-            offsets.add(target.offset(dx,0,dz));
-        }
-        offsets.sort(Comparator.comparingDouble(at->
-                at.distSqr(target)*2
-                +worker.distanceToSqr(at.getX()+.5,feet,at.getZ()+.5)*.1));
-        for(BlockPos adjacent:offsets)
-            for(int dy=0;dy<=5;dy++){
-                BlockPos base=new BlockPos(adjacent.getX(),feet-dy,adjacent.getZ());
-                if(avoided(level,worker,base)
+            int reach=dx*dx+dz*dz;
+            if(reach<1||reach>13)continue;
+            for(int dy=0;dy<=6;dy++){
+                BlockPos base=new BlockPos(
+                        target.getX()+dx,feet-dy,target.getZ()+dz);
+                if(base.getY()>target.getY()-1
+                        ||avoided(level,worker,base)
                         ||!level.hasChunkAt(base)
-                        ||!level.hasChunkAt(base.below()))continue;
-                if(!level.getBlockState(base.below()).isFaceSturdy(level,
-                        base.below(),Direction.UP))continue;
-                boolean clear=true;
-                // Only probe the next material-backed extension. Later
-                // obstructions are reconsidered when the worker reaches
-                // that elevation rather than refusing a 200-block tower
-                // before its first sixteen blocks are built.
-                int previewTop=ScaffoldVerticalRoute.stageTop(base.getY(),
-                        base.getY()-1,target.getY()-1);
-                for(int y=base.getY();y<=previewTop;y++){
+                        ||!level.hasChunkAt(base.below())
+                        ||!level.getBlockState(base.below()).isFaceSturdy(
+                                level,base.below(),Direction.UP))continue;
+                int top=ScaffoldVerticalRoute.stageTop(
+                        base.getY(),base.getY()-1,target.getY()-1);
+                boolean free=true;
+                for(int y=base.getY();y<=top;y++){
                     BlockPos at=new BlockPos(base.getX(),y,base.getZ());
-                    if(!level.hasChunkAt(at)||!level.getBlockState(at).isAir()
-                            ||table.isTrackedScaffold(at)){
-                        clear=false;break;
+                    if(!level.hasChunkAt(at)
+                            ||!level.getBlockState(at).isAir()
+                            ||table.isTrackedScaffold(at)
+                            ||reserved.contains(at)){
+                        free=false;break;
                     }
-                    for(var step:plan)
-                        if(step.x()==at.getX()&&step.y()==at.getY()
-                                &&step.z()==at.getZ()){clear=false;break;}
-                    if(!clear)break;
                 }
-                if(clear&&(worker.blockPosition().distSqr(base)>16*16
-                        ||com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                .canReachExact(level,worker,base)))
-                    return base;
+                if(!free)continue;
+                // A tower must be approachable on foot without teleport,
+                // even if its proposed blocks are entirely air. Returning
+                // an unreachable base made the Builder report CLIMBING
+                // forever while standing motionless behind a completed
+                // wall. This is not a fallback to legacy routing.
+                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canReachExact(level,worker,base))continue;
+                int nearby=0;
+                for(var step:plan){
+                    if(step.ignorePlant()||step.y()<target.getY()
+                            ||step.y()>target.getY()+2)continue;
+                    int sx=step.x()-base.getX(),sz=step.z()-base.getZ();
+                    if(sx*sx+sz*sz<=13){
+                        if(++nearby>=12)break;
+                    }
+                }
+                int material=Math.max(0,top-base.getY()+1);
+                double score=BuilderScaffoldSiteScore.score(base,
+                        worker.blockPosition(),target,material,nearby,0,false);
+                if(score<best){
+                    winner=base;best=score;
+                }
             }
-        return null;
+        }
+        return winner;
     }
     /**
      * Instant top-down removal only when worker is safely on the ground.
