@@ -1,5 +1,5 @@
 {
-  "runId": "40618272000",
+  "runId": "40619594503",
   "mode": "evolve",
   "trials": 3,
   "physicalGenerations": 72,
@@ -11,38 +11,39 @@
   "completedGenerationDelta": 72,
   "strategyEvidenceDelta": 648,
   "improvedPersonalSlots": [
-    1
+    5,
+    7
   ],
-  "poolChanged": true,
+  "poolChanged": false,
   "pool": [
     {
       "slot": 4,
       "fitness": 100945.0,
-      "generation": 288
+      "generation": 360
     },
     {
       "slot": 0,
       "fitness": 100840.0,
-      "generation": 288
+      "generation": 360
     },
     {
       "slot": 5,
       "fitness": 100720.0,
-      "generation": 288
+      "generation": 360
     }
   ],
   "historicChampionSlowestTicks": null,
   "totals": {
-    "doorPlans": 614,
-    "doorCrossings": 591,
-    "collisions": 289,
-    "jumps": 2,
-    "slabAscents": 1287,
+    "doorPlans": 617,
+    "doorCrossings": 555,
+    "collisions": 0,
+    "jumps": 4,
+    "slabAscents": 1278,
     "slabEntryStalls": 0,
     "doorEntryAlignTicks": 630,
-    "doorEntryStalls": 301,
+    "doorEntryStalls": 0,
     "doorStateRetries": 0,
-    "trafficReplans": 91
+    "trafficReplans": 49
   },
   "hasSlabTelemetry": true,
   "hasDoorTelemetry": true,
@@ -74,7 +75,6 @@
   ],
   "recommendations": [
     "**Slabs are physically accessible:** observed real ascents. Compare entry stalls and completion rates before changing slab route costs.",
-    "**Door-entry hesitation observed:** check collision-safe alignment and congestion at door lips; require the real-controller no-jump regression to pass.",
     "**Door routes were attempted:** compare completion times of door users versus other routes before assigning a larger door preference.",
     "**Speed target not met:** optimize reliable 9/9 completion under 260 ticks before accepting faster individual records as team-wide improvement."
   ]
