@@ -1,0 +1,166 @@
+package com.caszgamermd.golemsplus.builder;
+
+import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
+import com.caszgamermd.golemsplus.world.WorksiteContent;
+import java.util.List;
+import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.minecraft.core.BlockPos;
+import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
+
+/** A REAL Builder physically creates an inventory-paid scaffold shaft,
+ * climbs every level without jumping, and descends the same shaft before
+ * safely stepping onto solid ground. No simulated coordinates or teleport.
+ */
+public final class BuilderSafeScaffoldGameTest {
+    @GameTest(maxTicks=1100,skyAccess=true)
+    public void builderBuildsClimbsAndDescendsItsOwnTower(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        BlockPos home=helper.absolutePos(new BlockPos(0,2,0));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            helper.fail("No real Builder Planner block entity");return;
+        }
+        ServerPlayer owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())){
+            helper.fail("Owner cannot claim Builder Planner");return;
+        }
+        BuilderGolem builder=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos spawn=helper.absolutePos(new BlockPos(3,2,3));
+        builder.setPos(spawn.getX()+.5,spawn.getY(),spawn.getZ()+.5);
+        builder.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
+        level.addFreshEntity(builder);
+        if(!table.registerBuilderWorker(builder.getUUID())){
+            helper.fail("Cannot register real Builder");return;
+        }
+        BlockPos work=helper.absolutePos(new BlockPos(5,7,4));
+        int before=builder.carriedCount(Items.SCAFFOLDING);
+        int[] state={0};
+        double[] highest={-Double.MAX_VALUE};
+        long[] began={helper.getTick()};
+        helper.onEachTick(()->{
+            if(!builder.isAlive()){
+                helper.fail("Builder entity disappeared");return;
+            }
+            if(helper.getTick()-began[0]>350){
+                helper.fail("Scaffold stage timeout phase="+state[0]
+                        +" pos="+builder.position()
+                        +" climb="+BuilderScaffolding.debugClimb(builder)
+                        +" placed="+table.scaffoldPositions(builder.getUUID()).size());
+                return;
+            }
+            if(state[0]==0){
+                if(helper.getTick()%5==0){
+                    BuilderScaffolding.Result next=BuilderScaffolding.reach(
+                            level,builder,table,owner,work,List.of());
+                    if(next==BuilderScaffolding.Result.NO_SAFE_TOWER
+                            ||next==BuilderScaffolding.Result.NEED_MATERIALS){
+                        helper.fail("Rejected real safe scaffold: "+next
+                                +" pos="+builder.position()
+                                +" standSpawn="+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                    .canStandOn(level,builder,spawn)
+                                +" reachSpawn="+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                    .canReachExact(level,builder,spawn)
+                                +" baseSupport="+level.getBlockState(spawn.below())
+                                +" exitStand="+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                    .canStandOn(level,builder,spawn.east())
+                                +" reachExit="+com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                    .canReachExact(level,builder,spawn.east())
+                                +" planY="+work.getY());return;
+                    }
+                }
+                highest[0]=Math.max(highest[0],builder.getY());
+                if(builder.getY()>=work.getY()-.12
+                        &&table.scaffoldPositions(builder.getUUID()).size()>=4){
+                    state[0]=1;began[0]=helper.getTick();
+                }
+            }else if(state[0]==1){
+                if(helper.getTick()%5==0){
+                    if(!BuilderScaffolding.descendForTravel(level,builder,table)){
+                        helper.fail("Builder has no physically safe descent route");return;
+                    }
+                }
+                if(builder.onGround()
+                        &&Math.abs(builder.getY()-spawn.getY())<.25
+                        &&table.scaffoldPositions(builder.getUUID()).stream()
+                            .noneMatch(p->p.getX()==builder.blockPosition().getX()
+                                    &&p.getZ()==builder.blockPosition().getZ())){
+                    int placed=before-builder.carriedCount(Items.SCAFFOLDING);
+                    if(placed<4||highest[0]<work.getY()-.16){
+                        helper.fail("Scaffold completion lied about physical blocks: "+
+                                placed+" top="+highest[0]);return;
+                    }
+                    System.out.println("[SCAFFOLD ACCESS] PASS real placed="+placed
+                            +" ascent topY="+highest[0]
+                            +" descent feet="+builder.position()
+                            +" ticks="+helper.getTick());
+                    helper.succeed();
+                }
+            }
+        });
+    }
+
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void plannedFutureWallsCannotSealGroundExit(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos base=helper.absolutePos(new BlockPos(3,2,3));
+        BuilderGolem builder=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        builder.setPos(base.getX()+.5,base.getY(),base.getZ()+.5);
+        level.addFreshEntity(builder);
+        if(BuilderScaffolding.safeGroundExit(level,builder,base,
+                java.util.Set.of())==null){
+            helper.fail("Open ground exit was wrongly rejected");return;
+        }
+        var future=new java.util.HashSet<BlockPos>();
+        for(net.minecraft.core.Direction side:net.minecraft.core.Direction.Plane.HORIZONTAL){
+            BlockPos foot=base.relative(side);
+            future.add(foot);
+            future.add(foot.above());
+        }
+        if(BuilderScaffolding.safeGroundExit(level,builder,base,future)!=null){
+            helper.fail("Builder approved tower whose future walls seal all exits");
+            return;
+        }
+        future.remove(base.east());
+        future.remove(base.east().above());
+        BlockPos allowed=BuilderScaffolding.safeGroundExit(level,builder,base,future);
+        if(allowed==null||!allowed.equals(base.east())){
+            helper.fail("Planner did not choose its sole surviving east exit: "+allowed);
+            return;
+        }
+        helper.succeed();
+    }
+
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void neverBuildsTowerWithoutGroundDismount(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        helper.setBlock(3,1,3,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        BlockPos home=helper.absolutePos(new BlockPos(0,2,0));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            helper.fail("No Planner");return;
+        }
+        ServerPlayer owner=helper.makeMockServerPlayerInLevel();
+        table.claimIfUnowned(owner.getUUID());
+        BuilderGolem builder=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos pos=helper.absolutePos(new BlockPos(3,2,3));
+        builder.setPos(pos.getX()+.5,pos.getY(),pos.getZ()+.5);
+        builder.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
+        level.addFreshEntity(builder);
+        table.registerBuilderWorker(builder.getUUID());
+        var result=BuilderScaffolding.reach(level,builder,table,owner,
+                helper.absolutePos(new BlockPos(4,7,3)),List.of());
+        if(result!=BuilderScaffolding.Result.NO_SAFE_TOWER
+                ||!table.scaffoldPositions(builder.getUUID()).isEmpty()){
+            helper.fail("Unsupported unsafe shaft was approved: "+result);
+        }else helper.succeed();
+    }
+}

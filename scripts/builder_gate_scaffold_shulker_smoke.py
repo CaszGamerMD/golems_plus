@@ -17,8 +17,10 @@ assert "setPassageOpen(level,mob,door,false)" in nav
 # Don't attempt to path to a height that can only be reached with scaffolds.
 assert "pos.getY()-worker.getY()>1.35&&distToTarget>14" in builder
 assert "target.getY()-worker.getY()<=1.35" in scaffold
-assert "for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++)" in scaffold
-assert "distance<1||distance>5" in scaffold
+assert "for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)" in scaffold
+assert "reach<1||reach>13" in scaffold
+assert "safeGroundExit(level,worker,base,reserved)" in scaffold
+assert "future.contains(p)||future.contains(p.above())" in scaffold
 assert "worker.setNoGravity(false);" in scaffold
 assert "worker.setShiftKeyDown(true)" in scaffold
 assert "worker.getNavigation().stop();" in scaffold
