@@ -25,8 +25,10 @@ assert "requiresDoorCrossing(level,mob,p,doorPos)" in nav
 assert "if(progress.queuedDoor!=null&&target!=null" in nav
 assert "if(p.queuedDoor!=null&&target!=null" in nav
 assert "public static void yieldStalled(" in traffic
-assert "lane.cooldown.put(id,level.getGameTime()+60)" in traffic
-assert "mob.tickCount-p.doorLastProgressTick>100" in nav
+assert "lane.cooldown.put(id,level.getGameTime()+25)" in traffic
+assert "if(inside(level,position,worker))return;" in traffic
+assert "mob.tickCount-p.doorLastProgressTick>=45" in nav
+assert "!WorkerDoorTraffic.inside(level,p.queuedDoor,mob)" in nav
 assert "WorkerDoorTraffic.yieldStalled(level,p.queuedDoor,mob)" in nav
 assert "doorLastDistance" in nav
 assert '" q#"+rank' in nav
