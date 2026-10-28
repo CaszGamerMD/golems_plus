@@ -306,12 +306,16 @@ public final class BuilderPlacementSpace {
      * changing a route or claiming a build step.
      */
     public static String debugYield(ServerLevel level,BuilderGolem worker){
+        return debugYield(level,worker,BlockPos.ZERO);
+    }
+    public static String debugYield(ServerLevel level,BuilderGolem worker,
+            BlockPos schematicOrigin){
         Yield hold=yielding.get(worker);
         if(hold==null)return "yield=none";
-        return "yieldTarget="+hold.target().toShortString()
-                +" escape="+hold.destination().toShortString()
+        return "yieldTargetXYZ="+hold.target().subtract(schematicOrigin).toShortString()
+                +" escapeXYZ="+hold.destination().subtract(schematicOrigin).toShortString()
                 +" expiresIn="+Math.max(0,hold.until()-level.getGameTime())+"t"
-                +" stillOccupies="+occupied(hold.target(),worker)
+                +" stillTooClose="+occupied(hold.target(),worker)
                 +" escapeStandable="+WorkerNavigation.canStandOn(
                         level,worker,hold.destination());
     }
@@ -321,17 +325,26 @@ public final class BuilderPlacementSpace {
      */
     public static String debugOccupants(ServerLevel level,
             WorkerStationBlockEntity table,BlockPos target){
+        return debugOccupants(level,table,target,BlockPos.ZERO);
+    }
+    public static String debugOccupants(ServerLevel level,
+            WorkerStationBlockEntity table,BlockPos target,
+            BlockPos schematicOrigin){
         List<BuilderGolem> blocking=level.getEntitiesOfClass(
-                BuilderGolem.class,volume(target),
-                g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID()));
+                BuilderGolem.class,volume(target).inflate(1,0,1),
+                g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID())
+                        &&occupied(target,g));
         if(blocking.isEmpty())return "none";
         List<String> details=new ArrayList<>();
         for(BuilderGolem g:blocking)
             details.add(g.getName().getString()
-                    +" block="+g.blockPosition().toShortString()
-                    +" feet="+String.format(java.util.Locale.ROOT,
-                            "(%.2f,%.2f,%.2f)",g.getX(),g.getY(),g.getZ())
-                    +" "+debugYield(level,g));
+                    +" XYZ="+g.blockPosition().subtract(schematicOrigin).toShortString()
+                    +" feetXYZ="+String.format(java.util.Locale.ROOT,
+                            "(%.2f,%.2f,%.2f)",
+                            g.getX()-schematicOrigin.getX(),
+                            g.getY()-schematicOrigin.getY(),
+                            g.getZ()-schematicOrigin.getZ())
+                    +" "+debugYield(level,g,schematicOrigin));
         return String.join("; ",details);
     }
 
