@@ -35,8 +35,10 @@ public final class BuilderTimeTrial3GameTest {
     private static final Block RED=registry("red_wool");
     private static final Block GREEN=registry("green_wool");
     static final String COURSE_HASH="d86ad9d206729c188300460463f8e1e727c097f4291a4116292d94497d36a337";
-    static final Path STATE=Path.of("training/tt3/state/checkpoint.json");
-    static final Path REPLAY=Path.of("training/tt3/replays");
+    // Gradle GameTests run from a different CWD than the Git checkout.
+    static final Path ROOT=Path.of(System.getenv().getOrDefault("GITHUB_WORKSPACE","."));
+    static final Path STATE=ROOT.resolve("training/tt3/state/checkpoint.json");
+    static final Path REPLAY=ROOT.resolve("training/tt3/replays");
     static final int[][] STARTS={{24,1},{24,3},{24,5},{24,7},{24,9},
                                   {25,2},{25,4},{25,6},{25,10}};
     // Base-36 Sponge palette IDs, in original (y,z,x) order. Exact block
@@ -127,8 +129,10 @@ public final class BuilderTimeTrial3GameTest {
                 &&at(n.x,5,n.z)=='5';
         char feet=at(n.x,1,n.z),head=at(n.x,2,n.z);
         return (feet=='5'||scaffold(feet)||door(feet)||feet=='a')
+            // The source includes two CLOSED overhead trapdoors at x13.
+            // A hand-openable trapdoor is a legal action, not a wall.
             &&(head=='5'||scaffold(head)||head=='e'||head=='f'
-                ||head=='h'||head=='i');
+                ||head=='h'||head=='i'||head=='g');
     }
     private static boolean tower(Node n){
         if(!passable(new Node(n.x,n.z,0))
@@ -152,7 +156,8 @@ public final class BuilderTimeTrial3GameTest {
                 Node q=new Node(n.x+d[0],n.z+d[1],n.level);
                 if(!passable(q))continue;
                 char c=at(q.x,1,q.z);
-                double cost=1+(n.level==0&&(door(c)||c=='a')?gene.doorCost:0);
+                double cost=1+(n.level==0&&(door(c)||c=='a'
+                        ||at(q.x,2,q.z)=='g')?gene.doorCost:0);
                 choices.add(new Step(q,cost));
             }
             if(tower(n))choices.add(new Step(new Node(n.x,n.z,1-n.level),
@@ -208,6 +213,10 @@ public final class BuilderTimeTrial3GameTest {
         if(s.getBlock() instanceof FenceGateBlock
                 &&!s.getValue(FenceGateBlock.OPEN))
             world.setBlock(p,s.setValue(FenceGateBlock.OPEN,true),3);
+        BlockState ceiling=world.getBlockState(p.above());
+        if(ceiling.getBlock() instanceof TrapDoorBlock
+                &&!ceiling.getValue(TrapDoorBlock.OPEN))
+            world.setBlock(p.above(),ceiling.setValue(TrapDoorBlock.OPEN,true),3);
     }
     private static void drive(Runner r,List<Runner> crew,double x,double z,
                               boolean enteringDoor){
@@ -269,7 +278,8 @@ public final class BuilderTimeTrial3GameTest {
         }
         BlockPos p=pos(t,target.x,target.level==0?1:5,target.z);
         boolean door=target.level==0
-                &&(door(at(target.x,1,target.z))||at(target.x,1,target.z)=='a');
+                &&(door(at(target.x,1,target.z))||at(target.x,1,target.z)=='a'
+                    ||at(target.x,2,target.z)=='g');
         if(door){
             open(t.getLevel(),mob,p);
             if(r.selectedDoor==null||!r.selectedDoor.equals(target)){
