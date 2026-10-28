@@ -3,9 +3,9 @@
   "nativeSimulationProtocol": "course-entity-ticking-v1",
   "limit": 500,
   "physicalBuilders": 9,
-  "completedGenerations": 18,
-  "bestFinishers": 0,
-  "bestCrewTicks": -1,
+  "completedGenerations": 24,
+  "bestFinishers": 9,
+  "bestCrewTicks": 372,
   "history": [
     {
       "generation": 1,
@@ -132,9 +132,107 @@
       "slowestTicks": -1,
       "doorStalls": 0,
       "scaffoldActions": 9
+    },
+    {
+      "generation": 19,
+      "finishedBy500Ticks": 9,
+      "slowestTicks": 466,
+      "doorStalls": 0,
+      "scaffoldActions": 18
+    },
+    {
+      "generation": 20,
+      "finishedBy500Ticks": 9,
+      "slowestTicks": 372,
+      "doorStalls": 0,
+      "scaffoldActions": 18
+    },
+    {
+      "generation": 21,
+      "finishedBy500Ticks": 8,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 18
+    },
+    {
+      "generation": 22,
+      "finishedBy500Ticks": 8,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 18
+    },
+    {
+      "generation": 23,
+      "finishedBy500Ticks": 8,
+      "slowestTicks": -1,
+      "doorStalls": 0,
+      "scaffoldActions": 18
+    },
+    {
+      "generation": 24,
+      "finishedBy500Ticks": 9,
+      "slowestTicks": 376,
+      "doorStalls": 0,
+      "scaffoldActions": 18
     }
   ],
   "nextPopulation": [
+    [
+      1.5,
+      1.0,
+      0.11,
+      0.06
+    ],
+    [
+      1.5,
+      1.0,
+      0.12770956970654965,
+      0.06
+    ],
+    [
+      1.5,
+      1.4185000475745524,
+      0.11,
+      0.06
+    ],
+    [
+      1.5,
+      1.0,
+      0.11,
+      0.06
+    ],
+    [
+      1.5,
+      1.0,
+      0.11316177693407471,
+      0.06
+    ],
+    [
+      1.5,
+      0.8414919795549123,
+      0.11316177693407471,
+      0.06
+    ],
+    [
+      1.3086423055341525,
+      1.0,
+      0.11316177693407471,
+      0.06
+    ],
+    [
+      1.5,
+      1.7370130877989156,
+      0.11,
+      0.06
+    ],
+    [
+      1.5,
+      1.0,
+      0.11629464685174672,
+      0.06
+    ]
+  ],
+  "championGenes": [
     [
       1.5,
       1.0,
@@ -148,9 +246,9 @@
       -0.06
     ],
     [
-      1.5,
+      1.3026363249039092,
       1.0,
-      0.1263087666266459,
+      0.11,
       0.06
     ],
     [
@@ -162,30 +260,30 @@
     [
       1.5,
       1.0,
-      0.10421760685367853,
+      0.11316177693407471,
+      0.06
+    ],
+    [
+      1.302696104390054,
+      1.0,
+      0.11,
       0.06
     ],
     [
       1.5,
       1.0,
-      0.08622686317690503,
-      0.06
-    ],
-    [
-      1.43809698040612,
-      1.0,
-      0.11,
+      0.12416985122650986,
       0.06
     ],
     [
       1.2,
-      1.7,
+      1.383344724636064,
       0.1,
-      -0.025375932394753394
+      -0.06
     ],
     [
       1.2,
-      1.9459378925285902,
+      1.1953500510466704,
       0.1,
       -0.06
     ]
