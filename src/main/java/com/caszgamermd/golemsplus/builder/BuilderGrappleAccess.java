@@ -26,7 +26,7 @@ import net.minecraft.world.phys.AABB;
 public final class BuilderGrappleAccess {
     public static final int MAX_REACH=20;
     public enum Result { MOVING, READY, NEED_HOOK, NO_SAFE_ANCHOR }
-    private enum Phase { WALK_TO_LINE, CLIMB, STEP_ON_TOP, STEP_OFF, RAPPEL, RETREAT }
+    private enum Phase { WALK_TO_LINE, WALK_TO_EDGE, CLIMB, STEP_ON_TOP, STEP_OFF, RAPPEL, RETREAT }
     private static final class Rope {
         final BlockPos anchor,column,landing,goal;
         final Direction side;
@@ -44,7 +44,7 @@ public final class BuilderGrappleAccess {
             this.goal=goal.immutable();
             this.down=down;
             this.started=time;
-            this.phase=down?Phase.STEP_OFF:Phase.WALK_TO_LINE;
+            this.phase=down?Phase.WALK_TO_EDGE:Phase.WALK_TO_LINE;
         }
         double topY(){return anchor.getY()+1.0;}
     }
@@ -139,32 +139,51 @@ public final class BuilderGrappleAccess {
                 +r.anchor.distSqr(goal)*2.0));
         return candidates.isEmpty()?null:candidates.get(0);
     }
+    /** Find a real ledge that the Builder can reach BEFORE it hooks on.
+     * A Builder may be several blocks from the rim after completing its
+     * task; it must first WALK across real terrain to a viable edge.
+     * A descent of one block is also allowed: 'up to 20' has no 2-block
+     * minimum. Never fall off a rim to reach the anchor.
+     */
     private static Rope chooseDescent(ServerLevel level,BuilderGolem worker,
             BlockPos goal){
         BlockPos feet=worker.blockPosition();
-        BlockPos anchor=feet.below();
-        if(!solidTop(level,anchor)||!headroom(level,feet))return null;
         List<Rope> candidates=new ArrayList<>();
-        for(Direction side:Direction.Plane.HORIZONTAL){
-            BlockPos column=anchor.relative(side);
-            // Select the FIRST safe supported landing on the rope, up to
-            // twenty blocks below. A higher roof/floor prevents descending
-            // through it, and its top is a valid landing itself.
-            for(int delta=1;delta<=MAX_REACH;delta++){
-                int landingY=feet.getY()-delta;
-                BlockPos landing=column.atY(landingY);
-                if(!empty(level,landing)||!empty(level,landing.above()))
-                    break;
-                if(!solidTop(level,landing.below()))continue;
-                if(!lineClear(level,column,landingY,feet.getY()))break;
-                candidates.add(new Rope(anchor,side,landing,goal,true,
-                        level.getGameTime()));
-                break;
+        int bestLimit=16;
+        for(int dx=-bestLimit;dx<=bestLimit;dx++)
+            for(int dz=-bestLimit;dz<=bestLimit;dz++){
+                if(Math.abs(dx)+Math.abs(dz)>bestLimit)continue;
+                BlockPos anchor=feet.offset(dx,-1,dz);
+                if(!solidTop(level,anchor)||!headroom(level,anchor.above()))
+                    continue;
+                int topY=anchor.getY()+1;
+                for(Direction side:Direction.Plane.HORIZONTAL){
+                    BlockPos column=anchor.relative(side);
+                    if(!headroom(level,column.atY(topY)))continue;
+                    for(int delta=1;delta<=MAX_REACH;delta++){
+                        int landingY=topY-delta;
+                        BlockPos landing=column.atY(landingY);
+                        if(!empty(level,landing)||!empty(level,landing.above()))
+                            break; // real wall, never descend through it
+                        if(!solidTop(level,landing.below()))continue;
+                        if(!lineClear(level,column,landingY,topY))break;
+                        candidates.add(new Rope(anchor,side,landing,goal,
+                                true,level.getGameTime()));
+                        break; // first safe lower floor on this line
+                    }
+                }
             }
-        }
         candidates.sort(Comparator.comparingDouble(r->
-                r.landing.distSqr(goal)+.2*r.landing.distSqr(feet)));
-        return candidates.isEmpty()?null:candidates.get(0);
+                r.anchor.above().distSqr(feet)*1.25
+                +r.landing.distSqr(goal)*.7));
+        int tried=0;
+        for(Rope candidate:candidates){
+            if(++tried>35)break;
+            BlockPos ledge=candidate.anchor.above();
+            if(ledge.equals(feet)||WorkerNavigation.canReachExact(
+                    level,worker,ledge))return candidate;
+        }
+        return null;
     }
     /** Called when construction requires feet at the elevated block's Y.
      * The original trained A* still handles all ordinary terrain travel.
@@ -196,7 +215,7 @@ public final class BuilderGrappleAccess {
     public static boolean rappelToward(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos goal){
         if(active.containsKey(worker))return true;
-        if(worker.blockPosition().getY()-goal.getY()<2)return false;
+        if(worker.blockPosition().getY()-goal.getY()<1)return false;
         if(!hasHook(worker)){
             var load=BuilderSupplyInventory.loadGrapple(level,worker,table);
             return load!=BuilderSupplyInventory.LoadStatus.MISSING;
@@ -237,6 +256,25 @@ public final class BuilderGrappleAccess {
     public static boolean tickMotion(ServerLevel level,BuilderGolem mob){
         Rope r=active.get(mob);
         if(r==null)return false;
+        if(r.phase==Phase.WALK_TO_EDGE){
+            BlockPos edge=r.anchor.above();
+            if(mob.blockPosition().getY()!=edge.getY()
+                    ||Math.abs(mob.getX()-edge.getX()-.5)>.27
+                    ||Math.abs(mob.getZ()-edge.getZ()-.5)>.27){
+                if(level.getGameTime()-r.started>200&&mob.onGround()){
+                    active.remove(mob);
+                    blockedAnchors.put(mob,new FailedAnchor(r.anchor,
+                            level.getGameTime()+200));
+                    WorkerNavigation.stop(mob);
+                    return false;
+                }
+                if(mob.getNavigation().isDone())
+                    WorkerNavigation.routeToExact(level,mob,edge,1.0);
+                return false;
+            }
+            WorkerNavigation.stop(mob);
+            r.phase=Phase.STEP_OFF;
+        }
         if(r.phase==Phase.WALK_TO_LINE){
             BlockPos entry=r.landing;
             if(mob.blockPosition().getY()!=entry.getY()

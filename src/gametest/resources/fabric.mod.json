@@ -11,7 +11,8 @@
   "entrypoints": {
     "fabric-gametest": [
       "com.caszgamermd.golemsplus.builder.BuilderGrappleGameTest",
-      "com.caszgamermd.golemsplus.builder.BuilderPlacementClearanceGameTest"
+      "com.caszgamermd.golemsplus.builder.BuilderPlacementClearanceGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderGrappleReturnGameTest"
     ]
   }
 }
