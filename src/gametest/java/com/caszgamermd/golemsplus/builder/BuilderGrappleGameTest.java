@@ -4,6 +4,8 @@ import com.caszgamermd.golemsplus.world.WorksiteContent;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -13,6 +15,12 @@ import net.minecraft.world.level.block.Blocks;
  * reusable paid inventory hook, ascent -> ledge -> safe rappel.
  */
 public final class BuilderGrappleGameTest {
+    // In the 26.2 registry, dyed wool variants are resolved by ID instead
+    // of depending on removed old Blocks.<COLOR>_WOOL Java constants.
+    private static final net.minecraft.world.level.block.Block PURPLE=
+            BuiltInRegistries.BLOCK.getValue(Identifier.tryParse("minecraft:purple_wool"));
+    private static final net.minecraft.world.level.block.Block LIME=
+            BuiltInRegistries.BLOCK.getValue(Identifier.tryParse("minecraft:lime_wool"));
     @GameTest(maxTicks=700,skyAccess=true)
     public void realBuilderClimbsAndRappelsWithoutScaffolds(
             GameTestHelper helper){
@@ -27,8 +35,8 @@ public final class BuilderGrappleGameTest {
         BlockPos anchor=helper.absolutePos(new BlockPos(4,6,3));
         BlockPos ground=helper.absolutePos(new BlockPos(5,2,3));
         BlockPos top=anchor.above();
-        helper.setBlock(4,6,3,Blocks.PURPLE_WOOL);
-        helper.setBlock(5,1,3,Blocks.LIME_WOOL);
+        helper.setBlock(4,6,3,PURPLE);
+        helper.setBlock(5,1,3,LIME);
         BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         mob.setPos(ground.getX()+.5,ground.getY(),ground.getZ()+.5);
         mob.setItem(0,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
@@ -67,7 +75,7 @@ public final class BuilderGrappleGameTest {
                     if(mob.carriedCount(WorksiteContent.GRAPPLE_HOOK)!=1){
                         helper.fail("Grapple consumed unexpectedly");return;
                     }
-                    if(!level.getBlockState(anchor).is(Blocks.PURPLE_WOOL)){
+                    if(!level.getBlockState(anchor).is(PURPLE)){
                         helper.fail("Grapple changed anchor block");return;
                     }
                     phase[0]=1;since[0]=now;
@@ -83,7 +91,7 @@ public final class BuilderGrappleGameTest {
                         &&mob.blockPosition().getY()==ground.getY()
                         &&!BuilderGrappleAccess.active(mob)){
                     if(mob.carriedCount(WorksiteContent.GRAPPLE_HOOK)!=1
-                            ||!level.getBlockState(anchor).is(Blocks.PURPLE_WOOL)){
+                            ||!level.getBlockState(anchor).is(PURPLE)){
                         helper.fail("Rappel consumed tool or changed construction");
                         return;
                     }
@@ -105,7 +113,7 @@ public final class BuilderGrappleGameTest {
         var table=(WorkerStationBlockEntity)world.getBlockEntity(
                 helper.absolutePos(new BlockPos(0,2,0)));
         BlockPos anchor=helper.absolutePos(new BlockPos(4,23,3));
-        helper.setBlock(4,23,3,Blocks.PURPLE_WOOL);
+        helper.setBlock(4,23,3,PURPLE);
         BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         BlockPos start=helper.absolutePos(new BlockPos(5,2,3));
         mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
