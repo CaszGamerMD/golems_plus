@@ -44,8 +44,67 @@ public final class BuilderPlacementSpace {
         return new AABB(pos).inflate(.10,0,.10);
     }
 
+    // Clearance is measured from the Golem's CENTER to the closest edge
+    // of the *future* target block in X/Z, not from block-center to
+    // block-center. A 0.65-wide Builder at x=targetMaxX+.80 keeps its full
+    // shoulder outside the new cube. Tile centers only 0.5 from the
+    // nearest edge are NOT sufficient.
+    static final double MIN_EDGE_CLEARANCE=.80;
+    private static double edgeDistance(BlockPos block,double x,double z){
+        double dx=Math.max(0,Math.max(block.getX()-x,x-(block.getX()+1.0)));
+        double dz=Math.max(0,Math.max(block.getZ()-z,z-(block.getZ()+1.0)));
+        return Math.hypot(dx,dz);
+    }
     private static boolean occupied(BlockPos target,BuilderGolem worker){
-        return worker.isAlive()&&worker.getBoundingBox().intersects(volume(target));
+        return worker.isAlive()
+                &&worker.getBoundingBox().maxY>target.getY()
+                &&worker.getBoundingBox().minY<target.getY()+1
+                &&(worker.getBoundingBox().intersects(volume(target))
+                    ||edgeDistance(target,worker.getX(),worker.getZ())
+                            <MIN_EDGE_CLEARANCE-.015);
+    }
+    private static boolean canPrecisionStep(ServerLevel level,BuilderGolem mob,
+            BlockPos target){
+        if(!mob.onGround()||mob.blockPosition().getY()!=target.getY())return false;
+        double dx=mob.getX()-(target.getX()+.5);
+        double dz=mob.getZ()-(target.getZ()+.5);
+        boolean xAxis=Math.abs(dx)>=Math.abs(dz);
+        double x=xAxis?(dx>=0?target.getX()+1.84:target.getX()-.84):mob.getX();
+        double z=xAxis?mob.getZ():(dz>=0?target.getZ()+1.84:target.getZ()-.84);
+        BlockPos foot=BlockPos.containing(x,mob.getY(),z);
+        if(!level.hasChunkAt(foot)||!level.hasChunkAt(foot.below())
+                ||!level.getBlockState(foot.below()).isFaceSturdy(
+                        level,foot.below(),net.minecraft.core.Direction.UP))
+            return false;
+        return level.getBlockState(foot).getCollisionShape(level,foot).isEmpty()
+                &&level.getBlockState(foot.above())
+                        .getCollisionShape(level,foot.above()).isEmpty();
+    }
+    /** This precision phase is called every entity tick BEFORE physics.
+     * A* reaches a work stand; the last 0.3-0.8m is a deliberate, real
+     * collision-checked sidestep away from the new block's exact edge.
+     * No coordinate snapping, teleport, noclip, or vertical flying.
+     */
+    public static boolean tickPrecisionYield(ServerLevel level,BuilderGolem mob){
+        Yield hold=yielding.get(mob);
+        if(hold==null||!occupied(hold.target(),mob)
+                ||!canPrecisionStep(level,mob,hold.target()))return false;
+        BlockPos target=hold.target();
+        double dx=mob.getX()-(target.getX()+.5);
+        double dz=mob.getZ()-(target.getZ()+.5);
+        boolean xAxis=Math.abs(dx)>=Math.abs(dz);
+        double desired=xAxis?(dx>=0?target.getX()+1.84:target.getX()-.84)
+                :(dz>=0?target.getZ()+1.84:target.getZ()-.84);
+        double distance=desired-(xAxis?mob.getX():mob.getZ());
+        if(Math.abs(distance)<.012)return false;
+        double step=Math.copySign(Math.min(.12,Math.abs(distance)),distance);
+        var next=mob.getBoundingBox().move(xAxis?step:0,0,xAxis?0:step);
+        if(!level.noCollision(mob,next))return false;
+        WorkerNavigation.stop(mob);
+        var velocity=mob.getDeltaMovement();
+        mob.setDeltaMovement(xAxis?step:0,Math.min(0,velocity.y),
+                xAxis?0:step);
+        return true;
     }
 
     /** Run before ANY ordinary Builder assignment/courier/navigation tick. */
@@ -62,8 +121,11 @@ public final class BuilderPlacementSpace {
             yielding.remove(worker);
             return false;
         }
-        // Yielded Builders keep walking away even when their assigned
-        // construction task would otherwise repeatedly override the path.
+        // The last fraction of a block is a continuous physics-controlled
+        // precision move; an exact tile-center path would stop too close.
+        if(occupied(hold.target(),worker)
+                &&canPrecisionStep(level,worker,hold.target()))return true;
+        // Otherwise the worker must take a normal collision-safe A* path.
         if(occupied(hold.target(),worker)
                 ||worker.distanceToSqr(hold.destination().getX()+.5,
                         hold.destination().getY(),hold.destination().getZ()+.5)>2.25)
@@ -184,7 +246,9 @@ public final class BuilderPlacementSpace {
             for(int dy:sameHeight?new int[]{0}:new int[]{0,1,-1,2,-2}){
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos p=target.offset(dx,dy,dz);
-                if(p.distSqr(target)>=14
+                if(edgeDistance(target,p.getX()+.5,p.getZ()+.5)
+                            <MIN_EDGE_CLEARANCE
+                        ||p.distSqr(target)>=14
                         ||p.equals(worker.blockPosition())
                             &&worker.distanceToSqr(target.getX()+.5,
                                 target.getY()+.5,target.getZ()+.5)>13.0
@@ -276,8 +340,9 @@ public final class BuilderPlacementSpace {
             WorkerStationBlockEntity table,BlockPos target){
         AABB area=volume(target);
         List<BuilderGolem> blockers=level.getEntitiesOfClass(
-                BuilderGolem.class,area,
-                g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID()));
+                BuilderGolem.class,area.inflate(1,0,1),
+                g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID())
+                        &&occupied(target,g));
         if(blockers.isEmpty()){
             // A player/other mob must also never be suffocated by placement.
             List<LivingEntity> others=level.getEntitiesOfClass(
@@ -294,7 +359,11 @@ public final class BuilderPlacementSpace {
             Yield old=yielding.get(blocker);
             if(old!=null&&old.target().equals(target)
                     &&old.until()>level.getGameTime())continue;
-            BlockPos destination=escape(level,blocker,target);
+            // When standing adjacent on real ground, do a precise
+            // horizontal edge-clearance move instead of targeting a tile
+            // center that still intersects the future placement cube.
+            BlockPos destination=canPrecisionStep(level,blocker,target)
+                    ?blocker.blockPosition():escape(level,blocker,target);
             if(destination==null){
                 found=false;
                 continue;
