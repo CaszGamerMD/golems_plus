@@ -259,4 +259,92 @@ public final class BuilderConstructionFrontierGameTest {
         h.succeed();
         });
     }
+
+    @GameTest(maxTicks=90,skyAccess=true)
+    public void ignoredAzaleaNeverRequiresSupportOrWorkPosition(GameTestHelper h){
+        floor(h);
+        ServerLevel world=h.getLevel();
+        var mob=worker(h,h.absolutePos(new BlockPos(5,2,5)));
+        var table=planner(h,mob,37);
+        var blocked=h.absolutePos(new BlockPos(3,2,3));
+        var azalea=h.absolutePos(new BlockPos(4,2,4));
+        var grass=h.absolutePos(new BlockPos(4,2,5));
+        var steps=new java.util.ArrayList<BuilderConstructionPlan.Step>();
+        for(int i=0;i<35;i++)
+            steps.add(new BuilderConstructionPlan.Step(
+                    blocked.getX(),blocked.getY(),blocked.getZ(),
+                    "minecraft:ladder[facing=north]","minecraft:ladder"));
+        steps.add(new BuilderConstructionPlan.Step(
+                azalea.getX(),azalea.getY(),azalea.getZ(),
+                "minecraft:azalea",null,true));
+        steps.add(new BuilderConstructionPlan.Step(
+                grass.getX(),grass.getY(),grass.getZ(),
+                "minecraft:short_grass",null,true));
+        var zone=new java.util.ArrayList<Integer>();
+        for(int i=0;i<steps.size();i++)zone.add(i);
+        // Remove a plant's footing explicitly: no hidden physical support.
+        world.setBlock(azalea.below(),Blocks.AIR.defaultBlockState(),3);
+        world.setBlock(grass.below(),Blocks.AIR.defaultBlockState(),3);
+        h.onEachTick(()->{
+        if(h.getTick()!=16)return;
+        for(int index:new int[]{35,36}){
+            var choice=BuilderConstructionPlanner.choose(world,mob,table,steps,zone);
+            if(choice==null||choice.index()!=index||!choice.alreadyBuilt()){
+                h.fail("Ignored vegetation should be unconditional no-op: "+choice);
+                return;
+            }
+            if(table.claimPreferredBuilderZoneStep(mob.getUUID(),
+                    zone,steps,index)!=index
+                    ||!table.completeBuilderStep(mob.getUUID(),index)){
+                h.fail("Unable to finish ignored vegetation step "+index);
+                return;
+            }
+        }
+        if(BuilderConstructionPlanner.blockedSummary(world,table,steps,zone)
+                .contains("azalea reason=missing physical support")){
+            h.fail("Ignored azalea still diagnosed as missing support");
+            return;
+        }
+        if(!world.getBlockState(azalea).isAir()
+                ||!world.getBlockState(grass).isAir()){
+            h.fail("Ignored vegetation must not create blocks");
+            return;
+        }
+        System.out.println("[FRONTIER] PASS 35 blocked cells cannot starve "
+                +"unsupported ignored azalea/grass; no item used");
+        h.succeed();
+        });
+    }
+
+    @GameTest(maxTicks=90,skyAccess=true)
+    public void exitCanUseCollisionSafeAdjacentTileWithoutPlacementMargin(
+            GameTestHelper h){
+        floor(h);
+        var world=h.getLevel();
+        var mob=worker(h,h.absolutePos(new BlockPos(3,2,3)));
+        var stance=h.absolutePos(new BlockPos(3,2,3));
+        var target=h.absolutePos(new BlockPos(3,2,5));
+        for(int x=2;x<=4;x++)for(int z=2;z<=4;z++){
+            if(x==3&&(z==3||z==4))continue;
+            h.setBlock(x,2,z,Blocks.STONE);
+            h.setBlock(x,3,z,Blocks.STONE);
+        }
+        h.onEachTick(()->{
+        if(h.getTick()!=16)return;
+        if(!BuilderConstructionPlanner.exitAfterPlacement(
+                world,mob,stance,target)){
+            h.fail("Safe adjacent exit incorrectly required 0.8m "
+                    +"placement margin AFTER block exists");return;
+        }
+        h.setBlock(3,2,4,Blocks.STONE);
+        h.setBlock(3,3,4,Blocks.STONE);
+        if(BuilderConstructionPlanner.exitAfterPlacement(
+                world,mob,stance,target)){
+            h.fail("Physically walled-off exit was accepted");return;
+        }
+        System.out.println("[FRONTIER] PASS real swept adjacent exit "
+                +"without misapplying placement arm clearance");
+        h.succeed();
+        });
+    }
 }
