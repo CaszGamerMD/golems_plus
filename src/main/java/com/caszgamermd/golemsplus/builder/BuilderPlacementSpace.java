@@ -237,6 +237,40 @@ public final class BuilderPlacementSpace {
         }
     }
 
+    /** Read-only diagnostic for stuck workers. Capture the exact held
+     * placement cell and reserved escape, including expiry, without
+     * changing a route or claiming a build step.
+     */
+    public static String debugYield(ServerLevel level,BuilderGolem worker){
+        Yield hold=yielding.get(worker);
+        if(hold==null)return "yield=none";
+        return "yieldTarget="+hold.target().toShortString()
+                +" escape="+hold.destination().toShortString()
+                +" expiresIn="+Math.max(0,hold.until()-level.getGameTime())+"t"
+                +" stillOccupies="+occupied(hold.target(),worker)
+                +" escapeStandable="+WorkerNavigation.canStandOn(
+                        level,worker,hold.destination());
+    }
+
+    /** Precise occupants of the intended block's collision volume.
+     * This is for reporting only, never an alternative movement policy.
+     */
+    public static String debugOccupants(ServerLevel level,
+            WorkerStationBlockEntity table,BlockPos target){
+        List<BuilderGolem> blocking=level.getEntitiesOfClass(
+                BuilderGolem.class,volume(target),
+                g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID()));
+        if(blocking.isEmpty())return "none";
+        List<String> details=new ArrayList<>();
+        for(BuilderGolem g:blocking)
+            details.add(g.getName().getString()
+                    +" block="+g.blockPosition().toShortString()
+                    +" feet="+String.format(java.util.Locale.ROOT,
+                            "(%.2f,%.2f,%.2f)",g.getX(),g.getY(),g.getZ())
+                    +" "+debugYield(level,g));
+        return String.join("; ",details);
+    }
+
     /** @return true only when the future block volume is clear of workers. */
     public static boolean ready(ServerLevel level,BuilderGolem placing,
             WorkerStationBlockEntity table,BlockPos target){
