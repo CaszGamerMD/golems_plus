@@ -36,7 +36,10 @@ public final class BuilderScaffoldPlanAGameTest {
         BlockPos tower=helper.absolutePos(new BlockPos(2,2,3));
         BlockPos target=helper.absolutePos(new BlockPos(5,6,3));
         BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-        mob.assign(home,owner.getUUID());
+        // This is a direct movement controller test: do not assign a
+        // live construction job to a Planner with activeOrder=null,
+        // which would simultaneously issue an early-return/cleanup
+        // command and fight the exact motion being tested.
         mob.setPos(tower.getX()+.5,tower.getY(),tower.getZ()+.5);
         mob.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
         level.addFreshEntity(mob);
