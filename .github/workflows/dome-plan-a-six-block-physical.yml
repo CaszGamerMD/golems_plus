@@ -1,0 +1,40 @@
+name: Dome — Plan A six-block scaffold physical test
+run-name: "3,537-block Dome / 4 real Builders / six-block Plan A scaffolds"
+on:
+  push:
+    branches: [test/dome-plan-a-six-block-scaffolding-262]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  full-dome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Check exact dome and Plan A six-block scaffold rule
+        run: |
+          test -f src/gametest/resources/golems_plus_dome/segment0.txt
+          test -f src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderDomeConstructionGameTest.java
+          grep -q 'MAX_HORIZONTAL_SCAFFOLD_SPAN=6' src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffoldPlanA.java
+          grep -q 'BuilderScaffoldPlanA.reach' src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java
+      - name: Run 4 real Minecraft Builder Golems against full 3537-block dome
+        run: gradle --no-daemon runGameTest
+      - name: Preserve dome physics evidence and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-a-six-block-full-dome-evidence
+          path: |
+            build/gametest/
+            build/reports/
+            build/test-results/
+            build/run/gameTest/logs/
+          if-no-files-found: ignore

@@ -668,7 +668,8 @@ public final class BuilderBuildService {
         if(!table.hasPlacedSchematic())
             throw new IllegalArgumentException("No placed schematic");
         Path folder=FabricLoader.getInstance().getConfigDir()
-                .resolve("golems_plus").resolve("schematics");
+                .resolve("golems_plus").resolve("schematics")
+                .toAbsolutePath().normalize();
         Path file=folder.resolve(table.builderFile()).normalize();
         if(!file.startsWith(folder)||!Files.isRegularFile(file))
             throw new IllegalArgumentException("Saved schematic missing");
