@@ -1050,8 +1050,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
      * A previously blocked worker can select another physically feasible
      * block from its OWN X/Z zone, on the SAME strict global Y.
      */
-    public int claimPreferredBuilderZoneStep(UUID worker,List<Integer> fullZone,
-            List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
+    public int claimPreferredBuilderZoneStep(UUID worker,java.util.List<Integer> fullZone,
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
             int preferred){
         if(activeOrder==null||!builderWorkerIds().contains(worker)
                 ||steps==null||fullZone==null||preferred<0
