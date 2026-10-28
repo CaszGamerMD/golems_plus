@@ -168,6 +168,56 @@ public final class BuilderConstructionPlanner {
                 +" next=["+String.join("; ",examples)+"]";
     }
 
+    /** Diagnose the exact first supported frontier obstruction with the
+     * current world and trained route finder; never move or alter blocks.
+     * This is for failure reports, not the 5-tick claim hot path.
+     */
+    public static String diagnoseBlockedZone(ServerLevel world,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
+        int y=table.builderActiveLayer(steps);
+        for(int idx:zone){
+            if(idx<0||idx>=steps.size()||steps.get(idx).y()!=y
+                    ||!table.builderStepReadyForClaim(idx)
+                    ||steps.get(idx).ignorePlant())continue;
+            var step=steps.get(idx);
+            BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+            if(!world.hasChunkAt(target))continue;
+            var state=BuilderBlockResolver.resolve(step.encodedState(),
+                    BuildSite.Rotation.values()[table.builderRotation()/90],
+                    BuildSite.Mirror.values()[table.builderMirror()]);
+            if(state==null||!state.state().canSurvive(world,target))
+                continue;
+            int feasible=0,feet=0,sight=0,escapes=0,routes=0,probes=0;
+            for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+                for(int dy:new int[]{0,1}){
+                    BlockPos at=target.offset(dx,dy,dz);
+                    if(at.equals(target)||at.distSqr(target)>=REACH_SQUARED)
+                        continue;
+                    double px=at.getX()+.5,pz=at.getZ()+.5;
+                    double ex=Math.max(0,Math.max(target.getX()-px,
+                            px-target.getX()-1));
+                    double ez=Math.max(0,Math.max(target.getZ()-pz,
+                            pz-target.getZ()-1));
+                    if(Math.hypot(ex,ez)<.8)continue;
+                    feasible++;
+                    if(!WorkerNavigation.canStandOn(world,worker,at))continue;
+                    feet++;
+                    if(!lineOfSight(world,worker,at,target))continue;
+                    sight++;
+                    if(!exitAfterPlacement(world,worker,at,target))continue;
+                    escapes++;
+                    if(probes++<8&&WorkerNavigation.canReachExact(
+                            world,worker,at))routes++;
+                }
+            return " | firstSupported #"+idx+" localXYZ="
+                    +target.subtract(table.builderOrigin()).toShortString()
+                    +" poses="+feasible+" standable="+feet+" LOS="+sight
+                    +" exits="+escapes+" reachable="+routes;
+        }
+        return " | no supported pending target on current Y";
+    }
+
     /** Select the most promising same-layer cell in the worker's OWN
      * zone. Readiness is checked against persistent step completion and
      * cooldown state. We look beyond the first blocked strip element;

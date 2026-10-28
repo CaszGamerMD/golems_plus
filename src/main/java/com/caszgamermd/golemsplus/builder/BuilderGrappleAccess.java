@@ -63,6 +63,8 @@ public final class BuilderGrappleAccess {
     private record NormalDrop(BlockPos goal,BlockPos landing,long until){}
     private static final Map<BuilderGolem,NormalDrop> normalDrops=
             new WeakHashMap<>();
+    private static final Map<BuilderGolem,Long> nextDropSearch=
+            new WeakHashMap<>();
     private static boolean tryLocalOneBlockDrop(ServerLevel level,
             BuilderGolem mob,BlockPos goal){
         if(!mob.onGround())return false;
@@ -77,9 +79,13 @@ public final class BuilderGrappleAccess {
                             level,mob,hold.landing(),1.0))
                 return true;
         }
+        long now=level.getGameTime();
+        if(nextDropSearch.getOrDefault(mob,0L)>now)return false;
         BlockPos origin=mob.blockPosition();
         List<BlockPos> landings=new ArrayList<>();
-        for(int radius=1;radius<=4;radius++)
+        // Scan the entire nearby rim, not just four blocks: a Golem
+        // perched on a first-layer wall can be far from a natural drop.
+        for(int radius=1;radius<=10;radius++)
             for(int dx=-radius;dx<=radius;dx++)
                 for(int dz=-radius;dz<=radius;dz++){
                     if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)
@@ -93,7 +99,7 @@ public final class BuilderGrappleAccess {
                 p.distSqr(origin)+p.distSqr(goal)*.05));
         int probes=0;
         for(BlockPos landing:landings){
-            if(++probes>24)break;
+            if(++probes>64)break;
             if(!WorkerNavigation.canReachExact(level,mob,landing))
                 continue;
             if(!WorkerNavigation.routeToExact(level,mob,landing,1.0))
@@ -104,6 +110,7 @@ public final class BuilderGrappleAccess {
                     +"via="+landing+" instead of hook to "+goal);
             return true;
         }
+        nextDropSearch.put(mob,now+40);
         return false;
     }
     // Keep short-lived failures by BOTH ledge and face. A failed hook
