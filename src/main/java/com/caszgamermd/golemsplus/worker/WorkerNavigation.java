@@ -602,11 +602,13 @@ public final class WorkerNavigation {
         }
         if(p.requested!=null&&!mob.getNavigation().isDone()
                 &&yieldToWorker(level,mob,p)){
-            p.wait=15+(Math.floorMod(mob.getId(),4)*5);
+            // Brief courtesy pause; preserve the trained plan. Traffic
+            // is NOT a terrain failure, so there is no route mutation,
+            // abandoned waypoint or new global search on every encounter.
+            p.wait=5+Math.floorMod(mob.getId(),4);
             mob.getNavigation().stop();
-            // Keep requested target so the next evaluation resumes.
-            p.nextRoute=0;p.stalled=STALL_TICKS;
-            p.weightedRoute=List.of();p.routeCursor=0;
+            p.nextRoute=0;p.stalled=0;
+            p.routeCursor=Math.max(0,p.routeCursor-3);
             return;
         }
         // Open door based on actual next-step or desired route direction,
@@ -923,7 +925,27 @@ public final class WorkerNavigation {
             if(forwardDist<.15||forwardDist>1.5||delta.lengthSqr()>1.5*1.5)
                 continue;
             if(other.getNavigation().isDone())continue;
-            // An asymmetric tie break ensures both workers don't yield.
+            // Trial 3 discovery: slot/UUID priority alone makes a
+            // FOLLOWER block a LEADER on narrow one-way corridors.
+            // Only the rear worker yields in a same-direction convoy.
+            // At head-on approaches, deterministic UUID priority prevents
+            // reciprocal yielding (the failed 5/9 experiment).
+            Path peer=other.getNavigation().getPath();
+            Vec3 heading=other.getDeltaMovement();
+            if(peer!=null&&peer.getNextNodeIndex()<peer.getNodeCount()){
+                Node node=peer.getNode(peer.getNextNodeIndex());
+                heading=new Vec3(node.x+.5-other.getX(),0,
+                        node.z+.5-other.getZ());
+            }
+            Vec3 flatHeading=new Vec3(heading.x,0,heading.z);
+            boolean sameDirection=flatHeading.lengthSqr()>.01
+                    &&flatHeading.normalize().dot(forward)>.70;
+            if(sameDirection){
+                // Do not park a convoy for 15+ ticks when the golem in
+                // front is moving away. Yield only on actual close contact.
+                if(forwardDist<.85)return true;
+                continue;
+            }
             if(mob.getUUID().compareTo(other.getUUID())>0)
                 return true;
         }
