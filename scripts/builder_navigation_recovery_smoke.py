@@ -27,9 +27,9 @@ assert '"Builder exploring alternate routes to "' not in building
 approaches=(root/"builder/BuilderPlacementSpace.java").read_text()
 assert "private static final Map<BuilderGolem,Approach> workApproaches" in approaches
 assert "cached.target().equals(target)" in approaches
-assert "cached.until()>level.getGameTime()" in approaches
+assert "cached.until()>now" in approaches
 assert "WorkerNavigation.canStandOn(level,worker,cached.destination())" in approaches
-assert "level.getGameTime()+100" in approaches
+assert "now+75" in approaches
 assert "public static boolean canStandOn(ServerLevel level" in navigation
 assert "worker.distanceToSqr(landing.getX()+.5" in scaffolds
 assert "return Result.NOT_NEEDED;" in scaffolds

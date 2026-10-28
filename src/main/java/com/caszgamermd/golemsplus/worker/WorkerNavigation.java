@@ -422,6 +422,25 @@ public final class WorkerNavigation {
         if(mob.blockPosition().equals(target)
                 &&standingTile(level,mob,target)){
             p.requested=target.immutable();p.approach=target.immutable();
+            // A cell match is not physical arrival: a Builder can be
+            // 0.45 block off-center at the edge of an otherwise valid
+            // work stance, too far to place its assigned block. A* to
+            // the current cell returns no path and endlessly retries.
+            // Finish the LAST FRACTION OF A BLOCK with collision-tested
+            // real motion. Never setPos, jump, or ignore other entities.
+            double tx=target.getX()+.5,tz=target.getZ()+.5;
+            double dx=tx-mob.getX(),dz=tz-mob.getZ();
+            if(dx*dx+dz*dz>.05*.05){
+                mob.getMoveControl().setWantedPosition(tx,
+                        floorAt(level,target),tz,speed);
+                double vx=Math.max(-.10,Math.min(.10,dx*.25));
+                double vz=Math.max(-.10,Math.min(.10,dz*.25));
+                if(level.noCollision(mob,
+                        mob.getBoundingBox().move(vx,0,vz))){
+                    Vec3 v=mob.getDeltaMovement();
+                    mob.setDeltaMovement(vx,v.y,vz);
+                }
+            }else mob.getNavigation().stop();
             return true;
         }
         if(!standingTile(level,mob,target))return false;
