@@ -21,7 +21,9 @@ assert "setShiftKeyDown(false)" in builder
 assert "private static boolean requiresDoorCrossing(" in nav
 assert "return Math.abs(from)>.35&&Math.abs(to)>.35&&from*to<0;" in nav
 assert "requiresDoorCrossing(world,mob,p,door)" in nav
-assert "requiresDoorCrossing(level,mob,p,doorPos)" in nav
+assert "BlockPos door=imminentDoor(level,mob,p)" in nav
+assert "if(door==null||!handDoor(level,door))return;" in nav
+assert "requiresDoorCrossing(world,mob,p,door)" in nav
 assert "if(progress.queuedDoor!=null&&target!=null" in nav
 assert "if(p.queuedDoor!=null&&target!=null" in nav
 assert "public static void yieldStalled(" in traffic
