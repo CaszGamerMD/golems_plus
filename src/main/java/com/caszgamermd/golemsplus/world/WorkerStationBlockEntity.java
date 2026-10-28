@@ -950,35 +950,56 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return true;
     }
 
-    /** Each Builder keeps exclusive ownership of its full X/Z zone.
-     * Lower Y is a travel preference, NOT a hard stop or crew barrier.
-     * A failed lower coordinate is deferred, so the SAME worker may
-     * continue other safe cells at ANY Y while it waits for materials,
-     * reachable working positions, or support. Never mark deferred work
-     * complete. Old completed indexed cells remain persisted.
+    /** Crew-wide construction height gate. The placed schematic is
+     * compiled strictly bottom-to-top. builderCursor is the FIRST
+     * unfinished step, even when other workers have completed positions
+     * farther ahead on this same Y. A deferred, inaccessible or missing
+     * material step keeps its entire layer active until actually done.
+     * This does not restrict safe walking/grappling between heights.
+     */
+    public int builderActiveLayer(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(steps==null||builderCursor<0||builderCursor>=steps.size())
+            return Integer.MAX_VALUE;
+        return steps.get(builderCursor).y();
+    }
+
+    /** Each Builder owns its X/Z zone. ALL workers must finish ALL
+     * unfinished coordinates on the current shared Y before the Planner
+     * assigns any block on a higher Y. A blocked step is retried in
+     * the same layer (not discarded); idle workers return OnSite.
      */
     public int claimBuilderZoneStep(UUID worker,java.util.List<Integer> fullZone,
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(activeOrder==null||!builderWorkerIds().contains(worker)
-                ||fullZone==null||fullZone.isEmpty())return -1;
+                ||fullZone==null||fullZone.isEmpty()
+                ||steps==null||builderCursor>=steps.size())return -1;
+        int layer=builderActiveLayer(steps);
         int current=builderClaims.getOrDefault(worker,-1);
         long now=level==null?0:level.getGameTime();
-        if(current>=0&&current<steps.size()
-                &&current>=builderCursor&&!builderFinishedSteps.contains(current)
+        if(current>=builderCursor&&current<steps.size()
+                &&steps.get(current).y()==layer
+                &&!builderFinishedSteps.contains(current)
                 &&builderMissingRetries.getOrDefault(current,0L)<=now)
             return current;
         builderClaims.remove(worker);
         var stage=builderWorkOrders.get(worker);
         if(stage!=null){
-            boolean runnable=false;
-            for(int idx:stage)
-                if(idx>=builderCursor&&!builderFinishedSteps.contains(idx)
-                        &&builderMissingRetries.getOrDefault(idx,0L)<=now){
-                    runnable=true;break;
+            // An old persisted or in-flight batch may include a prior
+            // layer or higher-Y cells from the former free-Y policy.
+            // Restage with ONLY current-layer tasks, without losing any
+            // real saved completion or materials in the worker's pouch.
+            boolean wrongLayer=false,runnable=false;
+            for(int idx:stage){
+                if(idx<0||idx>=steps.size()
+                        ||steps.get(idx).y()!=layer){
+                    wrongLayer=true;break;
                 }
-            if(!runnable){
-                // Re-stage independently even when one lower task has a
-                // delayed retry. No global or worker-wide Y barrier.
+                if(idx>=builderCursor&&!builderFinishedSteps.contains(idx)
+                        &&builderMissingRetries.getOrDefault(idx,0L)<=now)
+                    runnable=true;
+            }
+            if(wrongLayer||!runnable){
                 builderWorkOrders.remove(worker);
                 builderPreparedOrders.remove(worker);
                 stage=null;
@@ -988,6 +1009,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             var newStage=new java.util.ArrayList<Integer>(BUILDER_STAGE_SIZE);
             for(int idx:fullZone){
                 if(idx<builderCursor||idx>=steps.size()
+                        ||steps.get(idx).y()!=layer
                         ||builderFinishedSteps.contains(idx)
                         ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
                 newStage.add(idx);
@@ -1001,6 +1023,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         for(int idx:stage){
             if(idx<builderCursor||idx>=steps.size()
+                    ||steps.get(idx).y()!=layer
                     ||builderFinishedSteps.contains(idx)
                     ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
             builderClaims.put(worker,idx);
@@ -1009,8 +1032,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return -1;
     }
     /** No route or anchor is currently valid for a claimed cell. Keep
-     * the exact unfinished index to retry, but unblock the rest of the
-     * zone (including other Y levels) for a bounded 60-tick interval.
+     * the exact unfinished index to retry, while other Builders may
+     * work on the SAME shared Y. Higher Y remains locked until done.
      */
     public void waitForBuilderAccess(UUID worker,int step,long tick){
         if(builderClaims.getOrDefault(worker,-1)!=step)return;
