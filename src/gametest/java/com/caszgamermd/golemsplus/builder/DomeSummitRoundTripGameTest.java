@@ -540,6 +540,20 @@ public final class DomeSummitRoundTripGameTest {
                     Math.max(base.getY(),here.getY()-2),here.getY(),30);
             choices.removeIf(p->p.distSqr(here)<9
                     ||frontierVisitedUntil.getOrDefault(p,0L)>tick);
+            // Keep near options AND a geographically broad sampling of the
+            // remaining roof. Otherwise evaluating every one of thousands
+            // of footings against every higher ledge every 40 ticks is
+            // quadratic and can starve Minecraft's simulation thread.
+            if(choices.size()>192){
+                List<BlockPos> sampled=new ArrayList<>(192);
+                sampled.addAll(choices.subList(0,64));
+                int remainingCount=choices.size()-64;
+                for(int i=0;i<128;i++){
+                    int at=64+(int)((long)i*remainingCount/128);
+                    sampled.add(choices.get(Math.min(at,choices.size()-1)));
+                }
+                choices=sampled;
+            }
             if(choices.isEmpty()){
                 frontierNoPaths++;
                 if(tick%400==0)log(tick,"NO_ROOF_FRONTIER",here,
