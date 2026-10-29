@@ -109,6 +109,35 @@ public final class DomeReverseDemolitionGameTest {
                         net.minecraft.core.registries.BuiltInRegistries.BLOCK
                         .getKey(state.getBlock()).toString()))
                     continue;
+                if(!state.canSurvive(world,p)
+                        &&state.hasProperty(
+                            net.minecraft.world.level.block.state.properties
+                            .BlockStateProperties.DOUBLE_BLOCK_HALF)
+                        &&state.getValue(
+                            net.minecraft.world.level.block.state.properties
+                            .BlockStateProperties.DOUBLE_BLOCK_HALF)
+                            ==net.minecraft.world.level.block.state.properties
+                                .DoubleBlockHalf.UPPER
+                        &&!remaining.containsKey(p.below())){
+                    // The original source is clipped at Y=0 and includes
+                    // upper halves of two-high flowers with the corresponding
+                    // lower halves OUTSIDE its recorded region. No ground
+                    // substrate can support an upper-half peony directly.
+                    // Restore only the non-schematic lower flower and its
+                    // real soil, keeping all 3537 original cells unchanged.
+                    BlockPos lower=p.below();
+                    world.setBlock(lower.below(),
+                            Blocks.GRASS_BLOCK.defaultBlockState(),2);
+                    BlockState lowerHalf=state.setValue(
+                            net.minecraft.world.level.block.state.properties
+                            .BlockStateProperties.DOUBLE_BLOCK_HALF,
+                            net.minecraft.world.level.block.state.properties
+                            .DoubleBlockHalf.LOWER);
+                    world.setBlock(lower,lowerHalf,2);
+                    System.out.println("[REVERSE TERRAIN] restored clipped "
+                            +"outside-schematic lower flower "+lowerHalf
+                            +" for upper "+p);
+                }
                 if(!state.canSurvive(world,p)){
                     // The schematic does not encode the SURROUNDING
                     // natural terrain at Y=-1. Preserve all original
