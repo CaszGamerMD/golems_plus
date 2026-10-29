@@ -313,7 +313,10 @@ public final class DomeReverseDemolitionGameTest {
                         +" grapples="+study.grapples
                         +" currentY="+(golem.blockPosition().getY()-origin.getY())
                         +" mobTicks="+golem.tickCount
-                        +" grounded="+golem.onGround());
+                        +" grounded="+golem.onGround()
+                        +" target="+(study.target==null?"none":study.relative(study.target))
+                        +" stanceAge="+(study.target==null?0:tick-study.targetSelectedAt)
+                        +" relocations="+study.relocations);
             if(failure!=null){
                 study.writeReports("FAIL "+failure);
                 releaseSimulation.run();
@@ -362,7 +365,7 @@ public final class DomeReverseDemolitionGameTest {
         long waypointProgressTick;
         double bestWaypointDistance=Double.POSITIVE_INFINITY;
         Vec3 previous;
-        long lastProgress,lastRouteProgress,lastScanTick;
+        long lastProgress,lastRouteProgress,lastScanTick,targetSelectedAt;
         int mined,physicsCleared,itemlessBlocks,itemsCollected,unloads,jumps,drops,grapples,scanOffset,routeFailures;
         long deposited;
         boolean unloading;
@@ -501,7 +504,7 @@ public final class DomeReverseDemolitionGameTest {
             return out;
         }
         void reset(){
-            target=null;stance=null;miningAge=0;
+            target=null;stance=null;miningAge=0;targetSelectedAt=0;
             closestDistance=Double.POSITIVE_INFINITY;
         }
         String tick(long now){
@@ -533,6 +536,28 @@ public final class DomeReverseDemolitionGameTest {
                 }
             }
             if(target!=null && !remaining.containsKey(target))reset();
+            // A work target has a HARD physical deadline. Small back-and-
+            // forth moves must not refresh it indefinitely while an entity
+            // bounces between two levels without ever mining the block.
+            if(target!=null && now-targetSelectedAt>420){
+                BlockPos stale=target;
+                trace(now,"WORK_STANCE_EXPIRED",stale,
+                        "elapsed="+(now-targetSelectedAt)
+                        +" stance="+relative(stance)
+                        +" nav="+WorkerNavigation.debugStatus(mob));
+                excludedUntil.put(stale,now+640);
+                WorkerNavigation.stop(mob);
+                routeFailures++;
+                reset();
+            }
+            if(now-lastProgress>(mined==0?2500:8500))
+                return "Global mining watchdog: no real break for "
+                        +(now-lastProgress)+" ticks"
+                        +" target="+(target==null?"none":relative(target))
+                        +" stance="+(stance==null?"none":relative(stance))
+                        +" feet="+relative(mob.blockPosition())
+                        +" relocations="+relocations+" routes="+routeFailures
+                        +" nav="+WorkerNavigation.debugStatus(mob);
             if(target!=null){
                 // A mining action requires grounded REAL reach and an
                 // unobstructed line; never harvest remotely or behind walls.
@@ -591,13 +616,6 @@ public final class DomeReverseDemolitionGameTest {
                     return null;
                 }
             }
-            if(now-lastProgress>(mined==0?2500:8500))
-                return "No real demolition progress for "
-                        +(now-lastProgress)+" ticks"
-                        +" scans="+scanOffset+" of "+remaining.size()
-                        +" feet="+relative(mob.blockPosition())
-                        +" grapple="+BuilderGrappleAccess.debug(mob)
-                        +" nav="+WorkerNavigation.debugStatus(mob);
             // Give a physical step-down or rope traverse time to complete.
             // Never reassign a work stance while recovery is in progress.
             if(now<repositionUntil)return null;
@@ -661,6 +679,7 @@ public final class DomeReverseDemolitionGameTest {
                     continue;
                 }
                 target=p;stance=choice;lastRouteProgress=now;
+                targetSelectedAt=now;
                 exploreWaypoint=null;
                 closestDistance=Double.POSITIVE_INFINITY;
                 trace(now,"SELECT",target,"stance="
