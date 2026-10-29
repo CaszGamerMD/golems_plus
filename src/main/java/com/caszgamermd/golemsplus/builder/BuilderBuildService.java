@@ -86,6 +86,15 @@ public final class BuilderBuildService {
         if(depot==null)depot=table.getBlockPos();
         if(BuilderGrappleAccess.rappelToward(level,worker,table,depot))
             return;
+        // A normal, safe one-block descent may have JUST selected a
+        // precise intermediate tile rather than beginning a hook. Do
+        // not overwrite that trained exact route with a direct request
+        // for the distant depot in the same tick. Its normal waypoint
+        // retry expires automatically; no legacy pathfinder is used.
+        if(worker.blockPosition().getY()>depot.getY()
+                &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .retryScheduled(worker))
+            return;
         if(worker.distanceToSqr(depot.getX()+.5,depot.getY(),
                 depot.getZ()+.5)>4.0){
             com.caszgamermd.golemsplus.worker.WorkerNavigation
