@@ -391,7 +391,7 @@ public final class DomeReverseDemolitionGameTest {
         BlockPos returnWaypoint,exploreWaypoint;
         final Map<BlockPos,Long> exploredUntil=new HashMap<>();
         long exploreStarted;
-        int relocations;
+        int relocations,roofRelocations,noEscapeDeferrals;
         long waypointProgressTick;
         double bestWaypointDistance=Double.POSITIVE_INFINITY;
         Vec3 previous;
@@ -698,7 +698,7 @@ public final class DomeReverseDemolitionGameTest {
                 routeFailures++;
                 reset();
             }
-            if(now-lastProgress>(mined==0?3200:8500))
+            if(now-lastProgress>(mined==0?5500:16000))
                 return "Global mining watchdog: no real break for "
                         +(now-lastProgress)+" ticks"
                         +" target="+(target==null?"none":relative(target))
@@ -729,11 +729,14 @@ public final class DomeReverseDemolitionGameTest {
                                 level,mob,target,
                                 BuilderEscapeRoute.Action.BREAK);
                         if(safeExit==null){
-                            trace(now,"NO_INDEPENDENT_ESCAPE",target,
-                                    "Target cannot provide any part of exit "
-                                    +"path; defer until another stance");
-                            excludedUntil.put(target,now+450);
+                            BlockPos unsafe=target;
+                            noEscapeDeferrals++;
+                            trace(now,"NO_INDEPENDENT_ESCAPE",unsafe,
+                                    "Defer target; retry from another reachable "
+                                    +"work position within 3-block reach");
+                            excludedUntil.put(unsafe,now+300);
                             reset();
+                            relocateOnUpperDome(now,List.of(unsafe));
                             return null;
                         }
                         mob.swing(InteractionHand.MAIN_HAND);
@@ -865,10 +868,11 @@ public final class DomeReverseDemolitionGameTest {
                     }
                 }
                 if(choice==null){
-                    // A failed stance is deferred, not permanently erased.
-                    // World demolition changes collision and support, so
-                    // it becomes eligible again after a short interval.
-                    excludedUntil.put(p,now+120);
+                    // The unsafe block remains PENDING. Deferring this
+                    // attempt never cancels the dome, and a real move to
+                    // another upper-shelf position is attempted below.
+                    noEscapeDeferrals++;
+                    excludedUntil.put(p,now+180);
                     continue;
                 }
                 target=p;stance=choice;lastRouteProgress=now;
@@ -883,26 +887,18 @@ public final class DomeReverseDemolitionGameTest {
                 return null;
             }
             scanOffset=(start+Math.max(1,scans))%Math.max(1,count);
-            // A Builder can wind up on an increasingly isolated roof
-            // after mining its supporting blocks. When scanning fails,
-            // first seek a real lower standing route or carried-hook
-            // rappel instead of retesting the same obstructed wall.
-            if(mob.onGround()&&mob.blockPosition().getY()>depot.getY()
-                    &&now-lastProgress>450&&now%100==0){
-                boolean started=BuilderGrappleAccess.rappelToward(
-                        level,mob,table,depot);
-                boolean rope=BuilderGrappleAccess.active(mob);
-                if(rope)grapples++;
-                if(started||WorkerNavigation.retryScheduled(mob)){
-                    trace(now,rope?"GRAPPLE_RECOVERY":"NORMAL_DROP_RECOVERY",
-                            depot,BuilderGrappleAccess.debug(mob));
-                    repositionUntil=now+160;
-                    return null;
-                }
-            }
-            // No reachable mining pose: a carried Grapple Hook can
-            // provide a physically checked upper ledge for repositioning.
-            if(now-lastProgress>700 && relocateToExposedFrontier(now))
+            // A blocked escape is a work-position failure, NOT a
+            // directive to rappel to the depot and abandon the dome.
+            // First reposition on the SAME unfinished upper layer, using
+            // a true trained route to a different supported vantage.
+            if(mob.onGround()&&now-lastProgress>80
+                    &&relocateOnUpperDome(now,candidates))
+                return null;
+            // Ground-only perimeter exploration is useful AFTER reaching
+            // the lower layers, not while high roof work is pending.
+            if(now-lastProgress>700
+                    &&highestRemainingY<=depot.getY()+3
+                    &&relocateToExposedFrontier(now))
                 return null;
             if(now-lastProgress>600 && grappleToExit(now)){
                 repositionUntil=now+150;
@@ -1035,6 +1031,79 @@ public final class DomeReverseDemolitionGameTest {
             // The world has physically changed. Forget a stale partial
             // route; trained A* will plan again with current collisions.
             WorkerNavigation.stop(mob);
+            return true;
+        }
+        /**
+         * After all candidates fail an independent post-break escape,
+         * physically MOVE to another reachable stand on the current upper
+         * work layer, keeping every unfinished block pending for a retry.
+         * A possible target is only eligible for actual breaking after
+         * visibleEye() again confirms its 3-block Euclidean reach.
+         */
+        boolean relocateOnUpperDome(long now,List<BlockPos> work){
+            if(!roofReached||!mob.onGround()||exploreWaypoint!=null
+                    ||BuilderGrappleAccess.active(mob)
+                    ||now%40!=0||work==null||work.isEmpty())
+                return false;
+            BlockPos here=mob.blockPosition();
+            int highest=remaining.keySet().stream()
+                    .mapToInt(BlockPos::getY).max().orElse(here.getY());
+            List<BlockPos> choices=new ArrayList<>();
+            Map<BlockPos,Double> scores=new HashMap<>();
+            int examined=0;
+            for(BlockPos block:work){
+                if(block.getY()!=highest||!remaining.containsKey(block))
+                    continue;
+                if(++examined>48)break;
+                // Use actual collision-checked work poses that already
+                // pass the 3-block sight/range raycast; a safe future
+                // escape is scored, NOT required for moving around.
+                for(BlockPos p:stances(block)){
+                    if(p.equals(here)||p.distSqr(here)<2
+                            ||p.getY()<highest-3
+                            ||p.getY()>highest+1
+                            ||exploredUntil.getOrDefault(p,0L)>now)
+                        continue;
+                    boolean escape=BuilderEscapeRoute.previewFrom(
+                            level,mob,p,block,
+                            BuilderEscapeRoute.Action.BREAK)!=null;
+                    double score=p.distSqr(here)*.65
+                            +Math.abs(p.getY()-here.getY())*3
+                            +(escape?0:15)
+                            +Math.abs(highest-p.getY())*2;
+                    if(!scores.containsKey(p)||score<scores.get(p)){
+                        scores.put(p,score);
+                        choices.add(p);
+                    }
+                }
+            }
+            if(choices.isEmpty())return false;
+            choices.sort(Comparator.comparingDouble(
+                    (BlockPos p)->scores.get(p))
+                    .thenComparingInt(BlockPos::getX)
+                    .thenComparingInt(BlockPos::getZ));
+            // Do not infer reachability from a naked position or from a
+            // path that stops at an approximate node.
+            BlockPos chosen=WorkerNavigation.selectExecutableStand(
+                    level,mob,choices.subList(0,Math.min(48,choices.size())));
+            if(chosen==null){
+                for(int i=0;i<Math.min(4,choices.size());i++)
+                    exploredUntil.put(choices.get(i),now+120);
+                return false;
+            }
+            if(!WorkerNavigation.routeToExact(level,mob,chosen,1.0)){
+                exploredUntil.put(chosen,now+180);
+                return false;
+            }
+            exploreWaypoint=chosen.immutable();
+            exploreStarted=now;
+            exploredUntil.put(chosen,now+450);
+            relocations++;roofRelocations++;
+            trace(now,"ROOF_REPOSITION",chosen,
+                    "highestLayer="+(highest-origin.getY())
+                    +" pending="+work.size()
+                    +" reason=search alternate target-independent escape"
+                    +" reach=3");
             return true;
         }
         /** Relocate to a real outside work stance with exposed remaining
@@ -1363,6 +1432,8 @@ public final class DomeReverseDemolitionGameTest {
                     +" mined="+mined+" physics="+physicsCleared
                     +" cleared="+(mined+physicsCleared)+"/3537"
                     +" relocations="+relocations
+                    +" roofRelocations="+roofRelocations
+                    +" noEscapeDeferrals="+noEscapeDeferrals
                     +" exitBreaks="+exitBreaks
                     +" itemless="+itemlessBlocks
                     +" collected="+itemsCollected+" left="+remaining.size()
