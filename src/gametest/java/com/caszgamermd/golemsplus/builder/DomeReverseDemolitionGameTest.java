@@ -725,6 +725,17 @@ public final class DomeReverseDemolitionGameTest {
                             return "Unexpectedly changed target "+target+
                                     " expected="+expected+" actual="+level.getBlockState(target)
                                     +" after last mined="+lastBroken;
+                        BlockPos safeExit=BuilderEscapeRoute.preview(
+                                level,mob,target,
+                                BuilderEscapeRoute.Action.BREAK);
+                        if(safeExit==null){
+                            trace(now,"NO_INDEPENDENT_ESCAPE",target,
+                                    "Target cannot provide any part of exit "
+                                    +"path; defer until another stance");
+                            excludedUntil.put(target,now+450);
+                            reset();
+                            return null;
+                        }
                         mob.swing(InteractionHand.MAIN_HAND);
                         if(!level.destroyBlock(target,false,mob))
                             return "Physical block removal failed at "+target;
