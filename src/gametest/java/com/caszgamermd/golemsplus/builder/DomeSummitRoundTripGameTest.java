@@ -420,7 +420,7 @@ public final class DomeSummitRoundTripGameTest {
         int rejectedSectorTargets;
         long lastFrontierMove,finalRecoveryTick;
         int frontierRoutes,frontierNoPaths,descentRecoveries;
-        int descentRimRoutes,descentRimFailures;
+        int descentRimRoutes,descentRimFailures,edgeRecoveries;
         final Map<BlockPos,Long> visitedDescentRims=new HashMap<>();
         final StringBuilder csv=new StringBuilder(
                 "tick,action,phase,localX,localY,localZ,goalX,goalY,goalZ,"
@@ -877,6 +877,20 @@ public final class DomeSummitRoundTripGameTest {
                     WorkerNavigation.stop(mob);
                 }
             }
+            // A real Builder can be grounded on the edge of a glass
+            // roof while its floored block coordinate contains AIR.
+            // That is an INVALID A* start even when vanilla onGround=true.
+            // Recenter on the ALREADY OVERLAPPED supported floor using
+            // real collision-checked motion before looking for any route.
+            BlockPos recovered=WorkerNavigation.recenterFromUnsupportedEdge(
+                    level,mob);
+            if(recovered!=null){
+                edgeRecoveries++;
+                if(edgeRecoveries==1||edgeRecoveries%10==0)
+                    log(tick,"RECENTER_FROM_UNSUPPORTED_EDGE",recovered,
+                            "real velocity, no teleport; oldFeet="+here);
+                return null;
+            }
             // Bound expensive multi-goal searches. The already issued
             // trained path continues to execute between controller ticks.
             if(tick-lastGoalAttempt<40)return null;
@@ -936,6 +950,7 @@ public final class DomeSummitRoundTripGameTest {
                     +" shelfRecoveries="+descentRecoveries
                     +" descentRimRoutes="+descentRimRoutes
                     +" descentRimFailures="+descentRimFailures
+                    +" edgeRecoveries="+edgeRecoveries
                     +" isolatedSectors="+isolatedShelvesUntil.size()
                     +" rejectedTargets="+rejectedSectorTargets
                     +" position="+(mob.blockPosition().getX()-origin.getX())
