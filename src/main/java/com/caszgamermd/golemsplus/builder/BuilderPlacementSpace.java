@@ -368,6 +368,52 @@ public final class BuilderPlacementSpace {
         return null;
     }
 
+    /** Read-only comparison to the *actual* work-position preflight.
+     * Diagnose separately the standing-pose checks, entity/block collision
+     * and trained A* reach. Never claim a step, choose a route or cache
+     * a work approach while gathering evidence for a stalled job.
+     */
+    public static String diagnoseApproach(ServerLevel level,
+            BuilderGolem worker,BlockPos target,
+            java.util.function.Predicate<BlockPos> safe){
+        int safeCount=0,marginCount=0,groundedCount=0;
+        int geometryCount=0,blockedGeometry=0,routedCount=0;
+        Rejected bad=rejected.get(worker);
+        boolean liveBad=bad!=null&&bad.until()>level.getGameTime();
+        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+            for(int dy:new int[]{0,1}){
+                if(dx==0&&dz==0&&dy==0)continue;
+                BlockPos at=target.offset(dx,dy,dz);
+                if(!safe.test(at))continue;
+                safeCount++;
+                if(edgeDistance(target,at.getX()+.5,
+                        at.getZ()+.5)<MIN_EDGE_CLEARANCE
+                        ||at.distSqr(target)>=14)continue;
+                marginCount++;
+                if(!WorkerNavigation.canStandOn(level,worker,at))continue;
+                groundedCount++;
+                AABB moved=worker.getBoundingBox().move(
+                        at.getX()+.5-worker.getX(),
+                        at.getY()-worker.getY(),
+                        at.getZ()+.5-worker.getZ());
+                if(moved.intersects(volume(target))
+                        ||!level.noCollision(worker,moved)
+                            &&level.getBlockCollisions(worker,moved)
+                                .iterator().hasNext()){
+                    blockedGeometry++;continue;
+                }
+                if(liveBad&&bad.target().equals(target)
+                        &&bad.destination().equals(at))continue;
+                geometryCount++;
+                if(WorkerNavigation.canReachExact(level,worker,at))
+                    routedCount++;
+            }
+        return "approach safe="+safeCount+" margin="+marginCount
+                +" ground="+groundedCount+" bodyBlocked="+blockedGeometry
+                +" candidates="+geometryCount+" exactRoutes="+routedCount
+                +" badPose="+liveBad;
+    }
+
     /** The physical position is not fixed forever: a player or teammate
      * can obstruct it after path calculation. Drop ONLY this worker's
      * approach and re-search without disturbing any other Builder.
