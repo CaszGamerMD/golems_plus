@@ -356,10 +356,10 @@ public final class DomeReverseDemolitionGameTest {
             this.previous=mob.position();
             // Derive an open outside walking corridor from the ORIGINAL
             // blueprint bounds, before dismantling changes the silhouette.
-            int minX=remaining.keySet().stream().mapToInt(BlockPos::getX).min().orElse(origin.getX());
-            int maxX=remaining.keySet().stream().mapToInt(BlockPos::getX).max().orElse(origin.getX());
-            int minZ=remaining.keySet().stream().mapToInt(BlockPos::getZ).min().orElse(origin.getZ());
-            int maxZ=remaining.keySet().stream().mapToInt(BlockPos::getZ).max().orElse(origin.getZ());
+            int minX=remaining.keySet().stream().mapToInt((BlockPos p)->p.getX()).min().orElse(origin.getX());
+            int maxX=remaining.keySet().stream().mapToInt((BlockPos p)->p.getX()).max().orElse(origin.getX());
+            int minZ=remaining.keySet().stream().mapToInt((BlockPos p)->p.getZ()).min().orElse(origin.getZ());
+            int maxZ=remaining.keySet().stream().mapToInt((BlockPos p)->p.getZ()).max().orElse(origin.getZ());
             int left=minX-1,right=maxX+1,top=minZ-1,bottom=maxZ+1;
             for(int x=left;x<=right;x++)outerRing.add(new BlockPos(x,depot.getY(),top));
             for(int z=top+1;z<=bottom;z++)outerRing.add(new BlockPos(right,depot.getY(),z));
