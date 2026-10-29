@@ -228,13 +228,21 @@ public final class DomeReverseDemolitionGameTest {
             simulationChunks.add(new net.minecraft.world.level.ChunkPos(
                     p.getX() >> 4,p.getZ() >> 4));
         }
-        for(var chunk:simulationChunks)
+        // The GameTest harness itself can advance its clock while an
+        // otherwise loaded chunk is not yet ENTITY-SIMULATED. Explicit
+        // vanilla forceload is test-only and scoped; it complements the
+        // independent simulation tickets rather than altering pathfinding.
+        for(var chunk:simulationChunks){
+            world.setChunkForced(chunk.x(),chunk.z(),true);
             BuilderChunkTickets.holdPhysicalGameTestChunk(world,new BlockPos(
                     chunk.x() << 4,origin.getY(),chunk.z() << 4));
+        }
         Runnable releaseSimulation=()->{
-            for(var chunk:simulationChunks)
+            for(var chunk:simulationChunks){
                 BuilderChunkTickets.releasePhysicalGameTestChunk(world,
                         new BlockPos(chunk.x() << 4,origin.getY(),chunk.z() << 4));
+                world.setChunkForced(chunk.x(),chunk.z(),false);
+            }
         };
         System.out.println("[REVERSE SIMULATION] primed "+
                 simulationChunks.size()+" real entity-ticking chunks");
