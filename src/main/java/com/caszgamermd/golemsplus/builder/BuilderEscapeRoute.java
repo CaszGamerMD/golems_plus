@@ -120,8 +120,11 @@ public final class BuilderEscapeRoute {
         for(int dx=-RADIUS;dx<=RADIUS;dx++)
             for(int dz=-RADIUS;dz<=RADIUS;dz++)
                 for(int dy:new int[]{0,-1,1,-2}){
-                    int span=Math.abs(dx)+Math.abs(dz);
-                    if(span<MIN_ROUTE_STEPS||span>RADIUS*2)continue;
+                    // Manhattan distance 2 includes the diagonal
+                    // neighbor (+1,+1), which is a SINGLE trained move.
+                    // Require two actual horizontal moves (Chebyshev).
+                    int span=Math.max(Math.abs(dx),Math.abs(dz));
+                    if(span<MIN_ROUTE_STEPS||span>RADIUS)continue;
                     BlockPos tile=start.offset(dx,dy,dz);
                     if(!independent(world,worker,tile,target,future))
                         continue;
