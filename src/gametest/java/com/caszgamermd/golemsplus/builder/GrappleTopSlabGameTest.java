@@ -91,9 +91,11 @@ public final class GrappleTopSlabGameTest {
         final String[] lastEvent={"created"};
         h.onEachTick(()->{
             long tick=h.getTick();
-            if(tick%40==0)for(ChunkPos chunk:forceChunks)
+            if(tick%20==0)for(ChunkPos chunk:forceChunks){
+                world.setChunkForced(chunk.x(),chunk.z(),true);
                 BuilderChunkTickets.holdPhysicalGameTestChunk(world,
                         new BlockPos(chunk.x()<<4,start.getY(),chunk.z()<<4));
+            }
             lastEntityTick[0]=Math.max(lastEntityTick[0],golem.tickCount);
             boolean rope=BuilderGrappleAccess.active(golem);
             double delta=golem.getY()-previousY[0];
