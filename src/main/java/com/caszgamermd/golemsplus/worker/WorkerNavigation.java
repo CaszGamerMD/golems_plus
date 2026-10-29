@@ -392,6 +392,57 @@ public final class WorkerNavigation {
         Path path=mob.getNavigation().createPath(target,0);
         return endsAtExactTile(path,target)&&safePath(level,mob,path,false);
     }
+    /**
+     * Work-position preview uses the SAME terrain-weighted A* and the
+     * SAME executable short native waypoint handoff as routeToExact().
+     * A vanilla createPath(goal) alone is not proof that trained movement
+     * can start. This method never calls moveTo, changes reservations,
+     * or mutates navigation state.
+     *
+     * Multiple safe standing positions share a single bounded A* search
+     * instead of rebuilding up to 98 separate paths per work block.
+     * A partial route is not proof that the actual work pose is reachable.
+     */
+    public static BlockPos selectExecutableStand(ServerLevel level,
+            PathfinderMob mob,List<BlockPos> candidates){
+        if(candidates==null||candidates.isEmpty())return null;
+        List<BlockPos> goals=new ArrayList<>();
+        for(BlockPos p:candidates)
+            if(p!=null&&standingTile(level,mob,p))goals.add(p);
+        if(goals.isEmpty())return null;
+        if(goals.contains(mob.blockPosition()))
+            return mob.blockPosition().immutable();
+        Progress progress=states.get(mob);
+        WorkerRoutePlanner.Route route=planExactRoute(
+                level,mob,goals,progress==null?null:progress.lastBad);
+        if(route==null||!route.complete()||route.steps().isEmpty()
+                ||!canBeginTrainedLeg(level,mob,route))return null;
+        BlockPos reached=route.steps().get(route.steps().size()-1);
+        return goals.contains(reached)?reached.immutable():null;
+    }
+
+    private static WorkerRoutePlanner.Route planExactRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
+            BlockPos avoid){
+        List<Vec3> crowds=nearbyWorkers(level,mob);
+        return WorkerRoutePlanner.plan(mob.blockPosition(),goals,
+                at->standingTile(level,mob,at),
+                at->floorAt(level,at),avoid,
+                at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
+    }
+
+    private static boolean canBeginTrainedLeg(ServerLevel level,
+            PathfinderMob mob,WorkerRoutePlanner.Route route){
+        for(int span:new int[]{3,2,1}){
+            BlockPos waypoint=route.steps().get(
+                    Math.min(route.steps().size(),span)-1);
+            Path path=mob.getNavigation().createPath(waypoint,0);
+            if(endsAtExactTile(path,waypoint)
+                    &&safePath(level,mob,path,false))return true;
+        }
+        return false;
+    }
+
     private static void clearDoor(ServerLevel level,PathfinderMob mob,Progress p){
         if(p.queuedDoor!=null)WorkerDoorTraffic.release(level,p.queuedDoor,mob);
         p.queuedDoor=null;p.doorStandby=null;p.doorExit=null;
@@ -451,12 +502,8 @@ public final class WorkerNavigation {
         // Exact destinations also use the ONE trained planner. A
         // native navigation path is used solely to physically execute
         // a short already-scored waypoint, not as an alternate AI.
-        List<Vec3> crowds=nearbyWorkers(level,mob);
-        WorkerRoutePlanner.Route plan=WorkerRoutePlanner.plan(
-                mob.blockPosition(),List.of(target),
-                at->standingTile(level,mob,at),
-                at->floorAt(level,at),p.lastBad,
-                at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
+        WorkerRoutePlanner.Route plan=planExactRoute(
+                level,mob,List.of(target),p.lastBad);
         if(plan==null||plan.steps().isEmpty())return false;
         for(int span:new int[]{3,2,1}){
             BlockPos waypoint=plan.steps().get(Math.min(

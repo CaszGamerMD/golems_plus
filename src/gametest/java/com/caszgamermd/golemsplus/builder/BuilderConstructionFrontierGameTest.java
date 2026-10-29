@@ -382,4 +382,39 @@ public final class BuilderConstructionFrontierGameTest {
         h.succeed();
         });
     }
+
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void workStanceSelectionPreviewsExecutableTrainedRoute(
+            GameTestHelper h){
+        floor(h);
+        var world=h.getLevel();
+        var mob=worker(h,h.absolutePos(new BlockPos(5,2,5)));
+        BlockPos target=h.absolutePos(new BlockPos(3,2,3));
+        BlockPos stance=h.absolutePos(new BlockPos(5,2,3));
+        h.onEachTick(()->{
+        if(h.getTick()!=16)return;
+        String before=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                .debugStatus(mob);
+        BlockPos chosen=BuilderPlacementSpace.approachWithRules(
+                world,mob,target,at->at.equals(stance));
+        String after=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                .debugStatus(mob);
+        if(!stance.equals(chosen)){
+            h.fail("Valid trained executable standing tile was lost: "
+                    +chosen);return;
+        }
+        if(!before.equals(after)){
+            h.fail("Read-only trained route preflight mutated navigation: "
+                    +before+" / "+after);return;
+        }
+        if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                .routeToExact(world,mob,chosen,1.0)){
+            h.fail("Preflight approved a route whose actual trained "
+                    +"navigation could not start");return;
+        }
+        System.out.println("[FRONTIER] PASS trained executable route "
+                +"preflight agrees with live short-leg navigation");
+        h.succeed();
+        });
+    }
 }
