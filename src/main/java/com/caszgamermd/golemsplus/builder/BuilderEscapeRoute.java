@@ -109,10 +109,25 @@ public final class BuilderEscapeRoute {
      */
     public static BlockPos preview(ServerLevel world,BuilderGolem worker,
             BlockPos target,Action action){
-        if(world==null||worker==null||target==null||action==null
-                ||!worker.onGround()||!world.hasChunkAt(target))
+        return previewAt(world,worker,worker.blockPosition(),
+                target,action,true);
+    }
+
+    /** Planning-stage preview from an as-yet-unoccupied work stance.
+     * This ONLY rejects unsafe future poses; it never authorizes
+     * interaction. At the block action the actual grounded worker must
+     * run preview() again, including its physically executable first leg.
+     */
+    public static BlockPos previewFrom(ServerLevel world,BuilderGolem worker,
+            BlockPos plannedStance,BlockPos target,Action action){
+        return previewAt(world,worker,plannedStance,target,action,false);
+    }
+    private static BlockPos previewAt(ServerLevel world,BuilderGolem worker,
+            BlockPos start,BlockPos target,Action action,boolean actual){
+        if(world==null||worker==null||start==null||target==null
+                ||action==null||actual&&!worker.onGround()
+                ||!world.hasChunkAt(target))
             return null;
-        BlockPos start=worker.blockPosition();
         AABB future=action==Action.PLACE?new AABB(target):null;
         if(!independent(world,worker,start,target,future))
             return null;
@@ -158,7 +173,7 @@ public final class BuilderEscapeRoute {
         // A trained physical first leg must be executable too. Merely
         // finding a theoretical complete grid route is not enough.
         BlockPos first=route.steps().get(0);
-        if(WorkerNavigation.selectExecutableStand(
+        if(actual&&WorkerNavigation.selectExecutableStand(
                 world,worker,List.of(first))==null)return null;
         return route.steps().get(route.steps().size()-1).immutable();
     }
