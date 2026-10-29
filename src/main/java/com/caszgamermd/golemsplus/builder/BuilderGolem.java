@@ -177,7 +177,8 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         // unloading, leaving a tower, or reloading an entity from disk.
         if(level() instanceof ServerLevel server
                 &&(isNoGravity()||isShiftKeyDown())
-                &&!BuilderGrappleAccess.active(this)){
+                &&!BuilderGrappleAccess.active(this)
+                &&!scaffolding){
             setNoGravity(false);
             setShiftKeyDown(false);
             var velocity=getDeltaMovement();
