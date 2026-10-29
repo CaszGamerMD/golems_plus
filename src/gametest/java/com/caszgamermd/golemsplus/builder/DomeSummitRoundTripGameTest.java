@@ -361,6 +361,10 @@ public final class DomeSummitRoundTripGameTest {
         final int summitY;
         final Map<BlockPos,Long> excludedUntil=new HashMap<>();
         final Map<BlockPos,Long> frontierVisitedUntil=new HashMap<>();
+        // Remember a roof sector after proving that its landing is isolated.
+        // This is geometry knowledge (unusable ledge), NOT a memorized route.
+        final Map<BlockPos,Long> isolatedShelvesUntil=new HashMap<>();
+        int rejectedSectorTargets;
         long lastFrontierMove,finalRecoveryTick;
         int frontierRoutes,frontierNoPaths,descentRecoveries;
         final StringBuilder csv=new StringBuilder(
@@ -473,6 +477,20 @@ public final class DomeSummitRoundTripGameTest {
             }
             lastPos=now;
         }
+        boolean revisitsIsolatedShelf(BlockPos p,long tick){
+            for(var shelf:isolatedShelvesUntil.entrySet()){
+                if(shelf.getValue()<=tick)continue;
+                BlockPos bad=shelf.getKey();
+                int dx=p.getX()-bad.getX(),dz=p.getZ()-bad.getZ();
+                // Avoid that whole local face until an alternate approach
+                // has been explored. The shelf can be reconsidered if the
+                // surrounding structure changes during building/demolition.
+                if(dx*dx+dz*dz<=36 && p.getY()>base.getY()
+                        &&p.getY()<=bad.getY()+2)
+                    return true;
+            }
+            return false;
+        }
         List<BlockPos> nearFootings(int minY,int maxY,int radius){
             BlockPos here=mob.blockPosition();
             var out=new ArrayList<BlockPos>();
@@ -506,6 +524,7 @@ public final class DomeSummitRoundTripGameTest {
             int high=ascending?Math.min(summitY,y+4):y-1;
             if(low>high)return false;
             List<BlockPos> candidates=nearFootings(low,high,16);
+            if(ascending)candidates.removeIf(p->revisitsIsolatedShelf(p,tick));
             if(candidates.size()>80)candidates=candidates.subList(0,80);
             if(candidates.isEmpty())return false;
             BlockPos next=WorkerNavigation.selectExecutableStand(
@@ -519,6 +538,9 @@ public final class DomeSummitRoundTripGameTest {
             List<BlockPos> candidates=nearFootings(here.getY()+2,
                     Math.min(summitY,here.getY()+BuilderGrappleAccess.MAX_REACH),
                     19);
+            int before=candidates.size();
+            candidates.removeIf(p->revisitsIsolatedShelf(p,tick));
+            rejectedSectorTargets+=before-candidates.size();
             // Close landings first: test physically plausible grapple
             // support rather than selecting an apex through a roof.
             candidates.sort(Comparator.comparingDouble((BlockPos p)->
@@ -644,6 +666,7 @@ public final class DomeSummitRoundTripGameTest {
             if(!started)return false;
             excludedUntil.put(here,tick+10000);
             frontierVisitedUntil.put(here,tick+10000);
+            isolatedShelvesUntil.put(here,tick+15000);
             finalRecoveryTick=tick;
             descentRecoveries++;
             log(tick,BuilderGrappleAccess.active(mob)
@@ -747,6 +770,8 @@ public final class DomeSummitRoundTripGameTest {
                     +" frontierRoutes="+frontierRoutes
                     +" frontierNoPaths="+frontierNoPaths
                     +" shelfRecoveries="+descentRecoveries
+                    +" isolatedSectors="+isolatedShelvesUntil.size()
+                    +" rejectedTargets="+rejectedSectorTargets
                     +" position="+(mob.blockPosition().getX()-origin.getX())
                         +"/"+(mob.blockPosition().getZ()-origin.getZ())
                     +" routeFailures="+routeFailures
