@@ -358,11 +358,15 @@ public final class BuilderPlacementSpace {
         // far-side stances when nearby poses were separated by a wall.
         // Never label a frontier unreachable until EVERY physically
         // eligible stance has had its trained A* route checked.
-        for(BlockPos p:candidates){
-            if(!WorkerNavigation.canReachExact(level,worker,p))continue;
-            workApproaches.put(worker,new Approach(target,p.immutable(),
-                    now+75));
-            return p.immutable();
+        // Preflight the SAME trained A* used for physical movement
+        // against all safe poses at once. Native canReachExact accepted
+        // routes that the trained controller could never begin.
+        BlockPos selected=WorkerNavigation.selectExecutableStand(
+                level,worker,candidates);
+        if(selected!=null){
+            workApproaches.put(worker,new Approach(target,
+                    selected.immutable(),now+75));
+            return selected.immutable();
         }
         workApproaches.remove(worker);
         return null;
