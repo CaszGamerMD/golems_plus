@@ -361,7 +361,7 @@ public final class BuilderConstructionFrontierGameTest {
         var peer=worker(h,stance);
         h.onEachTick(()->{
         if(h.getTick()!=16)return;
-        if(!WorkerNavigation.canStandOn(world,mob,stance)
+        if(!com.caszgamermd.golemsplus.worker.WorkerNavigation.canStandOn(world,mob,stance)
                 ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .canReachExact(world,mob,stance)){
             h.fail("Trained A* cannot reach physically valid occupied "
