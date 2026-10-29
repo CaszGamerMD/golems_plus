@@ -1107,9 +1107,15 @@ public final class DomeReverseDemolitionGameTest {
             // Recover from a repeatedly impossible corridor BEFORE
             // starting another identical perimeter leg. Only a grounded
             // physical Golem with visible schematic blocks can excavate.
-            if(returnDetours>=3){
+            if(returnDetours>=2
+                    ||returnDetours>=1&&now-lastProgress>1400
+                    ||now-lastProgress>2200){
                 if(grappleToExit(now))return null;
                 if(excavateExit(now))return null;
+                if(now%400==0)
+                    trace(now,"NO_EXIT_CLEARANCE",mob.blockPosition(),
+                            "detours="+returnDetours+" held="+carried()
+                            +" nav="+WorkerNavigation.debugStatus(mob));
             }
             if(returnViaOutside(now))return null;
             if(grappleToExit(now))return null;
