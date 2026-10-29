@@ -23,22 +23,10 @@ public final class BuilderLoneBlockOrderGameTest {
                 h.setBlock(x,y,z,Blocks.AIR);
         Map<BlockPos,BlockState> plan=new LinkedHashMap<>();
         // Roof beam: x=9 -- x=10 -- x=11 (unsupported leaf).
+        place(h,level,plan,8,7,10,true);
         BlockPos a=place(h,level,plan,9,7,10,true);
         BlockPos support=place(h,level,plan,10,7,10,true);
         BlockPos leaf=place(h,level,plan,11,7,10,true);
-        System.out.println("[LONE DEBUG] center="+support
-                +" state="+level.getBlockState(support)
-                +" anchor="+a+" state="+level.getBlockState(a)
-                +" leaf="+leaf+" state="+level.getBlockState(leaf)
-                +" selected="+BuilderDemolitionOrder.loneBlockFirst(
-                        level,plan,support));
-        for(net.minecraft.core.Direction side:
-                net.minecraft.core.Direction.values()){
-            BlockPos n=leaf.relative(side);
-            System.out.println("[LONE DEBUG NEIGHBOR] "+side+" "+n
-                    +"="+level.getBlockState(n)+" collisionEmpty="
-                    +level.getBlockState(n).getCollisionShape(level,n).isEmpty());
-        }
         require(h,leaf.equals(BuilderDemolitionOrder.loneBlockFirst(
                 level,plan,support)),"side leaf must precede center support");
         require(h,BuilderDemolitionOrder.loneBlockFirst(
@@ -48,6 +36,7 @@ public final class BuilderLoneBlockOrderGameTest {
 
         // A second true connection (not just a diagonal) means the
         // neighbor cannot be made lonely by removing center.
+        place(h,level,plan,14,7,10,true);
         place(h,level,plan,15,7,10,true);
         BlockPos supported=place(h,level,plan,16,7,10,true);
         place(h,level,plan,17,7,10,true);
@@ -57,6 +46,7 @@ public final class BuilderLoneBlockOrderGameTest {
                 "leaf with other adjacent support should not block mining");
 
         // Vanilla roof finial above supporting roof block.
+        place(h,level,plan,22,5,10,true);
         place(h,level,plan,22,6,10,true);
         BlockPos below=place(h,level,plan,22,7,10,true);
         BlockPos above=place(h,level,plan,22,8,10,true);
@@ -66,6 +56,7 @@ public final class BuilderLoneBlockOrderGameTest {
         // Lower leaf requires an explicit exception to highest-Y-only
         // demolition. This is exactly where top-down scanning alone can
         // strand an unsupported lower block.
+        place(h,level,plan,27,8,10,true);
         place(h,level,plan,28,8,10,true);
         BlockPos highSupport=place(h,level,plan,29,8,10,true);
         BlockPos lowerLeaf=place(h,level,plan,29,7,10,true);
@@ -75,6 +66,7 @@ public final class BuilderLoneBlockOrderGameTest {
 
         // A real-world but NON-schematic neighboring block is still
         // support. The planner must not treat terrain as air.
+        place(h,level,plan,8,7,16,true);
         place(h,level,plan,9,7,16,true);
         BlockPos normal=place(h,level,plan,10,7,16,true);
         place(h,level,plan,11,7,16,true);
@@ -96,6 +88,7 @@ public final class BuilderLoneBlockOrderGameTest {
 
         // Two different lone neighbors of a connected support are both
         // removed before that support. No dependency is discarded.
+        place(h,level,plan,25,7,18,true);
         place(h,level,plan,26,7,18,true);
         BlockPos center=place(h,level,plan,27,7,18,true);
         BlockPos north=place(h,level,plan,27,7,17,true);
