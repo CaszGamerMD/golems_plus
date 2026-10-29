@@ -36,7 +36,6 @@ public final class DomeSummitRoundTripGameTest {
     private static final int ROUTE_RETRY_TICKS=360;
     private static final int STAGE_TIMEOUT=18000;
     private static final int PROGRESS_TIMEOUT=3500;
-    private DomeSummitRoundTripGameTest(){}
 
     @GameTest(structure="golems_plus_gametest:dome_arena",
             maxTicks=42000,skyAccess=true)
