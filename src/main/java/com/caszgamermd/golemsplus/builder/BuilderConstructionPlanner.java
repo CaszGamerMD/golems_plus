@@ -254,16 +254,12 @@ public final class BuilderConstructionPlanner {
         for(int idx:pending)
             if(steps.get(idx).ignorePlant())
                 return new Choice(idx,null,false,true,0);
-        // Prefer a near reachable frontier; scan bounded work even for
-        // 100,000-block schematics. Future calls search new geometry.
-        pending.sort(Comparator
-                .comparingDouble((Integer idx)->{
-                    var step=steps.get(idx);
-                    BlockPos target=new BlockPos(step.x(),step.y(),step.z());
-                    return target.distSqr(worker.blockPosition())
-                            +(world.canSeeSky(target.above())?0:8);
-                })
-                .thenComparingInt(Integer::intValue));
+        // Keep the scan window stable as the worker moves. Re-sorting by
+        // distance on every claim changes the meaning of its saved offset
+        // and can repeatedly hide unfinished sections of the current layer.
+        // Distance, skylight and grapple cost still rank feasible choices
+        // below; scan fairness must not depend on the worker's position.
+        pending.sort(Integer::compareTo);
         Choice best=null;
         double bestScore=Double.POSITIVE_INFINITY;
         SearchWindow previous=windows.get(worker);
