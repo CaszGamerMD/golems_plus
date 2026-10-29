@@ -1024,13 +1024,13 @@ public final class DomeReverseDemolitionGameTest {
                             &&q.getY()<=p.getY()
                             &&q.getY()>=p.getY()-2
                             &&nearby.size()<28)nearby.add(q);
+                final BlockPos shared=choice;
                 nearby.sort(Comparator
-                        .comparingDouble((BlockPos q)->q.distSqr(choice))
+                        .comparingDouble((BlockPos q)->q.distSqr(shared))
                         .thenComparingInt((BlockPos q)->-q.getY()));
                 // Don't overfill the 192-item demolition bundle during
                 // a batch; one actual block costs at most one unit.
                 final int spare=Math.max(0,CAPACITY-carried());
-                final BlockPos shared=choice;
                 final BlockPos seed=p;
                 var batch=BuilderSharedDemolitionPlan.select(
                         level,mob,shared,seed,remaining,nearby,
