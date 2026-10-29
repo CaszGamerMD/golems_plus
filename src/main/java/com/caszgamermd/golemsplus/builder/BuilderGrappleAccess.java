@@ -66,6 +66,12 @@ public final class BuilderGrappleAccess {
         double topY(){return anchor.getY()+1.0;}
     }
     private static final Map<BuilderGolem,Rope> active=new WeakHashMap<>();
+    // Per-worker, temporary physical return breadcrumbs. Only actual
+    // completed rope ascents are remembered, never hypothetical paths.
+    // A golem can safely rappel down its proven ascent line instead of
+    // searching an unrelated hook face on a complex roof.
+    private static final Map<BuilderGolem,List<Rope>> ascendedLines=
+            new WeakHashMap<>();
     // A stable one-block step-down intermediate waypoint prevents an idle
     // Builder from grappling an upper roof simply because the faraway
     // OnSite chest is not EXACT-path-reachable in one A* search.
@@ -146,6 +152,12 @@ public final class BuilderGrappleAccess {
         blockedAnchors.put(mob,next);
     }
     private static void release(BuilderGolem mob,Rope rope,String event){
+        if(!rope.down&&"ASCENDED".equals(event)){
+            List<Rope> history=ascendedLines.computeIfAbsent(
+                    mob,ignored->new ArrayList<>());
+            if(history.size()>=20)history.remove(0);
+            history.add(rope);
+        }
         active.remove(mob);
         mob.setNoGravity(false);
         mob.setDeltaMovement(0,0,0);
@@ -471,6 +483,51 @@ public final class BuilderGrappleAccess {
             WorkerNavigation.routeToExact(level,worker,route.landing,1.0);
         else WorkerNavigation.stop(worker);
         return Result.MOVING;
+    }
+    /**
+     * Retrace a REAL successfully completed ascent rope when returning from
+     * a construction or demolition worksite. It is a temporary per-entity
+     * breadcrumb, not a precomputed solution to this schematic or a bypass
+     * for the trained walking policy. The recorded lower entry and upper
+     * anchor are independently revalidated against today's blocks, and
+     * the Builder must physically walk to the supported upper ledge first.
+     *
+     * An ascent that began with an unsupported lateral swing is deliberately
+     * excluded until inverse swing safety is separately verified.
+     */
+    public static boolean rappelProvenAscent(ServerLevel level,
+            BuilderGolem worker,BlockPos returnGoal){
+        if(active.containsKey(worker)||!worker.onGround()
+                ||!hasHook(worker))return false;
+        List<Rope> history=ascendedLines.get(worker);
+        if(history==null||history.isEmpty())return false;
+        BlockPos here=worker.blockPosition();
+        for(int i=history.size()-1;i>=0;i--){
+            Rope past=history.get(i);
+            if(past.down||past.safeStart!=null
+                    ||past.anchor.getY()+1!=here.getY()
+                    ||past.landing.getY()>=here.getY()
+                    ||rejected(level,worker,past.anchor,past.side))
+                continue;
+            BlockPos top=past.anchor.above();
+            if(!solidTop(level,past.anchor)
+                    ||!headroom(level,top)
+                    ||!solidTop(level,past.landing.below())
+                    ||!headroom(level,past.landing)
+                    ||!lineClear(level,past.column,
+                            past.landing.getY(),top.getY())
+                    ||!WorkerNavigation.canReachExact(level,worker,top))
+                continue;
+            Rope rappel=new Rope(past.anchor,past.side,past.landing,
+                    returnGoal,true,level.getGameTime());
+            active.put(worker,rappel);
+            WorkerNavigation.stop(worker);
+            System.out.println("[GRAPPLE] PROVEN REVERSE: top="+top
+                    +" lower="+past.landing+" side="+past.side
+                    +" current="+here+" real walking to anchor");
+            return true;
+        }
+        return false;
     }
     /** Returns true while the hook owns descent or when a descent starts. */
     public static boolean rappelForTravel(ServerLevel level,
