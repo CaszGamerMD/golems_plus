@@ -433,6 +433,14 @@ public final class WorkerNavigation {
     private static WorkerRoutePlanner.Route planExactRoute(
             ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
             BlockPos avoid){
+        // Exact work probes must honor the same expiry as ordinary routing.
+        // Otherwise a temporary congestion failure becomes a permanent wall
+        // while a worker only asks for construction stances.
+        Progress progress=states.get(mob);
+        if(progress!=null&&mob.tickCount>=progress.avoidUntil){
+            if(avoid!=null&&avoid.equals(progress.lastBad))avoid=null;
+            progress.lastBad=null;
+        }
         List<Vec3> crowds=nearbyWorkers(level,mob);
         return WorkerRoutePlanner.plan(mob.blockPosition(),goals,
                 at->standingTile(level,mob,at),
@@ -442,6 +450,9 @@ public final class WorkerNavigation {
 
     private static boolean canBeginTrainedLeg(ServerLevel level,
             PathfinderMob mob,WorkerRoutePlanner.Route route){
+        // Preflight and execution must use identical door capabilities.
+        if(mob.getNavigation() instanceof GroundPathNavigation ground)
+            ground.setCanOpenDoors(true);
         for(int span:new int[]{3,2,1}){
             BlockPos waypoint=route.steps().get(
                     Math.min(route.steps().size(),span)-1);
