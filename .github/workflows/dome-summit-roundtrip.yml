@@ -1,0 +1,37 @@
+name: Dome summit round trip GameTest
+
+on:
+  push:
+    branches:
+      - test/dome-summit-roundtrip-262
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  summit-roundtrip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Compile and run actual Minecraft GameTests
+        run: gradle --no-daemon runGameTest
+      - name: Save full GameTest traces and reports (even if failed)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dome-summit-roundtrip-reports
+          if-no-files-found: warn
+          path: |
+            build/run/gameTest/logs/
+            build/gametest/
+            build/test-results/
+            build/reports/
