@@ -162,7 +162,7 @@ public final class BuilderConstructionPlanner {
         for(int idx:zone){
             if(idx<0||idx>=steps.size()
                     ||steps.get(idx).y()!=layer
-                    ||!table.builderStepReadyForClaim(idx))continue;
+                    ||table.builderZoneDone(List.of(idx)))continue;
             pending++;
             if(examples.size()>=4)continue;
             var step=steps.get(idx);
@@ -195,7 +195,7 @@ public final class BuilderConstructionPlanner {
         int y=table.builderActiveLayer(steps);
         for(int idx:zone){
             if(idx<0||idx>=steps.size()||steps.get(idx).y()!=y
-                    ||!table.builderStepReadyForClaim(idx)
+                    ||table.builderZoneDone(List.of(idx))
                     ||steps.get(idx).ignorePlant())continue;
             var step=steps.get(idx);
             BlockPos target=new BlockPos(step.x(),step.y(),step.z());
@@ -300,7 +300,7 @@ public final class BuilderConstructionPlanner {
                     at->safeStand(world,worker,target,at));
             boolean grapple=false;
             if(stance==null
-                    &&target.getY()-worker.blockPosition().getY()>1
+                    &&target.getY()-worker.blockPosition().getY()>0
                     &&worker.carriedCount(WorksiteContent.GRAPPLE_HOOK)>0
                     &&BuilderGrappleAccess.canPlanWorkAscent(world,worker,target))
                 grapple=true;

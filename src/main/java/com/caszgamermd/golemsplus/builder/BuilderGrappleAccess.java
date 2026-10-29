@@ -68,17 +68,7 @@ public final class BuilderGrappleAccess {
     private static boolean tryLocalOneBlockDrop(ServerLevel level,
             BuilderGolem mob,BlockPos goal){
         if(!mob.onGround())return false;
-        NormalDrop hold=normalDrops.get(mob);
-        if(hold!=null){
-            if(mob.blockPosition().getY()<=hold.landing().getY()
-                    ||level.getGameTime()>hold.until()
-                    ||!hold.goal().equals(goal)){
-                normalDrops.remove(mob);
-            }else if(WorkerNavigation.canStandOn(level,mob,hold.landing())
-                    &&WorkerNavigation.routeToExact(
-                            level,mob,hold.landing(),1.0))
-                return true;
-        }
+        if(continueLocalDrop(level,mob,goal))return true;
         long now=level.getGameTime();
         if(nextDropSearch.getOrDefault(mob,0L)>now)return false;
         BlockPos origin=mob.blockPosition();
@@ -113,6 +103,29 @@ public final class BuilderGrappleAccess {
             return true;
         }
         nextDropSearch.put(mob,now+40);
+        return false;
+    }
+    /** A normal descent can temporarily gain height on a staircase detour.
+     * Keep that physical route until its actual landing, not merely until
+     * the worker changes Y. Otherwise return-to-stock hooks continually
+     * interrupt it and cycle between the same two ledges.
+     */
+    private static boolean continueLocalDrop(ServerLevel level,
+            BuilderGolem mob,BlockPos goal){
+        NormalDrop hold=normalDrops.get(mob);
+        if(hold==null)return false;
+        if(level.getGameTime()>hold.until()||!hold.goal().equals(goal)
+                ||mob.onGround()&&mob.blockPosition().equals(hold.landing())){
+            normalDrops.remove(mob);
+            return false;
+        }
+        if(!WorkerNavigation.canStandOn(level,mob,hold.landing())){
+            normalDrops.remove(mob);
+            return false;
+        }
+        if(!mob.onGround()||WorkerNavigation.routeToExact(
+                level,mob,hold.landing(),1.0))return true;
+        normalDrops.remove(mob);
         return false;
     }
     // Keep short-lived failures by BOTH ledge and face. A failed hook
@@ -437,6 +450,7 @@ public final class BuilderGrappleAccess {
     public static boolean rappelToward(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos goal){
         if(active.containsKey(worker))return true;
+        if(continueLocalDrop(level,worker,goal))return true;
         int diff=worker.blockPosition().getY()-goal.getY();
         if(diff<1)return false;
         // One-block drops are normal ground navigation first. Do not
