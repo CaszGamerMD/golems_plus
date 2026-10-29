@@ -141,16 +141,16 @@ public final class GrappleTopSlabGameTest {
                 if(!startedUp[0]){
                     // Prevent a false success from accepting a bottom slab
                     // that is physically half a block below the apex.
-                    if(BuilderGrappleAccess.canPlanAscent(
-                            world,golem,lowerFeet)){
-                        String error="Bottom-half slab incorrectly qualified "
-                                +"as a full-height grapple anchor";
+                    if(BuilderGrappleAccess.solidTop(world,lowerAnchor)){
+                        String error="Bottom-half slab itself is incorrectly "
+                                +"treated as a full-height anchor";
                         write(csv,phase[0],tick,riseOnRope[0],descentOnRope[0],
                                 lastEvent[0],"FAIL "+error);
                         release.run();h.fail(error);return;
                     }
-                    if(!BuilderGrappleAccess.canPlanAscent(
-                            world,golem,upperFeet)){
+                    if(!BuilderGrappleAccess.solidTop(world,topAnchor)
+                            ||!BuilderGrappleAccess.canPlanAscent(
+                                    world,golem,upperFeet)){
                         String error="Top-half slab failed ascent preflight";
                         write(csv,phase[0],tick,riseOnRope[0],descentOnRope[0],
                                 lastEvent[0],"FAIL "+error);
