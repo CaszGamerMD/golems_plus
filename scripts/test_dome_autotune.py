@@ -34,5 +34,25 @@ class DomeAutotuneTests(unittest.TestCase):
                 [{"verified": True, "settings": first}])
         self.assertNotEqual(first, second)
 
+    def test_continues_after_single_setting_alternatives_are_exhausted(self):
+        from dome_autotune import CHOICES, signature
+        singles = []
+        for key, values in CHOICES.items():
+            for value in values:
+                candidate = dict(DEFAULT)
+                candidate[key] = value
+                singles.append(signature(candidate))
+        result = choose_candidate(DEFAULT,
+                   {"diagnosis": "trained_path_search"}, [], singles)
+        self.assertIsNotNone(result)
+        self.assertEqual(sum(result[k] != DEFAULT[k] for k in DEFAULT), 2)
+
+    def test_historic_signatures_survive_diagnostic_pruning(self):
+        from dome_autotune import signature
+        first = choose_candidate(DEFAULT, None, [])
+        second = choose_candidate(DEFAULT, None, [], [signature(first)])
+        self.assertIsNotNone(second)
+        self.assertNotEqual(signature(first), signature(second))
+
 if __name__ == "__main__":
     unittest.main()

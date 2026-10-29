@@ -8,6 +8,7 @@ from source branches and is NEVER merged into production automatically.
 import argparse
 import datetime as dt
 import json
+import itertools
 import os
 from pathlib import Path
 import re
@@ -138,9 +139,15 @@ def quality(trial):
             trial["active_y"], -trial["peak_tick"])
 
 
-def choose_candidate(best, previous, trials):
-    seen = {tuple(sorted(t["settings"].items())) for t in trials
-            if t.get("verified")}
+def signature(settings):
+    return json.dumps(settings, sort_keys=True, separators=(",", ":"))
+
+
+def choose_candidate(best, previous, trials, historic_signatures=()):
+    # Keep a compact lifetime registry, even when old diagnostic trials
+    # eventually roll out of the bounded session-history list.
+    seen = {signature(t["settings"]) for t in trials if t.get("verified")}
+    seen.update(historic_signatures)
     order = list(CHOICES)
     if previous and previous["diagnosis"] == "trained_path_search":
         order = ["GOLEMS_DOME_SCAN_LIMIT", "GOLEMS_DOME_FEASIBLE_LIMIT",
@@ -150,12 +157,18 @@ def choose_candidate(best, previous, trials):
         order = ["GOLEMS_DOME_GRAPPLE_PENALTY",
                  "GOLEMS_DOME_TARGET_WEIGHT", "GOLEMS_DOME_SCAN_LIMIT",
                  "GOLEMS_DOME_FEASIBLE_LIMIT", "GOLEMS_DOME_SKY_PENALTY"]
-    for key in order:
-        for value in CHOICES[key]:
-            candidate = dict(best)
-            candidate[key] = value
-            if candidate != best and tuple(sorted(candidate.items())) not in seen:
-                return candidate
+    # Search one heuristic change before trying interacting settings, then
+    # two, three, etc. The single-knob-only trainer previously exhausted its
+    # search and stopped running substantial tests after a few sessions.
+    for width in range(1, len(order) + 1):
+        for keys in itertools.combinations(order, width):
+            for values in itertools.product(*(CHOICES[k] for k in keys)):
+                candidate = dict(best)
+                for key, value in zip(keys, values):
+                    candidate[key] = value
+                if (sum(candidate[k] != best[k] for k in order) == width
+                        and signature(candidate) not in seen):
+                    return candidate
     return None
 
 
@@ -229,6 +242,11 @@ def main():
     champion = (dict(state["best"]["settings"]) if state.get("best")
                 else dict(DEFAULT))
     previous = state["trials"][-1] if state["trials"] else None
+    # A tested configuration is never reintroduced merely because only the
+    # most recent 250 full diagnostics are retained in the persistent state.
+    seen_configs = set(state.get("tested_configurations", []))
+    seen_configs.update(signature(t["settings"]) for t in state["trials"]
+                        if t.get("verified"))
     completed = []
     for cycle in range(args.cycles):
         remaining = deadline - time.monotonic()
@@ -238,9 +256,10 @@ def main():
         if cycle == 0:
             config = champion
         else:
-            config = choose_candidate(champion, previous, state["trials"])
+            config = choose_candidate(
+                champion, previous, state["trials"], seen_configs)
             if config is None:
-                print("All single-parameter neighbors tested; no new candidate", flush=True)
+                print("All safe bounded combinations have already been tested", flush=True)
                 break
         trial = run_trial(config, out / f"cycle-{cycle + 1}.log",
                           timeout=min(600, int(remaining - 30)))
@@ -249,6 +268,8 @@ def main():
         state["trials"].append(trial)
         completed.append(trial)
         previous = trial
+        if trial["verified"]:
+            seen_configs.add(signature(config))
         print(f"Cycle {cycle + 1}: verified={trial['verified']} "
               f"blocks={trial['real_blocks']}/{TOTAL} y={trial['active_y']} "
               f"diagnosis={trial['diagnosis']} rc={trial['return_code']}",
@@ -264,6 +285,7 @@ def main():
             print("FULL DOME COMPLETION CONFIRMED: stopping tuning", flush=True)
             break
     state["trials"] = state["trials"][-250:]
+    state["tested_configurations"] = sorted(seen_configs)
     state["last_session"] = dt.datetime.now(dt.timezone.utc).isoformat()
     state["last_session_cycles"] = len(completed)
     state["state_branch"] = STATE_BRANCH

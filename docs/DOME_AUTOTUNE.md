@@ -34,3 +34,15 @@ validated configuration for the next hourly session.
 - A scheduler is not a substitute for code development: repeated `search_no_route`
   at a frontier with every safe reachable stance exhausted will eventually
   require a new general-purpose access/pathfinding implementation.
+
+## Repeated sessions and search exhaustion
+
+The trainer retains a compact set of tested configurations separately from
+its last 250 full trials, and expands from one-parameter changes to interacting
+multi-parameter settings. That prevents the initial single-variable neighborhood
+from ending the multi-session experiment prematurely. The bounded search is
+finite by design; if all legal combinations are eventually exhausted, the
+trainer will report the limit rather than silently pretending to improve.
+The schedule checks four times per hour with a lightweight 50-minute due gate
+(on `main`) to reduce missed GitHub cron delivery while avoiding redundant
+expensive runs. GitHub cron is best-effort, not a hard real-time scheduler.
