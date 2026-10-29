@@ -1064,18 +1064,24 @@ public final class DomeReverseDemolitionGameTest {
                             ||p.getY()>highest+1
                             ||exploredUntil.getOrDefault(p,0L)>now)
                         continue;
-                    boolean escape=BuilderEscapeRoute.previewFrom(
-                            level,mob,p,block,
-                            BuilderEscapeRoute.Action.BREAK)!=null;
+                    // A relocation is an exploratory movement, NOT a
+                    // demolition authorization: preflight the target
+                    // only when physically at the final work stance.
+                    // Running a full post-action A* for EVERY potential
+                    // scouting location starves real Minecraft ticks.
                     double score=p.distSqr(here)*.65
                             +Math.abs(p.getY()-here.getY())*3
-                            +(escape?0:15)
                             +Math.abs(highest-p.getY())*2;
-                    if(!scores.containsKey(p)||score<scores.get(p)){
+                    if(!scores.containsKey(p)){
                         scores.put(p,score);
                         choices.add(p);
+                        // A bounded set avoids huge per-tick scans on a
+                        // 3537-block roof. The next attempt rotates to a
+                        // new area if these choices have no trained route.
+                        if(choices.size()>=64)break;
                     }
                 }
+                if(choices.size()>=64)break;
             }
             if(choices.isEmpty())return false;
             choices.sort(Comparator.comparingDouble(
