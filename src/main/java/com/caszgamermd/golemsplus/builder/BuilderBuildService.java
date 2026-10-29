@@ -58,6 +58,11 @@ public final class BuilderBuildService {
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
+    // Equip real descent equipment while the ground-level OnSite depot
+    // is still reachable. Fetch at most once per job; when no hook stock
+    // exists, the Builder may continue rather than stalling construction.
+    private static final Map<BuilderGolem,UUID> accessPrepared=
+            new WeakHashMap<>();
     private static WorkerAction action(BuilderGolem worker,int index){
         var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
         activity.setStep(index);
@@ -334,6 +339,26 @@ public final class BuilderBuildService {
                     BuilderSiteClearance.tick(level,worker,table,owner,
                             plan.clearing(),plan.steps());
                 return;
+            }
+            // The first safe opportunity to borrow the Grapple Hook is
+            // BEFORE the first structure blocks raise or enclose the crew.
+            // Fetch a REAL hook from OnSite once per job, on real ground,
+            // rather than asking a stranded roof Builder to fetch a hook
+            // from a chest it can no longer reach.
+            UUID currentJob=table.activeOrder();
+            if(currentJob!=null&&!currentJob.equals(
+                    accessPrepared.get(worker))){
+                var hook=BuilderSupplyInventory.loadGrapple(
+                        level,worker,table);
+                if(hook==BuilderSupplyInventory.LoadStatus.MOVING)
+                    return; // Physically travel to OnSite and pick it up.
+                accessPrepared.put(worker,currentJob);
+                if(hook==BuilderSupplyInventory.LoadStatus.READY)
+                    System.out.println("[BUILDER ACCESS] "
+                            +worker.getName().getString()
+                            +" collected real Grapple Hook before construction");
+                // Optional supply. Missing hook stock never conjures one
+                // and never prevents standard, reachable ground work.
             }
             // All positions for each X/Z zone were pre-assigned as one
             // immutable ordered execution plan. The Planner does NOT
