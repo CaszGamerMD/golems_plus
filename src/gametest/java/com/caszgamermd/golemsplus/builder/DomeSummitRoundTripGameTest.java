@@ -232,7 +232,19 @@ public final class DomeSummitRoundTripGameTest {
         WorkerNavigation.setReverseDemolitionTraining(golem,true);
         List<BlockPos> footings=new ArrayList<>();
         for(BlockPos block:remaining.keySet()){
-            BlockPos feet=block.above();
+            // A slab or stair can support feet IN its own block cell,
+            // while a full block supplies footing at the cell above.
+            for(BlockPos feet:List.of(block,block.above()))
+                if(WorkerNavigation.canStandOn(world,golem,feet)
+                        &&!footings.contains(feet))
+                    footings.add(feet.immutable());
+        }
+        // The natural surrounding grass is a necessary approach surface.
+        // Without these tiles, scouting at base Y has zero candidates:
+        // the test can strand a golem before trying any real upper anchor.
+        // This is discovery of existing footing, not construction.
+        for(int dx=-4;dx<=42;dx++)for(int dz=-4;dz<=42;dz++){
+            BlockPos feet=origin.offset(dx,0,dz);
             if(WorkerNavigation.canStandOn(world,golem,feet)
                     &&!footings.contains(feet))
                 footings.add(feet.immutable());
@@ -321,7 +333,8 @@ public final class DomeSummitRoundTripGameTest {
         long scans,routeFailures,grappleProbes,anchorMisses;
         int maxY,minDescentY,jumps,landings,grappleUps,grappleDowns;
         int levelsUp,levelsDown,lastGroundY;
-        boolean hadGround,airborne,jumpedThisFlight,wasRope,done;
+        boolean hadGround,airborne,jumpedThisFlight,wasRope,ropeMoved,done;
+        long ropeAttempts;
         double takeoffY,walked;
         String phase="ASCEND";
         String lastAction="SPAWN";
@@ -358,13 +371,26 @@ public final class DomeSummitRoundTripGameTest {
             Vec3 now=mob.position();
             boolean rope=BuilderGrappleAccess.active(mob);
             if(rope&&!wasRope){
-                if(phase.equals("ASCEND"))grappleUps++;
-                else grappleDowns++;
-                log(tick,"ROPE_ATTACHED",mob.blockPosition(),
+                ropeAttempts++;
+                ropeMoved=false;
+                log(tick,"ROPE_ROUTE_STARTED",mob.blockPosition(),
                         BuilderGrappleAccess.debug(mob));
             }else if(!rope&&wasRope)
-                log(tick,"ROPE_RELEASED",mob.blockPosition(),
-                        WorkerNavigation.debugStatus(mob));
+                log(tick,ropeMoved?"ROPE_RELEASED":"ROPE_ABORTED",
+                        mob.blockPosition(),WorkerNavigation.debugStatus(mob));
+            // The active rope state includes WALK_TO_LINE / WALK_TO_EDGE.
+            // Count a grapple use ONLY after observed vertical movement
+            // under its control, never just after a route was requested.
+            double ropeDelta=now.y-lastPos.y;
+            if(rope&&!ropeMoved
+                    &&(phase.equals("ASCEND")&&ropeDelta>.055
+                    ||phase.equals("DESCEND")&&ropeDelta<-.055)){
+                ropeMoved=true;
+                if(phase.equals("ASCEND"))grappleUps++;
+                else grappleDowns++;
+                log(tick,"ROPE_VERTICAL_MOVEMENT",mob.blockPosition(),
+                        "deltaY="+String.format(Locale.ROOT,"%.3f",ropeDelta));
+            }
             wasRope=rope;
             double horiz=Math.hypot(now.x-lastPos.x,now.z-lastPos.z);
             if(horiz<2)walked+=horiz;
@@ -576,7 +602,7 @@ public final class DomeSummitRoundTripGameTest {
                     +" jumps="+jumps+" lowerLandings="+landings
                     +" footingUp="+levelsUp+" footingDown="+levelsDown
                     +" grappleUps="+grappleUps+" grappleDowns="+grappleDowns
-                    +" probes="+grappleProbes+" noAnchors="+anchorMisses
+                    +" ropeAttempts="+ropeAttempts+" probes="+grappleProbes+" noAnchors="+anchorMisses
                     +" routeFailures="+routeFailures
                     +" walked="+String.format(Locale.ROOT,"%.1f",walked)
                     +" nav="+WorkerNavigation.debugStatus(mob)
