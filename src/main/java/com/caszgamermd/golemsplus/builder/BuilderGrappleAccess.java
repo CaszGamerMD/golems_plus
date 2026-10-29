@@ -29,14 +29,14 @@ public final class BuilderGrappleAccess {
     public static final int MAX_REACH=20;
     public enum Result { MOVING, READY, NEED_HOOK, NO_SAFE_ANCHOR }
     private enum Phase {
-        WALK_TO_LINE, WALK_TO_EDGE, CLIMB, STEP_ON_TOP, STEP_OFF,
-        RAPPEL, RETREAT, RETURN_TO_TOP, RETURN_ON_LEDGE
+        WALK_TO_LINE, SWING_TO_LINE, WALK_TO_EDGE, CLIMB, STEP_ON_TOP, STEP_OFF,
+        RAPPEL, RETREAT, RETURN_TO_START, RETURN_TO_TOP, RETURN_ON_LEDGE
     }
     /** Max ticks without ACTUAL progress, not just a move intent. */
     static final int STUCK_TICKS=45;
     private static final int TRAVEL_TIMEOUT=180;
     private static final class Rope {
-        final BlockPos anchor,column,landing,goal;
+        final BlockPos anchor,column,landing,goal,safeStart;
         final Direction side;
         final boolean down;
         final long started;
@@ -47,14 +47,20 @@ public final class BuilderGrappleAccess {
         Phase lastPhase;
         Rope(BlockPos anchor,Direction side,BlockPos landing,BlockPos goal,
                 boolean down,long time) {
+            this(anchor,side,landing,goal,down,time,null);
+        }
+        Rope(BlockPos anchor,Direction side,BlockPos landing,BlockPos goal,
+                boolean down,long time,BlockPos safeStart) {
             this.anchor=anchor.immutable();
             this.side=side;
             this.column=anchor.relative(side);
             this.landing=landing.immutable();
             this.goal=goal.immutable();
+            this.safeStart=safeStart==null?null:safeStart.immutable();
             this.down=down;
             this.started=time;
-            this.phase=down?Phase.WALK_TO_EDGE:Phase.WALK_TO_LINE;
+            this.phase=down?Phase.WALK_TO_EDGE:
+                    (safeStart==null?Phase.WALK_TO_LINE:Phase.SWING_TO_LINE);
         }
         double topY(){return anchor.getY()+1.0;}
     }
@@ -233,9 +239,35 @@ public final class BuilderGrappleAccess {
         out.sort(Comparator.comparingInt(p->p.distManhattan(goal)));
         return out;
     }
+    /**
+     * Real rope-supported horizontal entry when the vertical rope hangs
+     * over open air. Its source MUST be grounded, the rope stays attached,
+     * the full swept body must clear every intermediate point, and the
+     * horizontal span cannot exceed three blocks.
+     *
+     * This does NOT create a new walking path, magically grant footholds,
+     * teleport, or permit unsupported motion without an actual anchor.
+     */
+    private static boolean swingClear(ServerLevel level,BuilderGolem mob,
+            BlockPos entry){
+        if(!mob.onGround()||!headroom(level,entry)
+                ||mob.blockPosition().getY()!=entry.getY())return false;
+        double dx=entry.getX()+.5-mob.getX();
+        double dz=entry.getZ()+.5-mob.getZ();
+        double len=Math.hypot(dx,dz);
+        if(len>.01 && len>3.0)return false;
+        int steps=Math.max(1,(int)Math.ceil(len/.18));
+        AABB body=mob.getBoundingBox();
+        for(int i=1;i<=steps;i++){
+            double fraction=(double)i/steps;
+            if(!level.noCollision(mob,body.move(
+                    dx*fraction,0,dz*fraction)))return false;
+        }
+        return true;
+    }
     /** A hook anchors to the solid top of a full block or TOP slab,
-     * one cell BELOW the landing feet. The rope hangs off an open cardinal
-     * face and requires a physically reachable ground entry.
+     * one cell BELOW landing feet. When the same-level entry has no floor,
+     * an already grounded Builder may swing toward the clear hanging line.
      */
     private static Rope chooseAscent(ServerLevel level,BuilderGolem worker,
             BlockPos goal){
@@ -247,21 +279,24 @@ public final class BuilderGrappleAccess {
                 if(rejected(level,worker,anchor,side))continue;
                 BlockPos column=anchor.relative(side);
                 BlockPos entry=column.atY(startY);
-                if(!solidTop(level,entry.below())
-                        ||!headroom(level,entry)
+                if(!headroom(level,entry)
                         ||!lineClear(level,column,startY,goal.getY()))
                     continue;
-                if(!WorkerNavigation.canReachExact(level,worker,entry))
-                    continue;
-                // The final shift across the edge must have enough room
-                // for the full Builder body; the roof itself stays intact.
+                boolean walk=solidTop(level,entry.below())
+                        &&WorkerNavigation.canReachExact(level,worker,entry);
+                boolean swing=!walk && swingClear(level,worker,entry);
+                if(!walk&&!swing)continue;
+                // The rope takes the weight BEFORE stepping into open air.
+                // The swing starts at the actual supported feet position.
                 candidates.add(new Rope(anchor,side,entry,goal,false,
-                        level.getGameTime()));
+                        level.getGameTime(),
+                        swing?worker.blockPosition():null));
             }
         }
         candidates.sort(Comparator.comparingDouble(r->
                 r.landing.distSqr(worker.blockPosition())
-                +r.anchor.distSqr(goal)*2.0));
+                +r.anchor.distSqr(goal)*2.0
+                +(r.safeStart!=null?18:0)));
         return candidates.isEmpty()?null:candidates.get(0);
     }
     /** Find a real ledge that the Builder can reach BEFORE it hooks on.
@@ -387,7 +422,9 @@ public final class BuilderGrappleAccess {
         Rope route=chooseAscent(level,worker,goal);
         if(route==null)return Result.NO_SAFE_ANCHOR;
         active.put(worker,route);
-        WorkerNavigation.routeToExact(level,worker,route.landing,1.0);
+        if(route.phase==Phase.WALK_TO_LINE)
+            WorkerNavigation.routeToExact(level,worker,route.landing,1.0);
+        else WorkerNavigation.stop(worker);
         return Result.MOVING;
     }
     /** Returns true while the hook owns descent or when a descent starts. */
@@ -517,8 +554,9 @@ public final class BuilderGrappleAccess {
             else r.stalledTicks++;
         }
         r.lastX=mob.getX();r.lastY=mob.getY();r.lastZ=mob.getZ();
-        if((r.phase==Phase.CLIMB||r.phase==Phase.STEP_ON_TOP
-                ||r.phase==Phase.STEP_OFF||r.phase==Phase.RAPPEL)
+        if((r.phase==Phase.SWING_TO_LINE||r.phase==Phase.CLIMB
+                ||r.phase==Phase.STEP_ON_TOP||r.phase==Phase.STEP_OFF
+                ||r.phase==Phase.RAPPEL)
                 &&r.stalledTicks>=STUCK_TICKS)
             beginRecovery(level,mob,r);
         mob.setNoGravity(true);
@@ -527,6 +565,15 @@ public final class BuilderGrappleAccess {
         double x=r.column.getX()+.5,z=r.column.getZ()+.5;
         boolean moved=true;
         switch(r.phase){
+            case SWING_TO_LINE -> {
+                // The taut rope holds the golem during the unsupported
+                // lateral approach. Every velocity is collision tested.
+                if(Math.abs(mob.getX()-x)<.115
+                        &&Math.abs(mob.getZ()-z)<.115){
+                    r.phase=Phase.CLIMB;
+                    r.stalledTicks=0;
+                }else moved=steer(level,mob,x,mob.getY(),z,.12,false);
+            }
             case CLIMB -> {
                 if(mob.getY()>=r.topY()+.17){
                     r.phase=Phase.STEP_ON_TOP;
@@ -558,11 +605,30 @@ public final class BuilderGrappleAccess {
                     moved=steer(level,mob,x,mob.getY(),z,.14,true);
                 else if(mob.getY()>r.landing.getY()+.035)
                     moved=steer(level,mob,x,r.landing.getY(),z,.14,true);
-                else if(solidTop(level,r.landing.below())
+                else if(r.safeStart!=null){
+                    r.phase=Phase.RETURN_TO_START;
+                    r.stalledTicks=0;
+                }else if(solidTop(level,r.landing.below())
                         &&headroom(level,r.landing)
                         &&level.noCollision(mob,mob.getBoundingBox()))
                     release(mob,r,"CLIMB RETREATED TO GROUND");
                 else moved=false;
+            }
+            case RETURN_TO_START -> {
+                // Failed unsupported swing must return to the SAME
+                // physically supported ledge, never detach in open air.
+                if(r.safeStart==null||!solidTop(level,r.safeStart.below())){
+                    moved=false;
+                }else{
+                    double sx=r.safeStart.getX()+.5;
+                    double sz=r.safeStart.getZ()+.5;
+                    if(Math.abs(mob.getX()-sx)<.15
+                            &&Math.abs(mob.getZ()-sz)<.15
+                            &&mob.onGround()){
+                        release(mob,r,"SWING RETREATED TO SAFE LEDGE");
+                    }else moved=steer(level,mob,sx,r.safeStart.getY(),
+                            sz,.12,false);
+                }
             }
             case RETURN_TO_TOP -> {
                 // Descending failed: ascend the same rope to slightly
@@ -599,7 +665,8 @@ public final class BuilderGrappleAccess {
         // A return must keep the rope until safe ground is reached.
         // If the original route is newly obstructed, never detach midair:
         // record the obstruction explicitly instead of silently freezing.
-        if(r.phase==Phase.RETREAT||r.phase==Phase.RETURN_TO_TOP
+        if(r.phase==Phase.RETREAT||r.phase==Phase.RETURN_TO_START
+                ||r.phase==Phase.RETURN_TO_TOP
                 ||r.phase==Phase.RETURN_ON_LEDGE){
             r.recoveryTicks++;
             if(r.recoveryTicks==TRAVEL_TIMEOUT)
