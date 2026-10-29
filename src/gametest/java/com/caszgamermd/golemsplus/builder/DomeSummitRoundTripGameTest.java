@@ -435,7 +435,7 @@ public final class DomeSummitRoundTripGameTest {
         });
     }
 
-    private static final class Study {
+    static final class Study {
         final ServerLevel level;
         final BuilderGolem mob;
         final WorkerStationBlockEntity table;
@@ -468,9 +468,17 @@ public final class DomeSummitRoundTripGameTest {
         double takeoffY,walked;
         String phase="ASCEND";
         String lastAction="SPAWN";
+        final boolean ascentOnly;
         Study(ServerLevel level,BuilderGolem mob,
                 WorkerStationBlockEntity table,BlockPos origin,BlockPos base,
                 Map<BlockPos,BlockState> dome,List<BlockPos> footings,int summitY){
+            this(level,mob,table,origin,base,dome,footings,summitY,false);
+        }
+        Study(ServerLevel level,BuilderGolem mob,
+                WorkerStationBlockEntity table,BlockPos origin,BlockPos base,
+                Map<BlockPos,BlockState> dome,List<BlockPos> footings,
+                int summitY,boolean ascentOnly){
+            this.ascentOnly=ascentOnly;
             this.level=level;this.mob=mob;this.table=table;
             this.origin=origin;this.base=base;
             this.dome=dome;this.footings=footings;this.summitY=summitY;
@@ -880,6 +888,13 @@ public final class DomeSummitRoundTripGameTest {
                     &&WorkerNavigation.canStandOn(level,mob,here)){
                 log(tick,"ROOF_REACHED",here,
                         "grounded supported roof Y=35; finial excluded");
+                if(ascentOnly){
+                    phase="ROOF_READY";goal=null;done=true;
+                    WorkerNavigation.stop(mob);
+                    log(tick,"ASCENT_ONLY_COMPLETE",here,
+                            "grounded at Y=35; demolition may begin");
+                    return null;
+                }
                 phase="DESCEND";goal=null;stageStart=tick;
                 lastHeightProgress=tick;minDescentY=here.getY();
                 excludedUntil.clear();
