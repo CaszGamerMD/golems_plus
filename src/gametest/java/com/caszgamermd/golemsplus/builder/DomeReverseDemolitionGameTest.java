@@ -334,6 +334,12 @@ public final class DomeReverseDemolitionGameTest {
                 "tick,action,localX,localY,localZ,feetX,feetY,feetZ,"
                 +"route,carried,mined,deposited,meters,jumps,drops,grapples\n");
         BlockPos target,stance,lastBroken;
+        // Adaptive physical return route; never a recorded path or teleport.
+        final List<BlockPos> outerRing=new ArrayList<>();
+        int ringExit=-1,ringAt=-1,ringDirection=0,returnDetours;
+        BlockPos returnWaypoint;
+        long waypointProgressTick;
+        double bestWaypointDistance=Double.POSITIVE_INFINITY;
         Vec3 previous;
         long lastProgress,lastRouteProgress,lastScanTick;
         int mined,unloads,jumps,drops,grapples,scanOffset,routeFailures;
@@ -348,6 +354,27 @@ public final class DomeReverseDemolitionGameTest {
             this.level=level;this.mob=mob;this.table=table;
             this.depot=depot;this.origin=origin;this.remaining=remaining;
             this.previous=mob.position();
+            // Derive an open outside walking corridor from the ORIGINAL
+            // blueprint bounds, before dismantling changes the silhouette.
+            int minX=remaining.keySet().stream().mapToInt(BlockPos::getX).min().orElse(origin.getX());
+            int maxX=remaining.keySet().stream().mapToInt(BlockPos::getX).max().orElse(origin.getX());
+            int minZ=remaining.keySet().stream().mapToInt(BlockPos::getZ).min().orElse(origin.getZ());
+            int maxZ=remaining.keySet().stream().mapToInt(BlockPos::getZ).max().orElse(origin.getZ());
+            int left=minX-1,right=maxX+1,top=minZ-1,bottom=maxZ+1;
+            for(int x=left;x<=right;x++)outerRing.add(new BlockPos(x,depot.getY(),top));
+            for(int z=top+1;z<=bottom;z++)outerRing.add(new BlockPos(right,depot.getY(),z));
+            for(int x=right-1;x>=left;x--)outerRing.add(new BlockPos(x,depot.getY(),bottom));
+            for(int z=bottom-1;z>top;z--)outerRing.add(new BlockPos(left,depot.getY(),z));
+            double best=Double.POSITIVE_INFINITY;
+            for(int i=0;i<outerRing.size();i++){
+                BlockPos p=outerRing.get(i);
+                if(!WorkerNavigation.canStandOn(level,mob,p))continue;
+                double d=p.distSqr(depot);
+                if(d<best){best=d;ringExit=i;}
+            }
+            System.out.println("[REVERSE RETURN] ring length="+outerRing.size()
+                    +" exit="+(ringExit<0?"NONE":relative(outerRing.get(ringExit)))
+                    +" depot="+relative(depot));
         }
         int carried(){
             int total=0;
@@ -604,6 +631,149 @@ public final class DomeReverseDemolitionGameTest {
         boolean finishedUnloading(){
             return !unloading&&carried()==0;
         }
+        /** A waypoint is reached only by physical walking to its center. */
+        boolean reached(BlockPos p){
+            return p!=null&&mob.onGround()
+                    &&mob.blockPosition().equals(p)
+                    &&mob.distanceToSqr(p.getX()+.5,p.getY(),p.getZ()+.5)<.27;
+        }
+        void setReturnWaypoint(long now,BlockPos p,String stage){
+            if(p==null)return;
+            returnWaypoint=p.immutable();
+            waypointProgressTick=now;
+            bestWaypointDistance=Double.POSITIVE_INFINITY;
+            trace(now,"RETURN_"+stage,p,"ring="+ringAt
+                    +" direction="+ringDirection+" detours="+returnDetours);
+        }
+        boolean returnStalled(long now){
+            if(returnWaypoint==null)return false;
+            double d=mob.distanceToSqr(returnWaypoint.getX()+.5,
+                    returnWaypoint.getY(),returnWaypoint.getZ()+.5);
+            if(d<bestWaypointDistance-.12){
+                bestWaypointDistance=d;waypointProgressTick=now;
+            }
+            return now-waypointProgressTick>160;
+        }
+        int ringDistance(int start,int goal,int direction){
+            int n=outerRing.size();
+            return Math.floorMod((goal-start)*direction,n);
+        }
+        void chooseRingDirection(){
+            int positive=ringDistance(ringAt,ringExit,1);
+            int negative=ringDistance(ringAt,ringExit,-1);
+            ringDirection=positive<=negative?1:-1;
+        }
+        /** Try a direct, physically verified last-mile approach to the chest. */
+        boolean depotApproach(long now){
+            if(mob.blockPosition().getY()!=depot.getY()
+                    ||mob.blockPosition().distSqr(depot)>100)return false;
+            var landings=new ArrayList<BlockPos>();
+            for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
+                BlockPos foot=depot.offset(dx,0,dz);
+                if(foot.distSqr(depot)>9
+                        ||!WorkerNavigation.canStandOn(level,mob,foot))continue;
+                landings.add(foot);
+            }
+            BlockPos chosen=WorkerNavigation.selectExecutableStand(level,mob,landings);
+            if(chosen==null)return false;
+            if(!chosen.equals(returnWaypoint))setReturnWaypoint(now,chosen,"FINAL");
+            return WorkerNavigation.routeToExact(level,mob,chosen,1.0);
+        }
+        /** Plan short executable legs on an exterior route derived from the
+         * schematic's bounds. Long inside-the-wall native routes are not
+         * treated as proof of reachability; every leg uses trained A*.
+         */
+        boolean returnViaOutside(long now){
+            if(ringExit<0 || outerRing.isEmpty())return false;
+            if(returnWaypoint!=null && !reached(returnWaypoint)){
+                if(!returnStalled(now)){
+                    WorkerNavigation.routeToExact(level,mob,returnWaypoint,1.0);
+                    return true;
+                }
+                trace(now,"RETURN_REPLAN",returnWaypoint,
+                        "cannot physically finish leg "+WorkerNavigation.debugStatus(mob));
+                returnDetours++;
+                if(ringAt>=0)ringDirection=-ringDirection;
+                else ringDirection=0;
+                WorkerNavigation.stop(mob);
+                returnWaypoint=null;
+            }
+            if(returnWaypoint!=null&&reached(returnWaypoint)){
+                int index=outerRing.indexOf(returnWaypoint);
+                if(index>=0){
+                    ringAt=index;
+                    if(ringDirection==0)chooseRingDirection();
+                }
+                returnWaypoint=null;
+            }
+            if(ringAt<0){
+                // One multi-goal A* chooses an attainable OUTSIDE entry.
+                // Look around the whole ring instead of targeting an
+                // inaccessible near-side chest cell through the dome.
+                var candidate=new ArrayList<>(outerRing);
+                candidate.removeIf(p->!WorkerNavigation.canStandOn(level,mob,p));
+                candidate.sort(Comparator.comparingDouble(
+                        p->p.distSqr(mob.blockPosition())));
+                BlockPos entry=WorkerNavigation.selectExecutableStand(level,mob,
+                        candidate.subList(0,Math.min(48,candidate.size())));
+                if(entry==null)return false;
+                setReturnWaypoint(now,entry,"RING_ENTRY");
+                WorkerNavigation.routeToExact(level,mob,entry,1.0);
+                return true;
+            }
+            if(ringAt==ringExit){
+                // Once the outer exit is physically reached, transition
+                // through the short, open depot approach tiles.
+                if(depotApproach(now))return true;
+                if(returnStalled(now)){ringAt=-1;returnWaypoint=null;}
+                return false;
+            }
+            int distance=ringDistance(ringAt,ringExit,ringDirection);
+            int n=outerRing.size();
+            // Preview progressively shorter ground segments. These are
+            // waypoints, not saved paths; legality is recomputed each trip.
+            for(int hop:new int[]{5,3,1}){
+                int next=Math.floorMod(ringAt+
+                        ringDirection*Math.min(hop,distance),n);
+                BlockPos leg=outerRing.get(next);
+                if(!WorkerNavigation.canStandOn(level,mob,leg))continue;
+                if(WorkerNavigation.routeToExact(level,mob,leg,1.0)){
+                    setReturnWaypoint(now,leg,"PERIMETER");
+                    return true;
+                }
+            }
+            returnDetours++;
+            ringDirection=-ringDirection;
+            trace(now,"RETURN_REVERSE",outerRing.get(ringAt),
+                    "blocked physical perimeter leg; reverse direction");
+            return false;
+        }
+        /** Hook is real equipment with real support and rope clearance;
+         * only attempt it when walking cannot access the exterior.
+         */
+        boolean grappleToExit(long now){
+            if(!mob.onGround()||now%100!=0
+                    ||mob.blockPosition().getY()!=depot.getY())return false;
+            int examined=0;
+            for(BlockPos block:remaining.keySet()){
+                BlockPos ledge=block.above();
+                int rise=ledge.getY()-mob.blockPosition().getY();
+                if(rise<2||rise>BuilderGrappleAccess.MAX_REACH
+                        ||block.distSqr(mob.blockPosition())>260)continue;
+                if(++examined>64)break;
+                if(!WorkerNavigation.canStandOn(level,mob,ledge)
+                        ||!BuilderGrappleAccess.canPlanAscent(level,mob,ledge))
+                    continue;
+                var result=BuilderGrappleAccess.reach(level,mob,table,ledge);
+                if(result==BuilderGrappleAccess.Result.MOVING
+                        &&BuilderGrappleAccess.active(mob)){
+                    grapples++;
+                    trace(now,"GRAPPLE_EXIT",ledge,BuilderGrappleAccess.debug(mob));
+                    return true;
+                }
+            }
+            return false;
+        }
         String unload(long now){
             // A FULL pouch must return to the real collection point.
             // Test-owned ledger is an infinite downstream warehouse,
@@ -627,6 +797,7 @@ public final class DomeReverseDemolitionGameTest {
                 WorkerNavigation.stop(mob);
                 trace(now,"UNLOAD",depot,"depot received="+dropped);
                 reset();lastProgress=now;
+                ringAt=-1;ringDirection=0;returnWaypoint=null;
                 return null;
             }
             if(BuilderGrappleAccess.active(mob))return null;
@@ -663,9 +834,15 @@ public final class DomeReverseDemolitionGameTest {
                 if(BuilderGrappleAccess.rappelToward(
                         level,mob,table,depot))return null;
             }
-            WorkerNavigation.routeTo(level,mob,depot,1.0);
-            if(now-lastProgress>3000)
-                return "Could not physically deliver full pouch to depot";
+            // Real depot needs a path to an adjacent STANDING cell, not
+            // a repeatedly regenerated A* toward the solid chest block.
+            if(depotApproach(now))return null;
+            if(returnViaOutside(now))return null;
+            if(grappleToExit(now))return null;
+            if(now-lastProgress>4200)
+                return "Cannot reach exterior route / depot with carried load"
+                    +" ring="+ringAt+" exit="+ringExit
+                    +" waypoint="+returnWaypoint+" detours="+returnDetours;
             return null;
         }
         String status(){
