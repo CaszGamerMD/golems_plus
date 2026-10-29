@@ -530,7 +530,7 @@ public final class BuilderGrappleAccess {
         BlockPos here=worker.blockPosition();
         for(int i=history.size()-1;i>=0;i--){
             Rope past=history.get(i);
-            if(past.down||past.safeStart!=null
+            if(past.down
                     ||past.anchor.getY()+1!=here.getY()
                     ||past.landing.getY()>=here.getY()
                     ||rejected(level,worker,past.anchor,past.side))
@@ -555,6 +555,35 @@ public final class BuilderGrappleAccess {
             return true;
         }
         return false;
+    }
+
+    /** A reversed ascent swing remains rope-supported until the original
+     * safe lower foothold is reached. Require collision-clear golem-sized
+     * motion all along the previously executed lateral segment.
+     */
+    private static boolean clearReverseSwing(ServerLevel level,
+            BuilderGolem worker,Rope past){
+        if(past.safeStart==null)return false;
+        BlockPos from=past.landing;
+        BlockPos safe=past.safeStart;
+        if(from.getY()!=safe.getY()||!solidTop(level,safe.below())
+                ||!headroom(level,safe))return false;
+        double dx=safe.getX()-from.getX();
+        double dz=safe.getZ()-from.getZ();
+        double distance=Math.hypot(dx,dz);
+        if(distance>6.0||Math.hypot(distance,past.topY()-from.getY())
+                >MAX_REACH)return false;
+        AABB body=worker.getBoundingBox().move(
+                from.getX()+.5-worker.getX(),
+                from.getY()-worker.getY(),
+                from.getZ()+.5-worker.getZ());
+        int steps=Math.max(1,(int)Math.ceil(distance/.12));
+        for(int i=0;i<=steps;i++){
+            double f=(double)i/steps;
+            if(!level.noCollision(worker,body.move(dx*f,0,dz*f)))
+                return false;
+        }
+        return true;
     }
     /** Returns true while the hook owns descent or when a descent starts. */
     public static boolean rappelForTravel(ServerLevel level,
