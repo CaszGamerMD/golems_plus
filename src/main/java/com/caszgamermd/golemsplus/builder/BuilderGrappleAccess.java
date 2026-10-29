@@ -338,8 +338,13 @@ public final class BuilderGrappleAccess {
                 if(!headroom(level,entry)
                         ||!lineClear(level,column,startY,goal.getY()))
                     continue;
+                // A native A* endpoint can appear reachable while the
+                // trained worker cannot begin its physical first leg.
+                // Validate with the SAME executable-route predicate used
+                // for ordinary Builder work stances, not createPath alone.
                 boolean walk=solidTop(level,entry.below())
-                        &&WorkerNavigation.canReachExact(level,worker,entry);
+                        &&WorkerNavigation.selectExecutableStand(
+                                level,worker,List.of(entry))!=null;
                 boolean swing=!walk && swingClear(level,worker,entry,goal);
                 if(!walk&&!swing)continue;
                 // The rope takes the weight BEFORE stepping into open air.
