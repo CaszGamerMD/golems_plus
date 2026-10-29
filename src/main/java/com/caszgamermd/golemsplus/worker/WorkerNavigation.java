@@ -413,12 +413,21 @@ public final class WorkerNavigation {
         if(goals.contains(mob.blockPosition()))
             return mob.blockPosition().immutable();
         Progress progress=states.get(mob);
-        WorkerRoutePlanner.Route route=planExactRoute(
-                level,mob,goals,progress==null?null:progress.lastBad);
-        if(route==null||!route.complete()||route.steps().isEmpty()
-                ||!canBeginTrainedLeg(level,mob,route))return null;
-        BlockPos reached=route.steps().get(route.steps().size()-1);
-        return goals.contains(reached)?reached.immutable():null;
+        // A geometrically valid cheapest route can have a first leg that
+        // native movement cannot execute. Reject that destination only,
+        // then let the same trained planner consider another work stance.
+        // Bound retries so one blocked target cannot monopolize a tick.
+        for(int attempt=0;attempt<4&&!goals.isEmpty();attempt++){
+            WorkerRoutePlanner.Route route=planExactRoute(
+                    level,mob,goals,progress==null?null:progress.lastBad);
+            if(route==null||!route.complete()||route.steps().isEmpty())
+                return null;
+            BlockPos reached=route.steps().get(route.steps().size()-1);
+            if(!goals.contains(reached))return null;
+            if(canBeginTrainedLeg(level,mob,route))return reached.immutable();
+            goals.removeIf(reached::equals);
+        }
+        return null;
     }
 
     private static WorkerRoutePlanner.Route planExactRoute(
