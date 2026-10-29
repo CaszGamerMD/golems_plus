@@ -637,7 +637,7 @@ public final class DomeReverseDemolitionGameTest {
                 routeFailures++;
                 reset();
             }
-            if(now-lastProgress>(mined==0?2500:8500))
+            if(now-lastProgress>(mined==0?3200:8500))
                 return "Global mining watchdog: no real break for "
                         +(now-lastProgress)+" ticks"
                         +" target="+(target==null?"none":relative(target))
@@ -674,6 +674,14 @@ public final class DomeReverseDemolitionGameTest {
                         remaining.remove(target);
                         lastBroken=target.immutable();
                         mined++;lastProgress=now;
+                        if(firstBrokenY==Integer.MIN_VALUE)
+                            firstBrokenY=target.getY()-origin.getY();
+                        if(mined%25==0)
+                            System.out.println("[REVERSE TOP DOWN] mined="
+                                    +mined+" physics="+physicsCleared
+                                    +" layer="+(target.getY()-origin.getY())
+                                    +" remaining="+remaining.size()
+                                    +" feet="+relative(mob.blockPosition()));
                         trace(now,"BREAK",target,expected.getBlock().getName().getString());
                         if(mined%32==0)writeReports("IN PROGRESS");
                         reset();
@@ -711,12 +719,18 @@ public final class DomeReverseDemolitionGameTest {
             // Explore the actual remaining world, not a recorded route.
             // Prefer physical proximity, but keep rotating search pages so
             // an inaccessible corner never monopolizes the study.
-            List<BlockPos> candidates=new ArrayList<>(remaining.keySet());
+            // Strict top-down demolition, including the decorative
+            // finial above the supported Y=35 rooftop.
+            highestRemainingY=remaining.keySet().stream()
+                    .mapToInt(BlockPos::getY).max().orElse(origin.getY());
+            List<BlockPos> candidates=new ArrayList<>();
+            for(BlockPos p:remaining.keySet())
+                if(p.getY()==highestRemainingY)candidates.add(p);
             candidates.sort(Comparator
                     .comparingDouble((BlockPos p)->
-                        p.distSqr(mob.blockPosition())-
-                        Math.max(0,p.getY()-origin.getY())*2.0)
-                    .thenComparingInt(BlockPos::getY));
+                            p.distSqr(mob.blockPosition()))
+                    .thenComparingInt(BlockPos::getX)
+                    .thenComparingInt(BlockPos::getZ));
             int scans=0;
             int count=candidates.size();
             int start=count==0?0:scanOffset%count;
@@ -812,7 +826,8 @@ public final class DomeReverseDemolitionGameTest {
                 grappleProbes++;
                 int trials=0;
                 for(BlockPos block:candidates){
-                    BlockPos ledge=block.above();
+                    BlockPos ledge=BuilderGrappleAccess.bottomSlab(level,block)
+                            ?block:block.above();
                     int rise=ledge.getY()-mob.blockPosition().getY();
                     if(rise<2||rise>BuilderGrappleAccess.MAX_REACH
                             ||block.distSqr(mob.blockPosition())>320)
@@ -1239,7 +1254,10 @@ public final class DomeReverseDemolitionGameTest {
             return null;
         }
         String status(){
-            return "mined="+mined+" physics="+physicsCleared
+            return "roofReached="+roofReached
+                    +" firstBreakY="+firstBrokenY
+                    +" highRemaining="+(highestRemainingY-origin.getY())
+                    +" mined="+mined+" physics="+physicsCleared
                     +" cleared="+(mined+physicsCleared)+"/3537"
                     +" relocations="+relocations
                     +" exitBreaks="+exitBreaks
