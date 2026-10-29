@@ -395,7 +395,8 @@ public final class DomeReverseDemolitionGameTest {
         final StringBuilder csv=new StringBuilder(
                 "tick,action,localX,localY,localZ,feetX,feetY,feetZ,"
                 +"route,carried,mined,deposited,meters,jumps,drops,grapples\n");
-        BlockPos target,stance,lastBroken,exitBlock;
+        BlockPos target,stance,lastBroken,exitBlock,priorityLeaf;
+        int loneSupportsDeferred,loneLeavesMined;
         int exitMiningAge,exitBreaks;
         // Adaptive physical return route; never a recorded path or teleport.
         final List<BlockPos> outerRing=new ArrayList<>();
@@ -756,6 +757,23 @@ public final class DomeReverseDemolitionGameTest {
                             relocateOnUpperDome(now,List.of(unsafe));
                             return null;
                         }
+                        // Recheck physical support immediately before the
+                        // world mutation. Roof geometry may have changed
+                        // since the target was selected.
+                        BlockPos lone=BuilderDemolitionOrder.loneBlockFirst(
+                                level,remaining,target);
+                        if(lone!=null){
+                            BlockPos blocked=target;
+                            priorityLeaf=lone;
+                            loneSupportsDeferred++;
+                            excludedUntil.put(blocked,now+160);
+                            trace(now,"LONE_BLOCK_FIRST",lone,
+                                    "do not mine support="+relative(blocked)
+                                    +" until lone block is removed");
+                            reset();
+                            return null;
+                        }
+                        boolean wasPriority=target.equals(priorityLeaf);
                         mob.swing(InteractionHand.MAIN_HAND);
                         if(!level.destroyBlock(target,false,mob))
                             return "Physical block removal failed at "+target;
@@ -766,6 +784,12 @@ public final class DomeReverseDemolitionGameTest {
                         remaining.remove(target);
                         lastBroken=target.immutable();
                         mined++;lastProgress=now;
+                        if(wasPriority){
+                            loneLeavesMined++;
+                            trace(now,"LONE_BLOCK_REMOVED",target,
+                                    "support can now be reconsidered");
+                            priorityLeaf=null;
+                        }
                         if(firstBrokenY==Integer.MIN_VALUE)
                             firstBrokenY=target.getY()-origin.getY();
                         if(mined%25==0)
@@ -823,13 +847,39 @@ public final class DomeReverseDemolitionGameTest {
                             p.distSqr(mob.blockPosition()))
                     .thenComparingInt(BlockPos::getX)
                     .thenComparingInt(BlockPos::getZ));
+            // Top-down is the default, but a lone block on a LOWER
+            // layer takes precedence over its upper supporting block.
+            if(priorityLeaf!=null){
+                if(!remaining.containsKey(priorityLeaf))priorityLeaf=null;
+                else{
+                    candidates.remove(priorityLeaf);
+                    candidates.add(0,priorityLeaf);
+                }
+            }
             int scans=0;
             int count=candidates.size();
             int start=count==0?0:scanOffset%count;
             for(int k=0;k<count&&scans<BLOCKS_PER_SCAN;k++){
-                BlockPos p=candidates.get((start+k)%count);
-                if(excludedUntil.getOrDefault(p,0L)>now)continue;
+                BlockPos selected=candidates.get((start+k)%count);
+                if(excludedUntil.getOrDefault(selected,0L)>now)continue;
                 scans++;
+                BlockPos p=selected;
+                // A support with only one adjoining planned leaf must
+                // wait for that leaf. Do not ignore the leaf merely
+                // because its Y is below the strict demolition layer.
+                BlockPos lone=BuilderDemolitionOrder.loneBlockFirst(
+                        level,remaining,p);
+                if(lone!=null){
+                    p=lone;
+                    if(excludedUntil.getOrDefault(p,0L)>now)continue;
+                    if(!lone.equals(priorityLeaf)){
+                        priorityLeaf=lone;
+                        loneSupportsDeferred++;
+                        trace(now,"LONE_BLOCK_PRIORITY",lone,
+                                "mine before supporting block "
+                                +relative(selected));
+                    }
+                }
                 BlockState state=remaining.get(p);
                 if(state==null)continue;
                 // Walls, panes, fences and other connected blocks may update
@@ -1047,6 +1097,25 @@ public final class DomeReverseDemolitionGameTest {
                 exitBlock=null;exitMiningAge=0;
                 return false;
             }
+            // Corridor excavation is demolition too. Do not leave a
+            // lone block behind or break the worker's only exit.
+            BlockPos orphan=BuilderDemolitionOrder.loneBlockFirst(
+                    level,remaining,exitBlock);
+            if(orphan!=null){
+                priorityLeaf=orphan;
+                loneSupportsDeferred++;
+                trace(now,"EXIT_LONE_FIRST",orphan,
+                        "defer exit support "+relative(exitBlock));
+                exitBlock=null;exitMiningAge=0;
+                return false;
+            }
+            if(BuilderEscapeRoute.preview(level,mob,exitBlock,
+                    BuilderEscapeRoute.Action.BREAK)==null){
+                trace(now,"EXIT_NO_SAFE_ESCAPE",exitBlock,
+                        "defer excavation; find another work position");
+                exitBlock=null;exitMiningAge=0;
+                return false;
+            }
             mob.swing(InteractionHand.MAIN_HAND);
             if(!level.destroyBlock(exitBlock,false,mob)){
                 exitBlock=null;exitMiningAge=0;
@@ -1083,7 +1152,9 @@ public final class DomeReverseDemolitionGameTest {
             Map<BlockPos,Double> scores=new HashMap<>();
             int examined=0;
             for(BlockPos block:work){
-                if(block.getY()!=highest||!remaining.containsKey(block))
+                if((block.getY()!=highest
+                            &&!block.equals(priorityLeaf))
+                            ||!remaining.containsKey(block))
                     continue;
                 if(++examined>48)break;
                 // Use actual collision-checked work poses that already
@@ -1471,6 +1542,10 @@ public final class DomeReverseDemolitionGameTest {
                     +" relocations="+relocations
                     +" roofRelocations="+roofRelocations
                     +" noEscapeDeferrals="+noEscapeDeferrals
+                    +" loneSupportsDeferred="+loneSupportsDeferred
+                    +" loneLeavesMined="+loneLeavesMined
+                    +" priorityLeaf="+(priorityLeaf==null?
+                            "none":relative(priorityLeaf))
                     +" scaffolds="+scaffold.placed()
                     +" scaffoldClimbs="+scaffold.climbs()
                     +" scaffoldLandings="+scaffold.dismounts()
