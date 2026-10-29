@@ -12,7 +12,8 @@
     "fabric-gametest": [
       "com.caszgamermd.golemsplus.builder.DomeSummitRoundTripGameTest",
       "com.caszgamermd.golemsplus.builder.GrappleTopSlabGameTest",
-      "com.caszgamermd.golemsplus.builder.GrappleSwingGapGameTest"
+      "com.caszgamermd.golemsplus.builder.GrappleSwingGapGameTest",
+      "com.caszgamermd.golemsplus.builder.GrappleBottomSlabGameTest"
     ]
   }
 }
