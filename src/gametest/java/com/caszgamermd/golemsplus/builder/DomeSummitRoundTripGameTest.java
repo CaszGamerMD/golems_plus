@@ -269,13 +269,24 @@ public final class DomeSummitRoundTripGameTest {
             releaseSimulation.run();
             h.fail("No supported roof footings on intact dome");return;
         }
-        int summitY=footings.stream().mapToInt(BlockPos::getY).max().orElseThrow();
+        // The dome's walkable rooftop ends at local Y=35. Higher Y=36-38
+        // tiles belong to decorative fence/wall/finial geometry and are
+        // NOT an assignment to climb an ornament. Accept only a physically
+        // grounded Builder on the supported Y=35 rooftop before descent.
+        final int rooftopY=origin.getY()+35;
+        final int highestFootingY=footings.stream()
+                .mapToInt(BlockPos::getY).max().orElseThrow();
+        if(footings.stream().noneMatch(p->p.getY()==rooftopY)){
+            releaseSimulation.run();
+            h.fail("No physically supported roof at expected Y=35");return;
+        }
+        int summitY=rooftopY;
         // Physical diagnostics reveal whether this dome has a continuous
         // network of standing ledges above the first reachable shelf.
         // Without such ledges, a one-anchor-at-a-time grapple will need
         // a real wall-facing rope relay instead of repeated return-to-base.
         StringBuilder layers=new StringBuilder();
-        for(int y=origin.getY();y<=summitY;y++){
+        for(int y=origin.getY();y<=highestFootingY;y++){
             final int height=y;
             long count=footings.stream().filter(p->p.getY()==height).count();
             layers.append(y-origin.getY()).append(':').append(count).append(' ');
@@ -295,8 +306,9 @@ public final class DomeSummitRoundTripGameTest {
         List<BlockPos> summitCells=footings.stream()
                 .filter(p->p.getY()==summitY).toList();
         System.out.println("[DOME SUMMIT] original=3537 base="
-                +start.toShortString()+" summitY="
-                +(summitY-origin.getY())+" apexCells="+summitCells.size()
+                +start.toShortString()+" roofGoalY="
+                +(summitY-origin.getY())+" roofCells="+summitCells.size()
+                +" highestDecorationY="+(highestFootingY-origin.getY())
                 +" footings="+footings.size()+" hook=real");
         Study study=new Study(world,golem,table,origin,start,remaining,
                 footings,summitY);
@@ -732,8 +744,11 @@ public final class DomeSummitRoundTripGameTest {
             if(BuilderGrappleAccess.active(mob))return null;
             BlockPos here=mob.blockPosition();
             if(phase.equals("ASCEND")
-                    &&mob.onGround()&&here.getY()==summitY){
-                log(tick,"SUMMIT_REACHED",here,"real grounded apex");
+                    &&mob.onGround()&&here.getY()>=summitY
+                    &&footings.contains(here)
+                    &&WorkerNavigation.canStandOn(level,mob,here)){
+                log(tick,"ROOF_REACHED",here,
+                        "grounded supported roof Y=35; finial excluded");
                 phase="DESCEND";goal=null;stageStart=tick;
                 lastHeightProgress=tick;minDescentY=here.getY();
                 excludedUntil.clear();
