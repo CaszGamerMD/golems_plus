@@ -971,6 +971,18 @@ public final class DomeReverseDemolitionGameTest {
                 // because its Y is below the strict demolition layer.
                 BlockPos lone=BuilderDemolitionOrder.loneBlockFirst(
                         level,remaining,p);
+                if(lone!=null && region.upperPhase()
+                        &&lone.getY()<=region.floorY()){
+                    // The current region's floor is reserved for WALKING.
+                    // Do not pull a supporting floor block out early,
+                    // even for a structural dependency. Defer this
+                    // upper target; another target or vantage is tried.
+                    excludedUntil.put(p,now+180);
+                    trace(now,"REGION_FLOOR_RESERVED",p,
+                            "dependent="+relative(lone)
+                            +" waiting until upper stage finishes");
+                    continue;
+                }
                 if(lone!=null){
                     p=lone;
                     if(excludedUntil.getOrDefault(p,0L)>now)continue;
