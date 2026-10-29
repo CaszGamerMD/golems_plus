@@ -34,7 +34,7 @@ public final class DomeSummitRoundTripGameTest {
     private static final Path REPORT=Path.of("logs/dome_summit_roundtrip.csv");
     private static final Path SUMMARY=Path.of("logs/dome_summit_roundtrip_summary.txt");
     private static final int ROUTE_RETRY_TICKS=360;
-    private static final int STAGE_TIMEOUT=18000;
+    private static final int STAGE_TIMEOUT=9000;
     private static final int PROGRESS_TIMEOUT=3500;
 
     @GameTest(structure="golems_plus_gametest:dome_arena",
@@ -268,6 +268,28 @@ public final class DomeSummitRoundTripGameTest {
             h.fail("No supported roof footings on intact dome");return;
         }
         int summitY=footings.stream().mapToInt(BlockPos::getY).max().orElseThrow();
+        // Physical diagnostics reveal whether this dome has a continuous
+        // network of standing ledges above the first reachable shelf.
+        // Without such ledges, a one-anchor-at-a-time grapple will need
+        // a real wall-facing rope relay instead of repeated return-to-base.
+        StringBuilder layers=new StringBuilder();
+        for(int y=origin.getY();y<=summitY;y++){
+            final int height=y;
+            long count=footings.stream().filter(p->p.getY()==height).count();
+            layers.append(y-origin.getY()).append(':').append(count).append(' ');
+        }
+        System.out.println("[DOME STANDING TOPOLOGY] "+layers);
+        BlockPos firstShelf=origin.offset(1,5,20);
+        for(int delta:new int[]{1,2,3,5,8,12,16,20}){
+            int min=firstShelf.getY()+delta;
+            long count=footings.stream().filter(p->p.getY()>=min
+                    &&p.getY()<=firstShelf.getY()
+                            +BuilderGrappleAccess.MAX_REACH
+                    &&Math.abs(p.getX()-firstShelf.getX())<=19
+                    &&Math.abs(p.getZ()-firstShelf.getZ())<=19).count();
+            System.out.println("[DOME VERTICAL SIGHT] shelfY=5 above="
+                    +delta+" standable="+count);
+        }
         List<BlockPos> summitCells=footings.stream()
                 .filter(p->p.getY()==summitY).toList();
         System.out.println("[DOME SUMMIT] original=3537 base="
@@ -519,7 +541,7 @@ public final class DomeSummitRoundTripGameTest {
                 excludedUntil.put(p,tick+200);
             }
             anchorMisses++;
-            if(tick%400==0)log(tick,"NO_SAFE_UP_ANCHOR",here,
+            if(anchorMisses%10==1)log(tick,"NO_SAFE_UP_ANCHOR",here,
                     "probes="+grappleProbes+" checked="+attempts
                     +" elevatedCandidates="+candidates.size()
                     +" roofFootings="+nearFootings(here.getY()-2,
@@ -556,7 +578,7 @@ public final class DomeSummitRoundTripGameTest {
             }
             if(choices.isEmpty()){
                 frontierNoPaths++;
-                if(tick%400==0)log(tick,"NO_ROOF_FRONTIER",here,
+                if(frontierNoPaths%10==1)log(tick,"NO_ROOF_FRONTIER",here,
                         "no unvisited supported roof/ledge near feet");
                 return false;
             }
@@ -603,7 +625,7 @@ public final class DomeSummitRoundTripGameTest {
                 frontierVisitedUntil.put(frontier,tick+600);
             }
             frontierNoPaths++;
-            if(tick%400==0)
+            if(frontierNoPaths%10==1)
                 log(tick,"FRONTIER_UNREACHABLE",here,
                         "total="+choices.size()+" pathChecked="+checked
                         +" bestScore="+scores.get(choices.get(0))
