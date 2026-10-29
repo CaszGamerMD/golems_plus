@@ -223,7 +223,12 @@ public final class DomeReverseDemolitionGameTest {
                 start.getX() >> 4,start.getZ() >> 4));
         simulationChunks.add(new net.minecraft.world.level.ChunkPos(
                 depot.getX() >> 4,depot.getZ() >> 4));
-        for(int dx=0;dx<=38;dx+=19)for(int dz=0;dz<=38;dz+=19){
+        // Chunk boundaries depend on the random absolute GameTest origin.
+        // Sampling only corners/center skips some interior 16x16 chunks,
+        // freezing a real Builder when it walks into one of those gaps.
+        // Sample EVERY 4 blocks across the entire schematic plus its
+        // real exterior access lane, covering each actual ChunkPos.
+        for(int dx=-4;dx<=40;dx+=4)for(int dz=-4;dz<=40;dz+=4){
             BlockPos p=origin.offset(dx,0,dz);
             simulationChunks.add(new net.minecraft.world.level.ChunkPos(
                     p.getX() >> 4,p.getZ() >> 4));
