@@ -53,7 +53,11 @@ public final class DomeReverseDemolitionGameTest {
         BlockPos origin=h.absolutePos(new BlockPos(8,2,8));
         // The same full 39x39 ground and ORIGINAL checksum-verified Dome
         // used in the real construction challenge.
-        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+        // The original dome anchors at local (8,2,8) and spans
+        // 39 x 39: its far edge is x/z=46, not 42. The old physical
+        // dome fixture omitted four ground-support strips, which can
+        // cause schematic plants and wall approaches to fail.
+        for(int x=4;x<=47;x++)for(int z=4;z<=47;z++)
             h.setBlock(x,1,z,Blocks.STONE);
         h.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
         h.setBlock(5,2,7,Blocks.CHEST);
@@ -78,8 +82,35 @@ public final class DomeReverseDemolitionGameTest {
                 BlockPos p=new BlockPos(step.x(),step.y(),step.z());
                 if(remaining.putIfAbsent(p,result.state())!=null)
                     throw new IllegalStateException("Duplicate blueprint cell "+p);
-                if(!world.setBlock(p,result.state(),2))
+            }
+            // Survival-sensitive plants must be added AFTER their stone
+            // supports and neighboring structural blocks, or vanilla
+            // neighbor updates legitimately pop them before the test
+            // begins. This is only TEST fixture prebuilding, not a
+            // Builder Golem placement or a demolition shortcut.
+            for(var entry:remaining.entrySet()){
+                BlockPos p=entry.getKey();
+                BlockState state=entry.getValue();
+                if(BuilderVegetation.ignoreSchematicState(
+                        net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                        .getKey(state.getBlock()).toString()))
+                    continue;
+                if(!world.setBlock(p,state,2))
                     throw new IllegalStateException("Could not prebuild "+p);
+            }
+            for(var entry:remaining.entrySet()){
+                BlockPos p=entry.getKey();
+                BlockState state=entry.getValue();
+                if(!BuilderVegetation.ignoreSchematicState(
+                        net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                        .getKey(state.getBlock()).toString()))
+                    continue;
+                if(!state.canSurvive(world,p))
+                    throw new IllegalStateException(
+                            "Plant has no valid physical footing at "+p
+                            +" below="+world.getBlockState(p.below()));
+                if(!world.setBlock(p,state,2))
+                    throw new IllegalStateException("Could not prebuild vegetation "+p);
             }
             for(var entry:remaining.entrySet())
                 if(!world.getBlockState(entry.getKey()).equals(entry.getValue()))
