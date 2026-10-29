@@ -706,7 +706,8 @@ public final class BuilderGrappleAccess {
                         r.phase=Phase.STEP_TO_LOWER_LEDGE;
                         r.stalledTicks=0;
                     }else if(solidTop(level,r.landing.below())
-                            &&mob.onGround()){
+                            &&headroom(level,r.landing)
+                            &&Math.abs(mob.getY()-r.landing.getY())<.065){
                         release(mob,r,"RAPPELLED TO FLOOR");
                     }else{
                         // Never detach until ground under the full golem
@@ -724,8 +725,9 @@ public final class BuilderGrappleAccess {
                 double lz=r.landing.getZ()+.5;
                 if(Math.abs(mob.getX()-lx)<.14
                         &&Math.abs(mob.getZ()-lz)<.14
-                        &&mob.onGround()
-                        &&solidTop(level,r.landing.below())){
+                        &&Math.abs(mob.getY()-r.landing.getY())<.065
+                        &&solidTop(level,r.landing.below())
+                        &&headroom(level,r.landing)){
                     release(mob,r,"RAPPELLED ONTO LOWER SHELF");
                 }else moved=steer(level,mob,lx,r.landing.getY(),
                         lz,.12,false);
