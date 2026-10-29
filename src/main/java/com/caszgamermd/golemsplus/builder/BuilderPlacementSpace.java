@@ -326,8 +326,16 @@ public final class BuilderPlacementSpace {
                 AABB shifted=worker.getBoundingBox().move(
                         p.getX()+.5-worker.getX(),p.getY()-worker.getY(),
                         p.getZ()+.5-worker.getZ());
+                // The trained A* permits a path through a tile
+                // temporarily occupied by another Builder, and physical
+                // crew courtesy resolves traffic during movement.
+                // Do not reject the WHOLE work frontier because a teammate
+                // is currently standing at a future stance. Reject real
+                // blocks, including partial collision shapes, absolutely.
                 if(shifted.intersects(volume(target))
-                        ||!level.noCollision(worker,shifted))continue;
+                        ||!level.noCollision(worker,shifted)
+                            &&level.getBlockCollisions(worker,shifted)
+                                    .iterator().hasNext())continue;
                 candidates.add(p);
             }
         // Prefer real ground near the worker, but also prefer a work
