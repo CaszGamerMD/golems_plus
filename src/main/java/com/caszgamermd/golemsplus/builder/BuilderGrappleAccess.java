@@ -243,19 +243,21 @@ public final class BuilderGrappleAccess {
      * Real rope-supported horizontal entry when the vertical rope hangs
      * over open air. Its source MUST be grounded, the rope stays attached,
      * the full swept body must clear every intermediate point, and the
-     * horizontal span cannot exceed three blocks.
+     * horizontal span cannot exceed six blocks and the combined rope
+     * span must remain inside the carried hook's 20-block reach.
      *
      * This does NOT create a new walking path, magically grant footholds,
      * teleport, or permit unsupported motion without an actual anchor.
      */
     private static boolean swingClear(ServerLevel level,BuilderGolem mob,
-            BlockPos entry){
+            BlockPos entry,BlockPos goal){
         if(!mob.onGround()||!headroom(level,entry)
                 ||mob.blockPosition().getY()!=entry.getY())return false;
         double dx=entry.getX()+.5-mob.getX();
         double dz=entry.getZ()+.5-mob.getZ();
         double len=Math.hypot(dx,dz);
-        if(len>.01 && len>3.0)return false;
+        if(len>6.0 ||Math.hypot(len,goal.getY()-mob.getY())>MAX_REACH)
+            return false;
         int steps=Math.max(1,(int)Math.ceil(len/.18));
         AABB body=mob.getBoundingBox();
         for(int i=1;i<=steps;i++){
@@ -284,7 +286,7 @@ public final class BuilderGrappleAccess {
                     continue;
                 boolean walk=solidTop(level,entry.below())
                         &&WorkerNavigation.canReachExact(level,worker,entry);
-                boolean swing=!walk && swingClear(level,worker,entry);
+                boolean swing=!walk && swingClear(level,worker,entry,goal);
                 if(!walk&&!swing)continue;
                 // The rope takes the weight BEFORE stepping into open air.
                 // The swing starts at the actual supported feet position.
