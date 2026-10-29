@@ -311,6 +311,10 @@ public final class DomeReverseDemolitionGameTest {
                         +" unloads="+study.unloads
                         +" jump="+study.jumps+" drop="+study.drops
                         +" grapples="+study.grapples
+                        +" grappleProbes="+study.grappleProbes
+                        +" maxY="+study.highestFeetY
+                        +" levelGains="+study.levelGains
+                        +" levelLosses="+study.levelLosses
                         +" currentY="+(golem.blockPosition().getY()-origin.getY())
                         +" mobTicks="+golem.tickCount
                         +" grounded="+golem.onGround()
@@ -366,6 +370,11 @@ public final class DomeReverseDemolitionGameTest {
         long waypointProgressTick;
         double bestWaypointDistance=Double.POSITIVE_INFINITY;
         Vec3 previous;
+        // Separate airborne takeoff, landed height changes and safe descents.
+        // A single-tick >0.55 Y delta is not a valid Minecraft jump detector.
+        boolean hasGrounded,airborne,flightJumpRecorded;
+        double takeoffY;
+        int lastGroundedY,highestFeetY,levelGains,levelLosses,grappleProbes;
         long lastProgress,lastRouteProgress,lastScanTick,targetSelectedAt;
         int mined,physicsCleared,itemlessBlocks,itemsCollected,unloads,jumps,drops,grapples,scanOffset,routeFailures;
         long deposited;
@@ -380,6 +389,7 @@ public final class DomeReverseDemolitionGameTest {
             this.level=level;this.mob=mob;this.table=table;
             this.depot=depot;this.origin=origin;this.remaining=remaining;
             this.previous=mob.position();
+            this.highestFeetY=mob.blockPosition().getY()-origin.getY();
             // Derive an open outside walking corridor from the ORIGINAL
             // blueprint bounds, before dismantling changes the silhouette.
             int minX=remaining.keySet().stream().mapToInt((BlockPos p)->p.getX()).min().orElse(origin.getX());
@@ -456,11 +466,45 @@ public final class DomeReverseDemolitionGameTest {
             Vec3 now=mob.position();
             double horizontal=Math.hypot(now.x-previous.x,now.z-previous.z);
             if(horizontal<2)walkMeters+=horizontal;
-            double change=now.y-previous.y;
-            if(change>.55 &&!BuilderGrappleAccess.active(mob))
-                jumps++;
-            if(change<-.55 &&!BuilderGrappleAccess.active(mob))
-                drops++;
+            highestFeetY=Math.max(highestFeetY,
+                    mob.blockPosition().getY()-origin.getY());
+            double rise=now.y-previous.y;
+            boolean rope=BuilderGrappleAccess.active(mob);
+            if(mob.onGround()){
+                if(airborne && !rope && takeoffY-now.y>.65){
+                    drops++;
+                    trace(tick,"LANDED_LOWER",mob.blockPosition(),
+                            String.format(Locale.ROOT,
+                                    "fromY=%.3f toY=%.3f",takeoffY,now.y));
+                }
+                airborne=false;
+                flightJumpRecorded=false;
+                int y=mob.blockPosition().getY()-origin.getY();
+                if(hasGrounded && y!=lastGroundedY){
+                    if(y>lastGroundedY)levelGains+=y-lastGroundedY;
+                    else levelLosses+=lastGroundedY-y;
+                    trace(tick,y>lastGroundedY?"FOOTING_UP":"FOOTING_DOWN",
+                            mob.blockPosition(),"previousGroundY="+lastGroundedY);
+                }
+                lastGroundedY=y;
+                hasGrounded=true;
+            }else if(hasGrounded && !rope){
+                if(!airborne){
+                    airborne=true;
+                    takeoffY=previous.y;
+                    flightJumpRecorded=false;
+                }
+                // Count one real upward airborne movement per flight, not
+                // impossible >0.55-block jumps within a single game tick.
+                if(rise>.06 && !flightJumpRecorded){
+                    jumps++;
+                    flightJumpRecorded=true;
+                    trace(tick,"JUMP_ASCENT",mob.blockPosition(),
+                            String.format(Locale.ROOT,
+                                    "takeoffY=%.3f risePerTick=%.3f",
+                                    takeoffY,rise));
+                }
+            }
             previous=now;
         }
         boolean visible(BlockPos from,BlockPos p){
@@ -723,6 +767,7 @@ public final class DomeReverseDemolitionGameTest {
             // upper ledge for a carried Grapple Hook. Normal 1-block
             // jumps and 2-block drops were already considered by A*.
             if(now%80==0 && mob.onGround()){
+                grappleProbes++;
                 int trials=0;
                 for(BlockPos block:candidates){
                     BlockPos ledge=block.above();
@@ -737,12 +782,23 @@ public final class DomeReverseDemolitionGameTest {
                     var result=BuilderGrappleAccess.reach(
                             level,mob,table,ledge);
                     if(result==BuilderGrappleAccess.Result.MOVING){
-                        grapples++;
-                        trace(now,"GRAPPLE_UP",ledge,
-                                BuilderGrappleAccess.debug(mob));
+                        if(BuilderGrappleAccess.active(mob)){
+                            grapples++;
+                            trace(now,"GRAPPLE_UP",ledge,
+                                    BuilderGrappleAccess.debug(mob));
+                        }else{
+                            // MOVING may mean a normal one-block walk or
+                            // jump; it is not proof of rope attachment.
+                            trace(now,"NORMAL_ASCENT",ledge,
+                                    WorkerNavigation.debugStatus(mob));
+                        }
                         return null;
                     }
                 }
+                if(now%400==0)
+                    trace(now,"GRAPPLE_NO_ANCHOR",mob.blockPosition(),
+                            "checked="+trials+" currentY="
+                            +(mob.blockPosition().getY()-origin.getY()));
             }
             return null;
         }
@@ -1151,6 +1207,9 @@ public final class DomeReverseDemolitionGameTest {
                     +" returns="+unloads+" walked="
                     +String.format(Locale.ROOT,"%.2f",walkMeters)
                     +" jumps="+jumps+" drops="+drops+" grapples="+grapples
+                    +" grappleProbes="+grappleProbes
+                    +" maxFeetY="+highestFeetY
+                    +" footingGains="+levelGains+" footingLosses="+levelLosses
                     +" failedRoutes="+routeFailures
                     +" last="+lastAction
                     +" feet="+relative(mob.blockPosition())
@@ -1166,6 +1225,9 @@ public final class DomeReverseDemolitionGameTest {
                 Files.writeString(REPORT,csv.toString(),StandardCharsets.UTF_8);
                 Files.writeString(SUMMARY,outcome+"\n"+status()+"\n"
                         +"reach=3 jump=1 drop=2 hook=>2 bundle=192\n"
+                        +"metrics: jumps=upward airborne flights; drops=lower "
+                        +"landings; footingGains/Losses=grounded Y level changes; "
+                        +"grapples=actual rope starts\n"
                         +"manual_blocks="+mined+" natural_physics_pops="+physicsCleared
                         +" collectible_items="+itemsCollected
                         +" itemless_blocks="+itemlessBlocks+"\n"
