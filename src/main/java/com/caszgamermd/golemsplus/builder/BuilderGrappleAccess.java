@@ -12,7 +12,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.world.phys.AABB;
 
 /**
@@ -174,9 +176,27 @@ public final class BuilderGrappleAccess {
         active.remove(worker);
         worker.setNoGravity(false);
     }
+    /**
+     * Anchor/landing support is the ACTUAL upper collision surface, not
+     * simply a full-cube test. Top-half slabs reach Y+1 and have the same
+     * solid upper landing plane as a full block; bottom slabs stop at Y+.5
+     * and must never be treated as a full-height grapple anchor.
+     *
+     * This is used by both ascent and descent, so a top-slab roof can be
+     * climbed onto and later rappelled from. The rope itself still needs
+     * an unobstructed AIR column and a physically reachable entry.
+     */
     private static boolean solidTop(ServerLevel world,BlockPos p){
-        return world.hasChunkAt(p)
-                &&world.getBlockState(p).isFaceSturdy(world,p,Direction.UP);
+        if(!world.hasChunkAt(p))return false;
+        BlockState state=world.getBlockState(p);
+        if(state.getBlock() instanceof SlabBlock){
+            SlabType type=state.getValue(SlabBlock.TYPE);
+            if(type==SlabType.BOTTOM)return false;
+            return !state.getCollisionShape(world,p).isEmpty()
+                    &&state.getCollisionShape(world,p)
+                        .max(Direction.Axis.Y)>.999;
+        }
+        return state.isFaceSturdy(world,p,Direction.UP);
     }
     private static boolean empty(ServerLevel world,BlockPos p){
         if(!world.hasChunkAt(p)||!world.getFluidState(p).isEmpty())return false;
@@ -210,9 +230,9 @@ public final class BuilderGrappleAccess {
         out.sort(Comparator.comparingInt(p->p.distManhattan(goal)));
         return out;
     }
-    /** A hook always anchors to the solid surface BELOW the landing feet.
-     * The line must be on an open cardinal face and must reach an actual
-     * walkable entry cell underneath it.
+    /** A hook anchors to the solid top of a full block or TOP slab,
+     * one cell BELOW the landing feet. The rope hangs off an open cardinal
+     * face and requires a physically reachable ground entry.
      */
     private static Rope chooseAscent(ServerLevel level,BuilderGolem worker,
             BlockPos goal){
