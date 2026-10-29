@@ -338,6 +338,9 @@ public final class DomeSummitRoundTripGameTest {
         final List<BlockPos> footings;
         final int summitY;
         final Map<BlockPos,Long> excludedUntil=new HashMap<>();
+        final Map<BlockPos,Long> frontierVisitedUntil=new HashMap<>();
+        long lastFrontierMove,finalRecoveryTick;
+        int frontierRoutes,frontierNoPaths,descentRecoveries;
         final StringBuilder csv=new StringBuilder(
                 "tick,action,phase,localX,localY,localZ,goalX,goalY,goalZ,"
                 +"jumps,lowerLandings,grappleUps,grappleDowns,maxY,details\n");
@@ -481,7 +484,7 @@ public final class DomeSummitRoundTripGameTest {
             int high=ascending?Math.min(summitY,y+4):y-1;
             if(low>high)return false;
             List<BlockPos> candidates=nearFootings(low,high,16);
-            if(candidates.size()>40)candidates=candidates.subList(0,40);
+            if(candidates.size()>80)candidates=candidates.subList(0,80);
             if(candidates.isEmpty())return false;
             BlockPos next=WorkerNavigation.selectExecutableStand(
                     level,mob,candidates);
@@ -500,7 +503,7 @@ public final class DomeSummitRoundTripGameTest {
                     p.distSqr(here)+Math.abs(p.getY()-here.getY()-5)*3));
             int attempts=0;
             for(BlockPos p:candidates){
-                if(++attempts>40)break;
+                if(++attempts>120)break;
                 if(!BuilderGrappleAccess.canPlanAscent(level,mob,p))continue;
                 var result=BuilderGrappleAccess.reach(level,mob,table,p);
                 if(result==BuilderGrappleAccess.Result.MOVING){
@@ -517,8 +520,103 @@ public final class DomeSummitRoundTripGameTest {
             }
             anchorMisses++;
             if(tick%400==0)log(tick,"NO_SAFE_UP_ANCHOR",here,
-                    "probes="+grappleProbes+" checked="+attempts);
+                    "probes="+grappleProbes+" checked="+attempts
+                    +" elevatedCandidates="+candidates.size()
+                    +" roofFootings="+nearFootings(here.getY()-2,
+                            here.getY(),24).size());
             return false;
+        }
+        /**
+         * A dead end at an elevated work ledge is NOT an instruction to
+         * keep casting at the same unreachable wall. Examine physically
+         * standable footholds at this height and up to two levels lower.
+         * Score exposed positions that are close to a higher roof frontier,
+         * then require the same trained A* to prove an executable route.
+         * Alternate batches when a nearest waypoint is inaccessible.
+         */
+        boolean seekRoofFrontier(long tick){
+            BlockPos here=mob.blockPosition();
+            List<BlockPos> choices=nearFootings(
+                    Math.max(base.getY(),here.getY()-2),here.getY(),30);
+            choices.removeIf(p->p.distSqr(here)<9
+                    ||frontierVisitedUntil.getOrDefault(p,0L)>tick);
+            if(choices.isEmpty()){
+                frontierNoPaths++;
+                if(tick%400==0)log(tick,"NO_ROOF_FRONTIER",here,
+                        "no unvisited supported roof/ledge near feet");
+                return false;
+            }
+            // Look for genuine supported higher landings; this uses the
+            // same physical world snapshot, never a stored dome route.
+            Map<BlockPos,Double> scores=new HashMap<>();
+            for(BlockPos p:choices){
+                double higher=500;
+                for(BlockPos upper:footings){
+                    int rise=upper.getY()-p.getY();
+                    if(rise<2||rise>BuilderGrappleAccess.MAX_REACH)continue;
+                    int dx=upper.getX()-p.getX(),dz=upper.getZ()-p.getZ();
+                    int lateral=dx*dx+dz*dz;
+                    if(lateral>196)continue;
+                    double value=lateral+Math.abs(rise-5)*4.0;
+                    if(value<higher)higher=value;
+                }
+                // Skylight strongly favors the real exterior roof rather
+                // than a cave floor below its own overhanging dome.
+                double score=higher
+                        +p.distSqr(here)*.3
+                        +(here.getY()-p.getY())*14
+                        -(level.canSeeSky(p.above())?35:0);
+                scores.put(p,score);
+            }
+            choices.sort(Comparator.comparingDouble(scores::get));
+            int checked=0;
+            for(int offset=0;offset<choices.size()&&checked<144;offset+=12){
+                List<BlockPos> batch=choices.subList(offset,
+                        Math.min(choices.size(),offset+12));
+                checked+=batch.size();
+                BlockPos frontier=WorkerNavigation.selectExecutableStand(
+                        level,mob,batch);
+                if(frontier==null)continue;
+                if(routeTo(tick,frontier,"REPOSITION_ROOF_FRONTIER")){
+                    frontierRoutes++;lastFrontierMove=tick;
+                    frontierVisitedUntil.put(frontier,tick+1000);
+                    log(tick,"FRONTIER_SELECTED",frontier,
+                            "score="+scores.get(frontier)
+                            +" rank="+(offset+1)
+                            +" candidates="+choices.size());
+                    return true;
+                }
+                frontierVisitedUntil.put(frontier,tick+600);
+            }
+            frontierNoPaths++;
+            if(tick%400==0)
+                log(tick,"FRONTIER_UNREACHABLE",here,
+                        "total="+choices.size()+" pathChecked="+checked
+                        +" bestScore="+scores.get(choices.get(0))
+                        +" nav="+WorkerNavigation.debugStatus(mob));
+            return false;
+        }
+        /** If a roof shelf is isolated, descend by real rope instead of
+         * polling the same impossible higher goals forever. Blacklist this
+         * failed shelf while scouting a different approach from below. */
+        boolean recoverIsolatedShelf(long tick){
+            BlockPos here=mob.blockPosition();
+            if(here.getY()<=base.getY()||tick-lastHeightProgress<1250
+                    ||tick-finalRecoveryTick<300)return false;
+            boolean started=BuilderGrappleAccess.rappelToward(
+                    level,mob,table,base);
+            if(!started)return false;
+            excludedUntil.put(here,tick+10000);
+            frontierVisitedUntil.put(here,tick+10000);
+            finalRecoveryTick=tick;
+            descentRecoveries++;
+            log(tick,BuilderGrappleAccess.active(mob)
+                            ?"ISOLATED_SHELF_RAPPEL":"ISOLATED_SHELF_WALK_DOWN",
+                    here,"shelf excluded; try another physical route");
+            // This is a real altitude-changing recovery. A new search
+            // begins below, with the hard stage timeout still enforced.
+            lastHeightProgress=tick;
+            return true;
         }
         String tick(long tick){
             if(done)return null;
@@ -572,17 +670,10 @@ public final class DomeSummitRoundTripGameTest {
             if(phase.equals("ASCEND")){
                 if(normalVertical(tick,true))return null;
                 if(grappleUp(tick))return null;
-                // A valid higher platform might require first walking to
-                // a new lower-side position on the real outer shell.
-                List<BlockPos> levelCells=nearFootings(here.getY(),
-                        here.getY(),16);
-                levelCells.removeIf(p->p.distSqr(here)<16);
-                if(levelCells.size()>30)
-                    levelCells=levelCells.subList(0,30);
-                BlockPos scout=WorkerNavigation.selectExecutableStand(
-                        level,mob,levelCells);
-                if(scout!=null&&routeTo(tick,scout,"SEARCH_ANCHOR"))
-                    return null;
+                // Reposition across a reachable exterior roof/ledge,
+                // including safe 1-2 level descents when necessary.
+                if(seekRoofFrontier(tick))return null;
+                if(recoverIsolatedShelf(tick))return null;
             }else{
                 if(normalVertical(tick,false))return null;
                 boolean accepted=BuilderGrappleAccess.rappelToward(
@@ -617,6 +708,11 @@ public final class DomeSummitRoundTripGameTest {
                     +" footingUp="+levelsUp+" footingDown="+levelsDown
                     +" grappleUps="+grappleUps+" grappleDowns="+grappleDowns
                     +" ropeAttempts="+ropeAttempts+" probes="+grappleProbes+" noAnchors="+anchorMisses
+                    +" frontierRoutes="+frontierRoutes
+                    +" frontierNoPaths="+frontierNoPaths
+                    +" shelfRecoveries="+descentRecoveries
+                    +" position="+(mob.blockPosition().getX()-origin.getX())
+                        +"/"+(mob.blockPosition().getZ()-origin.getZ())
                     +" routeFailures="+routeFailures
                     +" walked="+String.format(Locale.ROOT,"%.1f",walked)
                     +" nav="+WorkerNavigation.debugStatus(mob)
