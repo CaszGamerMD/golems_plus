@@ -730,6 +730,7 @@ public final class BuilderBuildService {
                             level,table,plan.steps(),zone)
                     +BuilderConstructionPlanner.diagnoseBlockedZone(
                             level,worker,table,plan.steps(),zone)
+                    +" | scan="+BuilderConstructionPlanner.scanStatus(worker)
                     +" | "+table.problem();
             var current=plan.steps().get(index);
             BlockPos target=new BlockPos(current.x(),current.y(),current.z());
