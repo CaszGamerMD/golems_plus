@@ -40,7 +40,16 @@ public final class BuilderConstructionPlanner {
      * repeatedly inspect the same nearest 32 inaccessible cells. This
      * is search progress (not a saved route) and resets on a Y change.
      */
-    private record SearchWindow(int layer,int offset){}
+    private record SearchWindow(int layer,int offset,int pending,
+            int examined,int feasible,int chosen,int startOffset){}
+    public static String scanStatus(BuilderGolem worker){
+        SearchWindow w=windows.get(worker);
+        return w==null?"not yet scanned":
+                "Y="+w.layer()+" pending="+w.pending()
+                +" from="+w.startOffset()+" checked="+w.examined()
+                +" possible="+w.feasible()+" lastChosen="+w.chosen()
+                +" nextOffset="+w.offset();
+    }
     private static final Map<BuilderGolem,SearchWindow> windows=
             new WeakHashMap<>();
     private static final int REACH_SQUARED=14;
@@ -306,7 +315,9 @@ public final class BuilderConstructionPlanner {
         // Subsequent passes explore another bounded window until every
         // pending cell gets its own physical work-position opportunity.
         windows.put(worker,new SearchWindow(y,best!=null?0
-                :(offset+Math.max(1,examined))%Math.max(1,pending.size())));
+                :(offset+Math.max(1,examined))%Math.max(1,pending.size()),
+                pending.size(),examined,feasible,best==null?-1:best.index(),
+                offset));
         return best;
     }
 }
