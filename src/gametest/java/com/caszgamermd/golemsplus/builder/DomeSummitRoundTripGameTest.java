@@ -774,6 +774,34 @@ public final class DomeSummitRoundTripGameTest {
                 }
             }
             descentRimFailures++;
+            if(descentRimFailures==1){
+                StringBuilder tiles=new StringBuilder();
+                for(int dz=-3;dz<=3;dz++){
+                    tiles.append(" z=").append(dz).append(" [");
+                    for(int dx=-3;dx<=3;dx++){
+                        BlockPos tile=here.offset(dx,0,dz);
+                        BlockState floor=level.getBlockState(tile.below());
+                        BlockState feet=level.getBlockState(tile);
+                        boolean stand=WorkerNavigation.canStandOn(level,mob,tile);
+                        tiles.append(dx).append(':')
+                                .append(floor.getBlock().toString())
+                                .append("(floorY=")
+                                .append(String.format(Locale.ROOT,"%.2f",
+                                        floor.getCollisionShape(level,tile.below())
+                                                .max(net.minecraft.core.Direction.Axis.Y)))
+                                .append(";feet=")
+                                .append(feet.getBlock().toString())
+                                .append(";stand=").append(stand).append(") ");
+                    }
+                    tiles.append("]");
+                }
+                System.out.println("[DOME DESCENT Y24 COLLISION AUDIT] "
+                        +"here="+here+" feet="+level.getBlockState(here)
+                        +" below="+level.getBlockState(here.below())
+                        +" support="+mob.onGround()
+                        +" near="+tiles);
+                log(tick,"DESCENT_GEOMETRY_AUDIT",here,tiles.toString());
+            }
             if(descentRimFailures%10==1)log(tick,"NO_EXECUTABLE_DESCENT_RIM",
                     here,"candidates="+choices.size()
                     +" pathsTried="+tried
