@@ -50,6 +50,23 @@ public final class BuilderChunkTickets {
     private BuilderChunkTickets(){}
     public static void initialize(){} // Force the ticket type to register at mod initialization.
 
+    /**
+     * Physical GameTest fixtures without an active Builder job still need
+     * entity-simulation tickets; otherwise the GameTest clock advances while
+     * BuilderGolem.tickCount remains zero. Keep these explicit test leases
+     * separate from a workstation job's ref-counted production leases.
+     * Only the isolated GameTest fixture invokes these methods.
+     */
+    public static void holdPhysicalGameTestChunk(ServerLevel level,BlockPos center){
+        level.getChunkSource().addTicketWithRadius(BUILDER,
+                new ChunkPos(center.getX() >> 4,center.getZ() >> 4),RADIUS);
+    }
+    public static void releasePhysicalGameTestChunk(ServerLevel level,BlockPos center){
+        level.getChunkSource().removeTicketWithRadius(BUILDER,
+                new ChunkPos(center.getX() >> 4,center.getZ() >> 4),RADIUS);
+    }
+
+
     private static Map<Long,Lease> world(ServerLevel level){
         return jobs.computeIfAbsent(level,ignored->new HashMap<>());
     }
