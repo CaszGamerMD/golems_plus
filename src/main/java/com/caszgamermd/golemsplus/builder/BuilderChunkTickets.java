@@ -31,6 +31,14 @@ public final class BuilderChunkTickets {
     // Planner resumes its active job and reconstructs the transient tickets.
     // Radius 2 grants entity ticking at the anchor, including real Golems.
     private static final int RADIUS=2;
+    // Isolated physical GameTests are NOT construction jobs. Do not reuse
+    // production Builder ticket ownership for their real entity ticking.
+    private static final TicketType PHYSICAL_GAME_TEST=Registry.register(
+            BuiltInRegistries.TICKET_TYPE,
+            GolemsPlus.id("physical_gametest_simulation"),
+            new TicketType(0L,TicketType.FLAG_LOADING
+                    |TicketType.FLAG_SIMULATION
+                    |TicketType.FLAG_KEEP_DIMENSION_ACTIVE));
     private static final int MAX_DISTANCE=4096;
     private static final TicketType BUILDER=Registry.register(
             BuiltInRegistries.TICKET_TYPE,GolemsPlus.id("active_builder"),
@@ -58,11 +66,11 @@ public final class BuilderChunkTickets {
      * Only the isolated GameTest fixture invokes these methods.
      */
     public static void holdPhysicalGameTestChunk(ServerLevel level,BlockPos center){
-        level.getChunkSource().addTicketWithRadius(BUILDER,
+        level.getChunkSource().addTicketWithRadius(PHYSICAL_GAME_TEST,
                 new ChunkPos(center.getX() >> 4,center.getZ() >> 4),RADIUS);
     }
     public static void releasePhysicalGameTestChunk(ServerLevel level,BlockPos center){
-        level.getChunkSource().removeTicketWithRadius(BUILDER,
+        level.getChunkSource().removeTicketWithRadius(PHYSICAL_GAME_TEST,
                 new ChunkPos(center.getX() >> 4,center.getZ() >> 4),RADIUS);
     }
 
