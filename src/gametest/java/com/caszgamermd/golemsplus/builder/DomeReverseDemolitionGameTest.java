@@ -66,11 +66,14 @@ public final class DomeReverseDemolitionGameTest {
         // this is surrounding world ground, not another Dome block.
         for(int x=4;x<=47;x++)for(int z=4;z<=47;z++)
             h.setBlock(x,1,z,Blocks.GRASS_BLOCK);
-        h.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
-        h.setBlock(5,2,7,Blocks.CHEST);
-        BlockPos depot=h.absolutePos(new BlockPos(5,2,7));
+        // Depot sits beside the ACTUAL western rim near schematic Z=19.
+        // The square 39x39 bounding box has empty corners; positioning
+        // the depot near Z=0 would be twenty blocks from the real dome.
+        h.setBlock(4,2,27,WorksiteContent.BUILDER_TABLE);
+        h.setBlock(5,2,27,Blocks.CHEST);
+        BlockPos depot=h.absolutePos(new BlockPos(5,2,27));
         var table=(WorkerStationBlockEntity)world.getBlockEntity(
-                h.absolutePos(new BlockPos(4,2,7)));
+                h.absolutePos(new BlockPos(4,2,27)));
         if(table==null){h.fail("No real demo workstation for grappling");return;}
         LinkedHashMap<BlockPos,BlockState> remaining=new LinkedHashMap<>();
         try{
@@ -189,10 +192,26 @@ public final class DomeReverseDemolitionGameTest {
         }
         BuilderGolem golem=new BuilderGolem(
                 WorksiteContent.BUILDER_GOLEM,world);
-        // Start one tile OUTSIDE the dome's southwest corner.
-        // A real 3-block mining reach can then touch its first cell
-        // without an artificial mandatory walk across an empty apron.
-        BlockPos start=h.absolutePos(new BlockPos(7,2,7));
+        // A dome is circular! The southwest corner of its 39x39
+        // bounding box is AIR, so a (7,2,7) spawn had no legal block
+        // within 3 blocks and produced zero movements. Find the real
+        // westernmost BLOCK of the bottom layer and stand one tile
+        // OUTSIDE its exposed face instead.
+        BlockPos western=remaining.keySet().stream()
+                .filter(p->p.getY()==origin.getY())
+                .min(Comparator.comparingInt(BlockPos::getX)
+                    .thenComparingInt(p->Math.abs(
+                            p.getZ()-origin.getZ()-19)))
+                .orElseThrow();
+        BlockPos start=western.west();
+        if(!world.getBlockState(start).isAir()){
+            h.fail("No physical entry outside dome at "+start);return;
+        }
+        System.out.println("[REVERSE ENTRY] starting outside "
+                +western+" at "+start+" local="+
+                (start.getX()-origin.getX())+"/"+
+                (start.getY()-origin.getY())+"/"+
+                (start.getZ()-origin.getZ()));
         golem.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         golem.setItem(8,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
         world.addFreshEntity(golem);
