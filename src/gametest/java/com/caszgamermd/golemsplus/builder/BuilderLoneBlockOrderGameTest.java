@@ -26,6 +26,19 @@ public final class BuilderLoneBlockOrderGameTest {
         BlockPos a=place(h,level,plan,9,7,10,true);
         BlockPos support=place(h,level,plan,10,7,10,true);
         BlockPos leaf=place(h,level,plan,11,7,10,true);
+        System.out.println("[LONE DEBUG] center="+support
+                +" state="+level.getBlockState(support)
+                +" anchor="+a+" state="+level.getBlockState(a)
+                +" leaf="+leaf+" state="+level.getBlockState(leaf)
+                +" selected="+BuilderDemolitionOrder.loneBlockFirst(
+                        level,plan,support));
+        for(net.minecraft.core.Direction side:
+                net.minecraft.core.Direction.values()){
+            BlockPos n=leaf.relative(side);
+            System.out.println("[LONE DEBUG NEIGHBOR] "+side+" "+n
+                    +"="+level.getBlockState(n)+" collisionEmpty="
+                    +level.getBlockState(n).getCollisionShape(level,n).isEmpty());
+        }
         require(h,leaf.equals(BuilderDemolitionOrder.loneBlockFirst(
                 level,plan,support)),"side leaf must precede center support");
         require(h,BuilderDemolitionOrder.loneBlockFirst(
