@@ -390,6 +390,10 @@ public final class DomeReverseDemolitionGameTest {
         long nextDescentAttempt;
         int firstBrokenY=Integer.MIN_VALUE;
         int highestRemainingY=Integer.MIN_VALUE;
+        final int initialRegionTop;
+        int lastRegionNumber=-1;
+        DomeThreeLayerRegion.Phase lastRegionPhase;
+        int regionTransitions,regionFloorBreaks,regionUpperBreaks;
         final Map<BlockPos,Long> excludedUntil=new HashMap<>();
         final Map<Item,Long> depotTally=new LinkedHashMap<>();
         final StringBuilder csv=new StringBuilder(
@@ -430,6 +434,8 @@ public final class DomeReverseDemolitionGameTest {
             this.level=level;this.mob=mob;this.table=table;
             this.depot=depot;this.origin=origin;this.remaining=remaining;
             this.ascent=ascent;
+            this.initialRegionTop=remaining.keySet().stream()
+                    .mapToInt(BlockPos::getY).max().orElse(origin.getY());
             this.scaffold=new DomeDemolitionScaffold(level,mob,remaining);
             this.previous=mob.position();
             this.highestFeetY=mob.blockPosition().getY()-origin.getY();
@@ -841,6 +847,10 @@ public final class DomeReverseDemolitionGameTest {
                                     +" feet="+relative(mob.blockPosition()));
                         trace(now,"BREAK",target,expected.getBlock().getName().getString());
                         if(completedBatch!=null)sharedBreaks++;
+                        int bandFloor=initialRegionTop
+                                -Math.floorDiv(initialRegionTop-target.getY(),3)*3-2;
+                        if(target.getY()==bandFloor)regionFloorBreaks++;
+                        else regionUpperBreaks++;
                         if(mined%32==0)writeReports("IN PROGRESS");
                         if(completedBatch!=null
                                 &&completedIndex+1<completedBatch.targets().size()
@@ -904,21 +914,41 @@ public final class DomeReverseDemolitionGameTest {
             if(now<repositionUntil)return null;
             if(now-lastScanTick<10)return null;
             lastScanTick=now;
-            // Explore the actual remaining world, not a recorded route.
-            // Prefer physical proximity, but keep rotating search pages so
-            // an inaccessible corner never monopolizes the study.
-            // Strict top-down demolition, including the decorative
-            // finial above the supported Y=35 rooftop.
+            // Fixed three-high horizontal bands: the lower layer is
+            // PRESERVED as a walkable working floor while clearing
+            // both upper layers. Only when they are empty do we mine
+            // the bottom. A new band always starts THREE levels down,
+            // never shifted by a partially demolished roof.
+            DomeThreeLayerRegion.State region=
+                    DomeThreeLayerRegion.current(remaining,initialRegionTop);
             highestRemainingY=remaining.keySet().stream()
                     .mapToInt(BlockPos::getY).max().orElse(origin.getY());
-            List<BlockPos> candidates=new ArrayList<>();
-            for(BlockPos p:remaining.keySet())
-                if(p.getY()==highestRemainingY)candidates.add(p);
-            candidates.sort(Comparator
-                    .comparingDouble((BlockPos p)->
-                            p.distSqr(mob.blockPosition()))
-                    .thenComparingInt(BlockPos::getX)
-                    .thenComparingInt(BlockPos::getZ));
+            if(region.number()!=lastRegionNumber
+                    ||region.phase()!=lastRegionPhase){
+                if(lastRegionNumber>=0
+                        &&region.number()!=lastRegionNumber)
+                    regionTransitions++;
+                trace(now,"REGION_PHASE",mob.blockPosition(),
+                        "band="+region.number()
+                        +" top="+relative(origin.atY(region.topY()))
+                        +" middleY="+(region.middleY()-origin.getY())
+                        +" floorY="+(region.floorY()-origin.getY())
+                        +" stage="+region.phase()
+                        +" upperPending="+region.upperRemaining()
+                        +" floorPending="+region.floorRemaining());
+                System.out.println("[DOME REGION] band="+region.number()
+                        +" top="+(region.topY()-origin.getY())
+                        +" floor="+(region.floorY()-origin.getY())
+                        +" stage="+region.phase()
+                        +" upperPending="+region.upperRemaining()
+                        +" floorPending="+region.floorRemaining());
+                lastRegionNumber=region.number();
+                lastRegionPhase=region.phase();
+                excludedUntil.clear();
+                scanOffset=0;
+            }
+            List<BlockPos> candidates=DomeThreeLayerRegion.candidates(
+                    remaining,region,mob.blockPosition());
             // Top-down is the default, but a lone block on a LOWER
             // layer takes precedence over its upper supporting block.
             if(priorityLeaf!=null){
@@ -994,7 +1024,23 @@ public final class DomeReverseDemolitionGameTest {
                 if(choice==null){
                     List<BlockPos> options=stances(p);
                     options.remove(mob.blockPosition());
-                    for(int attempt=0;attempt<4&&!options.isEmpty();attempt++){
+                    // Prefer REAL supported stances on the region's
+                    // preserved floor (slabs can place feet inside it).
+                    // Floor-clearing poses must not stand on their
+                    // prospective broken support. Existing collision
+                    // and escape validation is still mandatory.
+                    final BlockPos candidateTarget=p;
+                    options.sort(Comparator
+                            .comparingInt((BlockPos at)->
+                                    region.upperPhase()
+                                    &&DomeThreeLayerRegion.isWorkingFloorPose(
+                                            region,at)?0:
+                                    region.floorPhase()
+                                    &&DomeThreeLayerRegion.isFloorClearancePose(
+                                            region,at,candidateTarget)?0:1)
+                            .thenComparingDouble(
+                                    at->at.distSqr(mob.blockPosition())));
+                    for(int attempt=0;attempt<6&&!options.isEmpty();attempt++){
                         BlockPos pose=WorkerNavigation.selectExecutableStand(
                                 level,mob,options);
                         if(pose==null)break;
@@ -1019,7 +1065,7 @@ public final class DomeReverseDemolitionGameTest {
                 // one stance at real <=3-block interaction reach, and
                 // share a complete escape route excluding ALL targets.
                 List<BlockPos> nearby=new ArrayList<>();
-                for(BlockPos q:remaining.keySet())
+                for(BlockPos q:candidates)
                     if(q.distSqr(p)<=4.0
                             &&q.getY()<=p.getY()
                             &&q.getY()>=p.getY()-2
@@ -1082,6 +1128,12 @@ public final class DomeReverseDemolitionGameTest {
             // a true trained route to a different supported vantage.
             if(mob.onGround()&&now-lastProgress>80
                     &&relocateOnUpperDome(now,candidates))
+                return null;
+            // On entering a lower band or changing to FLOOR cleanup,
+            // deliberately seek an accessible work-floor pose. Never
+            // blindly mine the block underfoot to force a descent.
+            if(mob.onGround()&&now-lastProgress>120
+                    &&relocateToRegionWorkFloor(now,region,candidates))
                 return null;
             // An upper roof can become a dead-end after carefully
             // removing its support blocks. Once several on-roof stance
@@ -1263,6 +1315,65 @@ public final class DomeReverseDemolitionGameTest {
             return true;
         }
         /**
+         * A region is three layers high, with its lowest layer retained
+         * as working floor until the two upper layers are empty. Seek
+         * another ACTUALLY reachable pose on that floor; after switching
+         * to floor cleanup, prefer the lower band or a supported side
+         * landing. The next tick rechecks 3m reach and independent escape
+         * before ANY real world removal.
+         */
+        boolean relocateToRegionWorkFloor(long now,
+                DomeThreeLayerRegion.State region,List<BlockPos> work){
+            if(!mob.onGround()||exploreWaypoint!=null||work.isEmpty()
+                    ||now%80!=0||BuilderGrappleAccess.active(mob))
+                return false;
+            var options=new ArrayList<BlockPos>();
+            var weight=new HashMap<BlockPos,Double>();
+            BlockPos here=mob.blockPosition();
+            int checked=0;
+            for(BlockPos block:work){
+                if(++checked>32)break;
+                for(BlockPos pose:stances(block)){
+                    if(pose.equals(here)
+                            ||exploredUntil.getOrDefault(pose,0L)>now)
+                        continue;
+                    boolean onFloor=DomeThreeLayerRegion.isWorkingFloorPose(
+                            region,pose);
+                    if(region.upperPhase()&&!onFloor)continue;
+                    if(region.floorPhase()
+                            &&!DomeThreeLayerRegion.isFloorClearancePose(
+                                    region,pose,block))continue;
+                    if(!weight.containsKey(pose)){
+                        options.add(pose);
+                        weight.put(pose,pose.distSqr(here)
+                                +Math.abs(pose.getY()
+                                        -(region.floorY()+1))*2.0);
+                        if(options.size()>=48)break;
+                    }
+                }
+                if(options.size()>=48)break;
+            }
+            options.sort(Comparator.comparingDouble(weight::get));
+            if(options.isEmpty())return false;
+            BlockPos selected=WorkerNavigation.selectExecutableStand(
+                    level,mob,options.subList(0,Math.min(32,options.size())));
+            if(selected==null)return false;
+            if(!WorkerNavigation.routeToExact(level,mob,selected,1.0)){
+                exploredUntil.put(selected,now+220);
+                return false;
+            }
+            exploreWaypoint=selected.immutable();
+            exploreStarted=now;
+            exploredUntil.put(selected,now+480);
+            relocations++;
+            trace(now,"REGION_FLOOR_REPOSITION",selected,
+                    "band="+region.number()
+                    +" stage="+region.phase()
+                    +" floorY="+(region.floorY()-origin.getY())
+                    +" real 3-block reach rechecked on arrival");
+            return true;
+        }
+        /**
          * After all candidates fail an independent post-break escape,
          * physically MOVE to another reachable stand on the current upper
          * work layer, keeping every unfinished block pending for a retry.
@@ -1275,16 +1386,14 @@ public final class DomeReverseDemolitionGameTest {
                     ||now%40!=0||work==null||work.isEmpty())
                 return false;
             BlockPos here=mob.blockPosition();
-            int highest=remaining.keySet().stream()
-                    .mapToInt(BlockPos::getY).max().orElse(here.getY());
+            var region=DomeThreeLayerRegion.current(
+                    remaining,initialRegionTop);
+            int highest=region.topY();
             List<BlockPos> choices=new ArrayList<>();
             Map<BlockPos,Double> scores=new HashMap<>();
             int examined=0;
             for(BlockPos block:work){
-                if((block.getY()!=highest
-                            &&!block.equals(priorityLeaf))
-                            ||!remaining.containsKey(block))
-                    continue;
+                if(!remaining.containsKey(block))continue;
                 if(++examined>48)break;
                 // Use actual collision-checked work poses that already
                 // pass the 3-block sight/range raycast; a safe future
@@ -1302,7 +1411,10 @@ public final class DomeReverseDemolitionGameTest {
                     // scouting location starves real Minecraft ticks.
                     double score=p.distSqr(here)*.65
                             +Math.abs(p.getY()-here.getY())*3
-                            +Math.abs(highest-p.getY())*2;
+                            +Math.abs(highest-p.getY())*2
+                            +(region.upperPhase()
+                                &&!DomeThreeLayerRegion.isWorkingFloorPose(
+                                    region,p)?30:0);
                     if(!scores.containsKey(p)){
                         scores.put(p,score);
                         choices.add(p);
@@ -1676,6 +1788,11 @@ public final class DomeReverseDemolitionGameTest {
                     +" sharedBatches="+sharedBatches
                     +" sharedBreaks="+sharedBreaks
                     +" sharedAborts="+sharedAborts
+                    +" regionBand="+lastRegionNumber
+                    +" regionPhase="+lastRegionPhase
+                    +" regionTransitions="+regionTransitions
+                    +" regionUpperBreaks="+regionUpperBreaks
+                    +" regionFloorBreaks="+regionFloorBreaks
                     +" priorityLeaf="+(priorityLeaf==null?
                             "none":relative(priorityLeaf))
                     +" scaffolds="+scaffold.placed()
