@@ -553,7 +553,9 @@ public final class BuilderBuildService {
                     ||workDistance>14
                     ||!BuilderPlacementSpace.horizontalClear(pos,worker)
                     ||!BuilderConstructionPlanner.safeStand(
-                            level,worker,pos,worker.blockPosition())){
+                            level,worker,pos,worker.blockPosition())
+                    ||BuilderEscapeRoute.preview(level,worker,pos,
+                            BuilderEscapeRoute.Action.PLACE)==null){
                 // Even when within arm's reach, a Builder must first
                 // occupy a PREVALIDATED work stance. This prevents the
                 // repeated old deadlock where it arrived next to an AIR
@@ -562,7 +564,10 @@ public final class BuilderBuildService {
                 BlockPos approach=BuilderPlacementSpace.approachWithRules(
                         level,worker,pos,
                         at->BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,at));
+                                level,worker,pos,at)
+                                &&BuilderEscapeRoute.previewFrom(
+                                        level,worker,at,pos,
+                                        BuilderEscapeRoute.Action.PLACE)!=null);
                 if(approach!=null){
                     if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .routeToExact(level,worker,approach,1.0)){
