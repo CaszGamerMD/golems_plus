@@ -159,6 +159,28 @@ final class DomeDemolitionScaffold {
             return true;
         }
         if(now-progressTick>450){fail(now,"no stage progress");return true;}
+        // Reaching the TOP of actual scaffolding does not always set
+        // vanilla onGround: a climbing mob inside a scaffold column may
+        // still have onGround=false even when its feet are at the exit
+        // height. Dismount BEFORE the grounded-only column-building gate.
+        // The existing stepToPlatform controller validates the real roof
+        // support and physically steers the worker sideways.
+        if(top>=landing.getY()-1
+                &&mob.getY()>=landing.getY()-.30
+                &&Math.abs(mob.getX()-(column.getX()+.5))<.9
+                &&Math.abs(mob.getZ()-(column.getZ()+.5))<.9){
+            if(!WorkerNavigation.canStandOn(level,mob,landing)){
+                fail(now,"roof dismount landing changed");
+                return true;
+            }
+            if(BuilderScaffolding.stepToPlatform(level,mob,landing)){
+                phase="DISMOUNT";progressTick=now;
+                return true;
+            }
+            if(now-progressTick>160)
+                fail(now,"physical dismount at scaffold top refused");
+            return true;
+        }
         if(!mob.onGround()){
             return true;
         }
@@ -179,15 +201,15 @@ final class DomeDemolitionScaffold {
             return true;
         }
         if(top>=landing.getY()-1){
-            if(!WorkerNavigation.canStandOn(level,mob,landing)){
-                fail(now,"upper landing no longer supported");
-                return true;
+            // Remain on the REAL scaffold and recover to its top before
+            // stepping over. Do not restart an ascent after it was already
+            // observed at the top; the early dismount gate handles that.
+            if(mob.getY()<landing.getY()-.30){
+                phase="ASCEND";
+                climbs++;
+                BuilderScaffolding.begin(level,mob,column,
+                        landing.getY(),false);
             }
-            if(BuilderScaffolding.stepToPlatform(level,mob,landing)){
-                phase="DISMOUNT";progressTick=now;
-                return true;
-            }
-            fail(now,"physical step to roof refused");
             return true;
         }
         if(!mob.getItem(MATERIAL_SLOT).is(Items.SCAFFOLDING)
