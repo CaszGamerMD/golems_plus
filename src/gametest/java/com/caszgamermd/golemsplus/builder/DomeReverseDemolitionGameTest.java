@@ -230,11 +230,11 @@ public final class DomeReverseDemolitionGameTest {
         }
         for(var chunk:simulationChunks)
             BuilderChunkTickets.holdPhysicalGameTestChunk(world,new BlockPos(
-                    chunk.x << 4,origin.getY(),chunk.z << 4));
+                    chunk.x() << 4,origin.getY(),chunk.z() << 4));
         Runnable releaseSimulation=()->{
             for(var chunk:simulationChunks)
                 BuilderChunkTickets.releasePhysicalGameTestChunk(world,
-                        new BlockPos(chunk.x << 4,origin.getY(),chunk.z << 4));
+                        new BlockPos(chunk.x() << 4,origin.getY(),chunk.z() << 4));
         };
         System.out.println("[REVERSE SIMULATION] primed "+
                 simulationChunks.size()+" real entity-ticking chunks");
