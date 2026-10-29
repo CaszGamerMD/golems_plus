@@ -536,21 +536,27 @@ public final class BuilderGrappleAccess {
                     ||rejected(level,worker,past.anchor,past.side))
                 continue;
             BlockPos top=past.anchor.above();
+            BlockPos lower=past.safeStart==null?
+                    past.landing:past.safeStart;
             if(!solidTop(level,past.anchor)
                     ||!headroom(level,top)
-                    ||!solidTop(level,past.landing.below())
+                    ||!solidTop(level,lower.below())
+                    ||!headroom(level,lower)
                     ||!headroom(level,past.landing)
                     ||!lineClear(level,past.column,
                             past.landing.getY(),top.getY())
+                    ||(past.safeStart!=null
+                            &&!clearReverseSwing(level,worker,past))
                     ||!(WorkerNavigation.canReachExact(level,worker,top)
                             ||adjacentFloorWalk(level,worker,top)))
                 continue;
-            Rope rappel=new Rope(past.anchor,past.side,past.landing,
+            Rope rappel=new Rope(past.anchor,past.side,lower,
                     returnGoal,true,level.getGameTime());
             active.put(worker,rappel);
             WorkerNavigation.stop(worker);
             System.out.println("[GRAPPLE] PROVEN REVERSE: top="+top
-                    +" lower="+past.landing+" side="+past.side
+                    +" lower="+lower+" ropeEntry="+past.landing
+                    +" reverseSwing="+(past.safeStart!=null)+" side="+past.side
                     +" current="+here+" real walking to anchor");
             return true;
         }
