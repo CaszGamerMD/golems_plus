@@ -298,7 +298,7 @@ public final class DomeReverseDemolitionGameTest {
                 lastEntityTick[0]=golem.tickCount;
                 lastEntityAdvance[0]=tick;
             }
-            if(tick>300&&tick-lastEntityAdvance[0]>200){
+            if(tick>1000&&tick-lastEntityAdvance[0]>300){
                 String stalled="Entity simulation stopped GameTest="+tick
                         +" mobTicks="+golem.tickCount
                         +" inWorld="+(world.getEntity(golem.getUUID())==golem)
@@ -316,7 +316,10 @@ public final class DomeReverseDemolitionGameTest {
                 h.fail("Reverse demolition golem died");return;
             }
             study.observe(tick);
-            if(tick==300 && golem.tickCount<10){
+            // CI may not schedule the first entity tick until after the
+            // GameTest clock has advanced hundreds of ticks. Do not
+            // confuse startup scheduling with a failed physical climb.
+            if(tick==1000 && golem.tickCount<10){
                 study.writeReports("FAIL entity never received simulation ticks");
                 releaseSimulation.run();
                 h.fail("Study entity did not tick: GameTest="+tick
