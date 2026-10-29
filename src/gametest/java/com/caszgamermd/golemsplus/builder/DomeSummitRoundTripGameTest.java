@@ -318,9 +318,24 @@ public final class DomeSummitRoundTripGameTest {
                 h.fail(failure+" "+study.status());return;
             }
             if(!golem.isAlive()){
-                study.writeReports("FAIL golem died");
+                var inWorld=world.getEntity(golem.getUUID());
+                String detail="Builder missing / not alive"
+                        +" removed="+golem.isRemoved()
+                        +" reason="+golem.getRemovalReason()
+                        +" health="+golem.getHealth()
+                        +" invulnerable="+golem.isInvulnerable()
+                        +" oldEntityTick="+golem.tickCount
+                        +" oldPos="+golem.position()
+                        +" worldEntity="+(inWorld==null?"none":
+                            inWorld.getClass().getSimpleName()+" id="+inWorld.getId()
+                            +" same="+(inWorld==golem)
+                            +" pos="+inWorld.position())
+                        +" atChunk="+world.hasChunkAt(golem.blockPosition())
+                        +" gameTime="+world.getGameTime();
+                System.err.println("[DOME ENTITY REMOVAL DIAGNOSTIC] "+detail);
+                study.writeReports("FAIL "+detail);
                 releaseSimulation.run();
-                h.fail("Real Builder died during dome climb");return;
+                h.fail(detail);return;
             }
             study.observe(tick);
             if(tick%5!=0)return;
@@ -759,6 +774,8 @@ public final class DomeSummitRoundTripGameTest {
                     +" summit="+(summitY-origin.getY())
                     +" minDescent="+(minDescentY-origin.getY())
                     +" grounded="+mob.onGround()
+                    +" health="+mob.getHealth()
+                    +" removed="+mob.isRemoved()
                     +" goal="+(goal==null?"none":
                         (goal.getX()-origin.getX())+"/"
                         +(goal.getY()-origin.getY())+"/"
