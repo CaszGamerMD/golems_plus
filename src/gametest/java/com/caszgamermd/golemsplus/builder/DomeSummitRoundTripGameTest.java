@@ -420,6 +420,8 @@ public final class DomeSummitRoundTripGameTest {
         int rejectedSectorTargets;
         long lastFrontierMove,finalRecoveryTick;
         int frontierRoutes,frontierNoPaths,descentRecoveries;
+        int descentRimRoutes,descentRimFailures;
+        final Map<BlockPos,Long> visitedDescentRims=new HashMap<>();
         final StringBuilder csv=new StringBuilder(
                 "tick,action,phase,localX,localY,localZ,goalX,goalY,goalZ,"
                 +"jumps,lowerLandings,grappleUps,grappleDowns,maxY,details\n");
@@ -708,6 +710,76 @@ public final class DomeSummitRoundTripGameTest {
                         +" nav="+WorkerNavigation.debugStatus(mob));
             return false;
         }
+        /**
+         * If no straight-down walk or rappel begins from a roof tile,
+         * reposition to a reachable OUTER RIM while staying on the same
+         * real supported shelf. This is the descending counterpart to
+         * scouting a new upward grapple anchor; it is terrain-driven, not
+         * a pre-recorded sequence of dome coordinates.
+         *
+         * A rim candidate must have an air gap directly next to its
+         * supported feet. Score vertical clearance BELOW that opening so
+         * the next normal descent/rappel search has room to operate.
+         */
+        boolean seekDescentRim(long tick){
+            BlockPos here=mob.blockPosition();
+            List<BlockPos> choices=nearFootings(here.getY()-1,here.getY(),24);
+            choices.removeIf(p->p.distSqr(here)<4
+                    ||visitedDescentRims.getOrDefault(p,0L)>tick);
+            if(choices.isEmpty()){descentRimFailures++;return false;}
+            Map<BlockPos,Double> scores=new HashMap<>();
+            for(BlockPos p:choices){
+                int bestClear=0;
+                for(net.minecraft.core.Direction side:
+                        net.minecraft.core.Direction.Plane.HORIZONTAL){
+                    BlockPos column=p.relative(side);
+                    if(!level.getBlockState(column).getCollisionShape(
+                            level,column).isEmpty())continue;
+                    if(!level.getBlockState(column.above()).getCollisionShape(
+                            level,column.above()).isEmpty())continue;
+                    int clear=0;
+                    for(int d=1;d<=BuilderGrappleAccess.MAX_REACH;d++){
+                        BlockPos down=column.below(d);
+                        if(!level.hasChunkAt(down)
+                                ||!level.getBlockState(down)
+                                        .getCollisionShape(level,down).isEmpty())
+                            break;
+                        clear++;
+                    }
+                    bestClear=Math.max(bestClear,clear);
+                }
+                // Favor a nearby genuinely exposed shelf, not a hidden
+                // location deep inside the domed roof's cavity.
+                scores.put(p,p.distSqr(here)*.4
+                        -bestClear*12
+                        +(here.getY()-p.getY())*9
+                        -(level.canSeeSky(p.above())?22:0));
+            }
+            choices.sort(Comparator.comparingDouble(scores::get));
+            int tried=0;
+            for(int offset=0;offset<choices.size()&&tried<96;offset+=12){
+                List<BlockPos> batch=choices.subList(offset,
+                        Math.min(choices.size(),offset+12));
+                tried+=batch.size();
+                BlockPos rim=WorkerNavigation.selectExecutableStand(
+                        level,mob,batch);
+                if(rim==null)continue;
+                visitedDescentRims.put(rim,tick+1000);
+                if(routeTo(tick,rim,"FIND_SAFE_DESCENT_RIM")){
+                    descentRimRoutes++;
+                    log(tick,"DESCENT_RIM_SELECTED",rim,
+                            "scored="+scores.get(rim)
+                            +" candidates="+choices.size());
+                    return true;
+                }
+            }
+            descentRimFailures++;
+            if(descentRimFailures%10==1)log(tick,"NO_EXECUTABLE_DESCENT_RIM",
+                    here,"candidates="+choices.size()
+                    +" pathsTried="+tried
+                    +" nav="+WorkerNavigation.debugStatus(mob));
+            return false;
+        }
         /** If a roof shelf is isolated, descend by real rope instead of
          * polling the same impossible higher goals forever. Blacklist this
          * failed shelf while scouting a different approach from below. */
@@ -802,6 +874,9 @@ public final class DomeSummitRoundTripGameTest {
                                 WorkerNavigation.debugStatus(mob));
                     return null;
                 }
+                // A stationary upper roof tile is not always the safe edge
+                // from which the hook can drop. Physically scout the rim.
+                if(seekDescentRim(tick))return null;
             }
             if(tick%400==0)
                 log(tick,"NO_VERTICAL_PATH",here,
@@ -831,6 +906,8 @@ public final class DomeSummitRoundTripGameTest {
                     +" frontierRoutes="+frontierRoutes
                     +" frontierNoPaths="+frontierNoPaths
                     +" shelfRecoveries="+descentRecoveries
+                    +" descentRimRoutes="+descentRimRoutes
+                    +" descentRimFailures="+descentRimFailures
                     +" isolatedSectors="+isolatedShelvesUntil.size()
                     +" rejectedTargets="+rejectedSectorTargets
                     +" position="+(mob.blockPosition().getX()-origin.getX())
