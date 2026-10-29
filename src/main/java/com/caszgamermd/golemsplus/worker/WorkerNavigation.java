@@ -273,7 +273,9 @@ public final class WorkerNavigation {
                     &&!standingTile(level,mob,feet))return false;
             if(i==start)continue;
             Node previous=path.getNode(i-1);
-            double a=floorAt(level,new BlockPos(previous.x,previous.y,previous.z));
+            BlockPos previousFeet=new BlockPos(previous.x,previous.y,previous.z);
+            double a=i==1&&previousFeet.equals(mob.blockPosition())&&mob.onGround()
+                    ?mob.getY():floorAt(level,previousFeet);
             double b=floorAt(level,feet);
             // One-block jumps and stair steps are legal for vanilla ground
             // mobs; reject only taller climbs or dangerous drops. Clearance
@@ -442,10 +444,29 @@ public final class WorkerNavigation {
             progress.lastBad=null;
         }
         List<Vec3> crowds=nearbyWorkers(level,mob);
-        return WorkerRoutePlanner.plan(mob.blockPosition(),goals,
+        BlockPos start=mob.blockPosition();
+        // The occupied start may straddle a ledge or partial block. Its
+        // actual grounded height is authoritative; other nodes must still
+        // prove their support and body clearance from world geometry.
+        return WorkerRoutePlanner.plan(start,goals,
                 at->standingTile(level,mob,at),
-                at->floorAt(level,at),avoid,
+                at->at.equals(start)&&mob.onGround()?mob.getY():floorAt(level,at),avoid,
                 at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
+    }
+
+    /** Read-only reason why the trained work selector cannot start. */
+    public static String diagnoseExecutableStand(ServerLevel level,
+            PathfinderMob mob,List<BlockPos> candidates){
+        if(candidates.isEmpty())return "no_candidates";
+        if(candidates.contains(mob.blockPosition()))return "already_at_candidate";
+        WorkerRoutePlanner.Route route=planExactRoute(level,mob,candidates,null);
+        if(route==null)return "search_no_route";
+        if(!route.complete())return "search_partial explored="+route.explored();
+        if(route.steps().isEmpty())return "search_empty";
+        return canBeginTrainedLeg(level,mob,route)?"first_leg_valid":
+                "first_leg_rejected explored="+route.explored()
+                +" startFloor="+floorAt(level,mob.blockPosition())
+                +" physicalY="+mob.getY()+" grounded="+mob.onGround();
     }
 
     private static boolean canBeginTrainedLeg(ServerLevel level,
