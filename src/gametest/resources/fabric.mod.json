@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "golems_plus_gametest",
   "version": "1.0.0",
-  "name": "Golems Plus reverse dome demolition physical study",
+  "name": "Golems Plus dome summit and upper-slab vertical navigation physical study",
   "environment": "*",
   "depends": {
     "golems_plus": "*",
@@ -10,7 +10,8 @@
   },
   "entrypoints": {
     "fabric-gametest": [
-      "com.caszgamermd.golemsplus.builder.DomeReverseDemolitionGameTest"
+      "com.caszgamermd.golemsplus.builder.DomeSummitRoundTripGameTest",
+      "com.caszgamermd.golemsplus.builder.GrappleTopSlabGameTest"
     ]
   }
 }
