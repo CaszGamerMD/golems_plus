@@ -41,12 +41,10 @@ public final class DomeThreeLayerRegionGameTest {
         BlockPos feet=h.absolutePos(new BlockPos(12,10,11));
         mob.setPos(feet.getX()+.5,feet.getY(),feet.getZ()+.5);
 
-        var stage=DomeThreeLayerRegion.current(remaining,11+h.absolutePos(
-                new BlockPos(0,0,0)).getY());
-        // Absolute max is the block we actually placed; don't infer the
-        // GameTest's variable global origin.
+        // Absolute max is the placed top block; never infer the
+        // GameTest's randomly assigned global height or origin.
         int initialTop=top.getY();
-        stage=DomeThreeLayerRegion.current(remaining,initialTop);
+        var stage=DomeThreeLayerRegion.current(remaining,initialTop);
         require(h,stage.number()==0&&stage.upperPhase()
                 &&stage.floorY()==floorA.getY()
                 &&stage.upperRemaining()==3
