@@ -839,11 +839,31 @@ public final class DomeReverseDemolitionGameTest {
                 if(item!=Items.AIR&&!roomFor(item)){
                     unloading=true;return null;
                 }
-                BlockPos choice;
-                if(mob.onGround()&&visibleEye(mob.getEyePosition(),p))
+                BlockPos choice=null;
+                // A nearby block may be the very block supporting our
+                // current feet. "Within reach" is NOT a safe demolition
+                // stance. Require an escape preview for the current pose;
+                // otherwise search genuinely independent alternative poses
+                // before deferring this block or leaving the roof.
+                if(mob.onGround()&&visibleEye(mob.getEyePosition(),p)
+                        &&BuilderEscapeRoute.preview(level,mob,p,
+                                BuilderEscapeRoute.Action.BREAK)!=null)
                     choice=mob.blockPosition();
-                else choice=WorkerNavigation.selectExecutableStand(
-                        level,mob,stances(p));
+                if(choice==null){
+                    List<BlockPos> options=stances(p);
+                    options.remove(mob.blockPosition());
+                    for(int attempt=0;attempt<4&&!options.isEmpty();attempt++){
+                        BlockPos pose=WorkerNavigation.selectExecutableStand(
+                                level,mob,options);
+                        if(pose==null)break;
+                        if(BuilderEscapeRoute.previewFrom(level,mob,pose,p,
+                                BuilderEscapeRoute.Action.BREAK)!=null){
+                            choice=pose;
+                            break;
+                        }
+                        options.remove(pose);
+                    }
+                }
                 if(choice==null){
                     // A failed stance is deferred, not permanently erased.
                     // World demolition changes collision and support, so
