@@ -349,4 +349,37 @@ public final class BuilderConstructionFrontierGameTest {
         h.succeed();
         });
     }
+
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void temporaryPeerAtWorkPoseDoesNotHideValidAStarRoute(
+            GameTestHelper h){
+        floor(h);
+        var world=h.getLevel();
+        var mob=worker(h,h.absolutePos(new BlockPos(5,2,5)));
+        BlockPos target=h.absolutePos(new BlockPos(3,2,3));
+        BlockPos stance=h.absolutePos(new BlockPos(5,2,3));
+        var peer=worker(h,stance);
+        h.onEachTick(()->{
+        if(h.getTick()!=16)return;
+        if(!WorkerNavigation.canStandOn(world,mob,stance)
+                ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .canReachExact(world,mob,stance)){
+            h.fail("Trained A* cannot reach physically valid occupied "
+                    +"tile; wrong test setup");return;
+        }
+        BlockPos choice=BuilderPlacementSpace.approachWithRules(
+                world,mob,target,at->at.equals(stance));
+        if(!stance.equals(choice)){
+            h.fail("Builder placement preflight discarded a legal route "
+                    +"because a real teammate temporarily occupies "
+                    +"the work pose: "+choice);return;
+        }
+        if(!peer.isAlive()){
+            h.fail("Peer cannot be deleted to make space");return;
+        }
+        System.out.println("[FRONTIER] PASS temporary real peer occupancy "
+                +"does not invalidate otherwise safe trained A* pose");
+        h.succeed();
+        });
+    }
 }
