@@ -55,7 +55,7 @@ public final class BuilderConstructionPlanner {
     private static final int REACH_SQUARED=14;
 
     /** Ray from a real Builder's eye at the planned stance to the block
-     * center. Solid walls are never transparent just because A* could
+     * center or face centers. Solid walls are never transparent just because A* could
      * reach a nearby standing tile. The target block itself may be
      * incorrect non-air and is allowed to be the final hit.
      */
@@ -63,13 +63,21 @@ public final class BuilderConstructionPlanner {
             BlockPos stance,BlockPos target){
         Vec3 eye=new Vec3(stance.getX()+.5,
                 stance.getY()+builder.getEyeHeight(),stance.getZ()+.5);
-        Vec3 block=Vec3.atCenterOf(target);
-        var hit=world.clip(new ClipContext(eye,block,
-                ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,builder));
-        return hit.getType()==HitResult.Type.MISS
-                ||hit.getType()==HitResult.Type.BLOCK
-                    &&((net.minecraft.world.phys.BlockHitResult)hit)
-                        .getBlockPos().equals(target);
+        Vec3 center=Vec3.atCenterOf(target);
+        // Inset face samples remain inside the target cell. This permits
+        // visible floor gaps without allowing rays through adjacent walls.
+        Vec3[] samples={center,center.add(0,.499,0),center.add(0,-.499,0),
+                center.add(.499,0,0),center.add(-.499,0,0),
+                center.add(0,0,.499),center.add(0,0,-.499)};
+        for(Vec3 sample:samples){
+            var hit=world.clip(new ClipContext(eye,sample,
+                    ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,builder));
+            if(hit.getType()==HitResult.Type.MISS
+                    ||hit.getType()==HitResult.Type.BLOCK
+                        &&((net.minecraft.world.phys.BlockHitResult)hit)
+                            .getBlockPos().equals(target))return true;
+        }
+        return false;
     }
 
     /** Verify a one-step PHYSICAL exit after the intended block exists.
