@@ -43,8 +43,11 @@ public final class DomeReverseDemolitionGameTest {
     private static final int MATERIAL_SLOTS=8; // ninth slot holds a real hook
     private static final int MINING_TICKS=8;
     private static final int BLOCKS_PER_SCAN=8;
-    private static final Path REPORT=Path.of("build/gametest/reverse_dome_study.csv");
-    private static final Path SUMMARY=Path.of("build/gametest/reverse_dome_summary.txt");
+    // Gradle runGameTest's working directory is build/run/gameTest.
+    // Use the SAME logs directory already included by CI's artifact
+    // uploader; previous CSVs accidentally went into a nested build/.
+    private static final Path REPORT=Path.of("logs/reverse_dome_study.csv");
+    private static final Path SUMMARY=Path.of("logs/reverse_dome_summary.txt");
 
     @GameTest(structure="golems_plus_gametest:dome_arena",
             maxTicks=90000,skyAccess=true)
@@ -186,7 +189,10 @@ public final class DomeReverseDemolitionGameTest {
         }
         BuilderGolem golem=new BuilderGolem(
                 WorksiteContent.BUILDER_GOLEM,world);
-        BlockPos start=h.absolutePos(new BlockPos(6,2,5));
+        // Start one tile OUTSIDE the dome's southwest corner.
+        // A real 3-block mining reach can then touch its first cell
+        // without an artificial mandatory walk across an empty apron.
+        BlockPos start=h.absolutePos(new BlockPos(7,2,7));
         golem.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         golem.setItem(8,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
         world.addFreshEntity(golem);
@@ -327,12 +333,25 @@ public final class DomeReverseDemolitionGameTest {
             return visibleEye(eye,p);
         }
         boolean visibleEye(Vec3 eye,BlockPos p){
-            Vec3 block=Vec3.atCenterOf(p);
-            if(eye.distanceToSqr(block)>9.0)return false;
-            BlockHitResult result=level.clip(new ClipContext(
-                    eye,block,ClipContext.Block.OUTLINE,
-                    ClipContext.Fluid.NONE,mob));
-            return result.getBlockPos().equals(p);
+            // The center of a dome block can be hidden behind a curved
+            // neighboring wall while a genuine exposed face is in view.
+            // Trace several points ON THIS block, always enforcing
+            // the same <=3 block Euclidean mining reach.
+            double[][] aims={
+                {.5,.5,.5},{.5,.90,.5},
+                {.10,.5,.5},{.90,.5,.5},
+                {.5,.5,.10},{.5,.5,.90}
+            };
+            for(double[] at:aims){
+                Vec3 aim=new Vec3(p.getX()+at[0],p.getY()+at[1],
+                        p.getZ()+at[2]);
+                if(eye.distanceToSqr(aim)>9.0)continue;
+                BlockHitResult result=level.clip(new ClipContext(
+                        eye,aim,ClipContext.Block.OUTLINE,
+                        ClipContext.Fluid.NONE,mob));
+                if(result.getBlockPos().equals(p))return true;
+            }
+            return false;
         }
         List<BlockPos> stances(BlockPos p){
             var out=new ArrayList<BlockPos>();
@@ -405,7 +424,11 @@ public final class DomeReverseDemolitionGameTest {
                     reset();
                     routeFailures++;
                 }else{
-                    WorkerNavigation.routeToExact(level,mob,stance,1.0);
+                    boolean moving=WorkerNavigation.routeToExact(
+                            level,mob,stance,1.0);
+                    if(now%100==0)trace(now,"APPROACH",target,
+                            "moving="+moving+" stance="+relative(stance)
+                            +" nav="+WorkerNavigation.debugStatus(mob));
                     return null;
                 }
             }
