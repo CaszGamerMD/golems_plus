@@ -39,6 +39,19 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  */
 public final class WorkerNavigation {
     private static final Map<PathfinderMob,Progress> states=new WeakHashMap<>();
+    private static final Map<PathfinderMob,Boolean> reverseDemolition=
+            new WeakHashMap<>();
+    /** Experimental movement policy for the ONE real demolition golem.
+     * Default trained movement used by builders remains unchanged.
+     */
+    public static void setReverseDemolitionTraining(
+            PathfinderMob mob,boolean enabled){
+        if(enabled)reverseDemolition.put(mob,true);
+        else reverseDemolition.remove(mob);
+    }
+    private static boolean demolition(PathfinderMob mob){
+        return reverseDemolition.containsKey(mob);
+    }
     private static final int STALL_TICKS=40;
     // Cheap 5-tick waypoint inspection; full A* only when the goal changes,
     // the path becomes obstructed, or progress genuinely stops.
@@ -279,7 +292,8 @@ public final class WorkerNavigation {
             // mobs; reject only taller climbs or dangerous drops. Clearance
             // is checked at the raised position before entering the ledge.
             if(Double.isNaN(a)||Double.isNaN(b)
-                    ||b-a>1.05||a-b>1.50)return false;
+                    ||b-a>1.05
+                    ||a-b>(demolition(mob)?2.05:1.50))return false;
             double dx=node.x-previous.x,dz=node.z-previous.z;
             int samples=Math.max(1,(int)Math.ceil(Math.hypot(dx,dz)*3));
             for(int k=1;k<samples;k++){
@@ -428,7 +442,8 @@ public final class WorkerNavigation {
         return WorkerRoutePlanner.plan(mob.blockPosition(),goals,
                 at->standingTile(level,mob,at),
                 at->floorAt(level,at),avoid,
-                at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
+                at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
+                demolition(mob)?2:1);
     }
 
     private static boolean canBeginTrainedLeg(ServerLevel level,

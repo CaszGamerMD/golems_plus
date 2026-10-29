@@ -60,7 +60,7 @@ public final class WorkerRoutePlanner {
     public static Route plan(BlockPos start,List<BlockPos> goals,
             Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
             BlockPos avoid){
-        return plan(start,goals,standable,floor,avoid,unused->0);
+        return plan(start,goals,standable,floor,avoid,unused->0,1);
     }
     /** Terrain penalty is a scored preference, not a hard-coded route.
      * The same rules operate in newly generated and player-built worlds.
@@ -69,6 +69,15 @@ public final class WorkerRoutePlanner {
     public static Route plan(BlockPos start,List<BlockPos> goals,
             Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
             BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty){
+        return plan(start,goals,standable,floor,avoid,terrainPenalty,1);
+    }
+    /** Only the isolated reverse-demolition test may request 2-block
+     * drops. Ordinary trained worker policies retain their 1-block limit.
+     */
+    public static Route plan(BlockPos start,List<BlockPos> goals,
+            Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
+            BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty,
+            int maxSafeDrop){
         if(start==null||goals==null||goals.isEmpty())return null;
         Set<BlockPos> ends=new HashSet<>(goals);
         if(ends.contains(start))return new Route(List.of(),true,0,0);
@@ -107,7 +116,8 @@ public final class WorkerRoutePlanner {
             }
             for(int[] dir:DIRECTIONS){
                 boolean diagonal=dir[0]!=0&&dir[1]!=0;
-                for(int dy:HEIGHT_STEPS){
+                for(int dy:maxSafeDrop>=2
+                        ?new int[]{0,-1,1,-2}:HEIGHT_STEPS){
                     BlockPos next=current.offset(dir[0],dy,dir[1]);
                     if(next.equals(avoid)||Math.abs(next.getX()-start.getX())>RADIUS
                             ||Math.abs(next.getZ()-start.getZ())>RADIUS
@@ -118,7 +128,9 @@ public final class WorkerRoutePlanner {
                     double toHeight=heightCache.computeIfAbsent(next,
                             floor::applyAsDouble);
                     double rise=Math.abs(toHeight-fromHeight);
-                    if(!Double.isFinite(rise)||rise>1.01)continue;
+                    if(!Double.isFinite(rise)
+                            ||toHeight-fromHeight>1.01
+                            ||fromHeight-toHeight>maxSafeDrop+.01)continue;
                     if(diagonal){
                         // Swept 0.65+ Builder hitboxes cannot corner-cut
                         // between two blocked side cells. Both side
