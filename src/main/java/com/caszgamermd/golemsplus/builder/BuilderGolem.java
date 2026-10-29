@@ -1,6 +1,9 @@
 package com.caszgamermd.golemsplus.builder;
 
 import java.util.UUID;
+import java.util.List;
+import java.util.ArrayList;
+import net.minecraft.world.item.Item;
 import net.minecraft.core.BlockPos;
 import com.caszgamermd.golemsplus.worker.ProfessionGolemNames;
 import com.caszgamermd.golemsplus.worker.ProfessionGolemNamePool;
@@ -42,6 +45,35 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     // walk to the site, and pay for placed blocks from this persisted pouch.
     private final NonNullList<ItemStack> materials=
             NonNullList.withSize(9,ItemStack.EMPTY);
+    // Experimental reverse-building bundle. Unlike nine ordinary material
+    // slots it holds 192 mixed actual ItemStacks and persists on the golem.
+    // The hook remains in material slot 8. Not wired into Builder orders.
+    private static final int DEMOLITION_BUNDLE_LIMIT=192;
+    private final List<ItemStack> demolitionBundle=new ArrayList<>();
+    public int demolitionBundleCount(){
+        int count=0;
+        for(ItemStack stack:demolitionBundle)count+=stack.getCount();
+        return count;
+    }
+    public boolean carryDemolitionItem(Item item){
+        if(item==null||demolitionBundleCount()>=DEMOLITION_BUNDLE_LIMIT)
+            return false;
+        for(ItemStack stack:demolitionBundle){
+            if(stack.is(item)&&stack.getCount()<stack.getMaxStackSize()){
+                stack.grow(1);
+                return true;
+            }
+        }
+        demolitionBundle.add(new ItemStack(item));
+        return true;
+    }
+    /** Real item stacks can be withdrawn only at the physical depot. */
+    public List<ItemStack> unloadDemolitionBundle(){
+        List<ItemStack> contents=new ArrayList<>();
+        for(ItemStack stack:demolitionBundle)contents.add(stack.copy());
+        demolitionBundle.clear();
+        return contents;
+    }
     public BuilderGolem(EntityType<? extends PathfinderMob> type,Level world){
         super(type,world);
         setPersistenceRequired();
@@ -102,6 +134,10 @@ public final class BuilderGolem extends PathfinderMob implements Container {
                     getX(),getY(),getZ(),carriedSupplyBox.copy());
             carriedSupplyBox=ItemStack.EMPTY;
         }
+        for(ItemStack stack:demolitionBundle)
+            net.minecraft.world.Containers.dropItemStack(world,
+                    getX(),getY(),getZ(),stack.copy());
+        demolitionBundle.clear();
     }
     @Override public int getContainerSize(){return materials.size();}
     @Override public boolean isEmpty(){return materials.stream().allMatch(ItemStack::isEmpty);}
@@ -132,13 +168,17 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     @Override public void tick(){
         boolean precisionYield=level() instanceof ServerLevel precisionWorld
                 &&BuilderPlacementSpace.tickPrecisionYield(precisionWorld,this);
-        boolean grappling=!precisionYield&&level() instanceof ServerLevel grappleWorld
+        boolean scaffolding=!precisionYield&&level() instanceof ServerLevel scaffoldWorld
+                &&BuilderScaffolding.tickMotion(scaffoldWorld,this);
+        boolean grappling=!precisionYield&&!scaffolding
+                &&level() instanceof ServerLevel grappleWorld
                 &&BuilderGrappleAccess.tickMotion(grappleWorld,this);
         // Never retain the old no-gravity state after switching jobs,
         // unloading, leaving a tower, or reloading an entity from disk.
         if(level() instanceof ServerLevel server
                 &&(isNoGravity()||isShiftKeyDown())
-                &&!BuilderGrappleAccess.active(this)){
+                &&!BuilderGrappleAccess.active(this)
+                &&!scaffolding){
             setNoGravity(false);
             setShiftKeyDown(false);
             var velocity=getDeltaMovement();
@@ -156,7 +196,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         if(level() instanceof ServerLevel server){
             BuilderChunkTickets.track(server,this);
             // Grapple motion owns vertical travel; trained A* owns walking.
-            if(!grappling&&!precisionYield)
+            if(!grappling&&!scaffolding&&!precisionYield)
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
         }
         // Each Builder evaluates its own long-lived task state four times
@@ -175,6 +215,9 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         for(int i=0;i<materials.size();i++)
             if(!materials.get(i).isEmpty())
                 out.store("builder_material_"+i,ItemStack.CODEC,materials.get(i));
+        for(int i=0;i<demolitionBundle.size();i++)
+            out.store("builder_demo_bundle_"+i,ItemStack.CODEC,
+                    demolitionBundle.get(i));
     }
     @Override protected void readAdditionalSaveData(ValueInput in){
         super.readAdditionalSaveData(in);
@@ -189,5 +232,12 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         for(int i=0;i<materials.size();i++)
             materials.set(i,in.read("builder_material_"+i,ItemStack.CODEC)
                     .orElse(ItemStack.EMPTY));
+        demolitionBundle.clear();
+        for(int i=0;i<DEMOLITION_BUNDLE_LIMIT;i++){
+            ItemStack stack=in.read("builder_demo_bundle_"+i,ItemStack.CODEC)
+                    .orElse(ItemStack.EMPTY);
+            if(stack.isEmpty())break;
+            demolitionBundle.add(stack);
+        }
     }
 }
