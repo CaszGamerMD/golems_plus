@@ -57,8 +57,12 @@ public final class DomeReverseDemolitionGameTest {
         // 39 x 39: its far edge is x/z=46, not 42. The old physical
         // dome fixture omitted four ground-support strips, which can
         // cause schematic plants and wall approaches to fail.
+        // The Litematic includes ground-level short grass and azaleas.
+        // Those plants cannot survive on the old artificial STONE base.
+        // Give the PREBUILT fixture natural supported grassy terrain;
+        // this is surrounding world ground, not another Dome block.
         for(int x=4;x<=47;x++)for(int z=4;z<=47;z++)
-            h.setBlock(x,1,z,Blocks.STONE);
+            h.setBlock(x,1,z,Blocks.GRASS_BLOCK);
         h.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
         h.setBlock(5,2,7,Blocks.CHEST);
         BlockPos depot=h.absolutePos(new BlockPos(5,2,7));
