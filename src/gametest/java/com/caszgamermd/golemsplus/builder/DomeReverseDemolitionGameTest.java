@@ -255,7 +255,25 @@ public final class DomeReverseDemolitionGameTest {
         golem.setItem(8,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
         world.addFreshEntity(golem);
         WorkerNavigation.setReverseDemolitionTraining(golem,true);
-        Study study=new Study(world,golem,table,depot,origin,remaining);
+        List<BlockPos> footings=new ArrayList<>();
+        for(BlockPos block:remaining.keySet()){
+            for(BlockPos feet:List.of(block,block.above()))
+                if(WorkerNavigation.canStandOn(world,golem,feet)
+                        &&!footings.contains(feet))footings.add(feet.immutable());
+        }
+        for(int dx=-4;dx<=42;dx++)for(int dz=-4;dz<=42;dz++){
+            BlockPos feet=origin.offset(dx,0,dz);
+            if(WorkerNavigation.canStandOn(world,golem,feet)
+                    &&!footings.contains(feet))footings.add(feet.immutable());
+        }
+        if(footings.stream().noneMatch(p->p.getY()==origin.getY()+35)){
+            releaseSimulation.run();
+            h.fail("No supported Y=35 roof");return;
+        }
+        var ascent=new DomeSummitRoundTripGameTest.Study(
+                world,golem,table,origin,start,remaining,footings,
+                origin.getY()+35,true);
+        Study study=new Study(world,golem,table,depot,origin,remaining,ascent);
         System.out.println("[REVERSE DOME] PREBUILT 3537 original physical blocks;"
                 +" ONE actual Builder; reach=3; jump=1; drop=2; "
                 +"hook for taller elevations; pouch=192; base=(0,0,0)");
@@ -265,11 +283,13 @@ public final class DomeReverseDemolitionGameTest {
             long tick=h.getTick();
             // Periodically renew the dedicated GameTest simulation ticket.
             // Ticket ownership is independent of active Builder jobs.
-            if(tick%40==0)
-                for(var chunk:simulationChunks)
+            if(tick%20==0)
+                for(var chunk:simulationChunks){
+                    world.setChunkForced(chunk.x(),chunk.z(),true);
                     BuilderChunkTickets.holdPhysicalGameTestChunk(world,
                             new BlockPos(chunk.x() << 4,origin.getY(),
                                     chunk.z() << 4));
+                }
             if(golem.tickCount>lastEntityTick[0]){
                 lastEntityTick[0]=golem.tickCount;
                 lastEntityAdvance[0]=tick;
@@ -353,6 +373,10 @@ public final class DomeReverseDemolitionGameTest {
         final WorkerStationBlockEntity table;
         final BlockPos depot,origin;
         final LinkedHashMap<BlockPos,BlockState> remaining;
+        final DomeSummitRoundTripGameTest.Study ascent;
+        boolean roofReached;
+        int firstBrokenY=Integer.MIN_VALUE;
+        int highestRemainingY=Integer.MIN_VALUE;
         final Map<BlockPos,Long> excludedUntil=new HashMap<>();
         final Map<Item,Long> depotTally=new LinkedHashMap<>();
         final StringBuilder csv=new StringBuilder(
@@ -385,9 +409,11 @@ public final class DomeReverseDemolitionGameTest {
         String lastAction="prebuilt";
         Study(ServerLevel level,BuilderGolem mob,
                 WorkerStationBlockEntity table,BlockPos depot,BlockPos origin,
-                LinkedHashMap<BlockPos,BlockState> remaining){
+                LinkedHashMap<BlockPos,BlockState> remaining,
+                DomeSummitRoundTripGameTest.Study ascent){
             this.level=level;this.mob=mob;this.table=table;
             this.depot=depot;this.origin=origin;this.remaining=remaining;
+            this.ascent=ascent;
             this.previous=mob.position();
             this.highestFeetY=mob.blockPosition().getY()-origin.getY();
             // Derive an open outside walking corridor from the ORIGINAL
@@ -463,6 +489,7 @@ public final class DomeReverseDemolitionGameTest {
             lastAction=action+" "+d;
         }
         void observe(long tick){
+            if(!roofReached)ascent.observe(tick);
             Vec3 now=mob.position();
             double horizontal=Math.hypot(now.x-previous.x,now.z-previous.z);
             if(horizontal<2)walkMeters+=horizontal;
@@ -553,6 +580,21 @@ public final class DomeReverseDemolitionGameTest {
             closestDistance=Double.POSITIVE_INFINITY;
         }
         String tick(long now){
+            if(!roofReached){
+                String issue=ascent.tick(now);
+                if(issue!=null)return "Initial roof climb failed: "+issue
+                        +" | "+ascent.status();
+                if(ascent.done){
+                    roofReached=true;
+                    lastProgress=now;lastRouteProgress=now;
+                    scanOffset=0;excludedUntil.clear();
+                    trace(now,"ROOF_REACHED_BEFORE_FIRST_BREAK",
+                            mob.blockPosition(),ascent.status());
+                    System.out.println("[REVERSE DOME] Grounded on Y=35;"
+                            +" first break begins AFTER roof access");
+                }
+                return null;
+            }
             if(carried()>CAPACITY)return "Exceeded 192-block pouch";
             if(mob.getItem(8).isEmpty()
                     ||!mob.getItem(8).is(WorksiteContent.GRAPPLE_HOOK))
