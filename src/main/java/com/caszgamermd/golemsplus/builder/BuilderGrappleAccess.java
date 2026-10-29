@@ -381,10 +381,14 @@ public final class BuilderGrappleAccess {
         // One-block drops are normal ground navigation first. Do not
         // grapple for a step that the trained pathfinder can traverse.
         if(diff==1){
+            // A trained one-block descent is an ACTIVE movement leg.
+            // Returning false used to let the caller immediately replace
+            // this valid short route with a distant chest/perimeter route
+            // while the Builder was still on its upper ledge.
             if(tryGroundRoute(level,worker,goal,false))
-                return false; // caller may continue ordinary A* to OnSite
+                return true; // preserve physical normal A* until grounded
             if(tryLocalOneBlockDrop(level,worker,goal))
-                return true; // existing normal A* owns the intermediate step
+                return true; // hold the intermediate supported drop
         }
         if(!hasHook(worker)){
             var load=BuilderSupplyInventory.loadGrapple(level,worker,table);
