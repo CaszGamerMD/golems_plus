@@ -862,8 +862,22 @@ public final class BuilderGrappleAccess {
                         &&solidTop(level,r.landing.below())
                         &&headroom(level,r.landing)){
                     release(mob,r,"RAPPELLED ONTO LOWER SHELF");
-                }else moved=steer(level,mob,lx,r.landing.getY(),
-                        lz,.12,false);
+                }else{
+                    // A rappel can cross the target elevation by a few
+                    // hundredths of a block during real physics. Correct
+                    // BOTH the lateral offset and the foot height while
+                    // still on the rope; horizontal-only steering could
+                    // strand the worker at Y-0.06 forever and trigger
+                    // needless return-to-top recoveries.
+                    moved=steer(level,mob,lx,r.landing.getY()+.025,
+                            lz,.12,true);
+                    if(!moved && r.stalledTicks%15==0)
+                        System.out.println("[GRAPPLE] LOWER SHELF STEP BLOCKED"
+                                +" feet="+mob.position()
+                                +" landing="+r.landing
+                                +" column="+r.column
+                                +" stalled="+r.stalledTicks);
+                }
             }
             default -> {}
         }
