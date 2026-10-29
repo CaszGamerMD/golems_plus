@@ -49,18 +49,10 @@ public final class BuilderBuildService {
         int index=-1;
         Action phase=Action.STAGE_MATERIALS;
         long blockedSince=-1;
-        BlockPos lastWorkPosition;
-        long lastWorkProgress=-1;
-        long workAttemptStart=-1;
-        double closestWorkDistance=Double.POSITIVE_INFINITY;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
                 blockedSince=-1;
-                lastWorkPosition=null;
-                lastWorkProgress=-1;
-                workAttemptStart=-1;
-                closestWorkDistance=Double.POSITIVE_INFINITY;
             }
         }
     }
@@ -572,47 +564,13 @@ public final class BuilderBuildService {
                         at->BuilderConstructionPlanner.safeStand(
                                 level,worker,pos,at));
                 if(approach!=null){
-                    long now=level.getGameTime();
-                    BlockPos foot=worker.blockPosition();
-                    double distance=worker.distanceToSqr(
-                            pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
-                    if(activity.workAttemptStart<0)
-                        activity.workAttemptStart=now;
-                    // Only meaningful net progress toward the work target
-                    // resets the no-progress timer. Lateral oscillation
-                    // between adjacent tiles is NOT learning/progress.
-                    if(activity.lastWorkProgress<0
-                            ||distance<activity.closestWorkDistance-.16){
-                        activity.lastWorkProgress=now;
-                        activity.lastWorkPosition=foot.immutable();
-                        activity.closestWorkDistance=distance;
-                    }
-                    // A trained path can return false while its short
-                    // waypoint retries on a deliberate cooldown. This is
-                    // NOT proof of an impossible work stance. Do not
-                    // immediately discard a valid job and restage supplies.
-                    boolean routed=com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .routeToExact(level,worker,approach,1.0);
-                    if(!routed)
-                        routed=com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                .routeTo(level,worker,approach,.85);
-                    if(now-activity.lastWorkProgress>=120
-                            ||now-activity.workAttemptStart>=300){
-                        // No REAL position progress across eight seconds:
-                        // release one failed pose and explore another
-                        // same-Y frontier instead of holding this task
-                        // forever. All ordinary physical collision,
-                        // trained navigation, and exit rules remain.
+                    if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .routeToExact(level,worker,approach,1.0)){
                         BuilderPlacementSpace.invalidateApproach(worker,pos);
-                        table.waitForBuilderAccess(worker.getUUID(),index,
-                                now,"trained navigation no net work progress "
-                                +"for 120 ticks or attempt over 300; "
-                                +"while "+(routed?"running":"retrying")
-                                +" "+com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                        .debugStatus(worker));
-                        activity.lastWorkProgress=-1;
-                        activity.workAttemptStart=-1;
-                        activity.closestWorkDistance=Double.POSITIVE_INFINITY;
+                        if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .routeTo(level,worker,approach,.85))
+                            table.waitForBuilderAccess(worker.getUUID(),index,
+                                    level.getGameTime(),"trained routes rejected work pose");
                     }
                     return;
                 }
