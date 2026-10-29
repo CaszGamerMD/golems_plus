@@ -314,8 +314,12 @@ public final class BuilderConstructionPlanner {
         // A fully blocked nearby strip must never monopolize this Y.
         // Subsequent passes explore another bounded window until every
         // pending cell gets its own physical work-position opportunity.
-        windows.put(worker,new SearchWindow(y,best!=null?0
-                :(offset+Math.max(1,examined))%Math.max(1,pending.size()),
+        // A selected job may be deferred when its initially valid approach
+        // becomes blocked during the real walk. Retain search progress
+        // across each claim so the NEXT claim tries another frontier
+        // instead of restarting at the same five nearest cells forever.
+        windows.put(worker,new SearchWindow(y,
+                (offset+Math.max(1,examined))%Math.max(1,pending.size()),
                 pending.size(),examined,feasible,best==null?-1:best.index(),
                 offset));
         return best;
