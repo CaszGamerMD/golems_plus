@@ -199,7 +199,7 @@ public final class DomeReverseDemolitionGameTest {
         // OUTSIDE its exposed face instead.
         BlockPos western=remaining.keySet().stream()
                 .filter(p->p.getY()==origin.getY())
-                .min(Comparator.comparingInt(BlockPos::getX)
+                .min(Comparator.comparingInt((BlockPos p)->p.getX())
                     .thenComparingInt(p->Math.abs(
                             p.getZ()-origin.getZ()-19)))
                 .orElseThrow();
