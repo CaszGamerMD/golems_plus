@@ -1147,6 +1147,12 @@ public final class DomeReverseDemolitionGameTest {
             if(mob.onGround()&&now-lastProgress>120
                     &&relocateToRegionWorkFloor(now,region,candidates))
                 return null;
+            // When a new 3-high band starts BELOW the worker, seek a
+            // real mid-height drop or anchored hook landing NEAR its
+            // work floor, not a 35-block descent straight to the depot.
+            if(mob.onGround()&&now-lastProgress>450
+                    &&descendToNextRegion(now,region,candidates))
+                return null;
             // An upper roof can become a dead-end after carefully
             // removing its support blocks. Once several on-roof stance
             // searches fail, move down to another grounded shelf and
@@ -1325,6 +1331,49 @@ public final class DomeReverseDemolitionGameTest {
             // route; trained A* will plan again with current collisions.
             WorkerNavigation.stop(mob);
             return true;
+        }
+        /**
+         * Transition between horizontal bands via physical walking/drop
+         * or a real grapple hook. Plans against candidate stances on
+         * the NEW preserved region floor; a new lower roof work pose
+         * is NOT synthesized or reached via creative flight.
+         */
+        boolean descendToNextRegion(long now,
+                DomeThreeLayerRegion.State region,List<BlockPos> work){
+            if(region.phase()==DomeThreeLayerRegion.Phase.COMPLETE
+                    ||now%120!=0||work.isEmpty()||!mob.onGround()
+                    ||mob.blockPosition().getY()<=region.floorY()+1)
+                return false;
+            BlockPos here=mob.blockPosition();
+            var options=new ArrayList<BlockPos>();
+            int examined=0;
+            for(BlockPos block:work){
+                if(++examined>32)break;
+                for(BlockPos p:stances(block)){
+                    if(p.getY()>region.floorY()+1
+                            ||p.getY()<region.floorY()-1
+                            ||p.getY()>=here.getY())continue;
+                    if(!options.contains(p))options.add(p);
+                    if(options.size()>=36)break;
+                }
+                if(options.size()>=36)break;
+            }
+            options.sort(Comparator.comparingDouble(p->p.distSqr(here)));
+            for(int i=0;i<Math.min(6,options.size());i++){
+                BlockPos lower=options.get(i);
+                if(BuilderGrappleAccess.rappelToward(
+                        level,mob,table,lower)){
+                    if(BuilderGrappleAccess.active(mob))grapples++;
+                    trace(now,"REGION_DESCEND",lower,
+                            "band="+region.number()
+                            +" targetFloor="+(region.floorY()-origin.getY())
+                            +" from="+relative(here)
+                            +" mode="+BuilderGrappleAccess.debug(mob));
+                    repositionUntil=now+170;
+                    return true;
+                }
+            }
+            return false;
         }
         /**
          * A region is three layers high, with its lowest layer retained
