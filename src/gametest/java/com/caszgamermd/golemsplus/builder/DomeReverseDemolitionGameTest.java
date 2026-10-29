@@ -252,6 +252,10 @@ public final class DomeReverseDemolitionGameTest {
                 simulationChunks.size()+" real entity-ticking chunks");
         golem.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         golem.setItem(8,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        // Actual demolition experiment supplies: separate carried stack,
+        // not conjured during the climb. Every scaffold placement debits
+        // this slot and the test reports the number spent.
+        golem.setItem(7,new ItemStack(Items.SCAFFOLDING,64));
         world.addFreshEntity(golem);
         WorkerNavigation.setReverseDemolitionTraining(golem,true);
         List<BlockPos> footings=new ArrayList<>();
@@ -275,7 +279,8 @@ public final class DomeReverseDemolitionGameTest {
         Study study=new Study(world,golem,table,depot,origin,remaining,ascent);
         System.out.println("[REVERSE DOME] PREBUILT 3537 original physical blocks;"
                 +" ONE actual Builder; reach=3; jump=1; drop=2; "
-                +"hook for taller elevations; pouch=192; base=(0,0,0)");
+                +"hook + physical scaffolding for blocked climbs; "
+                +"64 real scaffold items; pouch=192; base=(0,0,0)");
         final int[] lastEntityTick={0};
         final long[] lastEntityAdvance={0};
         h.onEachTick(()->{
@@ -339,7 +344,10 @@ public final class DomeReverseDemolitionGameTest {
                         +" grounded="+golem.onGround()
                         +" target="+(study.target==null?"none":study.relative(study.target))
                         +" stanceAge="+(study.target==null?0:tick-study.targetSelectedAt)
-                        +" relocations="+study.relocations);
+                        +" relocations="+study.relocations
+                        +" scaffolds="+study.scaffold.placed()
+                        +" scaffoldClimbs="+study.scaffold.climbs()
+                        +" scaffoldLandings="+study.scaffold.dismounts());
             if(failure!=null){
                 study.writeReports("FAIL "+failure);
                 releaseSimulation.run();
@@ -373,6 +381,7 @@ public final class DomeReverseDemolitionGameTest {
         final BlockPos depot,origin;
         final LinkedHashMap<BlockPos,BlockState> remaining;
         final DomeSummitRoundTripGameTest.Study ascent;
+        final DomeDemolitionScaffold scaffold;
         DomeSummitRoundTripGameTest.Study descent,returnAscent;
         boolean roofReached,climbingBackToWork;
         long nextDescentAttempt;
@@ -415,6 +424,7 @@ public final class DomeReverseDemolitionGameTest {
             this.level=level;this.mob=mob;this.table=table;
             this.depot=depot;this.origin=origin;this.remaining=remaining;
             this.ascent=ascent;
+            this.scaffold=new DomeDemolitionScaffold(level,mob,remaining);
             this.previous=mob.position();
             this.highestFeetY=mob.blockPosition().getY()-origin.getY();
             // Derive an open outside walking corridor from the ORIGINAL
@@ -655,6 +665,10 @@ public final class DomeReverseDemolitionGameTest {
                 }
                 return null;
             }
+            if(scaffold.active()){
+                scaffold.tick(now);
+                return null;
+            }
             if(climbingBackToWork)return resumeUpperWork(now);
             if(carried()>CAPACITY)return "Exceeded 192-block pouch";
             if(mob.getItem(8).isEmpty()
@@ -887,6 +901,20 @@ public final class DomeReverseDemolitionGameTest {
                 return null;
             }
             scanOffset=(start+Math.max(1,scans))%Math.max(1,count);
+            // Combine physical temporary scaffolding with walk, jump
+            // and grapple: when roof access has been lost, purchase a
+            // genuine 3-block-reach scaffold tower with a checked roof
+            // landing. The tower climbs using the Builder entity's
+            // existing per-tick scaffold physics, not instant movement.
+            if(mob.onGround()&&highestRemainingY-
+                    mob.blockPosition().getY()>4
+                    &&now-lastProgress>300
+                    &&scaffold.tryStart(now)){
+                trace(now,"SCAFFOLD_ACCESS_START",mob.blockPosition(),
+                        scaffold.status());
+                scaffold.tick(now);
+                return null;
+            }
             // A blocked escape is a work-position failure, NOT a
             // directive to rappel to the depot and abandon the dome.
             // First reposition on the SAME unfinished upper layer, using
@@ -1440,6 +1468,10 @@ public final class DomeReverseDemolitionGameTest {
                     +" relocations="+relocations
                     +" roofRelocations="+roofRelocations
                     +" noEscapeDeferrals="+noEscapeDeferrals
+                    +" scaffolds="+scaffold.placed()
+                    +" scaffoldClimbs="+scaffold.climbs()
+                    +" scaffoldLandings="+scaffold.dismounts()
+                    +" scaffoldState="+scaffold.status()
                     +" exitBreaks="+exitBreaks
                     +" itemless="+itemlessBlocks
                     +" collected="+itemsCollected+" left="+remaining.size()
