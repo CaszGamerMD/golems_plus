@@ -76,7 +76,7 @@ public final class DomeThreeLayerRegionGameTest {
                 &&!second.contains(nextTop),
                 "floor stage must not prematurely enter next section");
         require(h,!DomeThreeLayerRegion.isFloorClearancePose(
-                stage,feet,floorB),
+                stage,floorB.above(),floorB),
                 "must not break the block directly supporting its feet");
         require(h,DomeThreeLayerRegion.isFloorClearancePose(
                 stage,feet,floorA),
