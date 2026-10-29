@@ -42,7 +42,7 @@ public final class DomeReverseDemolitionGameTest {
     private static final int CAPACITY=192;
     private static final int MATERIAL_SLOTS=8; // ninth slot holds a real hook
     private static final int MINING_TICKS=8;
-    private static final int BLOCKS_PER_SCAN=24;
+    private static final int BLOCKS_PER_SCAN=8;
     private static final Path REPORT=Path.of("build/gametest/reverse_dome_study.csv");
     private static final Path SUMMARY=Path.of("build/gametest/reverse_dome_summary.txt");
 
@@ -409,9 +409,10 @@ public final class DomeReverseDemolitionGameTest {
                     return null;
                 }
             }
-            if(now-lastProgress>2600 && mined>0)
-                return "No block removed for 2600 ticks";
-            if(now-lastScanTick<10)return null;
+            if(now-lastProgress>(mined==0?1000:1800))
+                return "No real demolition progress for "
+                        +(now-lastProgress)+" ticks";
+            if(now-lastScanTick<20)return null;
             lastScanTick=now;
             // Explore the actual remaining world, not a recorded route.
             // Prefer physical proximity, but keep rotating search pages so
