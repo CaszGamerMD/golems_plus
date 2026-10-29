@@ -415,19 +415,26 @@ public final class WorkerNavigation {
         if(goals.contains(mob.blockPosition()))
             return mob.blockPosition().immutable();
         Progress progress=states.get(mob);
-        // A geometrically valid cheapest route can have a first leg that
-        // native movement cannot execute. Reject that destination only,
-        // then let the same trained planner consider another work stance.
-        // Bound retries so one blocked target cannot monopolize a tick.
-        for(int attempt=0;attempt<4&&!goals.isEmpty();attempt++){
-            WorkerRoutePlanner.Route route=planExactRoute(
-                    level,mob,goals,progress==null?null:progress.lastBad);
-            if(route==null||!route.complete()||route.steps().isEmpty())
-                return null;
-            BlockPos reached=route.steps().get(route.steps().size()-1);
-            if(!goals.contains(reached))return null;
-            if(canBeginTrainedLeg(level,mob,route))return reached.immutable();
-            goals.removeIf(reached::equals);
+        WorkerRoutePlanner.Route route=executableExactRoute(
+                level,mob,goals,progress==null?null:progress.lastBad);
+        if(route==null||!route.complete()||route.steps().isEmpty())return null;
+        return route.steps().get(route.steps().size()-1).immutable();
+    }
+
+    /** Rejected native handoffs exclude that first waypoint for this search,
+     * not the safe work destination. Different destinations often share
+     * the same cheap first hop, so dropping only the destination starves
+     * every useful work pose behind it. Preview and execution share this.
+     */
+    private static WorkerRoutePlanner.Route executableExactRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
+            BlockPos avoid){
+        java.util.Set<BlockPos> rejectedStarts=new java.util.HashSet<>();
+        for(int attempt=0;attempt<4;attempt++){
+            var route=planExactRoute(level,mob,goals,avoid,rejectedStarts);
+            if(route==null||route.steps().isEmpty())return null;
+            if(canBeginTrainedLeg(level,mob,route))return route;
+            rejectedStarts.add(route.steps().get(0));
         }
         return null;
     }
@@ -435,6 +442,11 @@ public final class WorkerNavigation {
     private static WorkerRoutePlanner.Route planExactRoute(
             ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
             BlockPos avoid){
+        return planExactRoute(level,mob,goals,avoid,java.util.Set.of());
+    }
+    private static WorkerRoutePlanner.Route planExactRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
+            BlockPos avoid,java.util.Set<BlockPos> rejectedStarts){
         // Exact work probes must honor the same expiry as ordinary routing.
         // Otherwise a temporary congestion failure becomes a permanent wall
         // while a worker only asks for construction stances.
@@ -449,7 +461,7 @@ public final class WorkerNavigation {
         // actual grounded height is authoritative; other nodes must still
         // prove their support and body clearance from world geometry.
         return WorkerRoutePlanner.plan(start,goals,
-                at->standingTile(level,mob,at),
+                at->!rejectedStarts.contains(at)&&standingTile(level,mob,at),
                 at->at.equals(start)&&mob.onGround()?mob.getY():floorAt(level,at),avoid,
                 at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
     }
@@ -556,7 +568,7 @@ public final class WorkerNavigation {
         // Exact destinations also use the ONE trained planner. A
         // native navigation path is used solely to physically execute
         // a short already-scored waypoint, not as an alternate AI.
-        WorkerRoutePlanner.Route plan=planExactRoute(
+        WorkerRoutePlanner.Route plan=executableExactRoute(
                 level,mob,List.of(target),p.lastBad);
         if(plan==null||plan.steps().isEmpty())return false;
         for(int span:new int[]{3,2,1}){
