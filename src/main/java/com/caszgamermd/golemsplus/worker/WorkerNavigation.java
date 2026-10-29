@@ -387,6 +387,73 @@ public final class WorkerNavigation {
                                      BlockPos target){
         return target!=null&&standingTile(level,mob,target);
     }
+    /**
+     * Recenter a real grounded worker whose bounding box overlaps solid
+     * support but whose floored BlockPos points into air. This occurs on
+     * sloped glass roofs and half-block ledges: vanilla's onGround is true,
+     * yet A* would start from a nonexistent floor node and never explore.
+     *
+     * Movement is ordinary collision-checked horizontal velocity and move
+     * control, never setPos/teleport. Only a neighboring floor ALREADY
+     * underneath the body's footprint may be selected; the overlap stays
+     * supported throughout the move toward its center. Once the entity's
+     * block cell matches the support, normal trained A* takes over.
+     *
+     * Returns the chosen physical supporting cell while recentering, null
+     * when the current cell is valid or no safe adjacent support exists.
+     */
+    public static BlockPos recenterFromUnsupportedEdge(
+            ServerLevel level,PathfinderMob mob){
+        if(!mob.onGround()||standingTile(level,mob,mob.blockPosition()))
+            return null;
+        BlockPos here=mob.blockPosition();
+        AABB body=mob.getBoundingBox();
+        BlockPos best=null;
+        double score=Double.POSITIVE_INFINITY;
+        for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++){
+            if(dx==0&&dz==0)continue;
+            BlockPos p=here.offset(dx,0,dz);
+            if(!standingTile(level,mob,p))continue;
+            double floor=floorAt(level,p);
+            if(!Double.isFinite(floor)
+                    ||Math.abs(floor-mob.getY())>.085)continue;
+            // The target's existing solid footing must overlap the
+            // current bounding box, so moving toward its center never
+            // requires stepping across a gap without support.
+            if(body.maxX<=p.getX()+.025
+                    ||body.minX>=p.getX()+.975
+                    ||body.maxZ<=p.getZ()+.025
+                    ||body.minZ>=p.getZ()+.975)continue;
+            double tx=p.getX()+.5,tz=p.getZ()+.5;
+            double ddx=tx-mob.getX(),ddz=tz-mob.getZ();
+            boolean clear=true;
+            for(int i=1;i<=8;i++){
+                double t=i/8.0;
+                if(!level.noCollision(mob,body.move(
+                        ddx*t,0,ddz*t))){
+                    clear=false;break;
+                }
+            }
+            if(!clear)continue;
+            double d=ddx*ddx+ddz*ddz;
+            if(d<score){score=d;best=p;}
+        }
+        if(best==null)return null;
+        // Stop any invalid path starting from an air node, but retain
+        // trained A* for every subsequent grounded navigation leg.
+        stop(mob);
+        double tx=best.getX()+.5,tz=best.getZ()+.5;
+        double dx=tx-mob.getX(),dz=tz-mob.getZ();
+        mob.getMoveControl().setWantedPosition(tx,mob.getY(),tz,1.0);
+        double vx=Math.max(-.13,Math.min(.13,dx*.35));
+        double vz=Math.max(-.13,Math.min(.13,dz*.35));
+        if(level.noCollision(mob,body.move(vx,0,vz))){
+            Vec3 previous=mob.getDeltaMovement();
+            mob.setDeltaMovement(vx,previous.y,vz);
+        }
+        return best.immutable();
+    }
+
     private static boolean endsAtExactTile(Path path,BlockPos target){
         if(path==null||path.getNodeCount()<1)return false;
         Node last=path.getNode(path.getNodeCount()-1);
