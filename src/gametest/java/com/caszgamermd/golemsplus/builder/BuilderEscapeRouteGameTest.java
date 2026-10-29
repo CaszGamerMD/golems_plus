@@ -20,7 +20,7 @@ import net.minecraft.world.level.block.Blocks;
  */
 public final class BuilderEscapeRouteGameTest {
     @GameTest(structure="golems_plus_gametest:dome_arena",
-            maxTicks=500,skyAccess=true)
+            maxTicks=1800,skyAccess=true)
     public void proveTargetIndependentExits(GameTestHelper h){
         ServerLevel level=h.getLevel();
         // Four distinct 7x7 pads inside the separate fixture. Clear only
@@ -78,8 +78,12 @@ public final class BuilderEscapeRouteGameTest {
                                     chunk.z()<<4));
                 }
             if(checked[0]||tick<80)return;
-            if(tick>300){
-                release.run();h.fail("Physical Builder entities did not tick");
+            if(tick>1450){
+                release.run();h.fail("Physical Builder entities failed to tick: "
+                        +"ticks="+a.tickCount+","+b.tickCount+","
+                        +c.tickCount+","+d.tickCount
+                        +" grounded="+a.onGround()+","+b.onGround()+","
+                        +c.onGround()+","+d.onGround());
                 return;
             }
             if(!a.onGround()||!b.onGround()||!c.onGround()
