@@ -237,7 +237,9 @@ public final class DomeReverseDemolitionGameTest {
                         +" unloads="+study.unloads
                         +" jump="+study.jumps+" drop="+study.drops
                         +" grapples="+study.grapples
-                        +" currentY="+(golem.blockPosition().getY()-origin.getY()));
+                        +" currentY="+(golem.blockPosition().getY()-origin.getY())
+                        +" mobTicks="+golem.tickCount
+                        +" grounded="+golem.onGround());
             if(failure!=null){
                 study.writeReports("FAIL "+failure);
                 h.fail(failure+" | "+study.status());return;
@@ -488,7 +490,9 @@ public final class DomeReverseDemolitionGameTest {
                 target=p;stance=choice;lastRouteProgress=now;
                 closestDistance=Double.POSITIVE_INFINITY;
                 trace(now,"SELECT",target,"stance="
-                        +relative(stance));
+                        +relative(stance)+" mobTicks="+mob.tickCount
+                        +" grounded="+mob.onGround()
+                        +" eyeVisible="+visibleEye(mob.getEyePosition(),target));
                 scanOffset=(start+k+1)%count;
                 return null;
             }
@@ -600,7 +604,12 @@ public final class DomeReverseDemolitionGameTest {
                     +" jumps="+jumps+" drops="+drops+" grapples="+grapples
                     +" failedRoutes="+routeFailures
                     +" last="+lastAction
-                    +" feet="+relative(mob.blockPosition());
+                    +" feet="+relative(mob.blockPosition())
+                    +" mobTicks="+mob.tickCount
+                    +" grounded="+mob.onGround()
+                    +" target="+(target==null?"none":relative(target))
+                    +" stance="+(stance==null?"none":relative(stance))
+                    +" eyeVisible="+(target!=null&&visibleEye(mob.getEyePosition(),target));
         }
         void writeReports(String outcome){
             try{
