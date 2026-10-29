@@ -382,6 +382,7 @@ public final class BuilderPlacementSpace {
             java.util.function.Predicate<BlockPos> safe){
         int safeCount=0,marginCount=0,groundedCount=0;
         int geometryCount=0,blockedGeometry=0,routedCount=0;
+        List<BlockPos> executableCandidates=new ArrayList<>();
         Rejected bad=rejected.get(worker);
         boolean liveBad=bad!=null&&bad.until()>level.getGameTime();
         for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
@@ -409,12 +410,15 @@ public final class BuilderPlacementSpace {
                 if(liveBad&&bad.target().equals(target)
                         &&bad.destination().equals(at))continue;
                 geometryCount++;
+                executableCandidates.add(at);
                 if(WorkerNavigation.canReachExact(level,worker,at))
                     routedCount++;
             }
         return "approach safe="+safeCount+" margin="+marginCount
                 +" ground="+groundedCount+" bodyBlocked="+blockedGeometry
                 +" candidates="+geometryCount+" exactRoutes="+routedCount
+                +" trainedExecutable="+(WorkerNavigation.selectExecutableStand(
+                    level,worker,executableCandidates)!=null)
                 +" badPose="+liveBad;
     }
 
