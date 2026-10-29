@@ -35,3 +35,37 @@ Full 3,537-block original dome with four real Golems is run separately on `test/
 ## Full-dome integration measurement (first iteration)
 
 The first 3,537-block physical dome pilot regressed to **63 blocks**, because changing staged frontier targets caused repeated OnSite supply return attempts. Fixed the inventory handoff to let a Builder use materials **actually carried in its persisted pouch** before considering restaging; the second pilot placed **404 blocks**. Neither was a complete dome, and both exposed an overly restrictive cardinal/same-height exit rule. The planner now also evaluates 8-direction walking, one-block jumping and one-block supported descent against the future block and the current world's swept collision shapes. [All 20 focused tests still pass](https://github.com/CaszGamerMD/golems_plus/actions/runs/40766893650). The revised 3,537-block pilot runs on `test/dome-frontier-planner-262`.
+
+
+## October 28 real-dome findings and retained checkpoint
+
+- Ignored azalea, short grass and other configured ignored vegetation
+  are completed as zero-placement no-ops before support checks. The
+  separate test verifies that 35 inaccessible tasks do not starve ignored
+  vegetation. No temporary plant supports are invented.
+- Escape proof uses real swept body collisions, normal jumps, diagonal
+  movement and safe one-block descents, not the 0.8 m *placement-arm*
+  clearance applied to a subsequent walk.
+- Frontiers rotate through their bounded same-Y scan windows even after
+  a task was found. That stopped the same five nearest deferred cells from
+  monopolizing each worker, with a 286/3537 real dome high point on CI
+  run 40792952211.
+- The live trained route controller still sometimes rejects a pose that
+  its original *native-path* preflight labels exact-reachable. Those are
+  not proven physically executable by the trained route policy. The
+  latest logged worker deferrals identify **trained routes rejected work
+  pose** as the primary active failure.
+- Holding claims through every trained retry for 120-160 ticks was tested
+  separately and regressed to 262 and 238 real blocks with extensive
+  low-progress loops, so the held-claim experiment was rolled back.
+- Focused Fabric GameTests pass; they do **not** demonstrate that the
+  complete 3,537-block dome is built. The full-dome branch still blocks
+  at Y=0. Its game-test fixture and detailed per-worker failure logs
+  remain separate from main.
+
+The next production-quality step is to make `WorkerNavigation.canReachExact`
+preview the SAME weighted collision-validated route that `routeToExact`
+can actually execute, including its native short-leg physical handoff.
+Then build a multi-option access planner for cells where the trained
+route has no real safe first leg, rather than claiming an unreachable
+position or allowing any legacy fallback/creative flight.
