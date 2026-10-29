@@ -39,7 +39,7 @@ public final class BuilderGrappleAccess {
     private static final class Rope {
         final BlockPos anchor,column,landing,goal,safeStart;
         final Direction side;
-        final boolean down;
+        final boolean down,halfSlab;
         final long started;
         Phase phase;
         int stalledTicks;
@@ -52,6 +52,10 @@ public final class BuilderGrappleAccess {
         }
         Rope(BlockPos anchor,Direction side,BlockPos landing,BlockPos goal,
                 boolean down,long time,BlockPos safeStart) {
+            this(anchor,side,landing,goal,down,time,safeStart,false);
+        }
+        Rope(BlockPos anchor,Direction side,BlockPos landing,BlockPos goal,
+                boolean down,long time,BlockPos safeStart,boolean halfSlab) {
             this.anchor=anchor.immutable();
             this.side=side;
             this.column=anchor.relative(side);
@@ -59,11 +63,13 @@ public final class BuilderGrappleAccess {
             this.goal=goal.immutable();
             this.safeStart=safeStart==null?null:safeStart.immutable();
             this.down=down;
+            this.halfSlab=halfSlab;
             this.started=time;
             this.phase=down?Phase.WALK_TO_EDGE:
                     (safeStart==null?Phase.WALK_TO_LINE:Phase.SWING_TO_LINE);
         }
-        double topY(){return anchor.getY()+1.0;}
+        double topY(){return anchor.getY()+(halfSlab?.5:1.0);}
+        BlockPos ledgeFeet(){return halfSlab?anchor:anchor.above();}
     }
     private static final Map<BuilderGolem,Rope> active=new WeakHashMap<>();
     // Per-worker, temporary physical return breadcrumbs. Only actual
@@ -220,6 +226,33 @@ public final class BuilderGrappleAccess {
         }
         return state.isFaceSturdy(world,p,Direction.UP);
     }
+    /** A bottom slab supports a real rope, but at Y+.5, never Y+1. */
+    static boolean bottomSlab(ServerLevel world,BlockPos p){
+        if(!world.hasChunkAt(p)||!world.getFluidState(p).isEmpty())
+            return false;
+        BlockState state=world.getBlockState(p);
+        return state.getBlock() instanceof SlabBlock
+                &&state.getValue(SlabBlock.TYPE)==SlabType.BOTTOM
+                &&!state.getCollisionShape(world,p).isEmpty()
+                &&Math.abs(state.getCollisionShape(world,p)
+                        .max(Direction.Axis.Y)-.5)<.001;
+    }
+    private static double surfaceY(ServerLevel world,BlockPos anchor){
+        if(bottomSlab(world,anchor))return anchor.getY()+.5;
+        return solidTop(world,anchor)?anchor.getY()+1:Double.NaN;
+    }
+    private static boolean validAnchor(ServerLevel world,Rope rope){
+        double surface=surfaceY(world,rope.anchor);
+        return Double.isFinite(surface)
+                &&Math.abs(surface-rope.topY())<.001;
+    }
+    private static boolean landingRoom(ServerLevel world,
+            BuilderGolem worker,BlockPos anchor){
+        return bottomSlab(world,anchor)
+                ?WorkerNavigation.canStandOn(world,worker,anchor)
+                    &&empty(world,anchor.above())
+                :headroom(world,anchor.above());
+    }
     private static boolean empty(ServerLevel world,BlockPos p){
         if(!world.hasChunkAt(p)||!world.getFluidState(p).isEmpty())return false;
         return world.getBlockState(p).getCollisionShape(world,p).isEmpty();
@@ -241,13 +274,21 @@ public final class BuilderGrappleAccess {
         return worker.carriedCount(WorksiteContent.GRAPPLE_HOOK)>0;
     }
     private static List<BlockPos> solidAnchors(ServerLevel world,
-            BlockPos goal){
+            BuilderGolem worker,BlockPos goal){
         List<BlockPos> out=new ArrayList<>();
         for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
-            BlockPos at=goal.offset(dx,-1,dz);
-            if(dx*dx+dz*dz>16||!solidTop(world,at)
-                    ||!headroom(world,at.above()))continue;
-            out.add(at);
+            if(dx*dx+dz*dz>16)continue;
+            BlockPos full=goal.offset(dx,-1,dz);
+            if(solidTop(world,full)
+                    &&landingRoom(world,worker,full))out.add(full);
+            // Bottom-slab access targets the slab itself, since its
+            // grounded feet lie inside its block cell at Y+.5.
+            // Do NOT accept a bottom slab under an AIR Y+1 destination.
+            if(bottomSlab(world,goal)){
+                BlockPos half=goal.offset(dx,0,dz);
+                if(bottomSlab(world,half)
+                        &&landingRoom(world,worker,half))out.add(half);
+            }
         }
         out.sort(Comparator.comparingInt(p->p.distManhattan(goal)));
         return out;
@@ -289,7 +330,7 @@ public final class BuilderGrappleAccess {
         int startY=worker.blockPosition().getY();
         if(goal.getY()-startY>MAX_REACH||goal.getY()-startY<2)return null;
         List<Rope> candidates=new ArrayList<>();
-        for(BlockPos anchor:solidAnchors(level,goal)){
+        for(BlockPos anchor:solidAnchors(level,worker,goal)){
             for(Direction side:Direction.Plane.HORIZONTAL){
                 if(rejected(level,worker,anchor,side))continue;
                 BlockPos column=anchor.relative(side);
@@ -305,7 +346,8 @@ public final class BuilderGrappleAccess {
                 // The swing starts at the actual supported feet position.
                 candidates.add(new Rope(anchor,side,entry,goal,false,
                         level.getGameTime(),
-                        swing?worker.blockPosition():null));
+                        swing?worker.blockPosition():null,
+                        bottomSlab(level,anchor)));
             }
         }
         candidates.sort(Comparator.comparingDouble(r->
@@ -713,7 +755,7 @@ public final class BuilderGrappleAccess {
         }
         // Anchor may be modified by a player while the hook is attached:
         // stay suspended instead of dropping the Builder to its death.
-        if(!solidTop(level,r.anchor)){
+        if(!validAnchor(level,r)){
             // Missing support: stay attached rather than free-falling.
             // Recovery is impossible without a solid upper anchor.
             mob.setNoGravity(true);
