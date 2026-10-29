@@ -59,7 +59,7 @@ public final class GrappleTopSlabGameTest {
         BlockPos lowerFeet=lowerAnchor.above();
         var forceChunks=new LinkedHashSet<ChunkPos>();
         for(BlockPos p:new BlockPos[]{start,topAnchor,lowerAnchor}){
-            ChunkPos chunk=new ChunkPos(p);
+            ChunkPos chunk=new ChunkPos(p.getX()>>4,p.getZ()>>4);
             if(forceChunks.add(chunk)){
                 world.setChunkForced(chunk.x(),chunk.z(),true);
                 BuilderChunkTickets.holdPhysicalGameTestChunk(world,
