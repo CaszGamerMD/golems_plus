@@ -40,7 +40,6 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class DomeReverseDemolitionGameTest {
     private static final int CAPACITY=192;
-    private static final int MATERIAL_SLOTS=8; // ninth slot holds a real hook
     private static final int MINING_TICKS=8;
     private static final int BLOCKS_PER_SCAN=18;
     // Gradle runGameTest's working directory is build/run/gameTest.
@@ -438,37 +437,11 @@ public final class DomeReverseDemolitionGameTest {
                     +" exit="+(ringExit<0?"NONE":relative(outerRing.get(ringExit)))
                     +" depot="+relative(depot));
         }
-        int carried(){
-            int total=0;
-            for(int i=0;i<MATERIAL_SLOTS;i++)
-                total+=mob.getItem(i).getCount();
-            return total;
-        }
-        boolean roomFor(Item item){
-            if(carried()>=CAPACITY)return false;
-            for(int i=0;i<MATERIAL_SLOTS;i++){
-                ItemStack stack=mob.getItem(i);
-                if(stack.isEmpty()||stack.is(item)
-                        &&stack.getCount()<stack.getMaxStackSize())
-                    return true;
-            }
-            return false;
-        }
+        int carried(){return mob.demolitionBundleCount();}
+        boolean roomFor(Item item){return carried()<CAPACITY;}
         void collect(Item item){
-            if(!roomFor(item))throw new IllegalStateException("pouch over capacity");
-            for(int i=0;i<MATERIAL_SLOTS;i++){
-                ItemStack stack=mob.getItem(i);
-                if(stack.is(item)&&stack.getCount()<stack.getMaxStackSize()){
-                    stack.grow(1);
-                    mob.setItem(i,stack);
-                    return;
-                }
-            }
-            for(int i=0;i<MATERIAL_SLOTS;i++)if(mob.getItem(i).isEmpty()){
-                mob.setItem(i,new ItemStack(item));
-                return;
-            }
-            throw new IllegalStateException("pouch has no stack slot");
+            if(!mob.carryDemolitionItem(item))
+                throw new IllegalStateException("Mixed demolition bundle full");
         }
         void trace(long tick,String action,BlockPos p,String detail){
             BlockPos c=mob.blockPosition();
@@ -1157,13 +1130,12 @@ public final class DomeReverseDemolitionGameTest {
                     &&mob.distanceToSqr(depot.getX()+.5,
                             depot.getY()+.5,depot.getZ()+.5)<=12){
                 int dropped=0;
-                for(int slot=0;slot<MATERIAL_SLOTS;slot++){
-                    ItemStack stack=mob.getItem(slot);
-                    if(stack.isEmpty())continue;
+                // Physically carried and persisted mixed ItemStacks are
+                // transferred ONLY beside the actual onsite collection chest.
+                for(ItemStack stack:mob.unloadDemolitionBundle()){
                     dropped+=stack.getCount();
                     depotTally.merge(stack.getItem(),
                             (long)stack.getCount(),Long::sum);
-                    mob.setItem(slot,ItemStack.EMPTY);
                 }
                 deposited+=dropped;
                 if(dropped>0)unloads++;
