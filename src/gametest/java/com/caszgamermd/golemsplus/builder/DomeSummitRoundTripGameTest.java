@@ -905,6 +905,15 @@ public final class DomeSummitRoundTripGameTest {
                 if(seekRoofFrontier(tick))return null;
                 if(recoverIsolatedShelf(tick))return null;
             }else{
+                // Prefer the physically proven route the same Builder
+                // climbed earlier. The grapple itself revalidates its
+                // upper ledge, lower footing, rope column and A* approach.
+                if(BuilderGrappleAccess.rappelProvenAscent(
+                        level,mob,base)){
+                    log(tick,"RAPPEL_RETRACE_PROVEN_ASCENT",base,
+                            BuilderGrappleAccess.debug(mob));
+                    return null;
+                }
                 if(normalVertical(tick,false))return null;
                 boolean accepted=BuilderGrappleAccess.rappelToward(
                         level,mob,table,base);
