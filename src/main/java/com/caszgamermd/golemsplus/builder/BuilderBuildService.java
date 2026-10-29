@@ -63,6 +63,8 @@ public final class BuilderBuildService {
     // exists, the Builder may continue rather than stalling construction.
     private static final Map<BuilderGolem,UUID> accessPrepared=
             new WeakHashMap<>();
+    private static final Map<BuilderGolem,Long> accessPrefetchDeadline=
+            new WeakHashMap<>();
     private static WorkerAction action(BuilderGolem worker,int index){
         var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
         activity.setStep(index);
@@ -348,17 +350,31 @@ public final class BuilderBuildService {
             UUID currentJob=table.activeOrder();
             if(currentJob!=null&&!currentJob.equals(
                     accessPrepared.get(worker))){
+                // Four workers may all request a hook in the same 5-tick
+                // dispatch interval while OnSite is replenished later.
+                // An empty slot on ONE attempt is not proof that no hooks
+                // will be available. Wait a bounded four-second window,
+                // without ever generating tools or bypassing the chest.
+                long deadline=accessPrefetchDeadline.computeIfAbsent(
+                        worker,key->level.getGameTime()+80);
                 var hook=BuilderSupplyInventory.loadGrapple(
                         level,worker,table);
-                if(hook==BuilderSupplyInventory.LoadStatus.MOVING)
-                    return; // Physically travel to OnSite and pick it up.
-                accessPrepared.put(worker,currentJob);
-                if(hook==BuilderSupplyInventory.LoadStatus.READY)
+                if(hook==BuilderSupplyInventory.LoadStatus.READY){
+                    accessPrepared.put(worker,currentJob);
+                    accessPrefetchDeadline.remove(worker);
                     System.out.println("[BUILDER ACCESS] "
                             +worker.getName().getString()
                             +" collected real Grapple Hook before construction");
-                // Optional supply. Missing hook stock never conjures one
-                // and never prevents standard, reachable ground work.
+                }else if(level.getGameTime()<deadline)return;
+                else{
+                    accessPrepared.put(worker,currentJob);
+                    accessPrefetchDeadline.remove(worker);
+                    // Optional equipment: after 80 ticks with no stock or
+                    // physically reachable depot, allow ordinary building.
+                    System.out.println("[BUILDER ACCESS] "
+                            +worker.getName().getString()
+                            +" hook unavailable after bounded depot check");
+                }
             }
             // All positions for each X/Z zone were pre-assigned as one
             // immutable ordered execution plan. The Planner does NOT
