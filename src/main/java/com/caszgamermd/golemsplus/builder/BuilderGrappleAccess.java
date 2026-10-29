@@ -30,7 +30,8 @@ public final class BuilderGrappleAccess {
     public enum Result { MOVING, READY, NEED_HOOK, NO_SAFE_ANCHOR }
     private enum Phase {
         WALK_TO_LINE, SWING_TO_LINE, WALK_TO_EDGE, CLIMB, STEP_ON_TOP, STEP_OFF,
-        RAPPEL, RETREAT, RETURN_TO_START, RETURN_TO_TOP, RETURN_ON_LEDGE
+        RAPPEL, STEP_TO_LOWER_LEDGE, RETREAT, RETURN_TO_START,
+        RETURN_TO_TOP, RETURN_ON_LEDGE
     }
     /** Max ticks without ACTUAL progress, not just a move intent. */
     static final int STUCK_TICKS=45;
@@ -301,6 +302,31 @@ public final class BuilderGrappleAccess {
                 +(r.safeStart!=null?18:0)));
         return candidates.isEmpty()?null:candidates.get(0);
     }
+    /**
+     * From a rope hanging in an unobstructed air column, a Builder can
+     * shift a single block onto a supported roof lip before detaching.
+     * Probe the entire 0.65-wide swept collision body, not merely the
+     * destination block: a wall or roof overhang blocks the maneuver.
+     */
+    private static boolean clearLowerRopeStep(ServerLevel level,
+            BuilderGolem worker,BlockPos column,BlockPos landing){
+        if(column.getY()!=landing.getY()
+                ||column.distManhattan(landing)!=1
+                ||!WorkerNavigation.canStandOn(level,worker,landing)
+                ||!headroom(level,landing))return false;
+        double sx=column.getX()+.5,sz=column.getZ()+.5;
+        double dx=landing.getX()-column.getX();
+        double dz=landing.getZ()-column.getZ();
+        AABB body=worker.getBoundingBox().move(
+                sx-worker.getX(),column.getY()-worker.getY(),
+                sz-worker.getZ());
+        for(int i=0;i<=8;i++){
+            double fraction=i/8.0;
+            if(!level.noCollision(worker,body.move(
+                    dx*fraction,0,dz*fraction)))return false;
+        }
+        return true;
+    }
     /** Find a real ledge that the Builder can reach BEFORE it hooks on.
      * A Builder may be several blocks from the rim after completing its
      * task; it must first WALK across real terrain to a viable edge.
@@ -325,20 +351,37 @@ public final class BuilderGrappleAccess {
                     if(!headroom(level,column.atY(topY)))continue;
                     for(int delta=1;delta<=MAX_REACH;delta++){
                         int landingY=topY-delta;
-                        BlockPos landing=column.atY(landingY);
-                        if(!empty(level,landing)||!empty(level,landing.above()))
-                            break; // real wall, never descend through it
-                        if(!solidTop(level,landing.below()))continue;
+                        BlockPos atRopeBottom=column.atY(landingY);
+                        if(!empty(level,atRopeBottom)
+                                ||!empty(level,atRopeBottom.above()))
+                            break; // A real roof/wall blocks the hanging line
                         if(!lineClear(level,column,landingY,topY))break;
-                        candidates.add(new Rope(anchor,side,landing,goal,
-                                true,level.getGameTime()));
-                        break; // first safe lower floor on this line
+                        // Best case: the rope ends directly above safe floor.
+                        // Otherwise step from the rope onto a lower shelf
+                        // while STILL ATTACHED. The step is 1 block max
+                        // and is swept-collision checked at the destination.
+                        if(solidTop(level,atRopeBottom.below())){
+                            candidates.add(new Rope(anchor,side,atRopeBottom,
+                                    goal,true,level.getGameTime()));
+                            break;
+                        }
+                        boolean foundLowerShelf=false;
+                        for(Direction lip:Direction.Plane.HORIZONTAL){
+                            BlockPos landing=atRopeBottom.relative(lip);
+                            if(!clearLowerRopeStep(level,worker,
+                                    atRopeBottom,landing))continue;
+                            candidates.add(new Rope(anchor,side,landing,
+                                    goal,true,level.getGameTime()));
+                            foundLowerShelf=true;
+                        }
+                        if(foundLowerShelf)break;
                     }
                 }
             }
         candidates.sort(Comparator.comparingDouble(r->
                 r.anchor.above().distSqr(feet)*1.25
-                +r.landing.distSqr(goal)*.7));
+                +r.landing.distSqr(goal)*.7
+                -Math.min(16,feet.getY()-r.landing.getY())*6.0));
         // Never commit to a rope whose attachment ledge is only native
         // A*-reachable but not executable under the trained movement
         // policy. One multi-goal route picks a physically traversable
@@ -558,7 +601,8 @@ public final class BuilderGrappleAccess {
         r.lastX=mob.getX();r.lastY=mob.getY();r.lastZ=mob.getZ();
         if((r.phase==Phase.SWING_TO_LINE||r.phase==Phase.CLIMB
                 ||r.phase==Phase.STEP_ON_TOP||r.phase==Phase.STEP_OFF
-                ||r.phase==Phase.RAPPEL)
+                ||r.phase==Phase.RAPPEL
+                ||r.phase==Phase.STEP_TO_LOWER_LEDGE)
                 &&r.stalledTicks>=STUCK_TICKS)
             beginRecovery(level,mob,r);
         mob.setNoGravity(true);
@@ -657,10 +701,34 @@ public final class BuilderGrappleAccess {
             }
             case RAPPEL -> {
                 if(mob.getY()<=r.landing.getY()+.055){
-                    release(mob,r,"RAPPELLED");
+                    if(r.landing.getX()!=r.column.getX()
+                            ||r.landing.getZ()!=r.column.getZ()){
+                        r.phase=Phase.STEP_TO_LOWER_LEDGE;
+                        r.stalledTicks=0;
+                    }else if(solidTop(level,r.landing.below())
+                            &&mob.onGround()){
+                        release(mob,r,"RAPPELLED TO FLOOR");
+                    }else{
+                        // Never detach until ground under the full golem
+                        // is confirmed; an attached rope is the safety line.
+                        moved=false;
+                    }
                 }else{
                     moved=steer(level,mob,x,r.landing.getY(),z,.14,true);
                 }
+            }
+            case STEP_TO_LOWER_LEDGE -> {
+                // Shift from the hanging line onto real supported terrain,
+                // then and ONLY then release the hook.
+                double lx=r.landing.getX()+.5;
+                double lz=r.landing.getZ()+.5;
+                if(Math.abs(mob.getX()-lx)<.14
+                        &&Math.abs(mob.getZ()-lz)<.14
+                        &&mob.onGround()
+                        &&solidTop(level,r.landing.below())){
+                    release(mob,r,"RAPPELLED ONTO LOWER SHELF");
+                }else moved=steer(level,mob,lx,r.landing.getY(),
+                        lz,.12,false);
             }
             default -> {}
         }
