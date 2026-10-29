@@ -355,7 +355,10 @@ public final class DomeReverseDemolitionGameTest {
         // Adaptive physical return route; never a recorded path or teleport.
         final List<BlockPos> outerRing=new ArrayList<>();
         int ringExit=-1,ringAt=-1,ringDirection=0,returnDetours;
-        BlockPos returnWaypoint;
+        BlockPos returnWaypoint,exploreWaypoint;
+        final Map<BlockPos,Long> exploredUntil=new HashMap<>();
+        long exploreStarted;
+        int relocations;
         long waypointProgressTick;
         double bestWaypointDistance=Double.POSITIVE_INFINITY;
         Vec3 previous;
@@ -511,6 +514,24 @@ public final class DomeReverseDemolitionGameTest {
                     ||remaining.isEmpty()&&carried()>0){
                 unloading=true;return unload(now);
             }
+            if(exploreWaypoint!=null){
+                if(reached(exploreWaypoint)){
+                    trace(now,"EXPLORE_ARRIVE",exploreWaypoint,
+                            "new frontier; resume real work scanning");
+                    exploreWaypoint=null;
+                    scanOffset=0;
+                    excludedUntil.clear();
+                }else if(now-exploreStarted>220){
+                    exploredUntil.put(exploreWaypoint,now+500);
+                    trace(now,"EXPLORE_BLOCKED",exploreWaypoint,
+                            WorkerNavigation.debugStatus(mob));
+                    WorkerNavigation.stop(mob);
+                    exploreWaypoint=null;
+                }else{
+                    WorkerNavigation.routeToExact(level,mob,exploreWaypoint,1.0);
+                    return null;
+                }
+            }
             if(target!=null && !remaining.containsKey(target))reset();
             if(target!=null){
                 // A mining action requires grounded REAL reach and an
@@ -570,7 +591,7 @@ public final class DomeReverseDemolitionGameTest {
                     return null;
                 }
             }
-            if(now-lastProgress>(mined==0?1800:3600))
+            if(now-lastProgress>(mined==0?2500:8500))
                 return "No real demolition progress for "
                         +(now-lastProgress)+" ticks"
                         +" scans="+scanOffset+" of "+remaining.size()
@@ -640,6 +661,7 @@ public final class DomeReverseDemolitionGameTest {
                     continue;
                 }
                 target=p;stance=choice;lastRouteProgress=now;
+                exploreWaypoint=null;
                 closestDistance=Double.POSITIVE_INFINITY;
                 trace(now,"SELECT",target,"stance="
                         +relative(stance)+" mobTicks="+mob.tickCount
@@ -668,6 +690,8 @@ public final class DomeReverseDemolitionGameTest {
             }
             // No reachable mining pose: a carried Grapple Hook can
             // provide a physically checked upper ledge for repositioning.
+            if(now-lastProgress>700 && relocateToExposedFrontier(now))
+                return null;
             if(now-lastProgress>600 && grappleToExit(now)){
                 repositionUntil=now+150;
                 return null;
@@ -709,6 +733,54 @@ public final class DomeReverseDemolitionGameTest {
         }
         boolean finishedUnloading(){
             return !unloading&&carried()==0;
+        }
+        /** Relocate to a real outside work stance with exposed remaining
+         * blocks. Scores world geometry, NOT a saved schematic route.
+         * A waypoint is useful only if it sees unfinished demolition cells
+         * and the unified trained A* can physically execute a route there.
+         */
+        boolean relocateToExposedFrontier(long now){
+            if(!mob.onGround()||now%80!=0||ringExit<0)return false;
+            var scored=new ArrayList<BlockPos>();
+            var value=new HashMap<BlockPos,Double>();
+            for(int i=0;i<outerRing.size();i+=2){
+                BlockPos pose=outerRing.get(i);
+                if(!WorkerNavigation.canStandOn(level,mob,pose)
+                        ||pose.distSqr(mob.blockPosition())<36
+                        ||exploredUntil.getOrDefault(pose,0L)>now)continue;
+                int exposed=0;
+                for(BlockPos p:remaining.keySet()){
+                    // Three-dimensional direct work reach, not a raycast
+                    // across the whole dome or through a solid wall.
+                    if(p.distSqr(pose)>12)continue;
+                    if(visible(pose,p)&&++exposed>=5)break;
+                }
+                if(exposed==0)continue;
+                double score=exposed*24.0
+                        -Math.sqrt(pose.distSqr(mob.blockPosition()))*.65;
+                scored.add(pose);
+                value.put(pose,score);
+            }
+            scored.sort(Comparator.comparingDouble(
+                    (BlockPos p)->-value.get(p)));
+            // Prefer a high-coverage reachable frontier; only an actual
+            // trained route can validate a candidate's first movement.
+            BlockPos selected=null;
+            for(int i=0;i<Math.min(5,scored.size());i++){
+                BlockPos p=scored.get(i);
+                if(WorkerNavigation.selectExecutableStand(
+                        level,mob,List.of(p))!=null){selected=p;break;}
+                exploredUntil.put(p,now+320);
+            }
+            if(selected==null)return false;
+            exploreWaypoint=selected.immutable();
+            exploreStarted=now;
+            relocations++;
+            trace(now,"EXPLORE_NEW_STANCE",selected,
+                    "exposed="+value.get(selected)
+                    +" nav="+WorkerNavigation.debugStatus(mob));
+            WorkerNavigation.routeToExact(level,mob,selected,1.0);
+            return true;
         }
         /** A waypoint is reached only by physical walking to its center. */
         boolean reached(BlockPos p){
@@ -877,6 +949,7 @@ public final class DomeReverseDemolitionGameTest {
                 trace(now,"UNLOAD",depot,"depot received="+dropped);
                 reset();lastProgress=now;
                 ringAt=-1;ringDirection=0;returnWaypoint=null;
+                exploreWaypoint=null;
                 return null;
             }
             if(BuilderGrappleAccess.active(mob))return null;
@@ -927,6 +1000,7 @@ public final class DomeReverseDemolitionGameTest {
         String status(){
             return "mined="+mined+" physics="+physicsCleared
                     +" cleared="+(mined+physicsCleared)+"/3537"
+                    +" relocations="+relocations
                     +" itemless="+itemlessBlocks
                     +" collected="+itemsCollected+" left="+remaining.size()
                     +" carried="+carried()+" deposited="+deposited
