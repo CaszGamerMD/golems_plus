@@ -632,6 +632,19 @@ public final class BuilderBuildService {
             }
             // Never place into any Builder's body. Check before spending
             // the item so waiting for a teammate to move consumes nothing.
+            // Block transaction is forbidden unless a real, target-
+            // independent way out will survive the placement. Preview
+            // before material debit or world mutation, every attempt.
+            if(BuilderEscapeRoute.preview(level,worker,pos,
+                    BuilderEscapeRoute.Action.PLACE)==null){
+                BuilderPlacementSpace.invalidateApproach(worker,pos);
+                table.waitForBuilderAccess(worker.getUUID(),index,
+                        level.getGameTime(),
+                        "no post-placement escape independent of target");
+                table.setProblem("Builder requires verified escape route "
+                        +"before placing "+pos.toShortString());
+                return;
+            }
             if(!BuilderPlacementSpace.ready(level,worker,table,pos)){
                 // Waiting at an impossible collision envelope must not
                 // pin one target or one Y-level forever. Give genuine
