@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "golems_plus_gametest",
   "version": "1.0.0",
-  "name": "Golems Plus automated server movement tests",
+  "name": "Golems Plus reverse dome demolition physical study",
   "environment": "*",
   "depends": {
     "golems_plus": "*",
@@ -10,7 +10,7 @@
   },
   "entrypoints": {
     "fabric-gametest": [
-      "com.caszgamermd.golemsplus.builder.BuilderDomeConstructionGameTest"
+      "com.caszgamermd.golemsplus.builder.DomeReverseDemolitionGameTest"
     ]
   }
 }
