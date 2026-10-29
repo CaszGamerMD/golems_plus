@@ -213,7 +213,10 @@ public final class BuilderConstructionPlanner {
             return " | firstSupported #"+idx+" localXYZ="
                     +target.subtract(table.builderOrigin()).toShortString()
                     +" poses="+feasible+" standable="+feet+" LOS="+sight
-                    +" exits="+escapes+" reachable="+routes;
+                    +" exits="+escapes+" reachable="+routes
+                    +" | "+BuilderPlacementSpace.diagnoseApproach(
+                            world,worker,target,
+                            at->safeStand(world,worker,target,at));
         }
         return " | no supported pending target on current Y";
     }
