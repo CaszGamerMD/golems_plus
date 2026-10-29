@@ -339,6 +339,32 @@ public final class BuilderGrappleAccess {
         }
         return true;
     }
+    /** A one-cell approach to a physically adjacent rope ledge is
+     * permissible when BOTH floors are already sturdy and every sample
+     * of the golem's actual bounding box fits. This is the same short
+     * on-ground motion used to align a precise work stance, not a second
+     * long-distance pathfinder or an unsupported swing.
+     */
+    private static boolean adjacentFloorWalk(ServerLevel level,
+            BuilderGolem worker,BlockPos target){
+        BlockPos here=worker.blockPosition();
+        if(!worker.onGround()||here.getY()!=target.getY()
+                ||here.distManhattan(target)!=1
+                ||!solidTop(level,here.below())
+                ||!solidTop(level,target.below())
+                ||!WorkerNavigation.canStandOn(level,worker,target)
+                ||!headroom(level,target))return false;
+        double dx=target.getX()+.5-worker.getX();
+        double dz=target.getZ()+.5-worker.getZ();
+        if(Math.hypot(dx,dz)>1.7)return false;
+        AABB body=worker.getBoundingBox();
+        for(int i=1;i<=10;i++){
+            double f=i/10.0;
+            if(!level.noCollision(worker,body.move(dx*f,0,dz*f)))
+                return false;
+        }
+        return true;
+    }
     /** Find a real ledge that the Builder can reach BEFORE it hooks on.
      * A Builder may be several blocks from the rim after completing its
      * task; it must first WALK across real terrain to a viable edge.
@@ -516,7 +542,8 @@ public final class BuilderGrappleAccess {
                     ||!headroom(level,past.landing)
                     ||!lineClear(level,past.column,
                             past.landing.getY(),top.getY())
-                    ||!WorkerNavigation.canReachExact(level,worker,top))
+                    ||!(WorkerNavigation.canReachExact(level,worker,top)
+                            ||adjacentFloorWalk(level,worker,top)))
                 continue;
             Rope rappel=new Rope(past.anchor,past.side,past.landing,
                     returnGoal,true,level.getGameTime());
@@ -616,7 +643,21 @@ public final class BuilderGrappleAccess {
                     WorkerNavigation.stop(mob);
                     return false;
                 }
-                if(mob.getNavigation().isDone())
+                if(adjacentFloorWalk(level,mob,edge)){
+                    // Short real grounded movement across a shared floor
+                    // when A* cannot start cleanly at the roof rim.
+                    double dx=edge.getX()+.5-mob.getX();
+                    double dz=edge.getZ()+.5-mob.getZ();
+                    mob.getMoveControl().setWantedPosition(
+                            edge.getX()+.5,edge.getY(),
+                            edge.getZ()+.5,1.0);
+                    double vx=Math.max(-.12,Math.min(.12,dx*.35));
+                    double vz=Math.max(-.12,Math.min(.12,dz*.35));
+                    var old=mob.getDeltaMovement();
+                    if(level.noCollision(mob,
+                            mob.getBoundingBox().move(vx,0,vz)))
+                        mob.setDeltaMovement(vx,old.y,vz);
+                }else if(mob.getNavigation().isDone())
                     WorkerNavigation.routeToExact(level,mob,edge,1.0);
                 return false;
             }
