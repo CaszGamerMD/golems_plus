@@ -345,9 +345,12 @@ public final class BuilderPlacementSpace {
                         +Math.pow(Math.max(0,p.distSqr(target)-8),2)*3)
                 .thenComparingInt(BlockPos::getX)
                 .thenComparingInt(BlockPos::getZ));
-        int attempted=0;
+        // The feasible set is intrinsically bounded (7x7x2 poses).
+        // Cutting off at 40 NEAREST candidates discarded reachable
+        // far-side stances when nearby poses were separated by a wall.
+        // Never label a frontier unreachable until EVERY physically
+        // eligible stance has had its trained A* route checked.
         for(BlockPos p:candidates){
-            if(++attempted>40)break;
             if(!WorkerNavigation.canReachExact(level,worker,p))continue;
             workApproaches.put(worker,new Approach(target,p.immutable(),
                     now+75));
