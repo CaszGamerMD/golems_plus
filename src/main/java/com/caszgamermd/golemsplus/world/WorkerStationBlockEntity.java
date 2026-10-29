@@ -1098,10 +1098,19 @@ public final class WorkerStationBlockEntity extends BlockEntity
      * work on the SAME shared Y. Higher Y remains locked until done.
      */
     public void waitForBuilderAccess(UUID worker,int step,long tick){
+        waitForBuilderAccess(worker,step,tick,"unspecified");
+    }
+    /** Keep the exact physical reason a claimed task was deferred.
+     * This trace is ephemeral and never alters build progress or material
+     * accounting. It lets dome pilots diagnose actual failed arrivals.
+     */
+    public void waitForBuilderAccess(UUID worker,int step,long tick,
+            String reason){
         if(builderClaims.getOrDefault(worker,-1)!=step)return;
         builderClaims.remove(worker);
         builderClaimDebug.put(worker,"deferred #"+step
-                +" at "+tick+" retryAt="+(tick+60));
+                +" at "+tick+" retryAt="+(tick+60)
+                +" reason="+reason);
         builderMissingRetries.put(step,tick+60);
         setChanged();
     }

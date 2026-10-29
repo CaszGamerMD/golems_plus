@@ -540,7 +540,7 @@ public final class BuilderBuildService {
                 }
                 if(access==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR){
                     table.waitForBuilderAccess(worker.getUUID(),index,
-                            level.getGameTime());
+                            level.getGameTime(),"grapple no safe anchor");
                     table.setProblem("Deferred inaccessible grapple work "+pos
                             +" (other cells on Y="+activeLayer+" continue)");
                     return;
@@ -570,7 +570,7 @@ public final class BuilderBuildService {
                         if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
                                 .routeTo(level,worker,approach,.85))
                             table.waitForBuilderAccess(worker.getUUID(),index,
-                                    level.getGameTime());
+                                    level.getGameTime(),"trained routes rejected work pose");
                     }
                     return;
                 }
@@ -580,11 +580,11 @@ public final class BuilderBuildService {
                         table.setProblem("Builder needs a Grapple Hook");
                     else if(access==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR){
                         table.waitForBuilderAccess(worker.getUUID(),index,
-                                level.getGameTime());
+                                level.getGameTime(),"one-block rise no grapple anchor");
                         table.setProblem("Deferred blocked one-step rise "+pos);
                     }else if(access==BuilderGrappleAccess.Result.READY)
                         table.waitForBuilderAccess(worker.getUUID(),index,
-                                level.getGameTime());
+                                level.getGameTime(),"rise route ready but no safe pose");
                     return;
                 }
                 if(yDiff< -1 && BuilderGrappleAccess.rappelToward(
@@ -595,7 +595,7 @@ public final class BuilderBuildService {
                     // post-placement exit all exist. Don't grapple down
                     // unnecessarily or invent an unreachable stance.
                     table.waitForBuilderAccess(worker.getUUID(),index,
-                            level.getGameTime());
+                            level.getGameTime(),"no Y+1 validated reachable work approach");
                     table.setProblem("FRONTIER: no safe Y+1 work stance at "
                             +pos+" (line of sight / exit / clearance)");
                     return;
@@ -605,7 +605,7 @@ public final class BuilderBuildService {
                 if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .routeTo(level,worker,pos,.85))
                     table.waitForBuilderAccess(worker.getUUID(),index,
-                            level.getGameTime());
+                            level.getGameTime(),"cannot walk to lower target");
                 return;
             }
             // A Builder may place from its assigned layer or from one
@@ -626,7 +626,7 @@ public final class BuilderBuildService {
                     level,worker,pos,worker.blockPosition())){
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
                 table.waitForBuilderAccess(worker.getUUID(),index,
-                        level.getGameTime());
+                        level.getGameTime(),"lost safe pose or exit during approach");
                 table.setProblem("FRONTIER: lost safe pose or exit at "+pos);
                 return;
             }
@@ -642,7 +642,7 @@ public final class BuilderBuildService {
                 if(level.getGameTime()-activity.blockedSince>=100){
                     BuilderPlacementSpace.cancelYield(worker);
                     table.waitForBuilderAccess(worker.getUUID(),index,
-                            level.getGameTime());
+                            level.getGameTime(),"100-tick placement body-occupancy timeout");
                     table.setProblem("Deferred block "+pos
                             +" until a safe 0.8m placement stance is reachable");
                     activity.blockedSince=-1;
