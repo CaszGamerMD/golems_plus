@@ -373,7 +373,9 @@ public final class DomeReverseDemolitionGameTest {
         final BlockPos depot,origin;
         final LinkedHashMap<BlockPos,BlockState> remaining;
         final DomeSummitRoundTripGameTest.Study ascent;
-        boolean roofReached;
+        DomeSummitRoundTripGameTest.Study descent,returnAscent;
+        boolean roofReached,climbingBackToWork;
+        long nextDescentAttempt;
         int firstBrokenY=Integer.MIN_VALUE;
         int highestRemainingY=Integer.MIN_VALUE;
         final Map<BlockPos,Long> excludedUntil=new HashMap<>();
@@ -463,6 +465,9 @@ public final class DomeReverseDemolitionGameTest {
         }
         void observe(long tick){
             if(!roofReached)ascent.observe(tick);
+            if(descent!=null)descent.observe(tick);
+            if(climbingBackToWork&&returnAscent!=null)
+                returnAscent.observe(tick);
             Vec3 now=mob.position();
             double horizontal=Math.hypot(now.x-previous.x,now.z-previous.z);
             if(horizontal<2)walkMeters+=horizontal;
@@ -552,6 +557,88 @@ public final class DomeReverseDemolitionGameTest {
             target=null;stance=null;miningAge=0;targetSelectedAt=0;
             closestDistance=Double.POSITIVE_INFINITY;
         }
+        /** Recalculate legal standable block positions AFTER roof removal.
+         * Never use the stale immutable prebuilt dome footing list while
+         * returning with a full pouch or climbing back for another load.
+         */
+        List<BlockPos> currentFootings(){
+            var unique=new java.util.LinkedHashSet<BlockPos>();
+            for(BlockPos block:remaining.keySet())
+                for(BlockPos feet:List.of(block,block.above()))
+                    if(WorkerNavigation.canStandOn(level,mob,feet))
+                        unique.add(feet.immutable());
+            for(int dx=-4;dx<=42;dx++)for(int dz=-4;dz<=42;dz++){
+                BlockPos feet=origin.offset(dx,0,dz);
+                if(WorkerNavigation.canStandOn(level,mob,feet))
+                    unique.add(feet.immutable());
+            }
+            return new ArrayList<>(unique);
+        }
+        /** Run the proven REAL navigation controller at a supported
+         * CURRENT height, rather than expecting the old removed rooftop.
+         */
+        String resumeUpperWork(long now){
+            if(returnAscent==null){
+                List<BlockPos> positions=currentFootings();
+                int maxBlock=remaining.keySet().stream()
+                        .mapToInt(BlockPos::getY).max().orElse(origin.getY());
+                int requested=Math.min(origin.getY()+35,maxBlock+1);
+                int top=positions.stream().mapToInt(BlockPos::getY)
+                        .filter(y->y<=requested).max().orElse(depot.getY());
+                if(top<=depot.getY()+1){
+                    climbingBackToWork=false;
+                    return null; // low-level clearing is ordinary walking
+                }
+                returnAscent=new DomeSummitRoundTripGameTest.Study(
+                        level,mob,table,origin,depot,remaining,positions,
+                        top,true);
+                trace(now,"REASCEND_FOR_NEXT_LOAD",mob.blockPosition(),
+                        "targetY="+(top-origin.getY())
+                        +" remaining="+remaining.size());
+            }
+            String issue=returnAscent.tick(now);
+            if(issue!=null)return "Cannot physically regain work roof: "
+                    +issue+" "+returnAscent.status();
+            if(returnAscent.done){
+                trace(now,"REASCENT_COMPLETE",mob.blockPosition(),
+                        "reached="+(mob.blockPosition().getY()-origin.getY()));
+                climbingBackToWork=false;returnAscent=null;
+                lastProgress=now;
+                excludedUntil.clear();scanOffset=0;
+            }
+            return null;
+        }
+        String physicallyDescendToDepot(long now){
+            if(descent==null){
+                List<BlockPos> positions=currentFootings();
+                descent=new DomeSummitRoundTripGameTest.Study(
+                        level,mob,table,origin,depot,remaining,positions,
+                        origin.getY()+35);
+                descent.phase="DESCEND";
+                descent.stageStart=now;
+                descent.lastHeightProgress=now;
+                descent.minDescentY=mob.blockPosition().getY();
+                trace(now,"DESCEND_WITH_FULL_BUNDLE",mob.blockPosition(),
+                        "capacity="+carried()+" realFootings="
+                        +positions.size());
+            }
+            String issue=descent.tick(now);
+            if(issue!=null){
+                trace(now,"DESCENT_REPLAN_REQUIRED",mob.blockPosition(),
+                        issue+" "+descent.status());
+                descent=null;
+                nextDescentAttempt=now+1000;
+                return null;
+            }
+            if(descent.done){
+                trace(now,"GROUND_REACHED_WITH_BUNDLE",
+                        mob.blockPosition(),descent.status());
+                descent=null;
+                lastProgress=now;
+            }
+            return null;
+        }
+
         String tick(long now){
             if(!roofReached){
                 String issue=ascent.tick(now);
@@ -568,6 +655,7 @@ public final class DomeReverseDemolitionGameTest {
                 }
                 return null;
             }
+            if(climbingBackToWork)return resumeUpperWork(now);
             if(carried()>CAPACITY)return "Exceeded 192-block pouch";
             if(mob.getItem(8).isEmpty()
                     ||!mob.getItem(8).is(WorksiteContent.GRAPPLE_HOOK))
@@ -1140,6 +1228,12 @@ public final class DomeReverseDemolitionGameTest {
                 deposited+=dropped;
                 if(dropped>0)unloads++;
                 unloading=false;
+                descent=null;
+                returnAscent=null;
+                climbingBackToWork=dropped>0&&!remaining.isEmpty()
+                        &&remaining.keySet().stream()
+                            .mapToInt(BlockPos::getY).max()
+                            .orElse(depot.getY())>depot.getY()+2;
                 WorkerNavigation.stop(mob);
                 trace(now,"UNLOAD",depot,"depot received="+dropped);
                 reset();lastProgress=now;
@@ -1151,7 +1245,7 @@ public final class DomeReverseDemolitionGameTest {
             if(BuilderGrappleAccess.active(mob))return null;
             // Returning cargo must be bounded even when a standing-tile
             // search keeps reissuing a route with tiny forward movement.
-            if(now-lastProgress>5000)
+            if(now-lastProgress>12000)
                 return "Physical depot return exceeded timeout"
                     +" feet="+relative(mob.blockPosition())
                     +" yAbove="+(mob.blockPosition().getY()-depot.getY())
@@ -1162,6 +1256,12 @@ public final class DomeReverseDemolitionGameTest {
             // can execute it; the carried Grapple Hook handles a safe
             // unsupported ledge when a walking drop cannot be planned.
             if(mob.blockPosition().getY()>depot.getY()){
+                // First use the proven descent planner with fresh block
+                // geometry and previously ACTUALLY completed hook routes.
+                if(descent!=null||now>=nextDescentAttempt){
+                    physicallyDescendToDepot(now);
+                    if(descent!=null)return null;
+                }
                 var choices=new ArrayList<BlockPos>();
                 BlockPos at=mob.blockPosition();
                 for(int dx=-10;dx<=10;dx++)for(int dz=-10;dz<=10;dz++)
