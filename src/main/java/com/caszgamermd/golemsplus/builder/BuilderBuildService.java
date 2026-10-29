@@ -51,6 +51,7 @@ public final class BuilderBuildService {
         long blockedSince=-1;
         BlockPos lastWorkPosition;
         long lastWorkProgress=-1;
+        long workAttemptStart=-1;
         double closestWorkDistance=Double.POSITIVE_INFINITY;
         void setStep(int next){
             if(index!=next){
@@ -58,6 +59,7 @@ public final class BuilderBuildService {
                 blockedSince=-1;
                 lastWorkPosition=null;
                 lastWorkProgress=-1;
+                workAttemptStart=-1;
                 closestWorkDistance=Double.POSITIVE_INFINITY;
             }
         }
@@ -574,9 +576,12 @@ public final class BuilderBuildService {
                     BlockPos foot=worker.blockPosition();
                     double distance=worker.distanceToSqr(
                             pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+                    if(activity.workAttemptStart<0)
+                        activity.workAttemptStart=now;
+                    // Only meaningful net progress toward the work target
+                    // resets the no-progress timer. Lateral oscillation
+                    // between adjacent tiles is NOT learning/progress.
                     if(activity.lastWorkProgress<0
-                            ||activity.lastWorkPosition==null
-                            ||!foot.equals(activity.lastWorkPosition)
                             ||distance<activity.closestWorkDistance-.16){
                         activity.lastWorkProgress=now;
                         activity.lastWorkPosition=foot.immutable();
@@ -591,7 +596,8 @@ public final class BuilderBuildService {
                     if(!routed)
                         routed=com.caszgamermd.golemsplus.worker.WorkerNavigation
                                 .routeTo(level,worker,approach,.85);
-                    if(now-activity.lastWorkProgress>=160){
+                    if(now-activity.lastWorkProgress>=120
+                            ||now-activity.workAttemptStart>=300){
                         // No REAL position progress across eight seconds:
                         // release one failed pose and explore another
                         // same-Y frontier instead of holding this task
@@ -599,11 +605,13 @@ public final class BuilderBuildService {
                         // trained navigation, and exit rules remain.
                         BuilderPlacementSpace.invalidateApproach(worker,pos);
                         table.waitForBuilderAccess(worker.getUUID(),index,
-                                now,"trained navigation stalled 160 ticks "
+                                now,"trained navigation no net work progress "
+                                +"for 120 ticks or attempt over 300; "
                                 +"while "+(routed?"running":"retrying")
                                 +" "+com.caszgamermd.golemsplus.worker.WorkerNavigation
                                         .debugStatus(worker));
                         activity.lastWorkProgress=-1;
+                        activity.workAttemptStart=-1;
                         activity.closestWorkDistance=Double.POSITIVE_INFINITY;
                     }
                     return;
