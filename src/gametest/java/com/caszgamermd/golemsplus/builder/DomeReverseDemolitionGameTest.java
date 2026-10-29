@@ -42,7 +42,7 @@ public final class DomeReverseDemolitionGameTest {
     private static final int CAPACITY=192;
     private static final int MATERIAL_SLOTS=8; // ninth slot holds a real hook
     private static final int MINING_TICKS=8;
-    private static final int BLOCKS_PER_SCAN=8;
+    private static final int BLOCKS_PER_SCAN=18;
     // Gradle runGameTest's working directory is build/run/gameTest.
     // Use the SAME logs directory already included by CI's artifact
     // uploader; previous CSVs accidentally went into a nested build/.
@@ -358,6 +358,7 @@ public final class DomeReverseDemolitionGameTest {
         int mined,physicsCleared,itemlessBlocks,itemsCollected,unloads,jumps,drops,grapples,scanOffset,routeFailures;
         long deposited;
         boolean unloading;
+        long repositionUntil;
         int miningAge;
         double walkMeters,closestDistance=Double.POSITIVE_INFINITY;
         String lastAction="prebuilt";
@@ -564,10 +565,17 @@ public final class DomeReverseDemolitionGameTest {
                     return null;
                 }
             }
-            if(now-lastProgress>(mined==0?1000:1800))
+            if(now-lastProgress>(mined==0?1800:3600))
                 return "No real demolition progress for "
-                        +(now-lastProgress)+" ticks";
-            if(now-lastScanTick<20)return null;
+                        +(now-lastProgress)+" ticks"
+                        +" scans="+scanOffset+" of "+remaining.size()
+                        +" feet="+relative(mob.blockPosition())
+                        +" grapple="+BuilderGrappleAccess.debug(mob)
+                        +" nav="+WorkerNavigation.debugStatus(mob);
+            // Give a physical step-down or rope traverse time to complete.
+            // Never reassign a work stance while recovery is in progress.
+            if(now<repositionUntil)return null;
+            if(now-lastScanTick<10)return null;
             lastScanTick=now;
             // Explore the actual remaining world, not a recorded route.
             // Prefer physical proximity, but keep rotating search pages so
@@ -619,7 +627,13 @@ public final class DomeReverseDemolitionGameTest {
                     choice=mob.blockPosition();
                 else choice=WorkerNavigation.selectExecutableStand(
                         level,mob,stances(p));
-                if(choice==null)continue;
+                if(choice==null){
+                    // A failed stance is deferred, not permanently erased.
+                    // World demolition changes collision and support, so
+                    // it becomes eligible again after a short interval.
+                    excludedUntil.put(p,now+120);
+                    continue;
+                }
                 target=p;stance=choice;lastRouteProgress=now;
                 closestDistance=Double.POSITIVE_INFINITY;
                 trace(now,"SELECT",target,"stance="
@@ -630,6 +644,32 @@ public final class DomeReverseDemolitionGameTest {
                 return null;
             }
             scanOffset=(start+Math.max(1,scans))%Math.max(1,count);
+            // A Builder can wind up on an increasingly isolated roof
+            // after mining its supporting blocks. When scanning fails,
+            // first seek a real lower standing route or carried-hook
+            // rappel instead of retesting the same obstructed wall.
+            if(mob.onGround()&&mob.blockPosition().getY()>depot.getY()
+                    &&now-lastProgress>450&&now%100==0){
+                boolean started=BuilderGrappleAccess.rappelToward(
+                        level,mob,table,depot);
+                boolean rope=BuilderGrappleAccess.active(mob);
+                if(rope)grapples++;
+                if(started||WorkerNavigation.retryScheduled(mob)){
+                    trace(now,rope?"GRAPPLE_RECOVERY":"NORMAL_DROP_RECOVERY",
+                            depot,BuilderGrappleAccess.debug(mob));
+                    repositionUntil=now+160;
+                    return null;
+                }
+            }
+            // No reachable mining pose: a carried Grapple Hook can
+            // provide a physically checked upper ledge for repositioning.
+            if(now-lastProgress>600 && grappleToExit(now)){
+                repositionUntil=now+150;
+                return null;
+            }
+            if(now%400==0 && now-lastProgress>800)
+                trace(now,"SCAN_DEFER",mob.blockPosition(),
+                        "offset="+scanOffset+" remaining="+remaining.size());
             // No ground route is available: find a sturdy physical
             // upper ledge for a carried Grapple Hook. Normal 1-block
             // jumps and 2-block drops were already considered by A*.
