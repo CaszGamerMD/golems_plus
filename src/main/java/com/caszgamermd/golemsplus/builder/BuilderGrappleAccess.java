@@ -328,7 +328,11 @@ public final class BuilderGrappleAccess {
     private static Rope chooseAscent(ServerLevel level,BuilderGolem worker,
             BlockPos goal){
         int startY=worker.blockPosition().getY();
-        if(goal.getY()-startY>MAX_REACH||goal.getY()-startY<2)return null;
+        // A one-block higher ledge can be separated by an unsupported
+        // gap even though a normal one-block JUMP is impossible. The
+        // caller always tries trained ground A* first; the attached
+        // rope is allowed only after it fails and its swept body clears.
+        if(goal.getY()-startY>MAX_REACH||goal.getY()-startY<1)return null;
         List<Rope> candidates=new ArrayList<>();
         for(BlockPos anchor:solidAnchors(level,worker,goal)){
             for(Direction side:Direction.Plane.HORIZONTAL){
