@@ -37,8 +37,12 @@ public final class DomeThreeLayerRegionGameTest {
         BlockPos nextTop=put(h,world,remaining,11,8,13);
         BlockPos nextMiddle=put(h,world,remaining,12,7,13);
         BlockPos nextFloor=put(h,world,remaining,12,6,13);
+        // An actual empty, supported work cell, not inside one of the
+        // two upper layers. A terrain support outside the demolition
+        // map is allowed and must remain undisturbed.
+        h.setBlock(12,9,12,Blocks.STONE);
         var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
-        BlockPos feet=h.absolutePos(new BlockPos(12,10,11));
+        BlockPos feet=h.absolutePos(new BlockPos(12,10,12));
         mob.setPos(feet.getX()+.5,feet.getY(),feet.getZ()+.5);
 
         // Absolute max is the placed top block; never infer the
