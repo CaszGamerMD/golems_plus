@@ -354,7 +354,8 @@ public final class DomeReverseDemolitionGameTest {
         final StringBuilder csv=new StringBuilder(
                 "tick,action,localX,localY,localZ,feetX,feetY,feetZ,"
                 +"route,carried,mined,deposited,meters,jumps,drops,grapples\n");
-        BlockPos target,stance,lastBroken;
+        BlockPos target,stance,lastBroken,exitBlock;
+        int exitMiningAge,exitBreaks;
         // Adaptive physical return route; never a recorded path or teleport.
         final List<BlockPos> outerRing=new ArrayList<>();
         int ringExit=-1,ringAt=-1,ringDirection=0,returnDetours;
@@ -753,6 +754,84 @@ public final class DomeReverseDemolitionGameTest {
         boolean finishedUnloading(){
             return !unloading&&carried()==0;
         }
+        /** Only after the walk/step/grapple strategies fail, physically
+         * open a small passage through the ORIGINAL dome. Every removed
+         * cell is counted as an ordinary deliberate BREAK with paid cargo,
+         * 3-block line-of-sight reach and the same timed mining action.
+         * This is not ghost navigation, block deletion or a second worker.
+         */
+        boolean excavateExit(long now){
+            if(!mob.onGround()||carried()>=CAPACITY||ringExit<0)return false;
+            if(exitBlock!=null && !remaining.containsKey(exitBlock)){
+                exitBlock=null;exitMiningAge=0;
+            }
+            if(exitBlock==null){
+                BlockPos nearest=outerRing.stream()
+                        .filter(p->WorkerNavigation.canStandOn(level,mob,p))
+                        .min(Comparator.comparingDouble(
+                                (BlockPos p)->p.distSqr(mob.blockPosition())))
+                        .orElse(null);
+                if(nearest==null)return false;
+                double ox=nearest.getX()+.5-mob.getX();
+                double oz=nearest.getZ()+.5-mob.getZ();
+                double n=Math.hypot(ox,oz);
+                if(n<.01)return false;
+                ox/=n;oz/=n;
+                BlockPos choice=null;
+                double best=Double.NEGATIVE_INFINITY;
+                for(BlockPos p:remaining.keySet()){
+                    if(p.getY()<mob.blockPosition().getY()
+                            ||p.getY()>mob.blockPosition().getY()+2
+                            ||p.distSqr(mob.blockPosition())>12
+                            ||!visibleEye(mob.getEyePosition(),p))continue;
+                    double x=p.getX()+.5-mob.getX();
+                    double z=p.getZ()+.5-mob.getZ();
+                    double forward=x*ox+z*oz;
+                    if(forward<.25)continue;
+                    double lateral=Math.abs(x*oz-z*ox);
+                    double score=forward*3-lateral*2
+                            -Math.abs(p.getY()-mob.blockPosition().getY())*.5;
+                    if(score>best){best=score;choice=p;}
+                }
+                if(choice==null)return false;
+                Item item=remaining.get(choice).getBlock().asItem();
+                if(item!=Items.AIR&&!roomFor(item))return false;
+                exitBlock=choice.immutable();
+                exitMiningAge=0;
+                trace(now,"EXIT_CLEAR_SELECT",exitBlock,
+                        "toward="+relative(nearest)+" carried="+carried());
+            }
+            if(!visibleEye(mob.getEyePosition(),exitBlock)){
+                exitBlock=null;exitMiningAge=0;
+                return false;
+            }
+            exitMiningAge+=5;
+            if(exitMiningAge<MINING_TICKS)return true;
+            BlockState expected=remaining.get(exitBlock);
+            if(expected==null){exitBlock=null;exitMiningAge=0;return false;}
+            Item item=expected.getBlock().asItem();
+            if(item!=Items.AIR&&!roomFor(item))return false;
+            if(level.getBlockState(exitBlock).getBlock()!=expected.getBlock()){
+                exitBlock=null;exitMiningAge=0;
+                return false;
+            }
+            mob.swing(InteractionHand.MAIN_HAND);
+            if(!level.destroyBlock(exitBlock,false,mob)){
+                exitBlock=null;exitMiningAge=0;
+                return false;
+            }
+            if(item!=Items.AIR){collect(item);itemsCollected++;}
+            else itemlessBlocks++;
+            remaining.remove(exitBlock);
+            mined++;exitBreaks++;lastProgress=now;
+            lastBroken=exitBlock;
+            trace(now,"EXIT_BREAK",exitBlock,"corridor excavated with real tool action");
+            exitBlock=null;exitMiningAge=0;
+            // The world has physically changed. Forget a stale partial
+            // route; trained A* will plan again with current collisions.
+            WorkerNavigation.stop(mob);
+            return true;
+        }
         /** Relocate to a real outside work stance with exposed remaining
          * blocks. Scores world geometry, NOT a saved schematic route.
          * A waypoint is useful only if it sees unfinished demolition cells
@@ -1025,8 +1104,15 @@ public final class DomeReverseDemolitionGameTest {
             // Real depot needs a path to an adjacent STANDING cell, not
             // a repeatedly regenerated A* toward the solid chest block.
             if(depotApproach(now))return null;
-            if(returnViaOutside(now))return null;
+            if(returnViaOutside(now)){
+                // If the same exterior route repeatedly times out, start
+                // excavation rather than selecting it forever.
+                if(returnDetours>=3 && returnWaypoint==null
+                        &&excavateExit(now))return null;
+                return null;
+            }
             if(grappleToExit(now))return null;
+            if(returnDetours>=3&&excavateExit(now))return null;
             if(now-lastProgress>4200)
                 return "Cannot reach exterior route / depot with carried load"
                     +" ring="+ringAt+" exit="+ringExit
@@ -1037,6 +1123,7 @@ public final class DomeReverseDemolitionGameTest {
             return "mined="+mined+" physics="+physicsCleared
                     +" cleared="+(mined+physicsCleared)+"/3537"
                     +" relocations="+relocations
+                    +" exitBreaks="+exitBreaks
                     +" itemless="+itemlessBlocks
                     +" collected="+itemsCollected+" left="+remaining.size()
                     +" carried="+carried()+" deposited="+deposited
