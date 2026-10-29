@@ -802,7 +802,7 @@ public final class DomeReverseDemolitionGameTest {
                     BlockPos ledge=BuilderGrappleAccess.bottomSlab(level,block)
                             ?block:block.above();
                     int rise=ledge.getY()-mob.blockPosition().getY();
-                    if(rise<2||rise>BuilderGrappleAccess.MAX_REACH
+                    if(rise<1||rise>BuilderGrappleAccess.MAX_REACH
                             ||block.distSqr(mob.blockPosition())>320)
                         continue;
                     if(++trials>24)break;
@@ -1105,7 +1105,7 @@ public final class DomeReverseDemolitionGameTest {
             for(BlockPos block:remaining.keySet()){
                 BlockPos ledge=block.above();
                 int rise=ledge.getY()-mob.blockPosition().getY();
-                if(rise<2||rise>BuilderGrappleAccess.MAX_REACH
+                if(rise<1||rise>BuilderGrappleAccess.MAX_REACH
                         ||block.distSqr(mob.blockPosition())>260)continue;
                 if(++examined>64)break;
                 if(!WorkerNavigation.canStandOn(level,mob,ledge)
