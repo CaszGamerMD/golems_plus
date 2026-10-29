@@ -56,6 +56,14 @@ public final class BuilderClearance{
                     level,worker,pos,.84);
             return Result.MOVING;
         }
+        // Clearing a support beneath the worker (or sealing the only
+        // neighboring exit) is prohibited even if the target is in reach.
+        if(BuilderEscapeRoute.preview(level,worker,pos,
+                BuilderEscapeRoute.Action.BREAK)==null){
+            table.setProblem("Builder needs independent escape before "
+                    +"clearing "+pos.toShortString());
+            return Result.BLOCKED;
+        }
         ItemStack tool=snow?ItemStack.EMPTY:worker.getItem(slot);
         List<ItemStack> drops=Block.getDrops(current,level,pos,null,worker,tool);
         // Require room for ALL item drops before breaking the world block.
