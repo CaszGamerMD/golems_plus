@@ -935,8 +935,8 @@ public final class DomeReverseDemolitionGameTest {
         boolean returnViaOutside(long now){
             if(ringExit<0 || outerRing.isEmpty())return false;
             if(returnWaypoint!=null && !reached(returnWaypoint)){
-                if(!returnStalled(now)){
-                    WorkerNavigation.routeToExact(level,mob,returnWaypoint,1.0);
+                if(!returnStalled(now)
+                        &&WorkerNavigation.routeToExact(level,mob,returnWaypoint,1.0)){
                     return true;
                 }
                 trace(now,"RETURN_REPLAN",returnWaypoint,
