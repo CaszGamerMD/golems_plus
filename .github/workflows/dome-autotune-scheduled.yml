@@ -7,6 +7,12 @@ on:
     # Offset from minute 0 to avoid GitHub's busiest scheduling boundary.
     - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
+    inputs:
+      heartbeat_probe:
+        description: "Check GitHub self-dispatch without launching tests"
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main]
     paths:
@@ -17,7 +23,7 @@ permissions:
   contents: write  # Save scores ONLY on the isolated training state branch.
 
 concurrency:
-  group: golems-plus-physical-dome-autotune
+  group: ${{ inputs.heartbeat_probe == true && 'golems-plus-dome-probe' || 'golems-plus-physical-dome-autotune' }}
   cancel-in-progress: false
 
 jobs:
@@ -25,6 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: write  # Bootstrap a harmless proof that self-dispatch works.
     outputs:
       due: ${{ steps.gate.outputs.due }}
     steps:
@@ -36,8 +43,15 @@ jobs:
         shell: bash
         env:
           TRIGGER: ${{ github.event_name }}
+          PROBE: ${{ inputs.heartbeat_probe }}
         run: |
           set -euo pipefail
+          # A probe is never a real training session and must not self-chain.
+          if [[ "$TRIGGER" == "workflow_dispatch" && "$PROBE" == "true" ]]; then
+            echo "due=false" >> "$GITHUB_OUTPUT"
+            echo "SELF-DISPATCH PROBE PASS: dispatch arrived independently."
+            exit 0
+          fi
           # Manual requests and workflow edits always execute once.
           if [[ "$TRIGGER" != "schedule" ]]; then
             echo "due=true" >> "$GITHUB_OUTPUT"
@@ -76,6 +90,14 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write(f"due={str(due).lower()}\n")
           PY
+      - name: Verify self-dispatch on scheduler update (no training duplication)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh workflow run dome-autotune-scheduled.yml --ref main -f heartbeat_probe=true
+          echo "Probe dispatched; next workflow_dispatch run must report due=false."
 
   tune-dome:
     needs: check-due
@@ -115,3 +137,52 @@ jobs:
             build/test-results/
             build/reports/
             build/run/gameTest/logs/
+
+  # A code-change-triggered or manually-triggered run cannot rely on GitHub
+  # delivering future cron events. Requeue explicitly after a cooldown.
+  # GitHub permits workflow_dispatch events created by GITHUB_TOKEN.
+  # This deliberately uses idle GitHub-hosted runner time, not ChatGPT Work.
+  requeue:
+    needs: [check-due, tune-dome]
+    if: ${{ always() && needs.check-due.result == 'success' && needs.check-due.outputs.due == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Space completed training sessions by approximately one hour
+        shell: bash
+        run: |
+          echo "Explicit continuation scheduled after 52-minute cooldown."
+          sleep 3120
+      - name: Stop once fully verified; otherwise dispatch next training session
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Check the persisted result at dispatch time, not stale job start.
+          if gh api "repos/$GH_REPO/contents/dome-training/state.json?ref=training/dome-autotune-state-262" --jq .content > "$RUNNER_TEMP/state.b64"; then
+            python3 - <<'PY' > "$RUNNER_TEMP/finished"
+          import base64
+          import json
+          import os
+          from pathlib import Path
+          try:
+              raw = (Path(os.environ["RUNNER_TEMP"]) / "state.b64").read_text().strip()
+              state = json.loads(base64.b64decode(raw))
+              print("true" if state.get("best", {}).get("complete") else "false")
+          except (ValueError, TypeError, KeyError) as exc:
+              print("false")
+          PY
+          else
+            echo false > "$RUNNER_TEMP/finished"
+          fi
+          if [[ "$(cat "$RUNNER_TEMP/finished")" == "true" ]]; then
+            echo "Verified full 3537-block dome: stopping chain."
+            exit 0
+          fi
+          gh workflow run dome-autotune-scheduled.yml --ref main -f heartbeat_probe=false
+          echo "CONTINUATION DISPATCHED: next full dome training run queued via GitHub workflow_dispatch."
