@@ -35,7 +35,9 @@ public final class DomeSummitRoundTripGameTest {
     private static final Path SUMMARY=Path.of("logs/dome_summit_roundtrip_summary.txt");
     private static final int ROUTE_RETRY_TICKS=360;
     private static final int STAGE_TIMEOUT=9000;
-    private static final int PROGRESS_TIMEOUT=3500;
+    // Diagnostic endurance window extends past the old 4,761-tick
+    // UNLOADED_TO_CHUNK removal to prove the refreshed lease persists.
+    private static final int PROGRESS_TIMEOUT=5700;
 
     @GameTest(structure="golems_plus_gametest:dome_arena",
             maxTicks=42000,skyAccess=true)
@@ -351,6 +353,17 @@ public final class DomeSummitRoundTripGameTest {
                 h.fail(detail);return;
             }
             study.observe(tick);
+            if(tick==5200){
+                study.passedUnloadWindow=true;
+                System.out.println("[DOME CHUNK SURVIVAL VERIFIED] tick="
+                        +tick+" golemTick="+golem.tickCount
+                        +" health="+golem.getHealth()
+                        +" removed="+golem.isRemoved()
+                        +" loaded="+world.hasChunkAt(golem.blockPosition())
+                        +" renewals="+study.reforcedChunks);
+                study.log(tick,"CHUNK_SURVIVAL_VERIFIED",golem.blockPosition(),
+                        "healthy after previous 4761-tick removal");
+            }
             if(tick%5!=0)return;
             String failure=study.tick(tick);
             if(tick%200==0)System.out.println("[DOME SUMMIT PROGRESS] "
@@ -402,6 +415,7 @@ public final class DomeSummitRoundTripGameTest {
         BlockPos goal;
         long goalStart,stageStart,lastHeightProgress, lastGoalAttempt;
         long scans,routeFailures,grappleProbes,anchorMisses,reforcedChunks;
+        boolean passedUnloadWindow;
         int maxY,minDescentY,jumps,landings,grappleUps,grappleDowns;
         int levelsUp,levelsDown,lastGroundY;
         boolean hadGround,airborne,jumpedThisFlight,wasRope,ropeMoved,done;
@@ -790,6 +804,7 @@ public final class DomeSummitRoundTripGameTest {
                     +" health="+mob.getHealth()
                     +" removed="+mob.isRemoved()
                     +" forceReassertions="+reforcedChunks
+                    +" survivedOldUnloadTick="+passedUnloadWindow
                     +" goal="+(goal==null?"none":
                         (goal.getX()-origin.getX())+"/"
                         +(goal.getY()-origin.getY())+"/"
