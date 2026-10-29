@@ -34,8 +34,8 @@ public final class BuilderConstructionPlanner {
         public boolean alreadyBuilt(){return stance==null&&!needsGrapple;}
     }
     private BuilderConstructionPlanner(){}
-    private static final int MAX_EXAMINED=32;
-    private static final int MAX_FEASIBLE=5;
+    private static final int MAX_EXAMINED=BuilderFrontierTuning.SCAN_LIMIT;
+    private static final int MAX_FEASIBLE=BuilderFrontierTuning.FEASIBLE_LIMIT;
     /** A worker must EVENTUALLY inspect the whole current layer, not
      * repeatedly inspect the same nearest 32 inaccessible cells. This
      * is search progress (not a saved route) and resets on a Y change.
@@ -142,9 +142,9 @@ public final class BuilderConstructionPlanner {
             BlockPos stance,boolean sky,boolean grapple){
         BlockPos reference=stance==null?target:stance;
         return reference.distSqr(worker.blockPosition())
-                +target.distSqr(reference)*.65
-                +(sky?0:12)             // prefer direct skylight
-                +(grapple?24:0);        // never hook if walking works
+                +target.distSqr(reference)*BuilderFrontierTuning.TARGET_WEIGHT
+                +(sky?0:BuilderFrontierTuning.SKY_PENALTY) // favor open sky
+                +(grapple?BuilderFrontierTuning.GRAPPLE_PENALTY:0); // rank valid hook access
     }
 
     /** Human-readable diagnostic in SCHEMATIC-LOCAL XYZ. This never
