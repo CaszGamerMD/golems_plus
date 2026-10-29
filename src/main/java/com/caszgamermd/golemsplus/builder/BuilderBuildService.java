@@ -58,13 +58,6 @@ public final class BuilderBuildService {
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
-    // Equip real descent equipment while the ground-level OnSite depot
-    // is still reachable. Fetch at most once per job; when no hook stock
-    // exists, the Builder may continue rather than stalling construction.
-    private static final Map<BuilderGolem,UUID> accessPrepared=
-            new WeakHashMap<>();
-    private static final Map<BuilderGolem,Long> accessPrefetchDeadline=
-            new WeakHashMap<>();
     private static WorkerAction action(BuilderGolem worker,int index){
         var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
         activity.setStep(index);
@@ -85,15 +78,6 @@ public final class BuilderBuildService {
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null)depot=table.getBlockPos();
         if(BuilderGrappleAccess.rappelToward(level,worker,table,depot))
-            return;
-        // A normal, safe one-block descent may have JUST selected a
-        // precise intermediate tile rather than beginning a hook. Do
-        // not overwrite that trained exact route with a direct request
-        // for the distant depot in the same tick. Its normal waypoint
-        // retry expires automatically; no legacy pathfinder is used.
-        if(worker.blockPosition().getY()>depot.getY()
-                &&com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .retryScheduled(worker))
             return;
         if(worker.distanceToSqr(depot.getX()+.5,depot.getY(),
                 depot.getZ()+.5)>4.0){
@@ -350,40 +334,6 @@ public final class BuilderBuildService {
                     BuilderSiteClearance.tick(level,worker,table,owner,
                             plan.clearing(),plan.steps());
                 return;
-            }
-            // The first safe opportunity to borrow the Grapple Hook is
-            // BEFORE the first structure blocks raise or enclose the crew.
-            // Fetch a REAL hook from OnSite once per job, on real ground,
-            // rather than asking a stranded roof Builder to fetch a hook
-            // from a chest it can no longer reach.
-            UUID currentJob=table.activeOrder();
-            if(currentJob!=null&&!currentJob.equals(
-                    accessPrepared.get(worker))){
-                // Four workers may all request a hook in the same 5-tick
-                // dispatch interval while OnSite is replenished later.
-                // An empty slot on ONE attempt is not proof that no hooks
-                // will be available. Wait a bounded four-second window,
-                // without ever generating tools or bypassing the chest.
-                long deadline=accessPrefetchDeadline.computeIfAbsent(
-                        worker,key->level.getGameTime()+80);
-                var hook=BuilderSupplyInventory.loadGrapple(
-                        level,worker,table);
-                if(hook==BuilderSupplyInventory.LoadStatus.READY){
-                    accessPrepared.put(worker,currentJob);
-                    accessPrefetchDeadline.remove(worker);
-                    System.out.println("[BUILDER ACCESS] "
-                            +worker.getName().getString()
-                            +" collected real Grapple Hook before construction");
-                }else if(level.getGameTime()<deadline)return;
-                else{
-                    accessPrepared.put(worker,currentJob);
-                    accessPrefetchDeadline.remove(worker);
-                    // Optional equipment: after 80 ticks with no stock or
-                    // physically reachable depot, allow ordinary building.
-                    System.out.println("[BUILDER ACCESS] "
-                            +worker.getName().getString()
-                            +" hook unavailable after bounded depot check");
-                }
             }
             // All positions for each X/Z zone were pre-assigned as one
             // immutable ordered execution plan. The Planner does NOT

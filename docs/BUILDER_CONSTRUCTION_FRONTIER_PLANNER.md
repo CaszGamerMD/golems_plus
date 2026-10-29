@@ -69,3 +69,48 @@ can actually execute, including its native short-leg physical handoff.
 Then build a multi-option access planner for cells where the trained
 route has no real safe first leg, rather than claiming an unreachable
 position or allowing any legacy fallback/creative flight.
+
+
+## Follow-up: trained-route parity and exact physical dome trials
+
+**Verified targeted CI:** run 40795734956 passed 25/25 physical GameTests.
+The Builder work-position selector now uses one bounded multi-goal trained
+A* and checks that a real native short leg can execute before claiming
+the stance. It no longer mistakes a native-only exact route for a
+feasible trained work stance. The 3,537-block, four-Builder Dome test
+advanced to **340 real blocks** (run 40795799999).
+
+The physical descent planner was then made to select trained-executable
+one-block drops and grapple ledges rather than native-only attachment
+poses. Focused tests remained 25/25 green (run 40796150132); the Dome
+reached the new **436/3,537** high point (run 40796206822) with
+global Y still locked to 0 and the exact original file.
+
+Further controlled trials:
+- A single-attempt hook prefetch yielded just one equipped Builder
+  due to temporary shared chest stock and **397** real blocks
+  (run 40796697940).
+- A bounded 80-tick startup equipment window equipped **all four**
+  Builders with real OnSite Grapple Hooks, but produced **313** blocks
+  (run 40796999311).
+- Preserving an intermediate trained descent route from being
+  immediately replaced by the OnSite route yielded **307** blocks
+  (run 40797530506).
+- No actual grapple traversal was logged in either all-hooks trial.
+  The blocked current-layer task candidates still often lacked a
+  physically executable path from the builders' elevated Y+1 rim.
+  Additional hooks are therefore NOT a substitute for access geometry.
+
+The startup hook and modified parking experiments were **reverted**;
+their attempts remain in Git history for reproducible comparison.
+The production feature branch and independent dome branch are restored
+to the highest observed **436-block** movement configuration.
+The test still has not completed the first schematic layer.
+
+**Next engineering requirement:** plan physical access before sealing
+narrow Y=0 wall/rim corridors. A reachability-preserving construction
+order or actual material-backed, supported temporary scaffolding/bridge
+must keep at least one verifiable route between each Builder's current
+Y+1 rim and remaining Y=0 work stances, including safe return to OnSite.
+It must honor the existing same-Y construction gate and never cheat
+with creative flight, instant blocks, teleports or pathfinding fallbacks.
