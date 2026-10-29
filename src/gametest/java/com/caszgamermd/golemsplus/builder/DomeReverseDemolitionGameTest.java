@@ -972,17 +972,18 @@ public final class DomeReverseDemolitionGameTest {
                 return null;
             }
             if(BuilderGrappleAccess.active(mob))return null;
-            if(mob.blockPosition().getY()>depot.getY()+2){
-                if(BuilderGrappleAccess.rappelToward(
-                        level,mob,table,depot)){
-                    grapples++;
-                    trace(now,"GRAPPLE_DOWN",depot,
-                            BuilderGrappleAccess.debug(mob));
-                    return null;
-                }
-            }
-            // Terrain changes as dismantling progresses. A natural
-            // 2-block drop should win over grappling whenever feasible.
+            // Returning cargo must be bounded even when a standing-tile
+            // search keeps reissuing a route with tiny forward movement.
+            if(now-lastProgress>5000)
+                return "Physical depot return exceeded timeout"
+                    +" feet="+relative(mob.blockPosition())
+                    +" yAbove="+(mob.blockPosition().getY()-depot.getY())
+                    +" rope="+BuilderGrappleAccess.debug(mob)
+                    +" nav="+WorkerNavigation.debugStatus(mob);
+            // Finish vertical access BEFORE long-distance perimeter legs.
+            // A one-block drop is valid normal movement when trained A*
+            // can execute it; the carried Grapple Hook handles a safe
+            // unsupported ledge when a walking drop cannot be planned.
             if(mob.blockPosition().getY()>depot.getY()){
                 var choices=new ArrayList<BlockPos>();
                 BlockPos at=mob.blockPosition();
@@ -998,12 +999,28 @@ public final class DomeReverseDemolitionGameTest {
                         p->p.distSqr(depot)));
                 BlockPos descent=WorkerNavigation.selectExecutableStand(
                         level,mob,choices.subList(0,Math.min(80,choices.size())));
-                if(descent!=null){
-                    WorkerNavigation.routeToExact(level,mob,descent,1.0);
+                if(descent!=null
+                        &&WorkerNavigation.routeToExact(level,mob,descent,1.0))
+                    return null; // Hold the supported descent until grounded.
+                if(BuilderGrappleAccess.rappelToward(
+                        level,mob,table,depot)){
+                    if(BuilderGrappleAccess.active(mob)){
+                        grapples++;
+                        trace(now,"GRAPPLE_DOWN",depot,
+                                BuilderGrappleAccess.debug(mob));
+                    }else if(now%100==0)
+                        trace(now,"NORMAL_DROP",depot,
+                                WorkerNavigation.debugStatus(mob));
                     return null;
                 }
-                if(BuilderGrappleAccess.rappelToward(
-                        level,mob,table,depot))return null;
+                // An unreachable ground-level chest route may not replace
+                // the still-required vertical descent. Reconsider another
+                // ledge or anchor, but remain physically grounded and safe.
+                if(now%200==0)
+                    trace(now,"NO_SAFE_DESCENT",mob.blockPosition(),
+                            "carried="+carried()+" rope="
+                            +BuilderGrappleAccess.debug(mob));
+                return null;
             }
             // Real depot needs a path to an adjacent STANDING cell, not
             // a repeatedly regenerated A* toward the solid chest block.
