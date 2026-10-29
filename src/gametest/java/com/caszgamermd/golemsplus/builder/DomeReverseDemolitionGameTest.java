@@ -212,6 +212,32 @@ public final class DomeReverseDemolitionGameTest {
                 (start.getX()-origin.getX())+"/"+
                 (start.getY()-origin.getY())+"/"+
                 (start.getZ()-origin.getZ()));
+        // A GameTest fixture advances its own clock even when no real entity
+        // simulation ticket covers a spawned mob. This independent demolition
+        // Golem has no live construction order, so the production job ticket
+        // manager intentionally does not keep it ticking. Prime every dome
+        // chunk and the nearby depot with explicit scoped test tickets.
+        var simulationChunks=new java.util.LinkedHashSet<
+                net.minecraft.world.level.ChunkPos>();
+        simulationChunks.add(new net.minecraft.world.level.ChunkPos(
+                start.getX() >> 4,start.getZ() >> 4));
+        simulationChunks.add(new net.minecraft.world.level.ChunkPos(
+                depot.getX() >> 4,depot.getZ() >> 4));
+        for(int dx=0;dx<=38;dx+=19)for(int dz=0;dz<=38;dz+=19){
+            BlockPos p=origin.offset(dx,0,dz);
+            simulationChunks.add(new net.minecraft.world.level.ChunkPos(
+                    p.getX() >> 4,p.getZ() >> 4));
+        }
+        for(var chunk:simulationChunks)
+            BuilderChunkTickets.holdPhysicalGameTestChunk(world,new BlockPos(
+                    chunk.x << 4,origin.getY(),chunk.z << 4));
+        Runnable releaseSimulation=()->{
+            for(var chunk:simulationChunks)
+                BuilderChunkTickets.releasePhysicalGameTestChunk(world,
+                        new BlockPos(chunk.x << 4,origin.getY(),chunk.z << 4));
+        };
+        System.out.println("[REVERSE SIMULATION] primed "+
+                simulationChunks.size()+" real entity-ticking chunks");
         golem.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         golem.setItem(8,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
         world.addFreshEntity(golem);
@@ -224,9 +250,17 @@ public final class DomeReverseDemolitionGameTest {
             long tick=h.getTick();
             if(!golem.isAlive()){
                 study.writeReports("FAIL lost real golem at tick "+tick);
+                releaseSimulation.run();
                 h.fail("Reverse demolition golem died");return;
             }
             study.observe(tick);
+            if(tick==300 && golem.tickCount<10){
+                study.writeReports("FAIL entity never received simulation ticks");
+                releaseSimulation.run();
+                h.fail("Study entity did not tick: GameTest="+tick
+                        +" mob="+golem.tickCount);
+                return;
+            }
             if(tick%5!=0)return;
             String failure=study.tick(tick);
             if(tick%400==0)
@@ -242,16 +276,19 @@ public final class DomeReverseDemolitionGameTest {
                         +" grounded="+golem.onGround());
             if(failure!=null){
                 study.writeReports("FAIL "+failure);
+                releaseSimulation.run();
                 h.fail(failure+" | "+study.status());return;
             }
             if(study.remaining.isEmpty()){
                 if(study.carried()>0&&!study.finishedUnloading())return;
                 if(study.mined!=3537 || study.deposited!=3537){
                     study.writeReports("FAIL accounting");
+                    releaseSimulation.run();
                     h.fail("Block/item accounting mismatched "+study.status());
                     return;
                 }
                 study.writeReports("SUCCESS original dome fully dismantled");
+                releaseSimulation.run();
                 System.out.println("[REVERSE DOME] PASS real golem removed "
                         +"all 3537 blocks, collected/deposited all; "
                         +study.status());
