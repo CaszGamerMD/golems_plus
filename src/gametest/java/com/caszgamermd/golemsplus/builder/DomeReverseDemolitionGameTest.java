@@ -942,7 +942,11 @@ public final class DomeReverseDemolitionGameTest {
                 trace(now,"RETURN_REPLAN",returnWaypoint,
                         "cannot physically finish leg "+WorkerNavigation.debugStatus(mob));
                 returnDetours++;
-                if(ringAt>=0)ringDirection=-ringDirection;
+                if(returnDetours%6==0){
+                    // A bad perimeter segment must not lock the same
+                    // clockwise/counterclockwise oscillation forever.
+                    ringAt=-1;ringDirection=0;
+                }else if(ringAt>=0)ringDirection=-ringDirection;
                 else ringDirection=0;
                 WorkerNavigation.stop(mob);
                 returnWaypoint=null;
@@ -992,9 +996,17 @@ public final class DomeReverseDemolitionGameTest {
                 }
             }
             returnDetours++;
-            ringDirection=-ringDirection;
-            trace(now,"RETURN_REVERSE",outerRing.get(ringAt),
-                    "blocked physical perimeter leg; reverse direction");
+            BlockPos blocked=outerRing.get(ringAt);
+            if(returnDetours%6==0){
+                ringAt=-1;
+                ringDirection=0;
+                trace(now,"RETURN_REENTER",blocked,
+                        "recompute a new executable exterior entry");
+            }else{
+                ringDirection=-ringDirection;
+                trace(now,"RETURN_REVERSE",blocked,
+                        "blocked physical perimeter leg; reverse direction");
+            }
             return false;
         }
         /** Hook is real equipment with real support and rope clearance;
@@ -1047,6 +1059,7 @@ public final class DomeReverseDemolitionGameTest {
                 trace(now,"UNLOAD",depot,"depot received="+dropped);
                 reset();lastProgress=now;
                 ringAt=-1;ringDirection=0;returnWaypoint=null;
+                returnDetours=0;exitBlock=null;exitMiningAge=0;
                 exploreWaypoint=null;
                 return null;
             }
@@ -1110,7 +1123,10 @@ public final class DomeReverseDemolitionGameTest {
             if(returnDetours>=2
                     ||returnDetours>=1&&now-lastProgress>1400
                     ||now-lastProgress>2200){
-                if(grappleToExit(now))return null;
+                // An upper ledge is not a depot route. Blindly climbing
+                // from ground, then rappelling straight back down the
+                // SAME anchor caused repeated 100+ hook cycles. Reserve
+                // the hook for real work access and necessary descents.
                 if(excavateExit(now))return null;
                 if(now%400==0)
                     trace(now,"NO_EXIT_CLEARANCE",mob.blockPosition(),
@@ -1118,7 +1134,6 @@ public final class DomeReverseDemolitionGameTest {
                             +" nav="+WorkerNavigation.debugStatus(mob));
             }
             if(returnViaOutside(now))return null;
-            if(grappleToExit(now))return null;
             if(now-lastProgress>4200)
                 return "Cannot reach exterior route / depot with carried load"
                     +" ring="+ringAt+" exit="+ringExit
