@@ -975,6 +975,27 @@ public final class DomeReverseDemolitionGameTest {
             if(mob.onGround()&&now-lastProgress>80
                     &&relocateOnUpperDome(now,candidates))
                 return null;
+            // An upper roof can become a dead-end after carefully
+            // removing its support blocks. Once several on-roof stance
+            // searches fail, move down to another grounded shelf and
+            // reapproach (with scaffold if necessary), rather than
+            // standing still forever at the last roof coordinate.
+            // This is a MOVEMENT recovery, never permission to break
+            // a structural support before its lone dependent.
+            if(mob.onGround()&&now-lastProgress>1700
+                    &&now%100==0
+                    &&mob.blockPosition().getY()>depot.getY()+3){
+                boolean moving=BuilderGrappleAccess.rappelToward(
+                        level,mob,table,depot);
+                if(moving||BuilderGrappleAccess.active(mob)){
+                    if(BuilderGrappleAccess.active(mob))grapples++;
+                    trace(now,"REPOSITION_TO_LOWER_SHELF",mob.blockPosition(),
+                            "roof stance exhausted; retry using walking"
+                            +" grapple or scaffold. Pending lone="+priorityLeaf);
+                    repositionUntil=now+170;
+                    return null;
+                }
+            }
             // Ground-only perimeter exploration is useful AFTER reaching
             // the lower layers, not while high roof work is pending.
             if(now-lastProgress>700
