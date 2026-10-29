@@ -302,11 +302,24 @@ public final class DomeSummitRoundTripGameTest {
         final long[] lastEntityAdvance={0};
         h.onEachTick(()->{
             long tick=h.getTick();
-            if(tick%40==0)
-                for(var chunk:simulationChunks)
+            // With concurrent GameTests, another fixture may release a
+            // vanilla forceload on a shared 16x16 chunk. A one-shot
+            // setChunkForced at test startup does NOT survive that release.
+            // Reassert the full physical test lease at a fixed cadence,
+            // before entity ticking and the removal guard below.
+            if(tick%20==0){
+                for(var chunk:simulationChunks){
+                    if(world.setChunkForced(chunk.x(),chunk.z(),true)){
+                        study.reforcedChunks++;
+                        System.out.println("[DOME TEST CHUNK RECOVERED] tick="
+                                +tick+" chunk="+chunk+" reassertions="
+                                +study.reforcedChunks);
+                    }
                     BuilderChunkTickets.holdPhysicalGameTestChunk(world,
                             new BlockPos(chunk.x() << 4,origin.getY(),
                                     chunk.z() << 4));
+                }
+            }
             if(golem.tickCount>lastEntityTick[0]){
                 lastEntityTick[0]=golem.tickCount;
                 lastEntityAdvance[0]=tick;
@@ -388,7 +401,7 @@ public final class DomeSummitRoundTripGameTest {
         Vec3 lastPos;
         BlockPos goal;
         long goalStart,stageStart,lastHeightProgress, lastGoalAttempt;
-        long scans,routeFailures,grappleProbes,anchorMisses;
+        long scans,routeFailures,grappleProbes,anchorMisses,reforcedChunks;
         int maxY,minDescentY,jumps,landings,grappleUps,grappleDowns;
         int levelsUp,levelsDown,lastGroundY;
         boolean hadGround,airborne,jumpedThisFlight,wasRope,ropeMoved,done;
@@ -776,6 +789,7 @@ public final class DomeSummitRoundTripGameTest {
                     +" grounded="+mob.onGround()
                     +" health="+mob.getHealth()
                     +" removed="+mob.isRemoved()
+                    +" forceReassertions="+reforcedChunks
                     +" goal="+(goal==null?"none":
                         (goal.getX()-origin.getX())+"/"
                         +(goal.getY()-origin.getY())+"/"
