@@ -109,10 +109,41 @@ public final class DomeReverseDemolitionGameTest {
                         net.minecraft.core.registries.BuiltInRegistries.BLOCK
                         .getKey(state.getBlock()).toString()))
                     continue;
-                if(!state.canSurvive(world,p))
-                    throw new IllegalStateException(
-                            "Plant has no valid physical footing at "+p
-                            +" below="+world.getBlockState(p.below()));
+                if(!state.canSurvive(world,p)){
+                    // The schematic does not encode the SURROUNDING
+                    // natural terrain at Y=-1. Preserve all original
+                    // dome blocks; only vary the test's OUTSIDE ground
+                    // directly under a plant whose substrate requires
+                    // a different real material (e.g. dead bush/sand).
+                    if(remaining.containsKey(p.below()))
+                        throw new IllegalStateException(
+                                "Schematic plant is unsupported by an "
+                                +"original dome block: "+state+" at "+p);
+                    boolean supported=false;
+                    for(BlockState ground:List.of(
+                            Blocks.DIRT.defaultBlockState(),
+                            Blocks.SAND.defaultBlockState(),
+                            Blocks.RED_SAND.defaultBlockState(),
+                            Blocks.SOUL_SAND.defaultBlockState(),
+                            Blocks.FARMLAND.defaultBlockState(),
+                            Blocks.CLAY.defaultBlockState(),
+                            Blocks.MOSS_BLOCK.defaultBlockState(),
+                            Blocks.NETHERRACK.defaultBlockState(),
+                            Blocks.MUD.defaultBlockState())){
+                        world.setBlock(p.below(),ground,2);
+                        if(state.canSurvive(world,p)){
+                            supported=true;
+                            System.out.println("[REVERSE TERRAIN] "
+                                    +state+" at "+p
+                                    +" requires "+ground+" ground");
+                            break;
+                        }
+                    }
+                    if(!supported)
+                        throw new IllegalStateException(
+                                "No naturally valid terrain for "+state
+                                +" at "+p+" below="+world.getBlockState(p.below()));
+                }
                 if(!world.setBlock(p,state,2))
                     throw new IllegalStateException("Could not prebuild vegetation "+p);
             }
