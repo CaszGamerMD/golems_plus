@@ -186,7 +186,10 @@ public final class BuilderGrappleAccess {
      * climbed onto and later rappelled from. The rope itself still needs
      * an unobstructed AIR column and a physically reachable entry.
      */
-    private static boolean solidTop(ServerLevel world,BlockPos p){
+    // Package-scoped for precise physical-fixture assertions. Testing the
+    // support cell directly avoids confusing a nearby usable anchor with
+    // a bottom slab being accepted.
+    static boolean solidTop(ServerLevel world,BlockPos p){
         if(!world.hasChunkAt(p))return false;
         BlockState state=world.getBlockState(p);
         if(state.getBlock() instanceof SlabBlock){
