@@ -72,11 +72,12 @@ jobs:
           data = json.loads(path.read_text())
           data["entrypoints"]["fabric-gametest"] = [
               "com.caszgamermd.golemsplus.builder.GrappleTopSlabGameTest",
-              "com.caszgamermd.golemsplus.builder.GrappleSwingGapGameTest"
+              "com.caszgamermd.golemsplus.builder.GrappleSwingGapGameTest",
+              "com.caszgamermd.golemsplus.builder.GrappleBottomSlabGameTest"
           ]
           path.write_text(json.dumps(data, indent=2) + "\n")
           PY
-      - name: Verify actual top-slab and unsupported-gap grapples
+      - name: Verify top-slab, bottom-slab and unsupported-gap grapples
         run: gradle --no-daemon runGameTest
       - name: Save standalone grapple GameTest reports
         if: always()
