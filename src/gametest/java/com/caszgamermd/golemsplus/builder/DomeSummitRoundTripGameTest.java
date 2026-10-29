@@ -186,6 +186,21 @@ public final class DomeSummitRoundTripGameTest {
         // preferred over equipment whenever a legal path exists.
         BuilderGolem golem=new BuilderGolem(
                 WorksiteContent.BUILDER_GOLEM,world);
+        // The south-west bounding-box corner is AIR on a circular dome.
+        // Start beside an actual west-facing base block, with real ground
+        // below the Builder, exactly as in the reverse demolition study.
+        BlockPos western=remaining.keySet().stream()
+                .filter(p->p.getY()==origin.getY())
+                .min(Comparator.comparingInt((BlockPos p)->p.getX())
+                    .thenComparingInt(p->Math.abs(
+                            p.getZ()-origin.getZ()-19)))
+                .orElseThrow();
+        BlockPos start=western.west();
+        if(!world.getBlockState(start).isAir()
+                ||!WorkerNavigation.canStandOn(world,golem,start)){
+            h.fail("No physical entry beside the original dome at "+start);
+            return;
+        }
         // A GameTest fixture advances its own clock even when no real entity
         // simulation ticket covers a spawned mob. This independent demolition
         // Golem has no live construction order, so the production job ticket
