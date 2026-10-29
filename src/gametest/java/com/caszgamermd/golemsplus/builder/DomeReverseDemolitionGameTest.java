@@ -308,7 +308,7 @@ public final class DomeReverseDemolitionGameTest {
         final StringBuilder csv=new StringBuilder(
                 "tick,action,localX,localY,localZ,feetX,feetY,feetZ,"
                 +"route,carried,mined,deposited,meters,jumps,drops,grapples\n");
-        BlockPos target,stance;
+        BlockPos target,stance,lastBroken;
         Vec3 previous;
         long lastProgress,lastRouteProgress,lastScanTick;
         int mined,unloads,jumps,drops,grapples,scanOffset,routeFailures;
@@ -453,13 +453,16 @@ public final class DomeReverseDemolitionGameTest {
                         if(item==Items.AIR)return "Block has no collectible "
                                 +expected+" at "+target;
                         if(!roomFor(item)){unloading=true;return null;}
-                        if(!level.getBlockState(target).equals(expected))
-                            return "Unexpectedly changed prebuilt target "+target;
+                        if(level.getBlockState(target).getBlock()!=expected.getBlock())
+                            return "Unexpectedly changed target "+target+
+                                    " expected="+expected+" actual="+level.getBlockState(target)
+                                    +" after last mined="+lastBroken;
                         mob.swing(InteractionHand.MAIN_HAND);
                         if(!level.destroyBlock(target,false,mob))
                             return "Physical block removal failed at "+target;
                         collect(item);
                         remaining.remove(target);
+                        lastBroken=target.immutable();
                         mined++;lastProgress=now;
                         trace(now,"BREAK",target,expected.getBlock().getName().getString());
                         if(mined%32==0)writeReports("IN PROGRESS");
@@ -513,8 +516,15 @@ public final class DomeReverseDemolitionGameTest {
                 scans++;
                 BlockState state=remaining.get(p);
                 if(state==null)continue;
-                if(!level.getBlockState(p).equals(state))
-                    return "Untracked demolition / falling block at "+p;
+                // Walls, panes, fences and other connected blocks may update
+                // their legal connection properties after neighboring blocks
+                // are physically removed. Only a DIFFERENT BLOCK or AIR is
+                // evidence of an untracked break; property changes are normal.
+                BlockState current=level.getBlockState(p);
+                if(current.getBlock()!=state.getBlock())
+                    return "Untracked demolition / falling block at "+p
+                            +" expected="+state+" actual="+current
+                            +" lastBroken="+lastBroken;
                 Item item=state.getBlock().asItem();
                 if(item==Items.AIR)return "No inventory item for "+state;
                 if(!roomFor(item)){unloading=true;return null;}
