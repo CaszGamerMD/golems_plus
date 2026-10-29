@@ -246,8 +246,33 @@ public final class DomeReverseDemolitionGameTest {
         System.out.println("[REVERSE DOME] PREBUILT 3537 original physical blocks;"
                 +" ONE actual Builder; reach=3; jump=1; drop=2; "
                 +"hook for taller elevations; pouch=192; base=(0,0,0)");
+        final int[] lastEntityTick={0};
+        final long[] lastEntityAdvance={0};
         h.onEachTick(()->{
             long tick=h.getTick();
+            // Periodically renew the dedicated GameTest simulation ticket.
+            // Ticket ownership is independent of active Builder jobs.
+            if(tick%40==0)
+                for(var chunk:simulationChunks)
+                    BuilderChunkTickets.holdPhysicalGameTestChunk(world,
+                            new BlockPos(chunk.x() << 4,origin.getY(),
+                                    chunk.z() << 4));
+            if(golem.tickCount>lastEntityTick[0]){
+                lastEntityTick[0]=golem.tickCount;
+                lastEntityAdvance[0]=tick;
+            }
+            if(tick>300&&tick-lastEntityAdvance[0]>200){
+                String stalled="Entity simulation stopped GameTest="+tick
+                        +" mobTicks="+golem.tickCount
+                        +" inWorld="+(world.getEntity(golem.getUUID())==golem)
+                        +" removed="+golem.isRemoved()
+                        +" chunk="+(golem.blockPosition().getX()>>4)+"/"
+                                    +(golem.blockPosition().getZ()>>4)
+                        +" "+study.status();
+                study.writeReports("FAIL "+stalled);
+                releaseSimulation.run();
+                h.fail(stalled);return;
+            }
             if(!golem.isAlive()){
                 study.writeReports("FAIL lost real golem at tick "+tick);
                 releaseSimulation.run();
