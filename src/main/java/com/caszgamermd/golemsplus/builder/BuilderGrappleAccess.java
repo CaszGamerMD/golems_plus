@@ -421,62 +421,65 @@ public final class BuilderGrappleAccess {
         for(int dx=-bestLimit;dx<=bestLimit;dx++)
             for(int dz=-bestLimit;dz<=bestLimit;dz++){
                 if(Math.abs(dx)+Math.abs(dz)>bestLimit)continue;
-                BlockPos anchor=feet.offset(dx,-1,dz);
-                if(!solidTop(level,anchor)||!headroom(level,anchor.above()))
-                    continue;
-                int topY=anchor.getY()+1;
-                for(Direction side:Direction.Plane.HORIZONTAL){
-                    if(rejected(level,worker,anchor,side))continue;
-                    BlockPos column=anchor.relative(side);
-                    if(!headroom(level,column.atY(topY)))continue;
-                    for(int delta=1;delta<=MAX_REACH;delta++){
-                        int landingY=topY-delta;
-                        BlockPos atRopeBottom=column.atY(landingY);
-                        if(!empty(level,atRopeBottom)
-                                ||!empty(level,atRopeBottom.above()))
-                            break; // A real roof/wall blocks the hanging line
-                        if(!lineClear(level,column,landingY,topY))break;
-                        // Best case: the rope ends directly above safe floor.
-                        // Otherwise step from the rope onto a lower shelf
-                        // while STILL ATTACHED. The step is 1 block max
-                        // and is swept-collision checked at the destination.
-                        if(solidTop(level,atRopeBottom.below())){
-                            candidates.add(new Rope(anchor,side,atRopeBottom,
-                                    goal,true,level.getGameTime()));
-                            break;
+                // Full and top slabs are supported at block Y+1.
+                // Bottom slabs are supported at block Y+.5 and can
+                // be approached on their own occupied cell.
+                for(int support=0;support<2;support++){
+                    BlockPos anchor=feet.offset(dx,support==0?-1:0,dz);
+                    boolean half=support==1;
+                    if(half?!bottomSlab(level,anchor):
+                            !solidTop(level,anchor))continue;
+                    if(!landingRoom(level,worker,anchor))continue;
+                    BlockPos ledge=half?anchor:anchor.above();
+                    int highestCell=half?anchor.getY():anchor.getY()+1;
+                    for(Direction side:Direction.Plane.HORIZONTAL){
+                        if(rejected(level,worker,anchor,side))continue;
+                        BlockPos column=anchor.relative(side);
+                        if(!headroom(level,column.atY(highestCell)))continue;
+                        for(int delta=1;delta<=MAX_REACH;delta++){
+                            int landingY=highestCell-delta;
+                            BlockPos ropeFoot=column.atY(landingY);
+                            if(!empty(level,ropeFoot)
+                                    ||!empty(level,ropeFoot.above()))
+                                break;
+                            if(!lineClear(level,column,landingY,highestCell))
+                                break;
+                            if(solidTop(level,ropeFoot.below())){
+                                candidates.add(new Rope(anchor,side,ropeFoot,
+                                        goal,true,level.getGameTime(),
+                                        null,half));
+                                break;
+                            }
+                            boolean foundLowerShelf=false;
+                            for(Direction lip:Direction.Plane.HORIZONTAL){
+                                BlockPos landing=ropeFoot.relative(lip);
+                                if(!clearLowerRopeStep(level,worker,
+                                        ropeFoot,landing))continue;
+                                candidates.add(new Rope(anchor,side,landing,
+                                        goal,true,level.getGameTime(),
+                                        null,half));
+                                foundLowerShelf=true;
+                            }
+                            if(foundLowerShelf)break;
                         }
-                        boolean foundLowerShelf=false;
-                        for(Direction lip:Direction.Plane.HORIZONTAL){
-                            BlockPos landing=atRopeBottom.relative(lip);
-                            if(!clearLowerRopeStep(level,worker,
-                                    atRopeBottom,landing))continue;
-                            candidates.add(new Rope(anchor,side,landing,
-                                    goal,true,level.getGameTime()));
-                            foundLowerShelf=true;
-                        }
-                        if(foundLowerShelf)break;
                     }
                 }
             }
         candidates.sort(Comparator.comparingDouble(r->
-                r.anchor.above().distSqr(feet)*1.25
+                r.ledgeFeet().distSqr(feet)*1.25
                 +r.landing.distSqr(goal)*.7
                 -Math.min(16,feet.getY()-r.landing.getY())*6.0));
-        // Never commit to a rope whose attachment ledge is only native
-        // A*-reachable but not executable under the trained movement
-        // policy. One multi-goal route picks a physically traversable
-        // candidate; otherwise keep trying normal access next tick.
         List<BlockPos> ledges=new ArrayList<>();
         int limit=Math.min(64,candidates.size());
         for(int i=0;i<limit;i++){
-            BlockPos ledge=candidates.get(i).anchor.above();
+            BlockPos ledge=candidates.get(i).ledgeFeet();
             if(!ledges.contains(ledge))ledges.add(ledge);
         }
         BlockPos chosen=WorkerNavigation.selectExecutableStand(
                 level,worker,ledges);
         if(chosen==null)return null;
         for(int i=0;i<limit;i++)
-            if(candidates.get(i).anchor.above().equals(chosen))
+            if(candidates.get(i).ledgeFeet().equals(chosen))
                 return candidates.get(i);
         return null;
     }
@@ -573,15 +576,15 @@ public final class BuilderGrappleAccess {
         for(int i=history.size()-1;i>=0;i--){
             Rope past=history.get(i);
             if(past.down
-                    ||past.anchor.getY()+1!=here.getY()
+                    ||past.ledgeFeet().getY()!=here.getY()
                     ||past.landing.getY()>=here.getY()
                     ||rejected(level,worker,past.anchor,past.side))
                 continue;
-            BlockPos top=past.anchor.above();
+            BlockPos top=past.ledgeFeet();
             BlockPos lower=past.safeStart==null?
                     past.landing:past.safeStart;
-            if(!solidTop(level,past.anchor)
-                    ||!headroom(level,top)
+            if(!validAnchor(level,past)
+                    ||!landingRoom(level,worker,past.anchor)
                     ||!solidTop(level,lower.below())
                     ||!headroom(level,lower)
                     ||!headroom(level,past.landing)
@@ -593,7 +596,7 @@ public final class BuilderGrappleAccess {
                             ||adjacentFloorWalk(level,worker,top)))
                 continue;
             Rope rappel=new Rope(past.anchor,past.side,lower,
-                    returnGoal,true,level.getGameTime());
+                    returnGoal,true,level.getGameTime(),null,past.halfSlab);
             active.put(worker,rappel);
             WorkerNavigation.stop(worker);
             System.out.println("[GRAPPLE] PROVEN REVERSE: top="+top
@@ -710,7 +713,7 @@ public final class BuilderGrappleAccess {
             return false;
         }
         if(r.phase==Phase.WALK_TO_EDGE){
-            BlockPos edge=r.anchor.above();
+            BlockPos edge=r.ledgeFeet();
             if(mob.blockPosition().getY()!=edge.getY()
                     ||Math.abs(mob.getX()-edge.getX()-.5)>.27
                     ||Math.abs(mob.getZ()-edge.getZ()-.5)>.27){
@@ -720,7 +723,7 @@ public final class BuilderGrappleAccess {
                     WorkerNavigation.stop(mob);
                     return false;
                 }
-                if(adjacentFloorWalk(level,mob,edge)){
+                if(!r.halfSlab && adjacentFloorWalk(level,mob,edge)){
                     // Short real grounded movement across a shared floor
                     // when A* cannot start cleanly at the roof rim.
                     double dx=edge.getX()+.5-mob.getX();
@@ -871,7 +874,7 @@ public final class BuilderGrappleAccess {
                 if(Math.abs(mob.getX()-r.anchor.getX()-.5)<.17
                         &&Math.abs(mob.getZ()-r.anchor.getZ()-.5)<.17
                         &&mob.getY()>=r.topY()+.055
-                        &&solidTop(level,r.anchor))
+                        &&validAnchor(level,r))
                     release(mob,r,"RAPPEL RETREATED TO UPPER LEDGE");
             }
             case RAPPEL -> {
