@@ -103,6 +103,134 @@ public final class BuilderEscapeRoute {
         return true;
     }
 
+    /**
+     * A stable corridor shared by up to THREE demolition targets. The
+     * entire group is treated as already absent for every route cell,
+     * footing and headroom position. No prospective target can be used as
+     * an escape platform, regardless of when it is eventually removed.
+     *
+     * These are REAL coordinates, not an alternate Minecraft world; all
+     * other physical collision and footing checks use the live server.
+     * A complete trained A* to a 2+ step refuge is mandatory.
+     */
+    public static List<BlockPos> previewBreakGroup(ServerLevel world,
+            BuilderGolem worker,BlockPos stance,List<BlockPos> targets,
+            boolean atStance){
+        if(world==null||worker==null||stance==null
+                ||!validGroup(world,targets)
+                ||atStance&&(!worker.onGround()
+                        ||!worker.blockPosition().equals(stance))
+                ||!independentGroup(world,worker,stance,targets))
+            return null;
+        List<BlockPos> refuges=new ArrayList<>();
+        for(int dx=-RADIUS;dx<=RADIUS;dx++)
+            for(int dz=-RADIUS;dz<=RADIUS;dz++){
+                int span=Math.max(Math.abs(dx),Math.abs(dz));
+                if(span<MIN_ROUTE_STEPS||span>RADIUS)continue;
+                for(int dy:new int[]{0,-1,1,-2}){
+                    BlockPos refuge=stance.offset(dx,dy,dz);
+                    if(!independentGroup(world,worker,refuge,targets))
+                        continue;
+                    boolean neighbor=false;
+                    for(Direction side:Direction.Plane.HORIZONTAL){
+                        for(int step:new int[]{0,-1,1}){
+                            if(independentGroup(world,worker,
+                                    refuge.relative(side).offset(0,step,0),
+                                    targets)){
+                                neighbor=true;break;
+                            }
+                        }
+                        if(neighbor)break;
+                    }
+                    if(neighbor)refuges.add(refuge);
+                }
+            }
+        refuges.sort(Comparator.comparingDouble(p->p.distSqr(stance)));
+        if(refuges.isEmpty())return null;
+        var route=WorkerRoutePlanner.plan(stance,refuges,
+                p->independentGroup(world,worker,p,targets),
+                p->floor(world,p),null,p->0.0,2);
+        if(route==null||!route.complete()
+                ||route.steps().size()<MIN_ROUTE_STEPS
+                ||!groupPathStillValid(world,worker,stance,
+                        targets,route.steps()))
+            return null;
+        if(atStance&&WorkerNavigation.selectExecutableStand(
+                world,worker,List.of(route.steps().get(0)))==null)
+            return null;
+        return List.copyOf(route.steps());
+    }
+
+    private static boolean validGroup(ServerLevel world,List<BlockPos> targets){
+        if(targets==null||targets.isEmpty()||targets.size()>3)
+            return false;
+        for(int i=0;i<targets.size();i++){
+            BlockPos p=targets.get(i);
+            if(p==null||!world.hasChunkAt(p))return false;
+            for(int j=0;j<i;j++){
+                // At most TWO blocks apart, in actual 3D space, for
+                // every pair (not merely chained via a central member).
+                if(p.equals(targets.get(j))
+                        ||p.distSqr(targets.get(j))>4.0)return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean independentGroup(ServerLevel world,
+            BuilderGolem worker,BlockPos feet,List<BlockPos> targets){
+        if(!world.hasChunkAt(feet)
+                ||!WorkerNavigation.canStandOn(world,worker,feet)
+                ||!Double.isFinite(floor(world,feet)))
+            return false;
+        // Head, body and footing never use the target's volume.
+        for(BlockPos target:targets)
+            if(feet.equals(target)||feet.below().equals(target)
+                    ||feet.above().equals(target))
+                return false;
+        return true;
+    }
+
+    /**
+     * Recheck EXACTLY the cached escape corridor, not a newly chosen
+     * replacement path. Reuse this after every block is removed.
+     * Return false rather than silently switching to an untested route.
+     */
+    public static boolean groupPathStillValid(ServerLevel world,
+            BuilderGolem worker,BlockPos stance,List<BlockPos> targets,
+            List<BlockPos> route){
+        if(world==null||worker==null||stance==null
+                ||!validGroup(world,targets)||route==null
+                ||route.size()<MIN_ROUTE_STEPS
+                ||!independentGroup(world,worker,stance,targets))
+            return false;
+        BlockPos from=stance;
+        for(BlockPos next:route){
+            if(!independentGroup(world,worker,next,targets))
+                return false;
+            int dx=Math.abs(next.getX()-from.getX());
+            int dz=Math.abs(next.getZ()-from.getZ());
+            if(dx>1||dz>1||dx+dz==0)return false;
+            double dy=floor(world,next)-floor(world,from);
+            if(!Double.isFinite(dy)||dy>1.01||dy< -2.01)
+                return false;
+            // A diagonal is legal only with both clear, supported
+            // cardinal corridors and no sudden step height.
+            if(dx==1&&dz==1){
+                if(Math.abs(dy)>.6001)return false;
+                BlockPos sideX=new BlockPos(next.getX(),from.getY(),
+                        from.getZ());
+                BlockPos sideZ=new BlockPos(from.getX(),from.getY(),
+                        next.getZ());
+                if(!independentGroup(world,worker,sideX,targets)
+                        ||!independentGroup(world,worker,sideZ,targets))
+                    return false;
+            }
+            from=next;
+        }
+        return true;
+    }
+
     /** Return the first independent refuge, or null if no complete
      * post-action route was proven. Never accepts a start node that
      * relies on the block that is about to be removed.
