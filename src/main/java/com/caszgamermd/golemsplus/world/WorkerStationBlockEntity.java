@@ -102,6 +102,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.List<UUID> additionalBuilderWorkers=new java.util.ArrayList<>();
     private final java.util.List<UUID> additionalTraderWorkers=new java.util.ArrayList<>();
     private final java.util.Map<UUID,Integer> builderClaims=new java.util.LinkedHashMap<>();
+    // Read-only per-crew trace for interrupted work claims. Not saved as
+    // gameplay state: persistent claims, inventory and retry timestamps
+    // continue to use their existing server-owned data structures.
+    private final java.util.Map<UUID,String> builderClaimDebug=new java.util.HashMap<>();
+    public String builderClaimDebug(UUID worker){
+        return builderClaimDebug.getOrDefault(worker,"no claim history");
+    }
     /** Persistent, disjoint ten-coordinate work orders. No worker must
      * walk to the Planning Table to request an order: the block entity
      * assigns coordinates on the server when a Builder becomes available.
@@ -932,6 +939,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public void beginBuilderZonePlan(){
         if(!isBuilder()||activeOrder==null)return;
         builderClaims.clear();
+        builderClaimDebug.clear();
         builderWorkOrders.clear();
         builderPreparedOrders.clear();
         builderZoned=true;
@@ -1078,6 +1086,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderPreparedOrders.remove(worker);
         }
         builderClaims.put(worker,preferred);
+        builderClaimDebug.put(worker,"claimed #"+preferred
+                +" at "+(level==null?0:level.getGameTime())
+                +" previous="+active);
         sync();
         return preferred;
     }
@@ -1089,6 +1100,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public void waitForBuilderAccess(UUID worker,int step,long tick){
         if(builderClaims.getOrDefault(worker,-1)!=step)return;
         builderClaims.remove(worker);
+        builderClaimDebug.put(worker,"deferred #"+step
+                +" at "+tick+" retryAt="+(tick+60));
         builderMissingRetries.put(step,tick+60);
         setChanged();
     }
