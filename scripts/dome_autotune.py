@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -158,7 +159,32 @@ def choose_candidate(best, previous, trials):
     return None
 
 
+def reset_generated_test_world():
+    """Isolate runs: a previous candidate must never leave physical blocks
+    in a later candidate's world or inflate the measured block count.
+    Only the generated CI GameTest world's folder is removed.
+    """
+    run_dir = Path("build/run/gameTest")
+    properties = run_dir / "server.properties"
+    level_name = "world"
+    if properties.is_file():
+        for line in properties.read_text(errors="replace").splitlines():
+            if line.startswith("level-name="):
+                level_name = line.split("=", 1)[1].strip()
+                break
+    if not level_name or Path(level_name).name != level_name or level_name in (".", ".."):
+        raise RuntimeError("Unsafe generated GameTest level-name: " + repr(level_name))
+    for candidate in (level_name, level_name + "_nether", level_name + "_the_end"):
+        folder = run_dir / candidate
+        if folder.is_symlink():
+            raise RuntimeError("Refusing to remove linked generated GameTest world")
+        if folder.is_dir():
+            shutil.rmtree(folder)
+            print("Reset previous generated GameTest world:", folder, flush=True)
+
+
 def run_trial(settings, report, timeout):
+    reset_generated_test_world()
     env = dict(os.environ)
     env.update(settings)
     env["GOLEMS_DOME_TRAINING"] = "1"
@@ -246,7 +272,7 @@ def main():
         save_state(state)
     summary = [
         "## Physical Dome Autotune",
-        f"- Source branch SHA: \`{source_sha}\`",
+        f"- Source branch SHA: `{source_sha}`",
         f"- Completed real GameTest trials: **{len(completed)}**",
     ]
     if state.get("best"):
@@ -254,7 +280,7 @@ def main():
         summary += [
             f"- Best verified physical result: **{best['real_blocks']}/{TOTAL}** "
             f"(Y={best['active_y']})",
-            f"- Best bounded heuristic settings: \`{json.dumps(best['settings'], sort_keys=True)}\`",
+            f"- Best bounded heuristic settings: `{json.dumps(best['settings'], sort_keys=True)}`",
         ]
     summary += ["- Never merges or edits main gameplay code automatically.",
                 "- Detailed verified trial logs are in the workflow artifact.",
