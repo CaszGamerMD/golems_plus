@@ -302,7 +302,7 @@ public final class BuilderConstructionPlanner {
             if(stance==null
                     &&target.getY()-worker.blockPosition().getY()>1
                     &&worker.carriedCount(WorksiteContent.GRAPPLE_HOOK)>0
-                    &&BuilderGrappleAccess.canPlanAscent(world,worker,target))
+                    &&BuilderGrappleAccess.canPlanWorkAscent(world,worker,target))
                 grapple=true;
             if(stance==null&&!grapple)continue;
             boolean sky=stance==null

@@ -531,9 +531,13 @@ public final class BuilderBuildService {
             }
             // PLAN B: physical Grapple Hook up to 20 blocks, never a
             // scaffold/flying/teleport fallback. Ordinary slopes use A*.
+            // A released rope leaves feet slightly above the ledge until
+            // gravity settles them. Do not reject a route or abandon the
+            // claim from that transient airborne start.
+            if(!worker.onGround())return;
             int yDiff=pos.getY()-worker.blockPosition().getY();
             if(yDiff>1){
-                var access=BuilderGrappleAccess.reach(level,worker,table,pos);
+                var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
                 if(access==BuilderGrappleAccess.Result.NEED_HOOK){
                     table.setProblem("Builder needs a Grapple Hook in OnSite Storage");
                     return;
@@ -575,7 +579,7 @@ public final class BuilderBuildService {
                     return;
                 }
                 if(yDiff>0){
-                    var access=BuilderGrappleAccess.reach(level,worker,table,pos);
+                    var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
                     if(access==BuilderGrappleAccess.Result.NEED_HOOK)
                         table.setProblem("Builder needs a Grapple Hook");
                     else if(access==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR){

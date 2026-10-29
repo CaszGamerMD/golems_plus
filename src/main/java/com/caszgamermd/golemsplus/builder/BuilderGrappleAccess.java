@@ -216,10 +216,15 @@ public final class BuilderGrappleAccess {
      */
     private static Rope chooseAscent(ServerLevel level,BuilderGolem worker,
             BlockPos goal){
+        return chooseAscent(level,worker,goal,unused->true);
+    }
+    private static Rope chooseAscent(ServerLevel level,BuilderGolem worker,
+            BlockPos goal,java.util.function.Predicate<BlockPos> usableLanding){
         int startY=worker.blockPosition().getY();
         if(goal.getY()-startY>MAX_REACH||goal.getY()-startY<2)return null;
         List<Rope> candidates=new ArrayList<>();
         for(BlockPos anchor:solidAnchors(level,goal)){
+            if(!usableLanding.test(anchor.above()))continue;
             for(Direction side:Direction.Plane.HORIZONTAL){
                 if(rejected(level,worker,anchor,side))continue;
                 BlockPos column=anchor.relative(side);
@@ -337,6 +342,62 @@ public final class BuilderGrappleAccess {
             BuilderGolem worker,BlockPos target){
         return hasHook(worker)&&!active.containsKey(worker)
                 &&chooseAscent(level,worker,target)!=null;
+    }
+
+    /** A construction ascent must end on terrain connected to a SAFE work
+     * pose. A sturdy anchor alone can be an isolated pedestal, or put the
+     * worker too close to its target to satisfy the 0.8m placement margin.
+     */
+    private static Rope chooseWorkAscent(ServerLevel level,BuilderGolem worker,
+            BlockPos target){
+        List<BlockPos> poses=new ArrayList<>();
+        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+            for(int dy:new int[]{0,1}){
+                BlockPos at=target.offset(dx,dy,dz);
+                double ex=Math.max(0,Math.abs(dx)-.5);
+                double ez=Math.max(0,Math.abs(dz)-.5);
+                if(Math.hypot(ex,ez)<BuilderPlacementSpace.MIN_EDGE_CLEARANCE
+                        ||!WorkerNavigation.canStandOn(level,worker,at)
+                        ||!BuilderConstructionPlanner.safeStand(
+                                level,worker,target,at))continue;
+                poses.add(at);
+            }
+        // Check both permitted feet levels. The upper work platform may
+        // be the only usable route even though the target is one layer down.
+        for(int dy:new int[]{0,1}){
+            Rope route=chooseAscent(level,worker,target.above(dy),
+                    landing->WorkerNavigation.hasGroundRouteFrom(
+                            level,worker,landing,poses));
+            if(route!=null)return route;
+        }
+        return null;
+    }
+    public static boolean canPlanWorkAscent(ServerLevel level,
+            BuilderGolem worker,BlockPos target){
+        return hasHook(worker)&&!active.containsKey(worker)
+                &&chooseWorkAscent(level,worker,target)!=null;
+    }
+    public static Result reachWork(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos target){
+        if(active.containsKey(worker)||!worker.onGround())return Result.MOVING;
+        // Probe actual work poses before equipment. Never use an adjacent
+        // target tile as evidence of valid work access.
+        BlockPos pose=BuilderPlacementSpace.approachWithRules(level,worker,
+                target,at->BuilderConstructionPlanner.safeStand(
+                        level,worker,target,at));
+        if(pose!=null&&WorkerNavigation.routeToExact(level,worker,pose,1.0))
+            return Result.MOVING;
+        if(!hasHook(worker)){
+            return switch(BuilderSupplyInventory.loadGrapple(level,worker,table)){
+                case READY,MOVING->Result.MOVING;
+                case MISSING->Result.NEED_HOOK;
+            };
+        }
+        Rope route=chooseWorkAscent(level,worker,target);
+        if(route==null)return Result.NO_SAFE_ANCHOR;
+        active.put(worker,route);
+        WorkerNavigation.routeToExact(level,worker,route.landing,1.0);
+        return Result.MOVING;
     }
 
     /** Called when construction requires higher feet. Ordinary jumps and

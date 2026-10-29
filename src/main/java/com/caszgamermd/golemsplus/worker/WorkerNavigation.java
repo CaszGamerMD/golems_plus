@@ -454,6 +454,19 @@ public final class WorkerNavigation {
                 at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
     }
 
+    /** Geometry-only preview from a prospective grounded grapple landing.
+     * Does not relocate the entity or invoke native movement from fake feet.
+     * Execution still revalidates the actual first leg after dismounting.
+     */
+    public static boolean hasGroundRouteFrom(ServerLevel level,
+            PathfinderMob mob,BlockPos start,List<BlockPos> goals){
+        if(!standingTile(level,mob,start)||goals.isEmpty())return false;
+        var route=WorkerRoutePlanner.plan(start,goals,
+                at->standingTile(level,mob,at),at->floorAt(level,at),null,
+                at->trainedTerrainCost(level,at));
+        return route!=null&&route.complete();
+    }
+
     /** Read-only reason why the trained work selector cannot start. */
     public static String diagnoseExecutableStand(ServerLevel level,
             PathfinderMob mob,List<BlockPos> candidates){
