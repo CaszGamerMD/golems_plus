@@ -419,6 +419,8 @@ public final class BuilderPlacementSpace {
                 +" candidates="+geometryCount+" exactRoutes="+routedCount
                 +" trainedExecutable="+(WorkerNavigation.selectExecutableStand(
                     level,worker,executableCandidates)!=null)
+                +" trainedReason="+WorkerNavigation.diagnoseExecutableStand(
+                    level,worker,executableCandidates)
                 +" badPose="+liveBad;
     }
 
