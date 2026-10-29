@@ -97,17 +97,19 @@ public final class BuilderGrappleAccess {
                 }
         landings.sort(Comparator.comparingDouble(p->
                 p.distSqr(origin)+p.distSqr(goal)*.05));
-        int probes=0;
-        for(BlockPos landing:landings){
-            if(++probes>64)break;
-            if(!WorkerNavigation.canReachExact(level,mob,landing))
-                continue;
-            if(!WorkerNavigation.routeToExact(level,mob,landing,1.0))
-                continue;
+        // A native path to an adjacent lower tile is not evidence that
+        // the trained navigator can execute the first step. Preview up
+        // to 96 eligible lower standing tiles with ONE trained A*,
+        // including native short-waypoint verification, then physically
+        // walk toward the selected safe drop. A grapple is Plan B.
+        BlockPos selected=WorkerNavigation.selectExecutableStand(
+                level,mob,landings.subList(0,Math.min(96,landings.size())));
+        if(selected!=null
+                &&WorkerNavigation.routeToExact(level,mob,selected,1.0)){
             normalDrops.put(mob,new NormalDrop(goal.immutable(),
-                    landing.immutable(),level.getGameTime()+100));
-            System.out.println("[GRAPPLE] NORMAL ONE-BLOCK STEP DOWN "
-                    +"via="+landing+" instead of hook to "+goal);
+                    selected.immutable(),level.getGameTime()+100));
+            System.out.println("[GRAPPLE] TRAINED ONE-BLOCK STEP DOWN "
+                    +"via="+selected+" instead of hook to "+goal);
             return true;
         }
         nextDropSearch.put(mob,now+40);
@@ -277,13 +279,22 @@ public final class BuilderGrappleAccess {
         candidates.sort(Comparator.comparingDouble(r->
                 r.anchor.above().distSqr(feet)*1.25
                 +r.landing.distSqr(goal)*.7));
-        int tried=0;
-        for(Rope candidate:candidates){
-            if(++tried>35)break;
-            BlockPos ledge=candidate.anchor.above();
-            if(ledge.equals(feet)||WorkerNavigation.canReachExact(
-                    level,worker,ledge))return candidate;
+        // Never commit to a rope whose attachment ledge is only native
+        // A*-reachable but not executable under the trained movement
+        // policy. One multi-goal route picks a physically traversable
+        // candidate; otherwise keep trying normal access next tick.
+        List<BlockPos> ledges=new ArrayList<>();
+        int limit=Math.min(64,candidates.size());
+        for(int i=0;i<limit;i++){
+            BlockPos ledge=candidates.get(i).anchor.above();
+            if(!ledges.contains(ledge))ledges.add(ledge);
         }
+        BlockPos chosen=WorkerNavigation.selectExecutableStand(
+                level,worker,ledges);
+        if(chosen==null)return null;
+        for(int i=0;i<limit;i++)
+            if(candidates.get(i).anchor.above().equals(chosen))
+                return candidates.get(i);
         return null;
     }
     /** A direct, collision-checked trained ground route always outranks
