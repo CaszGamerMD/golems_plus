@@ -2,24 +2,84 @@ name: Dome Autotune — Physical Golem Navigation
 run-name: "Dome autotune: up to five physical GameTests"
 on:
   schedule:
-    # GitHub cron executes on the DEFAULT branch only; not ChatGPT Work.
-    - cron: '23 * * * *'
+    # GitHub schedules are best-effort. Check four times an hour, but the
+    # lightweight due gate permits one substantial session per ~hour.
+    # Offset from minute 0 to avoid GitHub's busiest scheduling boundary.
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      # Bootstrap a first training run when this scheduler is installed.
+      # Resync GitHub's scheduler and bootstrap a run when edited.
       - '.github/workflows/dome-autotune-scheduled.yml'
 
 permissions:
-  contents: write  # Save experiment scores ONLY on isolated training branch.
+  contents: write  # Save scores ONLY on the isolated training state branch.
 
 concurrency:
   group: golems-plus-physical-dome-autotune
   cancel-in-progress: false
 
 jobs:
+  check-due:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      due: ${{ steps.gate.outputs.due }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Gate scheduled runs using persisted last successful training session
+        id: gate
+        shell: bash
+        env:
+          TRIGGER: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          # Manual requests and workflow edits always execute once.
+          if [[ "$TRIGGER" != "schedule" ]]; then
+            echo "due=true" >> "$GITHUB_OUTPUT"
+            echo "Explicit bootstrap/manual trigger: training due."
+            exit 0
+          fi
+          # A missing/unreadable state must not permanently stop training.
+          if ! git fetch -q --no-tags origin refs/heads/training/dome-autotune-state-262; then
+            echo "due=true" >> "$GITHUB_OUTPUT"
+            echo "No prior state; training due."
+            exit 0
+          fi
+          if ! git show FETCH_HEAD:dome-training/state.json > "$RUNNER_TEMP/dome-training-state.json"; then
+            echo "due=true" >> "$GITHUB_OUTPUT"
+            echo "No readable prior session; training due."
+            exit 0
+          fi
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          from pathlib import Path
+          try:
+              saved = json.loads(
+                  (Path(os.environ["RUNNER_TEMP"]) / "dome-training-state.json").read_text()
+              )
+              last = dt.datetime.fromisoformat(saved["last_session"])
+              if last.tzinfo is None:
+                  raise ValueError("missing timezone")
+              age = (dt.datetime.now(dt.timezone.utc) - last).total_seconds()
+              due = age >= 50 * 60 or age < 0
+              print(f"Previous completed session: {round(age / 60, 1)} minutes ago. Due: {due}")
+          except (KeyError, ValueError, TypeError, OSError) as exc:
+              print(f"Cannot verify fresh session ({exc}); running instead.")
+              due = True
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"due={str(due).lower()}\n")
+          PY
+
   tune-dome:
+    needs: check-due
+    if: needs.check-due.outputs.due == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
