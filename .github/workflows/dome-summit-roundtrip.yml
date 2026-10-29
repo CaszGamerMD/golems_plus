@@ -242,3 +242,41 @@ jobs:
             build/gametest/
             build/test-results/
             build/reports/
+
+  shared-escape-batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Isolate shared safe point experiment
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("src/gametest/resources/fabric.mod.json")
+          data = json.loads(path.read_text())
+          data["entrypoints"]["fabric-gametest"] = [
+              "com.caszgamermd.golemsplus.builder.BuilderSharedEscapeBatchGameTest"
+          ]
+          path.write_text(json.dumps(data, indent=2) + "\n")
+          PY
+      - name: Verify three nearby blocks share exactly the same safe escape
+        run: gradle --no-daemon runGameTest
+      - name: Save group work point and escape logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-three-target-escape-regressions
+          if-no-files-found: warn
+          path: |
+            build/run/gameTest/logs/
+            build/gametest/
+            build/test-results/
+            build/reports/
