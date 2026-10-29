@@ -1104,15 +1104,15 @@ public final class DomeReverseDemolitionGameTest {
             // Real depot needs a path to an adjacent STANDING cell, not
             // a repeatedly regenerated A* toward the solid chest block.
             if(depotApproach(now))return null;
-            if(returnViaOutside(now)){
-                // If the same exterior route repeatedly times out, start
-                // excavation rather than selecting it forever.
-                if(returnDetours>=3 && returnWaypoint==null
-                        &&excavateExit(now))return null;
-                return null;
+            // Recover from a repeatedly impossible corridor BEFORE
+            // starting another identical perimeter leg. Only a grounded
+            // physical Golem with visible schematic blocks can excavate.
+            if(returnDetours>=3){
+                if(grappleToExit(now))return null;
+                if(excavateExit(now))return null;
             }
+            if(returnViaOutside(now))return null;
             if(grappleToExit(now))return null;
-            if(returnDetours>=3&&excavateExit(now))return null;
             if(now-lastProgress>4200)
                 return "Cannot reach exterior route / depot with carried load"
                     +" ring="+ringAt+" exit="+ringExit
