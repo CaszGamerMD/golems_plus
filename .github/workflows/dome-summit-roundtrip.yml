@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - test/dome-summit-roundtrip-262
+  pull_request:
+    branches:
+      - test/dome-vertical-movement-audit-262
   workflow_dispatch:
 
 permissions:
