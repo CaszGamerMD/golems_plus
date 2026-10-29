@@ -396,6 +396,8 @@ public final class DomeReverseDemolitionGameTest {
                 "tick,action,localX,localY,localZ,feetX,feetY,feetZ,"
                 +"route,carried,mined,deposited,meters,jumps,drops,grapples\n");
         BlockPos target,stance,lastBroken,exitBlock,priorityLeaf;
+        BuilderSharedDemolitionPlan.Batch sharedBatch;
+        int batchIndex,sharedBatches,sharedBreaks,sharedAborts;
         int loneSupportsDeferred,loneLeavesMined;
         int exitMiningAge,exitBreaks;
         // Adaptive physical return route; never a recorded path or teleport.
@@ -570,6 +572,16 @@ public final class DomeReverseDemolitionGameTest {
         void reset(){
             target=null;stance=null;miningAge=0;targetSelectedAt=0;
             closestDistance=Double.POSITIVE_INFINITY;
+            sharedBatch=null;batchIndex=0;
+        }
+        void abandonSharedBatch(long now,String cause){
+            if(sharedBatch!=null){
+                sharedAborts++;
+                trace(now,"SHARED_ROUTE_INVALID",mob.blockPosition(),
+                        cause+" shared="+relative(sharedBatch.stance())
+                        +" refuge="+relative(sharedBatch.safePoint()));
+            }
+            reset();
         }
         /** Recalculate legal standable block positions AFTER roof removal.
          * Never use the stale immutable prebuilt dome footing list while
@@ -725,9 +737,24 @@ public final class DomeReverseDemolitionGameTest {
                         +" relocations="+relocations+" routes="+routeFailures
                         +" nav="+WorkerNavigation.debugStatus(mob);
             if(target!=null){
+                // A batch may ONLY work from its proven shared stance;
+                // reaching one card/block from another nearby spot does
+                // not prove the cached three-block escape corridor.
+                if(sharedBatch!=null
+                        &&mob.onGround()
+                        &&mob.blockPosition().equals(sharedBatch.stance())
+                        &&!BuilderEscapeRoute.groupPathStillValid(
+                                level,mob,sharedBatch.stance(),
+                                sharedBatch.targets(),sharedBatch.escape())){
+                    abandonSharedBatch(now,"exact reserved exit changed");
+                    return null;
+                }
                 // A mining action requires grounded REAL reach and an
                 // unobstructed line; never harvest remotely or behind walls.
-                if(mob.onGround()&&visibleEye(mob.getEyePosition(),target)){
+                if(mob.onGround()&&visibleEye(mob.getEyePosition(),target)
+                        &&(sharedBatch==null
+                            ||mob.blockPosition().equals(
+                                    sharedBatch.stance()))){
                     miningAge+=5;
                     if(miningAge>=MINING_TICKS){
                         BlockState expected=remaining.get(target);
@@ -746,6 +773,17 @@ public final class DomeReverseDemolitionGameTest {
                         BlockPos safeExit=BuilderEscapeRoute.preview(
                                 level,mob,target,
                                 BuilderEscapeRoute.Action.BREAK);
+                        // Check the SAME previously reserved safe path
+                        // for every member; no last-second new route.
+                        if(sharedBatch!=null
+                                &&!BuilderEscapeRoute.groupPathStillValid(
+                                    level,mob,sharedBatch.stance(),
+                                    sharedBatch.targets(),
+                                    sharedBatch.escape())){
+                            abandonSharedBatch(now,
+                                    "post-change route cannot be preserved");
+                            return null;
+                        }
                         if(safeExit==null){
                             BlockPos unsafe=target;
                             noEscapeDeferrals++;
@@ -774,6 +812,9 @@ public final class DomeReverseDemolitionGameTest {
                             return null;
                         }
                         boolean wasPriority=target.equals(priorityLeaf);
+                        BuilderSharedDemolitionPlan.Batch completedBatch=
+                                sharedBatch;
+                        int completedIndex=batchIndex;
                         mob.swing(InteractionHand.MAIN_HAND);
                         if(!level.destroyBlock(target,false,mob))
                             return "Physical block removal failed at "+target;
@@ -799,7 +840,38 @@ public final class DomeReverseDemolitionGameTest {
                                     +" remaining="+remaining.size()
                                     +" feet="+relative(mob.blockPosition()));
                         trace(now,"BREAK",target,expected.getBlock().getName().getString());
+                        if(completedBatch!=null)sharedBreaks++;
                         if(mined%32==0)writeReports("IN PROGRESS");
+                        if(completedBatch!=null
+                                &&completedIndex+1<completedBatch.targets().size()
+                                &&mob.onGround()
+                                &&mob.blockPosition().equals(completedBatch.stance())
+                                &&BuilderEscapeRoute.groupPathStillValid(
+                                        level,mob,completedBatch.stance(),
+                                        completedBatch.targets(),
+                                        completedBatch.escape())){
+                            BlockPos next=completedBatch.targets().get(
+                                    completedIndex+1);
+                            BlockState nextState=remaining.get(next);
+                            if(nextState!=null
+                                    &&visibleEye(mob.getEyePosition(),next)
+                                    &&(nextState.getBlock().asItem()==Items.AIR
+                                        ||roomFor(nextState.getBlock().asItem()))
+                                    &&BuilderDemolitionOrder.loneBlockFirst(
+                                            level,remaining,next)==null){
+                                reset();
+                                sharedBatch=completedBatch;
+                                batchIndex=completedIndex+1;
+                                target=next;stance=completedBatch.stance();
+                                targetSelectedAt=now;
+                                lastRouteProgress=now;
+                                trace(now,"SHARED_NEXT",next,
+                                        "index="+batchIndex
+                                        +" safe="+relative(
+                                                completedBatch.safePoint()));
+                                return null;
+                            }
+                        }
                         reset();
                     }
                     return null;
@@ -941,6 +1013,42 @@ public final class DomeReverseDemolitionGameTest {
                     noEscapeDeferrals++;
                     excludedUntil.put(p,now+180);
                     continue;
+                }
+                // Experimental three-target work package. All targets
+                // are pairwise <=2 blocks apart, visible from THIS
+                // one stance at real <=3-block interaction reach, and
+                // share a complete escape route excluding ALL targets.
+                List<BlockPos> nearby=new ArrayList<>();
+                for(BlockPos q:remaining.keySet())
+                    if(q.distSqr(p)<=4.0
+                            &&q.getY()<=p.getY()
+                            &&q.getY()>=p.getY()-2
+                            &&nearby.size()<28)nearby.add(q);
+                nearby.sort(Comparator
+                        .comparingDouble((BlockPos q)->q.distSqr(choice))
+                        .thenComparingInt((BlockPos q)->-q.getY()));
+                // Don't overfill the 192-item demolition bundle during
+                // a batch; one actual block costs at most one unit.
+                final int spare=Math.max(0,CAPACITY-carried());
+                final BlockPos shared=choice;
+                final BlockPos seed=p;
+                var batch=BuilderSharedDemolitionPlan.select(
+                        level,mob,shared,seed,remaining,nearby,
+                        q->visible(shared,q),
+                        q->excludedUntil.getOrDefault(q,0L)<=now
+                            &&(q.equals(seed)||spare>=3)
+                            &&(remaining.get(q).getBlock().asItem()==Items.AIR
+                                ||roomFor(remaining.get(q).getBlock().asItem())),
+                        mob.onGround()&&mob.blockPosition().equals(shared));
+                sharedBatch=batch;batchIndex=0;
+                if(batch!=null){
+                    sharedBatches++;
+                    p=batch.targets().get(0);
+                    trace(now,"SHARED_SAFE_POINT",shared,
+                            "group="+batch.targets().size()
+                            +" refuge="+relative(batch.safePoint())
+                            +" targets="+batch.targets().stream()
+                                .map(this::relative).toList());
                 }
                 target=p;stance=choice;lastRouteProgress=now;
                 targetSelectedAt=now;
@@ -1565,6 +1673,9 @@ public final class DomeReverseDemolitionGameTest {
                     +" noEscapeDeferrals="+noEscapeDeferrals
                     +" loneSupportsDeferred="+loneSupportsDeferred
                     +" loneLeavesMined="+loneLeavesMined
+                    +" sharedBatches="+sharedBatches
+                    +" sharedBreaks="+sharedBreaks
+                    +" sharedAborts="+sharedAborts
                     +" priorityLeaf="+(priorityLeaf==null?
                             "none":relative(priorityLeaf))
                     +" scaffolds="+scaffold.placed()
