@@ -1045,16 +1045,38 @@ public final class WorkerNavigation {
                 ||!mob.onGround()||mob.isNoGravity()
                 ||next==null||!standingTile(level,mob,next))return false;
         BlockPos at=mob.blockPosition();
-        if(Math.abs(at.getX()-next.getX())+
-                Math.abs(at.getZ()-next.getZ())!=1
+        int dxBlocks=Math.abs(at.getX()-next.getX());
+        int dzBlocks=Math.abs(at.getZ()-next.getZ());
+        // One-cell angular movement is physically legal; forbid
+        // arbitrary long jumps. A diagonal ONE-BLOCK DOWN step can be
+        // safe even when neither cardinal side has a centered waypoint.
+        if(dxBlocks>1||dzBlocks>1||dxBlocks+dzBlocks==0
                 ||Math.abs(at.getY()-next.getY())>1)return false;
+        boolean diagonal=dxBlocks==1&&dzBlocks==1;
         double floor=floorAt(level,next);
         double delta=floor-mob.getY();
         // A* already proves one-block supported rises and drops. The
         // fallback must use the golem's REAL one-block jump rather than
         // discarding these legal detours as physically impossible.
         // 1.5-block walls remain excluded by the actual collision height.
-        if(!Double.isFinite(delta)||Math.abs(delta)>1.01)return false;
+        if(!Double.isFinite(delta)||Math.abs(delta)>1.01
+                ||diagonal&&delta>.6001)return false;
+        if(diagonal&&delta>=-.6001){
+            // For level or half-slab diagonals, the swept BODY alone is
+            // not enough: require both orthogonal corridors to have
+            // compatible real footing. This mirrors the A* corner rule.
+            BlockPos sideX=at.offset(next.getX()-at.getX(),0,0);
+            BlockPos sideZ=at.offset(0,0,next.getZ()-at.getZ());
+            if(!standingTile(level,mob,sideX)
+                    ||!standingTile(level,mob,sideZ)
+                    ||Math.abs(floorAt(level,sideX)-mob.getY())>.6001
+                    ||Math.abs(floorAt(level,sideZ)-mob.getY())>.6001)
+                return false;
+        }
+        // For a diagonal downward step with a clear landing one block
+        // lower, gravity performs the drop. Check the full swept
+        // bounding box at the HIGHER floor to avoid clipping the
+        // corners of intervening walls or slabs.
         // No diagonal corner-cutting, no leap across air. Both supported
         // ends have already been checked; sample the full collision width
         // at the higher surface. The real step-rise/drop is executed by

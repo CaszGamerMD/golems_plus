@@ -134,6 +134,44 @@ public final class BuilderCornerRejoinGameTest {
         });
     }
 
+    /** The dome roof sometimes requires a diagonal one-block descent
+     * from an offset edge before returning upward around architecture.
+     * Confirm the descent is a real gravity-and-collision movement.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=500,skyAccess=true)
+    public void diagonallyDescendsOntoRealSupport(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=3;x<=11;x++)for(int z=3;z<=11;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        for(int x=4;x<=6;x++)for(int z=4;z<=6;z++)
+            h.setBlock(x,2,z,Blocks.STONE);
+        for(int x=4;x<=11;x++)for(int z=4;z<=11;z++)
+            for(int y=3;y<=5;y++)h.setBlock(x,y,z,Blocks.AIR);
+        BlockPos start=h.absolutePos(new BlockPos(6,3,6));
+        BlockPos lower=h.absolutePos(new BlockPos(7,2,7));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.7,start.getY(),start.getZ()+.7);
+        world.addFreshEntity(mob);
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.isNoGravity()
+                    ||mob.getY()<lower.getY()-.11){
+                h.fail("Diagonal descent fell below valid landing "
+                        +mob.position());return;
+            }
+            if(h.getTick()>12&&h.getTick()%5==0)
+                WorkerNavigation.routeToExact(world,mob,lower,1.0);
+            if(mob.onGround()&&mob.distanceToSqr(
+                    lower.getX()+.5,lower.getY(),lower.getZ()+.5)<.14){
+                System.out.println("[ANGLED DESCENT] PASS real one-block "
+                        +"diagonal drop in "+h.getTick()+" game ticks");
+                h.succeed();return;
+            }
+            if(h.getTick()>455)h.fail("Diagonal descent stalled "
+                    +mob.position()+" "+WorkerNavigation.debugStatus(mob));
+        });
+    }
+
     /** A face-aligned step is required when the worker approaches a
      * one-block-tall platform from its diagonal CORNER. It must first
      * reach a legal side, then make a normal one-block jump, and arrive
