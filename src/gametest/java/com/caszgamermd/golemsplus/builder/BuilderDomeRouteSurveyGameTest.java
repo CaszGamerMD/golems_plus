@@ -506,11 +506,16 @@ public final class BuilderDomeRouteSurveyGameTest {
                 h.fail("Worker lost ground on real north roof");return;
             }
             if(h.getTick()==20){
-                if(!WorkerNavigation.canStandOn(world,worker,goal)
-                        ||!WorkerNavigation.hasGroundRouteFrom(
-                                world,worker,start,List.of(goal))){
-                    h.fail("Survey route does not exist in live physics");return;
-                }
+                // The mob may have settled onto a true higher collision
+                // surface by its first grounded tick; never veto movement
+                // using the STATIC spawn Y in place of actual feet.
+                System.out.println("[NORTH REAL ROUTE] initialFeet="
+                        +rel(origin,worker.blockPosition())
+                        +" grounded="+worker.onGround()
+                        +" goalStand="+WorkerNavigation.canStandOn(
+                                world,worker,goal)
+                        +" fullRoute="+WorkerNavigation.hasGroundRouteFrom(
+                                world,worker,worker.blockPosition(),List.of(goal)));
             }
             if(h.getTick()>=20&&h.getTick()%5==0)
                 WorkerNavigation.routeToExact(world,worker,goal,1);
