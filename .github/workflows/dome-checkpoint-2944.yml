@@ -1,0 +1,50 @@
+name: Dome 2944-block playable checkpoint
+on:
+  push:
+    branches: [build/dome-checkpoint-2944-262]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Build playable JAR and run unit tests
+        run: gradle --no-daemon test build -x runGameTest
+      - name: Verify and name the measured checkpoint
+        run: |
+          python - <<'PY'
+          import json, shutil, zipfile
+          from pathlib import Path
+          jars=[p for p in Path('build/libs').glob('*.jar')
+                if not p.name.endswith(('-sources.jar','-javadoc.jar'))]
+          assert len(jars)==1, jars
+          with zipfile.ZipFile(jars[0]) as z:
+              meta=json.loads(z.read('fabric.mod.json'))
+              assert meta['id']=='golems_plus', meta['id']
+              assert any(n.endswith('/BuilderGolem.class') for n in z.namelist())
+              assert not any(n.endswith('GameTest.class') for n in z.namelist())
+          out=Path('build/checkpoint')
+          out.mkdir(parents=True,exist_ok=True)
+          shutil.copy2(jars[0],out/'golems-plus-dome-2944-26.2-c4739b6.jar')
+          (out/'CHECKPOINT.txt').write_text(
+              'Golems Plus / Fabric Minecraft 26.2\n'
+              'Gameplay source: c4739b6f4ce631881ad4a7baee10eb07d5195afb\n'
+              'Measured original physical dome: 2944 / 3537 blocks, active layer Y=24.\n'
+              'Test: https://github.com/CaszGamerMD/golems_plus/actions/runs/41003410407\n'
+              'Experimental checkpoint; full dome and final crew return remain incomplete.\n'
+              'Replace the previous Golems Plus jar; retain Fabric API.\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: golems-plus-dome-2944-26.2
+          path: build/checkpoint/
+          if-no-files-found: error
