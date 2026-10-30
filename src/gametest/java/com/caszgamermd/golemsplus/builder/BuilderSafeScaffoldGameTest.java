@@ -106,6 +106,53 @@ public final class BuilderSafeScaffoldGameTest {
         });
     }
 
+    /** A completed elevated stone ledge may be a *reachable* starting
+     * point for a new paid shaft. Lower candidates at this X/Z are solid
+     * architecture, not air where scaffolding can replace player blocks.
+     */
+    @GameTest(maxTicks=140,skyAccess=true)
+    public void elevatedFinishedRoofCanAnchorNewScaffoldBridge(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<9;x++)for(int z=0;z<8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        // Existing platform begins one block above the Builder's feet.
+        // Approaching the raised ledge is a legal real one-block step.
+        for(int x=2;x<=7;x++)for(int z=2;z<=5;z++)
+            helper.setBlock(x,2,z,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        BlockPos home=helper.absolutePos(new BlockPos(0,2,0));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            helper.fail("Missing Planner");return;
+        }
+        ServerPlayer owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())){
+            helper.fail("Could not claim Planner");return;
+        }
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos start=helper.absolutePos(new BlockPos(1,2,3));
+        BlockPos target=helper.absolutePos(new BlockPos(5,6,3));
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        level.addFreshEntity(worker);
+        helper.onEachTick(()->{
+            if(helper.getTick()!=18)return;
+            BlockPos raised=helper.absolutePos(new BlockPos(2,3,3));
+            if(!com.caszgamermd.golemsplus.worker.WorkerNavigation.canStandOn(
+                    level,worker,raised)){
+                helper.fail("Completed roof cannot support elevated entry");return;
+            }
+            if(!BuilderScaffoldPlanA.canPlan(level,worker,table,target,
+                    java.util.List.of())){
+                helper.fail("No paid tower planned from reachable upper support: "
+                        +BuilderScaffoldPlanA.diagnoseAccess(level,worker,table,
+                                target,java.util.List.of()));return;
+            }
+            System.out.println("[ELEVATED ANCHOR] PASS on already-built raised"
+                    +" support without overwriting architecture");
+            helper.succeed();
+        });
+    }
+
     @GameTest(maxTicks=100,skyAccess=true)
     public void plannedFutureWallsCannotSealGroundExit(GameTestHelper helper){
         ServerLevel level=helper.getLevel();
