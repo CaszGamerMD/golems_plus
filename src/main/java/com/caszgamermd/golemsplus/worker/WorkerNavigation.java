@@ -839,6 +839,10 @@ public final class WorkerNavigation {
     }
     private static boolean startCornerRecovery(ServerLevel level,
             PathfinderMob mob,Progress p,BlockPos seed,BlockPos requested){
+        // Door reservations own their narrow physical crossing. Never let
+        // fractional obstacle steering stop that movement or release its
+        // queue position while another worker is behind this one.
+        if(p.queuedDoor!=null||p.waitingDoor||p.finishingDoor)return false;
         List<Vec3> corner=cornerRejoinPath(level,mob,seed);
         if(corner.isEmpty())return false;
         p.cornerPath=corner;
@@ -858,6 +862,10 @@ public final class WorkerNavigation {
     private static boolean tickCornerRecovery(ServerLevel level,
             PathfinderMob mob,Progress p){
         if(p.cornerPath.isEmpty())return false;
+        if(p.queuedDoor!=null||p.waitingDoor||p.finishingDoor){
+            p.cornerPath=List.of();p.cornerCursor=0;
+            return false;
+        }
         if(!mob.onGround()||mob.isNoGravity()
                 ||mob.tickCount-p.cornerStarted>110){
             p.cornerPath=List.of();p.cornerCursor=0;
