@@ -488,4 +488,109 @@ public final class BuilderSafeScaffoldGameTest {
         });
     }
 
+    /**
+     * Full blocks need no connected neighbor, but a worker must still
+     * stand on something to place a floating stone block. Build only
+     * temporary owned scaffold TWO cells from the intended cube, place
+     * with real 0.8m clearance, retrace and reclaim every scaffold.
+     */
+    @GameTest(maxTicks=1200,skyAccess=true)
+    public void constructsFloatingDioriteFromPaidTemporaryWorkPlatform(
+            GameTestHelper h){
+        ServerLevel level=h.getLevel();
+        for(int x=0;x<9;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        h.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        h.setBlock(1,2,0,Blocks.CHEST);
+        BlockPos home=h.absolutePos(new BlockPos(0,2,0));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            h.fail("No Builder Planner");return;
+        }
+        ServerPlayer owner=h.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setBuilderMaterialStorage(owner.getUUID(),
+                        h.absolutePos(new BlockPos(1,2,0)))){
+            h.fail("Failed to assign temporary scaffold ownership");return;
+        }
+        BlockPos start=h.absolutePos(new BlockPos(3,2,3));
+        BlockPos target=h.absolutePos(new BlockPos(6,6,3));
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        mob.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
+        level.addFreshEntity(mob);
+        if(!table.registerBuilderWorker(mob.getUUID())){
+            h.fail("Could not register Builder");return;
+        }
+        int[] phase={0},deployed={0};
+        int startTick=h.getTick();
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.isNoGravity()){
+                h.fail("Floating-block worker lost real gravity");return;
+            }
+            if(h.getTick()-startTick>1050){
+                h.fail("Floating-block construction stalled at "+mob.position()
+                        +" phase="+phase[0]
+                        +" "+BuilderScaffoldPlanA.status(mob));return;
+            }
+            if(phase[0]==0){
+                if(h.getTick()<12||!mob.onGround()
+                        ||h.getTick()%5!=0)return;
+                if(!target.equals(target)
+                        ||!BuilderScaffoldPlanA.needsTemporaryWorkPlatform(
+                                level,target)
+                        ||!Blocks.DIORITE.defaultBlockState().canSurvive(
+                                level,target)){
+                    h.fail("Diorite is not free-floating in Minecraft");return;
+                }
+                var result=BuilderScaffoldPlanA.reach(
+                        level,mob,table,owner,target,List.of());
+                if(result==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE
+                        ||result==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
+                    h.fail("Temporary construction platform inaccessible "
+                            +result+" "+BuilderScaffoldPlanA.diagnoseAccess(
+                                    level,mob,table,target,List.of()));return;
+                }
+                deployed[0]=Math.max(deployed[0],
+                        table.scaffoldPositions(mob.getUUID()).size());
+                if(result==BuilderScaffoldPlanA.Result.READY){
+                    if(!BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                            level,mob,table,target)
+                            ||!BuilderPlacementSpace.horizontalClear(target,mob)
+                            ||!BuilderPlacementSpace.ready(level,mob,table,target)
+                            ||!level.getBlockState(target.below()).isAir()){
+                        h.fail("No valid real scaffold work pose or floating "
+                                +"material area "+mob.position()+" "
+                                +BuilderScaffoldPlanA.status(mob));return;
+                    }
+                    if(!level.setBlock(target,Blocks.DIORITE.defaultBlockState(),3)
+                            ||!level.getBlockState(target).is(Blocks.DIORITE)){
+                        h.fail("Could not place genuine floating diorite");return;
+                    }
+                    phase[0]=1;
+                }
+            }else if(phase[0]==1){
+                if(h.getTick()%5==0)
+                    BuilderScaffoldPlanA.returnToGround(level,mob,table);
+                if(!BuilderScaffoldPlanA.hasPlan(mob)&&mob.onGround()
+                        &&Math.abs(mob.getY()-start.getY())<.25)
+                    phase[0]=2;
+            }else{
+                if(h.getTick()%5==0)
+                    BuilderScaffolding.retrieve(level,mob,table,false);
+                if(table.scaffoldPositions(mob.getUUID()).isEmpty()){
+                    if(deployed[0]<2
+                            ||!level.getBlockState(target).is(Blocks.DIORITE)
+                            ||!level.getBlockState(target.below()).isAir()){
+                        h.fail("Floating construction broke dome or lost "
+                                +"physical scaffold accounting");return;
+                    }
+                    System.out.println("[FLOATING BUILD] PASS paid work platform "
+                            +"placed unattached diorite and reclaimed "
+                            +deployed[0]+" owned scaffolds");
+                    h.succeed();
+                }
+            }
+        });
+    }
+
 }
