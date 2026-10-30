@@ -51,6 +51,10 @@ public final class BuilderDomeConstructionGameTest {
         final int requiredBlocks=(int)steps.stream()
                 .filter(step->!step.ignorePlant()).count();
         final int ignoredPlants=steps.size()-requiredBlocks;
+        if(requiredBlocks!=3493||ignoredPlants!=44){
+            helper.fail("Dome vegetation count regression: required="
+                    +requiredBlocks+" ignored="+ignoredPlants);return;
+        }
         System.out.println("[DOME WORK TARGET] schematic="+steps.size()
                 +" ignoredPlants="+ignoredPlants+" actualRequired="+requiredBlocks);
         // Minecraft GameTest allocates the containing world at a random
@@ -271,7 +275,8 @@ public final class BuilderDomeConstructionGameTest {
                         "Dome stalled after "+tick+" ticks | clear="+
                         table.builderClearCursor()+" | contiguous="+table.builderCursor()
                         +" | totalCompleted="+physicalCount
-                        +"/"+steps.size()+" | problem="+table.problem()
+                        +"/"+requiredBlocks+" | ignoredPlants="+ignoredPlants
+                        +" | problem="+table.problem()
                         +stageDiagnostic(folder,table));
                 for(BuilderGolem worker:crew)
                     message.append(" | ").append(worker.getName().getString())
