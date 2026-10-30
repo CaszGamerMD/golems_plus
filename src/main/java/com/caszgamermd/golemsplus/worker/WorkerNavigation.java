@@ -936,7 +936,11 @@ public final class WorkerNavigation {
             return; // waiting workers keep their exact queued order
         }
         if(p.previous==null)p.previous=mob.position();
-        if(mob.position().distanceToSqr(p.previous)>.018){
+        double movedX=mob.getX()-p.previous.x,movedZ=mob.getZ()-p.previous.z;
+        // Jumping against the same ledge is not route progress. Vertical
+        // motion used to reset this timer forever while the feet stayed
+        // at the same X/Z and the native controller repeatedly jumped.
+        if(movedX*movedX+movedZ*movedZ>.018){
             p.stalled=0;
         }else if(p.requested!=null&&!mob.getNavigation().isDone()){
             p.stalled+=CHECK_TICKS;
@@ -958,10 +962,18 @@ public final class WorkerNavigation {
                     p.lastBad=new BlockPos(node.x,node.y,node.z);
                     p.avoidUntil=mob.tickCount+60;
                 }else if(!blocked){
-                    // A teammate blocking an aisle is not an invalid
-                    // floor tile: keep every legal movement available
-                    // and use soft crowd cost for the next plan instead.
+                    // Quarantine a physically stalled first step briefly,
+                    // except when a teammate is occupying that corridor.
+                    // Retrying the identical jumping leg is not recovery.
                     p.lastBad=null;
+                    if(old!=null&&old.getNextNodeIndex()<old.getNodeCount()){
+                        Node node=old.getNode(old.getNextNodeIndex());
+                        BlockPos next=new BlockPos(node.x,node.y,node.z);
+                        if(!next.equals(mob.blockPosition())
+                                &&!neighborOccupied(level,mob,next)){
+                            p.lastBad=next;p.avoidUntil=mob.tickCount+60;
+                        }
+                    }
                 }
                 p.weightedRoute=List.of();p.routeCursor=0;
                 p.nextRoute=mob.tickCount+CHECK_TICKS;
