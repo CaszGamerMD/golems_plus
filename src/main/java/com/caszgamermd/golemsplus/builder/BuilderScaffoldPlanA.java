@@ -683,8 +683,14 @@ public final class BuilderScaffoldPlanA {
             // exit BEFORE releasing this Plan A job.
             boolean clearOfOwnedScaffold=true;
             for(BlockPos scaffold:table.scaffoldPositions(worker.getUUID())){
+                // Compare all THREE axes. A horizontal bridge at Y+3
+                // is overhead, not underneath the grounded worker.
+                // Blocking dismount based only on X/Z strands a builder
+                // forever beneath its own safe return bridge.
                 if(Math.abs(scaffold.getX()+.5-worker.getX())<.9
-                        &&Math.abs(scaffold.getZ()+.5-worker.getZ())<.9){
+                        &&Math.abs(scaffold.getZ()+.5-worker.getZ())<.9
+                        &&scaffold.getY()+1.0>worker.getBoundingBox().minY-.1
+                        &&scaffold.getY()<worker.getBoundingBox().maxY+.1){
                     clearOfOwnedScaffold=false;
                     break;
                 }

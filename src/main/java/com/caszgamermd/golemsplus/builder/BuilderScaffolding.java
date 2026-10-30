@@ -861,8 +861,14 @@ public final class BuilderScaffolding {
             // Never reclaim a column from beneath a Builder that is
             // still standing on its bottom or top platform.
             for(BlockPos scaffold:positions){
+                // An overhead bridge can have the same X/Z as a golem
+                // already standing safely three blocks below. Only block
+                // retrieval if the scaffold is genuinely touching the
+                // golem's BODY/feet; never remove scaffold from under it.
                 if(Math.abs(scaffold.getX()+.5-worker.getX())<.9
-                        &&Math.abs(scaffold.getZ()+.5-worker.getZ())<.9)
+                        &&Math.abs(scaffold.getZ()+.5-worker.getZ())<.9
+                        &&scaffold.getY()+1.0>worker.getBoundingBox().minY-.1
+                        &&scaffold.getY()<worker.getBoundingBox().maxY+.1)
                     return;
             }
         }
