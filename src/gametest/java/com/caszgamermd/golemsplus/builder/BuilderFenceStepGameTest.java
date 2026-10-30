@@ -358,9 +358,15 @@ public final class BuilderFenceStepGameTest {
             maxTicks=340,skyAccess=true)
     public void traversesActualClearAndMagentaGlass(GameTestHelper h){
         var world=h.getLevel();
+        var magenta=BuilderBlockResolver.resolve(
+                "minecraft:magenta_stained_glass",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        if(magenta==null){
+            h.fail("Could not resolve real stained glass fixture");return;
+        }
         for(int x=3;x<=12;x++){
             h.setBlock(x,2,3,x%2==0
-                    ?Blocks.GLASS:Blocks.MAGENTA_STAINED_GLASS_BLOCK);
+                    ?Blocks.GLASS:magenta.state().getBlock());
             for(int y=2;y<=4;y++){
                 h.setBlock(x,y,2,Blocks.AIR);
                 h.setBlock(x,y,4,Blocks.AIR);
