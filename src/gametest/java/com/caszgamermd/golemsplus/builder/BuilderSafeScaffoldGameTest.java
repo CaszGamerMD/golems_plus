@@ -176,7 +176,7 @@ public final class BuilderSafeScaffoldGameTest {
         // An ordinary one-cell bridge test is distinct from a floating
         // placement PLATFORM. Give this target a real connected side so
         // the bridge still finishes at its original adjacent cell.
-        level.setBlock(target.south(),Blocks.STONE.defaultBlockState(),3);
+        level.setBlock(target.below(),Blocks.STONE.defaultBlockState(),3);
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.setPos(tower.getX()+.5,tower.getY(),tower.getZ()+.5);
         worker.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
@@ -403,7 +403,7 @@ public final class BuilderSafeScaffoldGameTest {
         BlockPos start=goal.west(6).atY(goal.getY()-3);
         // Keep the original five-span normal-bridge fixture separate
         // from two-cell-clearance floating work-platform behavior.
-        level.setBlock(goal.south(),Blocks.STONE.defaultBlockState(),3);
+        level.setBlock(goal.below(),Blocks.STONE.defaultBlockState(),3);
         level.getChunkSource().addTicketWithRadius(
                 net.minecraft.server.level.TicketType.FORCED,
                 new net.minecraft.world.level.ChunkPos(goal.getX()>>4,
@@ -515,6 +515,9 @@ public final class BuilderSafeScaffoldGameTest {
         }
         ServerPlayer owner=h.makeMockServerPlayerInLevel();
         if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),
+                        "placed-floating-platform.litematic",
+                        "Floating work platform",home,0,0,1,0)
                 ||!table.setBuilderMaterialStorage(owner.getUUID(),
                         h.absolutePos(new BlockPos(1,2,0)))){
             h.fail("Failed to assign temporary scaffold ownership");return;
