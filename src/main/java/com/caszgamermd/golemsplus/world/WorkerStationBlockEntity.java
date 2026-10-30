@@ -84,6 +84,18 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private String placedSchematicName="";
     private int builderCursor;
     private int builderClearCursor;
+    // Absolute schematic indices are preserved for save compatibility.
+    // These separate counts exclude ignored crop/vegetation placements.
+    private int builderWorkTotal=-1,builderWorkDone=-1;
+    // Which previously unbuilt crop positions were auto-acknowledged.
+    // Saved so switching the filter OFF while working can reopen them
+    // without losing physically completed placements.
+    private final java.util.Set<Integer> builderAutoSkippedPlants=
+            new java.util.HashSet<>();
+    private transient java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step>
+            builderProgressPlan;
+    private transient int builderProgressCursor=-1,builderProgressFinished=-1,
+            builderProgressIgnored=-1;
     // Separate claims let eight Builders clear different schematic cells
     // without advancing the saved contiguous verification cursor early.
     private final Map<UUID,Integer> builderClearClaims=new HashMap<>();
@@ -467,6 +479,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(!isBuilder()||!canConfigure(actor)||!hasPlacedSchematic())return false;
         if(builderIgnorePlants==enabled)return true;
         builderIgnorePlants=enabled;
+        builderProgressPlan=null;
         if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
             builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
         // Existing packed shulkers belong to the old manifest. Request
@@ -587,7 +600,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderRemaining.clear();builderRemaining.putAll(selected.remaining());
         warehouse=selected.warehouse();builderMaterialStorage=selected.storage();
         builderIgnorePlants=selected.ignorePlants();
-        builderPlaced=true;completedAhead=0;builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
+        builderPlaced=true;completedAhead=0;builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
+        builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
+        builderProgressPlan=null;
         builderWarehouseStock.clear();builderStockChecked=false;builderWarehouseName="";
         try{phase=WorkerPhase.valueOf(selected.phase());}
         catch(IllegalArgumentException ex){phase=WorkerPhase.READY;}
@@ -622,6 +637,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderWarehouseStock.clear();builderStagedStock.clear();
             builderStockChecked=false;builderWarehouseName="";
             builderClaims.clear();completedAhead=0;phase=WorkerPhase.IDLE;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
+            builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
+            builderProgressPlan=null;
             sync();return true;
         }
         // Selecting a saved job automatically persists its snapshot.
@@ -631,6 +648,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return selectBuilderJob(actor,successor);
     }
     public int builderBlocks() { return builderBlocks; }
+    /** Genuine required placements, excluding crop/plant no-ops. */
+    public int builderWorkTotal(){
+        return builderWorkTotal>=0?builderWorkTotal:builderBlocks;
+    }
+    /** Completed required placements, including independent zones ahead. */
+    public int builderWorkDone(){
+        return builderWorkDone>=0?builderWorkDone:builderCursor;
+    }
     public int builderUnresolved() { return builderUnresolved; }
     public int builderRotation() { return builderRotation; }
     public int builderMirror(){return builderMirror;}
@@ -1159,6 +1184,96 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return true;
     }
 
+    /**
+     * Reconcile ignored vegetation against the actual server-side plan.
+     * Never compact the indexed schematic: saved claims, zones, clearance
+     * and historical cursor positions all address those original indices.
+     * Call only AFTER physical site clearing; an ignored schematic crop
+     * is not permission to leave a real obstruction in the world.
+     *
+     * A filtered plant is a confirmed no-op, not an assignment requiring
+     * pathfinding, stock, or a worker. An unfinished REAL cell can never
+     * be silently marked done. Disabling the filter reopens only the
+     * tracked no-ops, preserving the actual completed prefix and zone bits.
+     */
+    public void reconcileBuilderWork(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(!isBuilder()||steps==null||steps.size()!=builderBlocks)return;
+        boolean changed=false;
+        if(!builderIgnorePlants&&!builderAutoSkippedPlants.isEmpty()){
+            int oldCursor=builderCursor;
+            int restart=builderAutoSkippedPlants.stream().mapToInt(Integer::intValue)
+                    .min().orElse(oldCursor);
+            for(int i=restart;i<oldCursor;i++)
+                if(!builderAutoSkippedPlants.contains(i))
+                    builderFinishedSteps.add(i);
+            builderCursor=Math.min(builderCursor,restart);
+            builderFinishedSteps.removeAll(builderAutoSkippedPlants);
+            builderAutoSkippedPlants.clear();
+            builderClaims.clear();builderWorkOrders.clear();
+            builderPreparedOrders.clear();builderMissingRetries.clear();
+            changed=true;
+        }
+        if(builderIgnorePlants)
+            for(int i=builderCursor;i<steps.size();i++)
+                if(steps.get(i).ignorePlant()&&!builderFinishedSteps.contains(i)){
+                    builderAutoSkippedPlants.add(i);
+                    builderFinishedSteps.add(i);
+                    changed=true;
+                }
+        // Auto-acknowledged positions might be claimed by older saved
+        // work orders. Do not let those workers revisit already done cells.
+        if(changed){
+            builderClaims.entrySet().removeIf(e->
+                    builderAutoSkippedPlants.contains(e.getValue()));
+            for(var entry:new java.util.ArrayList<>(builderWorkOrders.entrySet())){
+                if(entry.getValue().removeIf(builderAutoSkippedPlants::contains))
+                    builderPreparedOrders.remove(entry.getKey());
+                if(entry.getValue().isEmpty()){
+                    builderWorkOrders.remove(entry.getKey());
+                    builderPreparedOrders.remove(entry.getKey());
+                }
+            }
+            builderMissingRetries.keySet().removeAll(builderAutoSkippedPlants);
+        }
+        int previousCursor=builderCursor;
+        while(builderCursor<builderBlocks
+                &&builderFinishedSteps.remove(builderCursor))
+            builderCursor++;
+        changed|=previousCursor!=builderCursor;
+        int finishedSize=builderFinishedSteps.size();
+        if(changed||builderProgressPlan!=steps
+                ||builderProgressCursor!=builderCursor
+                ||builderProgressFinished!=finishedSize
+                ||builderProgressIgnored!=builderAutoSkippedPlants.size()
+                ||builderWorkTotal<0){
+            int required=0,done=0;
+            for(int i=0;i<steps.size();i++){
+                if(steps.get(i).ignorePlant())continue;
+                required++;
+                if(i<builderCursor||builderFinishedSteps.contains(i))done++;
+            }
+            if(builderWorkTotal!=required||builderWorkDone!=done)changed=true;
+            builderWorkTotal=required;
+            builderWorkDone=done;
+            builderProgressPlan=steps;
+            builderProgressCursor=builderCursor;
+            builderProgressFinished=finishedSize;
+            builderProgressIgnored=builderAutoSkippedPlants.size();
+        }
+        if(activeOrder!=null&&builderCursor>=builderBlocks){
+            phase=WorkerPhase.COMPLETE;activeOrder=null;
+            builderClaims.clear();builderWorkOrders.clear();
+            builderPreparedOrders.clear();builderFinishedSteps.clear();
+            changed=true;
+        }
+        if(changed){
+            if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
+                builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
+            sync();
+        }
+    }
+
     public boolean completeBuilderStep(UUID worker,int index){
         if(builderClaims.getOrDefault(worker,-1)!=index)return false;
         builderClaims.remove(worker);
@@ -1293,6 +1408,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderWarehouseName="";
         builderMaterialStorage=null;
         builderIgnorePlants=false;
+        builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
+        builderProgressPlan=null;
         selectedBuilderJob=builderJobs.size();
         builderJobs.add(snapshotBuilderJob());
         phase=WorkerPhase.READY;sync();return true;
@@ -1307,6 +1424,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClearVerified.clear();
         builderMissingRetries.clear();
         builderClaims.clear();builderRecallRequested=false;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
+        builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
+        builderProgressPlan=null;
         phase=WorkerPhase.WORKING;sync();return true;
     }
     public void advanceBuilder(){
@@ -1708,6 +1827,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putString("builder_placement_name",placedSchematicName);
         out.putBoolean("builder_placed",builderPlaced);
         out.putInt("builder_cursor",builderCursor);
+        out.putInt("builder_work_total",builderWorkTotal);
+        out.putInt("builder_work_done",builderWorkDone);
+        var ignoredBits=new java.util.BitSet();
+        for(int index:builderAutoSkippedPlants)
+            if(index>=0&&index<builderBlocks)ignoredBits.set(index);
+        out.putString("builder_auto_ignored_bits_v1",
+                java.util.Base64.getEncoder().encodeToString(ignoredBits.toByteArray()));
         if(builderWorkerId!=null)out.putString("builder_worker",builderWorkerId.toString());
         out.putInt("trader_extra_workers",Math.min(3,additionalTraderWorkers.size()));
         for(int n=0;n<additionalTraderWorkers.size()&&n<3;n++)
@@ -1980,6 +2106,18 @@ public final class WorkerStationBlockEntity extends BlockEntity
             if(!id.isBlank()&&count>=0)builderWarehouseStock.put(id,count);
         }
         builderCursor=Math.clamp(in.getIntOr("builder_cursor",0),0,builderBlocks);
+        builderWorkTotal=in.getIntOr("builder_work_total",-1);
+        builderWorkDone=in.getIntOr("builder_work_done",-1);
+        builderProgressPlan=null;
+        builderAutoSkippedPlants.clear();
+        String ignoredEncoded=in.getStringOr("builder_auto_ignored_bits_v1","");
+        if(!ignoredEncoded.isBlank()&&ignoredEncoded.length()<=18000)try{
+            var bits=java.util.BitSet.valueOf(
+                    java.util.Base64.getDecoder().decode(ignoredEncoded));
+            for(int bit=bits.nextSetBit(0);bit>=0&&bit<builderBlocks;
+                    bit=bits.nextSetBit(bit+1))
+                builderAutoSkippedPlants.add(bit);
+        }catch(IllegalArgumentException ignored){}
         builderClearCursor=Math.max(0,in.getIntOr("builder_clear_cursor",
                 builderClearByFile.getOrDefault(builderFile,0)));
         builderClearClaims.clear();builderClearClaimTick.clear();

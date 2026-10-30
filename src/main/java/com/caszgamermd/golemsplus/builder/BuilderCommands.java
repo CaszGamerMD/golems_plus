@@ -71,7 +71,8 @@ public final class BuilderCommands {
                 table.warehouse().y()+","+table.warehouse().z();
         player.sendSystemMessage(Component.literal("Builder plan: "+
                 (table.hasPlacedSchematic()?table.placedSchematicName():table.builderFile())+
-                " | "+table.builderCursor()+"/"+table.builderBlocks()+" steps"+
+                " | "+table.builderWorkDone()+"/"+table.builderWorkTotal()
+                    +" required placements"+
                 " | "+table.builderUnresolved()+" unresolved | origin "+table.builderOrigin()+
                 " | rotation "+table.builderRotation()+" | warehouse "+warehouse+
                 " | Crew "+table.builderWorkerIds().size()+"/"+table.crewTarget()+

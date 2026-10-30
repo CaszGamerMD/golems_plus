@@ -396,6 +396,11 @@ public final class BuilderBuildService {
                             plan.clearing(),plan.steps());
                 return;
             }
+            // Ignore-plant entries are virtual no-op completions, not
+            // physical work or a route a Builder must walk. This also
+            // completes a job with only ignored vegetation remaining.
+            table.reconcileBuilderWork(plan.steps());
+            if(table.phase()==WorkerPhase.COMPLETE)return;
             // All positions for each X/Z zone were pre-assigned as one
             // immutable ordered execution plan. The Planner does NOT
             // arbitrate between Builders on each move or block placement.
@@ -880,6 +885,12 @@ public final class BuilderBuildService {
                     materials.merge(step.requiredItem(),1L,Long::sum);
             }
             table.reconcileBuilderMaterials(materials);
+            // A running planner may have already cleared the site.
+            // Otherwise preserve the clearing gate until all real
+            // obstructions have actually been handled.
+            if(table.activeOrder()!=null
+                    &&table.builderClearCursor()>=cache.clearing().size())
+                table.reconcileBuilderWork(cache.steps());
             return table.builderIgnorePlants()
                     ?"Ignoring "+ignored+" schematic vegetation placements; "
                             +"site clearing remains enabled"
