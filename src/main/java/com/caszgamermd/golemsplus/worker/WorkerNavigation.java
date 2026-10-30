@@ -15,6 +15,7 @@ import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.WallBlock;
 import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -240,6 +241,29 @@ public final class WorkerNavigation {
         }
         return y;
     }
+    /** Architectural walls are 1.5 blocks high and their collision top
+     * is not a stable normal walking waypoint. Treating that narrow lip
+     * as ordinary ground made Builders stand below a wall and try to jump
+     * onto it forever. This does NOT forbid an entity that is ALREADY
+     * physically supported there from walking OFF the wall.
+     *
+     * Fences keep their separately tested half-height-crossing handling;
+     * this specifically excludes WallBlock supports, not slabs/stairs.
+     */
+    private static boolean unenterableWallTop(ServerLevel level,
+            PathfinderMob mob,BlockPos feet,double floor){
+        BlockPos below=feet.below();
+        BlockState state=level.getBlockState(below);
+        if(!(state.getBlock() instanceof WallBlock))return false;
+        VoxelShape shape=state.getCollisionShape(level,below);
+        if(shape.isEmpty()||shape.max(Direction.Axis.Y)<=1.0)return false;
+        double wallTop=below.getY()+shape.max(Direction.Axis.Y);
+        if(Math.abs(wallTop-floor)>.06)return false;
+        // Allow an actual grounded golem already on this lip to safely
+        // descend or retreat; never fabricate arrival atop it in A*.
+        return !(mob.onGround()&&mob.blockPosition().equals(feet)
+                &&Math.abs(mob.getY()-wallTop)<.12);
+    }
     private static boolean standingTile(ServerLevel level,PathfinderMob mob,BlockPos feet){
         if(!level.hasChunkAt(feet)||!level.hasChunkAt(feet.above())
                 ||!level.hasChunkAt(feet.below()))return false;
@@ -247,7 +271,8 @@ public final class WorkerNavigation {
         if(!level.getFluidState(feet).isEmpty()||dangerous(state)
                 ||dangerous(level.getBlockState(feet.below())))return false;
         double floor=floorAt(level,feet);
-        if(Double.isNaN(floor))return false;
+        if(Double.isNaN(floor)
+                ||unenterableWallTop(level,mob,feet,floor))return false;
         return bodyClear(level,mob,feet.getX()+.5,floor,feet.getZ()+.5);
     }
     private static boolean bodyClear(ServerLevel world,PathfinderMob mob,

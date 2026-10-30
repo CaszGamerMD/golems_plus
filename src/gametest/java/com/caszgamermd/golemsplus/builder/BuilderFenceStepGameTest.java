@@ -123,6 +123,11 @@ public final class BuilderFenceStepGameTest {
         h.setBlock(3,2,3,Blocks.STONE_SLAB);
         h.setBlock(5,2,3,Blocks.SPRUCE_FENCE);
         h.setBlock(7,2,3,Blocks.COBBLESTONE_WALL);
+        // The 1.5-high wall is a BLOCKED STAIR, not a short hop.
+        // Give the worker a solid, one-block-wide side ledge around it;
+        // reaching the far side must follow that actual safe path.
+        for(int x=6;x<=8;x++)for(int y=3;y<=5;y++)
+            h.setBlock(x,y,4,Blocks.AIR);
         BlockPos start=h.absolutePos(new BlockPos(1,3,3));
         BlockPos goal=h.absolutePos(new BlockPos(9,3,3));
         var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
@@ -145,7 +150,14 @@ public final class BuilderFenceStepGameTest {
             if(mob.blockPosition().getX()==start.getX()+4
                     &&mob.getY()>start.getY()+.35)crossed[1]=true;
             if(mob.blockPosition().getX()==start.getX()+6
-                    &&mob.getY()>start.getY()+.35)crossed[2]=true;
+                    &&mob.blockPosition().getZ()==start.getZ()+1
+                    &&mob.getY()>=start.getY()-.10)crossed[2]=true;
+            if(mob.blockPosition().getX()==start.getX()+6
+                    &&mob.blockPosition().getZ()==start.getZ()
+                    &&mob.getY()>start.getY()+.35){
+                h.fail("Builder climbed 1.5-high wall instead of using side ledge");
+                return;
+            }
             if(mob.onGround()&&mob.distanceToSqr(
                     goal.getX()+.5,goal.getY(),goal.getZ()+.5)<.13){
                 if(!crossed[0]||!crossed[1]||!crossed[2]){
@@ -154,8 +166,8 @@ public final class BuilderFenceStepGameTest {
                             +" finalFeet="+mob.position());
                     return;
                 }
-                System.out.println("[MIXED ROOF] PASS slab/fence/wall "
-                        +"physical traversal tick="+h.getTick());
+                System.out.println("[MIXED ROOF] PASS slab/fence and "
+                        +"grounded detour around 1.5-high wall tick="+h.getTick());
                 h.succeed();
                 return;
             }
@@ -177,6 +189,66 @@ public final class BuilderFenceStepGameTest {
                     +" "+WorkerNavigation.diagnoseExecutableStand(
                         world,mob,java.util.List.of(goal)));
             }
+        });
+    }
+
+    @GameTest(maxTicks=130,skyAccess=true)
+    public void doesNotSelectOneAndHalfBlockWallAsWalkingWaypoint(
+            GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        BlockPos wall=h.absolutePos(new BlockPos(3,2,3));
+        h.setBlock(3,2,3,Blocks.MOSSY_COBBLESTONE_WALL);
+        BlockPos top=wall.above();
+        BlockPos ordinary=h.absolutePos(new BlockPos(2,2,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(ordinary.getX()+.5,ordinary.getY(),ordinary.getZ()+.5);
+        world.addFreshEntity(mob);
+        h.onEachTick(()->{
+            if(h.getTick()!=15)return;
+            if(!mob.onGround()){
+                h.fail("Builder is not grounded for wall collision test");return;
+            }
+            if(WorkerNavigation.canStandOn(world,mob,top)
+                    ||WorkerNavigation.selectExecutableStand(
+                            world,mob,java.util.List.of(top))!=null
+                    ||!WorkerNavigation.canStandOn(world,mob,ordinary)){
+                h.fail("1.5-block wall wrongly treated as reachable "
+                        +"walking step instead of obstacle");return;
+            }
+            System.out.println("[WALL NO-CLIMB] PASS wall top excluded "
+                    +"without hiding ordinary support");
+            h.succeed();
+        });
+    }
+
+    @GameTest(maxTicks=130,skyAccess=true)
+    public void alreadyOnWallTopCanStillFindWayDown(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        h.setBlock(3,2,3,Blocks.MOSSY_COBBLESTONE_WALL);
+        BlockPos top=h.absolutePos(new BlockPos(3,3,3));
+        BlockPos ground=h.absolutePos(new BlockPos(4,2,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(top.getX()+.5,top.getY()+.5,top.getZ()+.5);
+        world.addFreshEntity(mob);
+        h.onEachTick(()->{
+            if(h.getTick()!=15)return;
+            if(!mob.onGround()||!WorkerNavigation.canStandOn(
+                    world,mob,top)){
+                h.fail("Actual grounded wall-top worker was stranded "
+                        +mob.position());return;
+            }
+            if(WorkerNavigation.selectExecutableStand(
+                    world,mob,java.util.List.of(ground))==null){
+                h.fail("No path to leave a wall already occupied by worker");
+                return;
+            }
+            System.out.println("[WALL ESCAPE] PASS real current support "
+                    +"remains an allowed path start");
+            h.succeed();
         });
     }
 
