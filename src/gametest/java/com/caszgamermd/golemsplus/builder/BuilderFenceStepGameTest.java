@@ -271,8 +271,13 @@ public final class BuilderFenceStepGameTest {
             h.setBlock(x,9,10,Blocks.STONE);
         // The ONLY connected route first goes west, then DOWN to the
         // low side passage, around the gap, then UP onto the far platform.
+        // The passage starts only at west X8, then turns SOUTH one
+        // extra tile before heading east. Without this turn, the golem
+        // could step directly SOUTH from start and never move backward.
+        h.setBlock(8,8,11,Blocks.STONE);
         for(int x=8;x<=13;x++)
-            h.setBlock(x,8,11,Blocks.STONE);
+            h.setBlock(x,8,12,Blocks.STONE);
+        h.setBlock(14,9,12,Blocks.STONE);
         h.setBlock(14,9,11,Blocks.STONE);
         h.setBlock(14,9,10,Blocks.STONE);
         h.setBlock(15,9,10,Blocks.STONE);
