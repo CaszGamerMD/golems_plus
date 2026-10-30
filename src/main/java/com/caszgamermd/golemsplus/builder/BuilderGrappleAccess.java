@@ -234,23 +234,26 @@ public final class BuilderGrappleAccess {
     }
     private static Rope chooseAscent(ServerLevel level,BuilderGolem worker,
             BlockPos goal,java.util.function.Predicate<BlockPos> usableLanding){
-        int startY=worker.blockPosition().getY();
+        return chooseAscentFrom(level,worker,goal,worker.blockPosition().getY(),
+                entry->WorkerNavigation.canReachExact(level,worker,entry),usableLanding);
+    }
+    private static Rope chooseAscentFrom(ServerLevel level,BuilderGolem worker,
+            BlockPos goal,int startY,java.util.function.Predicate<BlockPos> reachableEntry,
+            java.util.function.Predicate<BlockPos> usableLanding){
         if(goal.getY()-startY>MAX_REACH||goal.getY()-startY<2)return null;
         List<Rope> candidates=new ArrayList<>();
+        Map<BlockPos,Boolean> usable=new java.util.HashMap<>();
         for(BlockPos anchor:solidAnchors(level,goal)){
-            if(!usableLanding.test(anchor.above()))continue;
             for(Direction side:Direction.Plane.HORIZONTAL){
                 if(rejected(level,worker,anchor,side))continue;
                 BlockPos column=anchor.relative(side);
                 BlockPos entry=column.atY(startY);
                 if(!solidTop(level,entry.below())
                         ||!headroom(level,entry)
-                        ||!lineClear(level,column,startY,goal.getY()))
+                        ||!lineClear(level,column,startY,goal.getY()))continue;
+                if(!reachableEntry.test(entry)
+                        ||!usable.computeIfAbsent(anchor.above(),usableLanding::test))
                     continue;
-                if(!WorkerNavigation.canReachExact(level,worker,entry))
-                    continue;
-                // The final shift across the edge must have enough room
-                // for the full Builder body; the roof itself stays intact.
                 candidates.add(new Rope(anchor,side,entry,goal,false,
                         level.getGameTime()));
             }
@@ -376,6 +379,7 @@ public final class BuilderGrappleAccess {
                                 level,worker,target,at))continue;
                 poses.add(at);
             }
+        if(poses.isEmpty())return null;
         // Check both permitted feet levels. The upper work platform may
         // be the only usable route even though the target is one layer down.
         for(int dy:new int[]{0,1}){
@@ -383,6 +387,27 @@ public final class BuilderGrappleAccess {
                     landing->WorkerNavigation.hasGroundRouteFrom(
                             level,worker,landing,poses));
             if(route!=null)return route;
+        }
+        // A lower overhang can block every ground-to-work rope while
+        // leaving a perfectly real two-stage climb. Preview the second
+        // grounded entry and final work connectivity before committing to
+        // the first hook. No entity relocation or speculative blocks.
+        Map<BlockPos,Boolean> onward=new java.util.HashMap<>();
+        int startY=worker.blockPosition().getY();
+        for(int y=Math.min(target.getY()-2,startY+MAX_REACH);y>=startY+2;y--){
+            Rope first=chooseAscent(level,worker,target.atY(y),landing->
+                    onward.computeIfAbsent(landing,at->{
+                        for(int dy:new int[]{0,1}){
+                            Rope second=chooseAscentFrom(level,worker,target.above(dy),
+                                    at.getY(),entry->WorkerNavigation.hasGroundRouteFrom(
+                                            level,worker,at,List.of(entry)),
+                                    last->WorkerNavigation.hasGroundRouteFrom(
+                                            level,worker,last,poses));
+                            if(second!=null)return true;
+                        }
+                        return false;
+                    }));
+            if(first!=null)return first;
         }
         return null;
     }
