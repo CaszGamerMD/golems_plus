@@ -234,26 +234,14 @@ public final class BuilderGrappleAccess {
     }
     private static Rope chooseAscent(ServerLevel level,BuilderGolem worker,
             BlockPos goal,java.util.function.Predicate<BlockPos> usableLanding){
-        return chooseAscentFrom(level,worker,goal,worker.blockPosition().getY(),
-                entry->WorkerNavigation.canReachExact(level,worker,entry),usableLanding);
-    }
-    private static Rope chooseAscentFrom(ServerLevel level,BuilderGolem worker,
-            BlockPos goal,int startY,java.util.function.Predicate<BlockPos> reachableEntry,
-            java.util.function.Predicate<BlockPos> usableLanding){
-        if(goal.getY()-startY>MAX_REACH||goal.getY()-startY<2)return null;
         List<Rope> candidates=new ArrayList<>();
         Map<BlockPos,Boolean> usable=new java.util.HashMap<>();
         for(BlockPos anchor:solidAnchors(level,goal)){
             for(Direction side:Direction.Plane.HORIZONTAL){
                 if(rejected(level,worker,anchor,side))continue;
-                BlockPos column=anchor.relative(side);
-                BlockPos entry=column.atY(startY);
-                if(!solidTop(level,entry.below())
-                        ||!headroom(level,entry)
-                        ||!lineClear(level,column,startY,goal.getY()))continue;
-                if(!reachableEntry.test(entry)
-                        ||!usable.computeIfAbsent(anchor.above(),usableLanding::test))
-                    continue;
+                BlockPos entry=ropeEntryFloor(level,anchor,side);
+                if(entry==null||!usable.computeIfAbsent(
+                        anchor.above(),usableLanding::test))continue;
                 candidates.add(new Rope(anchor,side,entry,goal,false,
                         level.getGameTime()));
             }
@@ -261,7 +249,31 @@ public final class BuilderGrappleAccess {
         candidates.sort(Comparator.comparingDouble(r->
                 r.landing.distSqr(worker.blockPosition())
                 +r.anchor.distSqr(goal)*2.0));
-        return candidates.isEmpty()?null:candidates.get(0);
+        List<BlockPos> entries=new ArrayList<>();
+        for(Rope r:candidates)if(!entries.contains(r.landing))entries.add(r.landing);
+        // The entry may be BELOW the worker's current feet after a
+        // normal walking detour. One trained multi-goal path chooses a
+        // genuinely executable entry; no fixed-Y/native-only assumption.
+        BlockPos selected=WorkerNavigation.selectExecutableStand(level,worker,entries);
+        if(selected==null)return null;
+        for(Rope r:candidates)if(r.landing.equals(selected))return r;
+        return null;
+    }
+    /** First real floor below a clear rope column. A lower floor cannot
+     * be used through the first obstruction. Each actual rope stays at
+     * most 20 blocks long, independently of the worker's initial height.
+     */
+    private static BlockPos ropeEntryFloor(ServerLevel level,BlockPos anchor,
+            Direction side){
+        int top=anchor.getY()+1;
+        BlockPos column=anchor.relative(side);
+        if(!headroom(level,column.atY(top)))return null;
+        for(int y=top-1;y>=top-MAX_REACH;y--){
+            BlockPos at=column.atY(y);
+            if(!headroom(level,at))return null;
+            if(solidTop(level,at.below()))return top-y>=2?at:null;
+        }
+        return null;
     }
     /** Find a real ledge that the Builder can reach BEFORE it hooks on.
      * A Builder may be several blocks from the rim after completing its
@@ -448,16 +460,10 @@ public final class BuilderGrappleAccess {
         }
         boolean ropeEntry(BlockPos from,BlockPos anchor,
                 java.util.Set<BlockPos> walking){
-            int rise=anchor.getY()+1-from.getY();
-            if(rise<2||rise>MAX_REACH)return false;
             for(Direction side:Direction.Plane.HORIZONTAL){
                 if(rejected(level,worker,anchor,side))continue;
-                BlockPos column=anchor.relative(side);
-                BlockPos entry=column.atY(from.getY());
-                if(walking.contains(entry)&&solidTop(level,entry.below())
-                        &&headroom(level,entry)
-                        &&lineClear(level,column,from.getY(),anchor.getY()+1))
-                    return true;
+                BlockPos entry=ropeEntryFloor(level,anchor,side);
+                if(entry!=null&&walking.contains(entry))return true;
             }
             return false;
         }

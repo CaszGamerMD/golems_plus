@@ -116,4 +116,47 @@ public final class BuilderStagedGrappleGameTest {
                     +" "+BuilderGrappleAccess.debug(mob));
         });
     }
+    @GameTest(maxTicks=600,skyAccess=true)
+    public void walksDownToActualRopeEntryBeforeClimbing(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        h.setBlock(1,2,3,Blocks.STONE);
+        for(int x=4;x<=6;x++)for(int z=2;z<=4;z++)
+            h.setBlock(x,4,z,Blocks.STONE);
+        h.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        var table=(WorkerStationBlockEntity)world.getBlockEntity(
+                h.absolutePos(new BlockPos(0,2,0)));
+        BlockPos start=h.absolutePos(new BlockPos(1,3,3));
+        BlockPos target=h.absolutePos(new BlockPos(7,5,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        mob.setItem(0,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        world.addFreshEntity(mob);
+        final boolean[] sawGroundEntry={false};
+        h.onEachTick(()->{
+            if(mob.onGround()&&mob.blockPosition().getY()==start.getY()-1)
+                sawGroundEntry[0]=true;
+            if(h.getTick()>=10&&h.getTick()%5==0){
+                var result=BuilderGrappleAccess.reachWork(world,mob,table,target);
+                if(result==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR
+                        ||result==BuilderGrappleAccess.Result.NEED_HOOK){
+                    h.fail("Reachable lower rope entry rejected "+result);return;
+                }
+            }
+            if(mob.onGround()&&!BuilderGrappleAccess.active(mob)
+                    &&BuilderPlacementSpace.horizontalClear(target,mob)
+                    &&BuilderConstructionPlanner.safeStand(
+                            world,mob,target,mob.blockPosition())){
+                if(!sawGroundEntry[0]){
+                    h.fail("Must physically walk down to the rope entry");return;
+                }
+                System.out.println("[ROPE ENTRY] PASS walked down then climbed "
+                        +"tick="+h.getTick());
+                h.succeed();return;
+            }
+            if(h.getTick()>520)h.fail("Lower rope entry stalled "+mob.position()
+                    +" "+BuilderGrappleAccess.debug(mob));
+        });
+    }
 }
