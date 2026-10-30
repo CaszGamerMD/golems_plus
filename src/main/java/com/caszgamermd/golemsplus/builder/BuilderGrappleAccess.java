@@ -702,7 +702,9 @@ public final class BuilderGrappleAccess {
             active.remove(mob);
             WorkerNavigation.stop(mob);
             System.out.println("[GRAPPLE] ATTACHMENT ROUTE TIMED OUT; "
-                    +"trying alternate anchor after grounded abort "+r.anchor);
+                    +"trying alternate anchor after grounded abort "+r.anchor
+                    +" entry="+r.landing+" feet="+mob.position()
+                    +" "+WorkerNavigation.diagnoseExecutableStand(level,mob,List.of(r.landing)));
             return false;
         }
         if(r.phase==Phase.WALK_TO_EDGE){

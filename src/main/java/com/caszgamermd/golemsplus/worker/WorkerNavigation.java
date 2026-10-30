@@ -649,7 +649,8 @@ public final class WorkerNavigation {
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
         Progress progress=state(mob);
-        if(progress.centering!=null&&!progress.centering.equals(target))
+        if(progress.centering!=null&&!progress.centering.equals(target)
+                &&!target.equals(progress.requested))
             progress.centering=null;
         if(progress.queuedDoor!=null&&target!=null
                 &&progress.requested!=null&&!target.equals(progress.requested))
@@ -669,6 +670,22 @@ public final class WorkerNavigation {
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
             ground.setCanOpenDoors(true);
+        // Native arrival may stop short of an INTERMEDIATE trained
+        // waypoint too. Replanning from that same off-center corner can
+        // repeatedly select the already-finished native leg. Finish the
+        // supported last fraction before searching onward to the entry.
+        if(same&&p.approach!=null&&!p.approach.equals(target)
+                &&mob.getNavigation().isDone()&&mob.onGround()){
+            double floor=floorAt(level,p.approach);
+            double distance=mob.distanceToSqr(p.approach.getX()+.5,
+                    floor,p.approach.getZ()+.5);
+            if(distance>.08*.08&&distance<.81
+                    &&Math.abs(mob.getY()-floor)<.05
+                    &&supportedRejoin(level,mob,p.approach)){
+                p.centering=p.approach;
+                if(tickExactCenter(level,mob))return true;
+            }
+        }
         // If the exact safe standing tile was reached on the previous
         // tick, do not reconstruct the same route and toggle navigation.
         double targetFloor=floorAt(level,target);

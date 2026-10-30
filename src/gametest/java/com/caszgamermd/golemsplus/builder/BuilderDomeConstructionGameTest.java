@@ -130,7 +130,7 @@ public final class BuilderDomeConstructionGameTest {
         }
         final int[] lastCursor={-1},lastCleared={-1},lastCompleted={-1};
         final long[] lastProgress={helper.getTick()};
-        final boolean[] inspected={false},checkpoint={false};
+        final boolean[] inspected={false},checkpoint={false},goal3333={false};
         helper.onEachTick(()->{
             long tick=helper.getTick();
             if(tick%20!=0)return;
@@ -207,6 +207,14 @@ public final class BuilderDomeConstructionGameTest {
                 checkpoint[0]=true;
                 System.out.println("[DOME TEAMWORK] PASS 1700 placed-block "
                         +"milestone with FOUR real Builders at tick="+tick);
+            }
+            if(!goal3333[0]&&physicalCount>=3333){
+                if(crew.size()!=4||crew.stream().anyMatch(w->!w.isAlive())){
+                    helper.fail("3333 milestone requires four living physical Builders");return;
+                }
+                goal3333[0]=true;
+                System.out.println("[DOME TEAMWORK] PASS 3333 physically verified blocks, "
+                        +"FOUR living Builders at tick="+tick);
             }
             if(!inspected[0]&&table.builderClearCursor()>0){
                 inspected[0]=true;
