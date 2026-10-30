@@ -16,6 +16,7 @@ public final class BuilderDomeApproachGameTest {
     public void courtyardWorkerWalksToOutsideRopeEntries(GameTestHelper h){run(h,true);}
     private void run(GameTestHelper h,boolean east){
         var world=h.getLevel();
+        int height="2".equals(System.getenv("GOLEMS_COURTYARD_HEIGHT"))?2:24;
         for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)h.setBlock(x,1,z,Blocks.STONE);
         BlockPos origin=h.absolutePos(new BlockPos(8,2,8));
         // Full-size navigation fixtures need entity simulation beyond
@@ -26,7 +27,7 @@ public final class BuilderDomeApproachGameTest {
         try{
             var schematic=LitematicFileReader.read(BuilderDomeFixture.unpack());
             for(var block:schematic.blocks()){
-                if(block.y()>=24||BuilderVegetation.ignoreSchematicState(block.state()))continue;
+                if(block.y()>=height||BuilderVegetation.ignoreSchematicState(block.state()))continue;
                 var resolved=BuilderBlockResolver.resolve(block.state(),BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
                 if(resolved!=null)world.setBlock(origin.offset(block.x(),block.y(),block.z()),resolved.state(),2);
             }
@@ -37,7 +38,7 @@ public final class BuilderDomeApproachGameTest {
         int[] phase={0};long[] started={0};
         h.onEachTick(()->{
             var mob=current[0];
-            BlockPos goal=phase[0]==2?origin.offset(15,24,27):origin.offset(phase[0]==1?-2:33,0,21);
+            BlockPos goal=phase[0]==2?origin.offset(height==2?23:15,height,height==2?28:27):origin.offset(phase[0]==1?-2:33,0,21);
             if(h.getTick()>=10&&h.getTick()%5==0){
                 if(phase[0]==2)BuilderGrappleAccess.reachWork(world,mob,null,goal);
                 else WorkerNavigation.routeToExact(world,mob,goal,1.0);

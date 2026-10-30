@@ -160,6 +160,7 @@ public final class BuilderGrappleAccess {
         mob.setNoGravity(false);
         mob.setDeltaMovement(0,0,0);
         WorkerNavigation.stop(mob);
+        mob.getMoveControl().setWantedPosition(mob.getX(),mob.getY(),mob.getZ(),0);
         System.out.println("[GRAPPLE] "+event+" at "+mob.position()
                 +" anchor="+rope.anchor+" side="+rope.side);
     }
@@ -767,6 +768,9 @@ public final class BuilderGrappleAccess {
                 ||r.phase==Phase.STEP_OFF||r.phase==Phase.RAPPEL)
                 &&r.stalledTicks>=STUCK_TICKS)
             beginRecovery(level,mob,r);
+        // Native walking acceleration must not push against rope velocity
+        // or pull a newly dismounted worker back toward its lower entry.
+        mob.getMoveControl().setWantedPosition(mob.getX(),mob.getY(),mob.getZ(),0);
         mob.setNoGravity(true);
         mob.setShiftKeyDown(false);
         emitLine(level,r,mob);
