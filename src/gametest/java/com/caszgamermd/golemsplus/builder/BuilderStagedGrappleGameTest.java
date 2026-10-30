@@ -61,4 +61,59 @@ public final class BuilderStagedGrappleGameTest {
                     +" "+BuilderGrappleAccess.debug(mob));
         });
     }
+    @GameTest(maxTicks=900,skyAccess=true)
+    public void previewsThreeClimbsPastTwoBlockingOverhangs(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,0,z,Blocks.STONE);
+        for(int x=1;x<=6;x++)for(int z=0;z<=6;z++)
+            h.setBlock(x,2,z,Blocks.STONE);
+        for(int x=2;x<=5;x++)for(int z=1;z<=5;z++)
+            h.setBlock(x,4,z,Blocks.STONE);
+        for(int x=3;x<=4;x++)for(int z=2;z<=4;z++)
+            h.setBlock(x,6,z,Blocks.STONE);
+        h.setBlock(0,1,7,WorksiteContent.BUILDER_TABLE);
+        var table=(WorkerStationBlockEntity)world.getBlockEntity(
+                h.absolutePos(new BlockPos(0,1,7)));
+        BlockPos start=h.absolutePos(new BlockPos(7,1,3));
+        BlockPos target=h.absolutePos(new BlockPos(6,7,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        mob.setItem(0,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        world.addFreshEntity(mob);
+        final boolean[] sawLower={false},sawMiddle={false};
+        final double[] previousY={mob.getY()};
+        h.onEachTick(()->{
+            if(previousY[0]-mob.getY()>.65||!mob.isAlive()){
+                h.fail("Three-stage climb lost controlled movement");return;
+            }
+            previousY[0]=mob.getY();
+            if(mob.onGround()&&!BuilderGrappleAccess.active(mob)){
+                if(mob.blockPosition().getY()==start.getY()+2)sawLower[0]=true;
+                if(mob.blockPosition().getY()==start.getY()+4)sawMiddle[0]=true;
+            }
+            if(h.getTick()>=10&&h.getTick()%5==0){
+                var result=BuilderGrappleAccess.reachWork(world,mob,table,target);
+                if(result==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR
+                        ||result==BuilderGrappleAccess.Result.NEED_HOOK){
+                    h.fail("Three-stage route rejected "+result
+                            +" feet="+mob.position());return;
+                }
+            }
+            if(mob.onGround()&&!BuilderGrappleAccess.active(mob)
+                    &&BuilderPlacementSpace.horizontalClear(target,mob)
+                    &&BuilderConstructionPlanner.safeStand(
+                            world,mob,target,mob.blockPosition())){
+                if(!sawLower[0]||!sawMiddle[0]
+                        ||mob.carriedCount(WorksiteContent.GRAPPLE_HOOK)!=1){
+                    h.fail("Must use both intermediate ledges and retain hook");return;
+                }
+                System.out.println("[STAGED GRAPPLE] PASS three real climbs "
+                        +"tick="+h.getTick());
+                h.succeed();return;
+            }
+            if(h.getTick()>820)h.fail("Three-stage grapple stalled "+mob.position()
+                    +" "+BuilderGrappleAccess.debug(mob));
+        });
+    }
 }

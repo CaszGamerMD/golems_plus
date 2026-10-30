@@ -176,4 +176,15 @@ final class WorkerRoutePlannerTest {
             previous=next;
         }
     }
+    @Test void admittedComponentNeverIncludesDisconnectedGoal(){
+        BlockPos start=at(0,64,0),a=at(1,64,0),b=at(2,64,0),gap=at(4,64,0);
+        Set<BlockPos> floor=Set.of(start,a,b,gap);
+        WorkerRoutePlanner.SearchStats[] stats={null};
+        var route=WorkerRoutePlanner.plan(start,List.of(gap),floor::contains,
+                BlockPos::getY,null,unused->0,s->stats[0]=s);
+        assertNull(route);
+        assertNotNull(stats[0]);
+        assertEquals(Set.of(start,a,b),stats[0].reachable());
+        assertFalse(stats[0].budgetExhausted());
+    }
 }

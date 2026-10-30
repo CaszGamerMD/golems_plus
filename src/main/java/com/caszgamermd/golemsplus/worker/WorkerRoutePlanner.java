@@ -46,7 +46,14 @@ public final class WorkerRoutePlanner {
     private static final int[] HEIGHT_STEPS={0,-1,1};
     private record Node(BlockPos pos,int travelled,int estimate){}
     public record Route(List<BlockPos> steps,boolean complete,int cost,int explored){}
-    public record SearchStats(int explored,int queued,boolean budgetExhausted){}
+    public record SearchStats(int explored,int queued,boolean budgetExhausted,
+            Set<BlockPos> reachable){
+        @Override public String toString(){
+            return "SearchStats[explored="+explored+", queued="+queued
+                    +", budgetExhausted="+budgetExhausted
+                    +", reachable="+reachable.size()+"]";
+        }
+    }
     private WorkerRoutePlanner(){}
 
     private static int heuristic(BlockPos at,List<BlockPos> goals){
@@ -175,7 +182,8 @@ public final class WorkerRoutePlanner {
             }
         }
         if(observer!=null)observer.accept(new SearchStats(explored,queue.size(),
-                finish==null&&explored>=NODE_BUDGET&&!queue.isEmpty()));
+                finish==null&&explored>=NODE_BUDGET&&!queue.isEmpty(),
+                Set.copyOf(cost.keySet())));
         boolean complete=finish!=null;
         if(!complete){
             if(!distant||frontier==null)return null;

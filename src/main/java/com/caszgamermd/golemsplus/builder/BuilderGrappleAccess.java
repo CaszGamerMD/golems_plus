@@ -380,59 +380,104 @@ public final class BuilderGrappleAccess {
                 poses.add(at);
             }
         if(poses.isEmpty())return null;
-        // Check both permitted feet levels. The upper work platform may
-        // be the only usable route even though the target is one layer down.
+        ClimbPreview preview=new ClimbPreview(level,worker,target,poses);
+        // Walking first; then a direct rope; then up to four real ropes.
+        // Every prospective landing must connect onward to a safe work
+        // pose through grounded walking and validated upward rope segments.
         for(int dy:new int[]{0,1}){
-            Rope route=chooseAscent(level,worker,target.above(dy),
-                    landing->WorkerNavigation.hasGroundRouteFrom(
-                            level,worker,landing,poses));
+            Rope route=chooseAscent(level,worker,target.above(dy),preview::canWork);
             if(route!=null)return route;
         }
-        // A lower overhang can block every ground-to-work rope while
-        // leaving a perfectly real two-stage climb. Preview the second
-        // grounded entry and final work connectivity before committing to
-        // the first hook. No entity relocation or speculative blocks.
-        Map<BlockPos,Boolean> onward=new java.util.HashMap<>();
-        Map<BlockPos,Boolean> workConnected=new java.util.HashMap<>();
         int startY=worker.blockPosition().getY();
         for(int y=Math.min(target.getY()-2,startY+MAX_REACH);y>=startY+2;y--){
-            Rope first=chooseAscent(level,worker,target.atY(y),landing->
-                    onward.computeIfAbsent(landing,at->canContinueWorkAscent(
-                            level,worker,target,at,poses,workConnected)));
+            Rope first=chooseAscent(level,worker,target.atY(y),
+                    landing->preview.continues(landing,3));
             if(first!=null)return first;
         }
         return null;
     }
-    /** All geometrically valid second-rope entries share ONE grounded
-     * A* from this landing. The old per-entry probes repeated the same
-     * terrain search hundreds of times for one preview. Connectivity of
-     * an upper landing to work is independent of the lower entry and is
-     * memoized only within this current-world preview.
+
+    private record ClimbKey(BlockPos landing,int remaining){}
+    private record WalkComponent(BlockPos root,java.util.Set<BlockPos> cells){}
+    /** Read-only, current-world bounded access graph. Connected walking
+     * areas are shared across anchor probes, with a checked reverse route
+     * before reusing one from another start (never assume directed grid
+     * edges are reversible). No cache survives this planning invocation.
      */
-    private static boolean canContinueWorkAscent(ServerLevel level,
-            BuilderGolem worker,BlockPos target,BlockPos landing,
-            List<BlockPos> poses,Map<BlockPos,Boolean> workConnected){
-        List<BlockPos> entries=new ArrayList<>();
-        for(int dy:new int[]{0,1}){
-            BlockPos goal=target.above(dy);
-            int rise=goal.getY()-landing.getY();
-            if(rise<2||rise>MAX_REACH)continue;
-            for(BlockPos anchor:solidAnchors(level,goal)){
-                for(Direction side:Direction.Plane.HORIZONTAL){
-                    if(rejected(level,worker,anchor,side))continue;
-                    BlockPos column=anchor.relative(side);
-                    BlockPos entry=column.atY(landing.getY());
-                    if(!solidTop(level,entry.below())||!headroom(level,entry)
-                            ||!lineClear(level,column,landing.getY(),goal.getY()))continue;
-                    if(!workConnected.computeIfAbsent(anchor.above(),
-                            last->WorkerNavigation.hasGroundRouteFrom(
-                                    level,worker,last,poses)))continue;
-                    if(!entries.contains(entry))entries.add(entry);
+    private static final class ClimbPreview {
+        final ServerLevel level;
+        final BuilderGolem worker;
+        final BlockPos target;
+        final List<BlockPos> poses;
+        final List<WalkComponent> components=new ArrayList<>();
+        final Map<BlockPos,java.util.Set<BlockPos>> walks=new java.util.HashMap<>();
+        final Map<Integer,List<BlockPos>> anchors=new java.util.HashMap<>();
+        final Map<BlockPos,Boolean> work=new java.util.HashMap<>();
+        final Map<ClimbKey,Boolean> onward=new java.util.HashMap<>();
+        ClimbPreview(ServerLevel level,BuilderGolem worker,BlockPos target,
+                List<BlockPos> poses){
+            this.level=level;this.worker=worker;this.target=target;this.poses=poses;
+        }
+        java.util.Set<BlockPos> walking(BlockPos from){
+            var cached=walks.get(from);
+            if(cached!=null)return cached;
+            for(WalkComponent c:components){
+                if(c.cells().contains(from)
+                        &&WorkerNavigation.hasGroundRouteFrom(
+                                level,worker,from,List.of(c.root()))){
+                    walks.put(from,c.cells());return c.cells();
                 }
             }
+            var cells=WorkerNavigation.groundReachableFrom(level,worker,from);
+            walks.put(from,cells);components.add(new WalkComponent(from,cells));
+            return cells;
         }
-        return !entries.isEmpty()&&WorkerNavigation.hasGroundRouteFrom(
-                level,worker,landing,entries);
+        boolean canWork(BlockPos from){
+            return work.computeIfAbsent(from,at->{
+                var cells=walking(at);
+                return poses.stream().anyMatch(cells::contains);
+            });
+        }
+        List<BlockPos> anchors(int feetY){
+            return anchors.computeIfAbsent(feetY,y->solidAnchors(level,target.atY(y)));
+        }
+        boolean ropeEntry(BlockPos from,BlockPos anchor,
+                java.util.Set<BlockPos> walking){
+            int rise=anchor.getY()+1-from.getY();
+            if(rise<2||rise>MAX_REACH)return false;
+            for(Direction side:Direction.Plane.HORIZONTAL){
+                if(rejected(level,worker,anchor,side))continue;
+                BlockPos column=anchor.relative(side);
+                BlockPos entry=column.atY(from.getY());
+                if(walking.contains(entry)&&solidTop(level,entry.below())
+                        &&headroom(level,entry)
+                        &&lineClear(level,column,from.getY(),anchor.getY()+1))
+                    return true;
+            }
+            return false;
+        }
+        boolean continues(BlockPos from,int remaining){
+            ClimbKey key=new ClimbKey(from,remaining);
+            Boolean known=onward.get(key);
+            if(known!=null)return known;
+            boolean found=search(from,remaining);
+            onward.put(key,found);return found;
+        }
+        boolean search(BlockPos from,int remaining){
+            if(canWork(from))return true;
+            if(remaining<=0)return false;
+            var cells=walking(from);
+            for(int dy:new int[]{0,1})
+                for(BlockPos anchor:anchors(target.getY()+dy))
+                    if(ropeEntry(from,anchor,cells)&&canWork(anchor.above()))return true;
+            if(remaining==1)return false;
+            for(int y=Math.min(target.getY()-2,from.getY()+MAX_REACH);
+                    y>=from.getY()+2;y--)
+                for(BlockPos anchor:anchors(y))
+                    if(ropeEntry(from,anchor,cells)
+                            &&continues(anchor.above(),remaining-1))return true;
+            return false;
+        }
     }
 
     public static boolean canPlanWorkAscent(ServerLevel level,

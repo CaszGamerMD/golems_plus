@@ -537,6 +537,22 @@ public final class WorkerNavigation {
         return route!=null&&route.complete();
     }
 
+    /** Conservative set of grounded cells reached under the same trained
+     * rules and node budget. A goal outside the window makes the search
+     * expose its whole admitted component instead of stopping at one tile.
+     * A budget-limited result can miss access, but cannot invent access.
+     */
+    public static java.util.Set<BlockPos> groundReachableFrom(ServerLevel level,
+            PathfinderMob mob,BlockPos start){
+        if(!standingTile(level,mob,start))return java.util.Set.of();
+        WorkerRoutePlanner.SearchStats[] stats={null};
+        WorkerRoutePlanner.plan(start,
+                List.of(start.offset(WorkerRoutePlanner.RADIUS+1,0,0)),
+                at->standingTile(level,mob,at),at->floorAt(level,at),null,
+                at->trainedTerrainCost(level,at),s->stats[0]=s);
+        return stats[0]==null?java.util.Set.of(start):stats[0].reachable();
+    }
+
     /** Read-only reason why the trained work selector cannot start. */
     public static String diagnoseExecutableStand(ServerLevel level,
             PathfinderMob mob,List<BlockPos> candidates){
