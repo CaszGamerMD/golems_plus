@@ -153,10 +153,24 @@ public final class BuilderFenceStepGameTest {
                 h.succeed();
                 return;
             }
-            if(h.getTick()>430)h.fail("Mixed roof stalled at "+mob.position()
+            if(h.getTick()>430){
+                var nearby=WorkerNavigation.groundReachableFrom(
+                        world,mob,mob.blockPosition()).stream()
+                        .map(p->p.subtract(start).toShortString()).sorted().toList();
+                var tiles=new java.util.ArrayList<String>();
+                for(int dx=0;dx<=8;dx++){
+                    BlockPos top=start.offset(dx,0,0);
+                    BlockPos low=top.below();
+                    tiles.add(dx+": y3="+WorkerNavigation.canStandOn(world,mob,top)
+                            +" y2="+WorkerNavigation.canStandOn(world,mob,low)
+                            +" floorBlock="+world.getBlockState(low));
+                }
+                h.fail("Mixed roof stalled at "+mob.position()
                     +" nav="+WorkerNavigation.debugStatus(mob)
+                    +" reachable="+nearby+" terrain="+tiles
                     +" "+WorkerNavigation.diagnoseExecutableStand(
                         world,mob,java.util.List.of(goal)));
+            }
         });
     }
 
