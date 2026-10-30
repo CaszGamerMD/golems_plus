@@ -25,7 +25,7 @@ import net.minecraft.world.phys.AABB;
 public final class BuilderPlacementSpace {
     private BuilderPlacementSpace(){}
     private record Yield(BlockPos target,BlockPos destination,
-            long until,boolean placingWorker){}
+            long until,boolean placingWorker,boolean precision){}
     private static final Map<BuilderGolem,Yield> yielding=new WeakHashMap<>();
     // A work target must keep the same approach position across successive
     // 12-tick updates. Recomputing the nearest spot from a moving golem
@@ -109,6 +109,9 @@ public final class BuilderPlacementSpace {
         for(double[] direction:candidates){
             double vx=direction[0]*.115,vz=direction[1]*.115;
             double newX=x+vx,newZ=z+vz;
+            double oldGap=edgeDistance(target,x,z);
+            if(oldGap>.001&&edgeDistance(target,newX,newZ)<=oldGap+.0001)
+                continue; // a local sidestep must actually gain clearance
             BlockPos foot=BlockPos.containing(newX,mob.getY(),newZ);
             if(!level.hasChunkAt(foot)||!level.hasChunkAt(foot.below()))
                 continue;
@@ -145,10 +148,11 @@ public final class BuilderPlacementSpace {
      */
     public static boolean tickPrecisionYield(ServerLevel level,BuilderGolem mob){
         Yield hold=yielding.get(mob);
-        if(hold==null||!occupied(hold.target(),mob))return false;
+        if(hold==null||!hold.precision()||!occupied(hold.target(),mob))return false;
         double[] step=precisionStep(level,mob,hold.target());
         if(step==null)return false;
         WorkerNavigation.stop(mob);
+        mob.getMoveControl().setWantedPosition(mob.getX(),mob.getY(),mob.getZ(),0);
         var velocity=mob.getDeltaMovement();
         mob.setDeltaMovement(step[0],Math.min(0,velocity.y),step[1]);
         return true;
@@ -170,8 +174,14 @@ public final class BuilderPlacementSpace {
         }
         // The last fraction of a block is a continuous physics-controlled
         // precision move; an exact tile-center path would stop too close.
-        if(occupied(hold.target(),worker)
-                &&canPrecisionStep(level,worker,hold.target()))return true;
+        if(occupied(hold.target(),worker)&&hold.precision()){
+            if(canPrecisionStep(level,worker,hold.target()))return true;
+            BlockPos destination=escape(level,worker,hold.target());
+            if(destination!=null){
+                hold=new Yield(hold.target(),destination,hold.until(),hold.placingWorker(),false);
+                yielding.put(worker,hold);
+            }
+        }
         // Otherwise the worker must take a normal collision-safe A* path.
         if(occupied(hold.target(),worker)
                 ||worker.distanceToSqr(hold.destination().getX()+.5,
@@ -529,8 +539,8 @@ public final class BuilderPlacementSpace {
             // When standing adjacent on real ground, do a precise
             // horizontal edge-clearance move instead of targeting a tile
             // center that still intersects the future placement cube.
-            BlockPos destination=canPrecisionStep(level,blocker,target)
-                    ?blocker.blockPosition():escape(level,blocker,target);
+            boolean precision=canPrecisionStep(level,blocker,target);
+            BlockPos destination=precision?blocker.blockPosition():escape(level,blocker,target);
             // An old stand candidate at the AIR target itself would have
             // walked the blocker INTO the block it was supposed to clear.
             if(destination!=null
@@ -540,7 +550,7 @@ public final class BuilderPlacementSpace {
                 continue;
             }
             yielding.put(blocker,new Yield(target,destination,
-                    level.getGameTime()+60,blocker==placing));
+                    level.getGameTime()+60,blocker==placing,precision));
             WorkerNavigation.routeToExact(level,blocker,destination,.9);
         }
         // An AIR cell is not being mined here. Before placing a new solid

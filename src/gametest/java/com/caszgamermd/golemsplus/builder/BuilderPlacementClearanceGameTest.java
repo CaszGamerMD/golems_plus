@@ -124,4 +124,36 @@ public final class BuilderPlacementClearanceGameTest {
             helper.succeed();
         });
     }
+    @GameTest(maxTicks=400,skyAccess=true)
+    public void narrowLedgeUsesWalkingEscapeWhenNearSideIsBlocked(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)h.setBlock(x,1,3,Blocks.STONE);
+        h.setBlock(1,2,3,Blocks.STONE);
+        h.setBlock(1,3,3,Blocks.STONE);
+        h.setBlock(0,1,0,WorksiteContent.BUILDER_TABLE);
+        var table=(WorkerStationBlockEntity)world.getBlockEntity(h.absolutePos(new BlockPos(0,1,0)));
+        BlockPos target=h.absolutePos(new BlockPos(3,2,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(target.getX()-.652,target.getY(),target.getZ()+.854);
+        world.addFreshEntity(mob);
+        table.registerBuilderWorker(mob.getUUID());
+        boolean[] blocked={false};
+        h.onEachTick(()->{
+            if(h.getTick()<10||h.getTick()%5!=0)return;
+            if(!mob.onGround()||mob.blockPosition().getY()!=target.getY()){
+                h.fail("Escape left the actual narrow ledge "+mob.position());return;
+            }
+            if(BuilderPlacementSpace.ready(world,mob,table,target)){
+                if(!blocked[0]||!BuilderPlacementSpace.horizontalClear(target,mob)){
+                    h.fail("Unsafe clearance accepted");return;
+                }
+                world.setBlock(target,Blocks.IRON_BLOCK.defaultBlockState(),3);
+                h.succeed();return;
+            }
+            blocked[0]=true;
+            if(h.getTick()>350)h.fail("Walking escape stalled "+mob.position()
+                    +" "+BuilderPlacementSpace.debugYield(world,mob));
+        });
+    }
+
 }
