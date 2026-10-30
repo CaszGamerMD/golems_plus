@@ -303,7 +303,11 @@ public final class BuilderSafeScaffoldGameTest {
                 return;
             }
             if(stage[0]==0){
-                if(helper.getTick()%5==0){
+                // A freshly spawned real entity has not finished settling
+                // on the roof at test tick zero; navigation cannot prove a
+                // physical first leg until its feet are grounded.
+                if(helper.getTick()>=10&&mob.onGround()
+                        &&helper.getTick()%5==0){
                     var result=BuilderScaffoldPlanA.reach(
                             level,mob,table,owner,goal,List.of());
                     if(result==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE
