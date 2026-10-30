@@ -540,7 +540,9 @@ public final class BuilderDomeRouteSurveyGameTest {
                         +rel(origin,worker.blockPosition())
                         +" "+WorkerNavigation.debugStatus(worker)
                         +" "+WorkerNavigation.diagnoseExecutableStand(
-                                world,worker,List.of(goal)));
+                                world,worker,List.of(goal))
+                        +" "+WorkerNavigation.diagnoseGroundedEdge(
+                                world,worker,goal));
         });
     }
 

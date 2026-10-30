@@ -610,6 +610,41 @@ public final class WorkerNavigation {
         return null;
     }
 
+    /** Read-only 3D footing and first-leg diagnostics from the worker's
+     * exact fractional position. Used to distinguish an impossible local
+     * corridor from a falsely rejected A* start node.
+     */
+    public static String diagnoseGroundedEdge(ServerLevel level,
+            PathfinderMob mob,BlockPos destination){
+        StringBuilder s=new StringBuilder(" actual=")
+            .append(mob.position()).append(" grounded=").append(mob.onGround())
+            .append(" current=").append(mob.blockPosition())
+            .append(" block=").append(level.getBlockState(mob.blockPosition()))
+            .append(" below=").append(level.getBlockState(mob.blockPosition().below()))
+            .append(" body=").append(mob.getBoundingBox())
+            .append(" startCenter=").append(standingTile(level,mob,mob.blockPosition()))
+            .append(" possible=[");
+        BlockPos origin=mob.blockPosition();
+        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++)
+            for(int dy=-1;dy<=1;dy++){
+                if(dx==0&&dz==0)continue;
+                BlockPos at=origin.offset(dx,dy,dz);
+                if(!standingTile(level,mob,at))continue;
+                double floor=floorAt(level,at);
+                if(Math.abs(floor-mob.getY())>1.01)continue;
+                boolean direct=supportedRejoin(level,mob,at);
+                boolean terrain=canBeginTerrainStep(level,mob,at);
+                s.append(at.subtract(origin).toShortString())
+                    .append(":height=").append(String.format(
+                        java.util.Locale.ROOT,"%.2f",floor-mob.getY()))
+                    .append(",slide=").append(direct)
+                    .append(",terrain=").append(terrain)
+                    .append(",ground=").append(level.getBlockState(at.below()))
+                    .append(';');
+            }
+        return s.append(']').toString();
+    }
+
     private static boolean supportedRejoin(ServerLevel level,PathfinderMob mob,
             BlockPos seed){
         if(!standingTile(level,mob,seed))return false;
