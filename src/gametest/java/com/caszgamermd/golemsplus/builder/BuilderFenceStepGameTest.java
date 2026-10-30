@@ -367,9 +367,13 @@ public final class BuilderFenceStepGameTest {
         for(int x=3;x<=12;x++){
             h.setBlock(x,2,3,x%2==0
                     ?Blocks.GLASS:magenta.state().getBlock());
-            for(int y=2;y<=4;y++){
+            for(int y=2;y<=5;y++){
                 h.setBlock(x,y,2,Blocks.AIR);
                 h.setBlock(x,y,4,Blocks.AIR);
+                // Empty GameTest arenas can retain barrier filler.
+                // Glass collision is only meaningful with actual air
+                // above it: clear the planned work corridor itself.
+                if(y>=3)h.setBlock(x,y,3,Blocks.AIR);
             }
         }
         BlockPos start=h.absolutePos(new BlockPos(3,3,3));
