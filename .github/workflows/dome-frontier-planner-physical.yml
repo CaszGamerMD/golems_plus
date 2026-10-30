@@ -25,6 +25,9 @@ jobs:
           grep -q 'BuilderConstructionPlanner.choose' src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java
       - name: Run full 3537-block dome with four real Builder Golems
         run: gradle --no-daemon runGameTest
+      - name: Render the ACTUAL stalled dome voxel map (even when test fails)
+        if: always()
+        run: python scripts/render_dome_route_model.py || true
       - name: Save physical dome reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -88,6 +91,9 @@ jobs:
           p.write_text(json.dumps(d,indent=2)+'\\n')
           PYTEST
           gradle --no-daemon runGameTest
+      - name: Render original model as interactive offline HTML
+        if: always()
+        run: python scripts/render_dome_route_model.py || true
       - name: Export accurate dome model and worker route evidence
         if: always()
         uses: actions/upload-artifact@v4
