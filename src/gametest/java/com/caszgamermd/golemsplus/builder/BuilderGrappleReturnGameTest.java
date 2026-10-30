@@ -119,4 +119,53 @@ public final class BuilderGrappleReturnGameTest {
                     +" "+com.caszgamermd.golemsplus.worker.WorkerNavigation.debugStatus(mob));
         });
     }
+    @GameTest(maxTicks=450,skyAccess=true)
+    public void isolatedFencePerchCanRappel(GameTestHelper h){
+        partialPerch(h,false);
+    }
+    @GameTest(maxTicks=450,skyAccess=true)
+    public void sideSupportedFencePerchCanRappel(GameTestHelper h){
+        partialPerch(h,true);
+    }
+    private void partialPerch(GameTestHelper h,boolean side){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)h.setBlock(x,1,z,Blocks.STONE);
+        for(int y=2;y<=4;y++)h.setBlock(3,y,3,Blocks.STONE);
+        h.setBlock(3,5,3,Blocks.BIRCH_FENCE);
+        if(side){
+            h.setBlock(4,5,3,Blocks.STONE);
+            h.setBlock(4,6,3,Blocks.BIRCH_FENCE);
+            h.setBlock(3,5,3,Blocks.BIRCH_FENCE.defaultBlockState()
+                    .setValue(net.minecraft.world.level.block.FenceBlock.EAST,true));
+        }
+        h.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        var table=(WorkerStationBlockEntity)world.getBlockEntity(h.absolutePos(new BlockPos(0,2,0)));
+        BlockPos base=h.absolutePos(new BlockPos(3,6,3));
+        BlockPos goal=h.absolutePos(new BlockPos(6,2,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(base.getX()+(side?1.02:.5),base.getY()+.5,base.getZ()+.5);
+        mob.setItem(0,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        world.addFreshEntity(mob);
+        double health=mob.getHealth();
+        double[] previousY={mob.getY()};
+        boolean[] attached={false};
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.getHealth()<health||previousY[0]-mob.getY()>.65){
+                h.fail("Unsafe partial-perch descent "+mob.position());return;
+            }
+            previousY[0]=mob.getY();
+            if(h.getTick()>=10&&h.getTick()%5==0)
+                BuilderGrappleAccess.rappelToward(world,mob,table,goal);
+            attached[0]|=BuilderGrappleAccess.active(mob);
+            if(attached[0]&&mob.onGround()&&mob.blockPosition().getY()==goal.getY()
+                    &&!BuilderGrappleAccess.active(mob)){
+                if(mob.carriedCount(WorksiteContent.GRAPPLE_HOOK)!=1){h.fail("Lost hook");return;}
+                System.out.println("[PARTIAL PERCH] PASS side="+side+" tick="+h.getTick());
+                h.succeed();
+            }
+            if(h.getTick()>400)h.fail("Partial-perch rappel stalled "+mob.position()
+                    +" "+BuilderGrappleAccess.debug(mob));
+        });
+    }
+
 }

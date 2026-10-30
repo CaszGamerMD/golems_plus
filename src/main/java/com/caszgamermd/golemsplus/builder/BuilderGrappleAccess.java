@@ -43,6 +43,7 @@ public final class BuilderGrappleAccess {
         int recoveryTicks;
         double lastX=Double.NaN,lastY=Double.NaN,lastZ=Double.NaN;
         Phase lastPhase;
+        double supportY=Double.NaN,upperX,upperZ;
         Rope(BlockPos anchor,Direction side,BlockPos landing,BlockPos goal,
                 boolean down,long time) {
             this.anchor=anchor.immutable();
@@ -53,8 +54,9 @@ public final class BuilderGrappleAccess {
             this.down=down;
             this.started=time;
             this.phase=down?Phase.WALK_TO_EDGE:Phase.WALK_TO_LINE;
+            upperX=anchor.getX()+.5;upperZ=anchor.getZ()+.5;
         }
-        double topY(){return anchor.getY()+1.0;}
+        double topY(){return Double.isFinite(supportY)?supportY:anchor.getY()+1.0;}
     }
     private static final Map<BuilderGolem,Rope> active=new WeakHashMap<>();
     // A stable one-block step-down intermediate waypoint prevents an idle
@@ -191,6 +193,66 @@ public final class BuilderGrappleAccess {
     private static boolean solidTop(ServerLevel world,BlockPos p){
         return world.hasChunkAt(p)
                 &&world.getBlockState(p).isFaceSturdy(world,p,Direction.UP);
+    }
+    private static boolean anchorPresent(ServerLevel level,Rope rope){
+        if(!Double.isFinite(rope.supportY))return solidTop(level,rope.anchor);
+        var shape=level.getBlockState(rope.anchor).getCollisionShape(level,rope.anchor);
+        for(AABB box:shape.toAabbs())
+            if(Math.abs(box.maxY+rope.anchor.getY()-rope.supportY)<.05
+                    &&box.move(rope.anchor).intersects(new AABB(
+                        rope.upperX-.325,rope.supportY-.04,rope.upperZ-.325,
+                        rope.upperX+.325,rope.supportY+.001,rope.upperZ+.325)))return true;
+        return false;
+    }
+    /** Emergency descent from an actual grounded partial-block perch.
+     * A centered standing tile need not exist on a fence rail. Attach only
+     * to collision geometry touching the soles, then sweep the entire body
+     * to an adjacent clear rope column before committing to that face.
+     */
+    private static Rope chooseSupportedDescent(ServerLevel level,
+            BuilderGolem worker,BlockPos goal){
+        if(!worker.onGround())return null;
+        double y=worker.getY();
+        AABB body=worker.getBoundingBox();
+        AABB soles=new AABB(body.minX,y-.04,body.minZ,body.maxX,y+.001,body.maxZ);
+        List<Rope> candidates=new ArrayList<>();
+        BlockPos feet=worker.blockPosition();
+        for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++)
+            for(int dy=-2;dy<=0;dy++){
+                BlockPos anchor=feet.offset(dx,dy,dz);
+                if(!level.hasChunkAt(anchor))continue;
+                boolean contact=false;
+                for(AABB box:level.getBlockState(anchor)
+                        .getCollisionShape(level,anchor).toAabbs())
+                    if(Math.abs(box.maxY+anchor.getY()-y)<.05
+                            &&box.move(anchor).intersects(soles)){contact=true;break;}
+                if(!contact)continue;
+                for(Direction side:Direction.Plane.HORIZONTAL){
+                    if(rejected(level,worker,anchor,side))continue;
+                    BlockPos column=anchor.relative(side);
+                    double mx=column.getX()+.5-worker.getX();
+                    double mz=column.getZ()+.5-worker.getZ();
+                    boolean clear=true;
+                    int samples=Math.max(8,(int)Math.ceil(Math.hypot(mx,mz)/.08));
+                    for(int i=1;i<=samples;i++)
+                        if(!level.noCollision(worker,body.move(mx*i/samples,0,mz*i/samples))){
+                            clear=false;break;
+                        }
+                    if(!clear)continue;
+                    for(int ly=(int)Math.floor(y)-1;y-ly<=MAX_REACH;ly--){
+                        BlockPos landing=column.atY(ly);
+                        if(!headroom(level,landing))break;
+                        if(!solidTop(level,landing.below()))continue;
+                        if(!lineClear(level,column,ly,(int)Math.ceil(y)))break;
+                        Rope rope=new Rope(anchor,side,landing,goal,true,level.getGameTime());
+                        rope.supportY=y;rope.upperX=worker.getX();rope.upperZ=worker.getZ();
+                        rope.phase=Phase.STEP_OFF;
+                        candidates.add(rope);break;
+                    }
+                }
+            }
+        candidates.sort(Comparator.comparingDouble(r->r.landing.distSqr(goal)));
+        return candidates.isEmpty()?null:candidates.get(0);
     }
     private static boolean empty(ServerLevel world,BlockPos p){
         if(!world.hasChunkAt(p)||!world.getFluidState(p).isEmpty())return false;
@@ -594,6 +656,7 @@ public final class BuilderGrappleAccess {
             return load!=BuilderSupplyInventory.LoadStatus.MISSING;
         }
         Rope route=chooseDescent(level,worker,goal);
+        if(route==null)route=chooseSupportedDescent(level,worker,goal);
         if(route==null)return false;
         active.put(worker,route);
         WorkerNavigation.stop(worker);
@@ -674,7 +737,7 @@ public final class BuilderGrappleAccess {
         }
         // Anchor may be modified by a player while the hook is attached:
         // stay suspended instead of dropping the Builder to its death.
-        if(!solidTop(level,r.anchor)){
+        if(!anchorPresent(level,r)){
             // Missing support: stay attached rather than free-falling.
             // Recovery is impossible without a solid upper anchor.
             mob.setNoGravity(true);
@@ -755,12 +818,12 @@ public final class BuilderGrappleAccess {
                 }
             }
             case RETURN_ON_LEDGE -> {
-                moved=steer(level,mob,r.anchor.getX()+.5,
-                        r.topY()+.12,r.anchor.getZ()+.5,.13,true);
-                if(Math.abs(mob.getX()-r.anchor.getX()-.5)<.17
-                        &&Math.abs(mob.getZ()-r.anchor.getZ()-.5)<.17
+                moved=steer(level,mob,r.upperX,
+                        r.topY()+.12,r.upperZ,.13,true);
+                if(Math.abs(mob.getX()-r.upperX)<.07
+                        &&Math.abs(mob.getZ()-r.upperZ)<.07
                         &&mob.getY()>=r.topY()+.055
-                        &&solidTop(level,r.anchor))
+                        &&anchorPresent(level,r))
                     release(mob,r,"RAPPEL RETREATED TO UPPER LEDGE");
             }
             case RAPPEL -> {
