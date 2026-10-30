@@ -497,7 +497,11 @@ public final class BuilderDomeRouteSurveyGameTest {
         BlockPos start=origin.offset(8,26,11);
         BlockPos goal=origin.offset(14,30,14);
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
-        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        // Exact measured north roof handoff fractional footing. Center
+        // of this block collides with architectural details and is NOT a
+        // valid substitute for where the worker actually stood.
+        worker.setPos(origin.getX()+8.342,origin.getY()+26,
+                origin.getZ()+11.602);
         world.addFreshEntity(worker);
         boolean[] ascended={false};
         h.onEachTick(()->{
