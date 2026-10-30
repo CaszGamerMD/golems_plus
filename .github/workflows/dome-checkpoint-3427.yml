@@ -40,7 +40,8 @@ jobs:
               'Gameplay source: 9039699f8a97c5773f49a672528374ccacc437c1\n'
               'Measured original physical dome: 3427 / 3537 blocks, active layer Y=30.\n'
               'Test: https://github.com/CaszGamerMD/golems_plus/actions/runs/41007294587\n'
-              '3333 milestone verified at tick 65900 with FOUR living physical Builders.\n'\n              'Experimental checkpoint; 110 blocks and final crew return remain incomplete.\n'
+              '3333 milestone verified at tick 65900 with FOUR living physical Builders.\n'
+              'Experimental checkpoint; 110 blocks and final crew return remain incomplete.\n'
               'Replace the previous Golems Plus jar; retain Fabric API.\n')
           PY
       - uses: actions/upload-artifact@v4
