@@ -292,6 +292,10 @@ public final class BuilderSafeScaffoldGameTest {
         // elevation; clear that fixture space, never any live build cell.
         for(int n=1;n<=5;n++){
             BlockPos bridge=start.east(n).atY(goal.getY()-1);
+            // No second roof support may let the planner select a shorter
+            // tower: this fixture explicitly tests the five-cell span.
+            level.setBlock(start.east(n).below(),
+                    Blocks.AIR.defaultBlockState(),3);
             for(int dy=0;dy<=2;dy++)
                 level.setBlock(bridge.above(dy),Blocks.AIR.defaultBlockState(),3);
         }

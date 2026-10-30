@@ -424,7 +424,8 @@ public final class BuilderScaffoldPlanA {
         worker.setNoGravity(false);
         double tx=destination.getX()+.5,tz=destination.getZ()+.5;
         if(close(worker,destination)){
-            j.phase=switch(j.phase){
+            Phase completed=j.phase;
+            j.phase=switch(completed){
                 case WALK_FIRST->Phase.EXTEND_SECOND;
                 case WALK_SECOND->j.bridgeStep<j.bridgeSpan
                         ?Phase.EXTEND_SECOND:Phase.READY;
@@ -433,9 +434,12 @@ public final class BuilderScaffoldPlanA {
                 case RETURN_TOWER->Phase.DESCEND;
                 default->j.phase;
             };
-            if(j.phase==Phase.EXTEND_SECOND&&j.bridgeStep<j.bridgeSpan)
+            // WALK_FIRST schedules the SECOND bridge cell, which has not
+            // yet been placed. Only advance after finishing a WALK_SECOND.
+            // Skipping cell two fabricated a nonexistent scaffold parent.
+            if(completed==Phase.WALK_SECOND&&j.phase==Phase.EXTEND_SECOND)
                 j.bridgeStep++;
-            if(j.phase==Phase.RETURN_FIRST&&j.returnStep>1)
+            if(completed==Phase.RETURN_FIRST&&j.returnStep>1)
                 j.returnStep--;
             j.lastProgress=level.getGameTime();
             return true;
