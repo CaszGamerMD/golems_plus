@@ -570,7 +570,17 @@ public final class BuilderSafeScaffoldGameTest {
                             ||!level.getBlockState(target.below()).isAir()){
                         h.fail("No valid real scaffold work pose or floating "
                                 +"material area "+mob.position()+" "
-                                +BuilderScaffoldPlanA.status(mob));return;
+                                +BuilderScaffoldPlanA.status(mob)
+                                +" onGround="+mob.onGround()
+                                +" footprint="+level.getBlockState(mob.blockPosition().below())
+                                +" safePose="+BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                                        level,mob,table,target)
+                                +" height="+BuilderPlacementSpace.placementHeight(target,mob)
+                                +" horizontal="+BuilderPlacementSpace.horizontalClear(target,mob)
+                                +" ready="+BuilderPlacementSpace.ready(level,mob,table,target)
+                                +" LOS="+BuilderConstructionPlanner.lineOfSight(
+                                        level,mob,mob.blockPosition(),target)
+                                +" below="+level.getBlockState(target.below()));return;
                     }
                     if(!level.setBlock(target,Blocks.DIORITE.defaultBlockState(),3)
                             ||!level.getBlockState(target).is(Blocks.DIORITE)){
