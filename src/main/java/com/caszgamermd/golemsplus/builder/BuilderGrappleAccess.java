@@ -659,7 +659,13 @@ public final class BuilderGrappleAccess {
             var load=BuilderSupplyInventory.loadGrapple(level,worker,table);
             return load!=BuilderSupplyInventory.LoadStatus.MISSING;
         }
-        Rope route=chooseDescent(level,worker,goal);
+        // A grounded fence/slab perch can be half a block above the
+        // nominal ledge node. A geometric walk to a nearby full ledge can
+        // repeatedly fail to center there; attach to actual sole contact
+        // first in this fractional-height recovery case.
+        Rope route=Math.abs(worker.getY()-Math.rint(worker.getY()))>.05
+                ?chooseSupportedDescent(level,worker,goal):null;
+        if(route==null)route=chooseDescent(level,worker,goal);
         if(route==null)route=chooseSupportedDescent(level,worker,goal);
         if(route==null)return false;
         active.put(worker,route);
