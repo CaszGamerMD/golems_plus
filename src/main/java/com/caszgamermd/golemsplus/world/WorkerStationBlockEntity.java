@@ -1287,6 +1287,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
             }
         }
         builderFinishedSteps.add(index);
+        // Real completed placements update the visible total immediately,
+        // even when this is the LAST step and the order closes now.
+        if(builderWorkTotal>=0&&!builderAutoSkippedPlants.contains(index))
+            builderWorkDone=Math.min(builderWorkTotal,builderWorkDone+1);
         while(builderFinishedSteps.remove(builderCursor))builderCursor++;
         if(builderCursor>=builderBlocks){
             phase=WorkerPhase.COMPLETE;activeOrder=null;builderClaims.clear();

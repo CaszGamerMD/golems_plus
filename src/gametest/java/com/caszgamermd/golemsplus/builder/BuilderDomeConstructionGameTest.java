@@ -48,6 +48,11 @@ public final class BuilderDomeConstructionGameTest {
             if(steps.size()!=3537)
                 throw new IllegalStateException("Incorrect Dome blueprint count "+steps.size());
         }catch(Exception e){helper.fail("Could not plan Dome "+e);return;}
+        final int requiredBlocks=(int)steps.stream()
+                .filter(step->!step.ignorePlant()).count();
+        final int ignoredPlants=steps.size()-requiredBlocks;
+        System.out.println("[DOME WORK TARGET] schematic="+steps.size()
+                +" ignoredPlants="+ignoredPlants+" actualRequired="+requiredBlocks);
         // Minecraft GameTest allocates the containing world at a random
         // coordinate. The *schematic's own coordinate frame* starts at
         // (0,0,0), the ground supporting Y=0 is local Y=-1, and ALL
@@ -155,7 +160,7 @@ public final class BuilderDomeConstructionGameTest {
             }
             if(tick%400==0)
                 System.out.println("[DOME PROGRESS] tick="+tick
-                    +" realBlocks="+physicalCount+"/"+steps.size()
+                    +" realBlocks="+physicalCount+"/"+requiredBlocks
                     +" activeY="+(sharedY-table.builderOrigin().getY())
                     +" clear="+table.builderClearCursor()
                     +" cursor="+table.builderCursor()
@@ -253,8 +258,10 @@ public final class BuilderDomeConstructionGameTest {
                 boolean scaffoldsGone=crew.stream().allMatch(
                         worker->table.scaffoldPositions(worker.getUUID()).isEmpty());
                 if(atGround&&scaffoldsGone){
-                    System.out.println("[DOME E2E] PASS all 3537 blocks verified, "+
-                            "plant filter active, 4 workers grounded, scaffolding recovered");
+                    System.out.println("[DOME E2E] PASS "+requiredBlocks
+                            +"/"+requiredBlocks+" required blocks verified; "
+                            +ignoredPlants+" ignored vegetation entries; "
+                            +"4 workers grounded, scaffolding recovered");
                     helper.succeed();
                 }
                 return;
