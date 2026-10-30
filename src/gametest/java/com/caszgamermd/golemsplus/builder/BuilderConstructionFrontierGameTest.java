@@ -349,4 +349,44 @@ public final class BuilderConstructionFrontierGameTest {
         h.succeed();
         });
     }
+    @GameTest(maxTicks=80,skyAccess=true)
+    public void elevatedRetryWaitsClearOfEveryCrewsPendingTargets(GameTestHelper h){
+        floor(h);
+        for(int x=1;x<=6;x++)for(int z=1;z<=6;z++)
+            h.setBlock(x,3,z,Blocks.STONE);
+        var world=h.getLevel();
+        var mob=worker(h,h.absolutePos(new BlockPos(2,4,3)));
+        var table=planner(h,mob,2);
+        BlockPos target=h.absolutePos(new BlockPos(5,4,3));
+        BlockPos other=h.absolutePos(new BlockPos(5,4,5));
+        var own=new BuilderConstructionPlan.Step(target.getX(),target.getY(),
+                target.getZ(),"minecraft:stone","minecraft:stone");
+        var peer=new BuilderConstructionPlan.Step(other.getX(),other.getY(),
+                other.getZ(),"minecraft:stone","minecraft:stone");
+        var steps=List.of(own,peer);
+        h.onEachTick(()->{
+            if(h.getTick()!=16)return;
+            if(!BuilderBuildService.canWaitNearFrontier(world,mob,table,
+                    steps,List.of(0),target.getY())){
+                h.fail("Safe grounded worker should keep its elevated access");return;
+            }
+            BlockPos occupied=mob.blockPosition();
+            var blocked=List.of(own,new BuilderConstructionPlan.Step(
+                    occupied.getX(),occupied.getY(),occupied.getZ(),
+                    "minecraft:stone","minecraft:stone"));
+            if(BuilderBuildService.canWaitNearFrontier(world,mob,table,
+                    blocked,List.of(0),target.getY())){
+                h.fail("Worker must not wait in another zone's future block");return;
+            }
+            if(table.claimPreferredBuilderZoneStep(mob.getUUID(),List.of(0),steps,0)!=0
+                    ||!table.completeBuilderStep(mob.getUUID(),0)){
+                h.fail("Could not complete worker's own test assignment");return;
+            }
+            if(BuilderBuildService.canWaitNearFrontier(world,mob,table,
+                    steps,List.of(0),target.getY())){
+                h.fail("Finished worker must return rather than camp on structure");return;
+            }
+            h.succeed();
+        });
+    }
 }

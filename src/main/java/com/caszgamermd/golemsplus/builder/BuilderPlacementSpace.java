@@ -424,6 +424,13 @@ public final class BuilderPlacementSpace {
                 +" badPose="+liveBad;
     }
 
+    /** Equipment changed the physical starting point. Forget the old
+     * approach without marking its otherwise valid floor tile as bad.
+     */
+    static void forgetApproach(BuilderGolem worker){
+        workApproaches.remove(worker);
+    }
+
     /** The physical position is not fixed forever: a player or teammate
      * can obstruct it after path calculation. Drop ONLY this worker's
      * approach and re-search without disturbing any other Builder.

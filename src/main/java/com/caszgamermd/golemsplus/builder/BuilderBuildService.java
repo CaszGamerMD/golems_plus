@@ -63,6 +63,37 @@ public final class BuilderBuildService {
         activity.setStep(index);
         return activity;
     }
+    /** A retry cooldown is not a request to descend to storage. Keep a
+     * grounded worker on its current work level when it still owns work
+     * there, provided it occupies no unfinished placement envelope.
+     * All workers still honor explicit teammate yield requests first.
+     */
+    static boolean canWaitNearFrontier(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,
+            List<Integer> zone,int layer){
+        if(!worker.onGround()||worker.isNoGravity()
+                ||worker.blockPosition().getY()<layer
+                ||worker.blockPosition().getY()>layer+1
+                ||!level.noCollision(worker,worker.getBoundingBox()))return false;
+        boolean pending=false;
+        for(int idx:zone)
+            if(idx>=0&&idx<steps.size()&&steps.get(idx).y()==layer
+                    &&!table.builderZoneDone(List.of(idx))){pending=true;break;}
+        if(!pending)return false;
+        // Check the whole crew's current layer, not only this worker's
+        // zone, so a waiting worker cannot occupy a teammate's target.
+        for(int idx=0;idx<steps.size();idx++){
+            var step=steps.get(idx);
+            if(step.y()!=layer||step.ignorePlant()
+                    ||table.builderZoneDone(List.of(idx)))continue;
+            BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+            if(worker.getBoundingBox().intersects(
+                    new net.minecraft.world.phys.AABB(target).inflate(.1,0,.1))
+                    ||!BuilderPlacementSpace.horizontalClear(target,worker))return false;
+        }
+        return true;
+    }
+
     // Reuse the immutable server-side schematic work plan across queued
     // warehouse retries. Parsing a 100k-block Litematica file every four
     // seconds caused visible freezes while a PTP was temporarily busy.
@@ -368,6 +399,10 @@ public final class BuilderBuildService {
                     table.setProblem("FRONTIER: "+report);
                     System.out.println("[FRONTIER BLOCKED] "
                             +worker.getName().getString()+" "+report);
+                }
+                if(canWaitNearFrontier(level,worker,table,plan.steps(),zone,layer)){
+                    com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                    return;
                 }
                 if(table.builderZoneDone(zone))activityForFinished(worker);
                 parkAtOnSite(level,worker,table);

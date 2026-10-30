@@ -151,6 +151,7 @@ public final class BuilderGrappleAccess {
     }
     private static void release(BuilderGolem mob,Rope rope,String event){
         active.remove(mob);
+        BuilderPlacementSpace.forgetApproach(mob);
         mob.setNoGravity(false);
         mob.setDeltaMovement(0,0,0);
         WorkerNavigation.stop(mob);
