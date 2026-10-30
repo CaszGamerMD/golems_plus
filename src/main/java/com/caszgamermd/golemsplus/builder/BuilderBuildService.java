@@ -616,7 +616,16 @@ public final class BuilderBuildService {
             // A released rope leaves feet slightly above the ledge until
             // gravity settles them. Do not reject a route or abandon the
             // claim from that transient airborne start.
-            if(!worker.onGround())return;
+            // A genuine scaffold climb is different: its top can momentarily
+            // leave the worker inside scaffold with onGround=false. Advance
+            // the active scaffold session while it owns that physical motion
+            // instead of freezing at CLIMB and repeatedly falling down.
+            if(!worker.onGround()){
+                if(BuilderScaffoldPlanA.hasPlan(worker))
+                    BuilderScaffoldPlanA.reach(
+                            level,worker,table,owner,pos,plan.steps());
+                return;
+            }
             long now=level.getGameTime();
             if(activity.workTravelSince<0)activity.workTravelSince=now;
             if(now-activity.workTravelSince>900&&!BuilderGrappleAccess.active(worker)){

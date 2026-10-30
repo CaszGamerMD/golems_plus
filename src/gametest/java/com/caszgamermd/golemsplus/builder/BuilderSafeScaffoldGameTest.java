@@ -543,8 +543,9 @@ public final class BuilderSafeScaffoldGameTest {
                         +" "+BuilderScaffoldPlanA.status(mob));return;
             }
             if(phase[0]==0){
-                if(h.getTick()<12||!mob.onGround()
-                        ||h.getTick()%5!=0)return;
+                // Allow the active real scaffold ascent to advance even
+                // during the transient ungrounded climb/landing ticks.
+                if(h.getTick()<12||h.getTick()%5!=0)return;
                 if(!BuilderScaffoldPlanA.needsTemporaryWorkPlatform(
                                 level,target)
                         ||!Blocks.DIORITE.defaultBlockState().canSurvive(
