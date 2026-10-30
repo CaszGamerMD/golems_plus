@@ -18,6 +18,11 @@ public final class BuilderDomeApproachGameTest {
         var world=h.getLevel();
         for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)h.setBlock(x,1,z,Blocks.STONE);
         BlockPos origin=h.absolutePos(new BlockPos(8,2,8));
+        // Full-size navigation fixtures need entity simulation beyond
+        // the small default test room; the production dome gets these
+        // tickets from its active real Planner.
+        world.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(origin),4);
         try{
             var schematic=LitematicFileReader.read(BuilderDomeFixture.unpack());
             for(var block:schematic.blocks()){
@@ -43,7 +48,7 @@ public final class BuilderDomeApproachGameTest {
                 world.addFreshEntity(current[0]);return;
             }
             if(h.getTick()-started[0]>700)h.fail("Dome approach east="+east+" at="+mob.position()
-                    +" "+WorkerNavigation.debugStatus(mob)+" "
+                    +" entityTicks="+mob.tickCount+" "+WorkerNavigation.debugStatus(mob)+" "
                     +WorkerNavigation.diagnoseExecutableStand(world,mob,List.of(goal)));
         });
     }
