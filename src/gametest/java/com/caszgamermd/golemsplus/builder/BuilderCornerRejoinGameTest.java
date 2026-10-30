@@ -101,11 +101,15 @@ public final class BuilderCornerRejoinGameTest {
         for(int x=3;x<=10;x++)for(int z=3;z<=10;z++)
             for(int y=3;y<=5;y++)h.setBlock(x,y,z,Blocks.AIR);
         BlockPos start=h.absolutePos(new BlockPos(8,3,8));
+        BlockPos supportedCorner=h.absolutePos(new BlockPos(7,3,7));
         BlockPos goal=h.absolutePos(new BlockPos(5,3,5));
         var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
-        // The entity has legitimate contact only in the north-west
-        // corner of its footprint, NOT at its own integer block center.
-        mob.setPos(start.getX()+.08,start.getY(),start.getZ()+.08);
+        // GameTests ROTATE their structures. The supported corner might
+        // be NE, NW, SE or SW in actual world coordinates. Offset toward
+        // the real adjoining platform rather than hardcoding +0.08.
+        double fx=supportedCorner.getX()<start.getX()?.08:.92;
+        double fz=supportedCorner.getZ()<start.getZ()?.08:.92;
+        mob.setPos(start.getX()+fx,start.getY(),start.getZ()+fz);
         world.addFreshEntity(mob);
         h.onEachTick(()->{
             if(mob.isNoGravity()||!mob.isAlive()
