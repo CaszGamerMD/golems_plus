@@ -49,6 +49,7 @@ public final class BuilderBuildService {
         int index=-1;
         Action phase=Action.STAGE_MATERIALS;
         long blockedSince=-1;
+        long frontierWaitSince=-1;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
@@ -401,14 +402,23 @@ public final class BuilderBuildService {
                             +worker.getName().getString()+" "+report);
                 }
                 if(canWaitNearFrontier(level,worker,table,plan.steps(),zone,layer)){
-                    com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
-                    return;
+                    var waiting=workerActions.computeIfAbsent(worker,k->new WorkerAction());
+                    if(waiting.frontierWaitSince<0)
+                        waiting.frontierWaitSince=level.getGameTime();
+                    // Cover the 60-tick retry cooldown, but never camp
+                    // forever on a disconnected ledge. An expired wait
+                    // remains expired until a real assignment is found.
+                    if(level.getGameTime()-waiting.frontierWaitSince<=80){
+                        com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                        return;
+                    }
                 }
                 if(table.builderZoneDone(zone))activityForFinished(worker);
                 parkAtOnSite(level,worker,table);
                 return;
             }
             var activity=action(worker,index);
+            activity.frontierWaitSince=-1;
             var step=plan.steps().get(index);
             int activeLayer=table.builderActiveLayer(plan.steps());
             if(step.y()!=activeLayer){

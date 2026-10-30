@@ -11,6 +11,13 @@ import net.minecraft.world.level.block.Blocks;
 public final class BuilderFenceStepGameTest {
     @GameTest(maxTicks=350,skyAccess=true)
     public void physicallyStepsAcrossHalfBlockFenceRise(GameTestHelper h){
+        runCase(h,false);
+    }
+    @GameTest(maxTicks=350,skyAccess=true)
+    public void leavesExistingFenceTopUsingRealGroundedStart(GameTestHelper h){
+        runCase(h,true);
+    }
+    private static void runCase(GameTestHelper h,boolean onFence){
         var world=h.getLevel();
         for(int x=0;x<8;x++)for(int z=0;z<8;z++)
             h.setBlock(x,1,z,Blocks.STONE);
@@ -25,7 +32,8 @@ public final class BuilderFenceStepGameTest {
         BlockPos start=h.absolutePos(new BlockPos(1,3,3));
         BlockPos goal=h.absolutePos(new BlockPos(6,3,3));
         var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
-        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        mob.setPos(start.getX()+(onFence?2.5:.5),
+                start.getY()+(onFence?.5:0),start.getZ()+.5);
         world.addFreshEntity(mob);
         final boolean[] crossedFence={false};
         h.onEachTick(()->{

@@ -217,7 +217,19 @@ public final class WorkerNavigation {
             double top=feet.getY()+inside.max(Direction.Axis.Y);
             return top;
         }
-        if(footing.isEmpty())return Double.NaN;
+        if(footing.isEmpty()){
+            // Native ground paths round a fence/wall top UP to their
+            // integer feet node. A 1.5-high fence two cells below still
+            // physically supports feet at nodeY-0.5, despite AIR in the
+            // intervening block. Full cubes/stairs never bridge this gap.
+            BlockPos lower=feet.below(2);
+            VoxelShape extended=level.getBlockState(lower)
+                    .getCollisionShape(level,lower);
+            if(extended.isEmpty()||extended.max(Direction.Axis.Y)<=1.0)
+                return Double.NaN;
+            double top=lower.getY()+extended.max(Direction.Axis.Y);
+            return top>feet.getY()-1.0&&top<=feet.getY()?top:Double.NaN;
+        }
         double y=below.getY()+footing.max(Direction.Axis.Y);
         if(!inside.isEmpty()&&!handDoor(level,feet)){
             double height=inside.max(Direction.Axis.Y);
