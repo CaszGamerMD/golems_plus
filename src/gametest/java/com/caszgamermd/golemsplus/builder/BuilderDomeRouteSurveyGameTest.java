@@ -413,6 +413,54 @@ public final class BuilderDomeRouteSurveyGameTest {
                 }
                 Files.writeString(out.resolve("reconstructed_y30_stall.csv"),
                         csvY30,StandardCharsets.UTF_8);
+                // Assess every measured start/goal against THIS rebuilt
+                // Y30 pocket, with actual server collision and A* edges.
+                StringBuilder reportY30=new StringBuilder(
+                    "Reconstruction of actual 3423/3493 Y30 stall;"
+                    +" missing=(15,30,9),(15,30,10),(15,30,11),"
+                    +"(15,30,12),(20,30,22)\\n");
+                int n=0;
+                for(Pair focus:CASES){
+                    BuilderGolem worker=workers.get(n++);
+                    BlockPos target=abs(origin,focus.target());
+                    Set<BlockPos> component=WorkerNavigation.groundReachableFrom(
+                            world,worker,worker.blockPosition());
+                    List<BlockPos> poses=new ArrayList<>();
+                    int candidate=0,safe=0;
+                    for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+                        for(int dy=0;dy<=1;dy++){
+                            BlockPos p=target.offset(dx,dy,dz);
+                            if(p.equals(target)||p.distSqr(target)>=14
+                                    ||!WorkerNavigation.canStandOn(world,worker,p))
+                                continue;
+                            candidate++;
+                            if(!BuilderConstructionPlanner.safeStand(
+                                    world,worker,target,p))continue;
+                            safe++;poses.add(p);
+                        }
+                    var path=WorkerRoutePlanner.plan(
+                            worker.blockPosition(),poses,
+                            p->WorkerNavigation.canStandOn(world,worker,p),
+                            p->WorkerNavigation.surveyFloorHeight(world,p),null);
+                    long inComponent=poses.stream()
+                            .filter(component::contains).count();
+                    String line="[Y30 WORKER] "+focus.name()
+                        +" worker="+focus.start()+" actualFeet="
+                        +rel(origin,worker.blockPosition())
+                        +" target="+focus.target()
+                        +" targetState="+original.get(focus.target())
+                        +" underlying="+world.getBlockState(target.below())
+                        +" candidates="+candidate+" safePoses="+safe
+                        +" connectedPoses="+inComponent
+                        +" componentNodes="+component.size()
+                        +" route="+nodePath(origin,path);
+                    reportY30.append(line).append('\\n');
+                    System.out.println(line);
+                    for(int y:new int[]{26,28,29,30,31})
+                        reportY30.append(grid(world,origin,y,focus,component));
+                }
+                Files.writeString(out.resolve("reconstructed_y30_routes.txt"),
+                        reportY30,StandardCharsets.UTF_8);
                 System.out.println("[Y30 RECONSTRUCTED MODEL] original=3537"
                         +" builtY30="+builtY30+" remainingY30="+unfinished.size());
                 h.succeed();
