@@ -674,7 +674,8 @@ public final class BuilderBuildService {
                 // A roof can be on this very Y yet physically disconnected
                 // from its next work stance. Try a paid scaffold bridge here,
                 // not only when a vertical jump was requested.
-                if(scaffoldWork(level,worker,table,owner,pos,plan.steps()))
+                if(BuilderScaffoldPlanA.hasPlan(worker)
+                        &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
                     return;
                 if(yDiff>0){
                     var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);

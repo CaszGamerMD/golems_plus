@@ -308,7 +308,10 @@ public final class BuilderConstructionPlanner {
             // reached by a real paid tower/bridge, even if neither native
             // A* nor a rope can currently get across an unfinished roof.
             boolean scaffold=stance==null&&!grapple
-                    &&target.getY()>=worker.blockPosition().getY()
+                    // Reserve scaffold starts for genuine vertical access
+                    // gaps. Same-height cells must keep their proven trained
+                    // walking routes instead of spawning competing bridges.
+                    &&target.getY()-worker.blockPosition().getY()>1
                     &&(BuilderScaffoldPlanA.canPlan(
                             world,worker,table,target,steps)
                         ||BuilderScaffolding.canPlanAccess(
