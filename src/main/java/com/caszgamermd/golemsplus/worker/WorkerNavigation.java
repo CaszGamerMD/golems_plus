@@ -676,7 +676,29 @@ public final class WorkerNavigation {
             if(endsAtExactTile(level,path,waypoint)
                     &&safePath(level,mob,path,false))return true;
         }
-        return false;
+        return !route.steps().isEmpty()
+                &&canWalkTrainedEdge(level,mob,route.steps().get(0));
+    }
+
+    /** Execute only the first same-height edge of the trained route when
+     * native navigation rejects its handoff (e.g. an off-center roof rim).
+     * Every sample must retain sole contact and full body clearance. This
+     * cannot jump, cross a gap, skip a route corner, or create support.
+     */
+    private static boolean canWalkTrainedEdge(ServerLevel level,
+            PathfinderMob mob,BlockPos waypoint){
+        return mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
+                &&mob.onGround()&&!mob.isNoGravity()
+                &&mob.distanceToSqr(waypoint.getX()+.5,mob.getY(),waypoint.getZ()+.5)>.025*.025
+                &&mob.distanceToSqr(waypoint.getX()+.5,mob.getY(),waypoint.getZ()+.5)<=4
+                &&supportedRejoin(level,mob,waypoint);
+    }
+    private static boolean walkTrainedEdge(ServerLevel level,PathfinderMob mob,
+            Progress p,BlockPos waypoint){
+        if(!canWalkTrainedEdge(level,mob,waypoint))return false;
+        p.centering=waypoint.immutable();p.approach=waypoint.immutable();
+        p.stalled=0;p.unsafeChecks=0;p.nextRoute=mob.tickCount+CHECK_TICKS;
+        return tickExactCenter(level,mob);
     }
 
     private static void clearDoor(ServerLevel level,PathfinderMob mob,Progress p){
@@ -690,8 +712,11 @@ public final class WorkerNavigation {
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
         Progress progress=state(mob);
-        if(progress.centering!=null&&!progress.centering.equals(target))
+        if(progress.centering!=null){
+            if(target!=null&&target.equals(progress.requested)
+                    &&tickExactCenter(level,mob))return true;
             progress.centering=null;
+        }
         if(progress.queuedDoor!=null&&target!=null
                 &&progress.requested!=null&&!target.equals(progress.requested))
             clearDoor(level,mob,progress);
@@ -752,6 +777,10 @@ public final class WorkerNavigation {
             p.nextRoute=mob.tickCount+CHECK_TICKS;
             return true;
         }
+        if(walkTrainedEdge(level,mob,p,plan.steps().get(0))){
+            p.weightedRoute=plan.steps();p.routeCursor=1;
+            return true;
+        }
         return false;
     }
 
@@ -778,6 +807,7 @@ public final class WorkerNavigation {
             p.attempts=0;p.nextRoute=0;p.stalled=0;p.unsafeChecks=0;
             p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
         }
+        if(p.centering!=null&&tickExactCenter(level,mob))return true;
         updateDoorClearance(level,mob,p);
         if(p.openedDoor==null)openApproachDoor(level,mob,p);
         if(p.waitingDoor)return true;
@@ -860,6 +890,10 @@ public final class WorkerNavigation {
             p.routeCursor=index+1;
             p.stalled=0;p.unsafeChecks=0;p.lastBad=null;
             p.nextRoute=mob.tickCount+CHECK_TICKS;
+            return true;
+        }
+        if(walkTrainedEdge(level,mob,p,p.weightedRoute.get(p.routeCursor))){
+            p.routeCursor++;
             return true;
         }
         p.lastBad=p.weightedRoute.get(p.routeCursor);
