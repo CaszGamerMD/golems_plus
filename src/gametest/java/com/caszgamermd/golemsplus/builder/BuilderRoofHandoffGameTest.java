@@ -46,8 +46,24 @@ public final class BuilderRoofHandoffGameTest {
                     &&BuilderPlacementSpace.placementHeight(goal,mob)){
                 h.succeed();return;
             }
-            if(h.getTick()>2100)h.fail("Roof handoff stalled at "+mob.position()
-                    +" "+WorkerNavigation.debugStatus(mob)+" "+BuilderGrappleAccess.debug(mob));
+            // Show whether this is a preflight error, unreachable attachment,
+            // native waypoint stall or an actual blocked work stance.
+            // Every position is reported relative to the original schematic.
+            if(h.getTick()>0&&h.getTick()%200==0)
+                System.out.println("[ROOF HANDOFF] side="+(south?"south":"north")
+                        +" tick="+h.getTick()
+                        +" feetXYZ="+mob.blockPosition().subtract(origin).toShortString()
+                        +" grounded="+mob.onGround()
+                        +" nav="+WorkerNavigation.debugStatus(mob)
+                        +" hook="+BuilderGrappleAccess.debug(mob));
+            if(h.getTick()>2100)h.fail("Roof handoff stalled side="
+                    +(south?"south":"north")
+                    +" feetXYZ="+mob.blockPosition().subtract(origin).toShortString()
+                    +" grounded="+mob.onGround()
+                    +" "+WorkerNavigation.debugStatus(mob)
+                    +" "+BuilderGrappleAccess.debug(mob)
+                    +" "+BuilderPlacementSpace.diagnoseApproach(world,mob,goal,
+                        at->BuilderConstructionPlanner.safeStand(world,mob,goal,at)));
         });
     }
 }

@@ -130,7 +130,7 @@ public final class BuilderDomeConstructionGameTest {
         }
         final int[] lastCursor={-1},lastCleared={-1},lastCompleted={-1};
         final long[] lastProgress={helper.getTick()};
-        final boolean[] inspected={false},checkpoint={false},goal3333={false};
+        final boolean[] inspected={false},checkpoint={false},goal3333={false},goal3400={false};
         helper.onEachTick(()->{
             long tick=helper.getTick();
             if(tick%20!=0)return;
@@ -215,6 +215,13 @@ public final class BuilderDomeConstructionGameTest {
                 goal3333[0]=true;
                 System.out.println("[DOME TEAMWORK] PASS 3333 physically verified blocks, "
                         +"FOUR living Builders at tick="+tick);
+            }
+            if(!goal3400[0]&&physicalCount>=3400){
+                goal3400[0]=true;
+                System.out.println("[DOME TEAMWORK] PASS 3400 physical blocks,"
+                        +" activeY="+(sharedY-table.builderOrigin().getY())
+                        +" tick="+tick+" fourAlive="
+                        +crew.stream().allMatch(BuilderGolem::isAlive));
             }
             if(!inspected[0]&&table.builderClearCursor()>0){
                 inspected[0]=true;

@@ -32,7 +32,10 @@ public final class BuilderGrappleAccess {
     }
     /** Max ticks without ACTUAL progress, not just a move intent. */
     static final int STUCK_TICKS=45;
-    private static final int TRAVEL_TIMEOUT=180;
+    // Abandon a stationary, unhooked attachment approach after five seconds.
+    // The timer resets on real ground movement; a long but moving approach
+    // is never punished for distance alone.
+    private static final int TRAVEL_TIMEOUT=100;
     private static final class Rope {
         final BlockPos anchor,column,landing,goal;
         final Direction side;
@@ -577,6 +580,21 @@ public final class BuilderGrappleAccess {
         return hasHook(worker)&&!active.containsKey(worker)
                 &&chooseWorkAscent(level,worker,target)!=null;
     }
+    /** An A* preview is not a successful movement command. A rope must
+     * never become active unless its first real walking leg was accepted;
+     * otherwise it monopolizes the Builder for the attachment timeout and
+     * repeats an unreachable roof-rim entry on each assignment.
+     */
+    private static boolean startAscent(ServerLevel level,BuilderGolem worker,
+            Rope route){
+        if(!WorkerNavigation.routeToExact(level,worker,route.landing,1.0)){
+            reject(level,worker,route); // try a different physical face next time
+            return false;
+        }
+        active.put(worker,route);
+        return true;
+    }
+
     public static Result reachWork(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos target){
         if(active.containsKey(worker)||!worker.onGround())return Result.MOVING;
@@ -594,9 +612,8 @@ public final class BuilderGrappleAccess {
             };
         }
         Rope route=chooseWorkAscent(level,worker,target);
-        if(route==null)return Result.NO_SAFE_ANCHOR;
-        active.put(worker,route);
-        WorkerNavigation.routeToExact(level,worker,route.landing,1.0);
+        if(route==null||!startAscent(level,worker,route))
+            return Result.NO_SAFE_ANCHOR;
         return Result.MOVING;
     }
 
@@ -623,9 +640,8 @@ public final class BuilderGrappleAccess {
             };
         }
         Rope route=chooseAscent(level,worker,goal);
-        if(route==null)return Result.NO_SAFE_ANCHOR;
-        active.put(worker,route);
-        WorkerNavigation.routeToExact(level,worker,route.landing,1.0);
+        if(route==null||!startAscent(level,worker,route))
+            return Result.NO_SAFE_ANCHOR;
         return Result.MOVING;
     }
     /** Returns true while the hook owns descent or when a descent starts. */
