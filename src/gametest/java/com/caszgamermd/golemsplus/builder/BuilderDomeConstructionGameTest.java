@@ -175,6 +175,12 @@ public final class BuilderDomeConstructionGameTest {
             if(tick%400==0&&tick-lastProgress[0]>800)
                 System.out.println("[DOME CREW] tick="+tick
                         +crewCoordinates(level,table,crew,steps));
+            // Once a crew is stuck on one height, report exactly which
+            // blocks remain unbuilt there. Do not confuse the schematic
+            // block's name with the worker's currently held item.
+            if(tick%1600==0&&tick-lastProgress[0]>800)
+                System.out.println("[DOME REMAINING] tick="+tick+" "
+                        +remainingLayerItems(level,table,steps,sharedY,16));
             // Replenish the 27-slot CHEST, never worker inventories.
             Set<Item> needs=new LinkedHashSet<>();
             needs.add(WorksiteContent.GRAPPLE_HOOK);
@@ -282,7 +288,10 @@ public final class BuilderDomeConstructionGameTest {
                     message.append(" | ").append(worker.getName().getString())
                         .append(" @ ").append(worker.blockPosition())
                         .append(" ").append(BuilderBuildService.debugStatus(level,worker));
-                message.append(crewCoordinates(level,table,crew,steps));
+                message.append(crewCoordinates(level,table,crew,steps))
+                        .append(" | remainingLayer=")
+                        .append(remainingLayerItems(
+                                level,table,steps,sharedY,32));
                 helper.fail(message.toString());
             }
         });
@@ -317,6 +326,10 @@ public final class BuilderDomeConstructionGameTest {
                 BlockPos target=new BlockPos(step.x(),step.y(),step.z());
                 out.append(" targetXYZ=")
                         .append(target.subtract(origin).toShortString())
+                        .append(" placeState=").append(step.encodedState())
+                        .append(" placeItem=").append(step.requiredItem())
+                        .append(" below=")
+                        .append(level.getBlockState(target.below()))
                         .append(" blockNow=")
                         .append(level.getBlockState(target))
                         .append(" occupants=")
@@ -325,6 +338,50 @@ public final class BuilderDomeConstructionGameTest {
             }
         }
         return out.toString();
+    }
+
+    /** Exact outstanding work at the current locked construction Y.
+     * This is read-only and used in failure logs, not for job scheduling.
+     * Inspect actual world states so out-of-order completed zones count.
+     */
+    private static String remainingLayerItems(ServerLevel level,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,int activeY,int max){
+        BlockPos origin=table.builderOrigin();
+        StringBuilder items=new StringBuilder();
+        java.util.Map<String,Integer> counts=new java.util.TreeMap<>();
+        int remaining=0,shown=0;
+        for(int i=0;i<steps.size();i++){
+            var step=steps.get(i);
+            if(step.ignorePlant()||step.y()!=activeY)continue;
+            var intended=BuilderBlockResolver.resolve(step.encodedState(),
+                    BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+            if(intended==null)continue;
+            BlockPos at=new BlockPos(step.x(),step.y(),step.z());
+            if(BuilderPlacementState.matches(level.getBlockState(at),
+                    intended.state()))continue;
+            remaining++;
+            String item=step.requiredItem()==null
+                    ?"(free multiblock half)":step.requiredItem();
+            counts.merge(item,1,Integer::sum);
+            if(shown++>=max)continue;
+            if(items.length()>0)items.append("; ");
+            int adjacentBuilt=0;
+            for(var side:net.minecraft.core.Direction.values()){
+                BlockPos neighbor=at.relative(side);
+                if(!level.getBlockState(neighbor).isAir())adjacentBuilt++;
+            }
+            items.append("#").append(i).append(" ")
+                    .append(at.subtract(origin).toShortString())
+                    .append(" state=").append(step.encodedState())
+                    .append(" item=").append(item)
+                    .append(" below=").append(level.getBlockState(at.below()))
+                    .append(" adjacentOccupied=").append(adjacentBuilt)
+                    .append(" current=").append(level.getBlockState(at));
+        }
+        return "activeY="+(activeY-origin.getY())
+                +" outstanding="+remaining+" items="+counts
+                +" examples=["+items+"]";
     }
 
     private static long fileSize(Path path){

@@ -857,7 +857,14 @@ public final class BuilderBuildService {
                     +" | "+table.problem();
             var current=plan.steps().get(index);
             BlockPos target=new BlockPos(current.x(),current.y(),current.z());
+            BlockPos local=target.subtract(table.builderOrigin());
             return stage+" step "+index+" at "+target.toShortString()
+                    +" | schematicXYZ="+local.toShortString()
+                    +" | placeBlock="+current.encodedState()
+                    +" | placeItem="+(current.requiredItem()==null
+                            ?"none":current.requiredItem())
+                    +" | targetNow="+level.getBlockState(target)
+                    +" | below="+level.getBlockState(target.below())
                     +" | range="+(int)Math.sqrt(worker.distanceToSqr(
                             target.getX()+.5,target.getY()+.5,target.getZ()+.5))
                     +" | nav="+(worker.getNavigation().isDone()?"idle":"walking")
