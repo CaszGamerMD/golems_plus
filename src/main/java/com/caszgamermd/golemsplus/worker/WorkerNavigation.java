@@ -471,10 +471,54 @@ public final class WorkerNavigation {
         // The occupied start may straddle a ledge or partial block. Its
         // actual grounded height is authoritative; other nodes must still
         // prove their support and body clearance from world geometry.
-        return WorkerRoutePlanner.plan(start,goals,
+        var route=WorkerRoutePlanner.plan(start,goals,
                 at->standingTile(level,mob,at),
                 at->at.equals(start)&&mob.onGround()?mob.getY():floorAt(level,at),avoid,
                 at->trainedTerrainCost(level,at)+crowdCost(at,crowds),observer);
+        if(route!=null||!mob.onGround()||standingTile(level,mob,start))return route;
+        // The real body can stand on the CORNER of a neighboring block
+        // while its block-position center is over AIR. A*'s conservative
+        // diagonal corner rule must not strand that already-grounded body.
+        // Rejoin actual support by a swept, continuously supported segment;
+        // all subsequent movement still uses the same trained planner.
+        WorkerRoutePlanner.Route best=null;
+        int attempts=0;
+        for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++){
+            if(dx==0&&dz==0)continue;
+            BlockPos seed=start.offset(dx,0,dz);
+            if(seed.equals(avoid)||!supportedRejoin(level,mob,seed))continue;
+            if(++attempts>3)break;
+            var onward=WorkerRoutePlanner.plan(seed,goals,
+                    at->standingTile(level,mob,at),at->floorAt(level,at),avoid,
+                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
+            if(onward==null)continue;
+            List<BlockPos> steps=new ArrayList<>();
+            steps.add(seed);steps.addAll(onward.steps());
+            var joined=new WorkerRoutePlanner.Route(List.copyOf(steps),
+                    onward.complete(),onward.cost()+14,onward.explored());
+            if(best==null||joined.complete()&&!best.complete()
+                    ||joined.complete()==best.complete()&&joined.cost()<best.cost())
+                best=joined;
+        }
+        return best;
+    }
+
+    private static boolean supportedRejoin(ServerLevel level,PathfinderMob mob,
+            BlockPos seed){
+        if(!standingTile(level,mob,seed))return false;
+        double y=floorAt(level,seed);
+        if(Math.abs(y-mob.getY())>.05)return false; // no invented hop/fall
+        double half=mob.getBbWidth()*.5;
+        for(int sample=0;sample<=8;sample++){
+            double t=sample/8.0;
+            double x=mob.getX()+(seed.getX()+.5-mob.getX())*t;
+            double z=mob.getZ()+(seed.getZ()+.5-mob.getZ())*t;
+            if(!bodyClear(level,mob,x,y,z))return false;
+            AABB contact=new AABB(x-half,y-.04,z-half,x+half,y+.001,z+half);
+            if(!level.getBlockCollisions(mob,contact).iterator().hasNext())
+                return false;
+        }
+        return true;
     }
 
     /** Geometry-only preview from a prospective grounded grapple landing.
@@ -716,12 +760,8 @@ public final class WorkerNavigation {
                     goals.add(candidate.feet());
                 }
             }
-            List<Vec3> crowds=nearbyWorkers(level,mob);
-            WorkerRoutePlanner.Route route=WorkerRoutePlanner.plan(
-                    mob.blockPosition(),goals,
-                    at->standingTile(level,mob,at),
-                    at->floorAt(level,at),p.lastBad,
-                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
+            WorkerRoutePlanner.Route route=planExactRoute(
+                    level,mob,goals,p.lastBad);
             // Never report an empty physical route as success solely
             // because the Builder is within placement range of target.
             // Storage, doorway and return-to-tower movements require
