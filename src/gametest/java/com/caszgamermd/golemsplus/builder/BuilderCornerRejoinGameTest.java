@@ -30,7 +30,9 @@ public final class BuilderCornerRejoinGameTest {
         h.onEachTick(()->{
             if(mob.position().distanceToSqr(previous[0])>.35*.35
                     ||mob.getY()<corner.getY()-.04||mob.isNoGravity()){
-                h.fail("Rejoin must remain physically supported without a snap/fall");return;
+                h.fail("Rejoin movement bounds: delta="+mob.position().subtract(previous[0])
+                        +" height="+(mob.getY()-corner.getY())+" feet="+mob.position()
+                        +" grounded="+mob.onGround()+" gravity="+!mob.isNoGravity());return;
             }
             previous[0]=mob.position();
             if(h.getTick()<10)return;

@@ -513,7 +513,10 @@ public final class WorkerNavigation {
             double t=sample/8.0;
             double x=mob.getX()+(seed.getX()+.5-mob.getX())*t;
             double z=mob.getZ()+(seed.getZ()+.5-mob.getZ())*t;
-            if(!bodyClear(level,mob,x,y,z))return false;
+            AABB body=new AABB(x-half,y+.01,z-half,
+                    x+half,y+mob.getBbHeight()-.025,z+half);
+            if(!level.getFluidState(BlockPos.containing(x,y+.02,z)).isEmpty()
+                    ||level.getBlockCollisions(mob,body).iterator().hasNext())return false;
             AABB contact=new AABB(x-half,y-.04,z-half,x+half,y+.001,z+half);
             if(!level.getBlockCollisions(mob,contact).iterator().hasNext())
                 return false;
