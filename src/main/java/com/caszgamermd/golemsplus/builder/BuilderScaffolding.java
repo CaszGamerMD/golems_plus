@@ -544,8 +544,12 @@ public final class BuilderScaffolding {
             List<BuilderConstructionPlan.Step> plan){
         if(target.getY()<worker.blockPosition().getY())return false;
         java.util.Set<BlockPos> future=new java.util.HashSet<>();
-        for(var cell:plan)if(!cell.ignorePlant())
-            future.add(new BlockPos(cell.x(),cell.y(),cell.z()));
+        for(var cell:plan)if(!cell.ignorePlant()){
+            BlockPos p=new BlockPos(cell.x(),cell.y(),cell.z());
+            // Built blocks can support safe tower exits; only pending AIR
+            // cells must be protected from temporary scaffold placement.
+            if(level.getBlockState(p).isAir())future.add(p);
+        }
         for(Tower tower:towers(level,table,worker))
             if(BuilderScaffoldSiteScore.withinReach(tower.base(),target)
                     &&safeGroundExit(level,worker,tower.base(),future)!=null)
@@ -587,8 +591,12 @@ public final class BuilderScaffolding {
         // Future schematic blocks must not enclose the reserved route
         // DOWN or block the Builder's two-block-high ground exit.
         java.util.Set<BlockPos> future=new java.util.HashSet<>();
-        for(var cell:plan)if(!cell.ignorePlant())
-            future.add(new BlockPos(cell.x(),cell.y(),cell.z()));
+        for(var cell:plan)if(!cell.ignorePlant()){
+            BlockPos p=new BlockPos(cell.x(),cell.y(),cell.z());
+            // Built blocks can support safe tower exits; only pending AIR
+            // cells must be protected from temporary scaffold placement.
+            if(level.getBlockState(p).isAir())future.add(p);
+        }
         // Prefer the retained legal access choice across job ticks.
         // If construction changes the approach, expire only this site
         // choice, and choose another safe route without moving the worker.

@@ -90,10 +90,12 @@ public final class BuilderScaffoldPlanA {
     }
     public static void cancel(BuilderGolem worker){jobs.remove(worker);}
 
-    private static Set<BlockPos> future(List<BuilderConstructionPlan.Step> steps){
+    private static Set<BlockPos> future(ServerLevel level, List<BuilderConstructionPlan.Step> steps){
         Set<BlockPos> result=new HashSet<>();
-        for(var step:steps)if(!step.ignorePlant())
-            result.add(new BlockPos(step.x(),step.y(),step.z()));
+        for(var step:steps)if(!step.ignorePlant()){
+            BlockPos p=new BlockPos(step.x(),step.y(),step.z());
+            if(level.getBlockState(p).isAir())result.add(p);
+        }
         return result;
     }
     /** The two bridge cells lie along the axis from the tower toward
@@ -148,7 +150,7 @@ public final class BuilderScaffoldPlanA {
     private static Job choose(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos target,
             List<BuilderConstructionPlan.Step> steps){
-        Set<BlockPos> reserved=future(steps);
+        Set<BlockPos> reserved=future(level,steps);
         List<Job> options=new ArrayList<>();
         for(Direction outward:Direction.Plane.HORIZONTAL){
             BlockPos towerXZ=target.relative(outward,3);
