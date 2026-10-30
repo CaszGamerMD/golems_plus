@@ -226,7 +226,7 @@ public final class BuilderDomeRouteSurveyGameTest {
             System.out.println("[LIVE DOME SURVEY] captured actual world model "
                     +"and worker route report: route-survey/live_dome_last_stall.csv"
                     +" route-survey/live_worker_route_analysis.txt");
-            for(String line:report.toString().split("\\n"))
+            for(String line:report.toString().split("\n"))
                 if(line.startsWith("[WORKER]")||line.startsWith("[GROUND GRAPH]")
                         ||line.startsWith("[PAID SCAFFOLD]")
                         ||line.startsWith("[NEAREST REAL FOOTHOLDS]"))
@@ -397,7 +397,7 @@ public final class BuilderDomeRouteSurveyGameTest {
                     builtY30++;
                 }
                 StringBuilder csvY30=new StringBuilder(
-                    "x,y,z,intendedBlock,physicalBlock,collisionTop\\n");
+                    "x,y,z,intendedBlock,physicalBlock,collisionTop\n");
                 for(var cell:ordered){
                     BlockPos local=cell.getKey();
                     BlockPos p=abs(origin,local);
@@ -409,7 +409,7 @@ public final class BuilderDomeRouteSurveyGameTest {
                         .append('"').append(cell.getValue()).append('"')
                         .append(',').append('"').append(actual).append('"')
                         .append(',').append(shape.isEmpty()
-                                ?0:shape.max(Direction.Axis.Y)).append('\\n');
+                                ?0:shape.max(Direction.Axis.Y)).append('\n');
                 }
                 Files.writeString(out.resolve("reconstructed_y30_stall.csv"),
                         csvY30,StandardCharsets.UTF_8);
@@ -418,7 +418,7 @@ public final class BuilderDomeRouteSurveyGameTest {
                 StringBuilder reportY30=new StringBuilder(
                     "Reconstruction of actual 3423/3493 Y30 stall;"
                     +" missing=(15,30,9),(15,30,10),(15,30,11),"
-                    +"(15,30,12),(20,30,22)\\n");
+                    +"(15,30,12),(20,30,22)\n");
                 int n=0;
                 for(Pair focus:CASES){
                     BuilderGolem worker=workers.get(n++);
@@ -454,7 +454,7 @@ public final class BuilderDomeRouteSurveyGameTest {
                         +" connectedPoses="+inComponent
                         +" componentNodes="+component.size()
                         +" route="+nodePath(origin,path);
-                    reportY30.append(line).append('\\n');
+                    reportY30.append(line).append('\n');
                     System.out.println(line);
                     for(int y:new int[]{26,28,29,30,31})
                         reportY30.append(grid(world,origin,y,focus,component));
