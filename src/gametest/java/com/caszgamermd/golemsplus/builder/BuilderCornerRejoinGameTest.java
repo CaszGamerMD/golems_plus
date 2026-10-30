@@ -100,6 +100,10 @@ public final class BuilderCornerRejoinGameTest {
         h.setBlock(5,2,5,Blocks.STONE);
         BlockPos start=h.absolutePos(new BlockPos(4,2,4));
         BlockPos goal=h.absolutePos(new BlockPos(6,2,6));
+        world.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(start.getX()>>4,
+                        start.getZ()>>4),2);
         var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         mob.setPos(start.getX()+.2,start.getY(),start.getZ()+.2);
         world.addFreshEntity(mob);
