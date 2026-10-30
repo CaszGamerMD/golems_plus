@@ -379,6 +379,42 @@ public final class BuilderDomeRouteSurveyGameTest {
                 System.out.println("[DOME MODEL] PASS model=3537 original blocks;"
                         +" output=route-survey/original_dome_exact_model.csv"
                         +" output=route-survey/roof_route_survey.txt");
+
+                // ACTUAL last high-progress run 41065867271 logged these
+                // five remaining Y30 blocks at tick 76800. Populate every
+                // other original Y30 cell. The snapshot is therefore an
+                // evidence-grounded model of the stalled upper roof, not a
+                // guessed "completed dome" nor an incorrect all-AIR roof.
+                Set<BlockPos> unfinished=Set.of(
+                    new BlockPos(15,30,9),new BlockPos(15,30,10),
+                    new BlockPos(15,30,11),new BlockPos(15,30,12),
+                    new BlockPos(20,30,22));
+                int builtY30=0;
+                for(var cell:original.entrySet()){
+                    BlockPos p=cell.getKey();
+                    if(p.getY()!=30||unfinished.contains(p))continue;
+                    world.setBlock(abs(origin,p),cell.getValue(),2);
+                    builtY30++;
+                }
+                StringBuilder csvY30=new StringBuilder(
+                    "x,y,z,intendedBlock,physicalBlock,collisionTop\\n");
+                for(var cell:ordered){
+                    BlockPos local=cell.getKey();
+                    BlockPos p=abs(origin,local);
+                    BlockState actual=world.getBlockState(p);
+                    VoxelShape shape=actual.getCollisionShape(world,p);
+                    csvY30.append(local.getX()).append(',')
+                        .append(local.getY()).append(',')
+                        .append(local.getZ()).append(',')
+                        .append('"').append(cell.getValue()).append('"')
+                        .append(',').append('"').append(actual).append('"')
+                        .append(',').append(shape.isEmpty()
+                                ?0:shape.max(Direction.Axis.Y)).append('\\n');
+                }
+                Files.writeString(out.resolve("reconstructed_y30_stall.csv"),
+                        csvY30,StandardCharsets.UTF_8);
+                System.out.println("[Y30 RECONSTRUCTED MODEL] original=3537"
+                        +" builtY30="+builtY30+" remainingY30="+unfinished.size());
                 h.succeed();
             }catch(Exception e){h.fail("Dome survey failed: "+e);}
         });
