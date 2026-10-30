@@ -662,13 +662,15 @@ public final class BuilderBuildService {
                 }
                 if(access==BuilderGrappleAccess.Result.MOVING)return;
             }
+            boolean temporaryWorkPose=BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                    level,worker,table,pos);
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
             if(!BuilderPlacementSpace.placementHeight(pos,worker)
                     ||workDistance>14
                     ||!BuilderPlacementSpace.horizontalClear(pos,worker)
-                    ||!BuilderConstructionPlanner.safeStand(
-                            level,worker,pos,worker.blockPosition())){
+                    ||!(temporaryWorkPose||BuilderConstructionPlanner.safeStand(
+                            level,worker,pos,worker.blockPosition()))){
                 // Even when within arm's reach, a Builder must first
                 // occupy a PREVALIDATED work stance. This prevents the
                 // repeated old deadlock where it arrived next to an AIR
@@ -692,7 +694,10 @@ public final class BuilderBuildService {
                 // A roof can be on this very Y yet physically disconnected
                 // from its next work stance. Try a paid scaffold bridge here,
                 // not only when a vertical jump was requested.
-                if(BuilderScaffoldPlanA.hasPlan(worker)
+                if((BuilderScaffoldPlanA.hasPlan(worker)
+                        ||BuilderScaffoldPlanA.needsTemporaryWorkPlatform(level,pos)
+                            &&BuilderScaffoldPlanA.canPlan(
+                                    level,worker,table,pos,plan.steps()))
                         &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
                     return;
                 if(yDiff>0){
@@ -744,8 +749,10 @@ public final class BuilderBuildService {
             // Re-evaluate the real work pose immediately before spending
             // any item: a teammate or a new schematic block may have
             // invalidated the cached approach while this worker walked.
-            if(!BuilderConstructionPlanner.safeStand(
-                    level,worker,pos,worker.blockPosition())){
+            if(!(BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                        level,worker,table,pos)
+                    ||BuilderConstructionPlanner.safeStand(
+                        level,worker,pos,worker.blockPosition()))){
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
                 table.waitForBuilderAccess(worker.getUUID(),index,
                         level.getGameTime(),"lost safe pose or exit during approach");

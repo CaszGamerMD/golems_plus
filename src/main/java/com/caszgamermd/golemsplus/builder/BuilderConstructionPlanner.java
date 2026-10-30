@@ -355,14 +355,17 @@ public final class BuilderConstructionPlanner {
             // Read-only scaffold preflight: a future work pose can be
             // reached by a real paid tower/bridge, even if neither native
             // A* nor a rope can currently get across an unfinished roof.
+            boolean floating=BuilderScaffoldPlanA
+                    .needsTemporaryWorkPlatform(world,target);
             boolean scaffold=stance==null&&!grapple
-                    // Reserve scaffold starts for genuine vertical access
-                    // gaps. Same-height cells must keep their proven trained
-                    // walking routes instead of spawning competing bridges.
-                    &&target.getY()-worker.blockPosition().getY()>1
+                    // Vertical gaps use existing tower rules. An isolated
+                    // floating cube additionally permits a paid placement
+                    // platform even if it is at the worker's current Y.
+                    &&(target.getY()-worker.blockPosition().getY()>1
+                        ||floating)
                     &&(BuilderScaffoldPlanA.canPlan(
                             world,worker,table,target,steps)
-                        ||BuilderScaffolding.canPlanAccess(
+                        ||!floating&&BuilderScaffolding.canPlanAccess(
                             world,worker,table,target,steps));
             if(stance==null&&!grapple&&!scaffold)continue;
             boolean sky=stance==null

@@ -66,6 +66,41 @@ public final class BuilderScaffoldPlanA {
     private BuilderScaffoldPlanA(){}
 
     public static boolean hasPlan(BuilderGolem worker){return jobs.containsKey(worker);}
+    /** A free-floating full cube is valid in Minecraft. Its Builder still
+     * needs a physically reachable place to stand. An isolated cell has no
+     * floor or side geometry to approach using ordinary ground routes.
+     */
+    public static boolean needsTemporaryWorkPlatform(ServerLevel level,
+            BlockPos target){
+        if(!level.getBlockState(target).isAir()
+                ||!level.getBlockState(target.below()).isAir())return false;
+        for(Direction side:Direction.Plane.HORIZONTAL)
+            if(!level.getBlockState(target.relative(side)).isAir())return false;
+        return true;
+    }
+    /** Use a genuine owned bridge as a worker's temporary construction
+     * position. No schematic cell is occupied, no support is fabricated,
+     * and the reserved shaft/bridge remains available for reverse travel.
+     */
+    public static boolean safeTemporaryWorkPose(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,BlockPos target){
+        Job j=jobs.get(worker);
+        if(j==null||j.phase!=Phase.READY||!j.target.equals(target)
+                ||!needsTemporaryWorkPlatform(level,target)
+                ||worker.isNoGravity()||!worker.onGround()
+                ||Math.abs(worker.getY()-target.getY())>.18
+                ||j.bridge(j.bridgeSpan).distManhattan(target)!=2
+                ||worker.blockPosition().getX()!=j.bridge(j.bridgeSpan).getX()
+                ||worker.blockPosition().getZ()!=j.bridge(j.bridgeSpan).getZ()
+                ||!present(level,table,worker,j.bridge(j.bridgeSpan)))return false;
+        for(int n=1;n<=j.bridgeSpan;n++)
+            if(!present(level,table,worker,j.bridge(n)))return false;
+        return present(level,table,worker,j.base.atY(j.top))
+                &&BuilderPlacementSpace.placementHeight(target,worker)
+                &&BuilderPlacementSpace.horizontalClear(target,worker)
+                &&BuilderConstructionPlanner.lineOfSight(
+                        level,worker,worker.blockPosition(),target);
+    }
     /** Non-mutating frontier proof: a reachable paid bridge position
      * with reserved return route exists; actual work validates it again.
      */
@@ -155,6 +190,7 @@ public final class BuilderScaffoldPlanA {
             WorkerStationBlockEntity table,BlockPos target,
             List<BuilderConstructionPlan.Step> steps){
         Set<BlockPos> reserved=future(level,steps);
+        boolean isolated=needsTemporaryWorkPlatform(level,target);
         List<Job> options=new ArrayList<>();
         for(Direction outward:Direction.Plane.HORIZONTAL)
             // A single-cell bridge can reach a support only two tiles
@@ -164,7 +200,12 @@ public final class BuilderScaffoldPlanA {
             for(int distance=2;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++){
             BlockPos towerXZ=target.relative(outward,distance);
             Direction inward=outward.getOpposite();
-            int span=distance-1;
+            // Stop two cells short of an unsupported floating block:
+            // the last bridge surface must clear the Builder's 0.8 m
+            // placement margin. Scaffolding serves as a stand, NOT a
+            // replacement for or permanent attachment to the schematic.
+            if(isolated&&distance<3)continue;
+            int span=isolated?distance-2:distance-1;
             // Search real standing elevations ABOVE the worker as well
             // as below. Existing pillars, stairs, slabs and complete roof
             // blocks can put a Builder onto a reachable elevated ledge.
@@ -222,6 +263,7 @@ public final class BuilderScaffoldPlanA {
             WorkerStationBlockEntity table,BlockPos target,
             List<BuilderConstructionPlan.Step> steps){
         Set<BlockPos> reserved=future(level,steps);
+        boolean isolated=needsTemporaryWorkPlatform(level,target);
         int shafts=0,bridges=0,exits=0,reached=0;
         String example="";
         for(Direction outward:Direction.Plane.HORIZONTAL)
@@ -229,7 +271,9 @@ public final class BuilderScaffoldPlanA {
                 for(int dy=-4;dy<=5;dy++){
                     BlockPos base=target.relative(outward,distance)
                             .atY(worker.blockPosition().getY()-dy);
-                    int top=target.getY()-1,span=distance-1;
+                    if(isolated&&distance<3)continue;
+                    int top=target.getY()-1;
+                    int span=isolated?distance-2:distance-1;
                     if(!shaftClear(level,base,top,reserved,table,worker)){
                         if(outward==Direction.WEST&&distance==6&&dy==0)
                             example="west6 shaft support="+level.getBlockState(base.below())
