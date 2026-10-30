@@ -157,7 +157,11 @@ public final class BuilderScaffoldPlanA {
         Set<BlockPos> reserved=future(level,steps);
         List<Job> options=new ArrayList<>();
         for(Direction outward:Direction.Plane.HORIZONTAL)
-            for(int distance=3;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++){
+            // A single-cell bridge can reach a support only two tiles
+            // away. Small decorative pillars frequently leave exactly
+            // this gap; forcing a three-tile separation needlessly turns
+            // a paid one-scaffold crossing into an inaccessible roof.
+            for(int distance=2;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++){
             BlockPos towerXZ=target.relative(outward,distance);
             Direction inward=outward.getOpposite();
             int span=distance-1;
@@ -221,7 +225,7 @@ public final class BuilderScaffoldPlanA {
         int shafts=0,bridges=0,exits=0,reached=0;
         String example="";
         for(Direction outward:Direction.Plane.HORIZONTAL)
-            for(int distance=3;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++)
+            for(int distance=2;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++)
                 for(int dy=-4;dy<=5;dy++){
                     BlockPos base=target.relative(outward,distance)
                             .atY(worker.blockPosition().getY()-dy);
@@ -434,7 +438,8 @@ public final class BuilderScaffoldPlanA {
         if(close(worker,destination)){
             Phase completed=j.phase;
             j.phase=switch(completed){
-                case WALK_FIRST->Phase.EXTEND_SECOND;
+                case WALK_FIRST->j.bridgeSpan==1
+                        ?Phase.READY:Phase.EXTEND_SECOND;
                 case WALK_SECOND->j.bridgeStep<j.bridgeSpan
                         ?Phase.EXTEND_SECOND:Phase.READY;
                 case RETURN_FIRST->j.returnStep>1

@@ -153,6 +153,75 @@ public final class BuilderSafeScaffoldGameTest {
         });
     }
 
+    /** A one-block gap to an upper supported work cell needs ONE
+     * genuine cantilevered scaffold, not an unrelated three-away tower.
+     */
+    @GameTest(maxTicks=900,skyAccess=true)
+    public void physicallyBridgesOneCellGapAndReturnsSafely(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        BlockPos home=helper.absolutePos(new BlockPos(0,2,0));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            helper.fail("Missing Builder Planner");return;
+        }
+        ServerPlayer owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())){
+            helper.fail("Could not claim Builder Planner");return;
+        }
+        BlockPos tower=helper.absolutePos(new BlockPos(2,2,3));
+        BlockPos target=helper.absolutePos(new BlockPos(4,6,3));
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(tower.getX()+.5,tower.getY(),tower.getZ()+.5);
+        worker.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
+        level.addFreshEntity(worker);
+        if(!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Worker registration failed");return;
+        }
+        int[] phase={0};
+        long[] changed={helper.getTick()};
+        helper.onEachTick(()->{
+            if(helper.getTick()-changed[0]>300){
+                helper.fail("One-cell bridge stalled at "+worker.position()
+                        +" "+BuilderScaffoldPlanA.status(worker));return;
+            }
+            if(phase[0]==0){
+                if(helper.getTick()%5!=0)return;
+                var state=BuilderScaffoldPlanA.reach(
+                        level,worker,table,owner,target,List.of());
+                if(state==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE
+                        ||state==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
+                    helper.fail("One-span bridge rejected: "+state
+                            +" "+BuilderScaffoldPlanA.status(worker));return;
+                }
+                if(state!=BuilderScaffoldPlanA.Result.READY)return;
+                BlockPos bridge=tower.east().atY(target.getY()-1);
+                if(worker.blockPosition().getY()!=target.getY()
+                        ||!level.getBlockState(bridge).is(Blocks.SCAFFOLDING)
+                        ||table.scaffoldPositions(worker.getUUID()).stream()
+                                .filter(p->p.getX()==bridge.getX()
+                                        &&p.getZ()==bridge.getZ()).count()!=1){
+                    helper.fail("One-cell bridge not physically proven: "
+                            +worker.position()+" "+BuilderScaffoldPlanA.status(worker));
+                    return;
+                }
+                phase[0]=1;changed[0]=helper.getTick();
+            }else if(phase[0]==1){
+                if(helper.getTick()%5==0)
+                    BuilderScaffoldPlanA.returnToGround(level,worker,table);
+                if(!BuilderScaffoldPlanA.hasPlan(worker)
+                        &&worker.onGround()
+                        &&Math.abs(worker.getY()-tower.getY())<.26){
+                    System.out.println("[ONE CELL BRIDGE] PASS paid scaffold"
+                            +" and real descent back to ground");
+                    helper.succeed();
+                }
+            }
+        });
+    }
+
     @GameTest(maxTicks=100,skyAccess=true)
     public void plannedFutureWallsCannotSealGroundExit(GameTestHelper helper){
         ServerLevel level=helper.getLevel();
