@@ -31,6 +31,10 @@ import net.minecraft.core.Direction;
 public final class WorkerRoutePlanner {
     public static final int RADIUS=40;
     public static final int NODE_BUDGET=2800;
+    // A bounded search can follow many legal one-block stair steps.
+    // The old eight-block window made ground-to-Y9 impossible regardless
+    // of connectivity. This changes search extent, never jump/drop size.
+    public static final int VERTICAL_RADIUS=40;
     private static final int MOVE_COST=10;
     private static final int DIAGONAL_COST=14;
     private static final int HEIGHT_COST=15;
@@ -118,7 +122,7 @@ public final class WorkerRoutePlanner {
                     BlockPos next=current.offset(dir[0],dy,dir[1]);
                     if(next.equals(avoid)||Math.abs(next.getX()-start.getX())>RADIUS
                             ||Math.abs(next.getZ()-start.getZ())>RADIUS
-                            ||Math.abs(next.getY()-start.getY())>8
+                            ||Math.abs(next.getY()-start.getY())>VERTICAL_RADIUS
                             ||!validCache.computeIfAbsent(next,standable::test))continue;
                     double fromHeight=heightCache.computeIfAbsent(current,
                             floor::applyAsDouble);

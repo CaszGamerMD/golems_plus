@@ -162,4 +162,18 @@ final class WorkerRoutePlannerTest {
         assertTrue(result.complete());
         assertEquals(at(3,82,0),result.steps().getLast());
     }
+    @Test void climbsLongPhysicalStaircaseBeyondEightLayerSearchWindow(){
+        Set<BlockPos> stairs=new HashSet<>();
+        for(int step=0;step<=12;step++)stairs.add(at(step,64+step,0));
+        var route=find(at(0,64,0),List.of(at(12,76,0)),stairs);
+        assertNotNull(route,"Y9+ must not be hidden by an artificial vertical window");
+        assertTrue(route.complete());
+        assertEquals(at(12,76,0),route.steps().getLast());
+        BlockPos previous=at(0,64,0);
+        for(BlockPos next:route.steps()){
+            assertEquals(1,next.getY()-previous.getY(),
+                    "A taller search must still use real one-block climbs");
+            previous=next;
+        }
+    }
 }

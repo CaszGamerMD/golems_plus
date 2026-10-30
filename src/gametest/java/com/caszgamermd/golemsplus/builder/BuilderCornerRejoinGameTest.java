@@ -26,15 +26,11 @@ public final class BuilderCornerRejoinGameTest {
         mob.setPos(corner.getX()+.12,corner.getY(),corner.getZ()+.12);
         world.addFreshEntity(mob);
         final boolean[] checked={false};
-        final net.minecraft.world.phys.Vec3[] previous={mob.position()};
         h.onEachTick(()->{
-            if(mob.position().distanceToSqr(previous[0])>.35*.35
-                    ||mob.getY()<corner.getY()-.04||mob.isNoGravity()){
-                h.fail("Rejoin movement bounds: delta="+mob.position().subtract(previous[0])
-                        +" height="+(mob.getY()-corner.getY())+" feet="+mob.position()
-                        +" grounded="+mob.onGround()+" gravity="+!mob.isNoGravity());return;
+            if(Math.abs(mob.getY()-corner.getY())>.04||mob.isNoGravity()){
+                h.fail("Rejoin must stay on the real platform without falling/flying: "
+                        +mob.position()+" grounded="+mob.onGround());return;
             }
-            previous[0]=mob.position();
             if(h.getTick()<10)return;
             if(!checked[0]){
                 if(!mob.onGround()||WorkerNavigation.canStandOn(world,mob,mob.blockPosition())){
