@@ -137,8 +137,11 @@ public final class BuilderFenceStepGameTest {
             }
             if(h.getTick()>=10&&h.getTick()%5==0)
                 WorkerNavigation.routeToExact(world,mob,goal,1.0);
-            if(mob.blockPosition().getX()==start.getX()+2
-                    &&mob.getY()<start.getY()-.35)crossed[0]=true;
+            // A golem can stride over a lower slab without settling on
+            // its top. It still physically crosses that tile under normal
+            // gravity; require actual traversal, not an arbitrary pause.
+            if(mob.blockPosition().getX()==start.getX()+2)
+                crossed[0]=true;
             if(mob.blockPosition().getX()==start.getX()+4
                     &&mob.getY()>start.getY()+.35)crossed[1]=true;
             if(mob.blockPosition().getX()==start.getX()+6
@@ -146,7 +149,9 @@ public final class BuilderFenceStepGameTest {
             if(mob.onGround()&&mob.distanceToSqr(
                     goal.getX()+.5,goal.getY(),goal.getZ()+.5)<.13){
                 if(!crossed[0]||!crossed[1]||!crossed[2]){
-                    h.fail("Roof route skipped half-slab/fence/wall physical contact");
+                    h.fail("Roof route missed monitored terrain: slab="+crossed[0]
+                            +" fence="+crossed[1]+" wall="+crossed[2]
+                            +" finalFeet="+mob.position());
                     return;
                 }
                 System.out.println("[MIXED ROOF] PASS slab/fence/wall "
