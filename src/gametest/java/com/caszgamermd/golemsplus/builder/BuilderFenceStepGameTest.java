@@ -254,4 +254,95 @@ public final class BuilderFenceStepGameTest {
         });
     }
 
+    /** A route that starts WEST (away from target EAST), descends one
+     * full block, circles a solid obstruction, then climbs back onto a
+     * real elevated platform. No straight-line "closer every step" rule.
+     * The golem must physically walk every part, never teleport/fly.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=1000,skyAccess=true)
+    public void detoursAwayAndDownBeforeReachingHigherWorkPlatform(
+            GameTestHelper h){
+        var world=h.getLevel();
+        BlockPos start=h.absolutePos(new BlockPos(10,10,10));
+        BlockPos goal=h.absolutePos(new BlockPos(15,10,10));
+        // A narrow island at the original height; straight east is VOID.
+        for(int x=8;x<=10;x++)
+            h.setBlock(x,9,10,Blocks.STONE);
+        // The ONLY connected route first goes west, then DOWN to the
+        // low side passage, around the gap, then UP onto the far platform.
+        for(int x=8;x<=13;x++)
+            h.setBlock(x,8,11,Blocks.STONE);
+        h.setBlock(14,9,11,Blocks.STONE);
+        h.setBlock(14,9,10,Blocks.STONE);
+        h.setBlock(15,9,10,Blocks.STONE);
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(mob);
+        boolean[] wentWest={false},wentDown={false},wentUp={false};
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.isNoGravity()){
+                h.fail("Detour worker vanished or disabled gravity");return;
+            }
+            if(h.getTick()==16){
+                var route=com.caszgamermd.golemsplus.worker.WorkerRoutePlanner.plan(
+                        start,java.util.List.of(goal),
+                        tile->WorkerNavigation.canStandOn(world,mob,tile),
+                        tile->(double)tile.getY(),null);
+                if(route==null||!route.complete()||route.steps().isEmpty()
+                        ||route.steps().get(0).getX()>=start.getX()
+                        ||route.steps().stream().noneMatch(
+                                tile->tile.getY()<start.getY())){
+                    h.fail("Terrain planner refused real away/down/up detour: "
+                            +route);return;
+                }
+            }
+            if(h.getTick()>=18&&h.getTick()%5==0)
+                WorkerNavigation.routeToExact(world,mob,goal,1.0);
+            if(mob.getX()<start.getX()-.55)wentWest[0]=true;
+            if(mob.getY()<start.getY()-.70)wentDown[0]=true;
+            if(wentDown[0]&&mob.getY()>start.getY()-.15
+                    &&mob.getX()>start.getX()+1)wentUp[0]=true;
+            if(mob.onGround()&&mob.distanceToSqr(
+                    goal.getX()+.5,goal.getY(),goal.getZ()+.5)<.13){
+                if(!wentWest[0]||!wentDown[0]||!wentUp[0]){
+                    h.fail("Reached goal without proving physical downward "
+                            +"detour: west="+wentWest[0]+" down="+wentDown[0]
+                            +" up="+wentUp[0]);return;
+                }
+                System.out.println("[DETOUR] PASS moved WEST away from EAST "
+                        +"goal, DOWN one block, around void, and UP to work "
+                        +"platform tick="+h.getTick());
+                h.succeed();return;
+            }
+            if(h.getTick()>930)
+                h.fail("Physical away/down/up detour stalled pos="
+                        +mob.position()+" nav="+WorkerNavigation.debugStatus(mob));
+        });
+    }
+
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void blockedFirstStepReplansAroundWithoutChangingGoal(
+            GameTestHelper h){
+        BlockPos start=h.absolutePos(new BlockPos(2,2,3));
+        BlockPos goal=h.absolutePos(new BlockPos(6,2,3));
+        java.util.Set<BlockPos> valid=new java.util.HashSet<>();
+        for(int x=1;x<=7;x++)for(int z=1;z<=6;z++)
+            valid.add(h.absolutePos(new BlockPos(x,2,z)));
+        BlockPos rejected=start.east();
+        var route=com.caszgamermd.golemsplus.worker.WorkerRoutePlanner.plan(
+                start,java.util.List.of(goal),valid::contains,
+                tile->(double)tile.getY(),null,tile->0.0,
+                null,java.util.Set.of(rejected));
+        if(route==null||!route.complete()||route.steps().isEmpty()
+                ||route.steps().contains(rejected)
+                ||!route.steps().get(route.steps().size()-1).equals(goal)){
+            h.fail("Excluded first step caused goal abandonment: "+route);
+            return;
+        }
+        System.out.println("[DETOUR] PASS rejected FIRST edge, preserved "
+                +"target, took alternate terrain-weighted route");
+        h.succeed();
+    }
+
 }
