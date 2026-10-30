@@ -1057,6 +1057,38 @@ public final class WorkerNavigation {
         return true;
     }
 
+    /**
+     * A Builder cannot jump safely while its body is pointing into the
+     * vertex shared by two blocks. Before a REAL one-block ascent, line
+     * the body up with the actual side FACE of the higher block while it
+     * remains supported on the lower surface. Then ask normal Minecraft
+     * jump/collision to perform the height transition. A failed alignment
+     * is a rejected edge, not permission to fly or pass through the corner.
+     */
+    private static boolean alignForCardinalJump(ServerLevel level,
+            PathfinderMob mob,BlockPos next,double rise){
+        if(!mob.onGround()||rise<=.60||rise>1.01)return false;
+        BlockPos at=mob.blockPosition();
+        int x=next.getX()-at.getX(),z=next.getZ()-at.getZ();
+        if(Math.abs(x)+Math.abs(z)!=1)return false;
+        double targetX=mob.getX(),targetZ=mob.getZ();
+        if(x!=0)targetZ=next.getZ()+.5;
+        else targetX=next.getX()+.5;
+        double offsetX=targetX-mob.getX(),offsetZ=targetZ-mob.getZ();
+        if(Math.hypot(offsetX,offsetZ)<=.12)return false;
+        double moveX=Math.max(-.065,Math.min(.065,offsetX*.38));
+        double moveZ=Math.max(-.065,Math.min(.065,offsetZ*.38));
+        Vec3 point=new Vec3(mob.getX()+moveX,mob.getY(),
+                mob.getZ()+moveZ);
+        if(!supportedCornerSegment(level,mob,mob.position(),point))
+            return false;
+        mob.getNavigation().stop();
+        mob.getMoveControl().setWantedPosition(
+                mob.getX(),mob.getY(),mob.getZ(),0);
+        mob.setDeltaMovement(moveX,mob.getDeltaMovement().y,moveZ);
+        return true;
+    }
+
     private static boolean tickTerrainStep(ServerLevel level,
             PathfinderMob mob,Progress p){
         BlockPos next=p.terrainStep;
@@ -1087,8 +1119,12 @@ public final class WorkerNavigation {
             return false;
         }
         mob.getNavigation().stop();
-        // Vanilla jump: no fabricated lift, collision override, or flight.
+        // First sidestep into face alignment if approaching an upper
+        // block from its corner. All micro-moves retain real supported
+        // collision beneath the golem; no synthetic jump height.
         double rise=floor-mob.getY();
+        if(alignForCardinalJump(level,mob,next,rise))return true;
+        // Vanilla jump: no fabricated lift, collision override, or flight.
         boolean jump=mob.onGround()&&rise>.60&&rise<=1.01;
         if(jump){mob.getJumpControl().jump();mob.setJumping(true);}
         else mob.setJumping(false);

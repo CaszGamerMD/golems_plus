@@ -85,4 +85,51 @@ public final class BuilderCornerRejoinGameTest {
                     +" "+WorkerNavigation.debugStatus(mob));
         });
     }
+    /** A face-aligned step is required when the worker approaches a
+     * one-block-tall platform from its diagonal CORNER. It must first
+     * reach a legal side, then make a normal one-block jump, and arrive
+     * without creative flight or teleport.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=420,skyAccess=true)
+    public void climbsOneBlockPlatformCornerByRealSideJump(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=3;x<=11;x++)for(int z=3;z<=11;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        for(int x=7;x<=9;x++)for(int z=7;z<=9;z++)
+            h.setBlock(x,2,z,Blocks.STONE);
+        for(int x=4;x<=11;x++)for(int z=4;z<=11;z++)
+            for(int y=3;y<=5;y++)
+                h.setBlock(x,y,z,Blocks.AIR);
+        BlockPos corner=h.absolutePos(new BlockPos(6,2,6));
+        BlockPos goal=h.absolutePos(new BlockPos(8,3,8));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(corner.getX()+.62,corner.getY(),corner.getZ()+.62);
+        world.addFreshEntity(mob);
+        boolean[] usedRaisedFloor={false};
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.isNoGravity()
+                    ||mob.getY()<corner.getY()-.18){
+                h.fail("Corner jump left real floor or disabled gravity: "
+                        +mob.position());return;
+            }
+            if(h.getTick()>=15&&h.getTick()%5==0)
+                WorkerNavigation.routeToExact(world,mob,goal,1);
+            if(mob.getY()>corner.getY()+.75)usedRaisedFloor[0]=true;
+            if(mob.onGround()&&mob.distanceToSqr(
+                    goal.getX()+.5,goal.getY(),goal.getZ()+.5)<.12){
+                if(!usedRaisedFloor[0]){
+                    h.fail("Arrival skipped the physical ascent");return;
+                }
+                System.out.println("[CORNER CLIMB] PASS grounded side-aligned"
+                        +" one-block jump from diagonal corner in "
+                        +h.getTick()+" game ticks");
+                h.succeed();return;
+            }
+            if(h.getTick()>380)
+                h.fail("Corner climb navigation stalled at "+mob.position()
+                        +" "+WorkerNavigation.debugStatus(mob));
+        });
+    }
+
 }
