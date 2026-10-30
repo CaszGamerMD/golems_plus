@@ -374,6 +374,10 @@ public final class BuilderFenceStepGameTest {
         }
         BlockPos start=h.absolutePos(new BlockPos(3,3,3));
         BlockPos goal=h.absolutePos(new BlockPos(12,3,3));
+        world.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(start.getX()>>4,
+                        start.getZ()>>4),4);
         var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         world.addFreshEntity(mob);
@@ -386,8 +390,18 @@ public final class BuilderFenceStepGameTest {
                 for(int x=3;x<=12;x++){
                     var p=h.absolutePos(new BlockPos(x,3,3));
                     if(!WorkerNavigation.canStandOn(world,mob,p)){
-                        h.fail("Solid glass incorrectly rejected at "
-                                +p.subtract(start));return;
+                        var state=world.getBlockState(p.below());
+                        var shape=state.getCollisionShape(world,p.below());
+                        h.fail("Glass standing check rejected at "
+                                +p.subtract(start)+" below="+state
+                                +" collisionMax="+(shape.isEmpty()?0:shape.max(
+                                        net.minecraft.core.Direction.Axis.Y))
+                                +" yFeet="+mob.getY()
+                                +" grounded="+mob.onGround()
+                                +" loaded="+world.hasChunkAt(p)
+                                +" head="+world.getBlockState(p)
+                                +" floor="+WorkerNavigation.surveyFloorHeight(
+                                        world,p));return;
                     }
                 }
                 if(!WorkerNavigation.hasGroundRouteFrom(
