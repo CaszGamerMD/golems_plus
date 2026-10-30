@@ -59,6 +59,7 @@ jobs:
               'com.caszgamermd.golemsplus.builder.BuilderGrappleWorkPoseGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderGrappleReturnGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderConstructionFrontierGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderFenceStepGameTest',
           ]
           p.write_text(json.dumps(d,indent=2)+'\n')
           PYTEST

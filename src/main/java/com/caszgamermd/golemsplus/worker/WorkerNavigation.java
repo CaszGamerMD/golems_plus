@@ -296,7 +296,13 @@ public final class WorkerNavigation {
                         ||partialFloor(level.getBlockState(feet))
                         ||partialFloor(level.getBlockState(beforeFeet.below()))
                         ||partialFloor(level.getBlockState(feet.below()));
-                double y=architecturalStep||Math.abs(a-b)>.60
+                // Collision surfaces are not limited to stairs/slabs.
+                // Fence tops stand 0.5 above neighboring full blocks;
+                // interpolating through that riser rejects a valid step.
+                // Sweep at the higher supported surface for every real
+                // rise/drop, retaining head/body collision checks.
+                boolean raisedSurface=Math.abs(a-b)>.05;
+                double y=architecturalStep||raisedSurface
                         ?Math.max(a,b):a+(b-a)*t;
                 // The game handles a one-block step as a hop, not a
                 // horizontal sweep through the vertical face of the step.
