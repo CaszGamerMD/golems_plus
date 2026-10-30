@@ -554,7 +554,7 @@ public final class BuilderGrappleAccess {
         // hook back down to the same tile.
         if(!worker.onGround())return true;
         if(WorkerNavigation.routeTo(level,worker,goal,1.0)
-                ||WorkerNavigation.retryScheduled(worker))return true;
+                ||WorkerNavigation.hasPlannedGroundRoute(worker,goal))return true;
         // One-block drops are normal ground navigation first. Do not
         // grapple for a step that the trained pathfinder can traverse.
         if(diff==1){

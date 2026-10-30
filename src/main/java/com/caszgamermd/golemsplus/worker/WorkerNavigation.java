@@ -844,6 +844,14 @@ public final class WorkerNavigation {
                     +" q#"+rank);
     }
 
+    /** A retry timer alone is not evidence of a valid route. Equipment
+     * handoffs may defer only while an actual trained plan is retained.
+     */
+    public static boolean hasPlannedGroundRoute(PathfinderMob mob,BlockPos goal){
+        Progress p=states.get(mob);
+        return p!=null&&goal.equals(p.requested)&&!p.weightedRoute.isEmpty();
+    }
+
     public static boolean retryScheduled(PathfinderMob mob){
         Progress p=states.get(mob);
         return p!=null&&p.requested!=null
