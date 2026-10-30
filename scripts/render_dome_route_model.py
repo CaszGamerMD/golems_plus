@@ -49,10 +49,27 @@ def build():
     if not ROOT.exists(): return False
     base=ROOT/"original_dome_exact_model.csv"
     live=ROOT/"live_dome_last_stall.csv"
-    source=live if live.exists() else base
+    recovered=ROOT/"reconstructed_y30_stall.csv"
+    source=live if live.exists() else recovered if recovered.exists() else base
     if not source.exists():return False
     data=read(source)
     workers=worker_info(ROOT/"live_worker_route_analysis.txt")
+    if not workers and recovered.exists():
+        lines=(ROOT/"reconstructed_y30_routes.txt")
+        if lines.exists():
+            for line in lines.read_text(encoding="utf-8").splitlines():
+                if not line.startswith("[Y30 WORKER] "):continue
+                m=re.search(r"^\\[Y30 WORKER\\] (.*?) worker=(-?\\d+, -?\\d+, -?\\d+).*?target=(-?\\d+, -?\\d+, -?\\d+).*?route=(.*)$",line)
+                if not m:continue
+                path=m.group(4)
+                parts=re.findall(r"-?\\d+, -?\\d+, -?\\d+",path.partition("waypoints=")[2])
+                workers.append({
+                    "name":m.group(1),
+                    "start":[int(v) for v in m.group(2).split(", ")],
+                    "goal":[int(v) for v in m.group(3).split(", ")],
+                    "route":[[int(v) for v in x.split(", ")] for x in parts],
+                    "graph":line,
+                })
     if not workers:
         workers=[
             {"name":"North handoff","start":[8,26,11],"goal":[15,30,11],"route":[],"graph":"survey pre-roof geometry"},
@@ -60,7 +77,10 @@ def build():
             {"name":"Cobblestone leg","start":[8,26,12],"goal":[15,30,12],"route":[],"graph":"survey pre-roof geometry"},
             {"name":"Diorite leg","start":[22,29,23],"goal":[20,30,22],"route":[],"graph":"survey pre-roof geometry"},
         ]
-    flavor="LIVE stalled dome (actual placed blocks)" if live.exists() else "PRE-ROOF reconstructed survey (Y30+ still air)"
+    flavor=("LIVE stalled dome (actual placed blocks)" if live.exists()
+            else "Y30 measured five-gap reconstruction (from verified 3423/3493 run)"
+            if recovered.exists()
+            else "PRE-ROOF survey (Y30+ still air)")
     description=("All expected blocks from the original verified litematic, plus the"
                  " physical state and collision top measured by Minecraft."
                  " Route lines are analytical candidate waypoints, NOT"
