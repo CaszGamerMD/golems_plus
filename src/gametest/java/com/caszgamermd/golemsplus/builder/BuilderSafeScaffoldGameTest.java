@@ -540,7 +540,9 @@ public final class BuilderSafeScaffoldGameTest {
             if(h.getTick()-startTick>1050){
                 h.fail("Floating-block construction stalled at "+mob.position()
                         +" phase="+phase[0]
-                        +" "+BuilderScaffoldPlanA.status(mob));return;
+                        +" "+BuilderScaffoldPlanA.status(mob)
+                        +" tracked="+table.scaffoldPositions(mob.getUUID())
+                        +" climbing="+BuilderScaffolding.debugClimb(mob));return;
             }
             if(phase[0]==0){
                 // Allow the active real scaffold ascent to advance even

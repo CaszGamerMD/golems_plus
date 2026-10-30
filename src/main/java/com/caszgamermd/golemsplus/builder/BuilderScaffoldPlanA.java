@@ -676,16 +676,29 @@ public final class BuilderScaffoldPlanA {
             // Continuing to steer toward a specific exit can push a
             // landed worker through its own standing scaffold tower.
             BlockPos below=worker.blockPosition().below();
+            // A valid descent is not automatically a valid dismount.
+            // The Builder may be on the stone floor but still INSIDE its
+            // own scaffold footprint. Cleanup must never tear scaffolds
+            // from under a worker; physically move onto an adjacent solid
+            // exit BEFORE releasing this Plan A job.
+            boolean clearOfOwnedScaffold=true;
+            for(BlockPos scaffold:table.scaffoldPositions(worker.getUUID())){
+                if(Math.abs(scaffold.getX()+.5-worker.getX())<.9
+                        &&Math.abs(scaffold.getZ()+.5-worker.getZ())<.9){
+                    clearOfOwnedScaffold=false;
+                    break;
+                }
+            }
             if(worker.onGround()
                     &&Math.abs(worker.getY()-j.base.getY())<.26
+                    &&clearOfOwnedScaffold
                     &&level.getBlockState(below).isFaceSturdy(
                             level,below,Direction.UP)){
                 jobs.remove(worker);
                 return false;
             }
-            if(!BuilderScaffolding.isControllingMovement(worker)){
+            if(!BuilderScaffolding.isControllingMovement(worker))
                 BuilderScaffolding.dismountAtBase(level,worker,j.base);
-            }
             return true;
         }
         return true;
