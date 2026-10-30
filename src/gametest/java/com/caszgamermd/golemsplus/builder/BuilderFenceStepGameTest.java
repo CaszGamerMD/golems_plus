@@ -107,7 +107,8 @@ public final class BuilderFenceStepGameTest {
     /** The real upper dome mixes three different half-block surfaces;
      * native short legs may fail even where a physical one-cell step is safe.
      */
-    @GameTest(maxTicks=480,skyAccess=true)
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=480,skyAccess=true)
     public void traversesMixedSlabFenceAndWallRoof(GameTestHelper h){
         var world=h.getLevel();
         for(int x=0;x<11;x++)for(int z=0;z<8;z++)
