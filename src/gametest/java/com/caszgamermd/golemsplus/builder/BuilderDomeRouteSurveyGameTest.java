@@ -383,4 +383,72 @@ public final class BuilderDomeRouteSurveyGameTest {
             }catch(Exception e){h.fail("Dome survey failed: "+e);}
         });
     }
+    /** No hand-coded physical waypoints: just the actual domed terrain,
+     * the surveyed North start and a VALID safe work stance. Production
+     * terrain A* decides which side to approach and whether to go up/down.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=950,skyAccess=true)
+    public void northRoofPhysicalNavigationFollowsSurveyedTerrain(
+            GameTestHelper h){
+        ServerLevel world=h.getLevel();
+        BlockPos origin=h.absolutePos(new BlockPos(8,2,8));
+        world.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(origin.getX()>>4,
+                        origin.getZ()>>4),4);
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        try{
+            for(var b:LitematicFileReader.read(
+                    BuilderDomeFixture.unpack()).blocks()){
+                if(b.y()>=30||BuilderVegetation.ignoreSchematicState(
+                        b.state()))continue;
+                var r=BuilderBlockResolver.resolve(
+                        b.state(),BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(r!=null)world.setBlock(origin.offset(
+                        b.x(),b.y(),b.z()),r.state(),2);
+            }
+        }catch(Exception ex){h.fail("North route model failed "+ex);return;}
+        BlockPos start=origin.offset(8,26,11);
+        BlockPos goal=origin.offset(14,30,14);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(worker);
+        boolean[] ascended={false};
+        h.onEachTick(()->{
+            if(!worker.isAlive()||worker.isNoGravity()
+                    ||worker.getY()<origin.getY()+24){
+                h.fail("Worker lost ground on real north roof");return;
+            }
+            if(h.getTick()==20){
+                if(!WorkerNavigation.canStandOn(world,worker,goal)
+                        ||!WorkerNavigation.hasGroundRouteFrom(
+                                world,worker,start,List.of(goal))){
+                    h.fail("Survey route does not exist in live physics");return;
+                }
+            }
+            if(h.getTick()>=20&&h.getTick()%5==0)
+                WorkerNavigation.routeToExact(world,worker,goal,1);
+            if(worker.getY()>origin.getY()+28)ascended[0]=true;
+            if(worker.onGround()&&worker.distanceToSqr(
+                    goal.getX()+.5,goal.getY(),goal.getZ()+.5)<.14){
+                if(!ascended[0]){
+                    h.fail("Did not physically climb the correct upper route");
+                    return;
+                }
+                System.out.println("[NORTH REAL ROUTE] PASS physically "
+                        +"replanned original upper roof in "+h.getTick()
+                        +" ticks; no fly, teleport, or predefined path");
+                h.succeed();return;
+            }
+            if(h.getTick()>875)
+                h.fail("Real North path stalled feet="
+                        +rel(origin,worker.blockPosition())
+                        +" "+WorkerNavigation.debugStatus(worker)
+                        +" "+WorkerNavigation.diagnoseExecutableStand(
+                                world,worker,List.of(goal)));
+        });
+    }
+
 }
