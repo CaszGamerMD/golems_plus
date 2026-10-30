@@ -486,7 +486,8 @@ public final class BuilderScaffoldPlanA {
                 return Result.MOVING;
             }
             case EXTEND_SECOND -> {
-                Result result=place(level,worker,table,owner,j.second(),j.first());
+                Result result=place(level,worker,table,owner,j.second(),
+                        j.bridge(j.bridgeStep-1));
                 if(result!=Result.READY)return result;
                 if(!structurallySupported(level,j.second()))
                     return Result.NO_SAFE_ROUTE;
@@ -522,8 +523,8 @@ public final class BuilderScaffoldPlanA {
             return true;
         }
         if(j.phase==Phase.EXTEND_SECOND){
-            j.returnStep=Math.max(1,j.bridgeStep-2);
-            j.phase=j.returnStep>1?Phase.RETURN_FIRST:Phase.RETURN_TOWER;
+            j.returnStep=Math.max(1,j.bridgeStep-1);
+            j.phase=Phase.RETURN_FIRST;
             return true;
         }
         if(j.phase==Phase.WALK_FIRST){
