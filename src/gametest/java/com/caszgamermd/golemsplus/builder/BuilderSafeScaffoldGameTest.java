@@ -183,7 +183,13 @@ public final class BuilderSafeScaffoldGameTest {
             helper.fail("No real Builder Planner on roof test");return;
         }
         ServerPlayer owner=helper.makeMockServerPlayerInLevel();
+        // A Planner without a placed job keeps its origin at world zero.
+        // Stage a tiny roof job so the real 128-block storage distance
+        // validation uses the GameTest's actual local origin.
         if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),
+                        "placed-roof-scaffold.litematic","Roof",
+                        helper.absolutePos(new BlockPos(3,4,3)),0,0,1,0)
                 ||!table.setBuilderMaterialStorage(owner.getUUID(),storage)){
             helper.fail("Could not register owned roof materials");return;
         }
