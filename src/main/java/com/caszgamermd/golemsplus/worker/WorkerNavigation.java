@@ -792,7 +792,11 @@ public final class WorkerNavigation {
                 ||Math.abs(at.getY()-next.getY())>1)return false;
         double floor=floorAt(level,next);
         double delta=floor-mob.getY();
-        if(!Double.isFinite(delta)||Math.abs(delta)>.6001)return false;
+        // A* already proves one-block supported rises and drops. The
+        // fallback must use the golem's REAL one-block jump rather than
+        // discarding these legal detours as physically impossible.
+        // 1.5-block walls remain excluded by the actual collision height.
+        if(!Double.isFinite(delta)||Math.abs(delta)>1.01)return false;
         // No diagonal corner-cutting, no leap across air. Both supported
         // ends have already been checked; sample the full collision width
         // at the higher surface. The real step-rise/drop is executed by
@@ -839,7 +843,11 @@ public final class WorkerNavigation {
             return false;
         }
         mob.getNavigation().stop();
-        mob.setJumping(false);
+        // Vanilla jump: no fabricated lift, collision override, or flight.
+        double rise=floor-mob.getY();
+        boolean jump=mob.onGround()&&rise>.60&&rise<=1.01;
+        if(jump){mob.getJumpControl().jump();mob.setJumping(true);}
+        else mob.setJumping(false);
         double vx=Math.max(-.115,Math.min(.115,dx*.35));
         double vz=Math.max(-.115,Math.min(.115,dz*.35));
         // If a step-up is physically blocked by an adjacent 0.5-height
