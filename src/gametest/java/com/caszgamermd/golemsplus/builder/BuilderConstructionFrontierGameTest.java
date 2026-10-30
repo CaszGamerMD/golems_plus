@@ -114,6 +114,61 @@ public final class BuilderConstructionFrontierGameTest {
         });
     }
 
+    /** A less-convenient roof placement touching a completed real block
+     * outranks an isolated closer placement on the SAME active build Y.
+     * Terrain supporting both candidates is not counted as completed.
+     */
+    @GameTest(maxTicks=150,skyAccess=true)
+    public void prefersConnectedRoofPlacementToIsolatedIsland(
+            GameTestHelper h){
+        floor(h);
+        ServerLevel world=h.getLevel();
+        var mob=worker(h,h.absolutePos(new BlockPos(3,2,3)));
+        var table=planner(h,mob,3);
+        BlockPos finished=h.absolutePos(new BlockPos(5,1,4));
+        BlockPos isolated=h.absolutePos(new BlockPos(3,2,5));
+        BlockPos attached=h.absolutePos(new BlockPos(5,2,4));
+        var steps=List.of(
+                new BuilderConstructionPlan.Step(
+                        finished.getX(),finished.getY(),finished.getZ(),
+                        "minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(
+                        isolated.getX(),isolated.getY(),isolated.getZ(),
+                        "minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(
+                        attached.getX(),attached.getY(),attached.getZ(),
+                        "minecraft:stone","minecraft:stone"));
+        h.onEachTick(()->{
+            if(h.getTick()!=16)return;
+            // The lower block is already physically present as part of
+            // the base. Commit the corresponding schematic step first.
+            if(table.claimBuilderZoneStep(mob.getUUID(),List.of(0,1,2),steps)!=0
+                    ||!table.completeBuilderStep(mob.getUUID(),0)){
+                h.fail("Could not record actual previously built support");
+                return;
+            }
+            var expected=java.util.Map.of(finished,Blocks.STONE.defaultBlockState());
+            if(BuilderConstructionPlanner.connectedPlacementBonus(
+                    world,attached,expected)<70
+                    ||BuilderConstructionPlanner.connectedPlacementBonus(
+                    world,isolated,expected)!=0){
+                h.fail("Actual schematic-contact score was incorrect");return;
+            }
+            var choice=BuilderConstructionPlanner.choose(world,mob,table,
+                    steps,List.of(0,1,2));
+            if(choice==null||choice.index()!=2||choice.stance()==null){
+                h.fail("Builder ignored reachable built support "
+                        +"for isolated roof cell: "+choice);return;
+            }
+            if(table.builderActiveLayer(steps)!=isolated.getY()){
+                h.fail("Contact preference skipped mandatory Y gate");return;
+            }
+            System.out.println("[CONTACT FRONTIER] PASS prefers built "
+                    +"roof support while retaining same-Y placement");
+            h.succeed();
+        });
+    }
+
     @GameTest(maxTicks=130,skyAccess=true)
     public void rejectsThroughWallWorkStanceRatherThanPlaceThroughWall(
             GameTestHelper h){

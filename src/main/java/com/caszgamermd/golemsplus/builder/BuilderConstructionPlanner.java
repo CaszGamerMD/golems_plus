@@ -138,6 +138,51 @@ public final class BuilderConstructionPlanner {
                 &&lineOfSight(world,builder,stance,target)
                 &&exitAfterPlacement(world,builder,stance,target);
     }
+    /**
+     * Physical contact with a CORRECT, already-built schematic cell is a
+     * construction advantage. Favor extending established roof supports
+     * and walls before starting isolated islands on the same Y. Nearby
+     * terrain or unrelated player blocks do NOT count as completed work.
+     *
+     * Only used as a score AFTER the real work pose, escape and placement
+     * support were checked. This never authorizes a floating block.
+     */
+    static int connectedPlacementBonus(ServerLevel world,BlockPos target,
+            Map<BlockPos,BlockState> schematic){
+        int side=0,below=0,above=0;
+        for(Direction direction:Direction.values()){
+            BlockPos neighbor=target.relative(direction);
+            BlockState expected=schematic.get(neighbor);
+            if(expected==null||!world.hasChunkAt(neighbor)
+                    ||!BuilderPlacementState.matches(
+                            world.getBlockState(neighbor),expected))continue;
+            if(direction==Direction.DOWN)below++;
+            else if(direction==Direction.UP)above++;
+            else side++;
+        }
+        // A built block UNDER the next placement is a particularly useful
+        // foothold. Side connections allow outward growth along the roof.
+        return Math.min(100,below*75+side*42+above*10);
+    }
+    private static final Map<List<BuilderConstructionPlan.Step>,
+            Map<BlockPos,BlockState>> schematicStates=new WeakHashMap<>();
+    private static Map<BlockPos,BlockState> schematicStates(
+            List<BuilderConstructionPlan.Step> steps,
+            BuildSite.Rotation rotation,BuildSite.Mirror mirror){
+        // Never cache by file path: the same placed schematic has different
+        // world coordinates after moving or rotating its placement.
+        return schematicStates.computeIfAbsent(steps,unused->{
+            Map<BlockPos,BlockState> expected=new java.util.HashMap<>();
+            for(var cell:steps){
+                if(cell.ignorePlant())continue;
+                var state=BuilderBlockResolver.resolve(
+                        cell.encodedState(),rotation,mirror);
+                if(state!=null)expected.put(
+                        new BlockPos(cell.x(),cell.y(),cell.z()),state.state());
+            }
+            return Map.copyOf(expected);
+        });
+    }
     private static double score(BuilderGolem worker,BlockPos target,
             BlockPos stance,boolean sky,boolean grapple){
         BlockPos reference=stance==null?target:stance;
@@ -275,6 +320,9 @@ public final class BuilderConstructionPlanner {
                 ?previous.offset():0;
         int examined=0,feasible=0;
         int count=Math.min(MAX_EXAMINED,pending.size());
+        Map<BlockPos,BlockState> builtSchematic=schematicStates(steps,
+                BuildSite.Rotation.values()[table.builderRotation()/90],
+                BuildSite.Mirror.values()[table.builderMirror()]);
         for(int attempt=0;attempt<count;attempt++){
             int idx=pending.get((offset+attempt)%pending.size());
             examined++;
@@ -320,7 +368,11 @@ public final class BuilderConstructionPlanner {
             boolean sky=stance==null
                     ?world.canSeeSky(target.above())
                     :world.canSeeSky(stance.above());
+            // Valid same-layer frontier candidates that TOUCH existing
+            // completed architecture get scheduled first, making finished
+            // roof ledges and columns useful access infrastructure.
             double cost=score(worker,target,stance,sky,grapple)
+                    -connectedPlacementBonus(world,target,builtSchematic)
                     +(scaffold?BuilderFrontierTuning.GRAPPLE_PENALTY*2:0);
             if(cost<bestScore){
                 bestScore=cost;

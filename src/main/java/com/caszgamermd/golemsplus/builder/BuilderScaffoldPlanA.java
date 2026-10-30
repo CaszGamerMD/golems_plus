@@ -161,7 +161,11 @@ public final class BuilderScaffoldPlanA {
             BlockPos towerXZ=target.relative(outward,distance);
             Direction inward=outward.getOpposite();
             int span=distance-1;
-            for(int dy=0;dy<=5;dy++){
+            // Search real standing elevations ABOVE the worker as well
+            // as below. Existing pillars, stairs, slabs and complete roof
+            // blocks can put a Builder onto a reachable elevated ledge.
+            // The exact ground-path preflight below must prove the route.
+            for(int dy=-4;dy<=5;dy++){
                 BlockPos base=towerXZ.atY(worker.blockPosition().getY()-dy);
                 int top=target.getY()-1;
                 if(!shaftClear(level,base,top,reserved,table,worker)
@@ -199,7 +203,9 @@ public final class BuilderScaffoldPlanA {
             // A scaffold already occupying its own base is not a native
             // walking goal. In that case validate a real adjacent entry.
             boolean onBase=worker.blockPosition().getX()==candidate.base.getX()
-                    &&worker.blockPosition().getZ()==candidate.base.getZ();
+                    &&worker.blockPosition().getZ()==candidate.base.getZ()
+                    &&Math.abs(worker.getY()-candidate.base.getY())<.30
+                    &&worker.onGround();
             if(onBase||WorkerNavigation.canReachExact(
                     level,worker,candidate.base))return candidate;
         }
@@ -216,7 +222,7 @@ public final class BuilderScaffoldPlanA {
         String example="";
         for(Direction outward:Direction.Plane.HORIZONTAL)
             for(int distance=3;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++)
-                for(int dy=0;dy<=5;dy++){
+                for(int dy=-4;dy<=5;dy++){
                     BlockPos base=target.relative(outward,distance)
                             .atY(worker.blockPosition().getY()-dy);
                     int top=target.getY()-1,span=distance-1;
@@ -236,7 +242,9 @@ public final class BuilderScaffoldPlanA {
                     if(exit==null)continue;
                     exits++;
                     boolean onBase=worker.blockPosition().getX()==base.getX()
-                            &&worker.blockPosition().getZ()==base.getZ();
+                            &&worker.blockPosition().getZ()==base.getZ()
+                            &&Math.abs(worker.getY()-base.getY())<.30
+                            &&worker.onGround();
                     if(onBase||WorkerNavigation.canReachExact(level,worker,base))
                         reached++;
                 }
