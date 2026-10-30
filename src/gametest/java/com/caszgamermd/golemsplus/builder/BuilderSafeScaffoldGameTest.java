@@ -276,9 +276,13 @@ public final class BuilderSafeScaffoldGameTest {
             helper.fail("No roof bridge Planner");return;
         }
         ServerPlayer owner=helper.makeMockServerPlayerInLevel();
-        // Begin at the verified solid-roof tower foot. The separate
-        // roof-access tests exercise approaching a remote entrance.
-        BlockPos start=helper.absolutePos(new BlockPos(3,4,4));
+        // Place the test roof's supported starting tower on the
+        // actual world axis: GameTest structure rotations must not
+        // accidentally move the tower off the prebuilt roof fixture.
+        BlockPos goal=helper.absolutePos(new BlockPos(9,7,4));
+        BlockPos start=goal.west(6).atY(goal.getY()-3);
+        level.setBlock(start.below(),Blocks.STONE.defaultBlockState(),3);
+        level.setBlock(start.west().below(),Blocks.STONE.defaultBlockState(),3);
         if(!table.claimIfUnowned(owner.getUUID())
                 ||!table.setPlacedBuilderPlan(owner.getUUID(),
                         "placed-five-span.litematic","Five Span",
@@ -292,7 +296,6 @@ public final class BuilderSafeScaffoldGameTest {
         mob.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
         level.addFreshEntity(mob);
         table.registerBuilderWorker(mob.getUUID());
-        BlockPos goal=helper.absolutePos(new BlockPos(9,7,4));
         int[] stage={0},largest={0};
         long[] startTick={helper.getTick()};
         helper.onEachTick(()->{
