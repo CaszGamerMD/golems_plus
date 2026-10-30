@@ -63,6 +63,16 @@ public final class BuilderScaffoldPlanA {
     private BuilderScaffoldPlanA(){}
 
     public static boolean hasPlan(BuilderGolem worker){return jobs.containsKey(worker);}
+    /** Non-mutating frontier proof: a reachable paid bridge position
+     * with reserved return route exists; actual work validates it again.
+     */
+    public static boolean canPlan(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos target,
+            List<BuilderConstructionPlan.Step> steps){
+        Job current=jobs.get(worker);
+        return current!=null&&current.target.equals(target)
+                ||choose(level,worker,table,target,steps)!=null;
+    }
     public static boolean controlsMotion(BuilderGolem worker){
         Job j=jobs.get(worker);
         return j!=null&&switch(j.phase){

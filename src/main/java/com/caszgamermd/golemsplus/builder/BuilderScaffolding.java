@@ -534,6 +534,26 @@ public final class BuilderScaffolding {
         return false;
     }
 
+    /** Conservative, read-only tower preview for a blocked frontier.
+     * The base may stand on already built architecture: the structural
+     * support, shaft, future-block exclusions and ground/roof dismount
+     * remain mandatory.
+     */
+    public static boolean canPlanAccess(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos target,
+            List<BuilderConstructionPlan.Step> plan){
+        if(target.getY()<worker.blockPosition().getY())return false;
+        java.util.Set<BlockPos> future=new java.util.HashSet<>();
+        for(var cell:plan)if(!cell.ignorePlant())
+            future.add(new BlockPos(cell.x(),cell.y(),cell.z()));
+        for(Tower tower:towers(level,table,worker))
+            if(BuilderScaffoldSiteScore.withinReach(tower.base(),target)
+                    &&safeGroundExit(level,worker,tower.base(),future)!=null)
+                return true;
+        return findBase(level,worker,target,worker.blockPosition().getY(),
+                table,plan,future)!=null;
+    }
+
     public static Result reach(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,BlockPos target,
             List<BuilderConstructionPlan.Step> plan){

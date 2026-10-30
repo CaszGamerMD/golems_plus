@@ -304,11 +304,21 @@ public final class BuilderConstructionPlanner {
                     &&worker.carriedCount(WorksiteContent.GRAPPLE_HOOK)>0
                     &&BuilderGrappleAccess.canPlanWorkAscent(world,worker,target))
                 grapple=true;
-            if(stance==null&&!grapple)continue;
+            // Read-only scaffold preflight: a future work pose can be
+            // reached by a real paid tower/bridge, even if neither native
+            // A* nor a rope can currently get across an unfinished roof.
+            boolean scaffold=stance==null&&!grapple
+                    &&target.getY()>=worker.blockPosition().getY()
+                    &&(BuilderScaffoldPlanA.canPlan(
+                            world,worker,table,target,steps)
+                        ||BuilderScaffolding.canPlanAccess(
+                            world,worker,table,target,steps));
+            if(stance==null&&!grapple&&!scaffold)continue;
             boolean sky=stance==null
                     ?world.canSeeSky(target.above())
                     :world.canSeeSky(stance.above());
-            double cost=score(worker,target,stance,sky,grapple);
+            double cost=score(worker,target,stance,sky,grapple)
+                    +(scaffold?BuilderFrontierTuning.GRAPPLE_PENALTY*2:0);
             if(cost<bestScore){
                 bestScore=cost;
                 best=new Choice(idx,stance,grapple,sky,examined);

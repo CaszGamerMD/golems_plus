@@ -169,6 +169,7 @@ public final class BuilderDomeConstructionGameTest {
             // Replenish the 27-slot CHEST, never worker inventories.
             Set<Item> needs=new LinkedHashSet<>();
             needs.add(WorksiteContent.GRAPPLE_HOOK);
+            needs.add(Items.SCAFFOLDING);
             needs.add(Items.IRON_PICKAXE);
             needs.add(Items.IRON_AXE);
             needs.add(Items.IRON_SHOVEL);

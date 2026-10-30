@@ -664,7 +664,8 @@ public final class BuilderSupplyInventory {
         if(source==null)return ScaffoldLoad.MISSING;
         BlockPos pos=table.builderUnloadingStorage();
         if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>12){
-            if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
+            if(BuilderScaffolding.descendForTravel(level,worker,table)
+                    ||BuilderGrappleAccess.rappelForTravel(level,worker,table))
                 return ScaffoldLoad.MOVING;
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                     level,worker,pos,.82);
