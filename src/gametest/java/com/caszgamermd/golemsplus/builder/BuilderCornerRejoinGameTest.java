@@ -103,6 +103,15 @@ public final class BuilderCornerRejoinGameTest {
         BlockPos start=h.absolutePos(new BlockPos(8,3,8));
         BlockPos supportedCorner=h.absolutePos(new BlockPos(7,3,7));
         BlockPos goal=h.absolutePos(new BlockPos(5,3,5));
+        // The GameTest bounds may cross a chunk border under randomized
+        // coordinates and rotations. Force the spawn's actual chunk and
+        // explicitly set the single stone support at the sampled corner.
+        world.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(start.getX()>>4,
+                        start.getZ()>>4),2);
+        world.setBlock(supportedCorner.below(),Blocks.STONE.defaultBlockState(),3);
+        world.setBlock(start.below(),Blocks.AIR.defaultBlockState(),3);
         var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         // GameTests ROTATE their structures. The supported corner might
         // be NE, NW, SE or SW in actual world coordinates. Offset toward
@@ -133,7 +142,11 @@ public final class BuilderCornerRejoinGameTest {
                             +" centerFloor="+centerFloor
                             +" currentCenter="+currentCenter
                             +" cornerMask="+WorkerNavigation.supportedHitboxCorners(
-                                    world,mob));
+                                    world,mob)
+                            +" stone="+world.getBlockState(supportedCorner.below())
+                            +" supportXYZ="+supportedCorner.below()
+                            +" chunkLoaded="+world.hasChunkAt(start)
+                            +" feetXYZ="+mob.blockPosition());
                     return;
                 }
             }
