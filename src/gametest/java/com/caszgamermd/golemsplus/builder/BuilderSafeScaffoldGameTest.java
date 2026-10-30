@@ -163,4 +163,92 @@ public final class BuilderSafeScaffoldGameTest {
             helper.fail("Unsupported unsafe shaft was approved: "+result);
         }else helper.succeed();
     }
+
+    /** A real Builder can climb from an existing elevated roof and recover
+     * only its owned paid scaffolding after physically returning to that roof.
+     */
+    @SuppressWarnings("removal")
+    @GameTest(maxTicks=1600,skyAccess=true)
+    public void builderCleansUpOwnedScaffoldsOnBuiltRoof(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        for(int x=2;x<=6;x++)for(int z=2;z<=6;z++)
+            helper.setBlock(x,3,z,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        helper.setBlock(1,2,0,Blocks.CHEST);
+        BlockPos home=helper.absolutePos(new BlockPos(0,2,0));
+        BlockPos storage=helper.absolutePos(new BlockPos(1,2,0));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            helper.fail("No real Builder Planner on roof test");return;
+        }
+        ServerPlayer owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setBuilderMaterialStorage(owner.getUUID(),storage)){
+            helper.fail("Could not register owned roof materials");return;
+        }
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos spawn=helper.absolutePos(new BlockPos(3,4,3));
+        mob.setPos(spawn.getX()+.5,spawn.getY(),spawn.getZ()+.5);
+        mob.setItem(0,new ItemStack(Items.SCAFFOLDING,24));
+        level.addFreshEntity(mob);
+        if(!table.registerBuilderWorker(mob.getUUID())){
+            helper.fail("Cannot register roof Builder");return;
+        }
+        BlockPos target=helper.absolutePos(new BlockPos(5,7,4));
+        int[] phase={0},built={0};
+        long[] since={helper.getTick()};
+        helper.onEachTick(()->{
+            if(!mob.isAlive()){helper.fail("Roof Builder disappeared");return;}
+            if(helper.getTick()-since[0]>650){
+                helper.fail("Roof scaffold timeout phase="+phase[0]
+                        +" feet="+mob.position()
+                        +" tower="+BuilderScaffolding.debugClimb(mob)
+                        +" owned="+table.scaffoldPositions(mob.getUUID()).size());
+                return;
+            }
+            if(phase[0]==0){
+                if(helper.getTick()%5==0){
+                    var result=BuilderScaffolding.reach(
+                            level,mob,table,owner,target,List.of());
+                    if(result==BuilderScaffolding.Result.NO_SAFE_TOWER
+                            ||result==BuilderScaffolding.Result.NEED_MATERIALS){
+                        helper.fail("Roof scaffold route unavailable: "+result
+                                +" at "+mob.position());return;
+                    }
+                }
+                built[0]=Math.max(built[0],
+                        table.scaffoldPositions(mob.getUUID()).size());
+                if(mob.getY()>=target.getY()-.12&&built[0]>=3){
+                    if(!level.getBlockState(spawn.below()).is(Blocks.STONE)){
+                        helper.fail("Scaffolding damaged the existing roof");return;
+                    }
+                    phase[0]=1;since[0]=helper.getTick();
+                }
+            }else if(phase[0]==1){
+                if(helper.getTick()%5==0)
+                    BuilderScaffolding.descendForTravel(level,mob,table);
+                if(mob.onGround()
+                        &&Math.abs(mob.getY()-spawn.getY())<.22
+                        &&table.scaffoldPositions(mob.getUUID()).stream()
+                          .noneMatch(p->p.getX()==mob.blockPosition().getX()
+                                        &&p.getZ()==mob.blockPosition().getZ())){
+                    phase[0]=2;since[0]=helper.getTick();
+                }
+            }else{
+                if(helper.getTick()%5==0)
+                    BuilderScaffolding.retrieve(level,mob,table,false);
+                if(table.scaffoldPositions(mob.getUUID()).isEmpty()){
+                    if(built[0]<3||!level.getBlockState(spawn.below()).is(Blocks.STONE)){
+                        helper.fail("Roof scaffolding was not built/cleaned");
+                        return;
+                    }
+                    System.out.println("[ROOF SCAFFOLD CLEANUP] PASS physical="
+                            +built[0]+" recovered=true roofIntact=true");
+                    helper.succeed();
+                }
+            }
+        });
+    }
+
 }

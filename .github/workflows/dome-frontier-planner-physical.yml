@@ -182,3 +182,34 @@ jobs:
           path: |
             build/gametest/
             build/run/gameTest/logs/
+
+  roof-scaffold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Select elevated roof scaffold tests
+        run: |
+          python - <<'PYTEST'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderSafeScaffoldGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PYTEST
+      - run: gradle --no-daemon runGameTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: elevated-roof-scaffold-diagnostics
+          path: |
+            build/gametest/
+            build/run/gameTest/logs/
