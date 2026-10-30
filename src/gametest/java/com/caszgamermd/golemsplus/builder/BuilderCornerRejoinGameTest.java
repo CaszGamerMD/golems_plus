@@ -55,4 +55,31 @@ public final class BuilderCornerRejoinGameTest {
                     +" "+WorkerNavigation.debugStatus(mob));
         });
     }
+    @GameTest(maxTicks=220,skyAccess=true)
+    public void exactRouteCentersFromAdjacentNativeStoppingDistance(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        BlockPos goal=h.absolutePos(new BlockPos(3,2,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        // Same floor, adjacent tile: native path arrival tolerance alone
+        // can stop here without centering the required exact work pose.
+        mob.setPos(goal.getX()-.14,goal.getY(),goal.getZ()+.5);
+        world.addFreshEntity(mob);
+        h.onEachTick(()->{
+            if(h.getTick()>=10&&h.getTick()%5==0)
+                WorkerNavigation.routeToExact(world,mob,goal,1.0);
+            if(mob.onGround()&&mob.distanceToSqr(goal.getX()+.5,
+                    goal.getY(),goal.getZ()+.5)<.08*.08){
+                System.out.println("[EXACT ARRIVAL] PASS adjacent tile to centered pose "
+                        +"tick="+h.getTick());
+                h.succeed();return;
+            }
+            if(mob.getY()<goal.getY()-.04||mob.isNoGravity()){
+                h.fail("Exact centering lost normal supported motion");return;
+            }
+            if(h.getTick()>180)h.fail("Exact approach never centered "+mob.position()
+                    +" "+WorkerNavigation.debugStatus(mob));
+        });
+    }
 }

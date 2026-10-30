@@ -393,14 +393,19 @@ public final class WorkerNavigation {
                                      BlockPos target){
         return target!=null&&standingTile(level,mob,target);
     }
-    private static boolean endsAtExactTile(Path path,BlockPos target){
+    private static boolean endsAtExactTile(ServerLevel level,Path path,BlockPos target){
         if(path==null||path.getNodeCount()<1)return false;
         Node last=path.getNode(path.getNodeCount()-1);
         // canReach() may accept a waypoint near the requested cell.
         // A Builder requiring actual interaction range cannot mistake
         // that approximate endpoint for an exact standing destination.
-        return last.x==target.getX()&&last.z==target.getZ()
-                &&Math.abs(last.y-target.getY())<=1;
+        if(last.x!=target.getX()||last.z!=target.getZ())return false;
+        double expected=floorAt(level,target);
+        double actual=floorAt(level,new BlockPos(last.x,last.y,last.z));
+        // Integer aliases on fences/slabs are legal only when they mean
+        // the SAME physical standing height, never an arbitrary Y +/-1.
+        return Double.isFinite(expected)&&Double.isFinite(actual)
+                &&Math.abs(expected-actual)<.05;
     }
     public static boolean canReachExact(ServerLevel level,PathfinderMob mob,
                                         BlockPos target){
@@ -410,7 +415,7 @@ public final class WorkerNavigation {
         if(mob.blockPosition().equals(target)
                 &&standingTile(level,mob,target))return true;
         Path path=mob.getNavigation().createPath(target,0);
-        return endsAtExactTile(path,target)&&safePath(level,mob,path,false);
+        return endsAtExactTile(level,path,target)&&safePath(level,mob,path,false);
     }
     /**
      * Work-position preview uses the SAME terrain-weighted A* and the
@@ -605,7 +610,7 @@ public final class WorkerNavigation {
                         +" stand="+standingTile(level,mob,at)
                         +" below="+level.getBlockState(at.below()));
             }
-            probes.add(span+":end="+endsAtExactTile(path,waypoint)
+            probes.add(span+":end="+endsAtExactTile(level,path,waypoint)
                     +" reach="+path.canReach()+" safe="+safePath(level,mob,path,false)
                     +" nodes="+nodes);
         }
@@ -621,7 +626,7 @@ public final class WorkerNavigation {
             BlockPos waypoint=route.steps().get(
                     Math.min(route.steps().size(),span)-1);
             Path path=mob.getNavigation().createPath(waypoint,0);
-            if(endsAtExactTile(path,waypoint)
+            if(endsAtExactTile(level,path,waypoint)
                     &&safePath(level,mob,path,false))return true;
         }
         return false;
@@ -658,7 +663,12 @@ public final class WorkerNavigation {
             ground.setCanOpenDoors(true);
         // If the exact safe standing tile was reached on the previous
         // tick, do not reconstruct the same route and toggle navigation.
-        if(mob.blockPosition().equals(target)
+        double targetFloor=floorAt(level,target);
+        boolean nearCenter=mob.onGround()
+                &&mob.distanceToSqr(target.getX()+.5,targetFloor,target.getZ()+.5)<.81
+                &&Math.abs(mob.getY()-targetFloor)<.05
+                &&supportedRejoin(level,mob,target);
+        if((mob.blockPosition().equals(target)||nearCenter)
                 &&standingTile(level,mob,target)){
             p.requested=target.immutable();p.approach=target.immutable();
             // A cell match is not physical arrival: a Builder can be
@@ -693,7 +703,7 @@ public final class WorkerNavigation {
             BlockPos waypoint=plan.steps().get(Math.min(
                     plan.steps().size(),span)-1);
             Path path=mob.getNavigation().createPath(waypoint,0);
-            if(!endsAtExactTile(path,waypoint)
+            if(!endsAtExactTile(level,path,waypoint)
                     ||!safePath(level,mob,path,false)
                     ||!mob.getNavigation().moveTo(path,speed))continue;
             p.requested=target.immutable();p.approach=waypoint.immutable();
@@ -802,7 +812,8 @@ public final class WorkerNavigation {
             BlockPos waypoint=p.weightedRoute.get(index);
             if(!standingTile(level,mob,waypoint))continue;
             Path path=mob.getNavigation().createPath(waypoint,0);
-            if(!safePath(level,mob,path,false))continue;
+            if(!endsAtExactTile(level,path,waypoint)
+                    ||!safePath(level,mob,path,false))continue;
             if(!mob.getNavigation().moveTo(path,speed))continue;
             p.approach=waypoint;
             p.routeCursor=index+1;
@@ -1012,7 +1023,7 @@ public final class WorkerNavigation {
                 if(!standingTile(level,mob,tile)||neighborOccupied(level,mob,tile))
                     continue;
                 Path path=mob.getNavigation().createPath(tile,0);
-                if(!endsAtExactTile(path,tile)
+                if(!endsAtExactTile(level,path,tile)
                         ||!safePath(level,mob,path,false))continue;
                 // A queue position is on the ENTRANCE side. Do not send
                 // somebody through the busy door simply to get in line.
@@ -1223,7 +1234,7 @@ public final class WorkerNavigation {
                 p.parkingAtDoor=false;
             }else if(!p.parkingAtDoor||mob.getNavigation().isDone()){
                 Path park=mob.getNavigation().createPath(p.doorStandby,0);
-                if(endsAtExactTile(park,p.doorStandby)
+                if(endsAtExactTile(level,park,p.doorStandby)
                         &&safePath(level,mob,park,false)
                         &&mob.getNavigation().moveTo(park,1.0))
                     p.parkingAtDoor=true;
