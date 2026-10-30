@@ -36,6 +36,7 @@ jobs:
             build/test-results/
             build/reports/
             build/run/gameTest/logs/
+            build/run/gameTest/route-survey/
   plants:
     runs-on: ubuntu-latest
     timeout-minutes: 15

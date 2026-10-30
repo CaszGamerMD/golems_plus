@@ -277,6 +277,11 @@ public final class BuilderDomeConstructionGameTest {
                 return;
             }
             if(tick-lastProgress[0]>2400){
+                // Snapshot the actual partly constructed geometry, worker
+                // locations, target cells and collision-valid routes.
+                // This is read-only and lives in the archived CI artifact.
+                BuilderDomeRouteSurveyGameTest.captureLive(
+                        level,table,crew,steps);
                 StringBuilder message=new StringBuilder(
                         "Dome stalled after "+tick+" ticks | clear="+
                         table.builderClearCursor()+" | contiguous="+table.builderCursor()

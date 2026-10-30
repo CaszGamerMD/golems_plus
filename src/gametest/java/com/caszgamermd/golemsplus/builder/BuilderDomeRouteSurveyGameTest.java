@@ -3,6 +3,7 @@ package com.caszgamermd.golemsplus.builder;
 import com.caszgamermd.golemsplus.worker.WorkerNavigation;
 import com.caszgamermd.golemsplus.worker.WorkerRoutePlanner;
 import com.caszgamermd.golemsplus.world.WorksiteContent;
+import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -110,6 +111,131 @@ public final class BuilderDomeRouteSurveyGameTest {
         }
         return v.toString();
     }
+
+    /**
+     * Authoritative snapshot from the live four-Builder dome test at the
+     * instant it stalls. Unlike the static pre-roof survey, this records
+     * the EXACT partially built and collision-resolved world state,
+     * including completed Y30 placements and each actual golem/goal.
+     * It never moves workers or changes any build block.
+     */
+    static void captureLive(ServerLevel world,
+            WorkerStationBlockEntity table,
+            List<BuilderGolem> workers,
+            List<BuilderConstructionPlan.Step> steps){
+        try{
+            BlockPos origin=table.builderOrigin();
+            Path out=Path.of("route-survey");
+            Files.createDirectories(out);
+            StringBuilder csv=new StringBuilder(
+                    "x,y,z,intendedBlock,physicalBlock,collisionTop\n");
+            for(var s:steps){
+                BlockPos local=new BlockPos(s.x()-origin.getX(),
+                        s.y()-origin.getY(),s.z()-origin.getZ());
+                BlockPos pos=new BlockPos(s.x(),s.y(),s.z());
+                BlockState now=world.getBlockState(pos);
+                VoxelShape shape=now.getCollisionShape(world,pos);
+                csv.append(local.getX()).append(',').append(local.getY())
+                        .append(',').append(local.getZ()).append(',')
+                        .append('"').append(s.encodedState()).append('"').append(',')
+                        .append('"').append(now).append('"').append(',')
+                        .append(shape.isEmpty()?0:shape.max(Direction.Axis.Y))
+                        .append('\n');
+            }
+            Files.writeString(out.resolve("live_dome_last_stall.csv"),
+                    csv,StandardCharsets.UTF_8);
+            StringBuilder report=new StringBuilder(
+                    "[LIVE DOME SURVEY] actual stalled 4-Builder construction\n"
+                    +"Coordinates: ORIGINAL SCHEMATIC origin (0,0,0); "
+                    +"not absolute random GameTest world positions.\n");
+            int id=0;
+            for(BuilderGolem mob:workers){
+                int claimed=table.claimedStep(mob.getUUID());
+                BlockPos start=mob.blockPosition();
+                if(claimed<0||claimed>=steps.size()){
+                    report.append("[WORKER] #").append(id++)
+                        .append(" idle name=").append(mob.getName().getString())
+                        .append(" at=").append(rel(origin,start)).append('\n');
+                    continue;
+                }
+                var step=steps.get(claimed);
+                BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+                report.append("[WORKER] #").append(id++)
+                    .append(" name=").append(mob.getName().getString())
+                    .append(" claimedIndex=").append(claimed)
+                    .append(" feet=").append(rel(origin,start))
+                    .append(" exactFeet=(")
+                    .append(mob.getX()-origin.getX()).append(',')
+                    .append(mob.getY()-origin.getY()).append(',')
+                    .append(mob.getZ()-origin.getZ()).append(')')
+                    .append(" target=").append(rel(origin,target))
+                    .append(" block=").append(step.encodedState())
+                    .append(" underneath=").append(world.getBlockState(target.below()))
+                    .append(" grounded=").append(mob.onGround()).append('\n');
+                Set<BlockPos> component=WorkerNavigation.groundReachableFrom(
+                        world,mob,start);
+                List<BlockPos> safe=new ArrayList<>();
+                int stand=0,sight=0,escape=0;
+                for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+                    for(int dy=0;dy<=1;dy++){
+                        BlockPos pose=target.offset(dx,dy,dz);
+                        if(pose.equals(target)||pose.distSqr(target)>=14)continue;
+                        if(!WorkerNavigation.canStandOn(world,mob,pose))continue;
+                        stand++;
+                        if(!BuilderConstructionPlanner.lineOfSight(
+                                world,mob,pose,target))continue;
+                        sight++;
+                        if(!BuilderConstructionPlanner.safeStand(
+                                world,mob,target,pose))continue;
+                        escape++;
+                        safe.add(pose);
+                    }
+                var direct=WorkerRoutePlanner.plan(start,safe,
+                        p->WorkerNavigation.canStandOn(world,mob,p),
+                        p->WorkerNavigation.surveyFloorHeight(world,p),null);
+                long connected=safe.stream().filter(component::contains).count();
+                report.append("[GROUND GRAPH] componentNodes=")
+                    .append(component.size())
+                    .append(" standablePoses=").append(stand)
+                    .append(" lineOfSight=").append(sight)
+                    .append(" safeEscape=").append(escape)
+                    .append(" sameComponent=").append(connected)
+                    .append(" bestRoute=").append(nodePath(origin,direct))
+                    .append('\n');
+                List<BlockPos> nearest=new ArrayList<>(component);
+                nearest.sort(Comparator.comparingDouble(p->p.distSqr(target)));
+                report.append("[NEAREST REAL FOOTHOLDS]");
+                for(int i=0;i<Math.min(16,nearest.size());i++){
+                    BlockPos p=nearest.get(i);
+                    report.append(' ').append(rel(origin,p))
+                          .append(" on=").append(world.getBlockState(p.below()));
+                }
+                report.append('\n');
+                report.append("[PAID SCAFFOLD] ")
+                        .append(BuilderScaffoldPlanA.diagnoseAccess(
+                                world,mob,table,target,steps))
+                        .append('\n');
+                for(int y:new int[]{26,28,29,30,31}){
+                    Pair focus=new Pair(mob.getName().getString(),
+                            start.subtract(origin),target.subtract(origin));
+                    report.append(grid(world,origin,y,focus,component));
+                }
+            }
+            Files.writeString(out.resolve("live_worker_route_analysis.txt"),
+                    report,StandardCharsets.UTF_8);
+            System.out.println("[LIVE DOME SURVEY] captured actual world model "
+                    +"and worker route report: route-survey/live_dome_last_stall.csv"
+                    +" route-survey/live_worker_route_analysis.txt");
+            for(String line:report.toString().split("\\n"))
+                if(line.startsWith("[WORKER]")||line.startsWith("[GROUND GRAPH]")
+                        ||line.startsWith("[PAID SCAFFOLD]")
+                        ||line.startsWith("[NEAREST REAL FOOTHOLDS]"))
+                    System.out.println(line);
+        }catch(Exception ex){
+            System.err.println("[LIVE DOME SURVEY] diagnostic failed "+ex);
+        }
+    }
+
     @GameTest(structure="golems_plus_gametest:dome_arena",
             maxTicks=180,skyAccess=true)
     public void surveyOriginalDomeRoofSurfaceAndWorkerRoutes(GameTestHelper h){
