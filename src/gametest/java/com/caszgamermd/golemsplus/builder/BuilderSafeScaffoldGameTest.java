@@ -281,8 +281,20 @@ public final class BuilderSafeScaffoldGameTest {
         // accidentally move the tower off the prebuilt roof fixture.
         BlockPos goal=helper.absolutePos(new BlockPos(9,7,4));
         BlockPos start=goal.west(6).atY(goal.getY()-3);
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(goal.getX()>>4,
+                        goal.getZ()>>4),3);
         level.setBlock(start.below(),Blocks.STONE.defaultBlockState(),3);
         level.setBlock(start.west().below(),Blocks.STONE.defaultBlockState(),3);
+        // The dedicated bridge fixture is an OPEN roof gap. Older
+        // test-structure snapshots may contain background filler at this
+        // elevation; clear that fixture space, never any live build cell.
+        for(int n=1;n<=5;n++){
+            BlockPos bridge=start.east(n).atY(goal.getY()-1);
+            for(int dy=0;dy<=2;dy++)
+                level.setBlock(bridge.above(dy),Blocks.AIR.defaultBlockState(),3);
+        }
         if(!table.claimIfUnowned(owner.getUUID())
                 ||!table.setPlacedBuilderPlan(owner.getUUID(),
                         "placed-five-span.litematic","Five Span",
