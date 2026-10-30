@@ -257,4 +257,92 @@ public final class BuilderSafeScaffoldGameTest {
         });
     }
 
+
+    /** A roof that stops at X=4 forces a genuine five-cell
+     * cantilever from the roof-supported tower to remote work at X=9.
+     * This is a physical Builder, not synthetic path traversal.
+     */
+    @GameTest(maxTicks=1800,skyAccess=true)
+    public void builderExtendsFiveScaffoldCellsFromExistingRoof(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<12;x++)for(int z=0;z<10;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        for(int x=2;x<=4;x++)for(int z=2;z<=5;z++)
+            helper.setBlock(x,3,z,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        helper.setBlock(1,2,0,Blocks.CHEST);
+        BlockPos home=helper.absolutePos(new BlockPos(0,2,0));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            helper.fail("No roof bridge Planner");return;
+        }
+        ServerPlayer owner=helper.makeMockServerPlayerInLevel();
+        BlockPos start=helper.absolutePos(new BlockPos(3,4,3));
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),
+                        "placed-five-span.litematic","Five Span",
+                        start,0,0,1,0)
+                ||!table.setBuilderMaterialStorage(owner.getUUID(),
+                        helper.absolutePos(new BlockPos(1,2,0)))){
+            helper.fail("No linked roof bridge material storage");return;
+        }
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        mob.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
+        level.addFreshEntity(mob);
+        table.registerBuilderWorker(mob.getUUID());
+        BlockPos goal=helper.absolutePos(new BlockPos(9,7,4));
+        int[] stage={0},largest={0};
+        long[] startTick={helper.getTick()};
+        helper.onEachTick(()->{
+            if(!mob.isAlive()){helper.fail("Five-span Builder disappeared");return;}
+            if(helper.getTick()-startTick[0]>750){
+                helper.fail("Five-span stalled phase="+stage[0]
+                    +" "+BuilderScaffoldPlanA.status(mob)
+                    +" feet="+mob.position()
+                    +" tracked="+table.scaffoldPositions(mob.getUUID()).size());
+                return;
+            }
+            if(stage[0]==0){
+                if(helper.getTick()%5==0){
+                    var result=BuilderScaffoldPlanA.reach(
+                            level,mob,table,owner,goal,List.of());
+                    if(result==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE
+                            ||result==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
+                        helper.fail("Five-cell bridge rejected "+result
+                            +" feet="+mob.position()
+                            +" "+BuilderScaffoldPlanA.status(mob));return;
+                    }
+                }
+                largest[0]=Math.max(largest[0],
+                        table.scaffoldPositions(mob.getUUID()).size());
+                if(mob.onGround()&&BuilderScaffoldPlanA.hasPlan(mob)
+                        &&BuilderScaffoldPlanA.status(mob).contains("PLAN_A READY")
+                        &&mob.getY()>=goal.getY()-.15){
+                    stage[0]=1;startTick[0]=helper.getTick();
+                }
+            }else if(stage[0]==1){
+                if(helper.getTick()%5==0)
+                    BuilderScaffoldPlanA.returnToGround(level,mob,table);
+                if(!BuilderScaffoldPlanA.hasPlan(mob)
+                        &&mob.onGround()
+                        &&Math.abs(mob.getY()-start.getY())<.3){
+                    stage[0]=2;startTick[0]=helper.getTick();
+                }
+            }else{
+                if(helper.getTick()%5==0)
+                    BuilderScaffolding.retrieve(level,mob,table,false);
+                if(table.scaffoldPositions(mob.getUUID()).isEmpty()){
+                    if(largest[0]<8
+                        ||!level.getBlockState(start.below()).is(Blocks.STONE)){
+                        helper.fail("Five-span structure/recovery not verified");
+                        return;
+                    }
+                    System.out.println("[FIVE SPAN ROOF] PASS blocks="+largest[0]
+                            +" cleanup=true feet="+mob.position());
+                    helper.succeed();
+                }
+            }
+        });
+    }
+
 }

@@ -35,7 +35,8 @@ public final class BuilderScaffoldPlanA {
     private static final class Job {
         final BlockPos target,base,exit,planner;
         final Direction towardTarget;
-        final int top;
+        final int top,bridgeSpan;
+        int bridgeStep=2,returnStep=1;
         Phase phase=Phase.APPROACH;
         long lastProgress;
         int lastTick;
@@ -43,17 +44,19 @@ public final class BuilderScaffoldPlanA {
         double highest=-Double.MAX_VALUE;
         double lastDistance=Double.POSITIVE_INFINITY;
         Job(BlockPos target,BlockPos base,BlockPos exit,
-                BlockPos planner,Direction direction,int top,long now){
+                BlockPos planner,Direction direction,int top,int span,long now){
             this.target=target.immutable();
             this.base=base.immutable();
             this.exit=exit.immutable();
             this.planner=planner.immutable();
             this.towardTarget=direction;
             this.top=top;
+            this.bridgeSpan=span;
             this.lastProgress=now;
         }
-        BlockPos first(){return base.relative(towardTarget).atY(top);}
-        BlockPos second(){return base.relative(towardTarget,2).atY(top);}
+        BlockPos bridge(int n){return base.relative(towardTarget,n).atY(top);}
+        BlockPos first(){return bridge(1);}
+        BlockPos second(){return bridge(bridgeStep);}
     }
     // Vanilla scaffolding stays structurally anchored up to six
     // horizontal blocks from its supporting tower. Distance seven falls.
@@ -83,7 +86,8 @@ public final class BuilderScaffoldPlanA {
     public static String status(BuilderGolem worker){
         Job j=jobs.get(worker);
         return j==null?"NONE":"PLAN_A "+j.phase+" tower="+j.base.toShortString()
-                +" bridge="+j.first().toShortString()+","+j.second().toShortString()
+                +" bridge="+j.first().toShortString()+".."+j.bridge(j.bridgeSpan).toShortString()
+                +" step="+j.bridgeStep+"/"+j.bridgeSpan
                 +" targetY="+j.target.getY()+" exit="+j.exit.toShortString()
                 +" ticks="+j.bridgeTicks+" reclimbs="+j.reclimbs
                 +" highest="+String.format(java.util.Locale.ROOT,"%.2f",j.highest);
@@ -98,14 +102,14 @@ public final class BuilderScaffoldPlanA {
         }
         return result;
     }
-    /** The two bridge cells lie along the axis from the tower toward
-     * the work, at y=targetY-1. Their heads must stay free all the way
-     * back: never approve a temporary route inside future architecture.
+    /** Horizontal owned scaffolding: 2-5 real paid cells, supported
+     * by a real vertical shaft. Protect the whole return route from
+     * unfinished schematic cells and head collisions.
      */
     private static boolean bridgeClear(ServerLevel world,BlockPos base,
-            Direction toward,int workY,Set<BlockPos> reserved,
+            Direction toward,int workY,int span,Set<BlockPos> reserved,
             WorkerStationBlockEntity table,BuilderGolem worker){
-        for(int n=1;n<=2;n++){
+        for(int n=1;n<=span;n++){
             BlockPos p=base.relative(toward,n).atY(workY-1);
             // A sideways scaffold requires no blocks beneath it while
             // within six horizontal cells of its tower. Validate the
@@ -152,15 +156,17 @@ public final class BuilderScaffoldPlanA {
             List<BuilderConstructionPlan.Step> steps){
         Set<BlockPos> reserved=future(level,steps);
         List<Job> options=new ArrayList<>();
-        for(Direction outward:Direction.Plane.HORIZONTAL){
-            BlockPos towerXZ=target.relative(outward,3);
+        for(Direction outward:Direction.Plane.HORIZONTAL)
+            for(int distance=3;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++){
+            BlockPos towerXZ=target.relative(outward,distance);
             Direction inward=outward.getOpposite();
+            int span=distance-1;
             for(int dy=0;dy<=5;dy++){
                 BlockPos base=towerXZ.atY(worker.blockPosition().getY()-dy);
                 int top=target.getY()-1;
                 if(!shaftClear(level,base,top,reserved,table,worker)
                         ||!bridgeClear(level,base,inward,target.getY(),
-                                reserved,table,worker))continue;
+                                span,reserved,table,worker))continue;
                 BlockPos exit=BuilderScaffolding.safeGroundExit(
                         level,worker,base,reserved);
                 if(exit==null)continue;
@@ -169,19 +175,19 @@ public final class BuilderScaffoldPlanA {
                     if(level.getBlockState(base.atY(y)).is(Blocks.SCAFFOLDING))
                         existing++;
                 }
-                for(int n=1;n<=2;n++)
+                for(int n=1;n<=span;n++)
                     if(level.getBlockState(base.relative(inward,n)
                             .atY(top)).is(Blocks.SCAFFOLDING))
                         existing++;
                 double score=BuilderScaffoldSiteScore.score(base,
                         worker.blockPosition(),target,
-                        Math.max(0,top-base.getY()+3-existing),0,0,
+                        Math.max(0,top-base.getY()+1+span-existing),0,0,
                         existing>0);
                 // Extra credit for not changing X/Z aisle from worker.
                 score+=Math.abs(worker.getX()-base.getX()-.5)
                         +Math.abs(worker.getZ()-base.getZ()-.5);
                 Job candidate=new Job(target,base,exit,
-                        table.getBlockPos(),inward,top,level.getGameTime());
+                        table.getBlockPos(),inward,top,span,level.getGameTime());
                 candidate.lastDistance=score;
                 options.add(candidate);
             }
@@ -189,7 +195,7 @@ public final class BuilderScaffoldPlanA {
         options.sort(Comparator.comparingDouble(j->j.lastDistance));
         int probes=0;
         for(Job candidate:options){
-            if(++probes>24)break;
+            if(++probes>64)break;
             // A scaffold already occupying its own base is not a native
             // walking goal. In that case validate a real adjacent entry.
             boolean onBase=worker.blockPosition().getX()==candidate.base.getX()
@@ -328,7 +334,8 @@ public final class BuilderScaffoldPlanA {
         j.bridgeTicks++;
         j.highest=Math.max(j.highest,worker.getY());
         BlockPos destination=switch(j.phase){
-            case WALK_FIRST,RETURN_FIRST->j.first().above();
+            case WALK_FIRST->j.first().above();
+            case RETURN_FIRST->j.bridge(j.returnStep).above();
             case WALK_SECOND->j.second().above();
             case RETURN_TOWER->j.base.atY(j.target.getY());
             default->null;
@@ -368,11 +375,17 @@ public final class BuilderScaffoldPlanA {
         if(close(worker,destination)){
             j.phase=switch(j.phase){
                 case WALK_FIRST->Phase.EXTEND_SECOND;
-                case WALK_SECOND->Phase.READY;
-                case RETURN_FIRST->Phase.RETURN_TOWER;
+                case WALK_SECOND->j.bridgeStep<j.bridgeSpan
+                        ?Phase.EXTEND_SECOND:Phase.READY;
+                case RETURN_FIRST->j.returnStep>1
+                        ?Phase.RETURN_FIRST:Phase.RETURN_TOWER;
                 case RETURN_TOWER->Phase.DESCEND;
                 default->j.phase;
             };
+            if(j.phase==Phase.EXTEND_SECOND&&j.bridgeStep<j.bridgeSpan)
+                j.bridgeStep++;
+            if(j.phase==Phase.RETURN_FIRST&&j.returnStep>1)
+                j.returnStep--;
             j.lastProgress=level.getGameTime();
             return true;
         }
@@ -502,10 +515,18 @@ public final class BuilderScaffoldPlanA {
             return false;
         }
         if(j.phase==Phase.READY||j.phase==Phase.WALK_SECOND){
+            // Retrace every real bridge cell before descending the
+            // reserved shaft; never jump from the far end to the base.
+            j.returnStep=Math.max(1,j.bridgeStep-1);
             j.phase=Phase.RETURN_FIRST;
             return true;
         }
-        if(j.phase==Phase.EXTEND_SECOND||j.phase==Phase.WALK_FIRST){
+        if(j.phase==Phase.EXTEND_SECOND){
+            j.returnStep=Math.max(1,j.bridgeStep-2);
+            j.phase=j.returnStep>1?Phase.RETURN_FIRST:Phase.RETURN_TOWER;
+            return true;
+        }
+        if(j.phase==Phase.WALK_FIRST){
             j.phase=Phase.RETURN_TOWER;
             return true;
         }

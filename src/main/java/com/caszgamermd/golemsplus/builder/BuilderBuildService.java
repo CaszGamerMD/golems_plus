@@ -627,6 +627,16 @@ public final class BuilderBuildService {
                 return;
             }
             int yDiff=pos.getY()-worker.blockPosition().getY();
+            // A grapple can repeatedly select an unreachable high ledge.
+            // After a genuine physical approach timeout, try a supported,
+            // inventory-paid scaffold bridge rooted on this same build.
+            // Never interrupt a moving rope or a current bridge session.
+            if(yDiff>1&&now-activity.workTravelSince>260
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&BuilderScaffoldPlanA.canPlan(
+                            level,worker,table,pos,plan.steps())
+                    &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
+                return;
             if(yDiff>1){
                 var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
                 if(access==BuilderGrappleAccess.Result.NEED_HOOK){
