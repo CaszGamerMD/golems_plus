@@ -117,10 +117,23 @@ public final class BuilderCornerRejoinGameTest {
                 h.fail("Angle recovery fell or flew at "+mob.position());return;
             }
             if(h.getTick()==12){
-                if(!mob.onGround()
-                        ||WorkerNavigation.canStandOn(world,mob,mob.blockPosition())
+                // A lower floor one block beneath an unsupported
+                // corner may be legal at the BLOCK CENTER, but that
+                // does not make it a valid stance at the worker's
+                // current Y. Compare the actual collision height.
+                double centerFloor=WorkerNavigation.surveyFloorHeight(
+                        world,mob.blockPosition());
+                boolean currentCenter=WorkerNavigation.canStandOn(
+                        world,mob,mob.blockPosition())
+                        &&Math.abs(centerFloor-mob.getY())<.08;
+                if(!mob.onGround()||currentCenter
                         ||WorkerNavigation.supportedHitboxCorners(world,mob)==0){
-                    h.fail("Invalid fractional corner fixture "+mob.position());
+                    h.fail("Invalid fractional corner fixture "+mob.position()
+                            +" grounded="+mob.onGround()
+                            +" centerFloor="+centerFloor
+                            +" currentCenter="+currentCenter
+                            +" cornerMask="+WorkerNavigation.supportedHitboxCorners(
+                                    world,mob));
                     return;
                 }
             }
