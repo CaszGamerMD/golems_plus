@@ -350,4 +350,57 @@ public final class BuilderFenceStepGameTest {
         h.succeed();
     }
 
+    /** Real glass and stained glass have the same solid walking surface
+     * as stone. Confirm both the server's collision model and actual
+     * physically controlled Builder movement, not just a diagram.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=340,skyAccess=true)
+    public void traversesActualClearAndMagentaGlass(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=3;x<=12;x++){
+            h.setBlock(x,2,3,x%2==0
+                    ?Blocks.GLASS:Blocks.MAGENTA_STAINED_GLASS);
+            for(int y=2;y<=4;y++){
+                h.setBlock(x,y,2,Blocks.AIR);
+                h.setBlock(x,y,4,Blocks.AIR);
+            }
+        }
+        BlockPos start=h.absolutePos(new BlockPos(3,3,3));
+        BlockPos goal=h.absolutePos(new BlockPos(12,3,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(mob);
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.isNoGravity()
+                    ||mob.getY()<start.getY()-.3){
+                h.fail("Builder fell through ordinary glass");return;
+            }
+            if(h.getTick()==15){
+                for(int x=3;x<=12;x++){
+                    var p=h.absolutePos(new BlockPos(x,3,3));
+                    if(!WorkerNavigation.canStandOn(world,mob,p)){
+                        h.fail("Solid glass incorrectly rejected at "
+                                +p.subtract(start));return;
+                    }
+                }
+                if(!WorkerNavigation.hasGroundRouteFrom(
+                        world,mob,start,java.util.List.of(goal))){
+                    h.fail("A* rejected contiguous real glass floor");return;
+                }
+            }
+            if(h.getTick()>=15&&h.getTick()%5==0)
+                WorkerNavigation.routeToExact(world,mob,goal,1.0);
+            if(mob.onGround()&&mob.distanceToSqr(
+                    goal.getX()+.5,goal.getY(),goal.getZ()+.5)<.15){
+                System.out.println("[GLASS WALK] PASS physical clear/magenta"
+                        +" glass ticks="+h.getTick()
+                        +" feet="+mob.blockPosition().subtract(start));
+                h.succeed();return;
+            }
+            if(h.getTick()>310)h.fail("Glass floor route stalled: "
+                    +mob.position()+" "+WorkerNavigation.debugStatus(mob));
+        });
+    }
+
 }

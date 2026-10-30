@@ -62,6 +62,40 @@ jobs:
           PYTEST
       - name: Verify real Builder completion without crop placements
         run: gradle --no-daemon runGameTest
+  roof-survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Run original dome geometry and reachable-route survey
+        run: |
+          python - <<'PYTEST'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=[
+            'com.caszgamermd.golemsplus.builder.BuilderDomeRouteSurveyGameTest',
+          ]
+          p.write_text(json.dumps(d,indent=2)+'\\n')
+          PYTEST
+          gradle --no-daemon runGameTest
+      - name: Export accurate dome model and worker route evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accurate-dome-roof-route-model
+          if-no-files-found: warn
+          path: |
+            build/run/gameTest/route-survey/
+            build/run/gameTest/logs/
   focused:
     runs-on: ubuntu-latest
     timeout-minutes: 30
