@@ -76,6 +76,19 @@ public final class WorkerNavigation {
         List<BlockPos> weightedRoute=List.of();
         int routeCursor;
     }
+    /** Sub-block collision searches are considerably more expensive than
+     * following their results. Share repeated previews for the SAME real
+     * footing for at most five game ticks; live motion always rechecks
+     * collisions before moving. No saved-world state or global routes.
+     */
+    private static final class FractionalCache {
+        long sampledAt=Long.MIN_VALUE;
+        double x,y,z;
+        boolean grounded;
+        final Map<BlockPos,List<Vec3>> routes=new java.util.HashMap<>();
+    }
+    private static final Map<PathfinderMob,FractionalCache> fractionalCaches=
+            new WeakHashMap<>();
     private static Progress state(PathfinderMob mob){
         return states.computeIfAbsent(mob,m->new Progress());
     }
@@ -749,6 +762,26 @@ public final class WorkerNavigation {
         return true;
     }
     private static List<Vec3> cornerRejoinPath(ServerLevel level,
+            PathfinderMob mob,BlockPos seed){
+        FractionalCache cache=fractionalCaches.computeIfAbsent(
+                mob,unused->new FractionalCache());
+        long now=level.getGameTime();
+        if(cache.sampledAt==Long.MIN_VALUE
+                ||now-cache.sampledAt>4||now<cache.sampledAt
+                ||cache.grounded!=mob.onGround()
+                ||Math.abs(cache.x-mob.getX())>.075
+                ||Math.abs(cache.y-mob.getY())>.055
+                ||Math.abs(cache.z-mob.getZ())>.075){
+            cache.sampledAt=now;
+            cache.x=mob.getX();cache.y=mob.getY();cache.z=mob.getZ();
+            cache.grounded=mob.onGround();
+            cache.routes.clear();
+        }
+        if(cache.routes.size()>32)cache.routes.clear();
+        return cache.routes.computeIfAbsent(seed.immutable(),
+                at->computeCornerRejoinPath(level,mob,at));
+    }
+    private static List<Vec3> computeCornerRejoinPath(ServerLevel level,
             PathfinderMob mob,BlockPos seed){
         if(!(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem)
                 ||!mob.onGround()||mob.isNoGravity()
