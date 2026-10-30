@@ -522,7 +522,7 @@ public final class BuilderSafeScaffoldGameTest {
             h.fail("Could not register Builder");return;
         }
         int[] phase={0},deployed={0};
-        int startTick=h.getTick();
+        long startTick=h.getTick();
         h.onEachTick(()->{
             if(!mob.isAlive()||mob.isNoGravity()){
                 h.fail("Floating-block worker lost real gravity");return;
@@ -535,8 +535,7 @@ public final class BuilderSafeScaffoldGameTest {
             if(phase[0]==0){
                 if(h.getTick()<12||!mob.onGround()
                         ||h.getTick()%5!=0)return;
-                if(!target.equals(target)
-                        ||!BuilderScaffoldPlanA.needsTemporaryWorkPlatform(
+                if(!BuilderScaffoldPlanA.needsTemporaryWorkPlatform(
                                 level,target)
                         ||!Blocks.DIORITE.defaultBlockState().canSurvive(
                                 level,target)){
