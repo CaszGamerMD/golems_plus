@@ -265,6 +265,11 @@ public final class WorkerNavigation {
         if(door||world.noCollision(mob,body))return true;
         return !world.getBlockCollisions(mob,body).iterator().hasNext();
     }
+    private static boolean groundedNativeStart(PathfinderMob mob,BlockPos feet){
+        BlockPos actual=mob.blockPosition();
+        return mob.onGround()&&feet.getX()==actual.getX()
+                &&feet.getZ()==actual.getZ()&&Math.abs(feet.getY()-mob.getY())<=1.05;
+    }
     private static boolean safePath(ServerLevel level,PathfinderMob mob,
                                     Path path,boolean lookAheadOnly){
         if(path==null||!path.canReach()||path.getNodeCount()<1)return false;
@@ -280,25 +285,26 @@ public final class WorkerNavigation {
             // body on a slab/ledge. The worker is already physically there
             // and needs to be able to step OUT, not fail all routes because
             // the first sample slightly clips the block under its feet.
-            if(!(i==0&&path.getNodeCount()>1
-                    &&mob.blockPosition().equals(feet))
+            if(!(i==0&&path.getNodeCount()>1&&groundedNativeStart(mob,feet))
                     &&!standingTile(level,mob,feet))return false;
             if(i==start)continue;
             Node previous=path.getNode(i-1);
             BlockPos previousFeet=new BlockPos(previous.x,previous.y,previous.z);
-            double a=i==1&&previousFeet.equals(mob.blockPosition())&&mob.onGround()
-                    ?mob.getY():floorAt(level,previousFeet);
+            boolean physicalStart=i==1&&groundedNativeStart(mob,previousFeet);
+            double a=physicalStart?mob.getY():floorAt(level,previousFeet);
             double b=floorAt(level,feet);
             // One-block jumps and stair steps are legal for vanilla ground
             // mobs; reject only taller climbs or dangerous drops. Clearance
             // is checked at the raised position before entering the ledge.
             if(Double.isNaN(a)||Double.isNaN(b)
                     ||b-a>1.05||a-b>1.50)return false;
-            double dx=node.x-previous.x,dz=node.z-previous.z;
+            double startX=physicalStart?mob.getX():previous.x+.5;
+            double startZ=physicalStart?mob.getZ():previous.z+.5;
+            double dx=node.x+.5-startX,dz=node.z+.5-startZ;
             int samples=Math.max(1,(int)Math.ceil(Math.hypot(dx,dz)*3));
             for(int k=1;k<samples;k++){
                 double t=(double)k/samples;
-                double x=previous.x+.5+dx*t,z=previous.z+.5+dz*t;
+                double x=startX+dx*t,z=startZ+dz*t;
                 BlockPos beforeFeet=new BlockPos(previous.x,previous.y,previous.z);
                 // Stair risers and half slabs are stepped over, not walked
                 // through diagonally at intermediate interpolated heights.

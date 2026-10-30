@@ -58,4 +58,49 @@ public final class BuilderFenceStepGameTest {
                         +" "+WorkerNavigation.debugStatus(mob));
         });
     }
+    @GameTest(maxTicks=260,skyAccess=true)
+    public void exactRouteLeavesSideSupportedFenceRail(GameTestHelper h){sideSupport(h,true);}
+    @GameTest(maxTicks=260,skyAccess=true)
+    public void ordinaryRouteLeavesSideSupportedFenceRail(GameTestHelper h){sideSupport(h,false);}
+    private static void sideSupport(GameTestHelper h,boolean exact){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        for(int x=4;x<=6;x++)for(int z=2;z<=4;z++)
+            h.setBlock(x,2,z,Blocks.STONE);
+        h.setBlock(3,2,3,Blocks.SPRUCE_FENCE.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.FenceBlock.EAST,true));
+        BlockPos start=h.absolutePos(new BlockPos(4,3,3));
+        BlockPos goal=h.absolutePos(new BlockPos(6,3,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.12,start.getY()+.5,start.getZ()+.5);
+        world.addFreshEntity(mob);
+        final boolean[] inspected={false};
+        h.onEachTick(()->{
+            if(h.getTick()<10)return;
+            if(!inspected[0]){
+                if(!mob.onGround()||Math.abs(mob.getY()-start.getY()-.5)>.04
+                        ||!mob.blockPosition().equals(start)){
+                    h.fail("Fixture must stand half a block above its tile's own floor: "
+                            +mob.position());return;
+                }
+                inspected[0]=true;
+            }
+            if(h.getTick()%5==0){
+                if(exact)WorkerNavigation.routeToExact(world,mob,goal,1.0);
+                else WorkerNavigation.routeTo(world,mob,goal,1.0);
+            }
+            if(mob.onGround()&&mob.distanceToSqr(goal.getX()+.5,
+                    goal.getY(),goal.getZ()+.5)<(exact?.16:1.0)){
+                System.out.println("[SIDE SUPPORT] PASS "+(exact?"exact":"ordinary")
+                        +" fence-rail start tick="+h.getTick());
+                h.succeed();return;
+            }
+            if(mob.getY()<goal.getY()-.04||mob.isNoGravity()){
+                h.fail("Side-supported route fell off physical ledge");return;
+            }
+            if(h.getTick()>220)h.fail("Side-supported start stuck "+mob.position()
+                    +" "+WorkerNavigation.debugStatus(mob));
+        });
+    }
 }
