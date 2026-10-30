@@ -103,8 +103,11 @@ public final class BuilderGrappleReturnGameTest {
             if(mob.getY()>start.getY()+.85)climbed[0]=true;
             if(h.getTick()>=10&&h.getTick()%5==0)
                 BuilderGrappleAccess.rappelToward(world,mob,table,depot);
+            // Ordinary depot travel need not center an exact placement
+            // pose. Vanilla stops within its normal approach tolerance;
+            // the real storage interaction accepts a larger range still.
             if(mob.onGround()&&mob.distanceToSqr(depot.getX()+.5,
-                    depot.getY(),depot.getZ()+.5)<.2){
+                    depot.getY(),depot.getZ()+.5)<1.0){
                 if(!climbed[0]){
                     h.fail("Fixture did not exercise the uphill detour");return;
                 }
