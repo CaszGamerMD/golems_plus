@@ -360,7 +360,7 @@ public final class BuilderFenceStepGameTest {
         var world=h.getLevel();
         for(int x=3;x<=12;x++){
             h.setBlock(x,2,3,x%2==0
-                    ?Blocks.GLASS:Blocks.MAGENTA_STAINED_GLASS);
+                    ?Blocks.GLASS:Blocks.MAGENTA_STAINED_GLASS_BLOCK);
             for(int y=2;y<=4;y++){
                 h.setBlock(x,y,2,Blocks.AIR);
                 h.setBlock(x,y,4,Blocks.AIR);

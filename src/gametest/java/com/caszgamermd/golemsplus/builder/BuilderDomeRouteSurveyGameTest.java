@@ -24,7 +24,7 @@ import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.WallBlock;
 import net.minecraft.world.level.block.StainedGlassBlock;
-import net.minecraft.world.level.block.GlassBlock;
+import net.minecraft.world.level.block.TransparentBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
@@ -60,7 +60,7 @@ public final class BuilderDomeRouteSurveyGameTest {
         if(s.getBlock() instanceof FenceBlock)return 'F';
         if(s.getBlock() instanceof SlabBlock)return '=';
         if(s.getBlock() instanceof StairBlock)return '^';
-        if(s.getBlock() instanceof GlassBlock
+        if(s.getBlock() instanceof TransparentBlock
                 ||s.getBlock() instanceof StainedGlassBlock)return 'G';
         String n=s.getBlock().toString();
         if(n.contains("diorite"))return 'D';
