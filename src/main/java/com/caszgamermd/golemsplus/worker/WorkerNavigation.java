@@ -49,7 +49,7 @@ public final class WorkerNavigation {
     private WorkerNavigation(){}
 
     private static final class Progress {
-        BlockPos requested,approach,openedDoor;
+        BlockPos requested,approach,openedDoor,centering;
         Vec3 previous;
         int stalled,attempts,wait,doorAge,nextRoute;
         int unsafeChecks,avoidUntil;
@@ -643,6 +643,8 @@ public final class WorkerNavigation {
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
         Progress progress=state(mob);
+        if(progress.centering!=null&&!progress.centering.equals(target))
+            progress.centering=null;
         if(progress.queuedDoor!=null&&target!=null
                 &&progress.requested!=null&&!target.equals(progress.requested))
             clearDoor(level,mob,progress);
@@ -671,26 +673,14 @@ public final class WorkerNavigation {
         if((mob.blockPosition().equals(target)||nearCenter)
                 &&standingTile(level,mob,target)){
             p.requested=target.immutable();p.approach=target.immutable();
-            // A cell match is not physical arrival: a Builder can be
-            // 0.45 block off-center at the edge of an otherwise valid
-            // work stance, too far to place its assigned block. A* to
-            // the current cell returns no path and endlessly retries.
-            // Finish the LAST FRACTION OF A BLOCK with collision-tested
-            // real motion. Never setPos, jump, or ignore other entities.
-            double tx=target.getX()+.5,tz=target.getZ()+.5;
-            double dx=tx-mob.getX(),dz=tz-mob.getZ();
-            if(dx*dx+dz*dz>.05*.05){
-                mob.getMoveControl().setWantedPosition(tx,
-                        floorAt(level,target),tz,speed);
-                double vx=Math.max(-.10,Math.min(.10,dx*.25));
-                double vz=Math.max(-.10,Math.min(.10,dz*.25));
-                if(level.noCollision(mob,
-                        mob.getBoundingBox().move(vx,0,vz))){
-                    Vec3 v=mob.getDeltaMovement();
-                    mob.setDeltaMovement(vx,v.y,vz);
-                }
-            }else mob.getNavigation().stop();
-            return true;
+            // Normal MoveControl acceleration must not fight the final
+            // fraction of a block. A per-entity-tick physical controller
+            // centers this pose with current collision/support checks.
+            p.centering=target.immutable();
+            mob.getNavigation().stop();
+            boolean moving=tickExactCenter(level,mob);
+            return moving||mob.distanceToSqr(target.getX()+.5,
+                    targetFloor,target.getZ()+.5)<.05*.05;
         }
         if(!standingTile(level,mob,target))return false;
         // Exact destinations also use the ONE trained planner. A
@@ -734,6 +724,7 @@ public final class WorkerNavigation {
             ground.setCanOpenDoors(true);
         boolean changed=!target.equals(p.requested);
         if(changed){
+            p.centering=null;
             p.requested=target.immutable();p.approach=null;
             p.attempts=0;p.nextRoute=0;p.stalled=0;p.unsafeChecks=0;
             p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
@@ -872,14 +863,45 @@ public final class WorkerNavigation {
     public static void stop(PathfinderMob mob){
         Progress p=state(mob);
         if(mob.level() instanceof ServerLevel level)clearDoor(level,mob,p);
-        p.requested=null;p.approach=null;p.stalled=0;p.unsafeChecks=0;
+        p.requested=null;p.approach=null;p.centering=null;p.stalled=0;p.unsafeChecks=0;
         p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
         mob.getNavigation().stop();
         // Door clearance is reset during the next server navigation tick.
     }
 
+    /** Exact final centering is ordinary supported horizontal motion.
+     * Called before Builder physics so native acceleration cannot restart
+     * each five-tick work update and oscillate around the requested center.
+     */
+    public static boolean tickExactCenter(ServerLevel level,PathfinderMob mob){
+        Progress p=states.get(mob);
+        if(p==null||p.centering==null)return false;
+        BlockPos target=p.centering;
+        if(!mob.onGround()||mob.isNoGravity()
+                ||Math.abs(mob.getY()-floorAt(level,target))>.05
+                ||!supportedRejoin(level,mob,target)){
+            p.centering=null;return false;
+        }
+        mob.getNavigation().stop();
+        mob.getMoveControl().setWantedPosition(mob.getX(),mob.getY(),mob.getZ(),0);
+        double dx=target.getX()+.5-mob.getX(),dz=target.getZ()+.5-mob.getZ();
+        Vec3 velocity=mob.getDeltaMovement();
+        if(dx*dx+dz*dz<.025*.025){
+            mob.setDeltaMovement(0,velocity.y,0);
+            p.centering=null;return false;
+        }
+        double vx=Math.max(-.08,Math.min(.08,dx*.5));
+        double vz=Math.max(-.08,Math.min(.08,dz*.5));
+        if(!level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz))){
+            p.centering=null;return false;
+        }
+        mob.setDeltaMovement(vx,velocity.y,vz);
+        return true;
+    }
+
     /** Call every server tick, including when idle, to operate and close doors. */
     public static void tick(ServerLevel level,PathfinderMob mob){
+        if(tickExactCenter(level,mob))return;
         Progress p=state(mob);
         if(mob.getNavigation() instanceof GroundPathNavigation nav)
             nav.setCanOpenDoors(true);
