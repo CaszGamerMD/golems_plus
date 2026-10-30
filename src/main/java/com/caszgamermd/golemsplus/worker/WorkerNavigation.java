@@ -2,6 +2,8 @@ package com.caszgamermd.golemsplus.worker;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -56,6 +58,7 @@ public final class WorkerNavigation {
         int stalled,attempts,wait,doorAge,nextRoute;
         int unsafeChecks,avoidUntil;
         BlockPos lastBad;
+        int detourFirstLegRetries;
         boolean narrowDoorway;
         // Per-door traffic reservation: one crossing at a time, but no
         // cross-door or cross-site global lock.
@@ -480,31 +483,29 @@ public final class WorkerNavigation {
         if(goals.contains(mob.blockPosition()))
             return mob.blockPosition().immutable();
         Progress progress=states.get(mob);
-        // A geometrically valid cheapest route can have a first leg that
-        // native movement cannot execute. Reject that destination only,
-        // then let the same trained planner consider another work stance.
-        // Bound retries so one blocked target cannot monopolize a tick.
-        for(int attempt=0;attempt<4&&!goals.isEmpty();attempt++){
-            WorkerRoutePlanner.Route route=planExactRoute(
-                    level,mob,goals,progress==null?null:progress.lastBad);
-            if(route==null||!route.complete()||route.steps().isEmpty())
-                return null;
-            BlockPos reached=route.steps().get(route.steps().size()-1);
-            if(!goals.contains(reached))return null;
-            if(canBeginTrainedLeg(level,mob,route))return reached.immutable();
-            goals.removeIf(reached::equals);
-        }
-        return null;
+        // A blocked FIRST step does not mean the requested work pose is
+        // unreachable. Search alternate physically executable openings.
+        WorkerRoutePlanner.Route route=planExecutableRoute(
+                level,mob,goals,progress==null?null:progress.lastBad,true);
+        if(route==null||route.steps().isEmpty())return null;
+        BlockPos reached=route.steps().get(route.steps().size()-1);
+        return goals.contains(reached)?reached.immutable():null;
     }
 
     private static WorkerRoutePlanner.Route planExactRoute(
             ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
             BlockPos avoid){
-        return planExactRoute(level,mob,goals,avoid,null);
+        return planExactRoute(level,mob,goals,avoid,null,Set.of());
     }
     private static WorkerRoutePlanner.Route planExactRoute(
             ServerLevel level,PathfinderMob mob,List<BlockPos> goals,BlockPos avoid,
             java.util.function.Consumer<WorkerRoutePlanner.SearchStats> observer){
+        return planExactRoute(level,mob,goals,avoid,observer,Set.of());
+    }
+    private static WorkerRoutePlanner.Route planExactRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,BlockPos avoid,
+            java.util.function.Consumer<WorkerRoutePlanner.SearchStats> observer,
+            Set<BlockPos> excluded){
         // Exact work probes must honor the same expiry as ordinary routing.
         // Otherwise a temporary congestion failure becomes a permanent wall
         // while a worker only asks for construction stances.
@@ -521,7 +522,8 @@ public final class WorkerNavigation {
         var route=WorkerRoutePlanner.plan(start,goals,
                 at->standingTile(level,mob,at),
                 at->at.equals(start)&&mob.onGround()?mob.getY():floorAt(level,at),avoid,
-                at->trainedTerrainCost(level,at)+crowdCost(at,crowds),observer);
+                at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
+                observer,excluded);
         if(route!=null||!mob.onGround()||standingTile(level,mob,start))return route;
         // The real body can stand on the CORNER of a neighboring block
         // while its block-position center is over AIR. A*'s conservative
@@ -533,11 +535,13 @@ public final class WorkerNavigation {
         for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++){
             if(dx==0&&dz==0)continue;
             BlockPos seed=start.offset(dx,0,dz);
-            if(seed.equals(avoid)||!supportedRejoin(level,mob,seed))continue;
+            if(seed.equals(avoid)||excluded.contains(seed)
+                    ||!supportedRejoin(level,mob,seed))continue;
             if(++attempts>3)break;
             var onward=WorkerRoutePlanner.plan(seed,goals,
                     at->standingTile(level,mob,at),at->floorAt(level,at),avoid,
-                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
+                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
+                    null,excluded);
             if(onward==null)continue;
             List<BlockPos> steps=new ArrayList<>();
             steps.add(seed);steps.addAll(onward.steps());
@@ -548,6 +552,37 @@ public final class WorkerNavigation {
                 best=joined;
         }
         return best;
+    }
+
+    /**
+     * A* can already walk BACKWARDS and DOWNHILL. The old failure was
+     * rejecting the whole goal when Minecraft refused its shortest FIRST
+     * step. Preserve the exact destination while excluding only the
+     * non-executable first step from an alternate terrain search.
+     *
+     * The rejected set is ephemeral. The world and its collision rules
+     * remain unchanged and no partial route is treated as an arrival.
+     */
+    private static WorkerRoutePlanner.Route planExecutableRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
+            BlockPos avoid,boolean requireComplete){
+        Set<BlockPos> rejected=new HashSet<>();
+        Progress progress=states.get(mob);
+        if(progress!=null)progress.detourFirstLegRetries=0;
+        for(int attempt=0;attempt<6;attempt++){
+            WorkerRoutePlanner.Route route=planExactRoute(
+                    level,mob,goals,avoid,null,rejected);
+            if(route==null||route.steps().isEmpty()
+                    ||requireComplete&&!route.complete())return null;
+            if(canBeginTrainedLeg(level,mob,route)){
+                if(progress!=null)progress.detourFirstLegRetries=rejected.size();
+                return route;
+            }
+            BlockPos blocked=route.steps().get(0);
+            if(!rejected.add(blocked))return null;
+        }
+        if(progress!=null)progress.detourFirstLegRetries=6;
+        return null;
     }
 
     private static boolean supportedRejoin(ServerLevel level,PathfinderMob mob,
@@ -880,8 +915,8 @@ public final class WorkerNavigation {
         // Exact destinations also use the ONE trained planner. A
         // native navigation path is used solely to physically execute
         // a short already-scored waypoint, not as an alternate AI.
-        WorkerRoutePlanner.Route plan=planExactRoute(
-                level,mob,List.of(target),p.lastBad);
+        WorkerRoutePlanner.Route plan=planExecutableRoute(
+                level,mob,List.of(target),p.lastBad,true);
         if(plan==null||plan.steps().isEmpty())return false;
         p.requested=target.immutable();
         if(prepareTrainedDoor(level,mob,p,plan.steps()))return true;
@@ -987,8 +1022,8 @@ public final class WorkerNavigation {
                     goals.add(candidate.feet());
                 }
             }
-            WorkerRoutePlanner.Route route=planExactRoute(
-                    level,mob,goals,p.lastBad);
+            WorkerRoutePlanner.Route route=planExecutableRoute(
+                    level,mob,goals,p.lastBad,false);
             // Never report an empty physical route as success solely
             // because the Builder is within placement range of target.
             // Storage, doorway and return-to-tower movements require
@@ -1053,6 +1088,7 @@ public final class WorkerNavigation {
         return "goal="+requested+" via="+destination
                 +" retry="+remaining+"t attempts="+p.attempts
                 +" stalled="+p.stalled+" unsafe="+p.unsafeChecks
+                +" detourLegRetries="+p.detourFirstLegRetries
                 +" doorYields="+p.doorReservationYields
                 +(p.queuedDoor==null?"":" door="+p.queuedDoor.toShortString()
                     +(p.waitingDoor?" WAIT":p.finishingDoor?" EXIT":" CROSS")

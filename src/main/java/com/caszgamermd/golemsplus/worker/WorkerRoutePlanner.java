@@ -87,6 +87,18 @@ public final class WorkerRoutePlanner {
             Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
             BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty,
             java.util.function.Consumer<SearchStats> observer){
+        return plan(start,goals,standable,floor,avoid,
+                terrainPenalty,observer,Set.of());
+    }
+    /** Only blacklist a failed opening step, not its entire destination.
+     * Recovery may initially walk away from the goal, climb down, or circle
+     * obstacles as long as all A* transitions remain physically legal.
+     */
+    public static Route plan(BlockPos start,List<BlockPos> goals,
+            Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
+            BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty,
+            java.util.function.Consumer<SearchStats> observer,
+            Set<BlockPos> excluded){
         if(start==null||goals==null||goals.isEmpty())return null;
         Set<BlockPos> ends=new HashSet<>(goals);
         if(ends.contains(start))return new Route(List.of(),true,0,0);
@@ -127,7 +139,8 @@ public final class WorkerRoutePlanner {
                 boolean diagonal=dir[0]!=0&&dir[1]!=0;
                 for(int dy:HEIGHT_STEPS){
                     BlockPos next=current.offset(dir[0],dy,dir[1]);
-                    if(next.equals(avoid)||Math.abs(next.getX()-start.getX())>RADIUS
+                    if(next.equals(avoid)||excluded.contains(next)
+                            ||Math.abs(next.getX()-start.getX())>RADIUS
                             ||Math.abs(next.getZ()-start.getZ())>RADIUS
                             ||Math.abs(next.getY()-start.getY())>VERTICAL_RADIUS
                             ||!validCache.computeIfAbsent(next,standable::test))continue;
