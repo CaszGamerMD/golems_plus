@@ -173,6 +173,10 @@ public final class BuilderSafeScaffoldGameTest {
         }
         BlockPos tower=helper.absolutePos(new BlockPos(2,2,3));
         BlockPos target=helper.absolutePos(new BlockPos(4,6,3));
+        // An ordinary one-cell bridge test is distinct from a floating
+        // placement PLATFORM. Give this target a real connected side so
+        // the bridge still finishes at its original adjacent cell.
+        level.setBlock(target.south(),Blocks.STONE.defaultBlockState(),3);
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.setPos(tower.getX()+.5,tower.getY(),tower.getZ()+.5);
         worker.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
@@ -397,6 +401,9 @@ public final class BuilderSafeScaffoldGameTest {
         // accidentally move the tower off the prebuilt roof fixture.
         BlockPos goal=helper.absolutePos(new BlockPos(9,7,4));
         BlockPos start=goal.west(6).atY(goal.getY()-3);
+        // Keep the original five-span normal-bridge fixture separate
+        // from two-cell-clearance floating work-platform behavior.
+        level.setBlock(goal.south(),Blocks.STONE.defaultBlockState(),3);
         level.getChunkSource().addTicketWithRadius(
                 net.minecraft.server.level.TicketType.FORCED,
                 new net.minecraft.world.level.ChunkPos(goal.getX()>>4,
