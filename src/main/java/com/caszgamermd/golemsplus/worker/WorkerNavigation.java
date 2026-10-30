@@ -754,8 +754,11 @@ public final class WorkerNavigation {
                 ||!mob.onGround()||mob.isNoGravity()
                 ||!standingTile(level,mob,seed)
                 ||Math.abs(floorAt(level,seed)-mob.getY())>.05
-                ||Math.abs(seed.getX()+.5-mob.getX())>2.30
-                ||Math.abs(seed.getZ()+.5-mob.getZ())>2.30)return List.of();
+                // Rotated GameTests and real off-center starts can be
+                // 2.30m from the neighbor's center (plus float error).
+                // The quarter-block search is still strictly bounded.
+                ||Math.abs(seed.getX()+.5-mob.getX())>2.65
+                ||Math.abs(seed.getZ()+.5-mob.getZ())>2.65)return List.of();
         Vec3 start=mob.position();
         // The next A* cell is a REGION, not necessarily its center.
         // A fractional stance 0.25..0.75 inside its boundaries is enough
