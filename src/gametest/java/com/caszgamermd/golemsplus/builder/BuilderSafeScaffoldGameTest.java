@@ -276,7 +276,9 @@ public final class BuilderSafeScaffoldGameTest {
             helper.fail("No roof bridge Planner");return;
         }
         ServerPlayer owner=helper.makeMockServerPlayerInLevel();
-        BlockPos start=helper.absolutePos(new BlockPos(3,4,3));
+        // Begin at the verified solid-roof tower foot. The separate
+        // roof-access tests exercise approaching a remote entrance.
+        BlockPos start=helper.absolutePos(new BlockPos(3,4,4));
         if(!table.claimIfUnowned(owner.getUUID())
                 ||!table.setPlacedBuilderPlan(owner.getUUID(),
                         "placed-five-span.litematic","Five Span",
