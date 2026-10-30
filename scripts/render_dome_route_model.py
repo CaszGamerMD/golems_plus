@@ -59,10 +59,10 @@ def build():
         if lines.exists():
             for line in lines.read_text(encoding="utf-8").splitlines():
                 if not line.startswith("[Y30 WORKER] "):continue
-                m=re.search(r"^\\[Y30 WORKER\\] (.*?) worker=(-?\\d+, -?\\d+, -?\\d+).*?target=(-?\\d+, -?\\d+, -?\\d+).*?route=(.*)$",line)
+                m=re.search(r"^\[Y30 WORKER\] (.*?) worker=(-?\d+, -?\d+, -?\d+).*?target=(-?\d+, -?\d+, -?\d+).*?route=(.*)$",line)
                 if not m:continue
                 path=m.group(4)
-                parts=re.findall(r"-?\\d+, -?\\d+, -?\\d+",path.partition("waypoints=")[2])
+                parts=re.findall(r"-?\d+, -?\d+, -?\d+",path.partition("waypoints=")[2])
                 workers.append({
                     "name":m.group(1),
                     "start":[int(v) for v in m.group(2).split(", ")],
