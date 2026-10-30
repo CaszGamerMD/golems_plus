@@ -244,6 +244,14 @@ public final class WorkerNavigation {
         }
         return y;
     }
+    /** Read-only actual VoxelShape footing for exact dome route survey.
+     * The same floor routine is used by the production terrain A*;
+     * synthetic block-height shortcuts would mis-model slabs and walls.
+     */
+    public static double surveyFloorHeight(ServerLevel level,BlockPos feet){
+        return floorAt(level,feet);
+    }
+
     /** Architectural walls are 1.5 blocks high and their collision top
      * is not a stable normal walking waypoint. Treating that narrow lip
      * as ordinary ground made Builders stand below a wall and try to jump
