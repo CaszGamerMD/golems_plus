@@ -365,6 +365,9 @@ public final class BuilderBuildService {
         }
         try{
             Cache plan=cache(table,worker);
+            // Display required physical placements without waiting for
+            // site clearance. This is accounting only, never a completion.
+            table.previewBuilderWork(plan.steps());
             // Warehouse reconciliation and proactive orders are Planner-
             // level jobs running from dispatch() every two/four seconds.
             // Doing both here from EVERY Builder every five ticks generated
@@ -885,6 +888,7 @@ public final class BuilderBuildService {
                     materials.merge(step.requiredItem(),1L,Long::sum);
             }
             table.reconcileBuilderMaterials(materials);
+            table.previewBuilderWork(cache.steps());
             // A running planner may have already cleared the site.
             // Otherwise preserve the clearing gate until all real
             // obstructions have actually been handled.

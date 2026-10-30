@@ -405,6 +405,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         g.text(font,shorten("PLACEMENT: "+name,96),SIDE+15,80,TEXT,false);
         String info="Origin "+t.builderOrigin().toShortString()+
                 " | "+t.builderWorkerIds().size()+" builders"+
+                " | "+t.builderWorkDone()+"/"+t.builderWorkTotal()+" blocks"+
                 " | "+String.format(java.util.Locale.ROOT,"%.1f",percentage)+"%"+
                 " | "+t.phase().name();
         g.text(font,shorten(info,100),SIDE+15,113,MUTED,false);

@@ -52,6 +52,12 @@ public final class BuilderIgnoredPlantProgressGameTest {
         if(f==null)return;
         var steps=List.of(block(f.at,3,false),block(f.at,4,true),
                 block(f.at,5,false),block(f.at,6,true));
+        f.table.previewBuilderWork(steps);
+        if(f.table.builderWorkTotal()!=2||f.table.builderWorkDone()!=0
+                ||f.table.builderCursor()!=0
+                ||f.table.phase()==WorkerPhase.COMPLETE){
+            h.fail("Preview counting skipped plants before site clearance");return;
+        }
         f.table.reconcileBuilderWork(steps);
         if(f.table.builderWorkTotal()!=2||f.table.builderWorkDone()!=0
                 ||f.table.builderCursor()!=0

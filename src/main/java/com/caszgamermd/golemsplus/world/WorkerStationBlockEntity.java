@@ -1184,6 +1184,33 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return true;
     }
 
+    /** Read-only accounting while the site is still being cleared.
+     * Preview the correct denominator immediately, but never complete
+     * ignored coordinates before real clearing has finished.
+     */
+    public void previewBuilderWork(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(!isBuilder()||steps==null||steps.size()!=builderBlocks)return;
+        if(builderProgressPlan==steps&&builderProgressCursor==builderCursor
+                &&builderProgressFinished==builderFinishedSteps.size()
+                &&builderProgressIgnored==builderAutoSkippedPlants.size()
+                &&builderWorkTotal>=0)return;
+        int required=0,completed=0;
+        for(int i=0;i<steps.size();i++){
+            if(steps.get(i).ignorePlant())continue;
+            required++;
+            if(i<builderCursor||builderFinishedSteps.contains(i))completed++;
+        }
+        boolean changed=builderWorkTotal!=required||builderWorkDone!=completed;
+        builderWorkTotal=required;
+        builderWorkDone=completed;
+        builderProgressPlan=steps;
+        builderProgressCursor=builderCursor;
+        builderProgressFinished=builderFinishedSteps.size();
+        builderProgressIgnored=builderAutoSkippedPlants.size();
+        if(changed)sync();
+    }
+
     /**
      * Reconcile ignored vegetation against the actual server-side plan.
      * Never compact the indexed schematic: saved claims, zones, clearance
