@@ -43,6 +43,8 @@ public final class BuilderGrappleAccess {
         int recoveryTicks;
         double lastX=Double.NaN,lastY=Double.NaN,lastZ=Double.NaN;
         Phase lastPhase;
+        long lastWalkProgress;
+        double walkX=Double.NaN,walkZ=Double.NaN;
         double supportY=Double.NaN,upperX,upperZ;
         Rope(BlockPos anchor,Direction side,BlockPos landing,BlockPos goal,
                 boolean down,long time) {
@@ -53,6 +55,7 @@ public final class BuilderGrappleAccess {
             this.goal=goal.immutable();
             this.down=down;
             this.started=time;
+            this.lastWalkProgress=time;
             this.phase=down?Phase.WALK_TO_EDGE:Phase.WALK_TO_LINE;
             upperX=anchor.getX()+.5;upperZ=anchor.getZ()+.5;
         }
@@ -695,8 +698,16 @@ public final class BuilderGrappleAccess {
         // Failed to WALK to a grapple attachment point. No line was
         // thrown, so grounded cancellation is safe. Forget this face
         // temporarily instead of making the worker hold a dead route.
-        if(r.phase==Phase.WALK_TO_LINE
-                &&level.getGameTime()-r.started>=TRAVEL_TIMEOUT
+        if(r.phase==Phase.WALK_TO_LINE||r.phase==Phase.WALK_TO_EDGE){
+            if(!Double.isFinite(r.walkX)
+                    ||Math.pow(mob.getX()-r.walkX,2)+Math.pow(mob.getZ()-r.walkZ,2)>.04){
+                r.walkX=mob.getX();r.walkZ=mob.getZ();
+                r.lastWalkProgress=level.getGameTime();
+            }
+        }
+        if((r.phase==Phase.WALK_TO_LINE||r.phase==Phase.WALK_TO_EDGE)
+                &&(level.getGameTime()-r.lastWalkProgress>=TRAVEL_TIMEOUT
+                    ||level.getGameTime()-r.started>=2400)
                 &&mob.onGround()){
             reject(level,mob,r);
             active.remove(mob);
@@ -712,12 +723,6 @@ public final class BuilderGrappleAccess {
             if(mob.blockPosition().getY()!=edge.getY()
                     ||Math.abs(mob.getX()-edge.getX()-.5)>.27
                     ||Math.abs(mob.getZ()-edge.getZ()-.5)>.27){
-                if(level.getGameTime()-r.started>200&&mob.onGround()){
-                    active.remove(mob);
-                    reject(level,mob,r);
-                    WorkerNavigation.stop(mob);
-                    return false;
-                }
                 if(mob.getNavigation().isDone())
                     WorkerNavigation.routeToExact(level,mob,edge,1.0);
                 return false;
