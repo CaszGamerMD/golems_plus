@@ -479,7 +479,32 @@ public final class WorkerNavigation {
         return canBeginTrainedLeg(level,mob,route)?"first_leg_valid":
                 "first_leg_rejected explored="+route.explored()
                 +" startFloor="+floorAt(level,mob.blockPosition())
-                +" physicalY="+mob.getY()+" grounded="+mob.onGround();
+                +" physicalY="+mob.getY()+" grounded="+mob.onGround()
+                +" handoff="+diagnoseFirstLeg(level,mob,route);
+    }
+
+    private static String diagnoseFirstLeg(ServerLevel level,
+            PathfinderMob mob,WorkerRoutePlanner.Route route){
+        List<String> probes=new ArrayList<>();
+        BlockPos origin=mob.blockPosition();
+        for(int span:new int[]{3,2,1}){
+            BlockPos waypoint=route.steps().get(Math.min(route.steps().size(),span)-1);
+            Path path=mob.getNavigation().createPath(waypoint,0);
+            if(path==null){probes.add(span+":null");continue;}
+            List<String> nodes=new ArrayList<>();
+            for(int j=0;j<Math.min(8,path.getNodeCount());j++){
+                Node n=path.getNode(j);
+                BlockPos at=new BlockPos(n.x,n.y,n.z);
+                nodes.add(at.subtract(origin).toShortString()
+                        +" floor="+(floorAt(level,at)-origin.getY())
+                        +" stand="+standingTile(level,mob,at)
+                        +" below="+level.getBlockState(at.below()));
+            }
+            probes.add(span+":end="+endsAtExactTile(path,waypoint)
+                    +" reach="+path.canReach()+" safe="+safePath(level,mob,path,false)
+                    +" nodes="+nodes);
+        }
+        return probes.toString();
     }
 
     private static boolean canBeginTrainedLeg(ServerLevel level,
