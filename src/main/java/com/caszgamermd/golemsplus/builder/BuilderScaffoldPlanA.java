@@ -240,9 +240,20 @@ public final class BuilderScaffoldPlanA {
                     if(onBase||WorkerNavigation.canReachExact(level,worker,base))
                         reached++;
                 }
-        return "feet="+worker.blockPosition()+" grounded="+worker.onGround()
+        BlockPos west=target.west(6).atY(worker.blockPosition().getY());
+        BlockPos westExit=BuilderScaffolding.safeGroundExit(
+                level,worker,west,reserved);
+        return "target="+target+" feet="+worker.blockPosition()
+                +" grounded="+worker.onGround()
                 +" shafts="+shafts+" clearBridges="+bridges
                 +" safeExits="+exits+" reachable="+reached
+                +" west6="+west+" onsite="+worker.blockPosition().equals(west)
+                +" shaft="+shaftClear(level,west,target.getY()-1,reserved,table,worker)
+                +" bridge="+bridgeClear(level,west,Direction.EAST,
+                        target.getY(),5,reserved,table,worker)
+                +" exit="+westExit
+                +" stand="+WorkerNavigation.canStandOn(level,worker,west)
+                +" exact="+WorkerNavigation.canReachExact(level,worker,west)
                 +" example="+example;
     }
     private static boolean structurallySupported(ServerLevel level,BlockPos at){
