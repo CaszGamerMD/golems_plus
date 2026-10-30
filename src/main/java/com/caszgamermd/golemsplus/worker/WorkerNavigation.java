@@ -1121,7 +1121,23 @@ public final class WorkerNavigation {
         // stranded the head just OUTSIDE the threshold and held the
         // other three workers forever. Continue steering toward the
         // centered exit; collision checks below still prevent phasing.
-        if(side>.46)return false;
+        if(side>.46){
+            // A worker can stop diagonally across a gate corner with its
+            // center just beyond the escort alignment tolerance. It is
+            // already the physical occupant: recenter across the passage
+            // before asking native A* to restart inside that same gate.
+            if(!WorkerDoorTraffic.inside(level,door,mob))return false;
+            if(!isOpenPassage(gate))setPassageOpen(level,mob,door,true);
+            double dx=out.getStepX()==0?door.getX()+.5-mob.getX():0;
+            double dz=out.getStepX()!=0?door.getZ()+.5-mob.getZ():0;
+            double vx=Math.max(-.08,Math.min(.08,dx));
+            double vz=Math.max(-.08,Math.min(.08,dz));
+            if(!level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz)))return false;
+            mob.getNavigation().stop();
+            mob.getMoveControl().setWantedPosition(mob.getX(),mob.getY(),mob.getZ(),0);
+            mob.setDeltaMovement(vx,Math.min(0,mob.getDeltaMovement().y),vz);
+            return true;
+        }
         double before=(mob.getX()-door.getX()-.5)*out.getStepX()
                 +(mob.getZ()-door.getZ()-.5)*out.getStepZ();
         if(before>2.75||before<-4.0)return false;

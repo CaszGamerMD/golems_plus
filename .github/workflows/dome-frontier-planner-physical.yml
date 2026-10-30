@@ -58,6 +58,7 @@ jobs:
           d['entrypoints']['fabric-gametest']=[
               'com.caszgamermd.golemsplus.builder.BuilderGrappleWorkPoseGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderGrappleReturnGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderDoorwayGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderConstructionFrontierGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderFenceStepGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderCornerRejoinGameTest',
