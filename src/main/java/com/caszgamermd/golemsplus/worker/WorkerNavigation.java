@@ -618,9 +618,40 @@ public final class WorkerNavigation {
             }
             probes.add(span+":end="+endsAtExactTile(level,path,waypoint)
                     +" reach="+path.canReach()+" safe="+safePath(level,mob,path,false)
-                    +" nodes="+nodes);
+                    +" nodes="+nodes+" sweep="+diagnoseSweep(level,mob,path));
         }
         return probes.toString();
+    }
+
+    private static String diagnoseSweep(ServerLevel level,PathfinderMob mob,Path path){
+        BlockPos origin=mob.blockPosition();
+        for(int i=1;i<path.getNodeCount();i++){
+            Node prev=path.getNode(i-1),next=path.getNode(i);
+            BlockPos a=new BlockPos(prev.x,prev.y,prev.z),b=new BlockPos(next.x,next.y,next.z);
+            boolean actual=i==1&&groundedNativeStart(mob,a);
+            double fromY=actual?mob.getY():floorAt(level,a),toY=floorAt(level,b);
+            if(Math.abs(fromY-toY)>.60)continue;
+            double sx=actual?mob.getX():prev.x+.5,sz=actual?mob.getZ():prev.z+.5;
+            double dx=next.x+.5-sx,dz=next.z+.5-sz;
+            int samples=Math.max(1,(int)Math.ceil(Math.hypot(dx,dz)*3));
+            for(int k=1;k<samples;k++){
+                double x=sx+dx*k/samples,z=sz+dz*k/samples,y=Math.max(fromY,toY);
+                if(bodyClear(level,mob,x,y,z))continue;
+                List<String> blocks=new ArrayList<>();
+                double half=mob.getBbWidth()*.5;
+                AABB body=new AABB(x-half,y+.01,z-half,x+half,y+mob.getBbHeight()-.025,z+half);
+                for(BlockPos at:BlockPos.betweenClosed(BlockPos.containing(body.minX,body.minY,body.minZ),
+                        BlockPos.containing(body.maxX,body.maxY,body.maxZ))){
+                    for(AABB box:level.getBlockState(at).getCollisionShape(level,at).toAabbs())
+                        if(box.move(at).intersects(body)){
+                            blocks.add(at.subtract(origin).toShortString()+":"+level.getBlockState(at));break;
+                        }
+                }
+                return "blocked@"+(x-origin.getX())+","+(y-origin.getY())+","+(z-origin.getZ())
+                        +" by="+blocks+" body="+body;
+            }
+        }
+        return "no_sample_collision";
     }
 
     private static boolean canBeginTrainedLeg(ServerLevel level,
@@ -649,8 +680,7 @@ public final class WorkerNavigation {
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
         Progress progress=state(mob);
-        if(progress.centering!=null&&!progress.centering.equals(target)
-                &&!target.equals(progress.requested))
+        if(progress.centering!=null&&!progress.centering.equals(target))
             progress.centering=null;
         if(progress.queuedDoor!=null&&target!=null
                 &&progress.requested!=null&&!target.equals(progress.requested))
@@ -670,22 +700,6 @@ public final class WorkerNavigation {
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
             ground.setCanOpenDoors(true);
-        // Native arrival may stop short of an INTERMEDIATE trained
-        // waypoint too. Replanning from that same off-center corner can
-        // repeatedly select the already-finished native leg. Finish the
-        // supported last fraction before searching onward to the entry.
-        if(same&&p.approach!=null&&!p.approach.equals(target)
-                &&mob.getNavigation().isDone()&&mob.onGround()){
-            double floor=floorAt(level,p.approach);
-            double distance=mob.distanceToSqr(p.approach.getX()+.5,
-                    floor,p.approach.getZ()+.5);
-            if(distance>.08*.08&&distance<.81
-                    &&Math.abs(mob.getY()-floor)<.05
-                    &&supportedRejoin(level,mob,p.approach)){
-                p.centering=p.approach;
-                if(tickExactCenter(level,mob))return true;
-            }
-        }
         // If the exact safe standing tile was reached on the previous
         // tick, do not reconstruct the same route and toggle navigation.
         double targetFloor=floorAt(level,target);
@@ -936,11 +950,7 @@ public final class WorkerNavigation {
             return; // waiting workers keep their exact queued order
         }
         if(p.previous==null)p.previous=mob.position();
-        double movedX=mob.getX()-p.previous.x,movedZ=mob.getZ()-p.previous.z;
-        // Jumping against the same ledge is not route progress. Vertical
-        // motion used to reset this timer forever while the feet stayed
-        // at the same X/Z and the native controller repeatedly jumped.
-        if(movedX*movedX+movedZ*movedZ>.018){
+        if(mob.position().distanceToSqr(p.previous)>.018){
             p.stalled=0;
         }else if(p.requested!=null&&!mob.getNavigation().isDone()){
             p.stalled+=CHECK_TICKS;
@@ -962,18 +972,10 @@ public final class WorkerNavigation {
                     p.lastBad=new BlockPos(node.x,node.y,node.z);
                     p.avoidUntil=mob.tickCount+60;
                 }else if(!blocked){
-                    // Quarantine a physically stalled first step briefly,
-                    // except when a teammate is occupying that corridor.
-                    // Retrying the identical jumping leg is not recovery.
+                    // A teammate blocking an aisle is not an invalid
+                    // floor tile: keep every legal movement available
+                    // and use soft crowd cost for the next plan instead.
                     p.lastBad=null;
-                    if(old!=null&&old.getNextNodeIndex()<old.getNodeCount()){
-                        Node node=old.getNode(old.getNextNodeIndex());
-                        BlockPos next=new BlockPos(node.x,node.y,node.z);
-                        if(!next.equals(mob.blockPosition())
-                                &&!neighborOccupied(level,mob,next)){
-                            p.lastBad=next;p.avoidUntil=mob.tickCount+60;
-                        }
-                    }
                 }
                 p.weightedRoute=List.of();p.routeCursor=0;
                 p.nextRoute=mob.tickCount+CHECK_TICKS;
