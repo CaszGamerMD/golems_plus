@@ -72,4 +72,48 @@ public final class BuilderGrappleReturnGameTest {
             }
         });
     }
+    @GameTest(maxTicks=500,skyAccess=true)
+    public void walkingDetourMayRiseBeforeDescendingToDepot(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++){
+            for(int z=0;z<8;z++)h.setBlock(x,0,z,Blocks.STONE);
+            for(int y=1;y<=6;y++){
+                h.setBlock(x,y,2,Blocks.STONE);
+                h.setBlock(x,y,4,Blocks.STONE);
+            }
+        }
+        for(int x=0;x<=1;x++)h.setBlock(x,2,3,Blocks.STONE);
+        for(int x=2;x<=3;x++)h.setBlock(x,3,3,Blocks.STONE);
+        h.setBlock(4,2,3,Blocks.STONE);
+        for(int x=5;x<=7;x++)h.setBlock(x,1,3,Blocks.STONE);
+        h.setBlock(0,1,7,WorksiteContent.BUILDER_TABLE);
+        var table=(WorkerStationBlockEntity)world.getBlockEntity(
+                h.absolutePos(new BlockPos(0,1,7)));
+        BlockPos start=h.absolutePos(new BlockPos(1,3,3));
+        BlockPos depot=h.absolutePos(new BlockPos(6,2,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        mob.setItem(0,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        world.addFreshEntity(mob);
+        final boolean[] climbed={false};
+        h.onEachTick(()->{
+            if(BuilderGrappleAccess.active(mob)){
+                h.fail("Valid walking detour was interrupted by a rappel");return;
+            }
+            if(mob.getY()>start.getY()+.85)climbed[0]=true;
+            if(h.getTick()>=10&&h.getTick()%5==0)
+                BuilderGrappleAccess.rappelToward(world,mob,table,depot);
+            if(mob.onGround()&&mob.distanceToSqr(depot.getX()+.5,
+                    depot.getY(),depot.getZ()+.5)<.2){
+                if(!climbed[0]){
+                    h.fail("Fixture did not exercise the uphill detour");return;
+                }
+                System.out.println("[GROUND RETURN] PASS rose then descended "
+                        +"without hook interruption tick="+h.getTick());
+                h.succeed();return;
+            }
+            if(h.getTick()>420)h.fail("Ground return detour stalled "+mob.position()
+                    +" "+com.caszgamermd.golemsplus.worker.WorkerNavigation.debugStatus(mob));
+        });
+    }
 }

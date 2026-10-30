@@ -507,11 +507,9 @@ public final class BuilderBuildService {
                 table.prepareBuilderOrder(worker.getUUID());
             }
             activity.phase=Action.MOVE_TO_WORK;
-            // A newly assigned low cell may be underneath an old tower.
-            // Descent belongs to this worker, not a global path command.
-            if(step.y()+1.5<worker.getY()
-                    &&BuilderGrappleAccess.rappelForTravel(level,worker,table))
-                return;
+            // Work descent is resolved against the actual work pose below.
+            // Do not send a stocked worker back to the depot merely
+            // because its legal work route temporarily crosses a high ledge.
             // Check the replacement's survival BEFORE clearing an existing
             // block. Clearing first destroyed a useful piece of completed
             // cobblestone/support, then deadlocked on "Missing supporting
