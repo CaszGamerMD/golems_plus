@@ -453,6 +453,11 @@ public final class WorkerNavigation {
     private static WorkerRoutePlanner.Route planExactRoute(
             ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
             BlockPos avoid){
+        return planExactRoute(level,mob,goals,avoid,null);
+    }
+    private static WorkerRoutePlanner.Route planExactRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,BlockPos avoid,
+            java.util.function.Consumer<WorkerRoutePlanner.SearchStats> observer){
         // Exact work probes must honor the same expiry as ordinary routing.
         // Otherwise a temporary congestion failure becomes a permanent wall
         // while a worker only asks for construction stances.
@@ -469,7 +474,7 @@ public final class WorkerNavigation {
         return WorkerRoutePlanner.plan(start,goals,
                 at->standingTile(level,mob,at),
                 at->at.equals(start)&&mob.onGround()?mob.getY():floorAt(level,at),avoid,
-                at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
+                at->trainedTerrainCost(level,at)+crowdCost(at,crowds),observer);
     }
 
     /** Geometry-only preview from a prospective grounded grapple landing.
@@ -490,8 +495,27 @@ public final class WorkerNavigation {
             PathfinderMob mob,List<BlockPos> candidates){
         if(candidates.isEmpty())return "no_candidates";
         if(candidates.contains(mob.blockPosition()))return "already_at_candidate";
-        WorkerRoutePlanner.Route route=planExactRoute(level,mob,candidates,null);
-        if(route==null)return "search_no_route";
+        WorkerRoutePlanner.SearchStats[] stats={null};
+        WorkerRoutePlanner.Route route=planExactRoute(
+                level,mob,candidates,null,s->stats[0]=s);
+        if(route==null){
+            List<String> neighbors=new ArrayList<>();
+            BlockPos start=mob.blockPosition();
+            for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++)
+                for(int dy=-1;dy<=1;dy++){
+                    if(dx==0&&dz==0)continue;
+                    BlockPos at=start.offset(dx,dy,dz);
+                    if(standingTile(level,mob,at))
+                        neighbors.add(dx+","+dy+","+dz+" height="
+                                +(floorAt(level,at)-mob.getY()));
+                }
+            return "search_no_route stats="+stats[0]
+                    +" startCenter="+standingTile(level,mob,start)
+                    +" floor="+floorAt(level,start)+" physicalY="+mob.getY()
+                    +" neighbors="+neighbors
+                    +" native="+diagnoseFirstLeg(level,mob,
+                        new WorkerRoutePlanner.Route(List.of(candidates.get(0)),true,0,0));
+        }
         if(!route.complete())return "search_partial explored="+route.explored();
         if(route.steps().isEmpty())return "search_empty";
         return canBeginTrainedLeg(level,mob,route)?"first_leg_valid":

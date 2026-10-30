@@ -42,6 +42,7 @@ public final class WorkerRoutePlanner {
     private static final int[] HEIGHT_STEPS={0,-1,1};
     private record Node(BlockPos pos,int travelled,int estimate){}
     public record Route(List<BlockPos> steps,boolean complete,int cost,int explored){}
+    public record SearchStats(int explored,int queued,boolean budgetExhausted){}
     private WorkerRoutePlanner(){}
 
     private static int heuristic(BlockPos at,List<BlockPos> goals){
@@ -69,6 +70,12 @@ public final class WorkerRoutePlanner {
     public static Route plan(BlockPos start,List<BlockPos> goals,
             Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
             BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty){
+        return plan(start,goals,standable,floor,avoid,terrainPenalty,null);
+    }
+    public static Route plan(BlockPos start,List<BlockPos> goals,
+            Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
+            BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty,
+            java.util.function.Consumer<SearchStats> observer){
         if(start==null||goals==null||goals.isEmpty())return null;
         Set<BlockPos> ends=new HashSet<>(goals);
         if(ends.contains(start))return new Route(List.of(),true,0,0);
@@ -163,6 +170,8 @@ public final class WorkerRoutePlanner {
                 }
             }
         }
+        if(observer!=null)observer.accept(new SearchStats(explored,queue.size(),
+                finish==null&&explored>=NODE_BUDGET&&!queue.isEmpty()));
         boolean complete=finish!=null;
         if(!complete){
             if(!distant||frontier==null)return null;
