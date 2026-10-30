@@ -696,7 +696,7 @@ public final class WorkerNavigation {
      * the full collision body AND continuous contact with real terrain.
      *
      * The local search stays on one physical Y surface. Genuine rises,
-     * drops and long-range decisions remain with trained A*/jump/grapple;
+     * drops and long-range decisions remain with trained routing, jumps and grapples;
      * there is no clipping, invented support, flight or teleportation.
      */
     private static boolean supportedAtFraction(ServerLevel level,
