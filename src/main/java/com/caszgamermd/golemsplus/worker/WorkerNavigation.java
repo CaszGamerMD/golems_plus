@@ -626,6 +626,8 @@ public final class WorkerNavigation {
             .append(" block=").append(level.getBlockState(mob.blockPosition()))
             .append(" below=").append(level.getBlockState(mob.blockPosition().below()))
             .append(" body=").append(mob.getBoundingBox())
+            .append(" cornerMask=").append(
+                    Integer.toBinaryString(supportedHitboxCorners(level,mob)))
             .append(" startCenter=").append(standingTile(level,mob,mob.blockPosition()))
             .append(" possible=[");
         BlockPos origin=mob.blockPosition();
@@ -674,6 +676,29 @@ public final class WorkerNavigation {
                 x+half,y+.002,z+half);
         return level.getBlockCollisions(mob,contact).iterator().hasNext();
     }
+    /** Four REAL inset hitbox corner-footing probes. A worker may have
+     * all its load supported by just one corner while the integer block
+     * underneath its origin has no valid centered walking stance.
+     * Returns a bitmask: NW=1, NE=2, SW=4, SE=8.
+     */
+    public static int supportedHitboxCorners(ServerLevel level,
+            PathfinderMob mob){
+        if(!mob.onGround())return 0;
+        AABB box=mob.getBoundingBox();
+        double y=box.minY;
+        double[] xs={box.minX+.05,box.maxX-.05};
+        double[] zs={box.minZ+.05,box.maxZ-.05};
+        int mask=0;
+        for(int x=0;x<2;x++)for(int z=0;z<2;z++){
+            double px=xs[x],pz=zs[z];
+            AABB foot=new AABB(px-.023,y-.055,pz-.023,
+                    px+.023,y+.002,pz+.023);
+            if(level.getBlockCollisions(mob,foot).iterator().hasNext())
+                mask|=1<<(x*2+z);
+        }
+        return mask;
+    }
+
     /** Check intermediate positions, not just a clear endpoint. */
     private static boolean supportedCornerSegment(ServerLevel level,
             PathfinderMob mob,Vec3 a,Vec3 b){
@@ -700,7 +725,8 @@ public final class WorkerNavigation {
         Vec3 goal=new Vec3(seed.getX()+.5,mob.getY(),seed.getZ()+.5);
         // No claim is made that the entire tile center supports the body
         // currently straddling its edge. Test its real current footprint.
-        if(!supportedAtFraction(level,mob,start.x,start.y,start.z))
+        if(supportedHitboxCorners(level,mob)==0
+                &&!supportedAtFraction(level,mob,start.x,start.y,start.z))
             return List.of();
         if(supportedCornerSegment(level,mob,start,goal))
             return List.of(goal);

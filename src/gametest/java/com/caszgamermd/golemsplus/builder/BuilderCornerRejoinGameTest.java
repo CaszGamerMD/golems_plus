@@ -33,8 +33,11 @@ public final class BuilderCornerRejoinGameTest {
             }
             if(h.getTick()<10)return;
             if(!checked[0]){
-                if(!mob.onGround()||WorkerNavigation.canStandOn(world,mob,mob.blockPosition())){
-                    h.fail("Fixture must be grounded with unsupported tile center");return;
+                if(!mob.onGround()
+                        ||WorkerNavigation.canStandOn(world,mob,mob.blockPosition())
+                        ||WorkerNavigation.supportedHitboxCorners(world,mob)==0){
+                    h.fail("Fixture must have a REAL supporting hitbox corner"
+                            +" while tile center is unsupported");return;
                 }
                 if(WorkerNavigation.selectExecutableStand(world,mob,List.of(goal))==null){
                     h.fail("Trained preview rejected supported corner re-entry");return;
