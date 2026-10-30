@@ -103,4 +103,61 @@ public final class BuilderFenceStepGameTest {
                     +" "+WorkerNavigation.debugStatus(mob));
         });
     }
+
+    /** The real upper dome mixes three different half-block surfaces;
+     * native short legs may fail even where a physical one-cell step is safe.
+     */
+    @GameTest(maxTicks=480,skyAccess=true)
+    public void traversesMixedSlabFenceAndWallRoof(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<11;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        for(int x=0;x<11;x++){
+            for(int y=2;y<=5;y++){
+                h.setBlock(x,y,2,Blocks.STONE);
+                h.setBlock(x,y,4,Blocks.STONE);
+            }
+            h.setBlock(x,2,3,Blocks.STONE);
+        }
+        h.setBlock(3,2,3,Blocks.STONE_SLAB);
+        h.setBlock(5,2,3,Blocks.SPRUCE_FENCE);
+        h.setBlock(7,2,3,Blocks.COBBLESTONE_WALL);
+        BlockPos start=h.absolutePos(new BlockPos(1,3,3));
+        BlockPos goal=h.absolutePos(new BlockPos(9,3,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(mob);
+        boolean[] crossed={false,false,false};
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.isNoGravity()
+                    ||mob.getY()<goal.getY()-.65){
+                h.fail("Mixed roof traversal abandoned real support "+mob.position());
+                return;
+            }
+            if(h.getTick()>=10&&h.getTick()%5==0)
+                WorkerNavigation.routeToExact(world,mob,goal,1.0);
+            if(mob.blockPosition().getX()==start.getX()+2
+                    &&mob.getY()<start.getY()-.35)crossed[0]=true;
+            if(mob.blockPosition().getX()==start.getX()+4
+                    &&mob.getY()>start.getY()+.35)crossed[1]=true;
+            if(mob.blockPosition().getX()==start.getX()+6
+                    &&mob.getY()>start.getY()+.35)crossed[2]=true;
+            if(mob.onGround()&&mob.distanceToSqr(
+                    goal.getX()+.5,goal.getY(),goal.getZ()+.5)<.13){
+                if(!crossed[0]||!crossed[1]||!crossed[2]){
+                    h.fail("Roof route skipped half-slab/fence/wall physical contact");
+                    return;
+                }
+                System.out.println("[MIXED ROOF] PASS slab/fence/wall "
+                        +"physical traversal tick="+h.getTick());
+                h.succeed();
+                return;
+            }
+            if(h.getTick()>430)h.fail("Mixed roof stalled at "+mob.position()
+                    +" nav="+WorkerNavigation.debugStatus(mob)
+                    +" "+WorkerNavigation.diagnoseExecutableStand(
+                        world,mob,java.util.List.of(goal)));
+        });
+    }
+
 }

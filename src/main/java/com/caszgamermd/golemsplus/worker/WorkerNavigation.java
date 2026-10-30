@@ -49,7 +49,8 @@ public final class WorkerNavigation {
     private WorkerNavigation(){}
 
     private static final class Progress {
-        BlockPos requested,approach,openedDoor,centering;
+        BlockPos requested,approach,openedDoor,centering,terrainStep;
+        int terrainStepStarted;
         Vec3 previous;
         int stalled,attempts,wait,doorAge,nextRoute;
         int unsafeChecks,avoidUntil;
@@ -677,7 +678,8 @@ public final class WorkerNavigation {
                     &&safePath(level,mob,path,false))return true;
         }
         return !route.steps().isEmpty()
-                &&canWalkTrainedEdge(level,mob,route.steps().get(0));
+                &&(canWalkTrainedEdge(level,mob,route.steps().get(0))
+                    ||canBeginTerrainStep(level,mob,route.steps().get(0)));
     }
 
     /** Execute only the first same-height edge of the trained route when
@@ -699,6 +701,96 @@ public final class WorkerNavigation {
         p.centering=waypoint.immutable();p.approach=waypoint.immutable();
         p.stalled=0;p.unsafeChecks=0;p.nextRoute=mob.tickCount+CHECK_TICKS;
         return tickExactCenter(level,mob);
+    }
+
+    /**
+     * Native Minecraft pathfinding frequently refuses a short first leg
+     * across a half slab, stair, wall or fence, even though our trained A*
+     * has verified both collision-height endpoints. Try only ONE cardinal
+     * 0.6-block step as a physical alternative. No long-range steering,
+     * teleport, gravity bypass, jump over a barrier or unsupported gap.
+     *
+     * Execution is per tick and sends motion through Minecraft collision;
+     * route selection uses this exact same non-mutating preflight.
+     */
+    private static boolean canBeginTerrainStep(ServerLevel level,
+            PathfinderMob mob,BlockPos next){
+        if(!(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem)
+                ||!mob.onGround()||mob.isNoGravity()
+                ||next==null||!standingTile(level,mob,next))return false;
+        BlockPos at=mob.blockPosition();
+        if(Math.abs(at.getX()-next.getX())+
+                Math.abs(at.getZ()-next.getZ())!=1
+                ||Math.abs(at.getY()-next.getY())>1)return false;
+        double floor=floorAt(level,next);
+        double delta=floor-mob.getY();
+        if(!Double.isFinite(delta)||Math.abs(delta)>.6001)return false;
+        // No diagonal corner-cutting, no leap across air. Both supported
+        // ends have already been checked; sample the full collision width
+        // at the higher surface. The real step-rise/drop is executed by
+        // the mob's normal collision solver, not by ignoring obstacle boxes.
+        int samples=10;
+        double x0=mob.getX(),z0=mob.getZ();
+        double dx=next.getX()+.5-x0,dz=next.getZ()+.5-z0;
+        double sweepY=Math.max(mob.getY(),floor);
+        for(int i=1;i<samples;i++){
+            double f=i/(double)samples;
+            if(!bodyClear(level,mob,x0+dx*f,sweepY,z0+dz*f))
+                return false;
+        }
+        return true;
+    }
+
+    private static boolean tickTerrainStep(ServerLevel level,
+            PathfinderMob mob,Progress p){
+        BlockPos next=p.terrainStep;
+        if(next==null)return false;
+        double floor=floorAt(level,next);
+        double dx=next.getX()+.5-mob.getX();
+        double dz=next.getZ()+.5-mob.getZ();
+        double gap=dx*dx+dz*dz;
+        if(mob.onGround()&&gap<.12*.12
+                &&Double.isFinite(floor)&&Math.abs(mob.getY()-floor)<.10){
+            p.terrainStep=null;
+            mob.getNavigation().stop();
+            mob.setDeltaMovement(0,mob.getDeltaMovement().y,0);
+            return false;
+        }
+        // Never continue pushing a mob that has fallen below or drifted
+        // away from the real, previously checked single block transition.
+        if(mob.isNoGravity()||mob.tickCount-p.terrainStepStarted>50
+                ||!Double.isFinite(floor)
+                ||Math.abs(floor-mob.getY())>1.10
+                ||gap>3.0
+                ||!standingTile(level,mob,next)){
+            p.terrainStep=null;
+            p.lastBad=next;
+            p.avoidUntil=mob.tickCount+60;
+            p.weightedRoute=List.of();p.routeCursor=0;
+            mob.getNavigation().stop();
+            return false;
+        }
+        mob.getNavigation().stop();
+        mob.setJumping(false);
+        double vx=Math.max(-.115,Math.min(.115,dx*.35));
+        double vz=Math.max(-.115,Math.min(.115,dz*.35));
+        // If a step-up is physically blocked by an adjacent 0.5-height
+        // rim, the entity engine can step it; do not create lift here.
+        mob.getMoveControl().setWantedPosition(
+                next.getX()+.5,floor,next.getZ()+.5,1.0);
+        mob.setDeltaMovement(vx,mob.getDeltaMovement().y,vz);
+        return true;
+    }
+
+    private static boolean beginTerrainStep(ServerLevel level,
+            PathfinderMob mob,Progress p,BlockPos next){
+        if(!canBeginTerrainStep(level,mob,next))return false;
+        p.terrainStep=next.immutable();
+        p.terrainStepStarted=mob.tickCount;
+        p.approach=next.immutable();
+        p.stalled=0;p.unsafeChecks=0;
+        p.nextRoute=mob.tickCount+CHECK_TICKS;
+        return tickTerrainStep(level,mob,p);
     }
 
     private static void clearDoor(ServerLevel level,PathfinderMob mob,Progress p){
@@ -730,6 +822,11 @@ public final class WorkerNavigation {
             speed=1.0; // nominal 4 m/s from Builder movement attribute .40
         if(target==null||!level.hasChunkAt(target))return false;
         Progress p=state(mob);
+        if(p.terrainStep!=null){
+            if(target.equals(p.requested)){
+                if(tickTerrainStep(level,mob,p))return true;
+            }else p.terrainStep=null;
+        }
         boolean same=target.equals(p.requested);
         if(same&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
@@ -777,7 +874,8 @@ public final class WorkerNavigation {
             p.nextRoute=mob.tickCount+CHECK_TICKS;
             return true;
         }
-        if(walkTrainedEdge(level,mob,p,plan.steps().get(0))){
+        if(walkTrainedEdge(level,mob,p,plan.steps().get(0))
+                ||beginTerrainStep(level,mob,p,plan.steps().get(0))){
             p.weightedRoute=plan.steps();p.routeCursor=1;
             return true;
         }
@@ -800,6 +898,11 @@ public final class WorkerNavigation {
         // Door crossing owns movement until the threshold is clear.
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
             ground.setCanOpenDoors(true);
+        if(p.terrainStep!=null){
+            if(target.equals(p.requested)){
+                if(tickTerrainStep(level,mob,p))return true;
+            }else p.terrainStep=null;
+        }
         boolean changed=!target.equals(p.requested);
         if(changed){
             p.centering=null;
@@ -892,7 +995,8 @@ public final class WorkerNavigation {
             p.nextRoute=mob.tickCount+CHECK_TICKS;
             return true;
         }
-        if(walkTrainedEdge(level,mob,p,p.weightedRoute.get(p.routeCursor))){
+        if(walkTrainedEdge(level,mob,p,p.weightedRoute.get(p.routeCursor))
+                ||beginTerrainStep(level,mob,p,p.weightedRoute.get(p.routeCursor))){
             p.routeCursor++;
             return true;
         }
@@ -947,7 +1051,8 @@ public final class WorkerNavigation {
     public static void stop(PathfinderMob mob){
         Progress p=state(mob);
         if(mob.level() instanceof ServerLevel level)clearDoor(level,mob,p);
-        p.requested=null;p.approach=null;p.centering=null;p.stalled=0;p.unsafeChecks=0;
+        p.requested=null;p.approach=null;p.centering=null;p.terrainStep=null;
+        p.stalled=0;p.unsafeChecks=0;
         p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
         mob.getNavigation().stop();
         // Door clearance is reset during the next server navigation tick.
@@ -985,8 +1090,12 @@ public final class WorkerNavigation {
 
     /** Call every server tick, including when idle, to operate and close doors. */
     public static void tick(ServerLevel level,PathfinderMob mob){
-        if(tickExactCenter(level,mob))return;
         Progress p=state(mob);
+        if(p.terrainStep!=null){
+            tickTerrainStep(level,mob,p);
+            return;
+        }
+        if(tickExactCenter(level,mob))return;
         if(mob.getNavigation() instanceof GroundPathNavigation nav)
             nav.setCanOpenDoors(true);
         if(mob.tickCount%CHECK_TICKS!=0)return;
