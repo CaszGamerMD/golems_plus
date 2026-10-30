@@ -380,14 +380,19 @@ public final class BuilderGrappleAccess {
                 poses.add(at);
             }
         if(poses.isEmpty())return null;
-        ClimbPreview preview=new ClimbPreview(level,worker,target,poses);
         // Walking first; then a direct rope; then up to four real ropes.
         // Every prospective landing must connect onward to a safe work
         // pose through grounded walking and validated upward rope segments.
         for(int dy:new int[]{0,1}){
-            Rope route=chooseAscent(level,worker,target.above(dy),preview::canWork);
+            Rope route=chooseAscent(level,worker,target.above(dy),
+                    landing->WorkerNavigation.hasGroundRouteFrom(
+                            level,worker,landing,poses));
             if(route!=null)return route;
         }
+        // Expand walking components only for the staged fallback. Most
+        // ordinary climbs need a short goal-directed path, not a flood
+        // of the entire connected structure and surrounding ground.
+        ClimbPreview preview=new ClimbPreview(level,worker,target,poses);
         int startY=worker.blockPosition().getY();
         for(int y=Math.min(target.getY()-2,startY+MAX_REACH);y>=startY+2;y--){
             Rope first=chooseAscent(level,worker,target.atY(y),
