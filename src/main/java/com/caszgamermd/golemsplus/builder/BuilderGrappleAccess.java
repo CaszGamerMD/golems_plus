@@ -393,24 +393,48 @@ public final class BuilderGrappleAccess {
         // grounded entry and final work connectivity before committing to
         // the first hook. No entity relocation or speculative blocks.
         Map<BlockPos,Boolean> onward=new java.util.HashMap<>();
+        Map<BlockPos,Boolean> workConnected=new java.util.HashMap<>();
         int startY=worker.blockPosition().getY();
         for(int y=Math.min(target.getY()-2,startY+MAX_REACH);y>=startY+2;y--){
             Rope first=chooseAscent(level,worker,target.atY(y),landing->
-                    onward.computeIfAbsent(landing,at->{
-                        for(int dy:new int[]{0,1}){
-                            Rope second=chooseAscentFrom(level,worker,target.above(dy),
-                                    at.getY(),entry->WorkerNavigation.hasGroundRouteFrom(
-                                            level,worker,at,List.of(entry)),
-                                    last->WorkerNavigation.hasGroundRouteFrom(
-                                            level,worker,last,poses));
-                            if(second!=null)return true;
-                        }
-                        return false;
-                    }));
+                    onward.computeIfAbsent(landing,at->canContinueWorkAscent(
+                            level,worker,target,at,poses,workConnected)));
             if(first!=null)return first;
         }
         return null;
     }
+    /** All geometrically valid second-rope entries share ONE grounded
+     * A* from this landing. The old per-entry probes repeated the same
+     * terrain search hundreds of times for one preview. Connectivity of
+     * an upper landing to work is independent of the lower entry and is
+     * memoized only within this current-world preview.
+     */
+    private static boolean canContinueWorkAscent(ServerLevel level,
+            BuilderGolem worker,BlockPos target,BlockPos landing,
+            List<BlockPos> poses,Map<BlockPos,Boolean> workConnected){
+        List<BlockPos> entries=new ArrayList<>();
+        for(int dy:new int[]{0,1}){
+            BlockPos goal=target.above(dy);
+            int rise=goal.getY()-landing.getY();
+            if(rise<2||rise>MAX_REACH)continue;
+            for(BlockPos anchor:solidAnchors(level,goal)){
+                for(Direction side:Direction.Plane.HORIZONTAL){
+                    if(rejected(level,worker,anchor,side))continue;
+                    BlockPos column=anchor.relative(side);
+                    BlockPos entry=column.atY(landing.getY());
+                    if(!solidTop(level,entry.below())||!headroom(level,entry)
+                            ||!lineClear(level,column,landing.getY(),goal.getY()))continue;
+                    if(!workConnected.computeIfAbsent(anchor.above(),
+                            last->WorkerNavigation.hasGroundRouteFrom(
+                                    level,worker,last,poses)))continue;
+                    if(!entries.contains(entry))entries.add(entry);
+                }
+            }
+        }
+        return !entries.isEmpty()&&WorkerNavigation.hasGroundRouteFrom(
+                level,worker,landing,entries);
+    }
+
     public static boolean canPlanWorkAscent(ServerLevel level,
             BuilderGolem worker,BlockPos target){
         return hasHook(worker)&&!active.containsKey(worker)
