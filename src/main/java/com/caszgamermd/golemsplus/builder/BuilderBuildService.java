@@ -139,7 +139,12 @@ public final class BuilderBuildService {
                     level,worker,table,owner,target,steps);
             if(bridge==BuilderScaffoldPlanA.Result.MOVING
                     ||bridge==BuilderScaffoldPlanA.Result.NEED_MATERIALS)
+            {
+                if(bridge==BuilderScaffoldPlanA.Result.NEED_MATERIALS)
+                    table.setProblem("Builder needs Scaffolding in OnSite Storage for "
+                            +target.toShortString());
                 return true;
+            }
             if(bridge==BuilderScaffoldPlanA.Result.READY)return false;
         }
         var shaft=BuilderScaffolding.reach(level,worker,table,owner,target,steps);
@@ -148,6 +153,19 @@ public final class BuilderBuildService {
         // When the shaft opens onto a real roof surface, leave the top
         // physically before starting an ordinary placement approach.
         return BuilderScaffolding.stepOffTowardWork(level,worker,table,target);
+    }
+    /** Work positions can fail on a completely built roof at the SAME Y.
+     * Give any Builder a paid, reversible scaffold approach without
+     * requiring a floating target or a positive vertical Y difference.
+     */
+    private static boolean scaffoldBlockedWork(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            ServerPlayer owner,BlockPos target,
+            List<BuilderConstructionPlan.Step> steps){
+        return (BuilderScaffoldPlanA.hasPlan(worker)
+                    ||BuilderScaffoldPlanA.canPlan(
+                            level,worker,table,target,steps))
+                &&scaffoldWork(level,worker,table,owner,target,steps);
     }
     private BuilderBuildService(){}
     /** Start the warehouse packing reservation as soon as the user
@@ -628,6 +646,12 @@ public final class BuilderBuildService {
             }
             long now=level.getGameTime();
             if(activity.workTravelSince<0)activity.workTravelSince=now;
+            // Once an owned shaft/bridge starts, its controller owns all
+            // physical movement. Do not replace it with a normal route
+            // just because another nominal work pose becomes visible.
+            if(BuilderScaffoldPlanA.hasPlan(worker)
+                    &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
+                return;
             if(now-activity.workTravelSince>900&&!BuilderGrappleAccess.active(worker)){
                 // Repeatedly executable movement is not proof that this
                 // placement is making progress. Preserve the cell/materials
@@ -648,11 +672,10 @@ public final class BuilderBuildService {
             // After a genuine physical approach timeout, try a supported,
             // inventory-paid scaffold bridge rooted on this same build.
             // Never interrupt a moving rope or a current bridge session.
-            if(yDiff>1&&now-activity.workTravelSince>260
+            if(yDiff>=-1&&now-activity.workTravelSince>200
                     &&!BuilderGrappleAccess.active(worker)
-                    &&BuilderScaffoldPlanA.canPlan(
-                            level,worker,table,pos,plan.steps())
-                    &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
+                    &&scaffoldBlockedWork(level,worker,table,owner,pos,
+                            plan.steps()))
                 return;
             if(yDiff>1){
                 var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
@@ -690,24 +713,27 @@ public final class BuilderBuildService {
                         at->BuilderConstructionPlanner.safeStand(
                                 level,worker,pos,at));
                 if(approach!=null){
-                    if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .routeToExact(level,worker,approach,1.0)){
+                    boolean moving=com.caszgamermd.golemsplus.worker
+                            .WorkerNavigation.routeToExact(
+                                    level,worker,approach,1.0);
+                    if(!moving){
                         BuilderPlacementSpace.invalidateApproach(worker,pos);
-                        if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                .routeTo(level,worker,approach,.85))
-                            table.waitForBuilderAccess(worker.getUUID(),index,
-                                    level.getGameTime(),"trained routes rejected work pose");
+                        moving=com.caszgamermd.golemsplus.worker
+                                .WorkerNavigation.routeTo(
+                                        level,worker,approach,.85);
                     }
+                    if(!moving&&scaffoldBlockedWork(
+                            level,worker,table,owner,pos,plan.steps()))return;
+                    if(!moving)
+                        table.waitForBuilderAccess(worker.getUUID(),index,
+                                level.getGameTime(),"trained routes rejected work pose and scaffold");
                     return;
                 }
-                // A roof can be on this very Y yet physically disconnected
-                // from its next work stance. Try a paid scaffold bridge here,
-                // not only when a vertical jump was requested.
-                if((BuilderScaffoldPlanA.hasPlan(worker)
-                        ||BuilderScaffoldPlanA.needsTemporaryWorkPlatform(level,pos)
-                            &&BuilderScaffoldPlanA.canPlan(
-                                    level,worker,table,pos,plan.steps()))
-                        &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
+                // An enclosed or connected roof cell can need temporary
+                // footing just as much as a floating one. Every scaffold
+                // is inventory-paid, on air outside the future schematic,
+                // and has a checked path back to its ground/roof exit.
+                if(scaffoldBlockedWork(level,worker,table,owner,pos,plan.steps()))
                     return;
                 if(yDiff>0){
                     var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
@@ -734,6 +760,13 @@ public final class BuilderBuildService {
                             level.getGameTime(),"no Y+1 validated reachable work approach");
                     table.setProblem("FRONTIER: no safe Y+1 work stance at "
                             +pos+" (line of sight / exit / clearance)");
+                    return;
+                }
+                if(yDiff>=0){
+                    table.waitForBuilderAccess(worker.getUUID(),index,
+                            level.getGameTime(),"no executable stance or paid scaffold approach");
+                    table.setProblem("Deferred blocked roof work "+pos
+                            +" until a safe walking/scaffold position exists");
                     return;
                 }
                 // Larger downward changes still require collision-safe

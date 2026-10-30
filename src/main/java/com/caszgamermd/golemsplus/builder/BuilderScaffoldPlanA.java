@@ -18,8 +18,9 @@ import net.minecraft.world.level.block.Blocks;
 
 /**
  * Plan A: a Builder stands at the SAME feet Y as the work cell.
- * If it cannot walk a legal 0/1-block elevation change, use a tower
- * exactly three blocks away along X or Z and a two-cell scaffold bridge.
+ * If normal walking cannot reach a safe work stance, use an anchored
+ * tower and an inventory-paid scaffold bridge. This also works when
+ * the target is connected to other roof blocks, not only in open air.
  *
  * The return route is reserved before construction, and is walked back
  * in reverse before descending. Every scaffold comes from real inventory.
@@ -79,14 +80,15 @@ public final class BuilderScaffoldPlanA {
         return true;
     }
     /** Use a genuine owned bridge as a worker's temporary construction
-     * position. No schematic cell is occupied, no support is fabricated,
-     * and the reserved shaft/bridge remains available for reverse travel.
+     * position, even next to existing roof blocks. No schematic cell is
+     * occupied and the reserved return shaft/bridge remains accessible.
+     * A full two-block center offset is necessary: standing only one
+     * tile from the target violates the 0.8m edge-clearance rule.
      */
     public static boolean safeTemporaryWorkPose(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos target){
         Job j=jobs.get(worker);
         if(j==null||j.phase!=Phase.READY||!j.target.equals(target)
-                ||!needsTemporaryWorkPlatform(level,target)
                 ||worker.isNoGravity()||!worker.onGround()
                 ||Math.abs(worker.getY()-target.getY())>.18
                 // The scaffold occupies targetY-1. Compare HORIZONTAL
@@ -102,6 +104,8 @@ public final class BuilderScaffoldPlanA {
         return present(level,table,worker,j.base.atY(j.top))
                 &&BuilderPlacementSpace.placementHeight(target,worker)
                 &&BuilderPlacementSpace.horizontalClear(target,worker)
+                &&worker.distanceToSqr(target.getX()+.5,
+                        target.getY()+.5,target.getZ()+.5)<14
                 &&BuilderConstructionPlanner.lineOfSight(
                         level,worker,worker.blockPosition(),target);
     }
@@ -194,22 +198,26 @@ public final class BuilderScaffoldPlanA {
             WorkerStationBlockEntity table,BlockPos target,
             List<BuilderConstructionPlan.Step> steps){
         Set<BlockPos> reserved=future(level,steps);
-        boolean isolated=needsTemporaryWorkPlatform(level,target);
         List<Job> options=new ArrayList<>();
         for(Direction outward:Direction.Plane.HORIZONTAL)
-            // A single-cell bridge can reach a support only two tiles
-            // away. Small decorative pillars frequently leave exactly
-            // this gap; forcing a three-tile separation needlessly turns
-            // a paid one-scaffold crossing into an inaccessible roof.
-            for(int distance=2;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++){
+            // The worker's center must remain at least two whole cells
+            // from the target, regardless of whether it is isolated or
+            // attached to a wall. One cell gives only 0.5m edge clearance.
+            for(int distance=3;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++){
             BlockPos towerXZ=target.relative(outward,distance);
             Direction inward=outward.getOpposite();
             // Stop two cells short of an unsupported floating block:
             // the last bridge surface must clear the Builder's 0.8 m
             // placement margin. Scaffolding serves as a stand, NOT a
             // replacement for or permanent attachment to the schematic.
-            if(isolated&&distance<3)continue;
-            int span=isolated?distance-2:distance-1;
+            int span=distance-2;
+            BlockPos stance=target.relative(outward,2);
+            // The future bridge itself supplies the floor. The final
+            // position must still see the actual target and be inside
+            // placement reach; a neighboring wall may block this side.
+            if(stance.distSqr(target)>=14
+                    ||!BuilderConstructionPlanner.lineOfSight(
+                            level,worker,stance,target))continue;
             // Search real standing elevations ABOVE the worker as well
             // as below. Existing pillars, stairs, slabs and complete roof
             // blocks can put a Builder onto a reachable elevated ledge.
@@ -247,17 +255,28 @@ public final class BuilderScaffoldPlanA {
         }
         options.sort(Comparator.comparingDouble(j->j.lastDistance));
         int probes=0;
+        List<BlockPos> entryCandidates=new ArrayList<>();
         for(Job candidate:options){
-            if(++probes>64)break;
+            if(++probes>96)break;
             // A scaffold already occupying its own base is not a native
-            // walking goal. In that case validate a real adjacent entry.
+            // walking goal; its owner can begin climbing in place.
             boolean onBase=worker.blockPosition().getX()==candidate.base.getX()
                     &&worker.blockPosition().getZ()==candidate.base.getZ()
                     &&Math.abs(worker.getY()-candidate.base.getY())<.30
                     &&worker.onGround();
-            if(onBase||WorkerNavigation.canReachExact(
-                    level,worker,candidate.base))return candidate;
+            if(onBase)return candidate;
+            if(!entryCandidates.contains(candidate.base))
+                entryCandidates.add(candidate.base);
         }
+        // Use the same trained/fractional movement preflight as work
+        // approaches, not native canReachExact, which rejects some real
+        // off-center detours on high roofs. One bounded multi-goal search
+        // gives both Builders a fair shot at a reachable scaffold base.
+        BlockPos entry=WorkerNavigation.selectExecutableStand(
+                level,worker,entryCandidates);
+        if(entry!=null)
+            for(Job candidate:options)
+                if(candidate.base.equals(entry))return candidate;
         return null;
     }
     /** No state mutation. Explain which exact physical condition
@@ -267,17 +286,17 @@ public final class BuilderScaffoldPlanA {
             WorkerStationBlockEntity table,BlockPos target,
             List<BuilderConstructionPlan.Step> steps){
         Set<BlockPos> reserved=future(level,steps);
-        boolean isolated=needsTemporaryWorkPlatform(level,target);
         int shafts=0,bridges=0,exits=0,reached=0;
         String example="";
         for(Direction outward:Direction.Plane.HORIZONTAL)
-            for(int distance=2;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++)
+            for(int distance=3;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++)
                 for(int dy=-4;dy<=5;dy++){
                     BlockPos base=target.relative(outward,distance)
                             .atY(worker.blockPosition().getY()-dy);
-                    if(isolated&&distance<3)continue;
                     int top=target.getY()-1;
-                    int span=isolated?distance-2:distance-1;
+                    int span=distance-2;
+                    if(!BuilderConstructionPlanner.lineOfSight(level,worker,
+                            target.relative(outward,2),target))continue;
                     if(!shaftClear(level,base,top,reserved,table,worker)){
                         if(outward==Direction.WEST&&distance==6&&dy==0)
                             example="west6 shaft support="+level.getBlockState(base.below())
