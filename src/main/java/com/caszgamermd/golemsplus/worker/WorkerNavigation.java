@@ -58,6 +58,7 @@ public final class WorkerNavigation {
         // Per-door traffic reservation: one crossing at a time, but no
         // cross-door or cross-site global lock.
         BlockPos queuedDoor,doorStandby,doorExit;
+        Direction doorOut;
         boolean waitingDoor,parkingAtDoor,finishingDoor;
         int doorLastProgressTick,doorReservationYields;
         double doorLastDistance=Double.POSITIVE_INFINITY;
@@ -262,8 +263,17 @@ public final class WorkerNavigation {
         // noCollision alone rejects a valid route while another golem is
         // standing at a waypoint and makes a flat site look impossible.
         // Dynamic entities still yield to each other during movement.
-        if(door||world.noCollision(mob,body))return true;
-        return !world.getBlockCollisions(mob,body).iterator().hasNext();
+        if(world.noCollision(mob,body))return true;
+        // Opening a wooden passage is an executable route action. Ignore
+        // its movable leaf during preflight, but never ignore a neighboring
+        // jamb or wall just because the sample center lies in a door tile.
+        for(BlockPos at:BlockPos.betweenClosed(BlockPos.containing(body.minX,body.minY,body.minZ),
+                BlockPos.containing(body.maxX,body.maxY,body.maxZ))){
+            if(handDoor(world,at))continue;
+            for(AABB box:world.getBlockState(at).getCollisionShape(world,at).toAabbs())
+                if(box.move(at).intersects(body))return false;
+        }
+        return true;
     }
     private static boolean groundedNativeStart(PathfinderMob mob,BlockPos feet){
         BlockPos actual=mob.blockPosition();
@@ -671,7 +681,7 @@ public final class WorkerNavigation {
 
     private static void clearDoor(ServerLevel level,PathfinderMob mob,Progress p){
         if(p.queuedDoor!=null)WorkerDoorTraffic.release(level,p.queuedDoor,mob);
-        p.queuedDoor=null;p.doorStandby=null;p.doorExit=null;
+        p.queuedDoor=null;p.doorStandby=null;p.doorExit=null;p.doorOut=null;
         p.waitingDoor=false;p.parkingAtDoor=false;p.finishingDoor=false;
         p.doorLastDistance=Double.POSITIVE_INFINITY;
         p.doorLastPoint=null;
@@ -726,6 +736,8 @@ public final class WorkerNavigation {
         WorkerRoutePlanner.Route plan=planExactRoute(
                 level,mob,List.of(target),p.lastBad);
         if(plan==null||plan.steps().isEmpty())return false;
+        p.requested=target.immutable();
+        if(prepareTrainedDoor(level,mob,p,plan.steps()))return true;
         for(int span:new int[]{3,2,1}){
             BlockPos waypoint=plan.steps().get(Math.min(
                     plan.steps().size(),span)-1);
@@ -834,6 +846,7 @@ public final class WorkerNavigation {
         // cheapest route. Trying shorter checkpoints prevents false "cannot
         // path" reports from the vanilla navigation radius.
         int count=p.weightedRoute.size();
+        if(prepareTrainedDoor(level,mob,p,p.weightedRoute.subList(p.routeCursor,count)))return true;
         for(int distance:new int[]{3,2,1}){
             int index=Math.min(count-1,p.routeCursor+distance-1);
             if(index<p.routeCursor)continue;
@@ -1102,6 +1115,43 @@ public final class WorkerNavigation {
         return best;
     }
 
+    /** Reserve the actual imminent trained passage, including detours
+     * that initially lead AWAY from the final work/depot destination. */
+    private static boolean prepareTrainedDoor(ServerLevel level,PathfinderMob mob,
+            Progress p,List<BlockPos> steps){
+        for(int i=0;i<Math.min(6,steps.size());i++){
+            BlockPos at=steps.get(i);
+            BlockPos door=handDoor(level,at)?WorkerDoorTraffic.canonical(level,at):null;
+            if(door==null||mob.distanceToSqr(door.getX()+.5,mob.getY(),door.getZ()+.5)>25)continue;
+            if(p.queuedDoor!=null&&!p.queuedDoor.equals(door))clearDoor(level,mob,p);
+            Direction normal=entranceFacing(level.getBlockState(door));
+            double advance=0;
+            for(int j=i+1;j<steps.size();j++){
+                BlockPos after=steps.get(j);
+                advance=(after.getX()-door.getX())*normal.getStepX()
+                        +(after.getZ()-door.getZ())*normal.getStepZ();
+                if(Math.abs(advance)>.5)break;
+            }
+            if(Math.abs(advance)<.5)
+                advance=-((mob.getX()-door.getX()-.5)*normal.getStepX()
+                        +(mob.getZ()-door.getZ()-.5)*normal.getStepZ());
+            if(Math.abs(advance)<.1)continue;
+            if(p.queuedDoor==null){
+                p.queuedDoor=door;p.doorLastPoint=mob.position();
+                p.doorLastDistance=Double.POSITIVE_INFINITY;p.doorLastProgressTick=mob.tickCount;
+            }
+            p.doorOut=advance>0?normal:normal.getOpposite();
+            if(!WorkerDoorTraffic.request(level,door,mob)){
+                p.waitingDoor=true;return true;
+            }
+            if(!isOpenPassage(level.getBlockState(door))){
+                setPassageOpen(level,mob,door,true);p.openedDoor=door;p.doorAge=0;
+            }
+            return false;
+        }
+        return false;
+    }
+
     /** The native path often ends INSIDE an open door rather than beyond
      * its threshold. Do not mark that path completed and leave the owner
      * blocking everyone behind it: escort it to safe ground on the far
@@ -1139,8 +1189,8 @@ public final class WorkerNavigation {
         Direction facing=entranceFacing(gate);
         double advance=(p.requested.getX()-door.getX())*facing.getStepX()
                 +(p.requested.getZ()-door.getZ())*facing.getStepZ();
-        if(Math.abs(advance)<.5)return false;
-        Direction out=advance>0?facing:facing.getOpposite();
+        if(Math.abs(advance)<.5&&p.doorOut==null)return false;
+        Direction out=p.doorOut!=null?p.doorOut:advance>0?facing:facing.getOpposite();
         // Only take the straight physical corridor when this worker is
         // aligned with its real door opening. Others continue using A*
         // to approach it, so we never steer through a wall at an angle.
@@ -1229,7 +1279,7 @@ public final class WorkerNavigation {
                     ||mob.distanceToSqr(p.queuedDoor.getX()+.5,
                             p.queuedDoor.getY()+.5,p.queuedDoor.getZ()+.5)>64){
                 WorkerDoorTraffic.release(level,p.queuedDoor,mob);
-                p.queuedDoor=null;p.waitingDoor=false;
+                p.queuedDoor=null;p.waitingDoor=false;p.doorOut=null;
                 p.doorStandby=null;p.parkingAtDoor=false;p.finishingDoor=false;
                 p.doorExit=null;p.nextRoute=0;
             }
