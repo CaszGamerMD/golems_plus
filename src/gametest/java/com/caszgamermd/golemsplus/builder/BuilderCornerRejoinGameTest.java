@@ -85,6 +85,55 @@ public final class BuilderCornerRejoinGameTest {
                     +" "+WorkerNavigation.debugStatus(mob));
         });
     }
+    /** Nonstandard-angle navigation: a 0.65-wide real golem stranded
+     * at a platform corner must use diagonal or offset quarter-block
+     * recovery instead of requiring integer block-center/cardinal steps.
+     * No unsupported mid-air stride or ignored collision permitted.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=420,skyAccess=true)
+    public void diagonalQuarterBlockCornerRejoin(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=3;x<=10;x++)for(int z=3;z<=10;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        for(int x=3;x<=7;x++)for(int z=3;z<=7;z++)
+            h.setBlock(x,2,z,Blocks.STONE);
+        for(int x=3;x<=10;x++)for(int z=3;z<=10;z++)
+            for(int y=3;y<=5;y++)h.setBlock(x,y,z,Blocks.AIR);
+        BlockPos start=h.absolutePos(new BlockPos(8,3,8));
+        BlockPos goal=h.absolutePos(new BlockPos(5,3,5));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        // The entity has legitimate contact only in the north-west
+        // corner of its footprint, NOT at its own integer block center.
+        mob.setPos(start.getX()+.08,start.getY(),start.getZ()+.08);
+        world.addFreshEntity(mob);
+        h.onEachTick(()->{
+            if(mob.isNoGravity()||!mob.isAlive()
+                    ||mob.getY()<start.getY()-.07){
+                h.fail("Angle recovery fell or flew at "+mob.position());return;
+            }
+            if(h.getTick()==12){
+                if(!mob.onGround()
+                        ||WorkerNavigation.canStandOn(world,mob,mob.blockPosition())
+                        ||WorkerNavigation.supportedHitboxCorners(world,mob)==0){
+                    h.fail("Invalid fractional corner fixture "+mob.position());
+                    return;
+                }
+            }
+            if(h.getTick()>12&&h.getTick()%5==0)
+                WorkerNavigation.routeToExact(world,mob,goal,1.0);
+            if(mob.onGround()&&mob.distanceToSqr(
+                    goal.getX()+.5,goal.getY(),goal.getZ()+.5)<.13){
+                System.out.println("[NONSTANDARD ANGLE] PASS physical "
+                        +"fractional diagonal rejoin in "+h.getTick()+" ticks");
+                h.succeed();return;
+            }
+            if(h.getTick()>385)h.fail("Fractional diagonal failed "
+                    +mob.position()+" "+WorkerNavigation.debugStatus(mob)
+                    +" "+WorkerNavigation.diagnoseGroundedEdge(world,mob,goal));
+        });
+    }
+
     /** A face-aligned step is required when the worker approaches a
      * one-block-tall platform from its diagonal CORNER. It must first
      * reach a legal side, then make a normal one-block jump, and arrive

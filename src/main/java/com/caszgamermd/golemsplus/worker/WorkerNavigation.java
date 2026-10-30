@@ -545,7 +545,11 @@ public final class WorkerNavigation {
         // candidates; they can all be behind the wrong fence/wall.
         WorkerRoutePlanner.Route best=null;
         List<BlockPos> seeds=new ArrayList<>();
-        for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++)
+        // The old one-block cardinal lookup misses workable landings
+        // two tiles around an awkward roof corner. Search nearby true
+        // floor elevations, but let the fractional collision lattice
+        // prove that there is a supported way to reach each candidate.
+        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
             for(int dy=-1;dy<=1;dy++){
                 if(dx==0&&dz==0)continue;
                 BlockPos seed=start.offset(dx,dy,dz);
@@ -565,7 +569,9 @@ public final class WorkerNavigation {
             }
         seeds.sort(Comparator.comparingDouble(p->
                 mob.distanceToSqr(p.getX()+.5,floorAt(level,p),p.getZ()+.5)));
+        int validCandidates=0;
         for(BlockPos seed:seeds){
+            if(++validCandidates>12)break; // bound expensive route search
             var onward=WorkerRoutePlanner.plan(seed,goals,
                     at->standingTile(level,mob,at),at->floorAt(level,at),avoid,
                     at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
@@ -730,7 +736,11 @@ public final class WorkerNavigation {
             return List.of();
         if(supportedCornerSegment(level,mob,start,goal))
             return List.of(goal);
-        final int radius=8,dimension=radius*2+1;
+        // The offset-footing planner is a 2-D fine-grained motion map,
+        // not a cardinal-only block graph. Quarter-block diagonals are
+        // accepted ONLY after checking full swept body and support on
+        // every intermediate sample, so no diagonal corner clipping.
+        final int radius=12,dimension=radius*2+1;
         boolean[][] visited=new boolean[dimension][dimension];
         int[][] prev=new int[dimension][dimension];
         for(int[] row:prev)java.util.Arrays.fill(row,-1);
@@ -738,8 +748,9 @@ public final class WorkerNavigation {
         visited[radius][radius]=true;
         queue.add(new int[]{radius,radius});
         int target=-1,explored=0;
-        int[][] directions={{1,0},{-1,0},{0,1},{0,-1}};
-        while(!queue.isEmpty()&&explored++<210){
+        int[][] directions={{1,0},{-1,0},{0,1},{0,-1},
+                            {1,1},{1,-1},{-1,1},{-1,-1}};
+        while(!queue.isEmpty()&&explored++<420){
             int[] current=queue.removeFirst();
             int i=current[0],j=current[1];
             Vec3 here=new Vec3(start.x+(i-radius)*.25,
@@ -754,6 +765,9 @@ public final class WorkerNavigation {
                     continue;
                 Vec3 next=new Vec3(start.x+(x-radius)*.25,
                         start.y,start.z+(z-radius)*.25);
+                // For a diagonal fine-step, the actual swept collision
+                // width tests the complete segment, not just endpoints.
+                // This is permitted if and only if the golem really fits.
                 if(!supportedCornerSegment(level,mob,here,next))continue;
                 visited[x][z]=true;
                 prev[x][z]=i*dimension+j;
