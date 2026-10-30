@@ -430,15 +430,12 @@ public final class BuilderGrappleAccess {
             choices.add(at);
         }
         choices.sort(Comparator.comparingDouble(p->p.distSqr(mob.blockPosition())));
-        int attempts=0;
-        for(BlockPos p:choices){
-            if(++attempts>5)break;
-            if(p.equals(mob.blockPosition()))return true;
-            if(WorkerNavigation.canReachExact(level,mob,p)
-                    &&WorkerNavigation.routeToExact(level,mob,p,1.0))
-                return true;
-        }
-        return false;
+        // A short native path is NOT proof of executable trained movement,
+        // and native failure is not proof that a detour or one-block jump
+        // is impossible. Preflight all five poses in one bounded trained
+        // search, then execute the exact selected stance physically.
+        BlockPos chosen=WorkerNavigation.selectExecutableStand(level,mob,choices);
+        return chosen!=null&&WorkerNavigation.routeToExact(level,mob,chosen,1.0);
     }
     /** Read-only preflight for the construction planner. A legal grapple
      * is not a magic work stance: it needs a real carried hook, a valid

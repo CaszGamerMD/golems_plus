@@ -571,6 +571,14 @@ public final class WorkerNavigation {
                 mob.distanceToSqr(p.getX()+.5,floorAt(level,p),p.getZ()+.5)));
         int validCandidates=0;
         for(BlockPos seed:seeds){
+            // A center-standable seed may still be unreachable from the
+            // worker's REAL fractional roof footing. Reject it before the
+            // expensive onward A* search, otherwise the twelve nearest
+            // seeds can all be fictitious first steps and starve the
+            // executable (possibly backwards/downhill) way around.
+            if(!canBeginTrainedLeg(level,mob,
+                    new WorkerRoutePlanner.Route(List.of(seed),true,0,0)))
+                continue;
             if(++validCandidates>12)break; // bound expensive route search
             var onward=WorkerRoutePlanner.plan(seed,goals,
                     at->standingTile(level,mob,at),at->floorAt(level,at),avoid,
@@ -608,7 +616,29 @@ public final class WorkerNavigation {
             WorkerRoutePlanner.Route route=planExactRoute(
                     level,mob,goals,avoid,null,rejected);
             if(route==null||route.steps().isEmpty()
-                    ||requireComplete&&!route.complete())return null;
+                    ||requireComplete&&!route.complete()){
+                // The coarse grid may have NO center-to-center edge even
+                // where the actual .65-wide body fits around a nearby
+                // corner. For local destinations, let the continuously
+                // collision-checked fractional planner prove its own
+                // route. It cannot invent a long-distance path or claim
+                // arrival at a distant work position.
+                if(mob.onGround()&&!mob.isNoGravity()){
+                    List<BlockPos> local=new ArrayList<>(goals);
+                    local.sort(Comparator.comparingDouble(g->
+                            mob.distanceToSqr(g.getX()+.5,mob.getY(),g.getZ()+.5)));
+                    for(int i=0;i<Math.min(12,local.size());i++){
+                        BlockPos goal=local.get(i);
+                        if(goal.equals(avoid)||rejected.contains(goal)
+                                ||!standingTile(level,mob,goal)
+                                ||cornerRejoinPath(level,mob,goal).isEmpty())continue;
+                        if(progress!=null)progress.detourFirstLegRetries=rejected.size();
+                        return new WorkerRoutePlanner.Route(List.of(goal),
+                                true,14,0);
+                    }
+                }
+                return null;
+            }
             if(canBeginTrainedLeg(level,mob,route)){
                 if(progress!=null)progress.detourFirstLegRetries=rejected.size();
                 return route;
@@ -658,17 +688,16 @@ public final class WorkerNavigation {
     }
 
     /**
-     * Corner-aware PHYSICAL recovery, not a new location for the entity's
-     * center. A grounded worker may be supported only under a corner of
-     * its .85-wide collision box. In that situation the usual integer
-     * block-position is not a legal A* start. We sample a short, flat
-     * quarter-block lattice from its ACTUAL feet and find a continuous
-     * collision-free, supported route back to a real standing tile.
+     * Local free-space steering from the ACTUAL fractional feet position.
+     * The block A* chooses a corridor, not a mandatory sequence of tile
+     * centers: within that corridor a grounded Builder may take quarter-
+     * block diagonal/sideways waypoints around corners, even when the
+     * integer start tile itself is standable. Every short sweep checks
+     * the full collision body AND continuous contact with real terrain.
      *
-     * This temporary lattice is limited to <=2 blocks horizontally and
-     * to the worker's real current Y. Any height change afterward is
-     * handled by the normal trained jump / path controller. Never clip
-     * through blocks, create support, fly, or teleport.
+     * The local search stays on one physical Y surface. Genuine rises,
+     * drops and long-range decisions remain with trained A*/jump/grapple;
+     * there is no clipping, invented support, flight or teleportation.
      */
     private static boolean supportedAtFraction(ServerLevel level,
             PathfinderMob mob,double x,double y,double z){
@@ -728,7 +757,19 @@ public final class WorkerNavigation {
                 ||Math.abs(seed.getX()+.5-mob.getX())>2.30
                 ||Math.abs(seed.getZ()+.5-mob.getZ())>2.30)return List.of();
         Vec3 start=mob.position();
-        Vec3 goal=new Vec3(seed.getX()+.5,mob.getY(),seed.getZ()+.5);
+        // The next A* cell is a REGION, not necessarily its center.
+        // A fractional stance 0.25..0.75 inside its boundaries is enough
+        // to hand control back to long-range routing without snapping the
+        // worker to the middle of every block. Exact work arrivals are
+        // still centered separately by routeToExact when required.
+        Vec3 goal=new Vec3(
+                Math.max(seed.getX()+.25,
+                    Math.min(seed.getX()+.75,start.x)),
+                mob.getY(),
+                Math.max(seed.getZ()+.25,
+                    Math.min(seed.getZ()+.75,start.z)));
+        if(!supportedAtFraction(level,mob,goal.x,goal.y,goal.z))
+            goal=new Vec3(seed.getX()+.5,mob.getY(),seed.getZ()+.5);
         // No claim is made that the entire tile center supports the body
         // currently straddling its edge. Test its real current footprint.
         if(supportedHitboxCorners(level,mob)==0
@@ -788,9 +829,16 @@ public final class WorkerNavigation {
         reversed.add(goal);
         return List.copyOf(reversed);
     }
+    /** Non-mutating local route inspection for roof/obstacle diagnostics.
+     * Points are real world-space feet coordinates, not block centers.
+     * Empty means no safe same-elevation fractional route was proven.
+     */
+    public static List<Vec3> previewLocalFreeSpaceRoute(ServerLevel level,
+            PathfinderMob mob,BlockPos destination){
+        return cornerRejoinPath(level,mob,destination);
+    }
     private static boolean startCornerRecovery(ServerLevel level,
             PathfinderMob mob,Progress p,BlockPos seed,BlockPos requested){
-        if(standingTile(level,mob,mob.blockPosition()))return false;
         List<Vec3> corner=cornerRejoinPath(level,mob,seed);
         if(corner.isEmpty())return false;
         p.cornerPath=corner;
@@ -1005,7 +1053,8 @@ public final class WorkerNavigation {
         }
         return !route.steps().isEmpty()
                 &&(canWalkTrainedEdge(level,mob,route.steps().get(0))
-                    ||canBeginTerrainStep(level,mob,route.steps().get(0)));
+                    ||canBeginTerrainStep(level,mob,route.steps().get(0))
+                    ||!cornerRejoinPath(level,mob,route.steps().get(0)).isEmpty());
     }
 
     /** Execute only the first same-height edge of the trained route when
@@ -1258,7 +1307,8 @@ public final class WorkerNavigation {
                 level,mob,List.of(target),p.lastBad,true);
         if(plan==null||plan.steps().isEmpty())return false;
         p.requested=target.immutable();
-        if(startCornerRecovery(level,mob,p,plan.steps().get(0),target))
+        if(!standingTile(level,mob,mob.blockPosition())
+                &&startCornerRecovery(level,mob,p,plan.steps().get(0),target))
             return true;
         if(prepareTrainedDoor(level,mob,p,plan.steps()))return true;
         for(int span:new int[]{3,2,1}){
@@ -1280,7 +1330,11 @@ public final class WorkerNavigation {
             p.weightedRoute=plan.steps();p.routeCursor=1;
             return true;
         }
-        return false;
+        // A valid centered start does not imply a straight center-to-
+        // center edge is executable. Skirt a real corner via fractional
+        // supported positions if the native short leg and terrain step
+        // both fail; the exact final stance is still checked afterward.
+        return startCornerRecovery(level,mob,p,plan.steps().get(0),target);
     }
 
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
@@ -1388,6 +1442,7 @@ public final class WorkerNavigation {
         // path" reports from the vanilla navigation radius.
         int count=p.weightedRoute.size();
         if(p.routeCursor==0
+                &&!standingTile(level,mob,mob.blockPosition())
                 &&startCornerRecovery(level,mob,p,p.weightedRoute.get(0),target))
             return true;
         if(prepareTrainedDoor(level,mob,p,p.weightedRoute.subList(p.routeCursor,count)))return true;
@@ -1411,6 +1466,8 @@ public final class WorkerNavigation {
             p.routeCursor++;
             return true;
         }
+        if(startCornerRecovery(level,mob,p,
+                p.weightedRoute.get(p.routeCursor),target))return true;
         p.lastBad=p.weightedRoute.get(p.routeCursor);
         p.avoidUntil=mob.tickCount+60;
         p.weightedRoute=List.of();p.routeCursor=0;

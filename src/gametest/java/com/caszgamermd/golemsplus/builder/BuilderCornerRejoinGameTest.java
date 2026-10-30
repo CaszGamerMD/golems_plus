@@ -85,6 +85,53 @@ public final class BuilderCornerRejoinGameTest {
                     +" "+WorkerNavigation.debugStatus(mob));
         });
     }
+    /** A true center-standing worker must also be able to take a curved,
+     * off-center path around an obstruction. The grid is a route hint,
+     * not a requirement that every footstep end at x/z +0.5.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=480,skyAccess=true)
+    public void groundedWorkerCanUseFractionalDetourAroundPillar(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=2;x<=9;x++)for(int z=2;z<=9;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        for(int x=2;x<=9;x++)for(int z=2;z<=9;z++)
+            for(int y=2;y<=4;y++)h.setBlock(x,y,z,Blocks.AIR);
+        h.setBlock(5,2,5,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos goal=h.absolutePos(new BlockPos(6,2,6));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.2,start.getY(),start.getZ()+.2);
+        world.addFreshEntity(mob);
+        final boolean[] previewed={false};
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.isNoGravity()||mob.getY()<start.getY()-.07){
+                h.fail("Fractional detour lost real support "+mob.position());return;
+            }
+            if(h.getTick()==15){
+                var path=WorkerNavigation.previewLocalFreeSpaceRoute(
+                        world,mob,goal);
+                if(!mob.onGround()||path.isEmpty()
+                        ||path.stream().noneMatch(p->
+                            Math.abs(p.x-Math.floor(p.x)-.5)>.07
+                            ||Math.abs(p.z-Math.floor(p.z)-.5)>.07)){
+                    h.fail("Off-center obstacle detour not available "
+                            +"feet="+mob.position()+" steps="+path);return;
+                }
+                previewed[0]=true;
+            }
+            if(h.getTick()>=20&&h.getTick()%5==0)
+                WorkerNavigation.routeToExact(world,mob,goal,1.0);
+            if(previewed[0]&&mob.onGround()
+                    &&mob.distanceToSqr(goal.getX()+.5,
+                            goal.getY(),goal.getZ()+.5)<.12){
+                h.succeed();return;
+            }
+            if(h.getTick()>440)
+                h.fail("Off-center obstacle navigation stalled "
+                        +mob.position()+" "+WorkerNavigation.debugStatus(mob));
+        });
+    }
     /** Nonstandard-angle navigation: a 0.65-wide real golem stranded
      * at a platform corner must use diagonal or offset quarter-block
      * recovery instead of requiring integer block-center/cardinal steps.

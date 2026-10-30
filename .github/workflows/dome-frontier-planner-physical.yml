@@ -2,7 +2,7 @@ name: Construction Frontier — Full Physical Dome
 run-name: "3,537 block dome / four physical Builder Golems / prevalidated frontier"
 on:
   push:
-    branches: [test/dome-frontier-planner-262, fix/dome-final-access-262, experiment/builder-roof-handoff-retry-262, experiment/builder-on-build-scaffolding-262]
+    branches: [test/dome-frontier-planner-262, fix/dome-final-access-262, experiment/builder-roof-handoff-retry-262, experiment/builder-on-build-scaffolding-262, experiment/builder-fractional-freespace-262]
   workflow_dispatch:
 permissions:
   contents: read
@@ -88,7 +88,7 @@ jobs:
           d['entrypoints']['fabric-gametest']=[
             'com.caszgamermd.golemsplus.builder.BuilderDomeRouteSurveyGameTest',
           ]
-          p.write_text(json.dumps(d,indent=2)+'\\n')
+          p.write_text(json.dumps(d,indent=2)+'\n')
           PYTEST
           gradle --no-daemon runGameTest
       - name: Render original model as interactive offline HTML
