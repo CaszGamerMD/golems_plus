@@ -205,6 +205,46 @@ public final class BuilderScaffoldPlanA {
         }
         return null;
     }
+    /** No state mutation. Explain which exact physical condition
+     * rejects roof-supported access rather than guessing at navigation.
+     */
+    public static String diagnoseAccess(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos target,
+            List<BuilderConstructionPlan.Step> steps){
+        Set<BlockPos> reserved=future(level,steps);
+        int shafts=0,bridges=0,exits=0,reached=0;
+        String example="";
+        for(Direction outward:Direction.Plane.HORIZONTAL)
+            for(int distance=3;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++)
+                for(int dy=0;dy<=5;dy++){
+                    BlockPos base=target.relative(outward,distance)
+                            .atY(worker.blockPosition().getY()-dy);
+                    int top=target.getY()-1,span=distance-1;
+                    if(!shaftClear(level,base,top,reserved,table,worker)){
+                        if(outward==Direction.WEST&&distance==6&&dy==0)
+                            example="west6 shaft support="+level.getBlockState(base.below())
+                                +" foot="+level.getBlockState(base)
+                                +" top="+level.getBlockState(base.atY(top));
+                        continue;
+                    }
+                    shafts++;
+                    if(!bridgeClear(level,base,outward.getOpposite(),
+                            target.getY(),span,reserved,table,worker))continue;
+                    bridges++;
+                    BlockPos exit=BuilderScaffolding.safeGroundExit(
+                            level,worker,base,reserved);
+                    if(exit==null)continue;
+                    exits++;
+                    boolean onBase=worker.blockPosition().getX()==base.getX()
+                            &&worker.blockPosition().getZ()==base.getZ();
+                    if(onBase||WorkerNavigation.canReachExact(level,worker,base))
+                        reached++;
+                }
+        return "feet="+worker.blockPosition()+" grounded="+worker.onGround()
+                +" shafts="+shafts+" clearBridges="+bridges
+                +" safeExits="+exits+" reachable="+reached
+                +" example="+example;
+    }
     private static boolean structurallySupported(ServerLevel level,BlockPos at){
         var state=level.getBlockState(at);
         return state.is(Blocks.SCAFFOLDING)

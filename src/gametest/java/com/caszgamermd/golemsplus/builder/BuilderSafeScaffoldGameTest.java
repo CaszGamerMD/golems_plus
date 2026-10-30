@@ -316,7 +316,9 @@ public final class BuilderSafeScaffoldGameTest {
                             ||result==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
                         helper.fail("Five-cell bridge rejected "+result
                             +" feet="+mob.position()
-                            +" "+BuilderScaffoldPlanA.status(mob));return;
+                            +" "+BuilderScaffoldPlanA.status(mob)
+                            +" "+BuilderScaffoldPlanA.diagnoseAccess(
+                                level,mob,table,goal,List.of()));return;
                     }
                 }
                 largest[0]=Math.max(largest[0],
