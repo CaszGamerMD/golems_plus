@@ -22,7 +22,7 @@ public final class BuilderDomeApproachGameTest {
         // the small default test room; the production dome gets these
         // tickets from its active real Planner.
         world.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
-                new net.minecraft.world.level.ChunkPos(origin),4);
+                new net.minecraft.world.level.ChunkPos(origin.getX()>>4,origin.getZ()>>4),4);
         try{
             var schematic=LitematicFileReader.read(BuilderDomeFixture.unpack());
             for(var block:schematic.blocks()){
