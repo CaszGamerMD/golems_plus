@@ -532,34 +532,51 @@ public final class WorkerNavigation {
                 at->at.equals(start)&&mob.onGround()?mob.getY():floorAt(level,at),avoid,
                 at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
                 observer,excluded);
-        if(route!=null||!mob.onGround()||standingTile(level,mob,start))return route;
-        // The real body can stand on the CORNER of a neighboring block
-        // while its block-position center is over AIR. A*'s conservative
-        // diagonal corner rule must not strand that already-grounded body.
-        // Rejoin actual support by a swept, continuously supported segment;
-        // all subsequent movement still uses the same trained planner.
+        if(!mob.onGround()||standingTile(level,mob,start))return route;
+        // Corner-supported golems can be genuinely ON GROUND while the
+        // integer tile under their FEET is not standable at its CENTER.
+        // An A* seeded from that fictitious center can return an appealing
+        // but physically unexecutable diagonal or upward first leg.
+        // Search local footholds from the ACTUAL body and require a safe
+        // first motion. Do not take the first three arbitrary loop-order
+        // candidates; they can all be behind the wrong fence/wall.
         WorkerRoutePlanner.Route best=null;
-        int attempts=0;
-        for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++){
-            if(dx==0&&dz==0)continue;
-            BlockPos seed=start.offset(dx,0,dz);
-            if(seed.equals(avoid)||excluded.contains(seed)
-                    ||!supportedRejoin(level,mob,seed))continue;
-            if(++attempts>3)break;
+        List<BlockPos> seeds=new ArrayList<>();
+        for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++)
+            for(int dy=-1;dy<=1;dy++){
+                if(dx==0&&dz==0)continue;
+                BlockPos seed=start.offset(dx,dy,dz);
+                if(seed.equals(avoid)||excluded.contains(seed)
+                        ||!standingTile(level,mob,seed))continue;
+                double floor=floorAt(level,seed);
+                if(!Double.isFinite(floor)||Math.abs(floor-mob.getY())>1.01)
+                    continue;
+                // Both alternatives execute ONLY through real collisions.
+                // Rejoining the same floor requires continuous under-foot
+                // support. Climbing down/up uses the natural one-block step
+                // controller with its own body/head clearance checks.
+                if(!supportedRejoin(level,mob,seed)
+                        &&!canBeginTerrainStep(level,mob,seed))continue;
+                seeds.add(seed);
+            }
+        seeds.sort(Comparator.comparingDouble(p->
+                mob.distanceToSqr(p.getX()+.5,floorAt(level,p),p.getZ()+.5)));
+        for(BlockPos seed:seeds){
             var onward=WorkerRoutePlanner.plan(seed,goals,
                     at->standingTile(level,mob,at),at->floorAt(level,at),avoid,
                     at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
                     null,excluded);
-            if(onward==null)continue;
+            if(onward==null||!onward.complete())continue;
             List<BlockPos> steps=new ArrayList<>();
             steps.add(seed);steps.addAll(onward.steps());
             var joined=new WorkerRoutePlanner.Route(List.copyOf(steps),
-                    onward.complete(),onward.cost()+14,onward.explored());
-            if(best==null||joined.complete()&&!best.complete()
-                    ||joined.complete()==best.complete()&&joined.cost()<best.cost())
-                best=joined;
+                    true,onward.cost()+14,onward.explored());
+            if(best==null||joined.cost()<best.cost())best=joined;
         }
-        return best;
+        // Never return a mathematically shortest route if its first edge
+        // cannot be physically executed from the offset body.
+        if(best!=null)return best;
+        return route!=null&&canBeginTrainedLeg(level,mob,route)?route:null;
     }
 
     /**
