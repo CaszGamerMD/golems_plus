@@ -98,6 +98,32 @@ public final class BuilderIgnoredPlantProgressGameTest {
         h.succeed();
     }
     @GameTest(maxTicks=100,skyAccess=true)
+    public void disablingIgnoreAfterCompleteDoesNotReportFalseDone(GameTestHelper h){
+        var f=setup(h,2);
+        if(f==null)return;
+        var filtered=List.of(block(f.at,3,false),block(f.at,4,true));
+        f.table.reconcileBuilderWork(filtered);
+        if(f.table.claimBuilderZoneStep(f.worker,List.of(0,1),filtered)!=0
+                ||!f.table.completeBuilderStep(f.worker,0)
+                ||f.table.phase()!=WorkerPhase.COMPLETE
+                ||f.table.builderWorkDone()!=1
+                ||f.table.builderWorkTotal()!=1){
+            h.fail("Could not complete the crop-filtered job");return;
+        }
+        if(!f.table.setBuilderIgnorePlants(f.owner,false)){
+            h.fail("Could not unfilter finished job");return;
+        }
+        var expanded=List.of(block(f.at,3,false),block(f.at,4,false));
+        f.table.reconcileBuilderWork(expanded);
+        if(f.table.phase()!=WorkerPhase.READY
+                ||f.table.builderCursor()!=1
+                ||f.table.builderWorkTotal()!=2
+                ||f.table.builderWorkDone()!=1){
+            h.fail("Unfiltering COMPLETE job reported crops already built");return;
+        }
+        h.succeed();
+    }
+    @GameTest(maxTicks=100,skyAccess=true)
     public void disablingIgnoreReopensOnlyUnbuiltCrops(GameTestHelper h){
         var f=setup(h,4);
         if(f==null)return;

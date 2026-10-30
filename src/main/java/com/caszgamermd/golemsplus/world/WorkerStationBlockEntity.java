@@ -1288,6 +1288,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderProgressFinished=finishedSize;
             builderProgressIgnored=builderAutoSkippedPlants.size();
         }
+        // Re-enabling required vegetation on a previously finished job
+        // must not keep displaying a false 100% COMPLETE. The owner can
+        // start it again; real already-placed blocks are checked in-world.
+        if(activeOrder==null&&phase==WorkerPhase.COMPLETE
+                &&builderCursor<builderBlocks){
+            phase=WorkerPhase.READY;
+            changed=true;
+        }
         if(activeOrder!=null&&builderCursor>=builderBlocks){
             phase=WorkerPhase.COMPLETE;activeOrder=null;
             builderClaims.clear();builderWorkOrders.clear();

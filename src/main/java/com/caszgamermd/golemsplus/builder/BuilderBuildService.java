@@ -892,7 +892,8 @@ public final class BuilderBuildService {
             // A running planner may have already cleared the site.
             // Otherwise preserve the clearing gate until all real
             // obstructions have actually been handled.
-            if(table.activeOrder()!=null
+            if((table.activeOrder()!=null
+                    ||table.phase()==WorkerPhase.COMPLETE)
                     &&table.builderClearCursor()>=cache.clearing().size())
                 table.reconcileBuilderWork(cache.steps());
             return table.builderIgnorePlants()
