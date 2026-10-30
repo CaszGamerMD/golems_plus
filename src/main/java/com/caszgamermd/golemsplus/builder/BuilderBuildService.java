@@ -50,10 +50,11 @@ public final class BuilderBuildService {
         Action phase=Action.STAGE_MATERIALS;
         long blockedSince=-1;
         long frontierWaitSince=-1;
+        long workTravelSince=-1;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
-                blockedSince=-1;
+                blockedSince=-1;workTravelSince=-1;
             }
         }
     }
@@ -578,6 +579,23 @@ public final class BuilderBuildService {
             // gravity settles them. Do not reject a route or abandon the
             // claim from that transient airborne start.
             if(!worker.onGround())return;
+            long now=level.getGameTime();
+            if(activity.workTravelSince<0)activity.workTravelSince=now;
+            if(now-activity.workTravelSince>900&&!BuilderGrappleAccess.active(worker)){
+                // Repeatedly executable movement is not proof that this
+                // placement is making progress. Preserve the cell/materials
+                // and let another feasible frontier on THIS Y run first.
+                BuilderPlacementSpace.cancelYield(worker);
+                BuilderPlacementSpace.invalidateApproach(worker,pos);
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                table.waitForBuilderAccess(worker.getUUID(),index,now,
+                        "900-tick work approach without placement");
+                activity.workTravelSince=-1;
+                table.setProblem("Deferred cycling work approach "+pos);
+                System.out.println("[FRONTIER RETRY] deferred unchanged step="+index
+                        +" after 900 ticks without placement at "+worker.position());
+                return;
+            }
             int yDiff=pos.getY()-worker.blockPosition().getY();
             if(yDiff>1){
                 var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
