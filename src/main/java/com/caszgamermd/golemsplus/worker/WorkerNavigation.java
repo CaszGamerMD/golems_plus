@@ -1,5 +1,6 @@
 package com.caszgamermd.golemsplus.worker;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -54,6 +55,8 @@ public final class WorkerNavigation {
     private static final class Progress {
         BlockPos requested,approach,openedDoor,centering,terrainStep;
         int terrainStepStarted;
+        List<Vec3> cornerPath=List.of();
+        int cornerCursor,cornerStarted;
         Vec3 previous;
         int stalled,attempts,wait,doorAge,nextRoute;
         int unsafeChecks,avoidUntil;
@@ -556,7 +559,8 @@ public final class WorkerNavigation {
                 // support. Climbing down/up uses the natural one-block step
                 // controller with its own body/head clearance checks.
                 if(!supportedRejoin(level,mob,seed)
-                        &&!canBeginTerrainStep(level,mob,seed))continue;
+                        &&!canBeginTerrainStep(level,mob,seed)
+                        &&cornerRejoinPath(level,mob,seed).isEmpty())continue;
                 seeds.add(seed);
             }
         seeds.sort(Comparator.comparingDouble(p->
@@ -643,6 +647,164 @@ public final class WorkerNavigation {
                     .append(';');
             }
         return s.append(']').toString();
+    }
+
+    /**
+     * Corner-aware PHYSICAL recovery, not a new location for the entity's
+     * center. A grounded worker may be supported only under a corner of
+     * its .85-wide collision box. In that situation the usual integer
+     * block-position is not a legal A* start. We sample a short, flat
+     * quarter-block lattice from its ACTUAL feet and find a continuous
+     * collision-free, supported route back to a real standing tile.
+     *
+     * This temporary lattice is limited to <=2 blocks horizontally and
+     * to the worker's real current Y. Any height change afterward is
+     * handled by the normal trained jump / path controller. Never clip
+     * through blocks, create support, fly, or teleport.
+     */
+    private static boolean supportedAtFraction(ServerLevel level,
+            PathfinderMob mob,double x,double y,double z){
+        double half=mob.getBbWidth()*.5;
+        AABB body=new AABB(x-half,y+.012,z-half,
+                x+half,y+mob.getBbHeight()-.025,z+half);
+        if(level.getBlockCollisions(mob,body).iterator().hasNext()
+                ||!level.getFluidState(BlockPos.containing(x,y+.05,z))
+                    .isEmpty())return false;
+        AABB contact=new AABB(x-half,y-.055,z-half,
+                x+half,y+.002,z+half);
+        return level.getBlockCollisions(mob,contact).iterator().hasNext();
+    }
+    /** Check intermediate positions, not just a clear endpoint. */
+    private static boolean supportedCornerSegment(ServerLevel level,
+            PathfinderMob mob,Vec3 a,Vec3 b){
+        if(Math.abs(a.y-b.y)>.04)return false;
+        int samples=Math.max(2,(int)Math.ceil(
+                Math.hypot(b.x-a.x,b.z-a.z)/.075));
+        for(int t=0;t<=samples;t++){
+            double u=t/(double)samples;
+            if(!supportedAtFraction(level,mob,
+                    a.x+(b.x-a.x)*u,a.y,a.z+(b.z-a.z)*u))
+                return false;
+        }
+        return true;
+    }
+    private static List<Vec3> cornerRejoinPath(ServerLevel level,
+            PathfinderMob mob,BlockPos seed){
+        if(!(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem)
+                ||!mob.onGround()||mob.isNoGravity()
+                ||!standingTile(level,mob,seed)
+                ||Math.abs(floorAt(level,seed)-mob.getY())>.05
+                ||Math.abs(seed.getX()+.5-mob.getX())>2.30
+                ||Math.abs(seed.getZ()+.5-mob.getZ())>2.30)return List.of();
+        Vec3 start=mob.position();
+        Vec3 goal=new Vec3(seed.getX()+.5,mob.getY(),seed.getZ()+.5);
+        // No claim is made that the entire tile center supports the body
+        // currently straddling its edge. Test its real current footprint.
+        if(!supportedAtFraction(level,mob,start.x,start.y,start.z))
+            return List.of();
+        if(supportedCornerSegment(level,mob,start,goal))
+            return List.of(goal);
+        final int radius=8,dimension=radius*2+1;
+        boolean[][] visited=new boolean[dimension][dimension];
+        int[][] prev=new int[dimension][dimension];
+        for(int[] row:prev)java.util.Arrays.fill(row,-1);
+        ArrayDeque<int[]> queue=new ArrayDeque<>();
+        visited[radius][radius]=true;
+        queue.add(new int[]{radius,radius});
+        int target=-1,explored=0;
+        int[][] directions={{1,0},{-1,0},{0,1},{0,-1}};
+        while(!queue.isEmpty()&&explored++<210){
+            int[] current=queue.removeFirst();
+            int i=current[0],j=current[1];
+            Vec3 here=new Vec3(start.x+(i-radius)*.25,
+                    start.y,start.z+(j-radius)*.25);
+            if(supportedCornerSegment(level,mob,here,goal)){
+                target=i*dimension+j;
+                break;
+            }
+            for(int[] dir:directions){
+                int x=i+dir[0],z=j+dir[1];
+                if(x<0||x>=dimension||z<0||z>=dimension||visited[x][z])
+                    continue;
+                Vec3 next=new Vec3(start.x+(x-radius)*.25,
+                        start.y,start.z+(z-radius)*.25);
+                if(!supportedCornerSegment(level,mob,here,next))continue;
+                visited[x][z]=true;
+                prev[x][z]=i*dimension+j;
+                queue.addLast(new int[]{x,z});
+            }
+        }
+        if(target<0)return List.of();
+        List<Vec3> reversed=new ArrayList<>();
+        int index=target;
+        while(index!=radius*dimension+radius){
+            int i=index/dimension,j=index%dimension;
+            reversed.add(new Vec3(start.x+(i-radius)*.25,
+                    start.y,start.z+(j-radius)*.25));
+            index=prev[i][j];
+            if(index<0)return List.of();
+        }
+        java.util.Collections.reverse(reversed);
+        reversed.add(goal);
+        return List.copyOf(reversed);
+    }
+    private static boolean startCornerRecovery(ServerLevel level,
+            PathfinderMob mob,Progress p,BlockPos seed,BlockPos requested){
+        if(standingTile(level,mob,mob.blockPosition()))return false;
+        List<Vec3> corner=cornerRejoinPath(level,mob,seed);
+        if(corner.isEmpty())return false;
+        p.cornerPath=corner;
+        p.cornerCursor=0;
+        p.cornerStarted=mob.tickCount;
+        p.requested=requested.immutable();
+        p.approach=seed.immutable();
+        p.centering=null;
+        p.terrainStep=null;
+        p.weightedRoute=List.of();
+        p.routeCursor=0;
+        p.nextRoute=0;
+        p.stalled=0;
+        mob.getNavigation().stop();
+        return tickCornerRecovery(level,mob,p);
+    }
+    private static boolean tickCornerRecovery(ServerLevel level,
+            PathfinderMob mob,Progress p){
+        if(p.cornerPath.isEmpty())return false;
+        if(!mob.onGround()||mob.isNoGravity()
+                ||mob.tickCount-p.cornerStarted>110){
+            p.cornerPath=List.of();p.cornerCursor=0;
+            mob.getNavigation().stop();
+            return false;
+        }
+        for(int skipped=0;skipped<3&&p.cornerCursor<p.cornerPath.size();skipped++){
+            Vec3 point=p.cornerPath.get(p.cornerCursor);
+            if(Math.hypot(point.x-mob.getX(),point.z-mob.getZ())>.085)break;
+            p.cornerCursor++;
+        }
+        if(p.cornerCursor>=p.cornerPath.size()){
+            p.cornerPath=List.of();p.cornerCursor=0;
+            p.nextRoute=0;p.weightedRoute=List.of();p.routeCursor=0;
+            mob.getNavigation().stop();
+            return false;
+        }
+        Vec3 point=p.cornerPath.get(p.cornerCursor);
+        double dx=point.x-mob.getX(),dz=point.z-mob.getZ();
+        double distance=Math.hypot(dx,dz);
+        double speed=Math.min(.075,distance*.38);
+        double vx=speed*dx/Math.max(.0001,distance);
+        double vz=speed*dz/Math.max(.0001,distance);
+        Vec3 next=new Vec3(mob.getX()+vx,mob.getY(),mob.getZ()+vz);
+        if(Math.abs(mob.getY()-point.y)>.08
+                ||!supportedCornerSegment(level,mob,mob.position(),next)){
+            p.cornerPath=List.of();p.cornerCursor=0;
+            mob.getNavigation().stop();
+            return false;
+        }
+        mob.getNavigation().stop();
+        mob.getMoveControl().setWantedPosition(
+                mob.getX(),mob.getY(),mob.getZ(),0);
+        mob.setDeltaMovement(vx,mob.getDeltaMovement().y,vz);
+        return true;
     }
 
     private static boolean supportedRejoin(ServerLevel level,PathfinderMob mob,
@@ -787,6 +949,10 @@ public final class WorkerNavigation {
 
     private static boolean canBeginTrainedLeg(ServerLevel level,
             PathfinderMob mob,WorkerRoutePlanner.Route route){
+        if(!route.steps().isEmpty()&&mob.onGround()
+                &&!standingTile(level,mob,mob.blockPosition())
+                &&!cornerRejoinPath(level,mob,route.steps().get(0)).isEmpty())
+            return true;
         // Preflight and execution must use identical door capabilities.
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
             ground.setCanOpenDoors(true);
@@ -950,6 +1116,13 @@ public final class WorkerNavigation {
             speed=1.0; // nominal 4 m/s from Builder movement attribute .40
         if(target==null||!level.hasChunkAt(target))return false;
         Progress p=state(mob);
+        if(!p.cornerPath.isEmpty()){
+            if(target.equals(p.requested)){
+                tickCornerRecovery(level,mob,p);
+                return true;
+            }
+            p.cornerPath=List.of();p.cornerCursor=0;
+        }
         if(p.terrainStep!=null){
             if(target.equals(p.requested)){
                 if(tickTerrainStep(level,mob,p))return true;
@@ -987,6 +1160,8 @@ public final class WorkerNavigation {
                 level,mob,List.of(target),p.lastBad,true);
         if(plan==null||plan.steps().isEmpty())return false;
         p.requested=target.immutable();
+        if(startCornerRecovery(level,mob,p,plan.steps().get(0),target))
+            return true;
         if(prepareTrainedDoor(level,mob,p,plan.steps()))return true;
         for(int span:new int[]{3,2,1}){
             BlockPos waypoint=plan.steps().get(Math.min(
@@ -1026,6 +1201,13 @@ public final class WorkerNavigation {
         // Door crossing owns movement until the threshold is clear.
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
             ground.setCanOpenDoors(true);
+        if(!p.cornerPath.isEmpty()){
+            if(target.equals(p.requested)){
+                tickCornerRecovery(level,mob,p);
+                return true;
+            }
+            p.cornerPath=List.of();p.cornerCursor=0;
+        }
         if(p.terrainStep!=null){
             if(target.equals(p.requested)){
                 if(tickTerrainStep(level,mob,p))return true;
@@ -1107,6 +1289,9 @@ public final class WorkerNavigation {
         // cheapest route. Trying shorter checkpoints prevents false "cannot
         // path" reports from the vanilla navigation radius.
         int count=p.weightedRoute.size();
+        if(p.routeCursor==0
+                &&startCornerRecovery(level,mob,p,p.weightedRoute.get(0),target))
+            return true;
         if(prepareTrainedDoor(level,mob,p,p.weightedRoute.subList(p.routeCursor,count)))return true;
         for(int distance:new int[]{3,2,1}){
             int index=Math.min(count-1,p.routeCursor+distance-1);
@@ -1157,6 +1342,8 @@ public final class WorkerNavigation {
                 +" retry="+remaining+"t attempts="+p.attempts
                 +" stalled="+p.stalled+" unsafe="+p.unsafeChecks
                 +" detourLegRetries="+p.detourFirstLegRetries
+                +(p.cornerPath.isEmpty()?"":" cornerRecovery="
+                    +p.cornerCursor+"/"+p.cornerPath.size())
                 +" doorYields="+p.doorReservationYields
                 +(p.queuedDoor==null?"":" door="+p.queuedDoor.toShortString()
                     +(p.waitingDoor?" WAIT":p.finishingDoor?" EXIT":" CROSS")
@@ -1181,6 +1368,7 @@ public final class WorkerNavigation {
         Progress p=state(mob);
         if(mob.level() instanceof ServerLevel level)clearDoor(level,mob,p);
         p.requested=null;p.approach=null;p.centering=null;p.terrainStep=null;
+        p.cornerPath=List.of();p.cornerCursor=0;
         p.stalled=0;p.unsafeChecks=0;
         p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
         mob.getNavigation().stop();
@@ -1220,6 +1408,10 @@ public final class WorkerNavigation {
     /** Call every server tick, including when idle, to operate and close doors. */
     public static void tick(ServerLevel level,PathfinderMob mob){
         Progress p=state(mob);
+        if(!p.cornerPath.isEmpty()){
+            tickCornerRecovery(level,mob,p);
+            return;
+        }
         if(p.terrainStep!=null){
             tickTerrainStep(level,mob,p);
             return;
