@@ -546,6 +546,8 @@ public final class BuilderGrappleAccess {
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos goal){
         if(active.containsKey(worker))return true;
         if(continueLocalDrop(level,worker,goal))return true;
+        int diff=worker.blockPosition().getY()-goal.getY();
+        if(diff<1)return false; // ordinary depot pickup must still run
         // Let gravity finish a dismount before making another route
         // decision. A valid ground route may temporarily RISE around an
         // obstruction; its new Y is not a reason to interrupt it with a
@@ -553,8 +555,6 @@ public final class BuilderGrappleAccess {
         if(!worker.onGround())return true;
         if(WorkerNavigation.routeTo(level,worker,goal,1.0)
                 ||WorkerNavigation.retryScheduled(worker))return true;
-        int diff=worker.blockPosition().getY()-goal.getY();
-        if(diff<1)return false;
         // One-block drops are normal ground navigation first. Do not
         // grapple for a step that the trained pathfinder can traverse.
         if(diff==1){
