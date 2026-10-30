@@ -159,4 +159,54 @@ public final class BuilderStagedGrappleGameTest {
                     +" "+BuilderGrappleAccess.debug(mob));
         });
     }
+    @GameTest(maxTicks=750,skyAccess=true)
+    public void usesRemoteLedgeBeyondTheTargetsWorkRadius(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,0,z,Blocks.STONE);
+        // A two-block-high base cannot be jumped from the ground. Its
+        // west rim is the only rope entry; the near-target rims border
+        // the test-room boundary. All successful motion stays inside.
+        for(int x=2;x<=7;x++)for(int z=0;z<8;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            h.setBlock(x,2,z,Blocks.STONE);
+        }
+        for(int x=1;x<=6;x++)h.setBlock(x,3,3,Blocks.STONE);
+        for(int x=5;x<=6;x++)for(int z=2;z<=4;z++)
+            h.setBlock(x,6,z,Blocks.STONE);
+        h.setBlock(0,1,7,WorksiteContent.BUILDER_TABLE);
+        var table=(WorkerStationBlockEntity)world.getBlockEntity(
+                h.absolutePos(new BlockPos(0,1,7)));
+        BlockPos start=h.absolutePos(new BlockPos(0,1,3));
+        BlockPos target=h.absolutePos(new BlockPos(7,7,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        mob.setItem(0,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        world.addFreshEntity(mob);
+        final boolean[] remoteLedge={false};
+        h.onEachTick(()->{
+            if(mob.onGround()&&mob.getY()>start.getY()+1.5
+                    &&mob.getX()<target.getX()-4)remoteLedge[0]=true;
+            if(h.getTick()>=10&&h.getTick()%5==0){
+                var result=BuilderGrappleAccess.reachWork(world,mob,table,target);
+                if(result==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR
+                        ||result==BuilderGrappleAccess.Result.NEED_HOOK){
+                    h.fail("Remote real access ledge rejected "+result);return;
+                }
+            }
+            if(mob.onGround()&&!BuilderGrappleAccess.active(mob)
+                    &&BuilderPlacementSpace.horizontalClear(target,mob)
+                    &&BuilderConstructionPlanner.safeStand(
+                            world,mob,target,mob.blockPosition())){
+                if(!remoteLedge[0]){
+                    h.fail("Must use access outside the four-block target window");return;
+                }
+                System.out.println("[REMOTE ACCESS] PASS remote ledge then actual work pose "
+                        +"tick="+h.getTick());
+                h.succeed();return;
+            }
+            if(h.getTick()>670)h.fail("Remote access stalled "+mob.position()
+                    +" "+BuilderGrappleAccess.debug(mob));
+        });
+    }
 }

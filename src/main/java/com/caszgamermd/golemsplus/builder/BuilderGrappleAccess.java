@@ -214,10 +214,14 @@ public final class BuilderGrappleAccess {
     }
     private static List<BlockPos> solidAnchors(ServerLevel world,
             BlockPos goal){
+        return solidAnchors(world,goal,4);
+    }
+    private static List<BlockPos> solidAnchors(ServerLevel world,
+            BlockPos goal,int radius){
         List<BlockPos> out=new ArrayList<>();
-        for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
+        for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++){
             BlockPos at=goal.offset(dx,-1,dz);
-            if(dx*dx+dz*dz>16||!solidTop(world,at)
+            if(dx*dx+dz*dz>radius*radius||!solidTop(world,at)
                     ||!headroom(world,at.above()))continue;
             out.add(at);
         }
@@ -234,9 +238,14 @@ public final class BuilderGrappleAccess {
     }
     private static Rope chooseAscent(ServerLevel level,BuilderGolem worker,
             BlockPos goal,java.util.function.Predicate<BlockPos> usableLanding){
+        return chooseAscent(level,worker,goal,usableLanding,4);
+    }
+    private static Rope chooseAscent(ServerLevel level,BuilderGolem worker,
+            BlockPos goal,java.util.function.Predicate<BlockPos> usableLanding,
+            int radius){
         List<Rope> candidates=new ArrayList<>();
         Map<BlockPos,Boolean> usable=new java.util.HashMap<>();
-        for(BlockPos anchor:solidAnchors(level,goal)){
+        for(BlockPos anchor:solidAnchors(level,goal,radius)){
             for(Direction side:Direction.Plane.HORIZONTAL){
                 if(rejected(level,worker,anchor,side))continue;
                 BlockPos entry=ropeEntryFloor(level,anchor,side);
@@ -405,10 +414,16 @@ public final class BuilderGrappleAccess {
         // ordinary climbs need a short goal-directed path, not a flood
         // of the entire connected structure and surrounding ground.
         ClimbPreview preview=new ClimbPreview(level,worker,target,poses);
+        // Access is allowed to walk around a floor to a remote ledge.
+        // This larger search radius never changes actual placement reach.
+        for(int dy:new int[]{0,1}){
+            Rope remote=chooseAscent(level,worker,target.above(dy),preview::canWork,16);
+            if(remote!=null)return remote;
+        }
         int startY=worker.blockPosition().getY();
         for(int y=Math.min(target.getY()-2,startY+MAX_REACH);y>=startY+2;y--){
             Rope first=chooseAscent(level,worker,target.atY(y),
-                    landing->preview.continues(landing,3));
+                    landing->preview.continues(landing,3),16);
             if(first!=null)return first;
         }
         return null;
@@ -456,7 +471,7 @@ public final class BuilderGrappleAccess {
             });
         }
         List<BlockPos> anchors(int feetY){
-            return anchors.computeIfAbsent(feetY,y->solidAnchors(level,target.atY(y)));
+            return anchors.computeIfAbsent(feetY,y->solidAnchors(level,target.atY(y),16));
         }
         boolean ropeEntry(BlockPos from,BlockPos anchor,
                 java.util.Set<BlockPos> walking){
