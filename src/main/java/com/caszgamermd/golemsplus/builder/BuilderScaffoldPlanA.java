@@ -87,14 +87,13 @@ public final class BuilderScaffoldPlanA {
         Job j=jobs.get(worker);
         if(j==null||j.phase!=Phase.READY||!j.target.equals(target)
                 ||!needsTemporaryWorkPlatform(level,target)
-                // Horizontal vanilla scaffolding is climb-through.
-                // The entity can have onGround=false while its actual
-                // collision/feet remain supported in the tracked platform.
-                // Require real scaffold beneath exact-height feet rather
-                // than a false ordinary-ground flag.
-                ||worker.isNoGravity()
+                ||worker.isNoGravity()||!worker.onGround()
                 ||Math.abs(worker.getY()-target.getY())>.18
-                ||j.bridge(j.bridgeSpan).distManhattan(target)!=2
+                // The scaffold occupies targetY-1. Compare HORIZONTAL
+                // reach to the actual work cube, not 3-D Manhattan
+                // distance, which includes the intentional Y offset.
+                ||Math.abs(j.bridge(j.bridgeSpan).getX()-target.getX())
+                    +Math.abs(j.bridge(j.bridgeSpan).getZ()-target.getZ())!=2
                 ||worker.blockPosition().getX()!=j.bridge(j.bridgeSpan).getX()
                 ||worker.blockPosition().getZ()!=j.bridge(j.bridgeSpan).getZ()
                 ||!present(level,table,worker,j.bridge(j.bridgeSpan)))return false;
