@@ -55,6 +55,8 @@ public final class BuilderBuildService {
         // Track actual displacement, not repeated navigation requests.
         double lastWorkX=Double.NaN,lastWorkY=Double.NaN,lastWorkZ=Double.NaN;
         long lastMovementTick=-1;
+        long retreatUntil=-1;
+        int lastFailedStep=-1;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
@@ -436,6 +438,26 @@ public final class BuilderBuildService {
                     com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(level,worker,home);
             }
             return;
+        }
+        // A failed worker relinquishes the cell and physically returns to
+        // OnSite before trying another assignment. Other crew members can
+        // claim the released cell without waiting for this worker.
+        WorkerAction retreat=workerActions.get(worker);
+        if(retreat!=null&&retreat.retreatUntil>0){
+            BlockPos depot=table.builderUnloadingStorage();
+            if(depot==null)depot=home;
+            if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                    depot.getZ()+.5)>12){
+                if(!BuilderScaffoldPlanA.hasPlan(worker)
+                        &&BuilderGrappleAccess.rappelHome(level,worker,table,depot))return;
+                if(BuilderScaffolding.descendForTravel(level,worker,table)
+                        ||BuilderGrappleAccess.rappelForTravel(level,worker,table))return;
+                com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeTo(level,worker,depot,.8);
+                return;
+            }
+            if(level.getGameTime()<retreat.retreatUntil)return;
+            retreat.retreatUntil=-1;
         }
         if(table.phase()==WorkerPhase.PAUSED){
             BuilderGrappleAccess.cancel(worker);
@@ -839,6 +861,10 @@ public final class BuilderBuildService {
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                 table.waitForBuilderAccess(worker.getUUID(),index,now,
                         "180-tick stationary work approach; alternative access exhausted");
+                activity.lastFailedStep=index;
+                activity.retreatUntil=now+100;
+                System.out.println("[BUILDER HANDOFF] worker="+worker.getName().getString()
+                        +" released="+index+" returnOnSite=true");
                 activity.workTravelSince=-1;
                 activity.lastMovementTick=now;
                 table.setProblem("Deferred stationary work approach "+pos);
