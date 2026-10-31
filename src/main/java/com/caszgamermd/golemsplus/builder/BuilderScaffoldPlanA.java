@@ -407,7 +407,36 @@ public final class BuilderScaffoldPlanA {
                         new net.minecraft.world.phys.AABB(base)))return false;
         return level.getBlockState(base.below()).isFaceSturdy(
                 level,base.below(),Direction.UP)
-                &&level.getBlockState(base).isAir();
+                &&level.getBlockState(base).isAir()
+                // A solid roof block above the launch foot can allow a
+                // .3m bob but prevent the full one-block jump. Check the
+                // actual entity collision volume before buying the shaft.
+                &&level.noCollision(worker,
+                        worker.getBoundingBox().move(0,.65,0));
+    }
+    /** Find a WALKABLE, head-clear launch on another face of an elevated
+     * base. The nearest side of the north dome rim has a diorite overhang;
+     * its north face has real floor and enough headroom to jump onto the
+     * paid column. Routing around the overhang uses ordinary ground A*.
+     */
+    private static BlockPos alternateSideLaunch(ServerLevel level,
+            BuilderGolem worker,BlockPos base){
+        if(!worker.onGround()||base.getY()-worker.getY()<.40
+                ||base.getY()-worker.getY()>1.10)return null;
+        List<BlockPos> launch=new ArrayList<>();
+        for(Direction side:Direction.Plane.HORIZONTAL){
+            BlockPos foot=base.below().relative(side);
+            if(!WorkerNavigation.canStandOn(level,worker,foot))continue;
+            var box=worker.getBoundingBox().move(
+                    foot.getX()+.5-worker.getX(),
+                    foot.getY()-worker.getY(),
+                    foot.getZ()+.5-worker.getZ());
+            if(level.noCollision(worker,box)
+                    &&level.noCollision(worker,box.move(0,.65,0)))
+                launch.add(foot);
+        }
+        return launch.isEmpty()?null:
+                WorkerNavigation.selectExecutableStand(level,worker,launch);
     }
     private static Result place(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer owner,BlockPos at,
@@ -690,6 +719,24 @@ public final class BuilderScaffoldPlanA {
                 double horizontal=worker.distanceToSqr(
                         j.base.getX()+.5,worker.getY(),j.base.getZ()+.5);
                 boolean sideEntry=canEnterFromBelow(level,worker,j.base);
+                if(!sideEntry&&j.base.getY()>worker.getY()+.40
+                        &&j.base.getY()<=worker.getY()+1.10){
+                    BlockPos launch=alternateSideLaunch(level,worker,j.base);
+                    if(launch!=null){
+                        double approachDistance=worker.distanceToSqr(
+                                launch.getX()+.5,launch.getY(),
+                                launch.getZ()+.5);
+                        if(approachDistance<j.closestApproach-.12){
+                            j.closestApproach=approachDistance;
+                            j.lastProgress=level.getGameTime();
+                        }
+                        if(level.getGameTime()-j.lastProgress<=180){
+                            WorkerNavigation.routeToExact(
+                                    level,worker,launch,1.0);
+                            return Result.MOVING;
+                        }
+                    }
+                }
                 if(!sideEntry
                         &&(horizontal>1.20
                             ||Math.abs(worker.getY()-j.base.getY())>.4)){
@@ -727,6 +774,23 @@ public final class BuilderScaffoldPlanA {
             }
             case CLIMB -> {
                 if(worker.getY()<j.target.getY()-.15){
+                    // The scaffold controller abandons an impossible climb
+                    // after three collision timeouts. A real Builder on the
+                    // grounded lower ledge must not wait forever for a
+                    // session which no longer exists. Replan another base
+                    // instead of restarting the same blocked side entry.
+                    if(!BuilderScaffolding.climbingNow(level,worker)
+                            &&worker.onGround()
+                            &&worker.getY()<j.base.getY()-.35){
+                        failedEntries.put(worker,new FailedEntry(j.base,
+                                level.getGameTime()+400));
+                        System.out.println("[PLAN A ENTRY] blocked climb, retry "
+                                +"another tower from real ground at "
+                                +worker.blockPosition().toShortString()
+                                +" base="+j.base.toShortString());
+                        jobs.remove(worker);
+                        return Result.NO_SAFE_ROUTE;
+                    }
                     // Extend long shafts in real sixteen-block inventory
                     // stages, after physically finishing the prior climb.
                     if(!BuilderScaffolding.climbingNow(level,worker)
