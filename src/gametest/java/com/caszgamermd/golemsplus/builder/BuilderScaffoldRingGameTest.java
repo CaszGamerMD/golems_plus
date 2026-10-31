@@ -20,6 +20,53 @@ import net.minecraft.world.level.block.Blocks;
  *  x=2..6,z=1..5 (feet travel at y=7).
  */
 public final class BuilderScaffoldRingGameTest {
+    @GameTest(maxTicks=80,skyAccess=true)
+    public void rejectsAirborneDismountAcrossLowerRoof(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<7;x++)for(int z=0;z<7;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        helper.setBlock(3,2,3,Blocks.SCAFFOLDING);
+        BlockPos base=helper.absolutePos(new BlockPos(3,2,3));
+        BlockPos lowerExit=helper.absolutePos(new BlockPos(4,2,3));
+        BuilderGolem builder=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        // Feet are still more than 1.35m above the chosen Y=2 exit.
+        // The older onGround-only guard incorrectly issued EXIT while
+        // airborne and sent the worker horizontally through a lower wall.
+        builder.setPos(base.getX()+.5,base.getY()+1.55,base.getZ()+.5);
+        level.addFreshEntity(builder);
+        if(!WorkerNavigation.canStandOn(level,builder,lowerExit)){
+            helper.fail("Test setup lacks a real supported lower exit");return;
+        }
+        if(BuilderScaffolding.dismountAtBase(level,builder,base)){
+            helper.fail("Midair Builder accepted an unreachable lower EXIT");
+            return;
+        }
+        helper.succeed();
+    }
+
+    @GameTest(maxTicks=80,skyAccess=true)
+    public void invalidatedExitIsNotImmediatelyReissued(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<7;x++)for(int z=0;z<7;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos from=helper.absolutePos(new BlockPos(3,2,3));
+        BlockPos destination=helper.absolutePos(new BlockPos(4,2,3));
+        BuilderGolem builder=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        builder.setPos(from.getX()+.5,from.getY(),from.getZ()+.5);
+        level.addFreshEntity(builder);
+        if(!BuilderScaffolding.stepToPlatform(level,builder,destination)){
+            helper.fail("Could not start supported physical dismount");return;
+        }
+        level.setBlock(destination,Blocks.STONE.defaultBlockState(),3);
+        BuilderScaffolding.tickMotion(level,builder);
+        level.setBlock(destination,Blocks.AIR.defaultBlockState(),3);
+        if(BuilderScaffolding.stepToPlatform(level,builder,destination)){
+            helper.fail("Blocked EXIT recreated at the same landing immediately");
+            return;
+        }
+        helper.succeed();
+    }
+
     @GameTest(maxTicks = 1100, skyAccess = true)
     public void climbWalkRingReturnAndDescend(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();

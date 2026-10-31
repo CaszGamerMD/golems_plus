@@ -58,6 +58,40 @@ public final class BuilderScaffolding {
     private record ExitRoute(BlockPos ground,long expires){}
     private static final java.util.Map<BuilderGolem,ExitRoute> exiting=
             new java.util.WeakHashMap<>();
+    /** A failed dismount must not be recreated every five job ticks at
+     * the same blocked landing. Keep the real scaffold and try another
+     * physically safe exit while this one cools down. */
+    private record AvoidExit(BlockPos ground,long until){}
+    private static final java.util.Map<BuilderGolem,AvoidExit> failedExits=
+            new java.util.WeakHashMap<>();
+    private static final class ExitWatch {
+        final BlockPos ground;
+        double nearest;
+        long lastProgress;
+        ExitWatch(BlockPos ground,double distance,long tick){
+            this.ground=ground;nearest=distance;lastProgress=tick;
+        }
+    }
+    private static final java.util.Map<BuilderGolem,ExitWatch> exitProgress=
+            new java.util.WeakHashMap<>();
+    private static boolean avoidedExit(ServerLevel level,BuilderGolem worker,
+            BlockPos candidate){
+        AvoidExit bad=failedExits.get(worker);
+        return bad!=null&&level.getGameTime()<bad.until()
+                &&bad.ground().equals(candidate);
+    }
+    private static void abandonExit(ServerLevel level,BuilderGolem worker,
+            ExitRoute route,String reason){
+        exiting.remove(worker);
+        exitProgress.remove(worker);
+        failedExits.put(worker,new AvoidExit(route.ground(),
+                level.getGameTime()+300));
+        worker.setNoGravity(false);
+        worker.setShiftKeyDown(false);
+        System.out.println("[SCAFFOLD EXIT RETRY] "+reason
+                +" landing="+route.ground().toShortString()
+                +" from="+worker.position());
+    }
     /** A job-specific, retained route UP and BACK DOWN. The exit must
      * exist BEFORE the first scaffold is purchased or built. Never
      * store a world-specific fixed path as the navigation algorithm.
@@ -111,6 +145,8 @@ public final class BuilderScaffolding {
         clearMotion(worker);
         returning.remove(worker);
         exiting.remove(worker);
+        exitProgress.remove(worker);
+        failedExits.remove(worker);
         access.remove(worker);
     }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
@@ -165,25 +201,42 @@ public final class BuilderScaffolding {
             // actual safe footing and must choose another physical path.
             if(worker.onGround()
                     &&worker.getY()>exit.ground().getY()+1.35){
-                System.out.println("[SCAFFOLD EXIT] abandoned unreachable lower "
-                        +exit.ground().toShortString()+" from grounded roof "
-                        +worker.blockPosition().toShortString());
-                exiting.remove(worker);
+                abandonExit(level,worker,exit,"unreachable lower landing");
                 BuilderScaffoldPlanA.cancel(worker);
                 return false;
             }
             if(level.getGameTime()>exit.expires()
                     ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .canStandOn(level,worker,exit.ground())){
-                exiting.remove(worker);
+                abandonExit(level,worker,exit,"expired or landing changed");
             }else if(Math.abs(worker.getX()-exit.ground().getX()-.5)<.35
                     &&Math.abs(worker.getZ()-exit.ground().getZ()-.5)<.35
                     &&Math.abs(worker.getY()-exit.ground().getY())<.32
                     &&worker.onGround()){
                 exiting.remove(worker);
+                exitProgress.remove(worker);
+                failedExits.remove(worker);
                 worker.getNavigation().stop();
                 return false;
             }else{
+                double remaining=worker.distanceToSqr(
+                        exit.ground().getX()+.5,exit.ground().getY(),
+                        exit.ground().getZ()+.5);
+                ExitWatch watch=exitProgress.get(worker);
+                if(watch==null||!watch.ground.equals(exit.ground())){
+                    watch=new ExitWatch(exit.ground(),remaining,
+                            level.getGameTime());
+                    exitProgress.put(worker,watch);
+                }else if(remaining+.03<watch.nearest){
+                    watch.nearest=remaining;
+                    watch.lastProgress=level.getGameTime();
+                }else if(level.getGameTime()-watch.lastProgress>=80){
+                    // A stalled non-grounded half-slab/scaffold pose must
+                    // not keep renewing an EXIT forever; another exit or
+                    // the actual column descent can now be considered.
+                    abandonExit(level,worker,exit,"80 ticks without progress");
+                    return false;
+                }
                 // Do not declare exit complete because the worker is only
                 // horizontally close while still one block ABOVE the
                 // ground. Steer off the scaffold with ordinary gravity
@@ -433,7 +486,8 @@ public final class BuilderScaffolding {
             for(int dy:new int[]{0,-1}){
                 BlockPos p=base.relative(side).offset(0,dy,0);
                 if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .canStandOn(level,worker,p))continue;
+                        .canStandOn(level,worker,p)
+                        ||avoidedExit(level,worker,p))continue;
                 double score=worker.distanceToSqr(p.getX()+.5,worker.getY(),
                         p.getZ()+.5)+Math.abs(dy)*2;
                 if(score<cost){cost=score;best=p;}
@@ -452,6 +506,7 @@ public final class BuilderScaffolding {
         double dz=worker.getZ()-(destination.getZ()+.5);
         if(dx*dx+dz*dz>3.2
                 ||Math.abs(worker.getY()-destination.getY())>1.3
+                ||avoidedExit(level,worker,destination)
                 ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .canStandOn(level,worker,destination))return false;
         clearMotion(worker);
@@ -495,6 +550,7 @@ public final class BuilderScaffolding {
         AccessRoute planned=access.get(worker);
         BlockPos exit=planned!=null
                 &&planned.base().equals(column)
+                &&!avoidedExit(level,worker,planned.groundExit())
                 &&com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .canStandOn(level,worker,planned.groundExit())
                 ?planned.groundExit():exitGround(level,worker,column);
@@ -502,8 +558,7 @@ public final class BuilderScaffolding {
         // A valid adjacent ground tile is NOT necessarily a valid
         // dismount from the worker's present physical elevation. Do not
         // create an EXIT instruction that crosses a solid roof slab.
-        if(worker.onGround()
-                &&worker.getY()>exit.getY()+1.35)return false;
+        if(worker.getY()>exit.getY()+1.35)return false;
         clearMotion(worker);
         access.remove(worker);
         exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));
