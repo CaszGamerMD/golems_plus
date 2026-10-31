@@ -686,6 +686,28 @@ public final class BuilderGrappleAccess {
         BlockPos goal=table.builderUnloadingStorage();
         return goal!=null&&rappelToward(level,worker,table,goal);
     }
+    /** Completed workers prioritize a safe grapple descent over a long
+     * ground detour; if no legal anchor exists, normal routing remains.
+     */
+    public static boolean rappelHome(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,BlockPos goal){
+        if(active.containsKey(worker))return true;
+        if(!worker.onGround())return true;
+        if(worker.blockPosition().getY()-goal.getY()<2)return false;
+        if(!hasHook(worker)){
+            var load=BuilderSupplyInventory.loadGrapple(level,worker,table);
+            if(load==BuilderSupplyInventory.LoadStatus.MISSING)return false;
+        }
+        Rope route=chooseDescent(level,worker,goal);
+        if(route==null)route=chooseSupportedDescent(level,worker,goal);
+        if(route==null)return false;
+        active.put(worker,route);
+        WorkerNavigation.stop(worker);
+        System.out.println("[GRAPPLE HOME] descending toward "
+                +goal.toShortString()+" from "
+                +worker.blockPosition().toShortString());
+        return true;
+    }
     public static boolean rappelToward(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos goal){
         if(active.containsKey(worker))return true;
