@@ -856,7 +856,7 @@ public final class BuilderSafeScaffoldGameTest {
         table.registerBuilderWorker(worker.getUUID());
         int[] phase={0};
         long[] changed={0};
-        boolean[] brokeBridge={false},rerouted={false};
+        boolean[] brokeBridge={false},rerouted={false},sawTwoBlockDrop={false};
         BlockPos[] reopened={null};
         helper.onEachTick(()->{
             if(helper.getTick()>1100){
@@ -923,14 +923,18 @@ public final class BuilderSafeScaffoldGameTest {
                 return;
             }
             BuilderScaffoldPlanA.returnToGround(level,worker,table);
+            if(BuilderScaffolding.debugClimb(worker).startsWith("EXIT via=")
+                    &&worker.getY()-reopened[0].below().getY()>1.85)
+                sawTwoBlockDrop[0]=true;
             if(reopened[0].below().equals(
                     BuilderScaffoldPlanA.activeExit(worker)))
                 rerouted[0]=true;
             if(!BuilderScaffoldPlanA.hasPlan(worker)&&worker.onGround()
                     &&Math.abs(worker.getY()-(tower.getY()-1))<.26){
-                if(!rerouted[0]){
-                    helper.fail("Builder reached ground without reporting exit repair");
-                    return;
+                if(!rerouted[0]||!sawTwoBlockDrop[0]){
+                    helper.fail("Builder did not prove a safe two-block "
+                            +"physical step-off: rerouted="+rerouted[0]
+                            +" fromLip="+sawTwoBlockDrop[0]);return;
                 }
                 System.out.println("[SCAFFOLD REPAIR] PASS paid bridge replacement"
                         +" plus sealed-exit wait and physical alternate dismount");
