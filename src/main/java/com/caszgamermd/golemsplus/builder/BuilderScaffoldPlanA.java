@@ -64,6 +64,11 @@ public final class BuilderScaffoldPlanA {
     // horizontal blocks from its supporting tower. Distance seven falls.
     // The underside/bottom flag describes its shape, NOT an invalid span.
     static final int MAX_HORIZONTAL_SCAFFOLD_SPAN=6;
+    // The worker stands TWO blocks from a target. Those two final tiles
+    // are not scaffold bridge cells: a six-cell supported bridge can
+    // therefore start eight tiles away from the actual work block.
+    private static final int MAX_WORK_TOWER_DISTANCE=
+            MAX_HORIZONTAL_SCAFFOLD_SPAN+2;
     private static final Map<BuilderGolem,Job> jobs=new WeakHashMap<>();
     private record FailedEntry(BlockPos base,long until){}
     private static final Map<BuilderGolem,FailedEntry> failedEntries=
@@ -221,7 +226,8 @@ public final class BuilderScaffoldPlanA {
             // A true work pose requires two cells of horizontal standoff;
             // the old travel tests must retain their one-span mobility.
             for(int distance=workPose?3:2;
-                    distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++){
+                    distance<=(workPose?MAX_WORK_TOWER_DISTANCE:
+                            MAX_HORIZONTAL_SCAFFOLD_SPAN);distance++){
             BlockPos towerXZ=target.relative(outward,distance);
             Direction inward=outward.getOpposite();
             if(isolated&&distance<3)continue;
@@ -275,7 +281,7 @@ public final class BuilderScaffoldPlanA {
         List<BlockPos> entryCandidates=new ArrayList<>();
         List<BlockPos> levelEntries=new ArrayList<>();
         for(Job candidate:options){
-            // At most 4 directions x 4 distances x 10 elevations = 160
+            // At most 4 directions x 6 distances x 10 elevations = 240
             // physical candidates. The old top-96 material-cost cut
             // could contain ONLY high bases while excluding a valid
             // same-level roof entry. Consider the complete bounded set
@@ -325,7 +331,7 @@ public final class BuilderScaffoldPlanA {
         List<BlockPos> lowerBases=new ArrayList<>();
         String example="";
         for(Direction outward:Direction.Plane.HORIZONTAL)
-            for(int distance=3;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++)
+            for(int distance=3;distance<=MAX_WORK_TOWER_DISTANCE;distance++)
                 for(int dy=-4;dy<=5;dy++){
                     BlockPos base=target.relative(outward,distance)
                             .atY(worker.blockPosition().getY()-dy);
