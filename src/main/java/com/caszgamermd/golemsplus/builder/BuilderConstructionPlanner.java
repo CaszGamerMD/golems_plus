@@ -150,20 +150,18 @@ public final class BuilderConstructionPlanner {
                 // sqrt(3^2+2.5^2) away, NOT sqrt(3^2+2^2). The loose
                 // integer preview repeatedly chose a Y31 dome-cap pose
                 // that actual placement could never reach.
+                &&workReachFromFeet(stance,target)<REACH_SQUARED
                 &&(stance.getY()==target.getY()
                         ||stance.getY()==target.getY()+1
                         ||stance.getY()==target.getY()-1
                         ||stance.getY()==target.getY()-2)))return false;
-        // A top slab/stair or narrow elevated foothold can put the feet
-        // ABOVE the integer navigation tile. Evaluate the real standing
-        // height, or the planner may approve an impossible body position.
-        double feetY=WorkerNavigation.surveyFloorHeight(world,stance);
-        if(!Double.isFinite(feetY)
-                ||workReachFromFeet(stance,target,feetY)>=REACH_SQUARED)
-            return false;
+        // Keep the trained planner's integer-node interpretation for
+        // preview poses. Promoting every slab/fence fractional surface
+        // into a new target height made physical grapple/roof approaches
+        // choose virtual landings they could not actually finish.
         AABB body=builder.getBoundingBox().move(
                 stance.getX()+.5-builder.getX(),
-                feetY-builder.getY(),stance.getZ()+.5-builder.getZ());
+                stance.getY()-builder.getY(),stance.getZ()+.5-builder.getZ());
         return
                 // A fence below a roof block IS valid support, but its
                 // 1.5-block-high narrow collision shape is not empty space.
@@ -175,13 +173,9 @@ public final class BuilderConstructionPlanner {
                 &&exitAfterPlacement(world,builder,stance,target);
     }
     static double workReachFromFeet(BlockPos stance,BlockPos target){
-        return workReachFromFeet(stance,target,stance.getY());
-    }
-    private static double workReachFromFeet(BlockPos stance,BlockPos target,
-            double feetY){
         double dx=stance.getX()-target.getX();
         double dz=stance.getZ()-target.getZ();
-        double dy=feetY-target.getY()-.5;
+        double dy=stance.getY()-target.getY()-.5;
         return dx*dx+dy*dy+dz*dz;
     }
     /** Keep an extra 12 cm around fence/wall collision shapes at a

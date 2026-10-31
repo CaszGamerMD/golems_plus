@@ -441,10 +441,8 @@ public final class BuilderPlacementSpace {
                         ||!WorkerNavigation.canStandOn(level,worker,p)
                         ||bad!=null&&bad.target().equals(target)
                             &&bad.destination().equals(p))continue;
-                double feetY=WorkerNavigation.surveyFloorHeight(level,p);
-                if(!Double.isFinite(feetY))continue;
                 AABB shifted=worker.getBoundingBox().move(
-                        p.getX()+.5-worker.getX(),feetY-worker.getY(),
+                        p.getX()+.5-worker.getX(),p.getY()-worker.getY(),
                         p.getZ()+.5-worker.getZ());
                 // The trained A* permits a path through a tile
                 // temporarily occupied by another Builder, and physical
