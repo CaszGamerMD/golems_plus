@@ -546,4 +546,77 @@ public final class BuilderDomeRouteSurveyGameTest {
         });
     }
 
+    /** Replay the ACTUAL 3424/3493 worker's fractional roof footing,
+     * not the block center substituted by a schematic-only A* survey.
+     * The first small eastward step is isolated from every later climb.
+     * If this fails, tower-ranking changes cannot fix the physical start.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=460,skyAccess=true)
+    public void actualY30StalledFootingCanExecuteFirstRoofStep(
+            GameTestHelper h){
+        ServerLevel world=h.getLevel();
+        BlockPos origin=h.absolutePos(new BlockPos(8,2,8));
+        world.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(origin.getX()>>4,
+                        origin.getZ()>>4),4);
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        Set<BlockPos> unfinished=Set.of(
+                new BlockPos(15,30,9),new BlockPos(15,30,10),
+                new BlockPos(15,30,11),new BlockPos(15,30,12),
+                new BlockPos(20,30,22));
+        try{
+            for(var b:LitematicFileReader.read(
+                    BuilderDomeFixture.unpack()).blocks()){
+                if(b.y()>30||b.y()==30&&unfinished.contains(
+                        new BlockPos(b.x(),b.y(),b.z()))
+                        ||BuilderVegetation.ignoreSchematicState(
+                                b.state()))continue;
+                var resolved=BuilderBlockResolver.resolve(b.state(),
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(resolved!=null)world.setBlock(origin.offset(
+                        b.x(),b.y(),b.z()),resolved.state(),2);
+            }
+        }catch(Exception e){h.fail("Exact Y30 roof fixture failed "+e);return;}
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(origin.getX()+8.834945218637586,origin.getY()+26,
+                origin.getZ()+10.432437775656581);
+        world.addFreshEntity(mob);
+        BlockPos first=origin.offset(9,26,10);
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.isNoGravity()
+                    ||mob.getY()<origin.getY()+24){
+                h.fail("Exact roof worker lost safe physical gravity/footing");
+                return;
+            }
+            if(h.getTick()==20){
+                System.out.println("[EXACT ROOF FIRST] start="+mob.position()
+                        +" grounded="+mob.onGround()
+                        +" centerStand="+WorkerNavigation.canStandOn(
+                                world,mob,mob.blockPosition())
+                        +" firstStand="+WorkerNavigation.canStandOn(
+                                world,mob,first)
+                        +" native="+WorkerNavigation.canReachExact(
+                                world,mob,first)
+                        +" survey="+WorkerNavigation.diagnoseGroundedEdge(
+                                world,mob,first));
+            }
+            if(h.getTick()>=20&&h.getTick()%5==0)
+                WorkerNavigation.routeToExact(world,mob,first,1.0);
+            if(mob.onGround()&&mob.distanceToSqr(first.getX()+.5,
+                    first.getY(),first.getZ()+.5)<.15){
+                System.out.println("[EXACT ROOF FIRST] PASS real fractional "
+                        +"first move ticks="+h.getTick());
+                h.succeed();return;
+            }
+            if(h.getTick()>410)
+                h.fail("Actual fractional Y30 first leg stalled "
+                        +mob.position()+" "+WorkerNavigation.debugStatus(mob)
+                        +" "+WorkerNavigation.diagnoseExecutableStand(
+                                world,mob,List.of(first)));
+        });
+    }
+
 }
