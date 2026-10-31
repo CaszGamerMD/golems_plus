@@ -51,9 +51,7 @@ public final class BuilderScaffoldPlanAGameTest {
         h.setBlock(14,9,10,Blocks.STONE);
         h.setBlock(15,9,10,Blocks.STONE);
         BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-        // Spawn slightly above the platform so actual gravity/collision
-        // establishes onGround regardless of concurrent GameTest order.
-        mob.setPos(start.getX()+.5,start.getY()+.3,start.getZ()+.5);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         mob.setItem(0,new ItemStack(Items.SCAFFOLDING,40));
         level.addFreshEntity(mob);
         if(!table.registerBuilderWorker(mob.getUUID())){
