@@ -565,8 +565,23 @@ public final class BuilderBuildService {
                         &&!table.builderZoneDone(List.of(idx))){
                     ownLayerClear=false;break;
                 }
+            // A published failure is an immediate call for help, even
+            // before the normal ten-second roof-rescue watchdog expires.
+            boolean teammateRequested=false;
+            var requests=handoffBoard.get(table);
+            if(requests!=null)
+                for(var request:requests.entrySet()){
+                    int requested=request.getKey();
+                    if(request.getValue().until()>level.getGameTime()
+                            &&!request.getValue().failedWorker().equals(worker.getUUID())
+                            &&requested>=0&&requested<plan.steps().size()
+                            &&plan.steps().get(requested).y()==layer
+                            &&table.builderStepReadyForClaim(requested)){
+                        teammateRequested=true;break;
+                    }
+                }
             boolean emergencyRoofAssist=ownLayerClear
-                    &&(index>=0&&!zone.contains(index)
+                    &&(teammateRequested||index>=0&&!zone.contains(index)
                         ||roofNeedsHelp(level,table));
             // Monitoring must run for every working crew, including the
             // worker still in its own zone: otherwise a fully active crew
