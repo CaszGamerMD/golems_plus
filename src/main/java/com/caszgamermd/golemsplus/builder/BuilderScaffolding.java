@@ -511,11 +511,17 @@ public final class BuilderScaffolding {
                         .canStandOn(level,worker,planned.groundExit())
                 ?planned.groundExit():exitGround(level,worker,column);
         if(exit==null)return false;
-        // A valid adjacent ground tile is NOT necessarily a valid
-        // dismount from the worker's present physical elevation. Do not
-        // create an EXIT instruction that crosses a solid roof slab.
-        if(worker.onGround()
-                &&worker.getY()>exit.getY()+1.35)return false;
+        // A Builder may safely fall TWO blocks from the scaffold lip
+        // onto verified ground. A bigger drop or a blocked lateral step
+        // is not a valid exit: the physical shaft must lower it first.
+        double drop=worker.getY()-exit.getY();
+        if(worker.onGround()&&drop>2.15)return false;
+        if(worker.onGround()&&drop>1.35){
+            double x=exit.getX()+.5-worker.getX();
+            double z=exit.getZ()+.5-worker.getZ();
+            if(!level.noCollision(worker,
+                    worker.getBoundingBox().move(x,0,z)))return false;
+        }
         clearMotion(worker);
         access.remove(worker);
         exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));

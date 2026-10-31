@@ -908,9 +908,9 @@ public final class BuilderSafeScaffoldGameTest {
                     helper.fail("Builder left a sealed scaffold without"
                             +" a real solid exit: "+worker.position());return;
                 }
-                // The only reopened landing is ONE BLOCK LOWER than the
-                // tower's own base. Do not permit a two-block side drop
-                // from the scaffold top.
+                // The only reopened landing is one below the tower
+                // base: two blocks beneath its lip. The golem must
+                // step off physically and fall onto real solid ground.
                 level.setBlock(reopened[0].below(2),
                         Blocks.STONE.defaultBlockState(),3);
                 level.setBlock(reopened[0].below(),
