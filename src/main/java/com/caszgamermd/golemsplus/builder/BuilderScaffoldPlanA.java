@@ -44,6 +44,7 @@ public final class BuilderScaffoldPlanA {
         int bridgeTicks,reclimbs;
         double highest=-Double.MAX_VALUE;
         double lastDistance=Double.POSITIVE_INFINITY;
+        double closestApproach=Double.POSITIVE_INFINITY;
         Job(BlockPos target,BlockPos base,BlockPos exit,
                 BlockPos planner,Direction direction,int top,int span,long now){
             this.target=target.immutable();
@@ -64,6 +65,9 @@ public final class BuilderScaffoldPlanA {
     // The underside/bottom flag describes its shape, NOT an invalid span.
     static final int MAX_HORIZONTAL_SCAFFOLD_SPAN=6;
     private static final Map<BuilderGolem,Job> jobs=new WeakHashMap<>();
+    private record FailedEntry(BlockPos base,long until){}
+    private static final Map<BuilderGolem,FailedEntry> failedEntries=
+            new WeakHashMap<>();
     private BuilderScaffoldPlanA(){}
 
     public static boolean hasPlan(BuilderGolem worker){return jobs.containsKey(worker);}
@@ -209,6 +213,7 @@ public final class BuilderScaffoldPlanA {
             WorkerStationBlockEntity table,BlockPos target,
             List<BuilderConstructionPlan.Step> steps,boolean workPose){
         Set<BlockPos> reserved=future(level,steps);
+        FailedEntry rejected=failedEntries.get(worker);
         boolean isolated=needsTemporaryWorkPlatform(level,target);
         List<Job> options=new ArrayList<>();
         for(Direction outward:Direction.Plane.HORIZONTAL)
@@ -236,6 +241,8 @@ public final class BuilderScaffoldPlanA {
             for(int dy=-4;dy<=5;dy++){
                 BlockPos base=towerXZ.atY(worker.blockPosition().getY()-dy);
                 int top=target.getY()-1;
+                if(rejected!=null&&level.getGameTime()<rejected.until()
+                        &&rejected.base().equals(base))continue;
                 if(!shaftClear(level,base,top,reserved,table,worker)
                         ||!bridgeClear(level,base,inward,target.getY(),
                                 span,reserved,table,worker))continue;
@@ -434,6 +441,20 @@ public final class BuilderScaffoldPlanA {
         if(load==BuilderSupplyInventory.ScaffoldLoad.MOVING)return Result.MOVING;
         if(load==BuilderSupplyInventory.ScaffoldLoad.MISSING)
             return Result.NEED_MATERIALS;
+        // Fetching paid scaffold can take this worker all the way back
+        // to OnSite storage. After a successful resupply, it must WALK
+        // back to the chosen real shaft before placing any blocks. A
+        // previously active tall shaft may instead be extended while
+        // the worker stands on its own completed column.
+        if(worker.distanceToSqr(j.base.getX()+.5,worker.getY(),
+                        j.base.getZ()+.5)>1.20
+                ||worker.getY()<j.base.getY()-.4
+                ||worker.getY()>Math.max(j.base.getY(),existingTop+1)+.4){
+            j.phase=Phase.APPROACH;
+            j.closestApproach=Double.POSITIVE_INFINITY;
+            j.lastProgress=level.getGameTime();
+            return Result.MOVING;
+        }
         for(int y=j.base.getY();y<=top;y++){
             BlockPos at=j.base.atY(y);
             if(present(level,table,worker,at))continue;
@@ -623,12 +644,36 @@ public final class BuilderScaffoldPlanA {
                 // fractional centering around the roof's tight corners.
                 // The actual scaffold controller safely recenters the
                 // body before climbing, using real collision checks.
-                if(worker.distanceToSqr(j.base.getX()+.5,worker.getY(),
-                                j.base.getZ()+.5)>1.20
+                double horizontal=worker.distanceToSqr(
+                        j.base.getX()+.5,worker.getY(),j.base.getZ()+.5);
+                if(horizontal>1.20
                         ||Math.abs(worker.getY()-j.base.getY())>.4){
+                    double approachDistance=worker.distanceToSqr(
+                            j.base.getX()+.5,j.base.getY(),j.base.getZ()+.5);
+                    if(approachDistance<j.closestApproach-.12){
+                        j.closestApproach=approachDistance;
+                        j.lastProgress=level.getGameTime();
+                    }
+                    if(level.getGameTime()-j.lastProgress>180){
+                        // A reachable base preview is NOT permission to
+                        // hold this unfinished placement forever. The
+                        // body may now be on another roof elevation or
+                        // behind a changed wall. Retire only this entry,
+                        // leaving other towers/frontier cells available.
+                        failedEntries.put(worker,new FailedEntry(j.base,
+                                level.getGameTime()+240));
+                        System.out.println("[PLAN A ENTRY] retry alternate base for "
+                                +j.target.toShortString()+" from "
+                                +worker.blockPosition().toShortString()
+                                +" rejected="+j.base.toShortString()
+                                +" distanceSq="+approachDistance);
+                        jobs.remove(worker);
+                        return Result.NO_SAFE_ROUTE;
+                    }
                     WorkerNavigation.routeToExact(level,worker,j.base,1.0);
                     return Result.MOVING;
                 }
+                j.lastProgress=level.getGameTime();
                 j.phase=Phase.BUILD;
             }
             case CLIMB -> {
