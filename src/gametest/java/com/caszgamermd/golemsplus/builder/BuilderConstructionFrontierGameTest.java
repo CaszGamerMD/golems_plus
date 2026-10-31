@@ -46,6 +46,45 @@ public final class BuilderConstructionFrontierGameTest {
         return table;
     }
 
+    /** A block one Y ABOVE real grounded feet can be placed from a
+     * nearby lower ledge when the eye ray, arm clearance and post-place
+     * escape all succeed. No grapple or scaffold is compulsory here.
+     */
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void selectsSafeLowerWorkLedgeForHigherBlock(GameTestHelper h){
+        floor(h);
+        var level=h.getLevel();
+        var mob=worker(h,h.absolutePos(new BlockPos(3,2,3)));
+        var table=planner(h,mob,1);
+        BlockPos target=h.absolutePos(new BlockPos(5,3,3));
+        var steps=List.of(new BuilderConstructionPlan.Step(
+                target.getX(),target.getY(),target.getZ(),
+                "minecraft:stone","minecraft:stone"));
+        h.onEachTick(()->{
+            if(h.getTick()!=16)return;
+            if(!mob.onGround()
+                    ||!BuilderPlacementSpace.placementHeight(target,mob)
+                    ||!BuilderConstructionPlanner.safeStand(
+                            level,mob,target,mob.blockPosition())){
+                h.fail("Lower ledge failed real eye/footing/escape checks");
+                return;
+            }
+            var choice=BuilderConstructionPlanner.choose(
+                    level,mob,table,steps,List.of(0));
+            if(choice==null||choice.index()!=0||choice.stance()==null
+                    ||choice.stance().getY()!=target.getY()-1){
+                h.fail("Height rule rejected reachable upper placement: "+choice);
+                return;
+            }
+            if(!BuilderPlacementSpace.ready(level,mob,table,target)){
+                h.fail("Future placed block would be unsafe from lower ledge");
+                return;
+            }
+            System.out.println("[FRONTIER] PASS paid-independent Y-1 work pose");
+            h.succeed();
+        });
+    }
+
     @GameTest(maxTicks=100,skyAccess=true)
     public void picksSupportedFrontierBeforeUnsupportedEarlierCell(
             GameTestHelper h){

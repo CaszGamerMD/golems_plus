@@ -821,9 +821,9 @@ public final class BuilderBuildService {
                             level.getGameTime(),"cannot walk to lower target");
                 return;
             }
-            // A Builder may place from its assigned layer or from one
-            // grounded block ABOVE that layer. This changes only its
-            // physical feet height, never the crew-wide Y work gate.
+            // A Builder may place from its assigned layer, or one safe
+            // grounded block above or below it. This changes only its
+            // physical work pose, never the crew-wide schematic Y gate.
             activity.phase=Action.PLACE;
             // Travel and placement are mutually exclusive for THIS worker:
             // stop the previous A* path and horizontal momentum before a

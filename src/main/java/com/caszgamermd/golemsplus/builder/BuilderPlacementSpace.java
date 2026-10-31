@@ -55,13 +55,14 @@ public final class BuilderPlacementSpace {
         double dz=Math.max(0,Math.max(block.getZ()-z,z-(block.getZ()+1.0)));
         return Math.hypot(dx,dz);
     }
-    /** Builders may work from the target layer OR one grounded block
-     * above it. Layer-by-layer assignments are unchanged; this defines
-     * where their FEET may stand, not which schematic Y is unlocked.
+    /** Builders may work from the target layer or one grounded block
+     * ABOVE or BELOW it. Upward reach is a physical tool, not an excuse
+     * to reject a safe roof ledge or unlock later schematic layers.
      */
     public static boolean placementHeight(BlockPos target,BuilderGolem worker){
         int feetY=worker.blockPosition().getY();
-        return feetY==target.getY() || feetY==target.getY()+1
+        return feetY==target.getY()
+                ||(feetY==target.getY()-1||feetY==target.getY()+1)
                 &&worker.onGround()&&!worker.isNoGravity();
     }
     /** The same horizontal margin applies when placing DOWN one block.
@@ -277,7 +278,7 @@ public final class BuilderPlacementSpace {
             BlockPos target){
         return approachWithHeight(level,worker,target,false,p->true);
     }
-    /** Plan B work stance: feet on target Y or one Y ABOVE, with real
+    /** Plan B work stance: feet on target Y or one Y above/below, with real
      * footing and at least 0.8 horizontal clearance from the new block.
      * This does not authorize claiming any higher schematic Y layer.
      */
@@ -301,7 +302,8 @@ public final class BuilderPlacementSpace {
         Approach cached=workApproaches.get(worker);
         if(cached!=null&&cached.target().equals(target)
                 &&(!sameHeight||cached.destination().getY()==target.getY()
-                        ||cached.destination().getY()==target.getY()+1)
+                        ||cached.destination().getY()==target.getY()+1
+                        ||cached.destination().getY()==target.getY()-1)
                 &&cached.until()>now
                 &&safe.test(cached.destination())
                 &&cached.destination().distSqr(target)<14
@@ -320,7 +322,7 @@ public final class BuilderPlacementSpace {
         // two blocks above/below the target even if same-level floor is
         // sealed by completed walls. Do not insist on a jump or teleport.
         for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
-            for(int dy:sameHeight?new int[]{0,1}:new int[]{0,1,-1,2,-2}){
+            for(int dy:sameHeight?new int[]{0,1,-1}:new int[]{0,1,-1,2,-2}){
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos p=target.offset(dx,dy,dz);
                 if(!safe.test(p)
