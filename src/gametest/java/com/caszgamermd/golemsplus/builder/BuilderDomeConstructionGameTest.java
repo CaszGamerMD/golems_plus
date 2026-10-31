@@ -137,6 +137,9 @@ public final class BuilderDomeConstructionGameTest {
             helper.fail("Dome Planner rejected start with 4 registered builders");
             return;
         }
+        final BuilderDomeLayerTiming layerTiming=new BuilderDomeLayerTiming(
+                steps,table.builderOrigin().getY(),helper.getTick(),
+                table.builderActiveLayer(steps));
         final int[] lastCursor={-1},lastCleared={-1},lastCompleted={-1};
         final long[] lastProgress={helper.getTick()};
         final boolean[] inspected={false},checkpoint={false},goal3333={false},goal3400={false};
@@ -147,6 +150,13 @@ public final class BuilderDomeConstructionGameTest {
             // out-of-order zone completion; don't use obsolete ledger fields.
             int physicalCount=physicallyCorrect(level,steps);
             int sharedY=table.builderActiveLayer(steps);
+            int unassigned=0,scaffoldPresent=0;
+            for(BuilderGolem worker:crew){
+                if(table.claimedStep(worker.getUUID())<0)unassigned++;
+                if(!table.scaffoldPositions(worker.getUUID()).isEmpty())scaffoldPresent++;
+            }
+            layerTiming.sample(tick,sharedY,physicalCount==requiredBlocks,
+                    unassigned,scaffoldPresent);
             // Fail immediately if a Builder receives an out-of-layer
             // construction assignment; no silent progress on upper Y
             // while an indexed lower-Y cell remains unfinished.
@@ -154,6 +164,7 @@ public final class BuilderDomeConstructionGameTest {
                 int assigned=table.claimedStep(member.getUUID());
                 if(assigned>=0&&assigned<steps.size()
                         &&steps.get(assigned).y()>sharedY){
+                    layerTiming.report(level,steps,tick,"out_of_layer_assignment");
                     helper.fail("Y LAYER VIOLATION: assigned Y="
                             +(steps.get(assigned).y()-table.builderOrigin().getY())
                             +" above active Y="
@@ -217,6 +228,7 @@ public final class BuilderDomeConstructionGameTest {
                 // of eventual 3537/3537 completion. It must verify all
                 // four actual entities are alive (not merely scheduled).
                 if(crew.size()!=4||crew.stream().anyMatch(w->!w.isAlive())){
+                    layerTiming.report(level,steps,tick,"crew_missing_at_1700");
                     helper.fail("Reached 1700 but four real Builders not alive");
                     return;
                 }
@@ -226,6 +238,7 @@ public final class BuilderDomeConstructionGameTest {
             }
             if(!goal3333[0]&&physicalCount>=3333){
                 if(crew.size()!=4||crew.stream().anyMatch(w->!w.isAlive())){
+                    layerTiming.report(level,steps,tick,"crew_missing_at_3333");
                     helper.fail("3333 milestone requires four living physical Builders");return;
                 }
                 goal3333[0]=true;
@@ -260,6 +273,7 @@ public final class BuilderDomeConstructionGameTest {
                     }
                 }
                 if(wrong>0){
+                    layerTiming.report(level,steps,tick,"wrong_finished_blocks");
                     helper.fail("Dome COMPLETED incorrectly: "+wrong+
                             " block-state mismatches; "+sample);return;
                 }
@@ -268,6 +282,7 @@ public final class BuilderDomeConstructionGameTest {
                 boolean scaffoldsGone=crew.stream().allMatch(
                         worker->table.scaffoldPositions(worker.getUUID()).isEmpty());
                 if(atGround&&scaffoldsGone){
+                    layerTiming.report(level,steps,tick,"pass");
                     System.out.println("[DOME E2E] PASS "+requiredBlocks
                             +"/"+requiredBlocks+" required blocks verified; "
                             +ignoredPlants+" ignored vegetation entries; "
@@ -294,6 +309,7 @@ public final class BuilderDomeConstructionGameTest {
                                         member.getUUID()).size())
                                 .append(" ").append(BuilderBuildService.debugStatus(
                                         level,member));
+                    layerTiming.report(level,steps,tick,"cleanup_stall");
                     helper.fail(stuck.toString());
                 }
                 return;
@@ -319,6 +335,7 @@ public final class BuilderDomeConstructionGameTest {
                         .append(" | remainingLayer=")
                         .append(remainingLayerItems(
                                 level,table,steps,sharedY,32));
+                layerTiming.report(level,steps,tick,"construction_stall");
                 helper.fail(message.toString());
             }
         });
