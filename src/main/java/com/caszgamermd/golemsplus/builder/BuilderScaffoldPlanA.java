@@ -839,6 +839,17 @@ public final class BuilderScaffoldPlanA {
         if(j==null)return false;
         j.bridgeTicks++;
         j.highest=Math.max(j.highest,worker.getY());
+        // A real scaffold climber can crest the column BETWEEN the
+        // Builder's five-tick work calls, then settle back inside the
+        // climb-through scaffold. Remember that physically observed
+        // arrival immediately so the next work tick can install its
+        // inventory-paid horizontal bridge. Requiring the worker to be
+        // at the crest on the exact work tick stranded high roof caps.
+        if(j.phase==Phase.CLIMB
+                &&worker.getY()>=j.target.getY()-.12){
+            j.phase=Phase.EXTEND_FIRST;
+            j.lastProgress=level.getGameTime();
+        }
         if(j.phase==Phase.APPROACH&&j.fractionalSideEntry){
             double[] step=fractionalSideMove(level,worker,j.base);
             if(step!=null){

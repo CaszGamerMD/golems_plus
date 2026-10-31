@@ -109,7 +109,8 @@ public final class BuilderWorkAccessGameTest {
                         +" feet="+worker.position());
                 helper.succeed();return;
             }
-            if(grounded&&helper.getTick()>=20&&helper.getTick()%5==0){
+            if((grounded||BuilderScaffoldPlanA.hasPlan(worker))
+                    &&helper.getTick()>=20&&helper.getTick()%5==0){
                 if(!BuilderScaffoldPlanA.hasPlan(worker)){
                     BlockPos walk=BuilderPlacementSpace.approachWithRules(
                             level,worker,target,
@@ -133,6 +134,122 @@ public final class BuilderWorkAccessGameTest {
                                 level,worker,target,
                                 at->BuilderConstructionPlanner.safeStand(
                                         level,worker,target,at)));
+        });
+    }
+    /** The 3475-block run stopped on four narrow Y33 wall/fence caps.
+     * Start from an ACTUAL grounded foothold on the already completed
+     * Y32 roof, several blocks away. The worker must physically step
+     * back, walk around the roof or climb its own paid scaffold before
+     * being considered within placement reach of the first fence cap.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=2400,skyAccess=true)
+    public void finalFenceCapReachesFromGroundedRoofLaunch(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos origin=helper.absolutePos(new BlockPos(8,2,8));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        origin.getX()>>4,origin.getZ()>>4),4);
+        final java.util.List<BuilderConstructionPlan.Step> steps;
+        try{
+            var schematic=LitematicFileReader.read(BuilderDomeFixture.unpack());
+            steps=BuilderConstructionPlan.create(schematic,
+                    new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                            BuildSite.Rotation.NONE,BuildSite.Mirror.NONE),true)
+                    .steps();
+            for(var b:schematic.blocks()){
+                if(b.y()>32||BuilderVegetation.ignoreSchematicState(b.state()))
+                    continue;
+                var state=BuilderBlockResolver.resolve(b.state(),
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(state!=null)level.setBlock(origin.offset(
+                        b.x(),b.y(),b.z()),state.state(),2);
+            }
+        }catch(Exception e){helper.fail("Cannot reconstruct last roof "+e);return;}
+        helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
+        BlockPos station=helper.absolutePos(new BlockPos(4,2,7));
+        if(!(level.getBlockEntity(station)
+                instanceof WorkerStationBlockEntity table)){
+            helper.fail("No high-roof scaffold Planner");return;
+        }
+        BlockPos target=origin.offset(14,33,16);
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos launch=null;
+        double best=Double.POSITIVE_INFINITY;
+        for(int dx=-8;dx<=8;dx++)for(int dz=-8;dz<=8;dz++)
+            for(int y=30;y<=32;y++){
+                BlockPos p=target.offset(dx,y-33,dz);
+                int horizontal=dx*dx+dz*dz;
+                if(horizontal<16||horizontal>64
+                        ||!WorkerNavigation.canStandOn(level,worker,p))continue;
+                double floor=WorkerNavigation.surveyFloorHeight(level,p);
+                if(!Double.isFinite(floor)||Math.abs(floor-p.getY())>.15)
+                    continue;
+                double score=Math.abs(horizontal-25)*.05
+                        +Math.abs(y-31)*2.0;
+                if(score<best){best=score;launch=p;}
+            }
+        if(launch==null){
+            helper.fail("No real Y30-32 standing tile near last roof cap");return;
+        }
+        worker.setPos(launch.getX()+.5,launch.getY(),launch.getZ()+.5);
+        worker.setItem(0,new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.SCAFFOLDING,32));
+        level.addFreshEntity(worker);
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),1)
+                ||!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Cannot register Y33 cap Builder");return;
+        }
+        final BlockPos originalLaunch=launch;
+        final BuilderScaffoldPlanA.Result[] result={null};
+        helper.onEachTick(()->{
+            if(!worker.isAlive()||worker.isNoGravity()){
+                helper.fail("Y33 cap worker lost natural physics");return;
+            }
+            boolean direct=worker.onGround()
+                    &&BuilderPlacementSpace.placementHeight(target,worker)
+                    &&BuilderPlacementSpace.horizontalClear(target,worker)
+                    &&worker.distanceToSqr(target.getX()+.5,
+                            target.getY()+.5,target.getZ()+.5)<14
+                    &&BuilderConstructionPlanner.safeStand(
+                            level,worker,target,worker.blockPosition());
+            boolean paid=BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                    level,worker,table,target);
+            if(direct||paid){
+                System.out.println("[Y33 FENCE CAP] PASS "
+                        +(paid?"paid scaffold":"ordinary safe footing")
+                        +" launch="+originalLaunch.subtract(origin)
+                        +" final="+worker.blockPosition().subtract(origin)
+                        +" after "+helper.getTick()+" ticks");
+                helper.succeed();return;
+            }
+            if((worker.onGround()||BuilderScaffoldPlanA.hasPlan(worker))
+                    &&helper.getTick()>12
+                    &&helper.getTick()%5==0){
+                if(!BuilderScaffoldPlanA.hasPlan(worker)){
+                    BlockPos walk=BuilderPlacementSpace.approachWithRules(
+                            level,worker,target,
+                            at->BuilderConstructionPlanner.safeStand(
+                                    level,worker,target,at));
+                    if(walk!=null&&WorkerNavigation.routeToExact(
+                            level,worker,walk,1.0))return;
+                }
+                result[0]=BuilderScaffoldPlanA.reachWorkPose(
+                        level,worker,table,owner,target,steps);
+            }
+            if(helper.getTick()>2260)
+                helper.fail("Real Y33 cap approach stalled launch="
+                        +originalLaunch.subtract(origin)
+                        +" final="+worker.position()
+                        +" paid="+table.scaffoldPositions(worker.getUUID()).size()
+                        +" result="+result[0]
+                        +" plan="+BuilderScaffoldPlanA.status(worker)
+                        +" nav="+WorkerNavigation.debugStatus(worker));
         });
     }
     private static void measuredRoofScaffoldGap(GameTestHelper helper,
