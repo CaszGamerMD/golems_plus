@@ -210,6 +210,15 @@ public final class BuilderDomeRouteSurveyGameTest {
                             world,mob,safe))
                     .append(' ').append(WorkerNavigation.diagnoseExecutableStand(
                             world,mob,safe)).append('\n');
+                // The graph and training probes above do NOT impose the
+                // extra 0.8m placement edge margin. Report the real
+                // construction acceptance check separately, or a route
+                // to the next missing hole can look like a usable stance.
+                report.append("[LEGAL WORK POSE] ")
+                    .append(BuilderPlacementSpace.diagnoseApproach(
+                            world,mob,target,
+                            at->BuilderConstructionPlanner.safeStand(
+                                    world,mob,target,at))).append('\n');
                 List<BlockPos> nearest=new ArrayList<>(component);
                 nearest.sort(Comparator.comparingDouble(p->p.distSqr(target)));
                 report.append("[NEAREST REAL FOOTHOLDS]");
@@ -245,6 +254,7 @@ public final class BuilderDomeRouteSurveyGameTest {
             for(String line:report.toString().split("\n"))
                 if(line.startsWith("[WORKER]")||line.startsWith("[GROUND GRAPH]")
                         ||line.startsWith("[TRAINED WORK ROUTE]")
+                        ||line.startsWith("[LEGAL WORK POSE]")
                         ||line.startsWith("[PAID SCAFFOLD]")
                         ||line.startsWith("[NEAREST REAL FOOTHOLDS]"))
                     System.out.println(line);

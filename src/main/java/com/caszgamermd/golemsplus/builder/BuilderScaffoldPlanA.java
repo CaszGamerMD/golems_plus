@@ -272,11 +272,14 @@ public final class BuilderScaffoldPlanA {
             }
         }
         options.sort(Comparator.comparingDouble(j->j.lastDistance));
-        int probes=0;
         List<BlockPos> entryCandidates=new ArrayList<>();
         List<BlockPos> levelEntries=new ArrayList<>();
         for(Job candidate:options){
-            if(++probes>(workPose?96:64))break;
+            // At most 4 directions x 4 distances x 10 elevations = 160
+            // physical candidates. The old top-96 material-cost cut
+            // could contain ONLY high bases while excluding a valid
+            // same-level roof entry. Consider the complete bounded set
+            // before giving the worker a risky uphill scaffold approach.
             // A scaffold already occupying its own base is not a native
             // walking goal; its owner can begin climbing in place.
             boolean onBase=worker.blockPosition().getX()==candidate.base.getX()
@@ -318,7 +321,8 @@ public final class BuilderScaffoldPlanA {
             WorkerStationBlockEntity table,BlockPos target,
             List<BuilderConstructionPlan.Step> steps){
         Set<BlockPos> reserved=future(level,steps);
-        int shafts=0,bridges=0,exits=0,reached=0;
+        int shafts=0,bridges=0,exits=0,reached=0,lowerExits=0;
+        List<BlockPos> lowerBases=new ArrayList<>();
         String example="";
         for(Direction outward:Direction.Plane.HORIZONTAL)
             for(int distance=3;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++)
@@ -344,6 +348,10 @@ public final class BuilderScaffoldPlanA {
                             level,worker,base,reserved);
                     if(exit==null)continue;
                     exits++;
+                    if(base.getY()<=worker.blockPosition().getY()){
+                        lowerExits++;
+                        lowerBases.add(base);
+                    }
                     boolean onBase=worker.blockPosition().getX()==base.getX()
                             &&worker.blockPosition().getZ()==base.getZ()
                             &&Math.abs(worker.getY()-base.getY())<.30
@@ -358,6 +366,9 @@ public final class BuilderScaffoldPlanA {
                 +" grounded="+worker.onGround()
                 +" shafts="+shafts+" clearBridges="+bridges
                 +" safeExits="+exits+" reachable="+reached
+                +" lowerExits="+lowerExits
+                +" lowerTrained="+WorkerNavigation.selectExecutableStand(
+                        level,worker,lowerBases)
                 +" west6="+west+" onsite="+worker.blockPosition().equals(west)
                 +" shaft="+shaftClear(level,west,target.getY()-1,reserved,table,worker)
                 +" bridge="+bridgeClear(level,west,Direction.EAST,
