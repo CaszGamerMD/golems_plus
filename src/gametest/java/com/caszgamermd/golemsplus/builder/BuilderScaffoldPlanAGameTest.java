@@ -59,6 +59,7 @@ public final class BuilderScaffoldPlanAGameTest {
         }
         final int[] phase={0};
         final boolean[] wentWest={false},wentDown={false};
+        final boolean[] checkedApproach={false};
         h.onEachTick(()->{
             if(!mob.isAlive()||mob.isNoGravity()){
                 h.fail("Roof Builder lost real gravity");return;
@@ -67,11 +68,23 @@ public final class BuilderScaffoldPlanAGameTest {
             if(mob.getY()<start.getY()-.70)wentDown[0]=true;
             if(h.getTick()<15||h.getTick()%5!=0)return;
             if(phase[0]==0){
-                if(h.getTick()==15&&!BuilderScaffoldPlanA.canPlan(
-                        level,mob,table,target,List.of())){
-                    h.fail("Detour tower rejected: "+
-                            BuilderScaffoldPlanA.diagnoseAccess(
-                                    level,mob,table,target,List.of()));return;
+                // A newly spawned entity can still be settling onto its
+                // starting floor on the first sampled tick. The trained
+                // approach requires an actual grounded physical start.
+                if(!checkedApproach[0]){
+                    if(!mob.onGround()){
+                        if(h.getTick()>65)h.fail("Roof Builder never settled "
+                                +mob.position()+" below="
+                                +level.getBlockState(mob.blockPosition().below()));
+                        return;
+                    }
+                    if(!BuilderScaffoldPlanA.canPlan(
+                            level,mob,table,target,List.of())){
+                        h.fail("Detour tower rejected: "+
+                                BuilderScaffoldPlanA.diagnoseAccess(
+                                        level,mob,table,target,List.of()));return;
+                    }
+                    checkedApproach[0]=true;
                 }
                 var result=BuilderScaffoldPlanA.reach(
                         level,mob,table,owner,target,List.of());
