@@ -52,10 +52,14 @@ public final class BuilderBuildService {
         long frontierWaitSince=-1;
         int frontierWaitLayer=Integer.MIN_VALUE;
         long workTravelSince=-1;
+        // Track actual displacement, not repeated navigation requests.
+        double lastWorkX=Double.NaN,lastWorkY=Double.NaN,lastWorkZ=Double.NaN;
+        long lastMovementTick=-1;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
                 blockedSince=-1;workTravelSince=-1;
+                lastMovementTick=-1;lastWorkX=Double.NaN;
             }
         }
     }
@@ -781,13 +785,35 @@ public final class BuilderBuildService {
             }
             long now=level.getGameTime();
             if(activity.workTravelSince<0)activity.workTravelSince=now;
+            // Every meaningful physical movement refreshes the stall timer.
+            // A long detour, grapple, or scaffold climb must not be
+            // interrupted merely because it takes longer than 180 ticks.
+            if(activity.lastMovementTick<0){
+                activity.lastMovementTick=now;
+                activity.lastWorkX=worker.getX();
+                activity.lastWorkY=worker.getY();
+                activity.lastWorkZ=worker.getZ();
+            }else{
+                double dx=worker.getX()-activity.lastWorkX;
+                double dy=worker.getY()-activity.lastWorkY;
+                double dz=worker.getZ()-activity.lastWorkZ;
+                if(dx*dx+dy*dy+dz*dz>=0.36){
+                    activity.lastMovementTick=now;
+                    activity.lastWorkX=worker.getX();
+                    activity.lastWorkY=worker.getY();
+                    activity.lastWorkZ=worker.getZ();
+                }
+            }
             // Once an owned shaft/bridge starts, its controller owns all
             // physical movement. Do not replace it with a normal route
             // just because another nominal work pose becomes visible.
             if(BuilderScaffoldPlanA.hasPlan(worker)
                     &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
                 return;
-            if(now-activity.workTravelSince>180&&!BuilderGrappleAccess.active(worker)){
+            if(now-activity.lastMovementTick>180
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffoldPlanA.hasPlan(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
                 // Reposition before abandoning the assignment: try an
                 // alternate physical grapple or paid scaffold access route.
                 // Neither is mandatory; a failed attempt falls through to
@@ -812,11 +838,12 @@ public final class BuilderBuildService {
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                 table.waitForBuilderAccess(worker.getUUID(),index,now,
-                        "180-tick work approach without placement");
+                        "180-tick stationary work approach; alternative access exhausted");
                 activity.workTravelSince=-1;
-                table.setProblem("Deferred cycling work approach "+pos);
+                activity.lastMovementTick=now;
+                table.setProblem("Deferred stationary work approach "+pos);
                 System.out.println("[FRONTIER RETRY] deferred unchanged step="+index
-                        +" after 180 ticks without placement at "+worker.position());
+                        +" after 180 stationary ticks at "+worker.position());
                 return;
             }
             int yDiff=pos.getY()-worker.blockPosition().getY();
@@ -862,7 +889,7 @@ public final class BuilderBuildService {
             // Same-Y scaffolding is instead offered below only AFTER
             // all safe walking stances or their real routes are rejected.
             if(yDiff>1&&!directOrdinaryWork
-                    &&now-activity.workTravelSince>80
+                    &&now-activity.lastMovementTick>80
                     &&!BuilderGrappleAccess.active(worker)
                     &&scaffoldBlockedWork(level,worker,table,owner,pos,
                             plan.steps()))
