@@ -23,16 +23,24 @@ public final class BuilderWorkAccessGameTest {
         ServerLevel level=helper.getLevel();
         for(int x=0;x<12;x++)for(int z=0;z<8;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
-        for(int x=2;x<=4;x++)
-            helper.setBlock(x,x,3,Blocks.STONE);
-        for(int x=5;x<=9;x++)
+        // Real half-height stair steps avoid a contrived sequence of
+        // four adjacent full-block jumps. This is the same supported
+        // half-slab terrain as the upper Dome's rising roof edges.
+        helper.setBlock(2,2,3,Blocks.STONE_SLAB);
+        helper.setBlock(3,2,3,Blocks.STONE);
+        helper.setBlock(4,3,3,Blocks.STONE_SLAB);
+        helper.setBlock(5,3,3,Blocks.STONE);
+        helper.setBlock(6,4,3,Blocks.STONE_SLAB);
+        helper.setBlock(7,4,3,Blocks.STONE);
+        helper.setBlock(8,5,3,Blocks.STONE_SLAB);
+        for(int x=9;x<=11;x++)
             helper.setBlock(x,5,3,Blocks.STONE);
         helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
         BlockPos station=helper.absolutePos(new BlockPos(0,2,0));
         if(!(level.getBlockEntity(station) instanceof WorkerStationBlockEntity table)){
             helper.fail("Missing real Builder station");return;
         }
-        BlockPos target=helper.absolutePos(new BlockPos(9,6,3));
+        BlockPos target=helper.absolutePos(new BlockPos(11,6,3));
         BlockPos start=helper.absolutePos(new BlockPos(1,2,3));
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
@@ -64,7 +72,15 @@ public final class BuilderWorkAccessGameTest {
                                 level,worker,target,
                                 p->BuilderConstructionPlanner.safeStand(
                                         level,worker,target,p))
-                        +" route="+WorkerNavigation.debugStatus(worker));
+                        +" candidate="+helper.absolutePos(new BlockPos(9,6,3))
+                        +" route="+WorkerNavigation.debugStatus(worker)
+                        +" stance="+BuilderPlacementSpace.diagnoseApproach(
+                                level,worker,target,
+                                p->BuilderConstructionPlanner.safeStand(
+                                        level,worker,target,p))
+                        +" trained="+WorkerNavigation.diagnoseExecutableStand(
+                                level,worker,java.util.List.of(
+                                        helper.absolutePos(new BlockPos(9,6,3)))));
         });
     }
     @GameTest(maxTicks=450,skyAccess=true)

@@ -188,6 +188,10 @@ public final class BuilderBuildService {
                             level,worker,table,target,steps))
                 &&scaffoldWork(level,worker,table,owner,target,steps);
     }
+    // Short roof ramps are walkable without gear. A Builder stranded 20+
+    // levels below its assignment should still start a paid access tower
+    // or a grapple immediately: long ascent preview alone is not progress.
+    private static final int WALK_FIRST_LOCAL_RISE=5;
     /** The same trained, collision-checked A* used for real motion must
      * decide whether a roof stance is walkable BEFORE we build access gear.
      * A planned but UNBUILT bridge may be released for such a route; never
@@ -694,6 +698,7 @@ public final class BuilderBuildService {
             long now=level.getGameTime();
             if(activity.workTravelSince<0)activity.workTravelSince=now;
             int yDiff=pos.getY()-worker.blockPosition().getY();
+            boolean localRoofRise=yDiff>1&&yDiff<=WALK_FIRST_LOCAL_RISE;
             boolean inPlace=BuilderPlacementSpace.placementHeight(pos,worker)
                     &&BuilderPlacementSpace.horizontalClear(pos,worker)
                     &&worker.distanceToSqr(pos.getX()+.5,
@@ -704,10 +709,10 @@ public final class BuilderBuildService {
             // walkable as other Builders finish its ledges. Before building
             // any of this worker's scaffold, recheck the executable ground
             // route and release an obsolete, still-unbuilt Plan A.
-            if(BuilderScaffoldPlanA.hasPlan(worker)&&!inPlace
+            if(localRoofRise&&now-activity.workTravelSince<=260
+                    &&BuilderScaffoldPlanA.hasPlan(worker)&&!inPlace
                     &&walkToOrdinaryWorkPose(level,worker,table,pos)){
                 activity.phase=Action.MOVE_TO_WORK;
-                activity.workTravelSince=now;
                 return;
             }
             // Once an owned shaft/bridge starts, its controller owns all
@@ -735,7 +740,7 @@ public final class BuilderBuildService {
             // the work stance without either rope or scaffold. Give the
             // trained route a meaningful physical travel window first; if
             // it stalls, the 260-tick access fallback below is still live.
-            if(yDiff>1&&!inPlace&&now-activity.workTravelSince<=260
+            if(localRoofRise&&!inPlace&&now-activity.workTravelSince<=260
                     &&walkToOrdinaryWorkPose(level,worker,table,pos)){
                 activity.phase=Action.MOVE_TO_WORK;
                 return;
