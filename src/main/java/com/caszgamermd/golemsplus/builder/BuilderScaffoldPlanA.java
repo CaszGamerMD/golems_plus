@@ -1597,6 +1597,30 @@ public final class BuilderScaffoldPlanA {
                     return false;
                 }
             }
+            // Stop repeating a dismount that has made no progress. On real
+            // solid footing the worker can safely abandon this scaffold
+            // job, reclaim unoccupied scaffolding and replan from scratch.
+            // Reject the old base so the next plan cannot recreate the
+            // exact same failed tower immediately.
+            if(worker.onGround()
+                    &&!worker.isNoGravity()
+                    &&!level.getBlockState(below).is(Blocks.SCAFFOLDING)
+                    &&level.getBlockState(below).isFaceSturdy(
+                            level,below,Direction.UP)
+                    &&level.getGameTime()-j.lastProgress>160){
+                if(!clearOfOwnedScaffold){
+                    BuilderScaffolding.clearGroundedScaffoldSnag(
+                            level,worker,table);
+                }
+                rejectEntry(level,worker,j.base);
+                System.out.println("[PLAN A DISMOUNT RESET] grounded stall; "
+                        +"abandoning scaffold base="
+                        +j.base.toShortString()+" worker="
+                        +worker.blockPosition().toShortString());
+                jobs.remove(worker);
+                BuilderScaffolding.retrieve(level,worker,table,false);
+                return false;
+            }
             if(worker.onGround()
                     &&clearOfOwnedScaffold
                     &&!level.getBlockState(below).is(Blocks.SCAFFOLDING)
