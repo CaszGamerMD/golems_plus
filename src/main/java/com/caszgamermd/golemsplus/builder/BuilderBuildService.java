@@ -91,6 +91,38 @@ public final class BuilderBuildService {
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
+    /** A deferred cell must not be immediately reclaimed by the SAME
+     * immobile Builder when another member of the crew could approach it.
+     * This is a per-worker, in-memory preference only: it never locks the
+     * shared Y layer, changes an item order, or prevents another Builder
+     * claiming the unchanged cell after the Planner's 60-tick cooldown.
+     */
+    private static final Map<BuilderGolem,Map<Integer,Long>> workRetryAfter=
+            new WeakHashMap<>();
+    private static final long WORK_RETRY_OTHER_CREW_TICKS=300;
+    private static void deferStalledWork(BuilderGolem worker,
+            WorkerStationBlockEntity table,int index,long now,String reason){
+        workRetryAfter.computeIfAbsent(worker,unused->new java.util.HashMap<>())
+                .put(index,now+WORK_RETRY_OTHER_CREW_TICKS);
+        table.waitForBuilderAccess(worker.getUUID(),index,now,reason);
+    }
+    private static List<Integer> otherWorkWhileCoolingDown(
+            BuilderGolem worker,List<Integer> zone,long now){
+        Map<Integer,Long> failed=workRetryAfter.get(worker);
+        if(failed==null||failed.isEmpty())return zone;
+        failed.entrySet().removeIf(entry->entry.getValue()<=now);
+        if(failed.isEmpty())return zone;
+        return zone.stream().filter(index->!failed.containsKey(index)).toList();
+    }
+    /** A genuine long detour is progress even if it moves AWAY from the
+     * target. Only shorten the old 900-tick deadline when both physical
+     * movement AND distance improvement have stopped for many ticks.
+     */
+    static boolean workApproachStalled(long elapsed,long motionIdle,
+            long closerIdle){
+        return elapsed>900 ||elapsed>=300
+                &&motionIdle>=120&&closerIdle>=200;
+    }
     /** Normally every X/Z zone is exclusive. A zone with no work on this
      * shared Y may help its stuck neighbor after construction has made
      * no physical progress for eight seconds (160 ticks). Under the
@@ -579,8 +611,15 @@ public final class BuilderBuildService {
                     ||!zone.contains(index)
                     ||plan.steps().get(index).y()!=layer
                     ||!table.builderStepReadyForClaim(index)){
+                // A failed roof approach used to re-claim the same cell
+                // as soon as its 60-tick shared retry expired, leaving
+                // finished-zone helpers no chance to take the handoff.
+                // Filter only this worker's candidate scan; the original
+                // zone and the global Planner retain all pending cells.
                 var next=BuilderConstructionPlanner.choose(
-                        level,worker,table,plan.steps(),zone);
+                        level,worker,table,plan.steps(),
+                        otherWorkWhileCoolingDown(worker,zone,
+                                level.getGameTime()));
                 index=next==null?-1:table.claimPreferredBuilderZoneStep(
                         worker.getUUID(),zone,plan.steps(),next.index());
             }
@@ -835,21 +874,25 @@ public final class BuilderBuildService {
             if(activity.workTravelSince<0)activity.workTravelSince=now;
             activity.observeTravel(worker,pos,now);
             // Some narrow fence/scaffold caps leave a real worker with
-            // onGround=false but no active climb. The old airborne return
-            // skipped the 900-tick watchdog forever, pinning the entire
-            // shared dome layer to one claimed cell. Keep genuine physics;
-            // relinquish only this blocked claim after the deadline.
-            if(now-activity.workTravelSince>900
-                    &&!BuilderGrappleAccess.active(worker)){
+            // onGround=false but no active climb. A stalled worker once
+            // held a claim for 900 ticks, reclaimed it after each short
+            // cooldown, and denied idle teammates a turn at the same cell.
+            // Keep genuine physics and moving detours; relinquish the cell
+            // sooner only when both motion AND approach progress have ceased.
+            if(workApproachStalled(now-activity.workTravelSince,
+                    now-activity.lastMoved,now-activity.lastCloser)
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
                 BuilderPlacementSpace.cancelYield(worker);
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
-                table.waitForBuilderAccess(worker.getUUID(),index,now,
-                        "900-tick work approach without placement");
+                deferStalledWork(worker,table,index,now,
+                        "stalled work approach; allow another crew member to try");
                 activity.workTravelSince=-1;
                 table.setProblem("Deferred cycling work approach "+pos);
                 System.out.println("[FRONTIER RETRY] deferred unchanged step="+index
-                        +" after 900 ticks without placement at "+worker.position()
+                        +" after "+(now-activity.lastCloser)
+                        +" ticks without closing distance at "+worker.position()
                         +" grounded="+worker.onGround());
                 return;
             }
