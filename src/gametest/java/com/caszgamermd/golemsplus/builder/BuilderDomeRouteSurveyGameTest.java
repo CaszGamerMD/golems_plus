@@ -592,6 +592,20 @@ public final class BuilderDomeRouteSurveyGameTest {
                 return;
             }
             if(h.getTick()==20){
+                for(int dz=-2;dz<=2;dz++){
+                    StringBuilder row=new StringBuilder("[EXACT ROOF CELLS] dz="+dz);
+                    for(int dx=-2;dx<=2;dx++){
+                        BlockPos p=first.offset(dx,0,dz);
+                        row.append(" {dx=").append(dx)
+                            .append(" stand=").append(WorkerNavigation.canStandOn(world,mob,p))
+                            .append(" feet=").append(world.getBlockState(p))
+                            .append(" below=").append(world.getBlockState(p.below()))
+                            .append(" head=").append(world.getBlockState(p.above()))
+                            .append(" floor=").append(WorkerNavigation.surveyFloorHeight(world,p))
+                            .append('}');
+                    }
+                    System.out.println(row);
+                }
                 System.out.println("[EXACT ROOF FIRST] start="+mob.position()
                         +" grounded="+mob.onGround()
                         +" centerStand="+WorkerNavigation.canStandOn(
