@@ -32,5 +32,5 @@ assert "level.getBlockState(columnLevel).is(Blocks.SCAFFOLDING)" in scaffold
 assert "sessions.put(worker,new ClimbSession(" in scaffold
 assert "public static boolean tickMotion(" in scaffold
 assert "setNoGravity(false)" in builder
-assert "!BuilderScaffolding.climbingNow(server,this)" in builder
+assert "!BuilderScaffolding.isControllingMovement(this)" in builder
 print("PASS: independent FIFO doors, 2-3m safe queuing, spacing and gravity recovery")

@@ -10,10 +10,11 @@ golem=(root/"builder/BuilderGolem.java").read_text()
 build=(root/"builder/BuilderBuildService.java").read_text()
 assert "private record ClimbSession(" in sc
 assert "public static boolean tickMotion(ServerLevel level,BuilderGolem worker)" in sc
-assert "worker.getJumpControl().jump();" not in sc
+assert "boolean sideJump=!session.descending()&&worker.onGround()" in sc
+assert "worker.getJumpControl().jump();" in sc  # genuine grounded scaffold entry
 assert "worker.getMoveControl().setWantedPosition(" in sc
 assert "worker.setNoGravity(false);" in sc
-assert "worker.setJumping(true);" not in sc
+assert "worker.setJumping(true);" in sc
 assert "worker.setJumping(false);" in sc
 assert "worker.setDeltaMovement(0,Math.min(.23,Math.max(.12,remain/5)),0);" in sc
 assert "worker.setShiftKeyDown(true);" in sc
@@ -24,13 +25,13 @@ assert "if(Math.abs(worker.getX()-cx)>1.15" in sc
 assert "target.getY()-worker.getY()<=1.35" in sc
 assert "BuilderScaffoldSiteScore.withinReach(p,target)" in sc
 assert "safeGroundExit(level,worker,p,future)!=null" in sc
-assert "if(base==null){" in sc
+assert "if(base==null&&!blockedWork){" in sc
 assert "landings.sort(Comparator.comparingDouble(p->" in sc
 assert "if(base==null)base=findBase(level,worker,target,feet,table,plan,future)" in sc
 assert "begin(level,worker,base,top+1.0,false)" in sc
 assert "begin(level,worker,base,bottom,true)" in sc
-assert "BuilderScaffolding.tickMotion(climbWorld,this)" in golem
-assert "if(!climbing)" in golem
+assert "BuilderScaffolding.tickMotion(scaffoldWorld,this)" in golem
+assert "if(!scaffolding&&!grappling&&!precisionYield&&!centering)" in golem
 assert "WorkerNavigation.tick(server,this);" in golem
 assert 'BuilderScaffolding.debugClimb(worker)' in build
 assert "new ClimbPermit(" not in sc

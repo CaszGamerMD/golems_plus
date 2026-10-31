@@ -23,9 +23,9 @@ assert 'java.util.BitSet.valueOf(' in station
 assert "builderCursor+bit" in station
 assert "var assigned=zoneSchedule(table,plan)" in build
 assert "assigned.tasks().steps(worker.getUUID())" in build
-assert "table.claimBuilderZoneStep(worker.getUUID()," in build
+assert "table.claimPreferredBuilderZoneStep(" in build
 assert "BuilderZoneWorkPlan.compile(cache.steps(),cache.zones(),roster)" in build
-assert "claimBuilderZoneStep(worker.getUUID()" in build
+assert "claimPreferredBuilderZoneStep(" in build
 assert ".add(Attributes.MOVEMENT_SPEED,.40)" in golem
 assert "speed=1.0; // Builder target:" in nav
 assert "canReachExact(level,worker,landing)" in scaffold

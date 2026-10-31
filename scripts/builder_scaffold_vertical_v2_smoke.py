@@ -18,7 +18,7 @@ assert "table.trackScaffold(worker.getUUID(),at)" in sc
 assert "table.scaffoldPositions(worker.getUUID()).contains(p)" in sc
 assert "isControllingMovement(BuilderGolem worker)" in sc
 assert "if(BuilderScaffolding.isControllingMovement(worker))return;" in build
-assert "BuilderScaffolding.cancel(worker);" in build
+assert "BuilderScaffoldPlanA.cancel(worker);" in build
 assert "sessions.put(worker,new ClimbSession(session.column()," in sc
 assert "worker.setNoGravity(false);" in sc
 assert "private static final class MotionWatch" in sc

@@ -801,10 +801,41 @@ public final class BuilderBuildService {
             // leave the worker inside scaffold with onGround=false. Advance
             // the active scaffold session while it owns that physical motion
             // instead of freezing at CLIMB and repeatedly falling down.
+            long now=level.getGameTime();
+            if(activity.workTravelSince<0)activity.workTravelSince=now;
+            activity.observeTravel(worker,pos,now);
+            // Some narrow fence/scaffold caps leave a real worker with
+            // onGround=false but no active climb. The old airborne return
+            // skipped the 900-tick watchdog forever, pinning the entire
+            // shared dome layer to one claimed cell. Keep genuine physics;
+            // relinquish only this blocked claim after the deadline.
+            if(now-activity.workTravelSince>900
+                    &&!BuilderGrappleAccess.active(worker)){
+                BuilderPlacementSpace.cancelYield(worker);
+                BuilderPlacementSpace.invalidateApproach(worker,pos);
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                table.waitForBuilderAccess(worker.getUUID(),index,now,
+                        "900-tick work approach without placement");
+                activity.workTravelSince=-1;
+                table.setProblem("Deferred cycling work approach "+pos);
+                System.out.println("[FRONTIER RETRY] deferred unchanged step="+index
+                        +" after 900 ticks without placement at "+worker.position()
+                        +" grounded="+worker.onGround());
+                return;
+            }
             if(!worker.onGround()){
                 if(BuilderScaffoldPlanA.hasPlan(worker))
                     BuilderScaffoldPlanA.reach(
                             level,worker,table,owner,pos,plan.steps());
+                else if(now-activity.lastMoved>=100
+                        &&BuilderScaffolding.descendForTravel(
+                                level,worker,table)){
+                    // A parked airborne worker beside its own tower can
+                    // physically return to its supported access route and
+                    // approach again. Never synthesize an airborne work
+                    // stance or grant placement while its feet are loose.
+                    activity.lastMoved=now;
+                }
                 return;
             }
             // Narrow final wall/fence caps support feet at Y+.5. If
@@ -817,30 +848,12 @@ public final class BuilderBuildService {
                 activity.phase=Action.MOVE_TO_WORK;
                 return;
             }
-            long now=level.getGameTime();
-            if(activity.workTravelSince<0)activity.workTravelSince=now;
-            activity.observeTravel(worker,pos,now);
             // Once an owned shaft/bridge starts, its controller owns all
             // physical movement. Do not replace it with a normal route
             // just because another nominal work pose becomes visible.
             if(BuilderScaffoldPlanA.hasPlan(worker)
                     &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
                 return;
-            if(now-activity.workTravelSince>900&&!BuilderGrappleAccess.active(worker)){
-                // Repeatedly executable movement is not proof that this
-                // placement is making progress. Preserve the cell/materials
-                // and let another feasible frontier on THIS Y run first.
-                BuilderPlacementSpace.cancelYield(worker);
-                BuilderPlacementSpace.invalidateApproach(worker,pos);
-                com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
-                table.waitForBuilderAccess(worker.getUUID(),index,now,
-                        "900-tick work approach without placement");
-                activity.workTravelSince=-1;
-                table.setProblem("Deferred cycling work approach "+pos);
-                System.out.println("[FRONTIER RETRY] deferred unchanged step="+index
-                        +" after 900 ticks without placement at "+worker.position());
-                return;
-            }
             int yDiff=pos.getY()-worker.blockPosition().getY();
             boolean temporaryWorkPose=BuilderScaffoldPlanA.safeTemporaryWorkPose(
                     level,worker,table,pos);

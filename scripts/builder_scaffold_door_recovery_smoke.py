@@ -16,7 +16,7 @@ assert "worker.setShiftKeyDown(false)" in scaff
 assert "worker.getNavigation().stop()" in scaff
 assert "BuilderScaffolding.descendForTravel(level,worker,table)" in job
 assert "BuilderScaffolding.descendForTravel(level,worker,table)" in supply
-assert "&&!BuilderScaffolding.climbingNow(server,this)" in builder
+assert "&&!BuilderScaffolding.isControllingMovement(this)" in builder
 assert "setShiftKeyDown(false)" in builder
 assert "private static boolean requiresDoorCrossing(" in nav
 assert "return Math.abs(from)>.35&&Math.abs(to)>.35&&from*to<0;" in nav

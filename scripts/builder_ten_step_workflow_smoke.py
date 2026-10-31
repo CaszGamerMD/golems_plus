@@ -22,8 +22,8 @@ assert "public static LoadStatus prepareWorkOrder(" in stock
 assert "return LoadStatus.MOVING;" in stock
 assert "int remainder=storeSurplus(storage,held,giveBack);" in stock
 assert "ItemContainerContents.fromItems(nested)" in stock
-assert "materials.merge(\"minecraft:scaffolding\"" in stock
-assert "if(!table.builderOrderPrepared(worker.getUUID()))" in service
+assert 'materials.put("minecraft:scaffolding",64)' in stock
+assert "if(!table.builderOrderPrepared(worker.getUUID())" in service
 assert "table.prepareBuilderOrder(worker.getUUID());" in service
 assert "BuilderScaffolding.retrieve(level,worker,table,false);" in service
 assert "claimBuilderZoneStep(" in station
@@ -35,7 +35,7 @@ assert "manifest.size()>=16" in demand
 assert "BuilderMaterialDemand.outstandingRemaining(" in warehouse
 assert "table.builderRemaining()" in warehouse
 assert "reconcileTicket(" in warehouse
-assert "if(level.getGameTime()%80==0)" not in service  # compound condition, not standalone
+assert "if(level.getGameTime()%80==0)" in service  # throttled diagnostic updates
 assert "&&level.getGameTime()%80==0)" in service
 assert "primeWarehouse(level,table);" in service
 print("PASS ten distinct saved assignments, physical OnSite staging and job-wide orders")
