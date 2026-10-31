@@ -108,13 +108,6 @@ public final class BuilderBuildService {
         }
         return true;
     }
-    private static boolean hasFutureZoneWork(WorkerStationBlockEntity table,
-            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,int layer){
-        for(int idx:zone)
-            if(idx>=0&&idx<steps.size()&&steps.get(idx).y()>layer
-                    &&!table.builderZoneDone(List.of(idx)))return true;
-        return false;
-    }
 
     // Reuse the immutable server-side schematic work plan across queued
     // warehouse retries. Parsing a 100k-block Litematica file every four
@@ -505,16 +498,18 @@ public final class BuilderBuildService {
                         waiting.frontierWaitSince=level.getGameTime();
                         waiting.frontierWaitLayer=layer;
                     }
-                    // Cover the 60-tick retry cooldown, but never camp
-                    // forever on a disconnected ledge with no pending
-                    // higher work. If this zone HAS an unfinished upper
-                    // roof layer, retain the physical ledge until that
-                    // layer unlocks rather than descend 30 blocks and
-                    // later demand an impossible single grapple ascent.
-                    boolean future=hasFutureZoneWork(
-                            table,plan.steps(),zone,layer);
-                    if(future||level.getGameTime()
-                            -waiting.frontierWaitSince<=600){
+                    // Short low walls are cheap to approach again: keep
+                    // the old 80-tick courtesy wait so idle Builders do
+                    // not clog early dome corridors. At a high roof,
+                    // abandoning an otherwise safe ledge means losing
+                    // 12+ real blocks of hard-won vertical access. Hold
+                    // that ledge while this zone has unfinished work on
+                    // the current or a future layer. Completed zones
+                    // still leave immediately.
+                    boolean expensiveAscent=worker.getY()
+                            -table.getBlockPos().getY()>=12;
+                    if(expensiveAscent||level.getGameTime()
+                            -waiting.frontierWaitSince<=80){
                         com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                         return;
                     }
