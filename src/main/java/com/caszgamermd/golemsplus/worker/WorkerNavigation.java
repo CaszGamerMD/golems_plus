@@ -50,10 +50,12 @@ public final class WorkerNavigation {
     private static final int CHECK_TICKS=5;
     private static final int LOOK_AHEAD=4;
     private static final int MAX_DESTINATION_PATHS=16;
+    private static final int MAX_PHYSICAL_ENTRANCES=16;
     private WorkerNavigation(){}
 
     private static final class Progress {
         BlockPos requested,approach,openedDoor,centering,terrainStep;
+        boolean regionWaypoint;
         int terrainStepStarted;
         List<Vec3> cornerPath=List.of();
         int cornerCursor,cornerStarted;
@@ -548,15 +550,15 @@ public final class WorkerNavigation {
                 at->at.equals(start)&&mob.onGround()?mob.getY():floorAt(level,at),avoid,
                 at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
                 observer,excluded);
-        if(!mob.onGround()||standingTile(level,mob,start))return route;
-        // Corner-supported golems can be genuinely ON GROUND while the
-        // integer tile under their FEET is not standable at its CENTER.
-        // An A* seeded from that fictitious center can return an appealing
-        // but physically unexecutable diagonal or upward first leg.
-        // Search local footholds from the ACTUAL body and require a safe
-        // first motion. Do not take the first three arbitrary loop-order
-        // candidates; they can all be behind the wrong fence/wall.
-        WorkerRoutePlanner.Route best=null;
+        if(!mob.onGround()||mob.isNoGravity())return route;
+        if(standingTile(level,mob,start)&&route!=null
+                &&canBeginTrainedLeg(level,mob,route))return route;
+        // A route planned from a block CENTER is not necessarily valid
+        // from the golem's real offset feet, even when that center has
+        // support. Baritone separates the route search from the movement
+        // controller: only physically executable first motions become
+        // entrances to the A* graph. Consider them TOGETHER in one search
+        // so a backward/downhill start can beat an attractive dead end.
         List<BlockPos> seeds=new ArrayList<>();
         // The old one-block cardinal lookup misses workable landings
         // two tiles around an awkward roof corner. Search nearby true
@@ -582,7 +584,7 @@ public final class WorkerNavigation {
             }
         seeds.sort(Comparator.comparingDouble(p->
                 mob.distanceToSqr(p.getX()+.5,floorAt(level,p),p.getZ()+.5)));
-        int validCandidates=0;
+        List<WorkerRoutePlanner.Entrance> entrances=new ArrayList<>();
         for(BlockPos seed:seeds){
             // A center-standable seed may still be unreachable from the
             // worker's REAL fractional roof footing. Reject it before the
@@ -592,22 +594,20 @@ public final class WorkerNavigation {
             if(!canBeginTrainedLeg(level,mob,
                     new WorkerRoutePlanner.Route(List.of(seed),true,0,0)))
                 continue;
-            if(++validCandidates>12)break; // bound expensive route search
-            var onward=WorkerRoutePlanner.plan(seed,goals,
-                    at->standingTile(level,mob,at),at->floorAt(level,at),avoid,
-                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
-                    null,excluded);
-            if(onward==null||!onward.complete())continue;
-            List<BlockPos> steps=new ArrayList<>();
-            steps.add(seed);steps.addAll(onward.steps());
-            var joined=new WorkerRoutePlanner.Route(List.copyOf(steps),
-                    true,onward.cost()+14,onward.explored());
-            if(best==null||joined.cost()<best.cost())best=joined;
+            double distance=Math.hypot(seed.getX()+.5-mob.getX(),
+                    seed.getZ()+.5-mob.getZ());
+            double rise=Math.abs(floorAt(level,seed)-mob.getY());
+            int initialCost=Math.max(1,(int)Math.ceil(distance*10))
+                    +(rise>.51?15:0);
+            entrances.add(new WorkerRoutePlanner.Entrance(
+                    seed.immutable(),initialCost));
+            if(entrances.size()>=MAX_PHYSICAL_ENTRANCES)break;
         }
-        // Never return a mathematically shortest route if its first edge
-        // cannot be physically executed from the offset body.
-        if(best!=null)return best;
-        return route!=null&&canBeginTrainedLeg(level,mob,route)?route:null;
+        if(entrances.isEmpty())return null;
+        return WorkerRoutePlanner.planFromEntrances(start,entrances,goals,
+                at->standingTile(level,mob,at),at->floorAt(level,at),avoid,
+                at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
+                observer,excluded);
     }
 
     /**
@@ -1081,6 +1081,7 @@ public final class WorkerNavigation {
 
     private static boolean canBeginTrainedLeg(ServerLevel level,
             PathfinderMob mob,WorkerRoutePlanner.Route route){
+        if(route.steps().isEmpty())return true;
         if(!route.steps().isEmpty()&&mob.onGround()
                 &&!standingTile(level,mob,mob.blockPosition())
                 &&!cornerRejoinPath(level,mob,route.steps().get(0)).isEmpty())
@@ -1115,9 +1116,10 @@ public final class WorkerNavigation {
                 &&supportedRejoin(level,mob,waypoint);
     }
     private static boolean walkTrainedEdge(ServerLevel level,PathfinderMob mob,
-            Progress p,BlockPos waypoint){
+            Progress p,BlockPos waypoint,boolean regionTravel){
         if(!canWalkTrainedEdge(level,mob,waypoint))return false;
         p.centering=waypoint.immutable();p.approach=waypoint.immutable();
+        p.regionWaypoint=regionTravel;
         p.stalled=0;p.unsafeChecks=0;p.nextRoute=mob.tickCount+CHECK_TICKS;
         return tickExactCenter(level,mob);
     }
@@ -1338,6 +1340,7 @@ public final class WorkerNavigation {
             // fraction of a block. A per-entity-tick physical controller
             // centers this pose with current collision/support checks.
             p.centering=target.immutable();
+            p.regionWaypoint=false; // final exact work/evacuation stance
             mob.getNavigation().stop();
             boolean moving=tickExactCenter(level,mob);
             return moving||mob.distanceToSqr(target.getX()+.5,
@@ -1369,7 +1372,7 @@ public final class WorkerNavigation {
             p.nextRoute=mob.tickCount+CHECK_TICKS;
             return true;
         }
-        if(walkTrainedEdge(level,mob,p,plan.steps().get(0))
+        if(walkTrainedEdge(level,mob,p,plan.steps().get(0),false)
                 ||beginTerrainStep(level,mob,p,plan.steps().get(0))){
             p.weightedRoute=plan.steps();p.routeCursor=1;
             return true;
@@ -1489,6 +1492,11 @@ public final class WorkerNavigation {
                 &&!standingTile(level,mob,mob.blockPosition())
                 &&startCornerRecovery(level,mob,p,p.weightedRoute.get(0),target))
             return true;
+        // Finishing an offset-footing recovery may clear its old graph
+        // route on this same tick. Replan from the newly stable feet on
+        // the next job tick; never index a retired route or bypass its
+        // new collision checks.
+        if(p.weightedRoute.isEmpty())return true;
         if(prepareTrainedDoor(level,mob,p,p.weightedRoute.subList(p.routeCursor,count)))return true;
         for(int distance:new int[]{3,2,1}){
             int index=Math.min(count-1,p.routeCursor+distance-1);
@@ -1505,7 +1513,7 @@ public final class WorkerNavigation {
             p.nextRoute=mob.tickCount+CHECK_TICKS;
             return true;
         }
-        if(walkTrainedEdge(level,mob,p,p.weightedRoute.get(p.routeCursor))
+        if(walkTrainedEdge(level,mob,p,p.weightedRoute.get(p.routeCursor),true)
                 ||beginTerrainStep(level,mob,p,p.weightedRoute.get(p.routeCursor))){
             p.routeCursor++;
             return true;
@@ -1574,9 +1582,11 @@ public final class WorkerNavigation {
         // Door clearance is reset during the next server navigation tick.
     }
 
-    /** Exact final centering is ordinary supported horizontal motion.
+    /** Physically steer to a final exact stance OR into an ordinary travel
+     * waypoint region. A route cell is a navigable area, not a command
+     * to touch its center; only exact work/evacuation stances need that.
      * Called before Builder physics so native acceleration cannot restart
-     * each five-tick work update and oscillate around the requested center.
+     * each five-tick work update and oscillate around the requested area.
      */
     public static boolean tickExactCenter(ServerLevel level,PathfinderMob mob){
         Progress p=states.get(mob);
@@ -1589,16 +1599,25 @@ public final class WorkerNavigation {
         }
         mob.getNavigation().stop();
         mob.getMoveControl().setWantedPosition(mob.getX(),mob.getY(),mob.getZ(),0);
-        double dx=target.getX()+.5-mob.getX(),dz=target.getZ()+.5-mob.getZ();
+        double x=target.getX()+.5,z=target.getZ()+.5;
+        if(p.regionWaypoint){
+            x=Math.max(target.getX()+.25,
+                    Math.min(target.getX()+.75,mob.getX()));
+            z=Math.max(target.getZ()+.25,
+                    Math.min(target.getZ()+.75,mob.getZ()));
+        }
+        double dx=x-mob.getX(),dz=z-mob.getZ();
         Vec3 velocity=mob.getDeltaMovement();
-        if(dx*dx+dz*dz<.025*.025){
+        if(dx*dx+dz*dz<(p.regionWaypoint?.055:.025)*(p.regionWaypoint?.055:.025)){
             mob.setDeltaMovement(0,velocity.y,0);
-            p.centering=null;return false;
+            p.centering=null;p.regionWaypoint=false;return false;
         }
         double vx=Math.max(-.08,Math.min(.08,dx*.5));
         double vz=Math.max(-.08,Math.min(.08,dz*.5));
-        if(!level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz))){
-            p.centering=null;return false;
+        if(!level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz))
+                ||p.regionWaypoint&&!supportedCornerSegment(level,mob,
+                        mob.position(),mob.position().add(vx,0,vz))){
+            p.centering=null;p.regionWaypoint=false;return false;
         }
         mob.setDeltaMovement(vx,velocity.y,vz);
         return true;

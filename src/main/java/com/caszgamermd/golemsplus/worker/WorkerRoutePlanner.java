@@ -45,6 +45,15 @@ public final class WorkerRoutePlanner {
     };
     private static final int[] HEIGHT_STEPS={0,-1,1};
     private record Node(BlockPos pos,int travelled,int estimate){}
+    /** A physically verified bridge from the entity's actual fractional
+     * footing onto a standable cell of the block-scale graph. The cost
+     * includes the time spent walking/stepping to that first cell.
+     *
+     * Unlike pretending that the entity stands at its block center, a
+     * multi-entry search can start on either side of an awkward corner.
+     * Only the movement executor may certify an entrance as executable.
+     */
+    public record Entrance(BlockPos feet,int cost){}
     public record Route(List<BlockPos> steps,boolean complete,int cost,int explored){}
     public record SearchStats(int explored,int queued,boolean budgetExhausted,
             Set<BlockPos> reachable){
@@ -99,10 +108,27 @@ public final class WorkerRoutePlanner {
             BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty,
             java.util.function.Consumer<SearchStats> observer,
             Set<BlockPos> excluded){
-        if(start==null||goals==null||goals.isEmpty())return null;
+        if(start==null)return null;
+        return planFromEntrances(start,List.of(new Entrance(start,0)),goals,
+                standable,floor,avoid,terrainPenalty,observer,excluded);
+    }
+
+    /** Baritone-style separation between route search and real movement:
+     * the caller validates several first motions against the entity's
+     * actual collision box, then ONE A* compares the onward routes and
+     * entrance costs. An off-center footing is never silently snapped to
+     * an invalid block center, and a longer backward opening may win.
+     */
+    public static Route planFromEntrances(BlockPos actualStart,
+            List<Entrance> entrances,List<BlockPos> goals,
+            Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
+            BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty,
+            java.util.function.Consumer<SearchStats> observer,
+            Set<BlockPos> excluded){
+        if(actualStart==null||entrances==null||entrances.isEmpty()
+                ||goals==null||goals.isEmpty())return null;
         Set<BlockPos> ends=new HashSet<>(goals);
-        if(ends.contains(start))return new Route(List.of(),true,0,0);
-        int original=heuristic(start,goals);
+        int original=heuristic(actualStart,goals);
         boolean distant=original>RADIUS*MOVE_COST;
         Map<BlockPos,Integer> cost=new HashMap<>();
         Map<BlockPos,BlockPos> parents=new HashMap<>();
@@ -114,8 +140,20 @@ public final class WorkerRoutePlanner {
         PriorityQueue<Node> queue=new PriorityQueue<>(
                 Comparator.comparingInt(Node::estimate)
                     .thenComparingInt(Node::travelled));
-        queue.add(new Node(start,0,original));
-        cost.put(start,0);
+        for(Entrance entry:entrances){
+            if(entry==null||entry.feet()==null||entry.cost()<0
+                    ||entry.feet().equals(avoid)||excluded.contains(entry.feet())
+                    ||Math.abs(entry.feet().getX()-actualStart.getX())>RADIUS
+                    ||Math.abs(entry.feet().getZ()-actualStart.getZ())>RADIUS
+                    ||Math.abs(entry.feet().getY()-actualStart.getY())>VERTICAL_RADIUS
+                    ||entry.cost()>=cost.getOrDefault(entry.feet(),Integer.MAX_VALUE))
+                continue;
+            cost.put(entry.feet(),entry.cost());
+            parents.put(entry.feet(),null); // source of a real physical first leg
+            queue.add(new Node(entry.feet(),entry.cost(),
+                    entry.cost()+heuristic(entry.feet(),goals)));
+        }
+        if(queue.isEmpty())return null;
         BlockPos frontier=null,finish=null;
         int frontierScore=Integer.MAX_VALUE;
         int explored=0;
@@ -127,8 +165,8 @@ public final class WorkerRoutePlanner {
             BlockPos current=node.pos();
             if(ends.contains(current)){finish=current;break;}
             int remaining=heuristic(current,goals);
-            int walked=Math.abs(current.getX()-start.getX())
-                    +Math.abs(current.getZ()-start.getZ());
+            int walked=Math.abs(current.getX()-actualStart.getX())
+                    +Math.abs(current.getZ()-actualStart.getZ());
             if(distant&&walked>=8&&remaining<=original-80){
                 // Prefer getting closer, but favor short, safe detours over
                 // circuitous candidates with the same remaining distance.
@@ -140,9 +178,9 @@ public final class WorkerRoutePlanner {
                 for(int dy:HEIGHT_STEPS){
                     BlockPos next=current.offset(dir[0],dy,dir[1]);
                     if(next.equals(avoid)||excluded.contains(next)
-                            ||Math.abs(next.getX()-start.getX())>RADIUS
-                            ||Math.abs(next.getZ()-start.getZ())>RADIUS
-                            ||Math.abs(next.getY()-start.getY())>VERTICAL_RADIUS
+                            ||Math.abs(next.getX()-actualStart.getX())>RADIUS
+                            ||Math.abs(next.getZ()-actualStart.getZ())>RADIUS
+                            ||Math.abs(next.getY()-actualStart.getY())>VERTICAL_RADIUS
                             ||!validCache.computeIfAbsent(next,standable::test))continue;
                     double fromHeight=heightCache.computeIfAbsent(current,
                             floor::applyAsDouble);
@@ -203,9 +241,11 @@ public final class WorkerRoutePlanner {
             finish=frontier;
         }
         List<BlockPos> path=new ArrayList<>();
-        for(BlockPos at=finish;!at.equals(start);at=parents.get(at)){
-            if(at==null)return null;
-            path.add(at);
+        for(BlockPos at=finish;at!=null;at=parents.get(at)){
+            // The original start is already occupied; a different source
+            // is an actual first movement and must appear in the route.
+            if(!at.equals(actualStart))path.add(at);
+            if(parents.get(at)==null)break;
         }
         Collections.reverse(path);
         return new Route(List.copyOf(path),complete,

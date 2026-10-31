@@ -187,4 +187,63 @@ final class WorkerRoutePlannerTest {
         assertEquals(Set.of(start,a,b),stats[0].reachable());
         assertFalse(stats[0].budgetExhausted());
     }
+
+    @Test void offCenterPhysicalEntranceMayBeginAwayFromDestination(){
+        // The entity's actual body touches a supported corner, but its
+        // integer block center is not connected to the walking graph.
+        // The executor has proven a legal fractional first motion to a
+        // tile BEHIND the golem. A single-source block A* cannot start;
+        // the physical-entrance planner must follow that longer detour.
+        BlockPos actual=at(0,64,0),goal=at(3,64,0),entry=at(-2,64,0);
+        Set<BlockPos> floor=new HashSet<>();
+        for(int z=0;z<=2;z++)floor.add(at(-2,64,z));
+        for(int x=-2;x<=3;x++)floor.add(at(x,64,2));
+        for(int z=0;z<=2;z++)floor.add(at(3,64,z));
+        assertNull(find(actual,List.of(goal),floor));
+        var route=WorkerRoutePlanner.planFromEntrances(actual,
+                List.of(new WorkerRoutePlanner.Entrance(entry,21)),
+                List.of(goal),floor::contains,BlockPos::getY,
+                null,unused->0,null,Set.of());
+        assertNotNull(route);
+        assertTrue(route.complete());
+        assertEquals(entry,route.steps().getFirst(),
+                "The fractional entry must be an explicit executable leg");
+        assertEquals(goal,route.steps().getLast());
+        assertTrue(route.cost()>route.steps().size()*9,
+                "Search must account for the real first motion");
+    }
+
+    @Test void physicalEntranceCostIsIncludedInRouteSelection(){
+        BlockPos actual=at(0,64,1),goal=at(3,64,0);
+        Set<BlockPos> floor=new HashSet<>();
+        for(int x=-1;x<=3;x++)floor.add(at(x,64,0));
+        BlockPos quickToEnterButFarther=at(-1,64,0);
+        BlockPos expensiveShortcut=at(2,64,0);
+        var route=WorkerRoutePlanner.planFromEntrances(actual,List.of(
+                    new WorkerRoutePlanner.Entrance(expensiveShortcut,75),
+                    new WorkerRoutePlanner.Entrance(quickToEnterButFarther,5)),
+                List.of(goal),floor::contains,BlockPos::getY,
+                null,unused->0,null,Set.of());
+        assertNotNull(route);
+        assertEquals(quickToEnterButFarther,route.steps().getFirst());
+        assertEquals(45,route.cost(),
+                "A physically expensive shortcut must not win on block distance alone");
+    }
+
+    @Test void rejectedPhysicalEntranceDoesNotBlockOtherApproaches(){
+        BlockPos actual=at(0,64,1),goal=at(3,64,0);
+        Set<BlockPos> floor=new HashSet<>();
+        for(int x=-1;x<=3;x++)for(int z=0;z<=1;z++)
+            floor.add(at(x,64,z));
+        BlockPos rejected=at(2,64,0),fallback=at(-1,64,0);
+        var route=WorkerRoutePlanner.planFromEntrances(actual,List.of(
+                    new WorkerRoutePlanner.Entrance(rejected,1),
+                    new WorkerRoutePlanner.Entrance(fallback,5)),
+                List.of(goal),floor::contains,BlockPos::getY,
+                null,unused->0,null,Set.of(rejected));
+        assertNotNull(route);
+        assertTrue(route.complete());
+        assertEquals(fallback,route.steps().getFirst());
+        assertFalse(route.steps().contains(rejected));
+    }
 }
