@@ -355,14 +355,18 @@ public final class BuilderConstructionPlanner {
             // Read-only scaffold preflight: a future work pose can be
             // reached by a real paid tower/bridge, even if neither native
             // A* nor a rope can currently get across an unfinished roof.
-            // Movement strategies are alternatives, not a required
-            // sequence. A safe paid scaffold can reach a disconnected
-            // SAME-height work pose, too; a height threshold or missing
-            // "floating" flag must not veto that physical option.
+            // Speculative scaffold access is a last resort: ordinary
+            // walkable frontiers should remain the default. Claiming
+            // every connected same-height gap on a theoretical scaffold
+            // plan stranded real workers on early dome layers.
+            boolean floating=BuilderScaffoldPlanA
+                    .needsTemporaryWorkPlatform(world,target);
             boolean scaffold=stance==null&&!grapple
+                    &&(target.getY()-worker.blockPosition().getY()>1
+                        ||floating)
                     &&(BuilderScaffoldPlanA.canPlan(
                             world,worker,table,target,steps)
-                        ||BuilderScaffolding.canPlanAccess(
+                        ||!floating&&BuilderScaffolding.canPlanAccess(
                             world,worker,table,target,steps));
             if(stance==null&&!grapple&&!scaffold)continue;
             boolean sky=stance==null

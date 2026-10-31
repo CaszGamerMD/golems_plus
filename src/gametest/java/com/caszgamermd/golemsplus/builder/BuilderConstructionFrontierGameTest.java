@@ -46,13 +46,13 @@ public final class BuilderConstructionFrontierGameTest {
         return table;
     }
 
-    /** A preferred movement tool must not become a scheduling rule.
-     * This connected, same-height roof block has no reachable ordinary
-     * stance, but a real grounded detour can reach a paid scaffold entry.
+    /** A movement tool must remain available without hijacking scheduling.
+     * This connected, same-height gap supports a genuine scaffold option,
+     * while the worker should first choose safe reachable ordinary work.
      */
     @GameTest(structure="golems_plus_gametest:dome_arena",
             maxTicks=160,skyAccess=true)
-    public void connectedSameHeightGapOffersScaffoldInsteadOfRejectingWork(
+    public void connectedSameHeightGapDoesNotPreemptWalkableFrontier(
             GameTestHelper h){
         floor(h);
         // A high starting island, an away/down side passage, and a lower
@@ -62,16 +62,21 @@ public final class BuilderConstructionFrontierGameTest {
         for(int x=8;x<=13;x++)h.setBlock(x,8,12,Blocks.STONE);
         for(int z=10;z<=12;z++)h.setBlock(14,8,z,Blocks.STONE);
         h.setBlock(15,8,10,Blocks.STONE);
+        h.setBlock(9,9,11,Blocks.STONE);
         // The target is supported from a side, therefore it is NOT an
         // "isolated floating block". That classification cannot forbid
         // paid scaffold access from a disconnected roof island.
         h.setBlock(19,10,10,Blocks.STONE);
         var world=h.getLevel();
         var worker=worker(h,h.absolutePos(new BlockPos(10,10,10)));
-        var table=planner(h,worker,1);
+        var table=planner(h,worker,2);
         BlockPos target=h.absolutePos(new BlockPos(18,10,10));
-        var steps=List.of(new BuilderConstructionPlan.Step(target.getX(),
-                target.getY(),target.getZ(),"minecraft:stone","minecraft:stone"));
+        BlockPos walkable=h.absolutePos(new BlockPos(9,10,11));
+        var steps=List.of(
+                new BuilderConstructionPlan.Step(target.getX(),
+                    target.getY(),target.getZ(),"minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(walkable.getX(),
+                    walkable.getY(),walkable.getZ(),"minecraft:stone","minecraft:stone"));
         h.onEachTick(()->{
             if(h.getTick()<16||h.getTick()%5!=0)return;
             if(!worker.onGround()){
@@ -95,12 +100,12 @@ public final class BuilderConstructionFrontierGameTest {
                                 world,worker,table,target,steps));return;
             }
             var choice=BuilderConstructionPlanner.choose(world,worker,table,
-                    steps,List.of(0));
-            if(choice==null||choice.index()!=0){
-                h.fail("Same-height scaffold work was rejected: "+choice);
+                    steps,List.of(0,1));
+            if(choice==null||choice.index()!=1||choice.stance()==null){
+                h.fail("Speculative scaffold displaced walkable work: "+choice);
                 return;
             }
-            System.out.println("[FRONTIER] PASS connected same-Y scaffold option");
+            System.out.println("[FRONTIER] PASS scaffold tool stays optional");
             h.succeed();
         });
     }
