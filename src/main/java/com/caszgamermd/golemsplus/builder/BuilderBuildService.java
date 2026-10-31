@@ -379,6 +379,11 @@ public final class BuilderBuildService {
             // On job completion a Builder may still be on its LAST
             // scaffold tower. It must return to ground and dismount
             // BEFORE reclaiming blocks, delivering tools or going home.
+            BlockPos returnGoal=table.builderUnloadingStorage();
+            if(returnGoal==null)returnGoal=table.getBlockPos();
+            if(!BuilderScaffoldPlanA.hasPlan(worker)
+                    &&BuilderGrappleAccess.rappelHome(
+                            level,worker,table,returnGoal))return;
             if(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table))
                 return;
