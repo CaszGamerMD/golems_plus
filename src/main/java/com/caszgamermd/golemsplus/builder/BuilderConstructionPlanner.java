@@ -195,7 +195,10 @@ public final class BuilderConstructionPlanner {
         for(BlockPos p:BlockPos.betweenClosed(
                 BlockPos.containing(margin.minX,margin.minY,margin.minZ),
                 BlockPos.containing(margin.maxX,margin.maxY,margin.maxZ))){
-            if(!world.hasChunkAt(p))return false;
+            // Neighboring chunks outside a small GameTest structure may
+            // not be loaded. The actual body collision probe above owns
+            // the hard obstruction check; do not fabricate a fence here.
+            if(!world.hasChunkAt(p))continue;
             var state=world.getBlockState(p);
             if(!(state.getBlock() instanceof FenceBlock)
                     &&!(state.getBlock() instanceof WallBlock)

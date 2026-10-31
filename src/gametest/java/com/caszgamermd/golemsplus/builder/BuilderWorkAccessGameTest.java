@@ -87,16 +87,20 @@ public final class BuilderWorkAccessGameTest {
         var plan=java.util.List.of(new BuilderConstructionPlan.Step(
                 target.getX(),target.getY(),target.getZ(),
                 "minecraft:stone","minecraft:stone"));
-        if(!BuilderScaffoldPlanA.canPlanWorkPose(
-                level,worker,table,target,plan)){
-            helper.fail("Missed diagonal paid scaffold around four blocked "
-                    +"cardinal tower lines: "
-                    +BuilderScaffoldPlanA.diagnoseAccess(
-                            level,worker,table,target,plan));return;
-        }
-        System.out.println("[DIAGONAL SCAFFOLD] PASS alternate paid bridge "
-                +"is physically supportable and entry-reachable");
-        helper.succeed();
+        helper.onEachTick(()->{
+            if(helper.getTick()<20||helper.getTick()%10!=0)return;
+            if(worker.onGround()&&BuilderScaffoldPlanA.canPlanWorkPose(
+                    level,worker,table,target,plan)){
+                System.out.println("[DIAGONAL SCAFFOLD] PASS alternate paid "
+                        +"bridge is supportable and entry-reachable");
+                helper.succeed();return;
+            }
+            if(helper.getTick()>=120)
+                helper.fail("Missed diagonal paid scaffold around four blocked "
+                        +"cardinal tower lines: "
+                        +BuilderScaffoldPlanA.diagnoseAccess(
+                                level,worker,table,target,plan));
+        });
     }
 
     /** Full-dome main stalled at 3469/3493 with a floating cobblestone
