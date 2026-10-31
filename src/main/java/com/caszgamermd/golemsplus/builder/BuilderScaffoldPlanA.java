@@ -100,8 +100,7 @@ public final class BuilderScaffoldPlanA {
                 // reach to the actual work cube, not 3-D Manhattan
                 // distance, which includes the intentional Y offset.
                 ||Math.abs(j.bridge(j.bridgeSpan).getX()-target.getX())
-                    +Math.abs(j.bridge(j.bridgeSpan).getZ()-target.getZ())
-                        !=(j.isolatedSupport?2:1)
+                    +Math.abs(j.bridge(j.bridgeSpan).getZ()-target.getZ())!=2
                 ||worker.blockPosition().getX()!=j.bridge(j.bridgeSpan).getX()
                 ||worker.blockPosition().getZ()!=j.bridge(j.bridgeSpan).getZ()
                 ||!present(level,table,worker,j.bridge(j.bridgeSpan)))return false;
@@ -227,21 +226,20 @@ public final class BuilderScaffoldPlanA {
             // away. Small decorative pillars frequently leave exactly
             // this gap; forcing a three-tile separation needlessly turns
             // a paid one-scaffold crossing into an inaccessible roof.
-            // The worker stands ONE cell short of a supported target.
-            // A six-scaffold bridge can therefore start seven cells away
-            // when the target already has structural support beneath it.
-            // Floating targets still need scaffold directly underneath,
-            // so their support bridge cannot exceed six cells.
-            for(int distance=2;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN
-                    +(isolated?0:1);distance++){
+            // The worker must stand TWO cells from the target to preserve
+            // its real 0.8-block placement margin. Six traversable
+            // scaffold cells therefore permit a supported work target
+            // eight cells from the tower. Floating targets additionally
+            // need two paid support-only cells, limiting them to six.
+            for(int distance=3;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN
+                    +(isolated?0:2);distance++){
             BlockPos towerXZ=target.relative(outward,distance);
             Direction inward=outward.getOpposite();
             // Stand two cells short of an isolated floating block to
             // retain placement clearance. Extend the paid scaffold another
             // two cells after arrival, ending directly below the target.
             // Those final cells are temporary construction support only.
-            if(isolated&&distance<3)continue;
-            int span=isolated?distance-2:distance-1;
+            int span=distance-2;
             int scaffoldSpan=isolated?distance:span;
             // Search real standing elevations ABOVE the worker as well
             // as below. Existing pillars, stairs, slabs and complete roof
@@ -326,14 +324,13 @@ public final class BuilderScaffoldPlanA {
         int shafts=0,bridges=0,exits=0,reached=0;
         String example="";
         for(Direction outward:Direction.Plane.HORIZONTAL)
-            for(int distance=2;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN
-                    +(isolated?0:1);distance++)
+            for(int distance=3;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN
+                    +(isolated?0:2);distance++)
                 for(int dy=-4;dy<=5;dy++){
                     BlockPos base=target.relative(outward,distance)
                             .atY(worker.blockPosition().getY()-dy);
-                    if(isolated&&distance<3)continue;
                     int top=target.getY()-1;
-                    int span=isolated?distance-2:distance-1;
+                    int span=distance-2;
                     int scaffoldSpan=isolated?distance:span;
                     if(!shaftClear(level,base,top,reserved,table,worker)){
                         if(outward==Direction.WEST&&distance==6&&dy==0)
@@ -718,7 +715,14 @@ public final class BuilderScaffoldPlanA {
                 return Result.MOVING;
             }
             case READY -> {
-                if(worker.blockPosition().getY()!=target.getY())
+                // Reaching the roof's Y coordinate while still rising
+                // through scaffold is not a safe placement arrival.
+                // Wait for real grounded feet on the paid bridge end.
+                BlockPos work=j.bridge(j.bridgeSpan).above();
+                if(!worker.onGround()
+                        ||Math.abs(worker.getY()-target.getY())>.18
+                        ||worker.blockPosition().getX()!=work.getX()
+                        ||worker.blockPosition().getZ()!=work.getZ())
                     return Result.MOVING;
                 return Result.READY;
             }

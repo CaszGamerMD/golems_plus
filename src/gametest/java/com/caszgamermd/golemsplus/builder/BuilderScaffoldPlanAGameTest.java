@@ -18,13 +18,14 @@ import net.minecraft.world.level.block.Blocks;
  * extends separate scaffold support under a floating block, then returns.
  */
 public final class BuilderScaffoldPlanAGameTest {
-    /** A supported work block can be reached from a tower seven cells
-     * away: six paid horizontal scaffold cells end beside the target.
+    /** A supported work block can be reached from a tower eight cells
+     * away: six paid scaffold cells stop two tiles short of the target,
+     * preserving the worker's real placement margin.
      * No unbacked seventh scaffold span is fabricated.
      */
     @GameTest(structure="golems_plus_gametest:dome_arena",
             maxTicks=750,skyAccess=true)
-    public void sixPaidScaffoldsReachSupportedWorkSevenCellsAway(
+    public void sixPaidScaffoldsReachSupportedWorkEightCellsAway(
             GameTestHelper h){
         ServerLevel level=h.getLevel();
         h.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
@@ -38,9 +39,9 @@ public final class BuilderScaffoldPlanAGameTest {
         }
         h.setBlock(9,9,10,Blocks.STONE);
         h.setBlock(10,9,10,Blocks.STONE);
-        h.setBlock(17,13,10,Blocks.STONE);
+        h.setBlock(18,13,10,Blocks.STONE);
         BlockPos start=h.absolutePos(new BlockPos(10,10,10));
-        BlockPos target=h.absolutePos(new BlockPos(17,14,10));
+        BlockPos target=h.absolutePos(new BlockPos(18,14,10));
         level.getChunkSource().addTicketWithRadius(
                 net.minecraft.server.level.TicketType.FORCED,
                 new net.minecraft.world.level.ChunkPos(start.getX()>>4,
@@ -55,11 +56,11 @@ public final class BuilderScaffoldPlanAGameTest {
         h.onEachTick(()->{
             if(h.getTick()<20||h.getTick()%5!=0)return;
             if(!mob.isAlive()||mob.isNoGravity()){
-                h.fail("Seven-cell bridge lost physical Builder");return;
+                h.fail("Eight-cell bridge lost physical Builder");return;
             }
             if(!mob.onGround()&&!BuilderScaffoldPlanA.hasPlan(mob)){
                 if(h.getTick()>95)
-                    h.fail("Seven-cell Builder never settled onto footing "
+                    h.fail("Eight-cell Builder never settled onto footing "
                             +mob.position()+" below="
                             +level.getBlockState(mob.blockPosition().below()));
                 return;
@@ -74,23 +75,26 @@ public final class BuilderScaffoldPlanAGameTest {
                     level,mob,table,owner,target,List.of());
             if(result==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE
                     ||result==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
-                h.fail("Seven-cell scaffold bridge failed: "+result
+                h.fail("Eight-cell scaffold bridge failed: "+result
                         +" "+BuilderScaffoldPlanA.status(mob));return;
             }
             if(result==BuilderScaffoldPlanA.Result.READY){
                 if(!BuilderScaffoldPlanA.safeTemporaryWorkPose(
                         level,mob,table,target)
                         ||!table.scaffoldPositions(mob.getUUID())
-                                .contains(target.west().below())){
-                    h.fail("Seven-cell bridge skipped supported work pose");
+                                .contains(target.west(2).below())){
+                    h.fail("Eight-cell bridge skipped supported work pose "
+                            +mob.position()+" grounded="+mob.onGround()
+                            +" clear="+BuilderPlacementSpace.horizontalClear(target,mob)
+                            +" "+BuilderScaffoldPlanA.status(mob));
                     return;
                 }
-                System.out.println("[SCAFFOLD SEVEN] PASS paid six-block "
+                System.out.println("[SCAFFOLD EIGHT] PASS paid six-block "
                         +"physical bridge at tick="+h.getTick());
                 h.succeed();return;
             }
             if(h.getTick()>680)
-                h.fail("Seven-cell scaffold bridge stalled "
+                h.fail("Eight-cell scaffold bridge stalled "
                         +mob.position()+" "+BuilderScaffoldPlanA.status(mob));
         });
     }
