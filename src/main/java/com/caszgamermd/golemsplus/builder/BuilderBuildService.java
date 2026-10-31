@@ -811,6 +811,20 @@ public final class BuilderBuildService {
                                 level,worker,pos)
                         ||BuilderConstructionPlanner.safeStand(
                                 level,worker,pos,worker.blockPosition()));
+            // AIR below a roof block is not a reason to defer it for
+            // "missing support": full cubes can be placed in mid-air.
+            // It IS a strong sign that a golem needs temporary footing.
+            // Give the inventory-paid scaffold option an EARLY turn after
+            // an ordinary route has had time to make progress, including
+            // side-connected blocks that are not completely isolated.
+            // A fence beneath a block is real support and stays on the
+            // ordinary collision-checked approach path if reachable.
+            if(!directOrdinaryWork
+                    &&BuilderScaffoldPlanA.needsTemporaryWorkPlatform(level,pos)
+                    &&now-activity.workTravelSince>120
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&scaffoldBlockedWork(level,worker,table,owner,pos,
+                            plan.steps()))return;
             // Low dome walls and fence caps often sit two Y above a
             // grounded Builder. Its normal three-block hand reach may
             // already cover the target from a SIDE stance. Find that

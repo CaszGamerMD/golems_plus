@@ -151,6 +151,14 @@ public final class BuilderConstructionPlanner {
                         ||stance.getY()==target.getY()+1
                         ||stance.getY()==target.getY()-1
                         ||stance.getY()==target.getY()-2)
+                // A fence below a roof block IS valid support, but its
+                // 1.5-block-high narrow collision shape is not empty space.
+                // Evaluate the worker's actual 0.65m body at this stance;
+                // other workers may yield, real fence/wall collisions may not.
+                &&!world.getBlockCollisions(builder,builder.getBoundingBox().move(
+                        stance.getX()+.5-builder.getX(),
+                        stance.getY()-builder.getY(),
+                        stance.getZ()+.5-builder.getZ())).iterator().hasNext()
                 &&lineOfSight(world,builder,stance,target)
                 &&exitAfterPlacement(world,builder,stance,target);
     }

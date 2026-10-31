@@ -90,16 +90,14 @@ public final class BuilderScaffoldPlanA {
 
     public static boolean hasPlan(BuilderGolem worker){return jobs.containsKey(worker);}
     /** A free-floating full cube is valid in Minecraft. Its Builder still
-     * needs a physically reachable place to stand. An isolated cell has no
-     * floor or side geometry to approach using ordinary ground routes.
+     * needs a physically reachable place to stand. A side-connected roof
+     * block can also have AIR directly underneath, so side connections
+     * must never suppress the option of a temporary paid work platform.
      */
     public static boolean needsTemporaryWorkPlatform(ServerLevel level,
             BlockPos target){
-        if(!level.getBlockState(target).isAir()
-                ||!level.getBlockState(target.below()).isAir())return false;
-        for(Direction side:Direction.Plane.HORIZONTAL)
-            if(!level.getBlockState(target.relative(side)).isAir())return false;
-        return true;
+        return level.getBlockState(target).isAir()
+                &&level.getBlockState(target.below()).isAir();
     }
     /** Use a genuine owned bridge as a worker's temporary construction
      * position, even next to existing roof blocks. No schematic cell is

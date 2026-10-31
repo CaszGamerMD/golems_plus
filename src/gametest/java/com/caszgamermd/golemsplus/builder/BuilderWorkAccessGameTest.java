@@ -13,6 +13,143 @@ import net.minecraft.world.level.block.Blocks;
  * and for precise final centering inside the selected standing cell.
  */
 public final class BuilderWorkAccessGameTest {
+    /** Full-dome main stalled at 3469/3493 with a floating cobblestone
+     * at (18,31,17). A neighboring finished cell is not a floor. From
+     * the worker's recorded lower-roof footing, a paid scaffold bridge
+     * must be considered rather than cycling a theoretical walking pose.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=2700,skyAccess=true)
+    public void floatingY31CobbleGetsPhysicalScaffoldWorkPose(
+            GameTestHelper helper){
+        lateRoofSupportAccess(helper,false);
+    }
+
+    /** The adjacent mossy cobblestone sits on a REAL birch fence at
+     * (19,30,17). It needs no replacement support: approach from a
+     * safe lateral stance with the full fence collision shape checked.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=2700,skyAccess=true)
+    public void fenceSupportedY31CobbleKeepsBodyClear(
+            GameTestHelper helper){
+        lateRoofSupportAccess(helper,true);
+    }
+
+    private static void lateRoofSupportAccess(GameTestHelper helper,
+            boolean fenceBelow){
+        ServerLevel level=helper.getLevel();
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos origin=helper.absolutePos(new BlockPos(8,2,8));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        origin.getX()>>4,origin.getZ()>>4),4);
+        final java.util.List<BuilderConstructionPlan.Step> steps;
+        try{
+            var schematic=LitematicFileReader.read(BuilderDomeFixture.unpack());
+            steps=BuilderConstructionPlan.create(schematic,
+                    new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                            BuildSite.Rotation.NONE,BuildSite.Mirror.NONE),true)
+                    .steps();
+            for(var cell:schematic.blocks()){
+                if(cell.y()>31||BuilderVegetation.ignoreSchematicState(cell.state())
+                        ||cell.y()==31&&cell.z()==17
+                            &&(cell.x()==18||cell.x()==19))continue;
+                var state=BuilderBlockResolver.resolve(cell.state(),
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(state!=null)level.setBlock(origin.offset(
+                        cell.x(),cell.y(),cell.z()),state.state(),2);
+            }
+        }catch(Exception e){helper.fail("Cannot reconstruct Y31 supports "+e);return;}
+        BlockPos target=origin.offset(fenceBelow?19:18,31,17);
+        if(fenceBelow?level.getBlockState(target.below()).getBlock()
+                        !=Blocks.BIRCH_FENCE
+                :!level.getBlockState(target.below()).isAir()){
+            helper.fail("Wrong physical Y31 support for "+target
+                    +": "+level.getBlockState(target.below()));return;
+        }
+        if(BuilderScaffoldPlanA.needsTemporaryWorkPlatform(level,target)
+                ==fenceBelow){
+            helper.fail("Scaffold hint must distinguish AIR from fence support");
+            return;
+        }
+        helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
+        BlockPos station=helper.absolutePos(new BlockPos(4,2,7));
+        if(!(level.getBlockEntity(station)
+                instanceof WorkerStationBlockEntity table)){
+            helper.fail("Missing Y31 roof work station");return;
+        }
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(origin.getX()+(fenceBelow?19.498:19.944),
+                origin.getY()+27,
+                origin.getZ()+(fenceBelow?9.813:24.906));
+        worker.setItem(0,new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.SCAFFOLDING,64));
+        level.addFreshEntity(worker);
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),1)
+                ||!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Cannot register Y31 Builder");return;
+        }
+        final BuilderScaffoldPlanA.Result[] attempt={null};
+        helper.onEachTick(()->{
+            if(!worker.isAlive()||worker.isNoGravity()){
+                helper.fail("Y31 Builder left natural movement");return;
+            }
+            boolean direct=worker.onGround()
+                    &&BuilderPlacementSpace.placementHeight(target,worker)
+                    &&BuilderPlacementSpace.horizontalClear(target,worker)
+                    &&worker.distanceToSqr(target.getX()+.5,
+                            target.getY()+.5,target.getZ()+.5)<14
+                    &&BuilderConstructionPlanner.safeStand(level,worker,
+                            target,worker.blockPosition());
+            boolean paid=BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                    level,worker,table,target);
+            if(direct||paid){
+                if(fenceBelow){
+                    BlockPos support=target.below();
+                    var shape=level.getBlockState(support)
+                            .getCollisionShape(level,support);
+                    for(var local:shape.toAabbs())
+                        if(local.move(support.getX(),support.getY(),
+                                support.getZ()).intersects(worker.getBoundingBox())){
+                            helper.fail("Y31 worker too close to fence collision");
+                            return;
+                        }
+                }
+                System.out.println("[Y31 SUPPORT ACCESS] PASS "
+                        +(fenceBelow?"fence supported":"floating")
+                        +" using "+(paid?"paid scaffold":"real footing")
+                        +" after "+helper.getTick()+" ticks");
+                helper.succeed();return;
+            }
+            if((worker.onGround()||BuilderScaffoldPlanA.hasPlan(worker))
+                    &&helper.getTick()>12&&helper.getTick()%5==0){
+                if(!BuilderScaffoldPlanA.hasPlan(worker)
+                        &&(fenceBelow||helper.getTick()<120)){
+                    BlockPos walk=BuilderPlacementSpace.approachWithRules(
+                            level,worker,target,
+                            at->BuilderConstructionPlanner.safeStand(
+                                    level,worker,target,at));
+                    if(walk!=null&&WorkerNavigation.routeToExact(
+                            level,worker,walk,1.0))return;
+                }
+                attempt[0]=BuilderScaffoldPlanA.reachWorkPose(
+                        level,worker,table,owner,target,steps);
+            }
+            if(helper.getTick()>2550)
+                helper.fail("Y31 "+(fenceBelow?"fence":"floating")
+                        +" work pose stalled from real roof feet="+worker.position()
+                        +" attempt="+attempt[0]
+                        +" plan="+BuilderScaffoldPlanA.status(worker)
+                        +" access="+BuilderScaffoldPlanA.diagnoseAccess(
+                                level,worker,table,target,steps));
+        });
+    }
+
     /** The measured 3420/3493 dome has no legal grounded work stance
      * around its eight Y30 holes. Rebuild the exact roof snapshot and
      * verify a physically climbable, inventory-paid temporary work pose,
