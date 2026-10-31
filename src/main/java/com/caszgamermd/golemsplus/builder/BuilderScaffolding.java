@@ -163,8 +163,12 @@ public final class BuilderScaffolding {
             // to walk THROUGH the roof to reach its lower X/Z tile.
             // Release only the stale route; the Builder stays on its
             // actual safe footing and must choose another physical path.
+            BlockPos actualSupport=worker.blockPosition().below();
             if(worker.onGround()
-                    &&worker.getY()>exit.ground().getY()+1.35){
+                    &&worker.getY()>exit.ground().getY()+1.35
+                    &&!level.getBlockState(actualSupport).is(Blocks.SCAFFOLDING)
+                    &&level.getBlockState(actualSupport).isFaceSturdy(
+                            level,actualSupport,Direction.UP)){
                 System.out.println("[SCAFFOLD EXIT] abandoned unreachable lower "
                         +exit.ground().toShortString()+" from grounded roof "
                         +worker.blockPosition().toShortString());

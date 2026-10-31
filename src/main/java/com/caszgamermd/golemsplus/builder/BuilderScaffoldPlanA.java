@@ -36,7 +36,8 @@ public final class BuilderScaffoldPlanA {
         RETURN_FIRST, RETURN_TOWER, DESCEND, DISMOUNT
     }
     /** Diagnoses surviving owned blocks, not just the cached plan. */
-    enum ScaffoldFault { NONE, TOWER_SHORT, BRIDGE_SHORT, EXIT_BLOCKED }
+    enum ScaffoldFault { NONE, TOWER_SHORT, BRIDGE_SHORT, EXIT_BLOCKED,
+        CLIMB_STALLED, CLIMB_HEADROOM_BLOCKED }
     private static final class Job {
         final BlockPos target,base,planner;
         BlockPos exit;
@@ -1072,6 +1073,33 @@ public final class BuilderScaffoldPlanA {
                 repairLog(level,worker,table,j,ScaffoldFault.TOWER_SHORT,
                         "extend/replace missing paid shaft from real column"
                         +" attempt="+j.repairs);
+            }else if(actual==j.top&&dx*dx+dz*dz<.3
+                    &&worker.getY()>=j.base.getY()-.15
+                    &&worker.getY()<j.top+.88
+                    &&level.getGameTime()-j.lastRepairLog>=100){
+                // The shaft exists, yet the previous climb controller is
+                // gone and the Builder is still INSIDE its top scaffold.
+                // Diagnose new overhead construction separately from
+                // an interrupted climb: neither permits a fake Y step.
+                BlockPos head=j.base.atY(j.top+1);
+                boolean blocked=!level.getBlockState(head).isAir()
+                        ||!level.getBlockState(head.above()).isAir();
+                if(blocked||j.repairs>=3){
+                    rejectEntry(level,worker,j.base);
+                    repairLog(level,worker,table,j,
+                            blocked?ScaffoldFault.CLIMB_HEADROOM_BLOCKED:
+                                    ScaffoldFault.CLIMB_STALLED,
+                            "abandon unsafe crest; descend real shaft and replan");
+                    returnToGround(level,worker,table);
+                }else{
+                    j.repairs++;
+                    j.lastProgress=level.getGameTime();
+                    BuilderScaffolding.begin(level,worker,j.base,
+                            j.top+1.0,false);
+                    repairLog(level,worker,table,j,ScaffoldFault.CLIMB_STALLED,
+                            "resume physical ascent inside complete shaft"
+                            +" attempt="+j.repairs);
+                }
             }
         }
         if(j.phase==Phase.READY
@@ -1463,6 +1491,10 @@ public final class BuilderScaffoldPlanA {
         if(j.phase==Phase.RETURN_FIRST||j.phase==Phase.RETURN_TOWER)
             return true;
         if(j.phase==Phase.CLIMB){
+            if(!refreshExit(level,worker,table,j)){
+                escapeBlockedExit(level,worker,table,j);
+                return true;
+            }
             if(worker.getY()>j.base.getY()+1.1)
                 BuilderScaffolding.begin(level,worker,j.base,
                         j.base.getY()+1.0,true);
