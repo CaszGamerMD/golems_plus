@@ -91,8 +91,8 @@ public final class BuilderScaffoldPlanA {
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos target){
         Job j=jobs.get(worker);
         if(j==null||j.phase!=Phase.READY||!j.target.equals(target)
-                ||!(j.isolatedSupport
-                    ?present(level,table,worker,target.below())
+                ||(j.isolatedSupport
+                    ?!present(level,table,worker,target.below())
                     :needsTemporaryWorkPlatform(level,target))
                 ||worker.isNoGravity()||!worker.onGround()
                 ||Math.abs(worker.getY()-target.getY())>.18
@@ -100,7 +100,8 @@ public final class BuilderScaffoldPlanA {
                 // reach to the actual work cube, not 3-D Manhattan
                 // distance, which includes the intentional Y offset.
                 ||Math.abs(j.bridge(j.bridgeSpan).getX()-target.getX())
-                    +Math.abs(j.bridge(j.bridgeSpan).getZ()-target.getZ())!=2
+                    +Math.abs(j.bridge(j.bridgeSpan).getZ()-target.getZ())
+                        !=(j.isolatedSupport?2:1)
                 ||worker.blockPosition().getX()!=j.bridge(j.bridgeSpan).getX()
                 ||worker.blockPosition().getZ()!=j.bridge(j.bridgeSpan).getZ()
                 ||!present(level,table,worker,j.bridge(j.bridgeSpan)))return false;

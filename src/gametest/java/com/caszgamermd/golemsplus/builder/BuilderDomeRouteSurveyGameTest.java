@@ -172,6 +172,15 @@ public final class BuilderDomeRouteSurveyGameTest {
                     .append(" block=").append(step.encodedState())
                     .append(" underneath=").append(world.getBlockState(target.below()))
                     .append(" grounded=").append(mob.onGround()).append('\n');
+                report.append("[LIVE FOOTPRINT] collision=")
+                    .append(!world.noCollision(mob,mob.getBoundingBox().deflate(.015)))
+                    .append(" feetBelow=").append(world.getBlockState(start.below()))
+                    .append(" actualHead=").append(world.getBlockState(start.above()))
+                    .append(" centeredFeetStand=").append(
+                            WorkerNavigation.canStandOn(world,mob,start))
+                    .append(" cornerMask=").append(Integer.toBinaryString(
+                            WorkerNavigation.supportedHitboxCorners(world,mob)))
+                    .append('\n');
                 Set<BlockPos> component=WorkerNavigation.groundReachableFrom(
                         world,mob,start);
                 List<BlockPos> safe=new ArrayList<>();
