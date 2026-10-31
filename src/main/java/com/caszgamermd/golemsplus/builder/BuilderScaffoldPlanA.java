@@ -1124,8 +1124,19 @@ public final class BuilderScaffoldPlanA {
                     boolean besideBase=worker.getY()<=j.base.getY()+.25
                             &&baseOffset>.16
                             &&level.getGameTime()-j.lastProgress>80;
+                    // The abandoned column can also leave the Builder
+                    // safely standing on a HIGHER finished roof lip, one
+                    // block below the required work Y. The previous
+                    // base-only guard held such a job for thousands of
+                    // ticks with no climb session and no navigation.
+                    BlockPos actualFloor=worker.blockPosition().below();
+                    boolean aboveBaseOnSolidFloor=worker.getY()>j.base.getY()+.25
+                            &&baseOffset>.16
+                            &&level.getBlockState(actualFloor).isFaceSturdy(
+                                    level,actualFloor,Direction.UP)
+                            &&level.getGameTime()-j.lastProgress>80;
                     if(!climbing&&worker.onGround()
-                            &&(belowBase||besideBase)){
+                            &&(belowBase||besideBase||aboveBaseOnSolidFloor)){
                         rejectEntry(level,worker,j.base);
                         System.out.println("[PLAN A ENTRY] orphaned climb, retry "
                                 +"another real tower from grounded feet "
