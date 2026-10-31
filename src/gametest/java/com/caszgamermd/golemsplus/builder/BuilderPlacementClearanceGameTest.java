@@ -194,6 +194,9 @@ public final class BuilderPlacementClearanceGameTest {
                 .contains("moveRequestedBy=")){
             h.fail("The placer did not request its teammate's clearance");return;
         }
+        if(BuilderPlacementSpace.answerMoveRequest(world,blocker,false)){
+            h.fail("A busy teammate yielded before completing its placement");return;
+        }
         final boolean[] asked={true};
         final double[] previousX={blocker.getX()};
         h.onEachTick(()->{
