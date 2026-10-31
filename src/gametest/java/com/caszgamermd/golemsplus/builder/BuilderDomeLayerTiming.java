@@ -12,14 +12,14 @@ import net.minecraft.server.level.ServerLevel;
 
 /** Per-Y wall-clock timing of the real four-Builder dome construction.
  *
- * The ideal is a deliberately provisional throughput target, NOT a claim
- * about a proven minimum: one placement per Builder per 40 ticks, plus
- * 100 ticks of setup/travel per occupied layer. Change these constants
- * when repeated successful runs establish a better reference.
+ * Time trial target: 40 ticks per required block in the layer plus 100
+ * setup ticks; stop if elapsed layer time exceeds three times that target.
+ * The target is a benchmark, not a proven minimum for the four-person crew.
  */
 final class BuilderDomeLayerTiming {
-    private static final int TICKS_PER_BLOCK_PER_BUILDER = 40;
+    private static final int TICKS_PER_LAYER_BLOCK = 40;
     private static final int LAYER_OVERHEAD_TICKS = 100;
+    private static final int TIMEOUT_MULTIPLIER = 3;
     private static final int BUILDERS = 4;
     private final TreeMap<Integer, Layer> layers = new TreeMap<>();
     private final int originY;
@@ -38,11 +38,14 @@ final class BuilderDomeLayerTiming {
         Layer(int y) { this.y = y; }
 
         long ideal() {
-            return LAYER_OVERHEAD_TICKS
-                    + ((long) required * TICKS_PER_BLOCK_PER_BUILDER
-                            + BUILDERS - 1) / BUILDERS;
+            return (long) required * TICKS_PER_LAYER_BLOCK + LAYER_OVERHEAD_TICKS;
         }
+
+        long timeLimit() { return ideal() * TIMEOUT_MULTIPLIER; }
     }
+
+    record Timeout(int localY, int blocks, long targetTicks,
+            long limitTicks, long actualTicks) { }
 
     BuilderDomeLayerTiming(List<BuilderConstructionPlan.Step> plan,
             int originY, long startTick, int firstActiveY) {
@@ -54,9 +57,10 @@ final class BuilderDomeLayerTiming {
                 layers.computeIfAbsent(step.y(), Layer::new).required++;
         }
         System.out.println("[DOME LAYER BASELINE] builders=" + BUILDERS
-                + " ticksPerBlockPerBuilder=" + TICKS_PER_BLOCK_PER_BUILDER
-                + " travelTicksPerLayer=" + LAYER_OVERHEAD_TICKS
-                + " (provisional target, not measured optimum)");
+                + " ticksPerLayerBlock=" + TICKS_PER_LAYER_BLOCK
+                + " setupTicksPerLayer=" + LAYER_OVERHEAD_TICKS
+                + " timeoutMultiplier=" + TIMEOUT_MULTIPLIER
+                + " formula=((requiredBlocks*40)+100)*3");
     }
 
     /** Attribute each elapsed interval to the layer active at its start.
@@ -93,8 +97,21 @@ final class BuilderDomeLayerTiming {
         System.out.println("[DOME LAYER COMPLETE] y=" + (layer.y - originY)
                 + " blocks=" + layer.required
                 + " idealTicks=" + layer.ideal()
+                + " limitTicks=" + layer.timeLimit()
                 + " actualTicks=" + layer.elapsed
                 + " slowdown=" + ratio(layer.elapsed, layer.ideal()));
+    }
+
+    /** Strictly exceed the per-Y time budget; report on the next 20-tick
+     * sample. Checked even when the shared Y advanced during that sample.
+     */
+    Timeout exceededBudget() {
+        for (Layer layer : layers.values()) {
+            if (layer.elapsed > layer.timeLimit())
+                return new Timeout(layer.y - originY, layer.required,
+                        layer.ideal(), layer.timeLimit(), layer.elapsed);
+        }
+        return null;
     }
 
     /** Emit CSV on both passes and failures; the CI dome artifact uploads
@@ -114,7 +131,7 @@ final class BuilderDomeLayerTiming {
                 correct.merge(step.y(), 1, Integer::sum);
         }
         StringBuilder csv = new StringBuilder("layer_y,required_blocks,correct_blocks,"
-                + "ideal_ticks,actual_ticks,overrun_ticks,slowdown,"
+                + "ideal_ticks,limit_ticks,actual_ticks,overrun_ticks,slowdown,"
                 + "unassigned_builder_ticks,scaffold_present_builder_ticks,status\n");
         long idealTotal = 0, measuredTotal = 0;
         List<Layer> started = new ArrayList<>();
@@ -130,7 +147,7 @@ final class BuilderDomeLayerTiming {
             }
             csv.append(layer.y - originY).append(',')
                     .append(layer.required).append(',').append(matched).append(',')
-                    .append(ideal).append(',')
+                    .append(ideal).append(',').append(layer.timeLimit()).append(',')
                     .append(status.equals("not_started") ? "" : layer.elapsed).append(',')
                     .append(status.equals("not_started") ? "" : layer.elapsed - ideal)
                     .append(',')
@@ -148,9 +165,22 @@ final class BuilderDomeLayerTiming {
                 .append(" idealAllLayers=").append(idealTotal)
                 .append(" measuredStartedLayers=").append(measuredTotal)
                 .append(" resolution=20ticks")
-                .append(" baseline=40ticks/block/builder+100ticks/layer")
+                .append(" baseline=40ticks/block+100ticks/layer")
+                .append(" limit=3xBaseline")
                 .append(" (unassigned/scaffold columns are sampled builder-ticks,"
                         + " not mutually exclusive causes)\n");
+        for (Layer layer : layers.values()) {
+            if (!layer.completed) continue;
+            summary.append("[DOME LAYER TIME] y=")
+                    .append(layer.y - originY)
+                    .append(" required=").append(layer.required)
+                    .append(" correct=").append(correct.getOrDefault(layer.y, 0))
+                    .append(" idealTicks=").append(layer.ideal())
+                    .append(" limitTicks=").append(layer.timeLimit())
+                    .append(" actualTicks=").append(layer.elapsed)
+                    .append(" slowdown=").append(ratio(layer.elapsed, layer.ideal()))
+                    .append('\n');
+        }
         for (int i = 0; i < Math.min(8, started.size()); i++) {
             Layer layer = started.get(i);
             summary.append("[DOME LAYER BOTTLENECK] y=")
@@ -158,6 +188,7 @@ final class BuilderDomeLayerTiming {
                     .append(" required=").append(layer.required)
                     .append(" correct=").append(correct.getOrDefault(layer.y, 0))
                     .append(" idealTicks=").append(layer.ideal())
+                    .append(" limitTicks=").append(layer.timeLimit())
                     .append(" actualTicks=").append(layer.elapsed)
                     .append(" overrunTicks=").append(layer.elapsed - layer.ideal())
                     .append(" slowdown=").append(ratio(layer.elapsed, layer.ideal()))

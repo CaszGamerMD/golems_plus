@@ -314,19 +314,33 @@ public final class BuilderDomeConstructionGameTest {
                 }
                 return;
             }
-            if(tick-lastProgress[0]>2400){
+            BuilderDomeLayerTiming.Timeout exceeded=layerTiming.exceededBudget();
+            // A layer gets exactly ((required blocks * 40) + 100) * 3
+            // ticks. The previous 2400-tick no-progress detector could
+            // terminate a busy layer BEFORE its requested time-trial cap.
+            // Keep a global report guard ahead of GameTest's 90k cutoff.
+            if(exceeded!=null||tick>=89900){
                 // Snapshot the actual partly constructed geometry, worker
                 // locations, target cells and collision-valid routes.
                 // This is read-only and lives in the archived CI artifact.
                 BuilderDomeRouteSurveyGameTest.captureLive(
                         level,table,crew,steps);
                 StringBuilder message=new StringBuilder(
-                        "Dome stalled after "+tick+" ticks | clear="+
-                        table.builderClearCursor()+" | contiguous="+table.builderCursor()
-                        +" | totalCompleted="+physicalCount
-                        +"/"+requiredBlocks+" | ignoredPlants="+ignoredPlants
-                        +" | problem="+table.problem()
-                        +stageDiagnostic(folder,table));
+                        exceeded==null
+                                ?"Dome reached 89900-tick global guard"
+                                :"DOME LAYER TIME TRIAL STOP Y="+exceeded.localY()
+                                        +" blocks="+exceeded.blocks()
+                                        +" idealTicks="+exceeded.targetTicks()
+                                        +" limitTicks="+exceeded.limitTicks()
+                                        +" actualTicks="+exceeded.actualTicks());
+                message.append(" | elapsedTick=").append(tick)
+                        .append(" | clear=").append(table.builderClearCursor())
+                        .append(" | contiguous=").append(table.builderCursor())
+                        .append(" | totalCompleted=").append(physicalCount)
+                        .append('/').append(requiredBlocks)
+                        .append(" | ignoredPlants=").append(ignoredPlants)
+                        .append(" | problem=").append(table.problem())
+                        .append(stageDiagnostic(folder,table));
                 for(BuilderGolem worker:crew)
                     message.append(" | ").append(worker.getName().getString())
                         .append(" @ ").append(worker.blockPosition())
@@ -335,7 +349,8 @@ public final class BuilderDomeConstructionGameTest {
                         .append(" | remainingLayer=")
                         .append(remainingLayerItems(
                                 level,table,steps,sharedY,32));
-                layerTiming.report(level,steps,tick,"construction_stall");
+                layerTiming.report(level,steps,tick,
+                        exceeded==null?"global_timeout":"layer_timeout");
                 helper.fail(message.toString());
             }
         });
