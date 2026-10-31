@@ -79,6 +79,14 @@ public final class BuilderWorkAccessGameTest {
             if(helper.getTick()>=20&&helper.getTick()%5==0)
                 last[0]=BuilderScaffoldPlanA.reachWorkPose(
                         level,worker,table,owner,target,steps);
+            if(helper.getTick()%150==0)
+                System.out.println("[ROOF SIDE CLIMB] tick="+helper.getTick()
+                        +" y="+(worker.getY()-origin.getY())
+                        +" grounded="+worker.onGround()
+                        +" vy="+worker.getDeltaMovement().y
+                        +" session="+BuilderScaffolding.debugClimb(worker)
+                        +" paid="+table.scaffoldPositions(worker.getUUID()).size()
+                        +" plan="+BuilderScaffoldPlanA.status(worker));
             if(last[0]==BuilderScaffoldPlanA.Result.READY
                     &&BuilderScaffoldPlanA.safeTemporaryWorkPose(
                             level,worker,table,target)
@@ -96,6 +104,8 @@ public final class BuilderWorkAccessGameTest {
                 helper.fail("North final gap scaffold stalled: feet="
                         +worker.position()+" result="+last[0]
                         +" status="+BuilderScaffoldPlanA.status(worker)
+                        +" climb="+BuilderScaffolding.debugClimb(worker)
+                        +" paid="+table.scaffoldPositions(worker.getUUID()).size()
                         +" nav="+WorkerNavigation.debugStatus(worker)
                         +" access="+BuilderScaffoldPlanA.diagnoseAccess(
                                 level,worker,table,target,steps));

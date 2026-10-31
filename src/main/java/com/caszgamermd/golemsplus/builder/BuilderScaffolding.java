@@ -292,6 +292,14 @@ public final class BuilderScaffolding {
             if(sideJump){
                 worker.getJumpControl().jump();
                 worker.setJumping(true);
+                // Match the vanilla-sized .42 jump already used for
+                // Plan-A's one-block bridge hop. JumpControl alone can be
+                // cancelled by a stopped native path while the body is
+                // wedged against the scaffold's solid lower support.
+                // Native block collision still determines actual rise.
+                var initial=worker.getDeltaMovement();
+                worker.setDeltaMovement(initial.x,
+                        Math.max(.42,initial.y),initial.z);
             }else worker.setJumping(false);
             worker.setShiftKeyDown(false);
             worker.getMoveControl().setWantedPosition(cx,
