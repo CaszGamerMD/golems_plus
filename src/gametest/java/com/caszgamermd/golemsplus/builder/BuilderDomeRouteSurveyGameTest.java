@@ -729,6 +729,26 @@ public final class BuilderDomeRouteSurveyGameTest {
                     goal.getZ()+.5)<.15){
                 System.out.println("[DIRECT ROOF] PASS auto-planned roof access "
                         +"ticks="+h.getTick()+" accepted="+accepted[0]);
+                BlockPos work=origin.offset(15,30,9);
+                var stanceRule=(java.util.function.Predicate<BlockPos>)at->
+                        BuilderConstructionPlanner.safeStand(
+                                world,mob,work,at);
+                BlockPos normal=BuilderPlacementSpace.approachWithRules(
+                        world,mob,work,stanceRule);
+                List<BlockPos> lower=new ArrayList<>();
+                for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
+                    BlockPos at=work.offset(dx,-1,dz);
+                    if(at.distSqr(work)>=14||!stanceRule.test(at)
+                            ||!WorkerNavigation.canStandOn(world,mob,at))continue;
+                    lower.add(at);
+                }
+                BlockPos lowerRoute=WorkerNavigation.selectExecutableStand(
+                        world,mob,lower);
+                System.out.println("[ROOF WORK POSE] upper="+normal
+                        +" lowerCandidates="+lower.size()
+                        +" lowerExecutable="+lowerRoute
+                        +" status="+BuilderPlacementSpace.diagnoseApproach(
+                                world,mob,work,stanceRule));
                 h.succeed();return;
             }
             if(h.getTick()>1500)
