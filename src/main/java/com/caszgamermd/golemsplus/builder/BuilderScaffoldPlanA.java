@@ -1088,19 +1088,28 @@ public final class BuilderScaffoldPlanA {
             }
             case CLIMB -> {
                 if(worker.getY()<j.target.getY()-.15){
-                    // The scaffold controller abandons an impossible climb
-                    // after three collision timeouts. A real Builder on the
-                    // grounded lower ledge must not wait forever for a
-                    // session which no longer exists. Replan another base
-                    // instead of restarting the same blocked side entry.
-                    if(!BuilderScaffolding.climbingNow(level,worker)
-                            &&worker.onGround()
-                            &&worker.getY()<j.base.getY()-.35){
+                    // The physical scaffold controller can abandon an
+                    // impossible climb after repeated collision timeouts.
+                    // A grounded Builder beside the base (not just BELOW
+                    // it) then has no climb session, while this job still
+                    // says CLIMB. Release that stale job after a short
+                    // entry grace period and reject this tower temporarily.
+                    // Never strand the worker beside an owned shaft forever.
+                    boolean climbing=BuilderScaffolding.climbingNow(level,worker);
+                    double baseOffset=worker.distanceToSqr(
+                            j.base.getX()+.5,worker.getY(),j.base.getZ()+.5);
+                    boolean belowBase=worker.getY()<j.base.getY()-.35;
+                    boolean besideBase=worker.getY()<=j.base.getY()+.25
+                            &&baseOffset>.16
+                            &&level.getGameTime()-j.lastProgress>80;
+                    if(!climbing&&worker.onGround()
+                            &&(belowBase||besideBase)){
                         rejectEntry(level,worker,j.base);
-                        System.out.println("[PLAN A ENTRY] blocked climb, retry "
-                                +"another tower from real ground at "
+                        System.out.println("[PLAN A ENTRY] orphaned climb, retry "
+                                +"another real tower from grounded feet "
                                 +worker.blockPosition().toShortString()
-                                +" base="+j.base.toShortString());
+                                +" base="+j.base.toShortString()
+                                +" offsetSq="+baseOffset);
                         jobs.remove(worker);
                         return Result.NO_SAFE_ROUTE;
                     }
