@@ -294,6 +294,9 @@ public final class BuilderScaffoldPlanA {
             List<BuilderConstructionPlan.Step> steps,boolean workPose){
         Set<BlockPos> reserved=future(level,steps);
         Map<BlockPos,Long> rejected=failedEntries.get(worker);
+        if(rejected!=null)
+            rejected.entrySet().removeIf(entry->
+                    entry.getValue()<=level.getGameTime());
         boolean isolated=needsTemporaryWorkPlatform(level,target);
         List<Job> options=new ArrayList<>();
         Set<BlockPos> workGoals=workPose?
