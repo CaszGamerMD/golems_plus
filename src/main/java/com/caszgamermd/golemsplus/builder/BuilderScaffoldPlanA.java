@@ -1577,6 +1577,26 @@ public final class BuilderScaffoldPlanA {
                     break;
                 }
             }
+            // A grounded Builder can be caught in the SIDE of its own
+            // scaffold despite having sturdy, non-scaffold footing. Remove
+            // only the intersecting paid scaffold, not the whole tower:
+            // other workers may still be using the remaining structure.
+            if(worker.onGround()&&!clearOfOwnedScaffold
+                    &&!level.getBlockState(below).is(Blocks.SCAFFOLDING)
+                    &&level.getBlockState(below).isFaceSturdy(
+                            level,below,Direction.UP)
+                    &&level.getGameTime()-j.lastProgress>40){
+                int removed=BuilderScaffolding.clearGroundedScaffoldSnag(
+                        level,worker,table);
+                if(removed>0){
+                    j.lastProgress=level.getGameTime();
+                    System.out.println("[PLAN A DISMOUNT RECOVERY] cleared "
+                            +removed+" owned scaffold snag(s) at "
+                            +worker.blockPosition().toShortString());
+                    jobs.remove(worker);
+                    return false;
+                }
+            }
             if(worker.onGround()
                     &&clearOfOwnedScaffold
                     &&!level.getBlockState(below).is(Blocks.SCAFFOLDING)
