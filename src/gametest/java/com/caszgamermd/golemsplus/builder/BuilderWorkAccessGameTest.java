@@ -130,6 +130,23 @@ public final class BuilderWorkAccessGameTest {
                                     centered.move(0,.65,0)));
                 }
             }
+            if(region.equals("south")&&helper.getTick()>=200
+                    &&helper.getTick()<260){
+                // Diagnostic only: try a gentle, naturally collision-
+                // resolved retreat toward the open south rim. No setPos,
+                // no noclip, no noGravity and no placement bypass.
+                worker.getNavigation().stop();
+                worker.setNoGravity(false);
+                worker.getMoveControl().setWantedPosition(
+                        worker.getX(),worker.getY(),worker.getZ()+4,1.0);
+                worker.setDeltaMovement(0,
+                        Math.min(0,worker.getDeltaMovement().y),.10);
+                if(helper.getTick()%15==0)
+                    System.out.println("[SOUTH NATIVE RETREAT] tick="
+                            +helper.getTick()+" feet="+worker.position()
+                            +" free="+level.noCollision(worker,
+                                    worker.getBoundingBox()));
+            }
             if(helper.getTick()%150==0)
                 System.out.println("[ROOF SIDE CLIMB] region="+region
                         +" tick="+helper.getTick()
