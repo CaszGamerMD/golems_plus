@@ -496,10 +496,9 @@ public final class BuilderSafeScaffoldGameTest {
     }
 
     /**
-     * Full blocks need no connected neighbor, but a worker must still
-     * stand on something to place a floating stone block. Build only
-     * temporary owned scaffold TWO cells from the intended cube, place
-     * with real 0.8m clearance, retrace and reclaim every scaffold.
+     * Full blocks need no permanent neighbor. Give the worker a paid
+     * scaffold stand two cells away AND temporary attached scaffolding
+     * immediately beneath the target, then reclaim it after placement.
      */
     @GameTest(maxTicks=1200,skyAccess=true)
     public void constructsFloatingDioriteFromPaidTemporaryWorkPlatform(
@@ -548,11 +547,9 @@ public final class BuilderSafeScaffoldGameTest {
                 // Allow the active real scaffold ascent to advance even
                 // during the transient ungrounded climb/landing ticks.
                 if(h.getTick()<12||h.getTick()%5!=0)return;
-                if(!BuilderScaffoldPlanA.needsTemporaryWorkPlatform(
-                                level,target)
-                        ||!Blocks.DIORITE.defaultBlockState().canSurvive(
+                if(!Blocks.DIORITE.defaultBlockState().canSurvive(
                                 level,target)){
-                    h.fail("Diorite is not free-floating in Minecraft");return;
+                    h.fail("Diorite cannot survive at the intended location");return;
                 }
                 var result=BuilderScaffoldPlanA.reach(
                         level,mob,table,owner,target,List.of());
@@ -569,7 +566,9 @@ public final class BuilderSafeScaffoldGameTest {
                             level,mob,table,target)
                             ||!BuilderPlacementSpace.horizontalClear(target,mob)
                             ||!BuilderPlacementSpace.ready(level,mob,table,target)
-                            ||!level.getBlockState(target.below()).isAir()){
+                            ||!level.getBlockState(target.below()).is(Blocks.SCAFFOLDING)
+                            ||!table.scaffoldPositions(mob.getUUID())
+                                    .contains(target.below())){
                         h.fail("No valid real scaffold work pose or floating "
                                 +"material area "+mob.position()+" "
                                 +BuilderScaffoldPlanA.status(mob)
@@ -600,7 +599,7 @@ public final class BuilderSafeScaffoldGameTest {
                 if(h.getTick()%5==0)
                     BuilderScaffolding.retrieve(level,mob,table,false);
                 if(table.scaffoldPositions(mob.getUUID()).isEmpty()){
-                    if(deployed[0]<2
+                    if(deployed[0]<7
                             ||!level.getBlockState(target).is(Blocks.DIORITE)
                             ||!level.getBlockState(target.below()).isAir()){
                         h.fail("Floating construction broke dome or lost "
