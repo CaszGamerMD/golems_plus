@@ -1149,8 +1149,15 @@ public final class BuilderScaffoldPlanA {
                     return Result.MOVING;
                 return Result.READY;
             }
-            case RETURN_FIRST,RETURN_TOWER,DESCEND,DISMOUNT,
-                    WALK_FIRST,WALK_SECOND-> {return Result.MOVING;}
+            case RETURN_FIRST,RETURN_TOWER,DESCEND,DISMOUNT -> {
+                // A Builder may still hold the SAME work cell after its
+                // scaffold return began. Service the physical return here
+                // as well as during a change of target; otherwise DISMOUNT
+                // remains a motionless MOVING result indefinitely.
+                return returnToGround(level,worker,table)
+                        ?Result.MOVING:Result.NO_SAFE_ROUTE;
+            }
+            case WALK_FIRST,WALK_SECOND -> {return Result.MOVING;}
             default -> {}
         }
         if(j.phase==Phase.BUILD)return shaft(level,worker,table,j);
@@ -1241,10 +1248,15 @@ public final class BuilderScaffoldPlanA {
                 }
             }
             if(worker.onGround()
-                    &&Math.abs(worker.getY()-j.base.getY())<.26
+                    &&(Math.abs(worker.getY()-j.base.getY())<.26
+                        ||worker.getY()<j.base.getY()-.35)
                     &&clearOfOwnedScaffold
                     &&level.getBlockState(below).isFaceSturdy(
                             level,below,Direction.UP)){
+                if(worker.getY()<j.base.getY()-.35)
+                    System.out.println("[PLAN A DISMOUNT] released stale tower "
+                            +j.base.toShortString()+" from lower real footing "
+                            +worker.blockPosition().toShortString());
                 jobs.remove(worker);
                 return false;
             }
