@@ -127,6 +127,10 @@ public final class WorkerNavigation {
             return false;
         }
         if(mob.position().distanceToSqr(p.executionAnchor)>.25*.25){
+            // An accepted native path is only a proposal. Release a
+            // rejected first step after the body REALLY moved, not when
+            // moveTo(path) merely returned true without displacement.
+            p.lastBad=null;
             p.executionAnchor=mob.position();
             p.executionProgressAt=mob.tickCount;
             return false;
@@ -1379,7 +1383,10 @@ public final class WorkerNavigation {
         }
         boolean same=target.equals(p.requested);
         if(same&&executionStalled(level,mob,p))return false;
-        if(!same){p.executingFirstLeg=null;p.executionAnchor=null;}
+        if(!same){
+            p.executingFirstLeg=null;p.executionAnchor=null;
+            p.lastBad=null; // a different goal deserves fresh choices
+        }
         if(same&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
@@ -1426,7 +1433,7 @@ public final class WorkerNavigation {
             p.requested=target.immutable();p.approach=waypoint.immutable();
             p.weightedRoute=plan.steps();
             p.routeCursor=Math.min(plan.steps().size(),span);
-            p.stalled=0;p.unsafeChecks=0;p.wait=0;p.lastBad=null;
+            p.stalled=0;p.unsafeChecks=0;p.wait=0;
             p.nextRoute=mob.tickCount+CHECK_TICKS;
             trackFirstLeg(mob,p,plan.steps().get(0));
             return true;
@@ -1571,7 +1578,7 @@ public final class WorkerNavigation {
             p.approach=waypoint;
             trackFirstLeg(mob,p,p.weightedRoute.get(p.routeCursor));
             p.routeCursor=index+1;
-            p.stalled=0;p.unsafeChecks=0;p.lastBad=null;
+            p.stalled=0;p.unsafeChecks=0;
             p.nextRoute=mob.tickCount+CHECK_TICKS;
             return true;
         }
@@ -1612,6 +1619,8 @@ public final class WorkerNavigation {
                 +" stalled="+p.stalled+" unsafe="+p.unsafeChecks
                 +" detourLegRetries="+p.detourFirstLegRetries
                 +" physicalRejects="+p.physicallyRejectedLegs
+                +(p.lastBad==null?"":" avoided="+p.lastBad.toShortString()
+                    +" for="+Math.max(0,p.avoidUntil-mob.tickCount)+"t")
                 +(p.executingFirstLeg==null?"":" firstLeg="
                     +p.executingFirstLeg.toShortString()+" noMotion="
                     +Math.max(0,mob.tickCount-p.executionProgressAt)+"t")
