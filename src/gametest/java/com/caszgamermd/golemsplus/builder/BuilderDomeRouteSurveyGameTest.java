@@ -602,9 +602,13 @@ public final class BuilderDomeRouteSurveyGameTest {
         world.addFreshEntity(mob);
         List<BlockPos> roofSteps=List.of(
                 origin.offset(9,26,10),origin.offset(10,27,10),
-                origin.offset(11,27,10),origin.offset(12,28,10),
-                origin.offset(13,28,11),origin.offset(14,29,11),
-                origin.offset(15,29,11),origin.offset(15,30,10));
+                origin.offset(11,27,10),
+                // The old coarse waypoint (12,28,10) is NOT a valid
+                // centered landing. The native physical path correctly
+                // detours north via supported (11,27,9), (12,28,9),
+                // then rises onto the diorite at (12,29,10).
+                origin.offset(11,27,9),origin.offset(12,28,9),
+                origin.offset(12,29,10),origin.offset(15,30,10));
         BlockPos first=roofSteps.get(0);
         final int[] leg={0};
         h.onEachTick(()->{
