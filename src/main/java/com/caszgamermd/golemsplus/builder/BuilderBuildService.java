@@ -686,17 +686,19 @@ public final class BuilderBuildService {
             if(yDiff>1){
                 var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
                 if(access==BuilderGrappleAccess.Result.NEED_HOOK){
-                    table.setProblem("Builder needs a Grapple Hook in OnSite Storage");
-                    return;
+                    // A hook shortage is not a movement prohibition.
+                    // Walking to a higher work stance and a paid scaffold
+                    // are still candidates for this same block.
+                    if(scaffoldWork(level,worker,table,owner,pos,plan.steps()))
+                        return;
                 }
                 if(access==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR){
                     if(scaffoldWork(level,worker,table,owner,pos,plan.steps()))
                         return;
-                    table.waitForBuilderAccess(worker.getUUID(),index,
-                            level.getGameTime(),"grapple and scaffold entries inaccessible");
-                    table.setProblem("Deferred inaccessible grapple/scaffold work "+pos
-                            +" (other cells on Y="+activeLayer+" continue)");
-                    return;
+                    // Neither an anchor nor a tower is mandatory. An
+                    // ordinary detour may first descend or move away from
+                    // this target before arriving at a valid elevated pose.
+                    // Let the normal work-stance search prove that route.
                 }
                 if(access==BuilderGrappleAccess.Result.MOVING)return;
             }

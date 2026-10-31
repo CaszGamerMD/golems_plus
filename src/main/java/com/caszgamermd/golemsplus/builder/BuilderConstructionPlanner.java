@@ -358,15 +358,15 @@ public final class BuilderConstructionPlanner {
             boolean floating=BuilderScaffoldPlanA
                     .needsTemporaryWorkPlatform(world,target);
             boolean scaffold=stance==null&&!grapple
-                    // Vertical gaps use existing tower rules. An isolated
-                    // floating cube additionally permits a paid placement
-                    // platform even if it is at the worker's current Y.
-                    &&(target.getY()-worker.blockPosition().getY()>1
-                        ||floating)
-                    &&(BuilderScaffoldPlanA.canPlan(
+                    // An occupied same-layer roof can obstruct all walking
+                    // stances too. A real inventory-paid work bridge is
+                    // an access option, even when target sides are joined
+                    // to other blocks and the rise is only one block.
+                    &&(BuilderScaffoldPlanA.canPlanWorkPose(
                             world,worker,table,target,steps)
-                        ||!floating&&BuilderScaffolding.canPlanAccess(
-                            world,worker,table,target,steps));
+                        ||(target.getY()-worker.blockPosition().getY()>1
+                            &&!floating&&BuilderScaffolding.canPlanAccess(
+                                    world,worker,table,target,steps)));
             if(stance==null&&!grapple&&!scaffold)continue;
             boolean sky=stance==null
                     ?world.canSeeSky(target.above())
