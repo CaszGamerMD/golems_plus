@@ -1064,7 +1064,7 @@ public final class BuilderScaffoldPlanA {
             int actual=physicalTowerTop(level,worker,table,j);
             double dx=worker.getX()-j.base.getX()-.5;
             double dz=worker.getZ()-j.base.getZ()-.5;
-            if(actual<j.top&&dx*dx+dz*dz<.3
+            if(actual<j.top&&dx*dx+dz*dz<1.32
                     &&worker.getY()<=actual+1.2
                     &&j.repairs<3){
                 j.repairs++;
@@ -1073,7 +1073,7 @@ public final class BuilderScaffoldPlanA {
                 repairLog(level,worker,table,j,ScaffoldFault.TOWER_SHORT,
                         "extend/replace missing paid shaft from real column"
                         +" attempt="+j.repairs);
-            }else if(actual==j.top&&dx*dx+dz*dz<.3
+            }else if(actual==j.top&&dx*dx+dz*dz<1.32
                     &&worker.getY()>=j.base.getY()-.15
                     &&worker.getY()<j.top+.88
                     &&level.getGameTime()-j.lastRepairLog>=100){
