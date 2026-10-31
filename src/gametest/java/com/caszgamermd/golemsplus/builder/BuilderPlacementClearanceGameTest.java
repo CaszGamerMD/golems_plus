@@ -180,6 +180,11 @@ public final class BuilderPlacementClearanceGameTest {
                 ||!table.registerBuilderWorker(placer.getUUID())){
             h.fail("Cannot register cooperating builders");return;
         }
+        // The real worker tick requires the same persisted home/owner link
+        // as a player-created Builder. Without it the test only sends a
+        // request; the recipient never executes BuilderBuildService.tick.
+        blocker.assign(h.absolutePos(new BlockPos(0,2,0)),owner.getUUID());
+        placer.assign(h.absolutePos(new BlockPos(0,2,0)),owner.getUUID());
         final boolean[] asked={false};
         final double[] previousX={blocker.getX()};
         h.onEachTick(()->{
