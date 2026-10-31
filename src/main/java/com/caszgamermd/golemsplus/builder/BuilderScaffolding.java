@@ -276,15 +276,42 @@ public final class BuilderScaffolding {
             // block above the scaffold. Moving off that ledge lets gravity
             // land the Builder on the top scaffold before descent starts.
             worker.setNoGravity(false);
-            worker.setJumping(false);
+            // A paid Plan-A column can also start ONE BLOCK ABOVE the
+            // Builder's grounded roof ledge. The solid support UNDER that
+            // scaffold prevents horizontal entry at the lower Y. Jump
+            // from real footing first, then move sideways into the actual
+            // scaffold; never levitate through the supporting block.
+            double baseY=session.column().getY();
+            boolean sideJump=!session.descending()&&worker.onGround()
+                    &&baseY-worker.getY()>.40
+                    &&baseY-worker.getY()<=1.10
+                    &&horizontal<=1.15
+                    &&level.getBlockState(session.column()).is(Blocks.SCAFFOLDING)
+                    &&level.getBlockState(session.column().below()).isFaceSturdy(
+                            level,session.column().below(),Direction.UP);
+            if(sideJump){
+                worker.getJumpControl().jump();
+                worker.setJumping(true);
+            }else worker.setJumping(false);
             worker.setShiftKeyDown(false);
-            worker.getMoveControl().setWantedPosition(cx,worker.getY(),cz,1.0);
+            worker.getMoveControl().setWantedPosition(cx,
+                    sideJump?baseY:worker.getY(),cz,1.0);
             double mx=Math.max(-.13,Math.min(.13,(cx-worker.getX())*.25));
             double mz=Math.max(-.13,Math.min(.13,(cz-worker.getZ())*.25));
             var tryBox=worker.getBoundingBox().move(mx,0,mz);
             if(level.noCollision(worker,tryBox)){
                 var motion=worker.getDeltaMovement();
-                worker.setDeltaMovement(mx,Math.min(0,motion.y),mz);
+                boolean insideColumn=!session.descending()
+                        &&worker.getY()>=baseY-.05
+                        &&worker.getBoundingBox().intersects(
+                                new net.minecraft.world.phys.AABB(session.column()));
+                // Preserve genuine upward jump momentum while clearing
+                // the lower support. Once inside the PAID scaffold volume,
+                // normal climb velocity may resume with native gravity.
+                double vy=insideColumn?Math.max(.12,motion.y)
+                        :worker.getY()<baseY&&motion.y>0
+                            ?motion.y:Math.min(0,motion.y);
+                worker.setDeltaMovement(mx,vy,mz);
             }
             return true;
         }
