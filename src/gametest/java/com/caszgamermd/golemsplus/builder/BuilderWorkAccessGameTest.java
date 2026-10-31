@@ -265,6 +265,95 @@ public final class BuilderWorkAccessGameTest {
         });
     }
 
+    /** The full-dome time trial repeatedly left an unsupported Y23 cap
+     * unbuilt while a worker wandered on the base floor. Reconstruct the
+     * real saved geometry up to that layer and demand physical paid access
+     * from the ground, not just a successful planning preview. */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=2900,skyAccess=true)
+    public void y23MossyCapUsesRealScaffoldFromGround(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos origin=helper.absolutePos(new BlockPos(8,2,8));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        origin.getX()>>4,origin.getZ()>>4),4);
+        BlockPos target=origin.offset(15,23,4);
+        final java.util.List<BuilderConstructionPlan.Step> steps;
+        try{
+            var schematic=LitematicFileReader.read(BuilderDomeFixture.unpack());
+            steps=BuilderConstructionPlan.create(schematic,
+                    new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                            BuildSite.Rotation.NONE,BuildSite.Mirror.NONE),true)
+                    .steps();
+            for(var cell:schematic.blocks()){
+                if(cell.y()>23
+                        ||BuilderVegetation.ignoreSchematicState(cell.state())
+                        ||cell.x()==15&&cell.y()==23&&cell.z()==4)continue;
+                var resolved=BuilderBlockResolver.resolve(
+                        cell.state(),BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(resolved!=null)level.setBlock(origin.offset(
+                        cell.x(),cell.y(),cell.z()),resolved.state(),2);
+            }
+        }catch(Exception exception){
+            helper.fail("Cannot reconstruct Y23 dome: "+exception);return;
+        }
+        if(!level.getBlockState(target).isAir()
+                ||!level.getBlockState(target.below()).isAir()){
+            helper.fail("Y23 target must be unsupported AIR: "+target);return;
+        }
+        helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
+        if(!(level.getBlockEntity(helper.absolutePos(new BlockPos(4,2,7)))
+                instanceof WorkerStationBlockEntity table)){
+            helper.fail("Missing Y23 Planner");return;
+        }
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(origin.getX()+11.5,origin.getY(),origin.getZ()+1.5);
+        worker.setItem(0,new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.SCAFFOLDING,64));
+        worker.setItem(1,new net.minecraft.world.item.ItemStack(
+                WorksiteContent.GRAPPLE_HOOK));
+        level.addFreshEntity(worker);
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),1)
+                ||!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Cannot register Y23 worker");return;
+        }
+        final BuilderScaffoldPlanA.Result[] attempt={null};
+        helper.onEachTick(()->{
+            if(!worker.isAlive()||worker.isNoGravity()){
+                helper.fail("Y23 worker left real gravity");return;
+            }
+            if(BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                    level,worker,table,target)
+                    &&!table.scaffoldPositions(worker.getUUID()).isEmpty()
+                    &&worker.carriedCount(
+                            net.minecraft.world.item.Items.SCAFFOLDING)<64){
+                System.out.println("[Y23 SCAFFOLD ACCESS] PASS physical paid "
+                        +"tower and work bridge from ground in "
+                        +helper.getTick()+" ticks");
+                helper.succeed();return;
+            }
+            if(helper.getTick()>=20&&helper.getTick()%5==0
+                    &&(worker.onGround()
+                        ||BuilderScaffoldPlanA.hasPlan(worker)))
+                attempt[0]=BuilderScaffoldPlanA.reachWorkPose(
+                        level,worker,table,owner,target,steps);
+            if(helper.getTick()>=2700)
+                helper.fail("Y23 unsupported mossy cap access stalled: "
+                        +"feet="+worker.position()+" attempt="+attempt[0]
+                        +" plan="+BuilderScaffoldPlanA.status(worker)
+                        +" climb="+BuilderScaffolding.debugClimb(worker)
+                        +" paid="+table.scaffoldPositions(
+                                worker.getUUID()).size()+" access="
+                        +BuilderScaffoldPlanA.diagnoseAccess(
+                                level,worker,table,target,steps));
+        });
+    }
+
     /** The measured 3420/3493 dome has no legal grounded work stance
      * around its eight Y30 holes. Rebuild the exact roof snapshot and
      * verify a physically climbable, inventory-paid temporary work pose,
