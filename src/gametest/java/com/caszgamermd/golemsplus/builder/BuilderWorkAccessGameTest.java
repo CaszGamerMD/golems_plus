@@ -13,14 +13,95 @@ import net.minecraft.world.level.block.Blocks;
  * and for precise final centering inside the selected standing cell.
  */
 public final class BuilderWorkAccessGameTest {
+    /** The 3420/3493 live dome snapshot has EVERY built Y30 cap except
+     * eight holes. Replay its actual pre-target blocks and exact north
+     * fractional feet, but let the trained controller find its own path.
+     * No blocks are placed by this test after the worker is spawned.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=900,skyAccess=true)
+    public void northRoofWorkerWalksToMeasuredFinalGap(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos origin=helper.absolutePos(new BlockPos(8,2,8));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        origin.getX()>>4,origin.getZ()>>4),4);
+        try{
+            for(var b:LitematicFileReader.read(
+                    BuilderDomeFixture.unpack()).blocks()){
+                if(b.y()>30||BuilderVegetation.ignoreSchematicState(b.state()))
+                    continue;
+                boolean north=b.x()==15&&b.z()>=9&&b.z()<=12;
+                boolean south=b.x()==15&&b.z()>=22&&b.z()<=24
+                        ||b.x()==20&&b.z()==22;
+                if(b.y()==30&&(north||south))continue;
+                var state=BuilderBlockResolver.resolve(
+                        b.state(),BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(state!=null)level.setBlock(origin.offset(
+                        b.x(),b.y(),b.z()),state.state(),2);
+            }
+        }catch(Exception e){helper.fail("Could not reconstruct saved roof "+e);return;}
+        helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
+        BlockPos station=helper.absolutePos(new BlockPos(4,2,7));
+        if(!(level.getBlockEntity(station) instanceof WorkerStationBlockEntity table)){
+            helper.fail("Missing work station for original roof");return;
+        }
+        BlockPos target=origin.offset(15,30,10);
+        if(!level.getBlockState(target).isAir()
+                ||!level.getBlockState(origin.offset(15,30,9)).isAir()){
+            helper.fail("Live roof target must remain unbuilt");return;
+        }
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(origin.getX()+8.34569378,origin.getY()+26,
+                origin.getZ()+11.51642730);
+        level.addFreshEntity(worker);
+        boolean[] began={false};
+        helper.onEachTick(()->{
+            if(!worker.isAlive()||worker.isNoGravity()){
+                helper.fail("Original north roof worker lost physical motion");return;
+            }
+            if(helper.getTick()>=20&&helper.getTick()%5==0&&worker.onGround())
+                began[0]|=BuilderBuildService.walkToOrdinaryWorkPose(
+                        level,worker,table,target);
+            if(worker.onGround()&&BuilderPlacementSpace.placementHeight(
+                    target,worker)
+                    &&BuilderPlacementSpace.horizontalClear(target,worker)
+                    &&worker.distanceToSqr(target.getX()+.5,
+                            target.getY()+.5,target.getZ()+.5)<14
+                    &&BuilderConstructionPlanner.safeStand(
+                            level,worker,target,worker.blockPosition())){
+                if(!began[0]){
+                    helper.fail("North roof did not take a trained walk");return;
+                }
+                System.out.println("[ROOF FINAL GAP] PASS physical north Y30 "
+                        +"approach in "+helper.getTick()+" ticks from measured feet");
+                helper.succeed();return;
+            }
+            if(helper.getTick()>800)
+                helper.fail("North final gap is still unreachable: feet="
+                        +worker.position()+" "+WorkerNavigation.debugStatus(worker)
+                        +" "+BuilderPlacementSpace.diagnoseApproach(
+                                level,worker,target,
+                                at->BuilderConstructionPlanner.safeStand(
+                                        level,worker,target,at)));
+        });
+    }
     /** Reproduces the dome's four-level work handoff: the block is high,
      * but a winding real-ground climb ends at a valid placement stance.
      * Do not require a hook or scaffold for this reachable roof tile.
      */
-    @GameTest(maxTicks=560,skyAccess=true)
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=560,skyAccess=true)
     public void builderWalksFourLevelRiseToWorkPoseWithoutTools(
             GameTestHelper helper){
         ServerLevel level=helper.getLevel();
+        // A ten-block slope does not fit the default eight-block GameTest
+        // room: its invisible boundary would falsely reject real routes.
+        for(int x=0;x<12;x++)for(int z=0;z<8;z++)
+            for(int y=2;y<=8;y++)helper.setBlock(x,y,z,Blocks.AIR);
         for(int x=0;x<12;x++)for(int z=0;z<8;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
         // Real half-height stair steps avoid a contrived sequence of

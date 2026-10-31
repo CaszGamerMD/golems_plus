@@ -188,9 +188,10 @@ public final class BuilderBuildService {
                             level,worker,table,target,steps))
                 &&scaffoldWork(level,worker,table,owner,target,steps);
     }
-    // Short roof ramps are walkable without gear. A Builder stranded 20+
-    // levels below its assignment should still start a paid access tower
-    // or a grapple immediately: long ascent preview alone is not progress.
+    // The closing roof is where a connected upper ledge can supersede an
+    // optional tower. Preserve normal grapple/scaffold scheduling during
+    // lower construction; trying to walk first on every low wall step
+    // starved the four-Builder dome's early-layer access system.
     private static final int WALK_FIRST_LOCAL_RISE=5;
     /** The same trained, collision-checked A* used for real motion must
      * decide whether a roof stance is walkable BEFORE we build access gear.
@@ -698,7 +699,13 @@ public final class BuilderBuildService {
             long now=level.getGameTime();
             if(activity.workTravelSince<0)activity.workTravelSince=now;
             int yDiff=pos.getY()-worker.blockPosition().getY();
-            boolean localRoofRise=yDiff>1&&yDiff<=WALK_FIRST_LOCAL_RISE;
+            // A generic near-roof criterion: top quarter of THIS
+            // schematic, not a hard-coded Y30 or world coordinate.
+            int lowest=plan.steps().getFirst().y();
+            int highest=plan.steps().getLast().y();
+            boolean nearRoof=pos.getY()-lowest>=(highest-lowest)*3/4;
+            boolean localRoofRise=nearRoof&&yDiff>1
+                    &&yDiff<=WALK_FIRST_LOCAL_RISE;
             boolean inPlace=BuilderPlacementSpace.placementHeight(pos,worker)
                     &&BuilderPlacementSpace.horizontalClear(pos,worker)
                     &&worker.distanceToSqr(pos.getX()+.5,
