@@ -110,6 +110,12 @@ public final class BuilderBuildService {
             BuilderGolem worker,List<Integer> zone,long now){
         Map<Integer,Long> failed=workRetryAfter.get(worker);
         if(failed==null||failed.isEmpty())return zone;
+        return availableAfterBackoff(zone,failed,now);
+    }
+    /** Pure selection rule shared by work-approach and depot-access
+     * deferrals. Other members' candidate scans are never filtered. */
+    static List<Integer> availableAfterBackoff(List<Integer> zone,
+            Map<Integer,Long> failed,long now){
         failed.entrySet().removeIf(entry->entry.getValue()<=now);
         if(failed.isEmpty())return zone;
         return zone.stream().filter(index->!failed.containsKey(index)).toList();
@@ -764,8 +770,12 @@ public final class BuilderBuildService {
                     // with an idle navigation and never reached the work
                     // watchdog. Let another stocked crew member try it;
                     // preserve the cell, materials, and global Y gate.
-                    table.waitForBuilderAccess(worker.getUUID(),index,
-                            stageNow,"350-tick depot access without travel progress");
+                    // The worker must also yield its next claim to a
+                    // teammate. A plain 60-tick global retry repeatedly
+                    // handed this exact roof glass cell back to the same
+                    // builder stranded beside the OnSite depot.
+                    deferStalledWork(worker,table,index,stageNow,
+                            "350-tick depot access without travel progress");
                     activity.workTravelSince=-1;
                     System.out.println("[BUILDER STAGING RETRY] step="+index
                             +" no depot travel from="+worker.position()
