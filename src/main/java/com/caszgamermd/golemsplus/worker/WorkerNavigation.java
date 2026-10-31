@@ -1486,9 +1486,15 @@ public final class WorkerNavigation {
         // path" reports from the vanilla navigation radius.
         int count=p.weightedRoute.size();
         if(p.routeCursor==0
-                &&!standingTile(level,mob,mob.blockPosition())
-                &&startCornerRecovery(level,mob,p,p.weightedRoute.get(0),target))
-            return true;
+                &&!standingTile(level,mob,mob.blockPosition())){
+            if(startCornerRecovery(level,mob,p,p.weightedRoute.get(0),target))
+                return true;
+            // A failed first fractional sweep may have already cleared
+            // the current route while updating the local recovery state.
+            // Never keep indexing a route that its controller retired.
+            if(p.weightedRoute.isEmpty()
+                    ||p.routeCursor>=p.weightedRoute.size())return false;
+        }
         if(prepareTrainedDoor(level,mob,p,p.weightedRoute.subList(p.routeCursor,count)))return true;
         for(int distance:new int[]{3,2,1}){
             int index=Math.min(count-1,p.routeCursor+distance-1);
@@ -1512,6 +1518,13 @@ public final class WorkerNavigation {
         }
         if(startCornerRecovery(level,mob,p,
                 p.weightedRoute.get(p.routeCursor),target))return true;
+        // startCornerRecovery installs a local sub-block path and clears
+        // weightedRoute BEFORE its first physical tick. That tick can
+        // reject the sweep and return false; the old caller then indexed
+        // the now-empty route, throwing ArrayIndexOutOfBoundsException on
+        // live Builders returning to OnSite after their zone completed.
+        if(p.weightedRoute.isEmpty()
+                ||p.routeCursor>=p.weightedRoute.size())return false;
         p.lastBad=p.weightedRoute.get(p.routeCursor);
         p.avoidUntil=mob.tickCount+60;
         p.weightedRoute=List.of();p.routeCursor=0;
