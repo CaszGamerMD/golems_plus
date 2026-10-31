@@ -202,6 +202,14 @@ public final class BuilderDomeRouteSurveyGameTest {
                     .append(" sameComponent=").append(connected)
                     .append(" bestRoute=").append(nodePath(origin,direct))
                     .append('\n');
+                // A connected abstract graph alone is not enough to
+                // authorize placement. Record whether the REAL trained
+                // movement controller can execute its first physical leg.
+                report.append("[TRAINED WORK ROUTE] selected=")
+                    .append(WorkerNavigation.selectExecutableStand(
+                            world,mob,safe))
+                    .append(' ').append(WorkerNavigation.diagnoseExecutableStand(
+                            world,mob,safe)).append('\n');
                 List<BlockPos> nearest=new ArrayList<>(component);
                 nearest.sort(Comparator.comparingDouble(p->p.distSqr(target)));
                 report.append("[NEAREST REAL FOOTHOLDS]");
@@ -236,6 +244,7 @@ public final class BuilderDomeRouteSurveyGameTest {
                     +" route-survey/live_worker_route_analysis.txt");
             for(String line:report.toString().split("\n"))
                 if(line.startsWith("[WORKER]")||line.startsWith("[GROUND GRAPH]")
+                        ||line.startsWith("[TRAINED WORK ROUTE]")
                         ||line.startsWith("[PAID SCAFFOLD]")
                         ||line.startsWith("[NEAREST REAL FOOTHOLDS]"))
                     System.out.println(line);

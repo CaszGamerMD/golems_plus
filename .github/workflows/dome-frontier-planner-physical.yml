@@ -130,6 +130,7 @@ jobs:
               'com.caszgamermd.golemsplus.builder.BuilderConstructionFrontierGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderFenceStepGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderCornerRejoinGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderWorkAccessGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderStagedGrappleGameTest',
           ]
           p.write_text(json.dumps(d,indent=2)+'\n')

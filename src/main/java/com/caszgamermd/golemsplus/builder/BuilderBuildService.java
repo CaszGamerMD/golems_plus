@@ -188,6 +188,32 @@ public final class BuilderBuildService {
                             level,worker,table,target,steps))
                 &&scaffoldWork(level,worker,table,owner,target,steps);
     }
+    /** The same trained, collision-checked A* used for real motion must
+     * decide whether a roof stance is walkable BEFORE we build access gear.
+     * A planned but UNBUILT bridge may be released for such a route; never
+     * discard a paid scaffold or interrupt an active shaft/rope climb.
+     */
+    static boolean walkToOrdinaryWorkPose(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos target){
+        if(!worker.onGround()||worker.isNoGravity()
+                ||BuilderGrappleAccess.active(worker)
+                ||BuilderScaffolding.isControllingMovement(worker))return false;
+        boolean planned=BuilderScaffoldPlanA.hasPlan(worker);
+        if(planned&&(BuilderScaffoldPlanA.controlsMotion(worker)
+                ||!table.scaffoldPositions(worker.getUUID()).isEmpty()))
+            return false;
+        BlockPos stance=BuilderPlacementSpace.approachWithRules(
+                level,worker,target,
+                at->BuilderConstructionPlanner.safeStand(level,worker,target,at));
+        if(stance==null)return false;
+        if(!com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(
+                level,worker,stance,1.0)){
+            BuilderPlacementSpace.invalidateApproach(worker,target);
+            return false;
+        }
+        if(planned)BuilderScaffoldPlanA.cancel(worker);
+        return true;
+    }
     private BuilderBuildService(){}
     /** Start the warehouse packing reservation as soon as the user
      * presses Start, before any Builder Golem has reached the first block.
@@ -667,6 +693,23 @@ public final class BuilderBuildService {
             }
             long now=level.getGameTime();
             if(activity.workTravelSince<0)activity.workTravelSince=now;
+            int yDiff=pos.getY()-worker.blockPosition().getY();
+            boolean inPlace=BuilderPlacementSpace.placementHeight(pos,worker)
+                    &&BuilderPlacementSpace.horizontalClear(pos,worker)
+                    &&worker.distanceToSqr(pos.getX()+.5,
+                            pos.getY()+.5,pos.getZ()+.5)<14
+                    &&BuilderConstructionPlanner.safeStand(
+                            level,worker,pos,worker.blockPosition());
+            // A scaffold APPROACH is only a fallback. The roof can become
+            // walkable as other Builders finish its ledges. Before building
+            // any of this worker's scaffold, recheck the executable ground
+            // route and release an obsolete, still-unbuilt Plan A.
+            if(BuilderScaffoldPlanA.hasPlan(worker)&&!inPlace
+                    &&walkToOrdinaryWorkPose(level,worker,table,pos)){
+                activity.phase=Action.MOVE_TO_WORK;
+                activity.workTravelSince=now;
+                return;
+            }
             // Once an owned shaft/bridge starts, its controller owns all
             // physical movement. Do not replace it with a normal route
             // just because another nominal work pose becomes visible.
@@ -688,7 +731,15 @@ public final class BuilderBuildService {
                         +" after 900 ticks without placement at "+worker.position());
                 return;
             }
-            int yDiff=pos.getY()-worker.blockPosition().getY();
+            // On a four-block roof rise a real stair/slab detour may reach
+            // the work stance without either rope or scaffold. Give the
+            // trained route a meaningful physical travel window first; if
+            // it stalls, the 260-tick access fallback below is still live.
+            if(yDiff>1&&!inPlace&&now-activity.workTravelSince<=260
+                    &&walkToOrdinaryWorkPose(level,worker,table,pos)){
+                activity.phase=Action.MOVE_TO_WORK;
+                return;
+            }
             // A grapple can repeatedly select an unreachable high ledge.
             // After a genuine physical approach timeout, try a supported,
             // inventory-paid scaffold bridge rooted on this same build.
