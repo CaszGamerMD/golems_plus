@@ -57,6 +57,8 @@ public final class WorksiteContent {
     public static EntityType<FisherGolem> FISHER_GOLEM;
     public static Item FISHING_BAIT,FISHING_MARKER_ITEM,GRAPPLE_HOOK;
     public static FishingSpotBlock FISHING_SPOT;
+    public static EnhancedScaffoldingBlock ENHANCED_SCAFFOLDING;
+    public static Item ENHANCED_SCAFFOLDING_ITEM;
     public static Item BUILDER_WORKER_ITEM, TRADER_WORKER_ITEM, BEEKEEPER_WORKER_ITEM, CHEF_WORKER_ITEM, FISHER_WORKER_ITEM;
     private static final ResourceKey<CreativeModeTab> TAB = ResourceKey.create(
             BuiltInRegistries.CREATIVE_MODE_TAB.key(), GolemsPlus.id("main"));
@@ -91,6 +93,17 @@ public final class WorksiteContent {
     }
 
     public static void initialize() {
+        ResourceKey<net.minecraft.world.level.block.Block> scaffoldKey=
+                ResourceKey.create(Registries.BLOCK,GolemsPlus.id("enhanced_scaffolding"));
+        ENHANCED_SCAFFOLDING=Registry.register(BuiltInRegistries.BLOCK,
+                scaffoldKey,new EnhancedScaffoldingBlock(BlockBehaviour.Properties
+                        .ofFullCopy(Blocks.SCAFFOLDING).setId(scaffoldKey)));
+        ResourceKey<Item> scaffoldItemKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("enhanced_scaffolding"));
+        ENHANCED_SCAFFOLDING_ITEM=Registry.register(BuiltInRegistries.ITEM,
+                scaffoldItemKey,new BlockItem(ENHANCED_SCAFFOLDING,
+                        new Item.Properties().setId(scaffoldItemKey)
+                                .useBlockDescriptionPrefix()));
         BUILDER_TABLE = station("builder_table", WorkerSpecialty.BUILDER);
         FISHING_STATION = station("fishing_station", WorkerSpecialty.FISHING);
         TRADER_COUNTER = station("trader_counter", WorkerSpecialty.TRADER);
