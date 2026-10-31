@@ -85,6 +85,7 @@ public final class WorkerNavigation {
         Vec3 executionAnchor;
         int executionProgressAt;
         int physicallyRejectedLegs;
+        int repeatedPhysicalRejects;
     }
     /** Sub-block collision searches are considerably more expensive than
      * following their results. Share repeated previews for the SAME real
@@ -131,6 +132,7 @@ public final class WorkerNavigation {
             // rejected first step after the body REALLY moved, not when
             // moveTo(path) merely returned true without displacement.
             p.lastBad=null;
+            p.repeatedPhysicalRejects=0;
             p.executionAnchor=mob.position();
             p.executionProgressAt=mob.tickCount;
             return false;
@@ -145,6 +147,7 @@ public final class WorkerNavigation {
         p.lastBad=p.executingFirstLeg;
         p.avoidUntil=mob.tickCount+90;
         p.physicallyRejectedLegs++;
+        p.repeatedPhysicalRejects++;
         p.executingFirstLeg=null;p.executionAnchor=null;
         p.weightedRoute=List.of();p.routeCursor=0;
         p.centering=null;p.regionWaypoint=false;
@@ -1386,6 +1389,7 @@ public final class WorkerNavigation {
         if(!same){
             p.executingFirstLeg=null;p.executionAnchor=null;
             p.lastBad=null; // a different goal deserves fresh choices
+            p.repeatedPhysicalRejects=0;
         }
         if(same&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
@@ -1434,6 +1438,11 @@ public final class WorkerNavigation {
             p.weightedRoute=plan.steps();
             p.routeCursor=Math.min(plan.steps().size(),span);
             p.stalled=0;p.unsafeChecks=0;p.wait=0;
+            // Ordinary blocked aisles/doors retain the short retry
+            // policy. Only repeated physical failures on THIS target
+            // justify remembering the rejected first step across a
+            // successful but potentially motionless path acceptance.
+            if(p.repeatedPhysicalRejects<12)p.lastBad=null;
             p.nextRoute=mob.tickCount+CHECK_TICKS;
             trackFirstLeg(mob,p,plan.steps().get(0));
             return true;
@@ -1482,6 +1491,7 @@ public final class WorkerNavigation {
         if(changed){
             p.centering=null;
             p.executingFirstLeg=null;p.executionAnchor=null;
+            p.repeatedPhysicalRejects=0;
             p.requested=target.immutable();p.approach=null;
             p.attempts=0;p.nextRoute=0;p.stalled=0;p.unsafeChecks=0;
             p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
@@ -1579,6 +1589,7 @@ public final class WorkerNavigation {
             trackFirstLeg(mob,p,p.weightedRoute.get(p.routeCursor));
             p.routeCursor=index+1;
             p.stalled=0;p.unsafeChecks=0;
+            if(p.repeatedPhysicalRejects<12)p.lastBad=null;
             p.nextRoute=mob.tickCount+CHECK_TICKS;
             return true;
         }
@@ -1619,6 +1630,7 @@ public final class WorkerNavigation {
                 +" stalled="+p.stalled+" unsafe="+p.unsafeChecks
                 +" detourLegRetries="+p.detourFirstLegRetries
                 +" physicalRejects="+p.physicallyRejectedLegs
+                +" goalRejects="+p.repeatedPhysicalRejects
                 +(p.lastBad==null?"":" avoided="+p.lastBad.toShortString()
                     +" for="+Math.max(0,p.avoidUntil-mob.tickCount)+"t")
                 +(p.executingFirstLeg==null?"":" firstLeg="
