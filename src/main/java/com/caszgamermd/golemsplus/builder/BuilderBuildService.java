@@ -61,8 +61,8 @@ public final class BuilderBuildService {
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
-    /** Normally every X/Z zone is exclusive. A zone which has FINISHED
-     * may help its stuck neighbor after the whole construction has made
+    /** Normally every X/Z zone is exclusive. A zone with no work on this
+     * shared Y may help its stuck neighbor after construction has made
      * no physical progress for ten seconds. This is read-only monitoring:
      * actual ownership stays with the Planner's single-step claim map.
      */
@@ -83,10 +83,11 @@ public final class BuilderBuildService {
         }
         return level.getGameTime()-progress.lastChange>=600;
     }
-    /** Only entirely finished workers assist: they never abandon an
-     * assigned cell or break the strict same-Y construction gate. Their
-     * extra candidates must be unclaimed and physically reachable, so a
-     * roof-bound worker can step back or scaffold toward a stuck zone.
+    /** Only workers with NO unfinished task in their zone on the active Y assist: they
+     * never abandon an assigned cell or break the global height gate.
+     * A worker whose own next assignments are on Y+1 can safely help a
+     * blocked neighboring zone complete Y before those become runnable.
+     * Extra candidates must be unclaimed and physically reachable.
      */
     private static List<Integer> roofRescueZone(WorkerStationBlockEntity table,
             UUID worker,List<BuilderConstructionPlan.Step> steps,int layer){
@@ -131,18 +132,13 @@ public final class BuilderBuildService {
             if(step.y()!=layer||step.ignorePlant()
                     ||table.builderZoneDone(List.of(idx)))continue;
             BlockPos target=new BlockPos(step.x(),step.y(),step.z());
-            // Waiting TWO levels below an overhead cap is physically
-            // safe even directly under its X/Z footprint: the 1.62m
-            // Builder fits entirely below that future block. Apply the
-            // arm/shoulder margin only when its body actually rises
-            // into the target's height, otherwise the last roof workers
-            // discard a good staging ledge for a fictitious collision.
-            boolean bodyAtHeight=worker.getBoundingBox().maxY
-                    >target.getY()-.05;
+            // Waiting beside a future cap is NOT a placement attempt:
+            // the .8m arm-clearance margin applies to the Builder doing
+            // the placing. For idle staging, protect the actual body
+            // plus .1m collision allowance; requiring the arm margin
+            // needlessly drove rooftop helpers to the ground depot.
             if(worker.getBoundingBox().intersects(
-                    new net.minecraft.world.phys.AABB(target).inflate(.1,0,.1))
-                    ||bodyAtHeight
-                        &&!BuilderPlacementSpace.horizontalClear(target,worker))
+                    new net.minecraft.world.phys.AABB(target).inflate(.1,0,.1)))
                 return false;
         }
         return true;
@@ -509,8 +505,14 @@ public final class BuilderBuildService {
             // failed tasks are explicitly deferred and then reselected.
             int index=table.claimedStep(worker.getUUID());
             int layer=table.builderActiveLayer(plan.steps());
-            boolean ownZoneComplete=table.builderZoneDone(zone);
-            boolean emergencyRoofAssist=ownZoneComplete
+            boolean ownLayerClear=true;
+            for(int idx:zone)
+                if(idx>=0&&idx<plan.steps().size()
+                        &&plan.steps().get(idx).y()==layer
+                        &&!table.builderZoneDone(List.of(idx))){
+                    ownLayerClear=false;break;
+                }
+            boolean emergencyRoofAssist=ownLayerClear
                     &&(index>=0&&!zone.contains(index)
                         ||roofNeedsHelp(level,table));
             // Monitoring must run for every working crew, including the
@@ -527,7 +529,7 @@ public final class BuilderBuildService {
                                 +worker.getName().getString()+" can serve "
                                 +rescue.size()+" unfinished Y="
                                 +(layer-table.builderOrigin().getY())
-                                +" cells outside its finished zone");
+                                +" cells outside its cleared layer zone");
                 }
             }
             if(index<0||index>=plan.steps().size()
@@ -557,7 +559,7 @@ public final class BuilderBuildService {
                 // OnSite chest leaves nobody who can step back and build
                 // a paid scaffold to the last few cap cells.
                 List<Integer> waitingZone=zone;
-                if(ownZoneComplete
+                if(ownLayerClear
                         &&worker.getY()-table.getBlockPos().getY()>=12){
                     var rescue=roofRescueZone(table,worker.getUUID(),
                             plan.steps(),layer);
