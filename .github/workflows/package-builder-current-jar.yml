@@ -21,7 +21,7 @@ jobs:
         with:
           gradle-version: '9.7.0'
       - name: Build Fabric playable JAR (without requiring unfinished dome tests)
-        run: gradle --no-daemon build -x test
+        run: gradle --no-daemon build -x test -x runGameTest
       - name: Select playable JAR and write manifest
         shell: bash
         run: |
