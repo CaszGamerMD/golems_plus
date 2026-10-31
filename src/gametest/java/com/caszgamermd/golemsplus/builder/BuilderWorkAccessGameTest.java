@@ -94,59 +94,6 @@ public final class BuilderWorkAccessGameTest {
             if(helper.getTick()>=20&&helper.getTick()%5==0)
                 last[0]=BuilderScaffoldPlanA.reachWorkPose(
                         level,worker,table,owner,target,steps);
-            if(region.equals("south")&&helper.getTick()==40){
-                var box=worker.getBoundingBox();
-                StringBuilder probes=new StringBuilder();
-                for(double[] move:new double[][]{
-                        {-.12,0},{.12,0},{0,-.12},{0,.12},
-                        {-.10,-.10},{-.10,.10},{.10,-.10},{.10,.10}}){
-                    var next=box.move(move[0],0,move[1]);
-                    probes.append(" [").append(move[0]).append(',')
-                            .append(move[1]).append(" free=")
-                            .append(level.noCollision(worker,next))
-                            .append(" supported=")
-                            .append(!level.noCollision(worker,
-                                    next.move(0,-.07,0))).append(']');
-                }
-                BlockPos feet=worker.blockPosition();
-                System.out.println("[SOUTH STEP BACK PROBE] feet="
-                        +worker.position()+" box="+box
-                        +" currentFree="+level.noCollision(worker,box)
-                        +" grounded="+worker.onGround()+probes);
-                for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++){
-                    BlockPos foot=feet.offset(dx,0,dz);
-                    var centered=box.move(foot.getX()+.5-worker.getX(),
-                            foot.getY()-worker.getY(),
-                            foot.getZ()+.5-worker.getZ());
-                    System.out.println("[SOUTH STEP BACK TILE] "
-                            +foot.toShortString()+" below="
-                            +level.getBlockState(foot.below())
-                            +" feetBlock="+level.getBlockState(foot)
-                            +" head="+level.getBlockState(foot.above())
-                            +" stand="+WorkerNavigation.canStandOn(
-                                    level,worker,foot)
-                            +" centeredFree="+level.noCollision(worker,centered)
-                            +" jumpFree="+level.noCollision(worker,
-                                    centered.move(0,.65,0)));
-                }
-            }
-            if(region.equals("south")&&helper.getTick()>=200
-                    &&helper.getTick()<260){
-                // Diagnostic only: try a gentle, naturally collision-
-                // resolved retreat toward the open south rim. No setPos,
-                // no noclip, no noGravity and no placement bypass.
-                worker.getNavigation().stop();
-                worker.setNoGravity(false);
-                worker.getMoveControl().setWantedPosition(
-                        worker.getX(),worker.getY(),worker.getZ()+4,1.0);
-                worker.setDeltaMovement(0,
-                        Math.min(0,worker.getDeltaMovement().y),.10);
-                if(helper.getTick()%15==0)
-                    System.out.println("[SOUTH NATIVE RETREAT] tick="
-                            +helper.getTick()+" feet="+worker.position()
-                            +" free="+level.noCollision(worker,
-                                    worker.getBoundingBox()));
-            }
             if(helper.getTick()%150==0)
                 System.out.println("[ROOF SIDE CLIMB] region="+region
                         +" tick="+helper.getTick()
@@ -172,6 +119,8 @@ public final class BuilderWorkAccessGameTest {
             if(helper.getTick()>1670)
                 helper.fail(region+" final gap scaffold stalled: feet="
                         +worker.position()+" result="+last[0]
+                        +" bodyInsideRoof="+!level.noCollision(worker,
+                                worker.getBoundingBox())
                         +" status="+BuilderScaffoldPlanA.status(worker)
                         +" climb="+BuilderScaffolding.debugClimb(worker)
                         +" paid="+table.scaffoldPositions(worker.getUUID()).size()
