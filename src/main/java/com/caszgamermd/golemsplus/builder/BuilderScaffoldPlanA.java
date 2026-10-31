@@ -1195,6 +1195,17 @@ public final class BuilderScaffoldPlanA {
             j.phase=Phase.DISMOUNT;
         }
         if(j.phase==Phase.DISMOUNT){
+            // A returning worker can land safely on a NEW high roof
+            // surface above the old base exit. Repeatedly steering to
+            // the lower exit would require crossing completed solid
+            // blocks. Keep the genuine high footing, retire this route,
+            // and let the ordinary work planner select another way.
+            if(worker.onGround()
+                    &&worker.getY()>j.base.getY()+1.35
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
+                jobs.remove(worker);
+                return false;
+            }
             // Once the worker is physically standing on SOLID ground at
             // the tower's base elevation, its descent is complete; the
             // exact compass-side exit is no longer a mandatory position.

@@ -157,6 +157,21 @@ public final class BuilderScaffolding {
     public static boolean tickMotion(ServerLevel level,BuilderGolem worker){
         ExitRoute exit=exiting.get(worker);
         if(exit!=null){
+            // A roof can change under a returning Builder. If it is
+            // already GROUNDED on a solid ledge two or more levels above
+            // the recorded scaffold exit, that old dismount would need
+            // to walk THROUGH the roof to reach its lower X/Z tile.
+            // Release only the stale route; the Builder stays on its
+            // actual safe footing and must choose another physical path.
+            if(worker.onGround()
+                    &&worker.getY()>exit.ground().getY()+1.35){
+                System.out.println("[SCAFFOLD EXIT] abandoned unreachable lower "
+                        +exit.ground().toShortString()+" from grounded roof "
+                        +worker.blockPosition().toShortString());
+                exiting.remove(worker);
+                BuilderScaffoldPlanA.cancel(worker);
+                return false;
+            }
             if(level.getGameTime()>exit.expires()
                     ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .canStandOn(level,worker,exit.ground())){
@@ -484,6 +499,11 @@ public final class BuilderScaffolding {
                         .canStandOn(level,worker,planned.groundExit())
                 ?planned.groundExit():exitGround(level,worker,column);
         if(exit==null)return false;
+        // A valid adjacent ground tile is NOT necessarily a valid
+        // dismount from the worker's present physical elevation. Do not
+        // create an EXIT instruction that crosses a solid roof slab.
+        if(worker.onGround()
+                &&worker.getY()>exit.getY()+1.35)return false;
         clearMotion(worker);
         access.remove(worker);
         exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));

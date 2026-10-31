@@ -286,7 +286,11 @@ public final class BuilderSupplyInventory {
         materials.put("golems_plus:grapple_hook",1);
         int highestSchematic=steps.stream().mapToInt(
                 BuilderConstructionPlan.Step::y).max().orElse(highest);
-        if(highest>=highestSchematic-16&&highestSchematic-highest>=0
+        // Until the final eight schematic layers, ordinary ten-block
+        // batches need the pouch slots more than distant roof-cap items.
+        // Premature prefetch around mid-dome displaced materials and
+        // triggered expensive unnecessary depot trips from narrow ledges.
+        if(highest>=highestSchematic-8&&highestSchematic-highest>=0
                 &&highest-table.builderOrigin().getY()>=12){
             // Keep paid scaffold available on the roof for the exact
             // step-back-and-climb recovery. The current stage always has

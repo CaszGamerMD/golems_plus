@@ -252,6 +252,111 @@ public final class BuilderWorkAccessGameTest {
                         +" nav="+WorkerNavigation.debugStatus(worker));
         });
     }
+    /** Reproduce the repeatedly measured Y21 north-rim deadlock from
+     * two full-dome runs. All lower layers are exact and the fourteen
+     * remaining Y21 positions match the CI snapshot. Start on the real
+     * offset glass ledge at (12.424,21,4.605), not a fabricated tile
+     * center, and require an executable safe placement pose.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=2200,skyAccess=true)
+    public void northRimFenceRetreatsToWorkPose(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos origin=helper.absolutePos(new BlockPos(8,2,8));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        origin.getX()>>4,origin.getZ()>>4),4);
+        int[][] missing={{14,3},{12,5},{13,5},{14,5},{11,6},
+                {9,7},{5,10},{4,12},{4,13},{3,15},{1,16},
+                {11,28},{12,29},{13,29}};
+        final java.util.List<BuilderConstructionPlan.Step> steps;
+        try{
+            var schematic=LitematicFileReader.read(BuilderDomeFixture.unpack());
+            steps=BuilderConstructionPlan.create(schematic,
+                    new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                            BuildSite.Rotation.NONE,BuildSite.Mirror.NONE),true)
+                    .steps();
+            for(var block:schematic.blocks()){
+                if(block.y()>21||BuilderVegetation.ignoreSchematicState(
+                        block.state()))continue;
+                boolean remain=false;
+                if(block.y()==21)
+                    for(int[] gap:missing)
+                        if(block.x()==gap[0]&&block.z()==gap[1]){
+                            remain=true;break;
+                        }
+                if(remain)continue;
+                var state=BuilderBlockResolver.resolve(block.state(),
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(state!=null)level.setBlock(origin.offset(
+                        block.x(),block.y(),block.z()),state.state(),2);
+            }
+        }catch(Exception e){helper.fail("Cannot reconstruct Y21 ledge "+e);return;}
+        helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
+        BlockPos station=helper.absolutePos(new BlockPos(4,2,7));
+        if(!(level.getBlockEntity(station)
+                instanceof WorkerStationBlockEntity table)){
+            helper.fail("No Y21 north rim Planner");return;
+        }
+        BlockPos target=origin.offset(14,21,3);
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(origin.getX()+12.424,origin.getY()+21,
+                origin.getZ()+4.605);
+        worker.setItem(0,new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.SCAFFOLDING,64));
+        level.addFreshEntity(worker);
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),1)
+                ||!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Cannot register Y21 rim worker");return;
+        }
+        final BuilderScaffoldPlanA.Result[] result={null};
+        helper.onEachTick(()->{
+            if(!worker.isAlive()||worker.isNoGravity()){
+                helper.fail("Y21 rim worker lost physical motion");return;
+            }
+            boolean direct=worker.onGround()
+                    &&BuilderPlacementSpace.placementHeight(target,worker)
+                    &&BuilderPlacementSpace.horizontalClear(target,worker)
+                    &&worker.distanceToSqr(target.getX()+.5,
+                            target.getY()+.5,target.getZ()+.5)<14
+                    &&BuilderConstructionPlanner.safeStand(
+                            level,worker,target,worker.blockPosition());
+            if(direct||BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                    level,worker,table,target)){
+                System.out.println("[Y21 RIM FENCE] PASS from offset footing"
+                        +" now="+worker.position()
+                        +" ticks="+helper.getTick());
+                helper.succeed();return;
+            }
+            if((worker.onGround()||BuilderScaffoldPlanA.hasPlan(worker))
+                    &&helper.getTick()>12&&helper.getTick()%5==0){
+                if(!BuilderScaffoldPlanA.hasPlan(worker)){
+                    BlockPos walk=BuilderPlacementSpace.approachWithRules(
+                            level,worker,target,
+                            at->BuilderConstructionPlanner.safeStand(
+                                    level,worker,target,at));
+                    if(walk!=null&&WorkerNavigation.routeToExact(
+                            level,worker,walk,1.0))return;
+                }
+                result[0]=BuilderScaffoldPlanA.reachWorkPose(
+                        level,worker,table,owner,target,steps);
+            }
+            if(helper.getTick()>2070)
+                helper.fail("Y21 offset fence could not step back/scaffold"
+                        +" feet="+worker.position()+" result="+result[0]
+                        +" plan="+BuilderScaffoldPlanA.status(worker)
+                        +" nav="+WorkerNavigation.debugStatus(worker)
+                        +" approach="+BuilderPlacementSpace.diagnoseApproach(
+                                level,worker,target,
+                                at->BuilderConstructionPlanner.safeStand(
+                                        level,worker,target,at)));
+        });
+    }
     private static void measuredRoofScaffoldGap(GameTestHelper helper,
             String region,int targetX,int targetY,int targetZ,
             double startX,double startY,double startZ){
