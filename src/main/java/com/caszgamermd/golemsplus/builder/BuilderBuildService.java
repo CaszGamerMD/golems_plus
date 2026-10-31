@@ -65,6 +65,28 @@ public final class BuilderBuildService {
             }
         }
     }
+    /** Shared per-station handoff board: a failed cell is offered to a
+     * different crew member before its previous owner can try again. */
+    private record Handoff(UUID failedWorker,long until,String reason){}
+    private static final Map<WorkerStationBlockEntity,Map<Integer,Handoff>>
+            handoffBoard=new WeakHashMap<>();
+    private static void publishHandoff(WorkerStationBlockEntity table,
+            UUID worker,int index,long now,String reason){
+        handoffBoard.computeIfAbsent(table,k->new java.util.HashMap<>())
+                .put(index,new Handoff(worker,now+1200,reason));
+    }
+    private static boolean reservedForTeammate(WorkerStationBlockEntity table,
+            UUID worker,int index,long now){
+        var board=handoffBoard.get(table);
+        if(board==null)return false;
+        Handoff record=board.get(index);
+        if(record==null)return false;
+        if(now>=record.until()){
+            board.remove(index);return false;
+        }
+        return record.failedWorker().equals(worker)
+                &&table.builderWorkerIds().size()>1;
+    }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
     /** Normally every X/Z zone is exclusive. A zone with no work on this
@@ -563,6 +585,16 @@ public final class BuilderBuildService {
                                 +" cells outside its cleared layer zone");
                 }
             }
+            // Keep the previously failing worker from immediately
+            // reclaiming the same cell while another Builder is available.
+            long selectionTick=level.getGameTime();
+            if(index>=0&&reservedForTeammate(table,worker,index,selectionTick))
+                index=-1;
+            var handoffCandidates=new java.util.ArrayList<Integer>();
+            for(int candidate:zone)
+                if(!reservedForTeammate(table,worker,candidate,selectionTick))
+                    handoffCandidates.add(candidate);
+            zone=handoffCandidates;
             if(index<0||index>=plan.steps().size()
                     ||!zone.contains(index)
                     ||plan.steps().get(index).y()!=layer
@@ -863,6 +895,8 @@ public final class BuilderBuildService {
                         "180-tick stationary work approach; alternative access exhausted");
                 activity.lastFailedStep=index;
                 activity.retreatUntil=now+100;
+                publishHandoff(table,worker.getUUID(),index,now,
+                        "stationary after alternate scaffold and grapple");
                 System.out.println("[BUILDER HANDOFF] worker="+worker.getName().getString()
                         +" released="+index+" returnOnSite=true");
                 activity.workTravelSince=-1;
