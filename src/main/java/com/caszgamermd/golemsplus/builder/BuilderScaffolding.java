@@ -588,9 +588,9 @@ public final class BuilderScaffolding {
         // valid vanilla walking nodes, so repeatedly reconsidering a
         // path to an upper platform can abandon an active ascent.
         var existing=table.scaffoldPositions(worker.getUUID());
-        // Pending schematic positions may temporarily host paid scaffold.
-        // We validate the ACTUAL return route now and reclaim the owned
-        // scaffolds before any overlapping schematic cell is constructed.
+        // Pending schematic positions may temporarily host paid scaffold,
+        // but future walls must not seal the reserved ground exit. The
+        // owned bridge and shaft are reclaimed before overlapping work.
         java.util.Set<BlockPos> future=new java.util.HashSet<>();
         for(var cell:plan)if(!cell.ignorePlant()){
             BlockPos p=new BlockPos(cell.x(),cell.y(),cell.z());
@@ -773,7 +773,8 @@ public final class BuilderScaffolding {
         for(Direction side:Direction.Plane.HORIZONTAL)
             for(int dy:new int[]{0,-1}){
                 BlockPos p=base.relative(side).offset(0,dy,0);
-                if(p.getY()<base.getY()-1
+                if(future.contains(p)||future.contains(p.above())
+                        ||p.getY()<base.getY()-1
                         ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                                 .canStandOn(level,worker,p))continue;
                 double candidate=worker.distanceToSqr(
