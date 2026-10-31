@@ -721,6 +721,20 @@ public final class BuilderDomeRouteSurveyGameTest {
                     ||mob.getY()<origin.getY()+24){
                 h.fail("Direct roof worker lost safe physical footing");return;
             }
+            if(h.getTick()==20){
+                for(int z:new int[]{9,10}){
+                    BlockPos work=origin.offset(15,30,z);
+                    var rule=(java.util.function.Predicate<BlockPos>)at->
+                            BuilderConstructionPlanner.safeStand(world,mob,work,at);
+                    BlockPos approach=BuilderPlacementSpace.approachWithRules(
+                            world,mob,work,rule);
+                    System.out.println("[INITIAL ROOF WORK POSE] targetZ="+z
+                            +" selected="+(approach==null?"none":
+                                approach.subtract(origin).toShortString())
+                            +" status="+BuilderPlacementSpace.diagnoseApproach(
+                                    world,mob,work,rule));
+                }
+            }
             if(h.getTick()>=20&&h.getTick()%5==0
                     &&WorkerNavigation.routeToExact(world,mob,goal,1))
                 accepted[0]++;
@@ -729,26 +743,31 @@ public final class BuilderDomeRouteSurveyGameTest {
                     goal.getZ()+.5)<.15){
                 System.out.println("[DIRECT ROOF] PASS auto-planned roof access "
                         +"ticks="+h.getTick()+" accepted="+accepted[0]);
-                BlockPos work=origin.offset(15,30,9);
-                var stanceRule=(java.util.function.Predicate<BlockPos>)at->
-                        BuilderConstructionPlanner.safeStand(
-                                world,mob,work,at);
-                BlockPos normal=BuilderPlacementSpace.approachWithRules(
-                        world,mob,work,stanceRule);
-                List<BlockPos> lower=new ArrayList<>();
-                for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
-                    BlockPos at=work.offset(dx,-1,dz);
-                    if(at.distSqr(work)>=14||!stanceRule.test(at)
-                            ||!WorkerNavigation.canStandOn(world,mob,at))continue;
-                    lower.add(at);
+                for(int z:new int[]{9,10}){
+                    BlockPos work=origin.offset(15,30,z);
+                    var stanceRule=(java.util.function.Predicate<BlockPos>)at->
+                            BuilderConstructionPlanner.safeStand(
+                                    world,mob,work,at);
+                    BlockPos normal=BuilderPlacementSpace.approachWithRules(
+                            world,mob,work,stanceRule);
+                    List<BlockPos> lower=new ArrayList<>();
+                    for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
+                        BlockPos at=work.offset(dx,-1,dz);
+                        if(at.distSqr(work)>=14||!stanceRule.test(at)
+                                ||!WorkerNavigation.canStandOn(world,mob,at))continue;
+                        lower.add(at);
+                    }
+                    BlockPos lowerRoute=WorkerNavigation.selectExecutableStand(
+                            world,mob,lower);
+                    System.out.println("[ROOF WORK POSE] targetZ="+z
+                            +" upper="+(normal==null?"none":
+                                normal.subtract(origin).toShortString())
+                            +" lowerCandidates="+lower.size()
+                            +" lowerExecutable="+(lowerRoute==null?"none":
+                                lowerRoute.subtract(origin).toShortString())
+                            +" status="+BuilderPlacementSpace.diagnoseApproach(
+                                    world,mob,work,stanceRule));
                 }
-                BlockPos lowerRoute=WorkerNavigation.selectExecutableStand(
-                        world,mob,lower);
-                System.out.println("[ROOF WORK POSE] upper="+normal
-                        +" lowerCandidates="+lower.size()
-                        +" lowerExecutable="+lowerRoute
-                        +" status="+BuilderPlacementSpace.diagnoseApproach(
-                                world,mob,work,stanceRule));
                 h.succeed();return;
             }
             if(h.getTick()>1500)
