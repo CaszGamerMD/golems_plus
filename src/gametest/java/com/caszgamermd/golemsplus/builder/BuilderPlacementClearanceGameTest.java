@@ -173,7 +173,10 @@ public final class BuilderPlacementClearanceGameTest {
         var placer=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         placer.setPos(target.getX()+3.5,target.getY(),target.getZ()+.5);
         world.addFreshEntity(placer);
-        if(!table.registerBuilderWorker(blocker.getUUID())
+        var owner=h.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),2)
+                ||!table.registerBuilderWorker(blocker.getUUID())
                 ||!table.registerBuilderWorker(placer.getUUID())){
             h.fail("Cannot register cooperating builders");return;
         }
