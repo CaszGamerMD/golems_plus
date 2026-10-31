@@ -93,7 +93,9 @@ public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
         for(BlockPos other:component){
             BlockState existing=level.getBlockState(other);
             if(!(existing.getBlock() instanceof EnhancedScaffoldingBlock))continue;
-            Block.popResource(level,other,new ItemStack(existing.getBlock().asItem()));
+            // Return every recovered piece to the scaffold that initiated
+            // retraction, rather than scattering drops along the bridge.
+            Block.popResource(level,pos,new ItemStack(existing.getBlock().asItem()));
             level.setBlock(other,existing.getFluidState().isSource()
                     ?Blocks.WATER.defaultBlockState():Blocks.AIR.defaultBlockState(),3);
         }
