@@ -290,12 +290,15 @@ public final class BuilderSupplyInventory {
         // gaps. Waiting until the final eight layers to carry scaffolding
         // forced workers at Y21-Y23 to climb down to storage AFTER their
         // first route failed, then walk back toward a 20-block paid tower.
-        // Reserve one actual stack once construction passes sixteen layers.
-        // Keep it across ten-block work batches so the fallback is usable
-        // immediately; the current batch is packed ahead of this tool.
+        // Reserve 32 real blocks in one pouch slot from layer sixteen.
+        // The shaft still constructs in 16-block physical stages, but a
+        // 23-block tower can now finish both stages without descending
+        // from its halfway perch for another visit to OnSite Storage.
+        // Keep them across ten-block work batches; current job materials
+        // still pack ahead of this optional, inventory-paid access tool.
         if(highest-table.builderOrigin().getY()>=16
                 &&highestSchematic-highest>=0)
-            materials.put("minecraft:scaffolding",16);
+            materials.put("minecraft:scaffolding",32);
         // Distant final-cap blocks still wait until the final eight
         // schematic layers, because they would displace current materials.
         if(highest>=highestSchematic-8&&highestSchematic-highest>=0

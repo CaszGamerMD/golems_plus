@@ -55,7 +55,7 @@ public final class BuilderWorkAccessGameTest {
      * The tower still needs real floor, an exit and a supported bend.
      */
     @GameTest(structure="golems_plus_gametest:dome_arena",
-            maxTicks=300,skyAccess=true)
+            maxTicks=1100,skyAccess=true)
     public void diagonalScaffoldEntryWorksAroundRoofWalls(
             GameTestHelper helper){
         ServerLevel level=helper.getLevel();
@@ -83,21 +83,46 @@ public final class BuilderWorkAccessGameTest {
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         BlockPos start=helper.absolutePos(new BlockPos(5,2,5));
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        worker.setItem(0,new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.SCAFFOLDING,64));
         level.addFreshEntity(worker);
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),1)
+                ||!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Cannot register diagonal scaffold Builder");return;
+        }
         var plan=java.util.List.of(new BuilderConstructionPlan.Step(
                 target.getX(),target.getY(),target.getZ(),
                 "minecraft:stone","minecraft:stone"));
+        final boolean[] planned={false};
+        final BuilderScaffoldPlanA.Result[] last={null};
         helper.onEachTick(()->{
-            if(helper.getTick()<20||helper.getTick()%10!=0)return;
-            if(worker.onGround()&&BuilderScaffoldPlanA.canPlanWorkPose(
-                    level,worker,table,target,plan)){
-                System.out.println("[DIAGONAL SCAFFOLD] PASS alternate paid "
-                        +"bridge is supportable and entry-reachable");
+            if(helper.getTick()<20||helper.getTick()%5!=0)return;
+            if(worker.onGround()&&!planned[0])planned[0]=
+                    BuilderScaffoldPlanA.canPlanWorkPose(
+                            level,worker,table,target,plan);
+            last[0]=BuilderScaffoldPlanA.reachWorkPose(
+                    level,worker,table,owner,target,plan);
+            if(planned[0]&&last[0]==BuilderScaffoldPlanA.Result.READY
+                    &&BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                            level,worker,table,target)
+                    &&worker.carriedCount(
+                            net.minecraft.world.item.Items.SCAFFOLDING)<64
+                    &&!table.scaffoldPositions(worker.getUUID()).isEmpty()){
+                System.out.println("[DIAGONAL SCAFFOLD] PASS physically "
+                        +"climbed and paid for the supported bent bridge "
+                        +"in "+helper.getTick()+" ticks");
                 helper.succeed();return;
             }
-            if(helper.getTick()>=120)
-                helper.fail("Missed diagonal paid scaffold around four blocked "
-                        +"cardinal tower lines: "
+            if(helper.getTick()>=1020)
+                helper.fail("Could plan but not physically finish diagonal "
+                        +"paid scaffold around blocked cardinal lines: "
+                        +"route="+last[0]+" feet="+worker.position()
+                        +" plan="+BuilderScaffoldPlanA.status(worker)
+                        +" climb="+BuilderScaffolding.debugClimb(worker)
+                        +" paid="+table.scaffoldPositions(
+                                worker.getUUID()).size()+" access="
                         +BuilderScaffoldPlanA.diagnoseAccess(
                                 level,worker,table,target,plan));
         });

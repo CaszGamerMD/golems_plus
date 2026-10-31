@@ -199,7 +199,9 @@ public final class BuilderStagedGrappleGameTest {
                     h.fail("Remote real access ledge rejected "+result
                             +" feet="+mob.position()+" "
                             +BuilderPlacementSpace.diagnoseApproach(
-                                    world,mob,target));return;
+                                    world,mob,target,
+                                    at->BuilderConstructionPlanner.safeStand(
+                                            world,mob,target,at)));return;
                 }
             }
             if(mob.onGround()&&!BuilderGrappleAccess.active(mob)
