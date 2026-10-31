@@ -854,7 +854,8 @@ public final class BuilderSafeScaffoldGameTest {
         worker.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
         level.addFreshEntity(worker);
         table.registerBuilderWorker(worker.getUUID());
-        int[] phase={0},changed={0};
+        int[] phase={0};
+        long[] changed={0};
         boolean[] brokeBridge={false},rerouted={false};
         BlockPos[] reopened={null};
         helper.onEachTick(()->{

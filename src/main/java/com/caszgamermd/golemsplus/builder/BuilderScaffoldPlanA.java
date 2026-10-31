@@ -65,7 +65,10 @@ public final class BuilderScaffoldPlanA {
             this.exit=exit.immutable();
             this.planner=planner.immutable();
             this.bridgePath=List.copyOf(bridgePath);
-            this.reserved=Set.copyOf(reserved);
+            // One choose() invocation shares this private, unmodified
+            // blueprint snapshot across all candidates. Copying thousands
+            // of cells for every possible shaft is prohibitively expensive.
+            this.reserved=reserved;
             this.top=top;
             this.bridgeSpan=bridgePath.size();
             this.lastProgress=now;
@@ -689,6 +692,7 @@ public final class BuilderScaffoldPlanA {
     }
     private static boolean escapeBlockedExit(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,Job j){
+        if(BuilderScaffolding.isControllingMovement(worker))return true;
         // If the old base is enclosed, use a nearby ALREADY solid upper
         // ledge, but only through the native collision-safe side-step.
         BlockPos feet=worker.blockPosition();
