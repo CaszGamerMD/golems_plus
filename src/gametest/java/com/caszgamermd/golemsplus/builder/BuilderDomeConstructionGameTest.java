@@ -273,6 +273,28 @@ public final class BuilderDomeConstructionGameTest {
                             +ignoredPlants+" ignored vegetation entries; "
                             +"4 workers grounded, scaffolding recovered");
                     helper.succeed();
+                }else if(tick-lastProgress[0]>2400){
+                    // All schematic cells are correct, but finish-up still
+                    // requires a real return to safe ground and physically
+                    // recovered scaffold inventory. Do not wait until the
+                    // 90k-tick test timeout without showing which worker
+                    // remains elevated, suspended or scaffold-bound.
+                    StringBuilder stuck=new StringBuilder(
+                            "Dome built every required block, but crew "
+                            +"could not physically finish cleanup after "
+                            +tick+" ticks | grounded="+atGround
+                            +" scaffoldsGone="+scaffoldsGone);
+                    for(BuilderGolem member:crew)
+                        stuck.append(" | ")
+                                .append(member.getName().getString())
+                                .append(" @ ").append(member.position())
+                                .append(" ground=").append(member.onGround())
+                                .append(" noGravity=").append(member.isNoGravity())
+                                .append(" scaffold=").append(table.scaffoldPositions(
+                                        member.getUUID()).size())
+                                .append(" ").append(BuilderBuildService.debugStatus(
+                                        level,member));
+                    helper.fail(stuck.toString());
                 }
                 return;
             }
