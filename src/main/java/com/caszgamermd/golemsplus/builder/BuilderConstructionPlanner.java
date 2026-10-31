@@ -347,6 +347,17 @@ public final class BuilderConstructionPlanner {
             BlockPos stance=BuilderPlacementSpace.approachWithRules(
                     world,worker,target,
                     at->safeStand(world,worker,target,at));
+            // A genuinely occupied LOWER ledge is a safe construction
+            // option, but do not schedule a speculative trip to one.
+            // Those early lower-ledge detours stole the dome's reachable
+            // ground work despite passing isolated placement checks.
+            if(stance==null&&worker.onGround()
+                    &&worker.blockPosition().getY()==target.getY()-1
+                    &&WorkerNavigation.canStandOn(
+                            world,worker,worker.blockPosition())
+                    &&BuilderPlacementSpace.horizontalClear(target,worker)
+                    &&safeStand(world,worker,target,worker.blockPosition()))
+                stance=worker.blockPosition().immutable();
             boolean grapple=false;
             if(stance==null
                     &&target.getY()-worker.blockPosition().getY()>0

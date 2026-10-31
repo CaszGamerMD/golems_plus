@@ -278,9 +278,9 @@ public final class BuilderPlacementSpace {
             BlockPos target){
         return approachWithHeight(level,worker,target,false,p->true);
     }
-    /** Plan B work stance: feet on target Y or one Y above/below, with real
-     * footing and at least 0.8 horizontal clearance from the new block.
-     * This does not authorize claiming any higher schematic Y layer.
+    /** Planned work stances use the target Y or one Y above. A lower Y
+     * stance may be used once the worker is ALREADY physically there;
+     * scheduling a speculative walk to it caused early dome deadlocks.
      */
     public static BlockPos approachAtTargetY(ServerLevel level,
             BuilderGolem worker,BlockPos target){
@@ -302,8 +302,7 @@ public final class BuilderPlacementSpace {
         Approach cached=workApproaches.get(worker);
         if(cached!=null&&cached.target().equals(target)
                 &&(!sameHeight||cached.destination().getY()==target.getY()
-                        ||cached.destination().getY()==target.getY()+1
-                        ||cached.destination().getY()==target.getY()-1)
+                        ||cached.destination().getY()==target.getY()+1)
                 &&cached.until()>now
                 &&safe.test(cached.destination())
                 &&cached.destination().distSqr(target)<14
@@ -322,7 +321,7 @@ public final class BuilderPlacementSpace {
         // two blocks above/below the target even if same-level floor is
         // sealed by completed walls. Do not insist on a jump or teleport.
         for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
-            for(int dy:sameHeight?new int[]{0,1,-1}:new int[]{0,1,-1,2,-2}){
+            for(int dy:sameHeight?new int[]{0,1}:new int[]{0,1,-1,2,-2}){
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos p=target.offset(dx,dy,dz);
                 if(!safe.test(p)
