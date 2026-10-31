@@ -148,7 +148,8 @@ public final class BuilderBuildService {
             }
             if(bridge==BuilderScaffoldPlanA.Result.READY)return false;
         }
-        var shaft=BuilderScaffolding.reach(level,worker,table,owner,target,steps);
+        var shaft=BuilderScaffolding.reachBlockedWork(
+                level,worker,table,owner,target,steps);
         if(shaft==BuilderScaffolding.Result.CLIMBING
                 ||shaft==BuilderScaffolding.Result.NEED_MATERIALS)return true;
         // When the shaft opens onto a real roof surface, leave the top
@@ -165,6 +166,8 @@ public final class BuilderBuildService {
             List<BuilderConstructionPlan.Step> steps){
         return (BuilderScaffoldPlanA.hasPlan(worker)
                     ||BuilderScaffoldPlanA.canPlanWorkPose(
+                            level,worker,table,target,steps)
+                    ||BuilderScaffolding.canPlanAccess(
                             level,worker,table,target,steps))
                 &&scaffoldWork(level,worker,table,owner,target,steps);
     }

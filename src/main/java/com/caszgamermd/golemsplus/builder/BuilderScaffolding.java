@@ -561,6 +561,23 @@ public final class BuilderScaffolding {
     public static Result reach(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,BlockPos target,
             List<BuilderConstructionPlan.Step> plan){
+        return reach(level,worker,table,player,target,plan,false);
+    }
+
+    /** This entry is used only after every ordinary, safe work stance
+     * has failed. A one-block rise may still require a paid elevator if
+     * a fence, wall or unfinished roof prevents the normal jump route.
+     * It does not change the normal walking-first ascent preference.
+     */
+    public static Result reachBlockedWork(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,ServerPlayer player,BlockPos target,
+            List<BuilderConstructionPlan.Step> plan){
+        return reach(level,worker,table,player,target,plan,true);
+    }
+
+    private static Result reach(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,ServerPlayer player,BlockPos target,
+            List<BuilderConstructionPlan.Step> plan,boolean blockedWork){
         int feet=worker.blockPosition().getY();
         // A Builder could previously abort its climb one block early:
         // as soon as the desired work Y was within 1.35 blocks,
@@ -577,7 +594,8 @@ public final class BuilderScaffolding {
             }
             clearMotion(worker);
         }
-        if(target.getY()-worker.getY()<=1.35){
+        if(target.getY()-worker.getY()<=1.35
+                &&(!blockedWork||target.getY()<=worker.getY()+.15)){
             return Result.NOT_NEEDED;
         }
         // Tall routes are divided into physical, inventory-bounded stages.

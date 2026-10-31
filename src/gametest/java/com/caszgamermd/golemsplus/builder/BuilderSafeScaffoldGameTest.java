@@ -615,4 +615,67 @@ public final class BuilderSafeScaffoldGameTest {
         });
     }
 
+    /** Reproduce the early dome failure mode: a block one Y above the
+     * worker is not automatically reachable by jumping. Once normal
+     * work stances have failed, the optional shaft must still be usable.
+     */
+    @GameTest(maxTicks=600,skyAccess=true)
+    public void blockedOneBlockRiseMayUsePaidScaffold(GameTestHelper h){
+        ServerLevel level=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        h.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        BlockPos home=h.absolutePos(new BlockPos(0,2,0));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            h.fail("Missing Builder Planner");return;
+        }
+        ServerPlayer owner=h.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())){
+            h.fail("Cannot claim Builder Planner");return;
+        }
+        BlockPos start=h.absolutePos(new BlockPos(2,2,3));
+        BlockPos target=h.absolutePos(new BlockPos(5,3,3));
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        mob.setItem(0,new ItemStack(Items.SCAFFOLDING,16));
+        level.addFreshEntity(mob);
+        if(!table.registerBuilderWorker(mob.getUUID())){
+            h.fail("Cannot register Builder");return;
+        }
+        int original=mob.carriedCount(Items.SCAFFOLDING);
+        int[] phase={0};
+        long[] last={h.getTick()};
+        h.onEachTick(()->{
+            if(!mob.isAlive()){
+                h.fail("Builder vanished during one-rise ascent");return;
+            }
+            if(h.getTick()-last[0]>250){
+                h.fail("One-rise shaft timeout phase="+phase[0]
+                        +" feet="+mob.position()
+                        +" "+BuilderScaffolding.debugClimb(mob));return;
+            }
+            if(phase[0]==0){
+                if(h.getTick()%5==0){
+                    var result=BuilderScaffolding.reachBlockedWork(
+                            level,mob,table,owner,target,List.of());
+                    if(result==BuilderScaffolding.Result.NOT_NEEDED
+                            ||result==BuilderScaffolding.Result.NO_SAFE_TOWER
+                            ||result==BuilderScaffolding.Result.NEED_MATERIALS){
+                        h.fail("Short blocked rise refused scaffold: "+result);return;
+                    }
+                }
+                if(mob.getY()>=target.getY()-.15
+                        &&!table.scaffoldPositions(mob.getUUID()).isEmpty()){
+                    phase[0]=1;last[0]=h.getTick();
+                }
+            }else{
+                if(h.getTick()%5==0)
+                    BuilderScaffolding.descendForTravel(level,mob,table);
+                if(mob.onGround()&&Math.abs(mob.getY()-start.getY())<.25
+                        &&original>mob.carriedCount(Items.SCAFFOLDING)){
+                    h.succeed();
+                }
+            }
+        });
+    }
 }
