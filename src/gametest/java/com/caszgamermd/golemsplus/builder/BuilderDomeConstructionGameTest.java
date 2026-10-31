@@ -28,9 +28,10 @@ import net.minecraft.world.level.block.Blocks;
  * A failure reports the last recorded worker and planner state.
  */
 public final class BuilderDomeConstructionGameTest {
+    private static final long DOME_JOB_MAX_TICKS=70_000;
     @SuppressWarnings("removal")
     @GameTest(structure="golems_plus_gametest:dome_arena",
-            maxTicks=90000,skyAccess=true)
+            maxTicks=70100,skyAccess=true)
     public void constructsExactDomeWithRealBuilders(GameTestHelper helper){
         ServerLevel level=helper.getLevel();
         final Path source;
@@ -288,51 +289,20 @@ public final class BuilderDomeConstructionGameTest {
                             +ignoredPlants+" ignored vegetation entries; "
                             +"4 workers grounded, scaffolding recovered");
                     helper.succeed();
-                }else if(tick-lastProgress[0]>2400){
-                    // All schematic cells are correct, but finish-up still
-                    // requires a real return to safe ground and physically
-                    // recovered scaffold inventory. Do not wait until the
-                    // 90k-tick test timeout without showing which worker
-                    // remains elevated, suspended or scaffold-bound.
-                    StringBuilder stuck=new StringBuilder(
-                            "Dome built every required block, but crew "
-                            +"could not physically finish cleanup after "
-                            +tick+" ticks | grounded="+atGround
-                            +" scaffoldsGone="+scaffoldsGone);
-                    for(BuilderGolem member:crew)
-                        stuck.append(" | ")
-                                .append(member.getName().getString())
-                                .append(" @ ").append(member.position())
-                                .append(" ground=").append(member.onGround())
-                                .append(" noGravity=").append(member.isNoGravity())
-                                .append(" scaffold=").append(table.scaffoldPositions(
-                                        member.getUUID()).size())
-                                .append(" ").append(BuilderBuildService.debugStatus(
-                                        level,member));
-                    layerTiming.report(level,steps,tick,"cleanup_stall");
-                    helper.fail(stuck.toString());
+                    return;
                 }
-                return;
             }
-            BuilderDomeLayerTiming.Timeout exceeded=layerTiming.exceededBudget();
-            // A layer gets exactly ((required blocks * 40) + 100) * 3
-            // ticks. The previous 2400-tick no-progress detector could
-            // terminate a busy layer BEFORE its requested time-trial cap.
-            // Keep a global report guard ahead of GameTest's 90k cutoff.
-            if(exceeded!=null||tick>=89900){
+            // The entire physical job, including clearing, building and
+            // scaffold recovery, has one hard 70k-tick limit. Layer timings
+            // are observations only and never abort a busy layer.
+            if(tick>=DOME_JOB_MAX_TICKS){
                 // Snapshot the actual partly constructed geometry, worker
                 // locations, target cells and collision-valid routes.
                 // This is read-only and lives in the archived CI artifact.
                 BuilderDomeRouteSurveyGameTest.captureLive(
                         level,table,crew,steps);
                 StringBuilder message=new StringBuilder(
-                        exceeded==null
-                                ?"Dome reached 89900-tick global guard"
-                                :"DOME LAYER TIME TRIAL STOP Y="+exceeded.localY()
-                                        +" blocks="+exceeded.blocks()
-                                        +" idealTicks="+exceeded.targetTicks()
-                                        +" limitTicks="+exceeded.limitTicks()
-                                        +" actualTicks="+exceeded.actualTicks());
+                        "Dome reached 70000-tick global job limit");
                 message.append(" | elapsedTick=").append(tick)
                         .append(" | clear=").append(table.builderClearCursor())
                         .append(" | contiguous=").append(table.builderCursor())
@@ -349,8 +319,7 @@ public final class BuilderDomeConstructionGameTest {
                         .append(" | remainingLayer=")
                         .append(remainingLayerItems(
                                 level,table,steps,sharedY,32));
-                layerTiming.report(level,steps,tick,
-                        exceeded==null?"global_timeout":"layer_timeout");
+                layerTiming.report(level,steps,tick,"global_timeout");
                 helper.fail(message.toString());
             }
         });
