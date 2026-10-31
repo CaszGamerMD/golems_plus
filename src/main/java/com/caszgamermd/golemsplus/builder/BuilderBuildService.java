@@ -768,15 +768,14 @@ public final class BuilderBuildService {
                             +pos+" (line of sight / exit / clearance)");
                     return;
                 }
-                if(yDiff>=0){
-                    table.waitForBuilderAccess(worker.getUUID(),index,
-                            level.getGameTime(),"no executable stance or paid scaffold approach");
-                    table.setProblem("Deferred blocked roof work "+pos
-                            +" until a safe walking/scaffold position exists");
-                    return;
-                }
                 // Larger downward changes still require collision-safe
                 // navigation, not a free fall.
+                // This is only a MOVEMENT beacon when no safe work pose
+                // has been discovered yet, never permission to PLACE into
+                // the target. Actual placement still requires the 0.8m
+                // edge margin, grounded work pose and clear exit above.
+                // Retain the fractional branch's last-resort local motion
+                // so low-level connected cells are not deferred forever.
                 if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .routeTo(level,worker,pos,.85))
                     table.waitForBuilderAccess(worker.getUUID(),index,
