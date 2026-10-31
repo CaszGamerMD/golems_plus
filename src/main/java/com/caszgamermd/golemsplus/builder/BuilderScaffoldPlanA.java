@@ -226,7 +226,13 @@ public final class BuilderScaffoldPlanA {
             // away. Small decorative pillars frequently leave exactly
             // this gap; forcing a three-tile separation needlessly turns
             // a paid one-scaffold crossing into an inaccessible roof.
-            for(int distance=2;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++){
+            // The worker stands ONE cell short of a supported target.
+            // A six-scaffold bridge can therefore start seven cells away
+            // when the target already has structural support beneath it.
+            // Floating targets still need scaffold directly underneath,
+            // so their support bridge cannot exceed six cells.
+            for(int distance=2;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN
+                    +(isolated?0:1);distance++){
             BlockPos towerXZ=target.relative(outward,distance);
             Direction inward=outward.getOpposite();
             // Stand two cells short of an isolated floating block to
@@ -319,7 +325,8 @@ public final class BuilderScaffoldPlanA {
         int shafts=0,bridges=0,exits=0,reached=0;
         String example="";
         for(Direction outward:Direction.Plane.HORIZONTAL)
-            for(int distance=2;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN;distance++)
+            for(int distance=2;distance<=MAX_HORIZONTAL_SCAFFOLD_SPAN
+                    +(isolated?0:1);distance++)
                 for(int dy=-4;dy<=5;dy++){
                     BlockPos base=target.relative(outward,distance)
                             .atY(worker.blockPosition().getY()-dy);

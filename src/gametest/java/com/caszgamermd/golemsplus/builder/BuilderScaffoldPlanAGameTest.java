@@ -18,6 +18,73 @@ import net.minecraft.world.level.block.Blocks;
  * extends separate scaffold support under a floating block, then returns.
  */
 public final class BuilderScaffoldPlanAGameTest {
+    /** A supported work block can be reached from a tower seven cells
+     * away: six paid horizontal scaffold cells end beside the target.
+     * No unbacked seventh scaffold span is fabricated.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=750,skyAccess=true)
+    public void sixPaidScaffoldsReachSupportedWorkSevenCellsAway(
+            GameTestHelper h){
+        ServerLevel level=h.getLevel();
+        h.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        BlockPos home=h.absolutePos(new BlockPos(0,2,0));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            h.fail("Missing Builder Planner");return;
+        }
+        ServerPlayer owner=h.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())){
+            h.fail("Planner owner not registered");return;
+        }
+        h.setBlock(9,9,10,Blocks.STONE);
+        h.setBlock(10,9,10,Blocks.STONE);
+        h.setBlock(17,13,10,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(10,10,10));
+        BlockPos target=h.absolutePos(new BlockPos(17,14,10));
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        mob.setItem(0,new ItemStack(Items.SCAFFOLDING,40));
+        level.addFreshEntity(mob);
+        if(!table.registerBuilderWorker(mob.getUUID())){
+            h.fail("Could not register roof Builder");return;
+        }
+        h.onEachTick(()->{
+            if(h.getTick()<20||h.getTick()%5!=0)return;
+            if(!mob.isAlive()||mob.isNoGravity()){
+                h.fail("Seven-cell bridge lost physical Builder");return;
+            }
+            if(!mob.onGround()&&!BuilderScaffoldPlanA.hasPlan(mob))return;
+            if(h.getTick()==20&&!BuilderScaffoldPlanA.canPlan(
+                    level,mob,table,target,List.of())){
+                h.fail("A real six-scaffold bridge was rejected: "
+                        +BuilderScaffoldPlanA.diagnoseAccess(
+                                level,mob,table,target,List.of()));return;
+            }
+            var result=BuilderScaffoldPlanA.reach(
+                    level,mob,table,owner,target,List.of());
+            if(result==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE
+                    ||result==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
+                h.fail("Seven-cell scaffold bridge failed: "+result
+                        +" "+BuilderScaffoldPlanA.status(mob));return;
+            }
+            if(result==BuilderScaffoldPlanA.Result.READY){
+                if(!BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                        level,mob,table,target)
+                        ||!table.scaffoldPositions(mob.getUUID())
+                                .contains(target.west().below())){
+                    h.fail("Seven-cell bridge skipped supported work pose");
+                    return;
+                }
+                System.out.println("[SCAFFOLD SEVEN] PASS paid six-block "
+                        +"physical bridge at tick="+h.getTick());
+                h.succeed();return;
+            }
+            if(h.getTick()>680)
+                h.fail("Seven-cell scaffold bridge stalled "
+                        +mob.position()+" "+BuilderScaffoldPlanA.status(mob));
+        });
+    }
+
     /** A scaffold tower on the far side of a gap is reachable only by
      * walking WEST away from the target, descending one block, circling
      * SOUTH, and stepping up onto the far ledge. Native exact-tile
