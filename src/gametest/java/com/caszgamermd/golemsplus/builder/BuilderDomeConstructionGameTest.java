@@ -152,6 +152,7 @@ public final class BuilderDomeConstructionGameTest {
             lastWorkerActivity[i]=helper.getTick();
         }
         final boolean[] inspected={false},checkpoint={false},goal3333={false},goal3400={false};
+        final boolean[] starterKitVerified=new boolean[crew.size()];
         helper.onEachTick(()->{
             long tick=helper.getTick();
             if(tick%20!=0)return;
@@ -248,6 +249,7 @@ public final class BuilderDomeConstructionGameTest {
             Set<Item> needs=new LinkedHashSet<>();
             needs.add(WorksiteContent.GRAPPLE_HOOK);
             needs.add(Items.SCAFFOLDING);
+            needs.add(Items.BUCKET);
             needs.add(Items.IRON_PICKAXE);
             needs.add(Items.IRON_AXE);
             needs.add(Items.IRON_SHOVEL);
@@ -264,6 +266,36 @@ public final class BuilderDomeConstructionGameTest {
                             &&needs.size()<25;i++)
                 addItem(needs,steps.get(i));
             BuilderInfiniteOnsiteSupply.restock(level,supplyPos,needs);
+            // Verify each actual first assignment staged the new paid tool
+            // kit while keeping independent pockets for building materials.
+            // Later batches attempt the same 64-scaffold top-up at OnSite.
+            for(int i=0;i<crew.size();i++){
+                BuilderGolem worker=crew.get(i);
+                if(starterKitVerified[i]||!table.builderOrderPrepared(
+                        worker.getUUID()))continue;
+                int scaffolds=worker.getItem(
+                        BuilderGolem.SCAFFOLD_BELT_SLOT).getCount();
+                boolean hook=worker.getItem(
+                        BuilderGolem.GRAPPLE_BELT_SLOT).is(
+                                WorksiteContent.GRAPPLE_HOOK);
+                boolean bucket=worker.getItem(
+                        BuilderGolem.BUCKET_BELT_SLOT).is(Items.BUCKET);
+                boolean materialsReady=false;
+                for(int slot=0;slot<BuilderGolem.SCAFFOLD_BELT_SLOT;slot++)
+                    if(!worker.getItem(slot).isEmpty())materialsReady=true;
+                System.out.println("[DOME STARTER KIT] worker="
+                        +worker.getName().getString()+" tick="+tick
+                        +" scaffolds="+scaffolds+" grapple="+hook
+                        +" bucket="+bucket+" materialPocket="+materialsReady);
+                if(scaffolds<20||scaffolds>64||!hook||!bucket
+                        ||!materialsReady){
+                    helper.fail("Builder started assignment without 20-64 "
+                            +"paid scaffolds, grapple, bucket and materials: "
+                            +worker.getName().getString());
+                    return;
+                }
+                starterKitVerified[i]=true;
+            }
             // Independent Builder zones legitimately complete hundreds of
             // out-of-order positions while the first unbuilt index remains
             // pinned. Watching only builderCursor falsely calls that a stall.
