@@ -389,6 +389,26 @@ public final class BuilderScaffoldPlanA {
         return level.getBlockState(at).is(Blocks.SCAFFOLDING)
                 &&table.scaffoldPositions(worker.getUUID()).contains(at);
     }
+    /** A scaffold whose base is one block ABOVE nearby real footing can
+     * be paid for and placed from the side. Do not demand that a Builder
+     * first walk/jump into the EMPTY base cell: the finished dome's
+     * upper glass rim can block that leap indefinitely. The body must
+     * be wholly outside the placed block, on ground, and within reach.
+     * After payment the ordinary per-entity scaffold physics climbs it.
+     */
+    private static boolean canEnterFromBelow(ServerLevel level,
+            BuilderGolem worker,BlockPos base){
+        double dy=base.getY()-worker.getY();
+        if(!worker.onGround()||worker.isNoGravity()
+                ||dy<.40||dy>1.10
+                ||worker.distanceToSqr(base.getX()+.5,worker.getY(),
+                        base.getZ()+.5)>1.20
+                ||worker.getBoundingBox().intersects(
+                        new net.minecraft.world.phys.AABB(base)))return false;
+        return level.getBlockState(base.below()).isFaceSturdy(
+                level,base.below(),Direction.UP)
+                &&level.getBlockState(base).isAir();
+    }
     private static Result place(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer owner,BlockPos at,
             BlockPos previous){
@@ -471,6 +491,7 @@ public final class BuilderScaffoldPlanA {
         if(worker.distanceToSqr(j.base.getX()+.5,worker.getY(),
                         j.base.getZ()+.5)>1.20
                 ||worker.getY()<j.base.getY()-.4
+                    &&!canEnterFromBelow(level,worker,j.base)
                 ||worker.getY()>Math.max(j.base.getY(),existingTop+1)+.4){
             j.phase=Phase.APPROACH;
             j.closestApproach=Double.POSITIVE_INFINITY;
@@ -668,8 +689,10 @@ public final class BuilderScaffoldPlanA {
                 // body before climbing, using real collision checks.
                 double horizontal=worker.distanceToSqr(
                         j.base.getX()+.5,worker.getY(),j.base.getZ()+.5);
-                if(horizontal>1.20
-                        ||Math.abs(worker.getY()-j.base.getY())>.4){
+                boolean sideEntry=canEnterFromBelow(level,worker,j.base);
+                if(!sideEntry
+                        &&(horizontal>1.20
+                            ||Math.abs(worker.getY()-j.base.getY())>.4)){
                     double approachDistance=worker.distanceToSqr(
                             j.base.getX()+.5,j.base.getY(),j.base.getZ()+.5);
                     if(approachDistance<j.closestApproach-.12){
@@ -696,6 +719,10 @@ public final class BuilderScaffoldPlanA {
                     return Result.MOVING;
                 }
                 j.lastProgress=level.getGameTime();
+                if(sideEntry)
+                    System.out.println("[PLAN A SIDE ENTRY] paid supported shaft "
+                            +j.base.toShortString()+" from real feet "
+                            +worker.blockPosition().toShortString());
                 j.phase=Phase.BUILD;
             }
             case CLIMB -> {
