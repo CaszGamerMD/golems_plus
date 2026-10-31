@@ -285,6 +285,26 @@ public final class BuilderScaffoldPlanA {
             if(onBase||WorkerNavigation.canReachExact(
                     level,worker,candidate.base))return candidate;
         }
+        // Native paths can reject a distant roof tower because the first
+        // center-to-center step is blocked by a wall/slab corner. The
+        // trained controller can instead start from the REAL fractional
+        // footing, move backwards or down, and rejoin an ordinary path.
+        // Probe several physical tower entries in ONE bounded multi-goal
+        // A* so no fictional straight-line tower becomes an access plan.
+        if(worker.onGround()&&options.size()<=32){
+            List<BlockPos> entries=new ArrayList<>();
+            for(Job option:options){
+                if(entries.contains(option.base)
+                        ||!WorkerNavigation.canStandOn(
+                                level,worker,option.base))continue;
+                entries.add(option.base);
+            }
+            BlockPos reachable=WorkerNavigation.selectExecutableStand(
+                    level,worker,entries);
+            if(reachable!=null)
+                for(Job option:options)
+                    if(option.base.equals(reachable))return option;
+        }
         return null;
     }
     /** No state mutation. Explain which exact physical condition

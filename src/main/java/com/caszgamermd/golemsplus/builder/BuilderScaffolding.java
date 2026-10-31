@@ -844,6 +844,22 @@ public final class BuilderScaffolding {
                     .canReachExact(level,worker,candidate.base()))
                 return candidate.base();
         }
+        // A native path may reject a roof approach even though the
+        // trained movement controller can physically start by stepping
+        // away/down around an obstruction. Compare the SAME bounded
+        // candidate bases using its collision-checked multi-entry A*.
+        if(worker.onGround()&&!candidates.isEmpty()){
+            java.util.List<BlockPos> entries=new java.util.ArrayList<>();
+            for(int i=0;i<Math.min(20,candidates.size());i++){
+                BlockPos base=candidates.get(i).base();
+                if(!entries.contains(base)
+                        &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .canStandOn(level,worker,base))
+                    entries.add(base);
+            }
+            return com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .selectExecutableStand(level,worker,entries);
+        }
         return null;
     }
     /** Temporary scaffold may overlap the unbuilt active schematic layer.

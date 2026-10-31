@@ -18,6 +18,96 @@ import net.minecraft.world.level.block.Blocks;
  * extends separate scaffold support under a floating block, then returns.
  */
 public final class BuilderScaffoldPlanAGameTest {
+    /** A scaffold tower on the far side of a gap is reachable only by
+     * walking WEST away from the target, descending one block, circling
+     * SOUTH, and stepping up onto the far ledge. Native exact-tile
+     * preflight must not discard this valid trained movement route.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=1500,skyAccess=true)
+    public void reachesElevatedScaffoldViaAwayDownAndUpDetour(
+            GameTestHelper h){
+        ServerLevel level=h.getLevel();
+        h.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        BlockPos home=h.absolutePos(new BlockPos(0,2,0));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            h.fail("Missing Builder Planner");return;
+        }
+        ServerPlayer owner=h.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())){
+            h.fail("Planner owner not registered");return;
+        }
+        BlockPos start=h.absolutePos(new BlockPos(10,10,10));
+        BlockPos tower=h.absolutePos(new BlockPos(15,10,10));
+        BlockPos target=h.absolutePos(new BlockPos(18,14,10));
+        // At the original height only the three western island cells
+        // exist. To reach the distant tower the worker must walk away,
+        // take the lower southern route, then climb onto the far ledge.
+        for(int x=8;x<=10;x++)h.setBlock(x,9,10,Blocks.STONE);
+        h.setBlock(8,8,11,Blocks.STONE);
+        for(int x=8;x<=13;x++)h.setBlock(x,8,12,Blocks.STONE);
+        h.setBlock(14,9,12,Blocks.STONE);
+        h.setBlock(14,9,11,Blocks.STONE);
+        h.setBlock(14,9,10,Blocks.STONE);
+        h.setBlock(15,9,10,Blocks.STONE);
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        mob.setItem(0,new ItemStack(Items.SCAFFOLDING,40));
+        level.addFreshEntity(mob);
+        if(!table.registerBuilderWorker(mob.getUUID())){
+            h.fail("Could not register roof Builder");return;
+        }
+        final int[] phase={0};
+        final boolean[] wentWest={false},wentDown={false};
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.isNoGravity()){
+                h.fail("Roof Builder lost real gravity");return;
+            }
+            if(mob.getX()<start.getX()-.55)wentWest[0]=true;
+            if(mob.getY()<start.getY()-.70)wentDown[0]=true;
+            if(h.getTick()<15||h.getTick()%5!=0)return;
+            if(phase[0]==0){
+                if(h.getTick()==15&&!BuilderScaffoldPlanA.canPlan(
+                        level,mob,table,target,List.of())){
+                    h.fail("Detour tower rejected: "+
+                            BuilderScaffoldPlanA.diagnoseAccess(
+                                    level,mob,table,target,List.of()));return;
+                }
+                var result=BuilderScaffoldPlanA.reach(
+                        level,mob,table,owner,target,List.of());
+                if(result==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE
+                        ||result==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
+                    h.fail("Trained scaffold approach rejected: "+result
+                            +" "+BuilderScaffoldPlanA.status(mob));return;
+                }
+                if(result!=BuilderScaffoldPlanA.Result.READY)return;
+                if(!wentWest[0]||!wentDown[0]
+                        ||!BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                                level,mob,table,target)
+                        ||!table.scaffoldPositions(mob.getUUID())
+                                .contains(target.below())){
+                    h.fail("Scaffold route skipped physical away/down detour "
+                            +mob.position()+" "+BuilderScaffoldPlanA.status(mob));
+                    return;
+                }
+                if(!level.setBlock(target,Blocks.STONE.defaultBlockState(),3)){
+                    h.fail("Could not place block above detour scaffold");return;
+                }
+                phase[0]=1;
+            }else if(BuilderScaffoldPlanA.returnToGround(level,mob,table)==false
+                    &&mob.onGround()&&!BuilderScaffoldPlanA.hasPlan(mob)
+                    &&Math.abs(mob.getY()-tower.getY())<.30){
+                System.out.println("[SCAFFOLD DETOUR] PASS west/down/up, "
+                        +"paid bridge and real return tick="+h.getTick());
+                h.succeed();
+            }
+            if(h.getTick()>1380)
+                h.fail("Physical scaffold detour stalled "+mob.position()
+                        +" plan="+BuilderScaffoldPlanA.status(mob)
+                        +" nav="+WorkerNavigation.debugStatus(mob));
+        });
+    }
+
     @GameTest(maxTicks=900,skyAccess=true)
     public void buildsThreeAwayThenBridgesAtExactWorkHeightAndReturns(
             GameTestHelper helper){
