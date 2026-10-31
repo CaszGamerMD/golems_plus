@@ -711,6 +711,28 @@ public final class BuilderBuildService {
                     &&step.requiredItem()!=null
                     &&worker.carriedCount(state.item())<=0){
                 activity.phase=Action.STAGE_MATERIALS;
+                long stageNow=level.getGameTime();
+                if(activity.workTravelSince<0)
+                    activity.workTravelSince=stageNow;
+                BlockPos depot=BuilderSupplyInventory.pouchReturnPos(table);
+                activity.observeTravel(worker,depot,stageNow);
+                if(stageNow-activity.workTravelSince>=350
+                        &&stageNow-activity.lastMoved>=100
+                        &&stageNow-activity.lastCloser>=200){
+                    // An actual roof worker can have stock waiting in
+                    // OnSite yet no executable descent to fetch it. The
+                    // older code held that one claimed block indefinitely
+                    // with an idle navigation and never reached the work
+                    // watchdog. Let another stocked crew member try it;
+                    // preserve the cell, materials, and global Y gate.
+                    table.waitForBuilderAccess(worker.getUUID(),index,
+                            stageNow,"350-tick depot access without travel progress");
+                    activity.workTravelSince=-1;
+                    System.out.println("[BUILDER STAGING RETRY] step="+index
+                            +" no depot travel from="+worker.position()
+                            +" depot="+depot.toShortString());
+                    return;
+                }
                 // An A* route from the TOP of a temporary scaffold to
                 // OnSite Storage can never discover the vertical descent.
                 if(BuilderScaffolding.descendForTravel(level,worker,table)
@@ -725,6 +747,14 @@ public final class BuilderBuildService {
                     return;
                 }
                 table.prepareBuilderOrder(worker.getUUID());
+                // The depot leg and construction approach are two
+                // different routes. Don't charge a long real restock to
+                // the 900-tick work-stance timeout for the next block.
+                activity.workTravelSince=-1;
+                activity.lastMoved=-1;
+                activity.lastCloser=-1;
+                activity.bestDistanceSquared=Double.POSITIVE_INFINITY;
+                activity.lastObserved=null;
             }
             activity.phase=Action.MOVE_TO_WORK;
             // Work descent is resolved against the actual work pose below.
