@@ -717,7 +717,10 @@ public final class BuilderDomeRouteSurveyGameTest {
         mob.setPos(origin.getX()+9.366045948117971,origin.getY()+26,
                 origin.getZ()+10.483065175823867);
         world.addFreshEntity(mob);
-        BlockPos goal=origin.offset(15,30,10);
+        // This is the one safe same-Y placement stance chosen by the
+        // real work-approach selector for BOTH missing north roof cells.
+        // Reaching the future block itself is not enough to place it.
+        BlockPos goal=origin.offset(12,30,11);
         final int[] accepted={0};
         h.onEachTick(()->{
             if(!mob.isAlive()||mob.isNoGravity()
@@ -744,7 +747,18 @@ public final class BuilderDomeRouteSurveyGameTest {
             if(mob.onGround()&&mob.distanceToSqr(goal.getX()+.5,
                     WorkerNavigation.surveyFloorHeight(world,goal),
                     goal.getZ()+.5)<.15){
-                System.out.println("[DIRECT ROOF] PASS auto-planned roof access "
+                for(int z:new int[]{9,10}){
+                    BlockPos work=origin.offset(15,30,z);
+                    if(!BuilderConstructionPlanner.safeStand(
+                            world,mob,work,mob.blockPosition())
+                            ||!BuilderPlacementSpace.placementHeight(work,mob)
+                            ||!BuilderPlacementSpace.horizontalClear(work,mob)){
+                        h.fail("Reached roof but not a safe physical work "
+                                +"stance for "+work.subtract(origin)
+                                +" feet="+mob.position());return;
+                    }
+                }
+                System.out.println("[DIRECT ROOF] PASS auto-planned work pose "
                         +"ticks="+h.getTick()+" accepted="+accepted[0]);
                 for(int z:new int[]{9,10}){
                     BlockPos work=origin.offset(15,30,z);
