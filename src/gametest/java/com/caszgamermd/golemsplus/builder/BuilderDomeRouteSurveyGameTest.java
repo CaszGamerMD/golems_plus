@@ -712,10 +712,11 @@ public final class BuilderDomeRouteSurveyGameTest {
         world.setBlock(origin.offset(8,27,10),Blocks.AIR.defaultBlockState(),2);
         world.setBlock(origin.offset(9,27,10),Blocks.AIR.defaultBlockState(),2);
         BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
-        // A second live 3424/3493 capture measured this Builder already
-        // past the first narrow ledge, with valid centered footing.
-        mob.setPos(origin.getX()+9.366045948117971,origin.getY()+26,
-                origin.getZ()+10.483065175823867);
+        // The third live 3424/3493 capture measured this worker with a
+        // different east/south fractional offset and 77 rejected first
+        // legs. It must remain navigable without any center snap.
+        mob.setPos(origin.getX()+9.562560459598899,origin.getY()+26,
+                origin.getZ()+10.667836967855692);
         world.addFreshEntity(mob);
         // This is the one safe same-Y placement stance chosen by the
         // real work-approach selector for BOTH missing north roof cells.

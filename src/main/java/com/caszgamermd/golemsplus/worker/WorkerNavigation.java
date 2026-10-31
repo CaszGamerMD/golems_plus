@@ -1558,6 +1558,16 @@ public final class WorkerNavigation {
         // the next job tick; never index a retired route or bypass its
         // new collision checks.
         if(p.weightedRoute.isEmpty())return true;
+        // The last native handoff can finish before the mover satisfies
+        // the requested final stance. routeCursor then equals the number
+        // of waypoints: that means REPLAN from actual feet, not get(size).
+        // Idle Builders returning to OnSite previously threw every tick
+        // here, masking active construction failures as a null pause.
+        if(p.routeCursor>=p.weightedRoute.size()){
+            p.weightedRoute=List.of();p.routeCursor=0;
+            p.nextRoute=mob.tickCount;
+            return false;
+        }
         if(prepareTrainedDoor(level,mob,p,p.weightedRoute.subList(p.routeCursor,count)))return true;
         for(int distance:new int[]{3,2,1}){
             int index=Math.min(count-1,p.routeCursor+distance-1);
