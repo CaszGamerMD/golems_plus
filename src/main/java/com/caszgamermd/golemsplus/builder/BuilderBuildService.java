@@ -61,6 +61,12 @@ public final class BuilderBuildService {
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
+    /** A failed placement must be diagnosable, but a persistent failure
+     * may repeat every Builder tick. Log one real stack trace per worker
+     * every 160 ticks instead of flooding the server console.
+     */
+    private static final Map<BuilderGolem,Long> lastBuildErrorLog=
+            new WeakHashMap<>();
     /** A tool that just failed is not forbidden forever, and an available
      * tool does not automatically authorize a new construction claim.
      * Option selection applies only to the worker's ALREADY claimed cell.
@@ -902,7 +908,22 @@ public final class BuilderBuildService {
             // Keep any deployed scaffolding until this ten-block work order
             // completes; retrieving per placed block caused route churn.
         }catch(Exception exception){
-            table.setProblem("Builder paused: "+exception.getMessage());
+            String detail=exception.getClass().getSimpleName();
+            if(exception.getMessage()!=null&&!exception.getMessage().isBlank())
+                detail+=": "+exception.getMessage();
+            table.setProblem("Builder paused: "+detail);
+            long now=level.getGameTime();
+            if(now-lastBuildErrorLog.getOrDefault(worker,Long.MIN_VALUE/2)>=160){
+                lastBuildErrorLog.put(worker,now);
+                System.err.println("[BUILDER FAILURE] worker="
+                        +worker.getName().getString()
+                        +" feet="+worker.position()
+                        +" claim="+table.claimedStep(worker.getUUID())
+                        +" action="+(workerActions.get(worker)==null
+                            ?"unassigned":workerActions.get(worker).phase)
+                        +" tick="+now);
+                exception.printStackTrace(System.err);
+            }
         }
     }
     /** Reconcile the selected job's visible materials immediately after
