@@ -155,8 +155,10 @@ public final class BuilderScaffoldPlanA {
         return result;
     }
     /** Horizontal owned scaffolding: 1-6 real paid cells, supported
-     * by a real vertical shaft. Protect the whole return route from
-     * unfinished schematic cells and head collisions on walkable cells.
+     * by a real vertical shaft. Temporary cells MAY cross unfinished
+     * schematic positions; they are reclaimed before the corresponding
+     * permanent blocks are placed. Actual collisions still disqualify
+     * walking cells and their headroom.
      * Support-only cells have no pedestrian headroom requirement; their
      * immediate air above must remain empty until placement.
      */
@@ -175,9 +177,7 @@ public final class BuilderScaffoldPlanA {
             // actual extension distance, ownership, headroom and blueprint
             // reservation, not the BOTTOM flag.
             if(n>MAX_HORIZONTAL_SCAFFOLD_SPAN
-                    ||!world.hasChunkAt(p)||reserved.contains(p)
-                    ||standingCell&&(reserved.contains(p.above())
-                        ||reserved.contains(p.above(2))))return false;
+                    ||!world.hasChunkAt(p))return false;
             if(world.getBlockState(p).is(Blocks.SCAFFOLDING)){
                 if(!table.scaffoldPositions(worker.getUUID()).contains(p)
                         ||world.getBlockState(p).getValue(
@@ -200,7 +200,9 @@ public final class BuilderScaffoldPlanA {
                         world,base.below(),Direction.UP))return false;
         for(int y=base.getY();y<=top;y++){
             BlockPos p=base.atY(y);
-            if(!world.hasChunkAt(p)||reserved.contains(p))return false;
+            // Air reserved for a later block is available as temporary
+            // scaffold now; a real existing block is never overwritten.
+            if(!world.hasChunkAt(p))return false;
             if(world.getBlockState(p).is(Blocks.SCAFFOLDING)){
                 if(!table.scaffoldPositions(worker.getUUID()).contains(p))
                     return false;

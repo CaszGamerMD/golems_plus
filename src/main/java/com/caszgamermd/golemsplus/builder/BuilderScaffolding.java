@@ -588,8 +588,9 @@ public final class BuilderScaffolding {
         // valid vanilla walking nodes, so repeatedly reconsidering a
         // path to an upper platform can abandon an active ascent.
         var existing=table.scaffoldPositions(worker.getUUID());
-        // Future schematic blocks must not enclose the reserved route
-        // DOWN or block the Builder's two-block-high ground exit.
+        // Pending schematic positions may temporarily host paid scaffold.
+        // We validate the ACTUAL return route now and reclaim the owned
+        // scaffolds before any overlapping schematic cell is constructed.
         java.util.Set<BlockPos> future=new java.util.HashSet<>();
         for(var cell:plan)if(!cell.ignorePlant()){
             BlockPos p=new BlockPos(cell.x(),cell.y(),cell.z());
@@ -772,8 +773,7 @@ public final class BuilderScaffolding {
         for(Direction side:Direction.Plane.HORIZONTAL)
             for(int dy:new int[]{0,-1}){
                 BlockPos p=base.relative(side).offset(0,dy,0);
-                if(future.contains(p)||future.contains(p.above())
-                        ||p.getY()<base.getY()-1
+                if(p.getY()<base.getY()-1
                         ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                                 .canStandOn(level,worker,p))continue;
                 double candidate=worker.distanceToSqr(
@@ -813,8 +813,7 @@ public final class BuilderScaffolding {
                     BlockPos at=new BlockPos(base.getX(),y,base.getZ());
                     if(!level.hasChunkAt(at)
                             ||!level.getBlockState(at).isAir()
-                            ||table.isTrackedScaffold(at)
-                            ||reserved.contains(at)){
+                            ||table.isTrackedScaffold(at)){
                         clear=false;break;
                     }
                 }
@@ -846,8 +845,26 @@ public final class BuilderScaffolding {
         }
         return null;
     }
+    /** Temporary scaffold may overlap the unbuilt active schematic layer.
+     * Only ACTUAL, owner-tracked scaffold blocks count as obstructions.
+     */
+    static boolean occupiesPendingFootprint(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,int activeLayer){
+        var owned=new java.util.HashSet<>(table.scaffoldPositions(worker.getUUID()));
+        if(owned.isEmpty())return false;
+        for(var step:steps){
+            if(step.ignorePlant()||step.y()!=activeLayer)continue;
+            BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
+            if(owned.contains(pos)&&level.hasChunkAt(pos)
+                    &&level.getBlockState(pos).is(Blocks.SCAFFOLDING))
+                return true;
+        }
+        return false;
+    }
+
     /**
-     * Instant top-down removal only when worker is safely on the ground.
+     * Instant top-down removal only when the crew is safely off the bridge.
      * Refunds exactly one block per confirmed tracked scaffold; if storage
      * is full leaves the corresponding real block intact for later cleanup.
      */
@@ -858,18 +875,21 @@ public final class BuilderScaffolding {
         int minY=positions.stream().mapToInt(BlockPos::getY).min().orElse(0);
         if(!force){
             if(!worker.onGround()||worker.getY()>minY+2.1)return;
-            // Never reclaim a column from beneath a Builder that is
-            // still standing on its bottom or top platform.
-            for(BlockPos scaffold:positions){
-                // An overhead bridge can have the same X/Z as a golem
-                // already standing safely three blocks below. Only block
-                // retrieval if the scaffold is genuinely touching the
-                // golem's BODY/feet; never remove scaffold from under it.
-                if(Math.abs(scaffold.getX()+.5-worker.getX())<.9
-                        &&Math.abs(scaffold.getZ()+.5-worker.getZ())<.9
-                        &&scaffold.getY()+1.0>worker.getBoundingBox().minY-.1
-                        &&scaffold.getY()<worker.getBoundingBox().maxY+.1)
-                    return;
+            // Never reclaim a column from beneath ANY Builder in this
+            // work crew, not just the owner. A teammate may be using
+            // the same bridge even after its builder has dismounted.
+            for(var id:table.builderWorkerIds()){
+                if(!(level.getEntity(id) instanceof BuilderGolem teammate))continue;
+                for(BlockPos scaffold:positions){
+                    // An overhead bridge can have the same X/Z as a golem
+                    // safely standing below. Only block retrieval when
+                    // scaffold genuinely touches its BODY or feet.
+                    if(Math.abs(scaffold.getX()+.5-teammate.getX())<.9
+                            &&Math.abs(scaffold.getZ()+.5-teammate.getZ())<.9
+                            &&scaffold.getY()+1.0>teammate.getBoundingBox().minY-.1
+                            &&scaffold.getY()<teammate.getBoundingBox().maxY+.1)
+                        return;
+                }
             }
         }
         // Reclaim an overhanging bridge from its OUTER TIP toward the

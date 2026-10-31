@@ -418,6 +418,23 @@ public final class BuilderBuildService {
             // failed tasks are explicitly deferred and then reselected.
             int index=table.claimedStep(worker.getUUID());
             int layer=table.builderActiveLayer(plan.steps());
+            // A previous scaffold route may have crossed positions this
+            // layer will eventually fill. Once its owner finishes the
+            // claimed placement, retrace the real bridge and reclaim it
+            // BEFORE claiming another work cell in that footprint.
+            // Teammates are never asked to mine another owner's support.
+            if(index<0&&BuilderScaffolding.occupiesPendingFootprint(
+                    level,worker,table,plan.steps(),layer)){
+                if(BuilderScaffolding.descendForTravel(level,worker,table))
+                    return;
+                BuilderScaffolding.retrieve(level,worker,table,false);
+                if(BuilderScaffolding.occupiesPendingFootprint(
+                        level,worker,table,plan.steps(),layer)){
+                    table.setProblem("Waiting to safely reclaim temporary scaffold "
+                            +"from Y="+layer+" (clear OnSite Storage space if full)");
+                    return;
+                }
+            }
             if(index<0||index>=plan.steps().size()
                     ||!zone.contains(index)
                     ||plan.steps().get(index).y()!=layer
