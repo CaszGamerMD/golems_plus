@@ -98,6 +98,7 @@ public final class BuilderWorkAccessGameTest {
                 BlockPos base=origin.offset(7,27,25);
                 var bbox=worker.getBoundingBox();
                 var next=bbox.move(0,0,-.085);
+                var east=bbox.move(.085,0,0);
                 System.out.println("[SOUTH FRACTIONAL PROBE] feet="
                         +worker.position()+" box="+bbox
                         +" ground="+worker.onGround()
@@ -113,7 +114,10 @@ public final class BuilderWorkAccessGameTest {
                                 bbox.move(0,.35,0))
                         +" stepFree="+level.noCollision(worker,next)
                         +" supportedStep="+!level.noCollision(worker,
-                                next.move(0,-.07,0)));
+                                next.move(0,-.07,0))
+                        +" eastFree="+level.noCollision(worker,east)
+                        +" eastSupported="+!level.noCollision(worker,
+                                east.move(0,-.07,0)));
             }
             if(helper.getTick()%150==0)
                 System.out.println("[ROOF SIDE CLIMB] region="+region

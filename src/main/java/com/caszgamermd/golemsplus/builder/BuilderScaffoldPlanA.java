@@ -603,22 +603,26 @@ public final class BuilderScaffoldPlanA {
                 ||!level.getBlockState(base.below()).isFaceSturdy(
                         level,base.below(),Direction.UP))return null;
         var box=worker.getBoundingBox();
-        if(!box.intersects(new net.minecraft.world.phys.AABB(base))
-                ||!level.noCollision(worker,box.move(0,.35,0)))return null;
+        if(!box.intersects(new net.minecraft.world.phys.AABB(base)))return null;
         double clearX=worker.getX()<base.getX()+.5
                 ?base.getX()-.025-box.maxX
                 :base.getX()+1.025-box.minX;
         double clearZ=worker.getZ()<base.getZ()+.5
                 ?base.getZ()-.025-box.maxZ
                 :base.getZ()+1.025-box.minZ;
-        boolean moveX=Math.abs(clearX)<Math.abs(clearZ);
-        double mx=moveX?Math.max(-.085,Math.min(.085,clearX)):0;
-        double mz=moveX?0:Math.max(-.085,Math.min(.085,clearZ));
-        var shifted=box.move(mx,0,mz);
-        if(!level.noCollision(worker,shifted)
-                ||level.noCollision(worker,shifted.move(0,-.07,0)))
-            return null;
-        return new double[]{mx,mz};
+        double mx=Math.max(-.085,Math.min(.085,clearX));
+        double mz=Math.max(-.085,Math.min(.085,clearZ));
+        double[][] moves=Math.abs(clearX)<Math.abs(clearZ)
+                ?new double[][]{{mx,0},{0,mz}}
+                :new double[][]{{0,mz},{mx,0}};
+        for(double[] step:moves){
+            var shifted=box.move(step[0],0,step[1]);
+            if(level.noCollision(worker,shifted)
+                    &&!level.noCollision(worker,
+                            shifted.move(0,-.07,0)))
+                return step;
+        }
+        return null;
     }
     /** Find a WALKABLE, head-clear launch on another face of an elevated
      * base. The nearest side of the north dome rim has a diorite overhang;
