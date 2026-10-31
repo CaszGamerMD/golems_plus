@@ -661,17 +661,6 @@ public final class BuilderBuildService {
                 return;
             }
             int yDiff=pos.getY()-worker.blockPosition().getY();
-            // An isolated work cell has no side or floor to anchor a
-            // permanent block or a normal standing pose. When a real
-            // shaft-and-bridge route is available, build its paid support
-            // immediately instead of attempting the grapple for 260 ticks.
-            // An active rope still owns movement until it finishes.
-            if(yDiff>1&&!BuilderGrappleAccess.active(worker)
-                    &&BuilderScaffoldPlanA.needsTemporaryWorkPlatform(level,pos)
-                    &&BuilderScaffoldPlanA.canPlan(
-                            level,worker,table,pos,plan.steps())
-                    &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
-                return;
             // A grapple can repeatedly select an unreachable high ledge.
             // After a genuine physical approach timeout, try a supported,
             // inventory-paid scaffold bridge rooted on this same build.

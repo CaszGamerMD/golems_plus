@@ -346,18 +346,8 @@ public final class BuilderConstructionPlanner {
             BlockPos stance=BuilderPlacementSpace.approachWithRules(
                     world,worker,target,
                     at->safeStand(world,worker,target,at));
-            boolean floating=BuilderScaffoldPlanA
-                    .needsTemporaryWorkPlatform(world,target);
-            // A genuinely isolated block needs a temporary place to
-            // stand and a separate support extension underneath it.
-            // When that paid route exists, favor it over an otherwise
-            // reachable grapple anchor with no block support.
-            boolean isolatedScaffold=floating&&stance==null
-                    &&BuilderScaffoldPlanA.canPlan(
-                            world,worker,table,target,steps);
             boolean grapple=false;
             if(stance==null
-                    &&!isolatedScaffold
                     &&target.getY()-worker.blockPosition().getY()>0
                     &&worker.carriedCount(WorksiteContent.GRAPPLE_HOOK)>0
                     &&BuilderGrappleAccess.canPlanWorkAscent(world,worker,target))
@@ -365,7 +355,9 @@ public final class BuilderConstructionPlanner {
             // Read-only scaffold preflight: a future work pose can be
             // reached by a real paid tower/bridge, even if neither native
             // A* nor a rope can currently get across an unfinished roof.
-            boolean scaffold=isolatedScaffold||stance==null&&!grapple
+            boolean floating=BuilderScaffoldPlanA
+                    .needsTemporaryWorkPlatform(world,target);
+            boolean scaffold=stance==null&&!grapple
                     // Vertical gaps use existing tower rules. An isolated
                     // floating cube additionally permits a paid placement
                     // platform even if it is at the worker's current Y.
