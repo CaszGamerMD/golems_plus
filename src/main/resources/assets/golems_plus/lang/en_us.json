@@ -20,5 +20,6 @@
   "block.golems_plus.fishing_spot": "Fishing Waypoint Flag / Buoy",
   "item.golems_plus.fishing_spot_marker": "Fishing Spot Marker",
   "item.golems_plus.fishing_bait": "Fisherman's Bait",
-  "item.golems_plus.grapple_hook": "Grapple Hook"
+  "item.golems_plus.grapple_hook": "Grapple Hook",
+  "block.golems_plus.enhanced_scaffolding": "Enhanced Scaffolding"
 }
