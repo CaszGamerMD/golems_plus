@@ -181,6 +181,9 @@ public final class BuilderDomeRouteSurveyGameTest {
                     .append(" cornerMask=").append(Integer.toBinaryString(
                             WorkerNavigation.supportedHitboxCorners(world,mob)))
                     .append('\n');
+                report.append("[LIVE WORK STATE] ")
+                    .append(BuilderBuildService.debugStatus(world,mob))
+                    .append('\n');
                 Set<BlockPos> component=WorkerNavigation.groundReachableFrom(
                         world,mob,start);
                 List<BlockPos> safe=new ArrayList<>();
