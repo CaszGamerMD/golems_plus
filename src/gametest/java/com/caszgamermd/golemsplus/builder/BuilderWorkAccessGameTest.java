@@ -94,6 +94,27 @@ public final class BuilderWorkAccessGameTest {
             if(helper.getTick()>=20&&helper.getTick()%5==0)
                 last[0]=BuilderScaffoldPlanA.reachWorkPose(
                         level,worker,table,owner,target,steps);
+            if(region.equals("south")&&helper.getTick()==60){
+                BlockPos base=origin.offset(7,27,25);
+                var bbox=worker.getBoundingBox();
+                var next=bbox.move(0,0,-.085);
+                System.out.println("[SOUTH FRACTIONAL PROBE] feet="
+                        +worker.position()+" box="+bbox
+                        +" ground="+worker.onGround()
+                        +" dy="+(base.getY()-worker.getY())
+                        +" base="+level.getBlockState(base)
+                        +" support="+level.getBlockState(base.below())
+                        +" sturdy="+level.getBlockState(base.below())
+                                .isFaceSturdy(level,base.below(),
+                                        net.minecraft.core.Direction.UP)
+                        +" overlap="+bbox.intersects(
+                                new net.minecraft.world.phys.AABB(base))
+                        +" riseFree="+level.noCollision(worker,
+                                bbox.move(0,.35,0))
+                        +" stepFree="+level.noCollision(worker,next)
+                        +" supportedStep="+!level.noCollision(worker,
+                                next.move(0,-.07,0)));
+            }
             if(helper.getTick()%150==0)
                 System.out.println("[ROOF SIDE CLIMB] region="+region
                         +" tick="+helper.getTick()
