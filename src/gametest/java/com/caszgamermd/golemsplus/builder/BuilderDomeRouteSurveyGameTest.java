@@ -580,6 +580,13 @@ public final class BuilderDomeRouteSurveyGameTest {
                         b.x(),b.y(),b.z()),resolved.state(),2);
             }
         }catch(Exception e){h.fail("Exact Y30 roof fixture failed "+e);return;}
+        // A prefilled roof is not the same as the live partially built
+        // snapshot. In the captured 3,537-step live snapshot these two
+        // cells are not scheduled roof solids; leaving glass in them
+        // spawns the worker with its head inside a collision box and
+        // cannot test navigation at all. Preserve actual free headroom.
+        world.setBlock(origin.offset(8,27,10),Blocks.AIR.defaultBlockState(),2);
+        world.setBlock(origin.offset(9,27,10),Blocks.AIR.defaultBlockState(),2);
         var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         mob.setPos(origin.getX()+8.834945218637586,origin.getY()+26,
                 origin.getZ()+10.432437775656581);
@@ -592,6 +599,10 @@ public final class BuilderDomeRouteSurveyGameTest {
                 return;
             }
             if(h.getTick()==20){
+                if(!world.noCollision(mob,mob.getBoundingBox().deflate(.015))){
+                    h.fail("Fractional roof test began inside a solid block");
+                    return;
+                }
                 for(int dz=-2;dz<=2;dz++){
                     StringBuilder row=new StringBuilder("[EXACT ROOF CELLS] dz="+dz);
                     for(int dx=-2;dx<=2;dx++){
