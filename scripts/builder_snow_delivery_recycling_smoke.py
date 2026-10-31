@@ -34,7 +34,7 @@ assert "activeOrder=null;" in station[station.index("public void setPhase("):
                                         station.index("public void clearOrder()")]
 assert '"opaque_ground_base"' in model
 assert "Math.min(count-1,p.routeCursor+distance-1)" in nav
-assert "WorkerRoutePlanner.Route route=WorkerRoutePlanner.plan(" in nav
+assert "WorkerRoutePlanner.Route route=planExecutableRoute(" in nav
 assert "at->trainedTerrainCost(level,at)" in nav
 assert "for(int distance:new int[]{3,2,1})" in nav
 print("PASS: no snow/scaffold deadlock, full material order, courier ownership, job recycling and tooltip")

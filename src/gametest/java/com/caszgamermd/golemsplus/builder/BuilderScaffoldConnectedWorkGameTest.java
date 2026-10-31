@@ -32,8 +32,9 @@ public final class BuilderScaffoldConnectedWorkGameTest {
                 ||!table.setCrewTarget(owner.getUUID(),2)){
             helper.fail("Planner owner not registered");return;
         }
-        // Both target cells are connected to real pre-existing stone, so
-        // the isolated-air special case must NOT be required.
+        // Both target cells connect sideways to existing stone but have
+        // AIR underneath. Side connections do not create standing floor:
+        // the Builder must still be allowed to pay for scaffold footing.
         helper.setBlock(5,6,3,Blocks.STONE);
         helper.setBlock(5,6,7,Blocks.STONE);
         BlockPos[] towers={helper.absolutePos(new BlockPos(2,2,2)),
@@ -55,8 +56,9 @@ public final class BuilderScaffoldConnectedWorkGameTest {
             }
             builders[i]=golem;
             startStock[i]=golem.carriedCount(Items.SCAFFOLDING);
-            if(BuilderScaffoldPlanA.needsTemporaryWorkPlatform(level,targets[i])){
-                helper.fail("Test target should be connected to roof stone");return;
+            if(!BuilderScaffoldPlanA.needsTemporaryWorkPlatform(level,targets[i])){
+                helper.fail("Side-connected unsupported roof needs scaffold option");
+                return;
             }
         }
         helper.onEachTick(()->{

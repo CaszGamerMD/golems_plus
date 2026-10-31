@@ -7,12 +7,12 @@ build=(root/"builder/BuilderBuildService.java").read_text()
 nav=(root/"worker/WorkerNavigation.java").read_text()
 queue=(root/"worker/WorkerDoorTraffic.java").read_text()
 assert "public static boolean finishActiveAscent(" in sc
-assert "BuilderScaffolding.finishActiveAscent(level,worker)" in build
+assert "BuilderScaffolding.isControllingMovement(worker)" in build
 assert "active.stopY()>=target.getY()-.15" in sc
 assert "ScaffoldVerticalRoute.reached(worker.getY(),active.stopY(),false)" in sc
 assert "session.descending()" in sc
 assert "level.getBlockState(columnLevel.below().below())" in sc
-assert "worker.setDeltaMovement(mx,Math.min(0,motion.y),mz)" in sc
+assert "worker.setDeltaMovement(mx,vy,mz)" in sc
 assert "for(int dy:new int[]{0,-1})" in sc
 assert "Math.abs(worker.getY()-exit.ground().getY())<.32" in sc
 assert "worker.onGround()" in sc

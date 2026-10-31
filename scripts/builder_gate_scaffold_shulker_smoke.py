@@ -15,7 +15,8 @@ assert "if(!isOpenPassage(entrance))" in nav
 assert "setPassageOpen(level,mob,doorPos,true)" in nav
 assert "setPassageOpen(level,mob,door,false)" in nav
 # Don't attempt to path to a height that can only be reached with scaffolds.
-assert "pos.getY()-worker.getY()>1.35&&distToTarget>14" in builder
+assert "int yDiff=pos.getY()-worker.blockPosition().getY();" in builder
+assert "if(yDiff>1&&!directOrdinaryWork)" in builder
 assert "target.getY()-worker.getY()<=1.35" in scaffold
 assert "for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)" in scaffold
 assert "reach<1||reach>13" in scaffold

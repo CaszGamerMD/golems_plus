@@ -13,6 +13,395 @@ import net.minecraft.world.level.block.Blocks;
  * and for precise final centering inside the selected standing cell.
  */
 public final class BuilderWorkAccessGameTest {
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void builderKeepsFullToolBeltBesideNineMaterialStacks(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        for(int i=0;i<9;i++)worker.setItem(i,
+                new net.minecraft.world.item.ItemStack(
+                        net.minecraft.world.item.Items.STONE,64));
+        worker.setItem(BuilderGolem.SCAFFOLD_BELT_SLOT,
+                new net.minecraft.world.item.ItemStack(
+                        net.minecraft.world.item.Items.SCAFFOLDING,64));
+        worker.setItem(BuilderGolem.GRAPPLE_BELT_SLOT,
+                new net.minecraft.world.item.ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        worker.setItem(BuilderGolem.BUCKET_BELT_SLOT,
+                new net.minecraft.world.item.ItemStack(
+                        net.minecraft.world.item.Items.BUCKET));
+        if(worker.getContainerSize()!=12
+                ||worker.carriedCount(net.minecraft.world.item.Items.STONE)!=576
+                ||worker.carriedCount(net.minecraft.world.item.Items.SCAFFOLDING)!=64
+                ||worker.carriedCount(WorksiteContent.GRAPPLE_HOOK)!=1
+                ||worker.carriedCount(net.minecraft.world.item.Items.BUCKET)!=1
+                ||worker.canPlaceItem(BuilderGolem.BUCKET_BELT_SLOT,
+                        new net.minecraft.world.item.ItemStack(
+                                net.minecraft.world.item.Items.STONE))){
+            helper.fail("Dedicated tool belt displaced materials or tools");return;
+        }
+        BuilderGolem legacy=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        legacy.setItem(0,new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.SCAFFOLDING,64));
+        legacy.setItem(1,new net.minecraft.world.item.ItemStack(
+                WorksiteContent.GRAPPLE_HOOK));
+        legacy.setItem(2,new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.BUCKET));
+        legacy.organizeToolBelt();
+        if(!legacy.getItem(0).isEmpty()||!legacy.getItem(1).isEmpty()
+                ||!legacy.getItem(2).isEmpty()
+                ||legacy.getItem(BuilderGolem.SCAFFOLD_BELT_SLOT).getCount()!=64
+                ||legacy.getItem(BuilderGolem.GRAPPLE_BELT_SLOT).getCount()!=1
+                ||legacy.getItem(BuilderGolem.BUCKET_BELT_SLOT).getCount()!=1){
+            helper.fail("Legacy Builder tools were not moved without loss");return;
+        }
+        System.out.println("[BUILDER TOOL BELT] PASS nine material stacks, "
+                +"64 paid scaffold, one grapple and one empty bucket");
+        helper.succeed();
+    }
+    /** A fence's narrow post may leave the body collision-free while
+     * there is only 10cm of space to squeeze past it. A Builder needs
+     * a further 12cm work-pose margin, without banning ordinary footing
+     * a full tile away or falsely treating the fence as a solid cube.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=100,skyAccess=true)
+    public void fenceCollisionNeedsWorkPoseBreathingRoom(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        helper.setBlock(6,1,6,Blocks.STONE);
+        helper.setBlock(7,2,6,Blocks.BIRCH_FENCE);
+        BlockPos footing=helper.absolutePos(new BlockPos(6,2,6));
+        BuilderGolem close=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        close.setPos(footing.getX()+.95,footing.getY(),footing.getZ()+.5);
+        level.addFreshEntity(close);
+        if(level.getBlockCollisions(close,close.getBoundingBox())
+                    .iterator().hasNext()){
+            helper.fail("Test stance must NOT intersect the fence itself");return;
+        }
+        if(BuilderConstructionPlanner.fenceWallClearance(
+                level,close.getBoundingBox())){
+            helper.fail("Builder accepted 10cm fence clearance as a work pose");
+            return;
+        }
+        BuilderGolem farther=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        farther.setPos(footing.getX()+.70,footing.getY(),footing.getZ()+.5);
+        level.addFreshEntity(farther);
+        if(!BuilderConstructionPlanner.fenceWallClearance(
+                level,farther.getBoundingBox())){
+            helper.fail("Builder rejected safely offset fence work pose");return;
+        }
+        System.out.println("[FENCE WORK MARGIN] PASS collision-free 10cm gap"
+                +" rejected, safer offset retained");
+        helper.succeed();
+    }
+
+    /** Four obstructed cardinal shaft lines do not rule out a safe
+     * inventory-paid scaffold reached from a diagonal roof approach.
+     * The tower still needs real floor, an exit and a supported bend.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=1100,skyAccess=true)
+    public void diagonalScaffoldEntryWorksAroundRoofWalls(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos target=helper.absolutePos(new BlockPos(18,6,18));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        target.getX()>>4,target.getZ()>>4),4);
+        for(net.minecraft.core.Direction direction:
+                net.minecraft.core.Direction.Plane.HORIZONTAL)
+            for(int distance=3;distance<=8;distance++)
+                for(int y=2;y<=5;y++){
+                    BlockPos p=target.relative(direction,distance)
+                            .atY(helper.absolutePos(new BlockPos(0,y,0)).getY());
+                    level.setBlock(p,Blocks.STONE.defaultBlockState(),2);
+                }
+        helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
+        BlockPos planner=helper.absolutePos(new BlockPos(4,2,7));
+        if(!(level.getBlockEntity(planner)
+                instanceof WorkerStationBlockEntity table)){
+            helper.fail("No diagonal scaffold Planner");return;
+        }
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos start=helper.absolutePos(new BlockPos(5,2,5));
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        worker.setItem(BuilderGolem.SCAFFOLD_BELT_SLOT,
+                new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.SCAFFOLDING,64));
+        level.addFreshEntity(worker);
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),1)
+                ||!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Cannot register diagonal scaffold Builder");return;
+        }
+        var plan=java.util.List.of(new BuilderConstructionPlan.Step(
+                target.getX(),target.getY(),target.getZ(),
+                "minecraft:stone","minecraft:stone"));
+        final boolean[] planned={false};
+        final BuilderScaffoldPlanA.Result[] last={null};
+        helper.onEachTick(()->{
+            if(helper.getTick()<20||helper.getTick()%5!=0)return;
+            if(worker.onGround()&&!planned[0])planned[0]=
+                    BuilderScaffoldPlanA.canPlanWorkPose(
+                            level,worker,table,target,plan);
+            last[0]=BuilderScaffoldPlanA.reachWorkPose(
+                    level,worker,table,owner,target,plan);
+            if(planned[0]&&last[0]==BuilderScaffoldPlanA.Result.READY
+                    &&BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                            level,worker,table,target)
+                    &&worker.carriedCount(
+                            net.minecraft.world.item.Items.SCAFFOLDING)<64
+                    &&!table.scaffoldPositions(worker.getUUID()).isEmpty()){
+                System.out.println("[DIAGONAL SCAFFOLD] PASS physically "
+                        +"climbed and paid for the supported bent bridge "
+                        +"in "+helper.getTick()+" ticks");
+                helper.succeed();return;
+            }
+            if(helper.getTick()>=1020)
+                helper.fail("Could plan but not physically finish diagonal "
+                        +"paid scaffold around blocked cardinal lines: "
+                        +"route="+last[0]+" feet="+worker.position()
+                        +" plan="+BuilderScaffoldPlanA.status(worker)
+                        +" climb="+BuilderScaffolding.debugClimb(worker)
+                        +" paid="+table.scaffoldPositions(
+                                worker.getUUID()).size()+" access="
+                        +BuilderScaffoldPlanA.diagnoseAccess(
+                                level,worker,table,target,plan));
+        });
+    }
+
+    /** Full-dome main stalled at 3469/3493 with a floating cobblestone
+     * at (18,31,17). A neighboring finished cell is not a floor. From
+     * the worker's recorded lower-roof footing, a paid scaffold bridge
+     * must be considered rather than cycling a theoretical walking pose.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=2700,skyAccess=true)
+    public void floatingY31CobbleGetsPhysicalScaffoldWorkPose(
+            GameTestHelper helper){
+        lateRoofSupportAccess(helper,false);
+    }
+
+    /** The adjacent mossy cobblestone sits on a REAL birch fence at
+     * (19,30,17). It needs no replacement support: approach from a
+     * safe lateral stance with the full fence collision shape checked.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=2700,skyAccess=true)
+    public void fenceSupportedY31CobbleKeepsBodyClear(
+            GameTestHelper helper){
+        lateRoofSupportAccess(helper,true);
+    }
+
+    private static void lateRoofSupportAccess(GameTestHelper helper,
+            boolean fenceBelow){
+        ServerLevel level=helper.getLevel();
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos origin=helper.absolutePos(new BlockPos(8,2,8));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        origin.getX()>>4,origin.getZ()>>4),4);
+        final java.util.List<BuilderConstructionPlan.Step> steps;
+        try{
+            var schematic=LitematicFileReader.read(BuilderDomeFixture.unpack());
+            steps=BuilderConstructionPlan.create(schematic,
+                    new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                            BuildSite.Rotation.NONE,BuildSite.Mirror.NONE),true)
+                    .steps();
+            for(var cell:schematic.blocks()){
+                if(cell.y()>31||BuilderVegetation.ignoreSchematicState(cell.state())
+                        ||cell.y()==31&&cell.z()==17
+                            &&(cell.x()==18||cell.x()==19))continue;
+                var state=BuilderBlockResolver.resolve(cell.state(),
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(state!=null)level.setBlock(origin.offset(
+                        cell.x(),cell.y(),cell.z()),state.state(),2);
+            }
+        }catch(Exception e){helper.fail("Cannot reconstruct Y31 supports "+e);return;}
+        BlockPos target=origin.offset(fenceBelow?19:18,31,17);
+        if(fenceBelow?level.getBlockState(target.below()).getBlock()
+                        !=Blocks.BIRCH_FENCE
+                :!level.getBlockState(target.below()).isAir()){
+            helper.fail("Wrong physical Y31 support for "+target
+                    +": "+level.getBlockState(target.below()));return;
+        }
+        if(BuilderScaffoldPlanA.needsTemporaryWorkPlatform(level,target)
+                ==fenceBelow){
+            helper.fail("Scaffold hint must distinguish AIR from fence support");
+            return;
+        }
+        helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
+        BlockPos station=helper.absolutePos(new BlockPos(4,2,7));
+        if(!(level.getBlockEntity(station)
+                instanceof WorkerStationBlockEntity table)){
+            helper.fail("Missing Y31 roof work station");return;
+        }
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(origin.getX()+(fenceBelow?19.498:19.944),
+                origin.getY()+27,
+                origin.getZ()+(fenceBelow?9.813:24.906));
+        worker.setItem(0,new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.SCAFFOLDING,64));
+        level.addFreshEntity(worker);
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),1)
+                ||!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Cannot register Y31 Builder");return;
+        }
+        final BuilderScaffoldPlanA.Result[] attempt={null};
+        helper.onEachTick(()->{
+            if(!worker.isAlive()||worker.isNoGravity()){
+                helper.fail("Y31 Builder left natural movement");return;
+            }
+            boolean direct=worker.onGround()
+                    &&BuilderPlacementSpace.placementHeight(target,worker)
+                    &&BuilderPlacementSpace.horizontalClear(target,worker)
+                    &&worker.distanceToSqr(target.getX()+.5,
+                            target.getY()+.5,target.getZ()+.5)<14
+                    &&BuilderConstructionPlanner.safeStand(level,worker,
+                            target,worker.blockPosition());
+            boolean paid=BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                    level,worker,table,target);
+            if(direct||paid){
+                if(fenceBelow){
+                    BlockPos support=target.below();
+                    var shape=level.getBlockState(support)
+                            .getCollisionShape(level,support);
+                    for(var local:shape.toAabbs())
+                        if(local.move(support.getX(),support.getY(),
+                                support.getZ()).intersects(worker.getBoundingBox())){
+                            helper.fail("Y31 worker too close to fence collision");
+                            return;
+                        }
+                }
+                System.out.println("[Y31 SUPPORT ACCESS] PASS "
+                        +(fenceBelow?"fence supported":"floating")
+                        +" using "+(paid?"paid scaffold":"real footing")
+                        +" after "+helper.getTick()+" ticks");
+                helper.succeed();return;
+            }
+            if((worker.onGround()||BuilderScaffoldPlanA.hasPlan(worker))
+                    &&helper.getTick()>12&&helper.getTick()%5==0){
+                if(!BuilderScaffoldPlanA.hasPlan(worker)
+                        &&(fenceBelow||helper.getTick()<120)){
+                    BlockPos walk=BuilderPlacementSpace.approachWithRules(
+                            level,worker,target,
+                            at->BuilderConstructionPlanner.safeStand(
+                                    level,worker,target,at));
+                    if(walk!=null&&WorkerNavigation.routeToExact(
+                            level,worker,walk,1.0))return;
+                }
+                attempt[0]=BuilderScaffoldPlanA.reachWorkPose(
+                        level,worker,table,owner,target,steps);
+            }
+            if(helper.getTick()>2550)
+                helper.fail("Y31 "+(fenceBelow?"fence":"floating")
+                        +" work pose stalled from real roof feet="+worker.position()
+                        +" attempt="+attempt[0]
+                        +" plan="+BuilderScaffoldPlanA.status(worker)
+                        +" access="+BuilderScaffoldPlanA.diagnoseAccess(
+                                level,worker,table,target,steps));
+        });
+    }
+
+    /** The full-dome time trial repeatedly left an unsupported Y23 cap
+     * unbuilt while a worker wandered on the base floor. Reconstruct the
+     * real saved geometry up to that layer and demand physical paid access
+     * from the ground, not just a successful planning preview. */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=2900,skyAccess=true)
+    public void y23MossyCapUsesRealScaffoldFromGround(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos origin=helper.absolutePos(new BlockPos(8,2,8));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        origin.getX()>>4,origin.getZ()>>4),4);
+        BlockPos target=origin.offset(15,23,4);
+        final java.util.List<BuilderConstructionPlan.Step> steps;
+        try{
+            var schematic=LitematicFileReader.read(BuilderDomeFixture.unpack());
+            steps=BuilderConstructionPlan.create(schematic,
+                    new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                            BuildSite.Rotation.NONE,BuildSite.Mirror.NONE),true)
+                    .steps();
+            for(var cell:schematic.blocks()){
+                if(cell.y()>23
+                        ||BuilderVegetation.ignoreSchematicState(cell.state())
+                        ||cell.x()==15&&cell.y()==23&&cell.z()==4)continue;
+                var resolved=BuilderBlockResolver.resolve(
+                        cell.state(),BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(resolved!=null)level.setBlock(origin.offset(
+                        cell.x(),cell.y(),cell.z()),resolved.state(),2);
+            }
+        }catch(Exception exception){
+            helper.fail("Cannot reconstruct Y23 dome: "+exception);return;
+        }
+        if(!level.getBlockState(target).isAir()
+                ||!level.getBlockState(target.below()).isAir()){
+            helper.fail("Y23 target must be unsupported AIR: "+target);return;
+        }
+        helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
+        if(!(level.getBlockEntity(helper.absolutePos(new BlockPos(4,2,7)))
+                instanceof WorkerStationBlockEntity table)){
+            helper.fail("Missing Y23 Planner");return;
+        }
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(origin.getX()+11.5,origin.getY(),origin.getZ()+1.5);
+        worker.setItem(BuilderGolem.SCAFFOLD_BELT_SLOT,
+                new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.SCAFFOLDING,64));
+        worker.setItem(BuilderGolem.GRAPPLE_BELT_SLOT,
+                new net.minecraft.world.item.ItemStack(
+                WorksiteContent.GRAPPLE_HOOK));
+        level.addFreshEntity(worker);
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),1)
+                ||!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Cannot register Y23 worker");return;
+        }
+        final BuilderScaffoldPlanA.Result[] attempt={null};
+        helper.onEachTick(()->{
+            if(!worker.isAlive()||worker.isNoGravity()){
+                helper.fail("Y23 worker left real gravity");return;
+            }
+            if(BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                    level,worker,table,target)
+                    &&!table.scaffoldPositions(worker.getUUID()).isEmpty()
+                    &&worker.carriedCount(
+                            net.minecraft.world.item.Items.SCAFFOLDING)<64){
+                System.out.println("[Y23 SCAFFOLD ACCESS] PASS physical paid "
+                        +"tower and work bridge from ground in "
+                        +helper.getTick()+" ticks");
+                helper.succeed();return;
+            }
+            if(helper.getTick()>=20&&helper.getTick()%5==0
+                    &&(worker.onGround()
+                        ||BuilderScaffoldPlanA.hasPlan(worker)))
+                attempt[0]=BuilderScaffoldPlanA.reachWorkPose(
+                        level,worker,table,owner,target,steps);
+            if(helper.getTick()>=2700)
+                helper.fail("Y23 unsupported mossy cap access stalled: "
+                        +"feet="+worker.position()+" attempt="+attempt[0]
+                        +" plan="+BuilderScaffoldPlanA.status(worker)
+                        +" climb="+BuilderScaffolding.debugClimb(worker)
+                        +" paid="+table.scaffoldPositions(
+                                worker.getUUID()).size()+" access="
+                        +BuilderScaffoldPlanA.diagnoseAccess(
+                                level,worker,table,target,steps));
+        });
+    }
+
     /** The measured 3420/3493 dome has no legal grounded work stance
      * around its eight Y30 holes. Rebuild the exact roof snapshot and
      * verify a physically climbable, inventory-paid temporary work pose,

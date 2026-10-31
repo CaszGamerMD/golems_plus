@@ -156,4 +156,66 @@ public final class BuilderPlacementClearanceGameTest {
         });
     }
 
+    /** The placer requests clearance; the recipient performs its own
+     * physical movement. The requester never displaces its teammate. */
+    @GameTest(maxTicks=280,skyAccess=true)
+    public void builderAsksTeammateToMoveBeforePlacing(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        h.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        var table=(WorkerStationBlockEntity)world.getBlockEntity(
+                h.absolutePos(new BlockPos(0,2,0)));
+        BlockPos target=h.absolutePos(new BlockPos(3,2,3));
+        var blocker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        blocker.setPos(target.getX()+1.04,target.getY(),target.getZ()+.5);
+        world.addFreshEntity(blocker);
+        var placer=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        placer.setPos(target.getX()+3.5,target.getY(),target.getZ()+.5);
+        world.addFreshEntity(placer);
+        var owner=h.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),2)
+                ||!table.registerBuilderWorker(blocker.getUUID())
+                ||!table.registerBuilderWorker(placer.getUUID())){
+            h.fail("Cannot register cooperating builders");return;
+        }
+        // The real worker tick requires the same persisted home/owner link
+        // as a player-created Builder. Without it the test only sends a
+        // request; the recipient never executes BuilderBuildService.tick.
+        blocker.assign(h.absolutePos(new BlockPos(0,2,0)),owner.getUUID());
+        placer.assign(h.absolutePos(new BlockPos(0,2,0)),owner.getUUID());
+        // Queue the request before the first idle worker tick. Otherwise
+        // the unassigned Builder may independently stroll away before
+        // this test checks for a request at tick 10.
+        boolean initiallyBlocked=!BuilderPlacementSpace.ready(
+                world,placer,table,target);
+        if(!initiallyBlocked||!BuilderPlacementSpace.debugYield(world,blocker)
+                .contains("moveRequestedBy=")){
+            h.fail("The placer did not request its teammate's clearance");return;
+        }
+        if(BuilderPlacementSpace.answerMoveRequest(world,blocker,false)){
+            h.fail("A busy teammate yielded before completing its placement");return;
+        }
+        final boolean[] asked={true};
+        final double[] previousX={blocker.getX()};
+        h.onEachTick(()->{
+            if(Math.abs(blocker.getX()-previousX[0])>.30){
+                h.fail("A move request teleported its recipient");return;
+            }
+            previousX[0]=blocker.getX();
+            if(h.getTick()<10||h.getTick()%5!=0)return;
+            boolean clear=BuilderPlacementSpace.ready(
+                    world,placer,table,target);
+            if(!clear){asked[0]=true;return;}
+            if(!asked[0]||!BuilderPlacementSpace.horizontalClear(target,blocker)){
+                h.fail("Teammate clearance was granted without a real reply");return;
+            }
+            System.out.println("[BUILDER COOPERATION] PASS requested move, "
+                    +"recipient cleared target by physics in "
+                    +h.getTick()+" ticks");
+            h.succeed();
+        });
+    }
+
 }

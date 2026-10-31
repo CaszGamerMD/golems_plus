@@ -27,6 +27,13 @@ public final class BuilderPlacementSpace {
     private record Yield(BlockPos target,BlockPos destination,
             long until,boolean placingWorker,boolean precision){}
     private static final Map<BuilderGolem,Yield> yielding=new WeakHashMap<>();
+    /** Cooperative inter-worker request. The blocking Builder may finish
+     * its current placement before yielding, rather than having another
+     * worker unilaterally overwrite its navigation mid-task. */
+    private record MoveRequest(BlockPos target,java.util.UUID requester,
+            long since,long until){}
+    private static final Map<BuilderGolem,MoveRequest> moveRequests=
+            new WeakHashMap<>();
     // A work target must keep the same approach position across successive
     // 12-tick updates. Recomputing the nearest spot from a moving golem
     // makes it switch sides every few steps and continually resets A*.
@@ -119,6 +126,8 @@ public final class BuilderPlacementSpace {
         if(!fractionalCapStart(level,worker,target)
                 ||!horizontalClear(target,worker)
                 ||worker.getBoundingBox().intersects(volume(target))
+                ||!BuilderConstructionPlanner.fenceWallClearance(
+                        level,worker.getBoundingBox())
                 ||!BuilderConstructionPlanner.lineOfSightFrom(level,worker,
                         new net.minecraft.world.phys.Vec3(worker.getX(),
                                 worker.getEyeY(),worker.getZ()),target))return false;
@@ -295,6 +304,38 @@ public final class BuilderPlacementSpace {
         return true;
     }
 
+    /** The recipient, not the requester, owns the physical response.
+     * Respect an active construction task for 200 ticks, but do not let
+     * a task that cannot complete block its teammate for an entire layer.
+     * There is never an instant displacement or a forced placement. */
+    public static boolean answerMoveRequest(ServerLevel level,
+            BuilderGolem worker,boolean currentTaskDone){
+        MoveRequest request=moveRequests.get(worker);
+        if(request==null)return false;
+        if(level.getGameTime()>=request.until()
+                ||!level.getBlockState(request.target()).isAir()
+                ||!occupied(request.target(),worker)){
+            moveRequests.remove(worker);
+            return false;
+        }
+        if(!currentTaskDone&&level.getGameTime()-request.since()<200)
+            return false;
+        boolean precision=canPrecisionStep(level,worker,request.target());
+        BlockPos destination=precision?worker.blockPosition():
+                escape(level,worker,request.target());
+        if(destination==null)return false;
+        moveRequests.remove(worker);
+        yielding.put(worker,new Yield(request.target(),destination,
+                level.getGameTime()+90,false,precision));
+        System.out.println("[BUILDER MOVE ACCEPTED] builder="+worker.getUUID()
+                +" askedBy="+request.requester()
+                +" target="+request.target().toShortString()
+                +" after="+(level.getGameTime()-request.since())+"t"
+                +" taskDone="+currentTaskDone
+                +" mode="+(precision?"precision_sidestepping":"ground_detour"));
+        return yieldTick(level,worker);
+    }
+
     private static boolean canStand(ServerLevel level,BuilderGolem worker,
             BlockPos at,BlockPos obstructed){
         // An adjacent cardinal tile is safe when the FULL mob bounding
@@ -337,15 +378,13 @@ public final class BuilderPlacementSpace {
             BlockPos target){
         BlockPos origin=worker.blockPosition();
         List<BlockPos> choices=new ArrayList<>();
-        // Probe a compact, predictable set of cardinal/diagonal safe
-        // standing locations instead of inspecting hundreds of cells on
-        // every 12-tick build update (which itself caused visible freezes).
-        // Include straight aisle exits. The old corner-only scan tried
-        // (radius,radius) diagonals and missed open cardinal paths along a
-        // wall, leaving builders stalled despite clear floor two blocks away.
-        // Eight directions x three heights x three radii is bounded; only
-        // the best candidates below perform expensive navigation probes.
-        for(int radius=1;radius<=4;radius++){
+        // A finished worker can be stuck on an upper dome lip while a
+        // teammate still needs the neighboring glass tile. Radius four
+        // may cover ONLY the enclosed lip: allow an eight-tile WALKING
+        // detour to a genuinely safe roof aisle before declaring a
+        // 10,000-tick body-occupancy deadlock. These are still collision-
+        // checked, solid-supported, real path candidates; no teleporting.
+        for(int radius=1;radius<=8;radius++){
             int[][] offsets={
                     {radius,0},{-radius,0},{0,radius},{0,-radius},
                     {radius,radius},{radius,-radius},
@@ -361,11 +400,18 @@ public final class BuilderPlacementSpace {
                 p.distSqr(origin)+Math.abs(p.getY()-origin.getY())*2));
         int attempted=0;
         for(BlockPos p:choices){
-            if(++attempted>16)break; // bounded path work; try more than one aisle side
+            if(++attempted>16)break; // fast local moves first
             // Favor a physically reachable tile; don't assume an air
             // candidate is reachable around walls/stairs/racks.
             if(WorkerNavigation.canReachExact(level,worker,p))return p.immutable();
         }
+        // The nearest sixteen may all be behind a railing, while a real
+        // corridor reaches a farther supported ledge. One trained
+        // multi-goal search examines the remaining bounded alternatives;
+        // repeated individual A* calls here would stall all four workers.
+        if(choices.size()>16)
+            return WorkerNavigation.selectExecutableStand(level,worker,
+                    choices.subList(16,Math.min(96,choices.size())));
         return null;
     }
 
@@ -451,7 +497,9 @@ public final class BuilderPlacementSpace {
                 if(shifted.intersects(volume(target))
                         ||!level.noCollision(worker,shifted)
                             &&level.getBlockCollisions(worker,shifted)
-                                    .iterator().hasNext())continue;
+                                    .iterator().hasNext()
+                        ||!BuilderConstructionPlanner.fenceWallClearance(
+                                level,shifted))continue;
                 candidates.add(p);
             }
         // Prefer real ground near the worker, but also prefer a work
@@ -581,7 +629,14 @@ public final class BuilderPlacementSpace {
     public static String debugYield(ServerLevel level,BuilderGolem worker,
             BlockPos schematicOrigin){
         Yield hold=yielding.get(worker);
-        if(hold==null)return "yield=none";
+        if(hold==null){
+            MoveRequest pending=moveRequests.get(worker);
+            return pending==null?"yield=none":
+                    "moveRequestedBy="+pending.requester()
+                    +" targetXYZ="+pending.target()
+                            .subtract(schematicOrigin).toShortString()
+                    +" waiting="+(level.getGameTime()-pending.since())+"t";
+        }
         return "yieldTargetXYZ="+hold.target().subtract(schematicOrigin).toShortString()
                 +" escapeXYZ="+hold.destination().subtract(schematicOrigin).toShortString()
                 +" expiresIn="+Math.max(0,hold.until()-level.getGameTime())+"t"
@@ -642,6 +697,22 @@ public final class BuilderPlacementSpace {
             Yield old=yielding.get(blocker);
             if(old!=null&&old.target().equals(target)
                     &&old.until()>level.getGameTime())continue;
+            if(blocker!=placing){
+                MoveRequest asked=moveRequests.get(blocker);
+                // One request at a time: competing placers must not
+                // bounce a recipient between two proposed escape cells.
+                if(asked==null||asked.until()<=level.getGameTime()
+                        ||!occupied(asked.target(),blocker)){
+                    moveRequests.put(blocker,new MoveRequest(target,
+                            placing.getUUID(),level.getGameTime(),
+                            level.getGameTime()+600));
+                    System.out.println("[BUILDER MOVE REQUEST] builder="
+                            +placing.getUUID()+" asks="+blocker.getUUID()
+                            +" to clear="+target.toShortString()
+                            +" after current placement");
+                }
+                continue;
+            }
             // When standing adjacent on real ground, do a precise
             // horizontal edge-clearance move instead of targeting a tile
             // center that still intersects the future placement cube.
@@ -653,6 +724,18 @@ public final class BuilderPlacementSpace {
                     &&destination.equals(target))destination=null;
             if(destination==null){
                 found=false;
+                if(level.getGameTime()%200==0)
+                    System.out.println("[BUILDER VACATE] no physically "
+                            +"reachable roof exit for blocker="
+                            +blocker.getUUID()+" feet="+blocker.position()
+                            +" target="+target.toShortString()
+                            +" grounded="+blocker.onGround()
+                            +" grapple="+BuilderGrappleAccess.debug(blocker)
+                            +" carriedHook="+blocker.carriedCount(
+                                    com.caszgamermd.golemsplus.world.WorksiteContent
+                                            .GRAPPLE_HOOK)
+                            +" carriedScaffold="+blocker.carriedCount(
+                                    net.minecraft.world.item.Items.SCAFFOLDING));
                 continue;
             }
             yielding.put(blocker,new Yield(target,destination,

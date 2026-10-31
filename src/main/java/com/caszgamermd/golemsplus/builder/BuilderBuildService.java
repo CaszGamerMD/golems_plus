@@ -15,6 +15,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * First safe construction pass: air-only placement, one real item per block,
@@ -52,18 +53,88 @@ public final class BuilderBuildService {
         long frontierWaitSince=-1;
         int frontierWaitLayer=Integer.MIN_VALUE;
         long workTravelSince=-1;
+        long lastMoved=-1,lastCloser=-1,lastAlternativeTry=-1;
+        double bestDistanceSquared=Double.POSITIVE_INFINITY;
+        Vec3 lastObserved;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
                 blockedSince=-1;workTravelSince=-1;
+                lastMoved=-1;lastCloser=-1;lastAlternativeTry=-1;
+                bestDistanceSquared=Double.POSITIVE_INFINITY;
+                lastObserved=null;
             }
+        }
+        void observeTravel(BuilderGolem worker,BlockPos target,long now){
+            double distance=worker.distanceToSqr(target.getX()+.5,
+                    target.getY()+.5,target.getZ()+.5);
+            if(lastCloser<0||distance+.5<bestDistanceSquared){
+                bestDistanceSquared=distance;
+                lastCloser=now;
+            }
+            if(lastObserved==null
+                    ||worker.position().distanceToSqr(lastObserved)>.35*.35){
+                lastObserved=worker.position();
+                lastMoved=now;
+            }
+        }
+        /** A worker may walk AWAY from a goal on a correct detour. Give
+         * that physical navigation time to work; seek another tool only
+         * after 80 ticks without motion or 200 without getting closer.
+         * Failed scaffold previews are throttled to every 60 ticks.
+         */
+        boolean alternateAccessDue(long now){
+            return workTravelSince>=0&&now-workTravelSince>=80
+                    &&(now-lastMoved>=80||now-lastCloser>=200)
+                    &&(lastAlternativeTry<0||now-lastAlternativeTry>=60);
         }
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
+    /** A deferred cell must not be immediately reclaimed by the SAME
+     * immobile Builder when another member of the crew could approach it.
+     * This is a per-worker, in-memory preference only: it never locks the
+     * shared Y layer, changes an item order, or prevents another Builder
+     * claiming the unchanged cell after the Planner's 60-tick cooldown.
+     */
+    private static final Map<BuilderGolem,Map<Integer,Long>> workRetryAfter=
+            new WeakHashMap<>();
+    private static final long WORK_RETRY_OTHER_CREW_TICKS=300;
+    private static void deferStalledWork(BuilderGolem worker,
+            WorkerStationBlockEntity table,int index,long now,String reason){
+        workRetryAfter.computeIfAbsent(worker,unused->new java.util.HashMap<>())
+                .put(index,now+WORK_RETRY_OTHER_CREW_TICKS);
+        table.waitForBuilderAccess(worker.getUUID(),index,now,reason);
+    }
+    private static List<Integer> otherWorkWhileCoolingDown(
+            BuilderGolem worker,List<Integer> zone,long now){
+        Map<Integer,Long> failed=workRetryAfter.get(worker);
+        if(failed==null||failed.isEmpty())return zone;
+        return availableAfterBackoff(zone,failed,now);
+    }
+    /** Pure selection rule shared by work-approach and depot-access
+     * deferrals. Other members' candidate scans are never filtered. */
+    static List<Integer> availableAfterBackoff(List<Integer> zone,
+            Map<Integer,Long> failed,long now){
+        failed.entrySet().removeIf(entry->entry.getValue()<=now);
+        if(failed.isEmpty())return zone;
+        return zone.stream().filter(index->!failed.containsKey(index)).toList();
+    }
+    /** A genuine long detour is progress even if it moves AWAY from the
+     * target. Only shorten the old 900-tick deadline when both physical
+     * movement AND distance improvement have stopped for many ticks.
+     */
+    static boolean workApproachStalled(long elapsed,long motionIdle,
+            long closerIdle){
+        return elapsed>900 ||elapsed>=300
+                &&motionIdle>=120&&closerIdle>=200;
+    }
     /** Normally every X/Z zone is exclusive. A zone with no work on this
      * shared Y may help its stuck neighbor after construction has made
-     * no physical progress for ten seconds. This is read-only monitoring:
+     * no physical progress for eight seconds (160 ticks). Under the
+     * 18-ticks-per-block trial, a ten-second wait leaves too little time
+     * for a spare Builder to reach the last few blocks on the roof.
+     * This is read-only monitoring:
      * actual ownership stays with the Planner's single-step claim map.
      */
     private static final class RoofProgress {
@@ -81,7 +152,7 @@ public final class BuilderBuildService {
             progress.completed=completed;
             progress.lastChange=level.getGameTime();
         }
-        return level.getGameTime()-progress.lastChange>=600;
+        return level.getGameTime()-progress.lastChange>=160;
     }
     /** Only workers with NO unfinished task in their zone on the active Y assist: they
      * never abandon an assigned cell or break the global height gate.
@@ -375,6 +446,16 @@ public final class BuilderBuildService {
         if(BuilderGrappleAccess.active(worker))return;
         if(BuilderScaffolding.isControllingMovement(worker))return;
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
+        // Another Builder can ask us to clear its NEXT placement cell.
+        // Finish this Builder's current action first when possible; the
+        // recipient acknowledges and plans the physical sidestep itself.
+        // A request older than 200 ticks is allowed to interrupt a stuck
+        // walking approach so neither crew member waits indefinitely.
+        var currentAction=workerActions.get(worker);
+        boolean currentTaskDone=table.claimedStep(worker.getUUID())<0
+                ||currentAction!=null&&currentAction.phase==Action.COMPLETE;
+        if(BuilderPlacementSpace.answerMoveRequest(
+                level,worker,currentTaskDone))return;
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
             // On job completion a Builder may still be on its LAST
             // scaffold tower. It must return to ground and dismount
@@ -536,8 +617,15 @@ public final class BuilderBuildService {
                     ||!zone.contains(index)
                     ||plan.steps().get(index).y()!=layer
                     ||!table.builderStepReadyForClaim(index)){
+                // A failed roof approach used to re-claim the same cell
+                // as soon as its 60-tick shared retry expired, leaving
+                // finished-zone helpers no chance to take the handoff.
+                // Filter only this worker's candidate scan; the original
+                // zone and the global Planner retain all pending cells.
                 var next=BuilderConstructionPlanner.choose(
-                        level,worker,table,plan.steps(),zone);
+                        level,worker,table,plan.steps(),
+                        otherWorkWhileCoolingDown(worker,zone,
+                                level.getGameTime()));
                 index=next==null?-1:table.claimPreferredBuilderZoneStep(
                         worker.getUUID(),zone,plan.steps(),next.index());
             }
@@ -668,6 +756,32 @@ public final class BuilderBuildService {
                     &&step.requiredItem()!=null
                     &&worker.carriedCount(state.item())<=0){
                 activity.phase=Action.STAGE_MATERIALS;
+                long stageNow=level.getGameTime();
+                if(activity.workTravelSince<0)
+                    activity.workTravelSince=stageNow;
+                BlockPos depot=BuilderSupplyInventory.pouchReturnPos(table);
+                activity.observeTravel(worker,depot,stageNow);
+                if(stageNow-activity.workTravelSince>=350
+                        &&stageNow-activity.lastMoved>=100
+                        &&stageNow-activity.lastCloser>=200){
+                    // An actual roof worker can have stock waiting in
+                    // OnSite yet no executable descent to fetch it. The
+                    // older code held that one claimed block indefinitely
+                    // with an idle navigation and never reached the work
+                    // watchdog. Let another stocked crew member try it;
+                    // preserve the cell, materials, and global Y gate.
+                    // The worker must also yield its next claim to a
+                    // teammate. A plain 60-tick global retry repeatedly
+                    // handed this exact roof glass cell back to the same
+                    // builder stranded beside the OnSite depot.
+                    deferStalledWork(worker,table,index,stageNow,
+                            "350-tick depot access without travel progress");
+                    activity.workTravelSince=-1;
+                    System.out.println("[BUILDER STAGING RETRY] step="+index
+                            +" no depot travel from="+worker.position()
+                            +" depot="+depot.toShortString());
+                    return;
+                }
                 // An A* route from the TOP of a temporary scaffold to
                 // OnSite Storage can never discover the vertical descent.
                 if(BuilderScaffolding.descendForTravel(level,worker,table)
@@ -682,6 +796,14 @@ public final class BuilderBuildService {
                     return;
                 }
                 table.prepareBuilderOrder(worker.getUUID());
+                // The depot leg and construction approach are two
+                // different routes. Don't charge a long real restock to
+                // the 900-tick work-stance timeout for the next block.
+                activity.workTravelSince=-1;
+                activity.lastMoved=-1;
+                activity.lastCloser=-1;
+                activity.bestDistanceSquared=Double.POSITIVE_INFINITY;
+                activity.lastObserved=null;
             }
             activity.phase=Action.MOVE_TO_WORK;
             // Work descent is resolved against the actual work pose below.
@@ -758,10 +880,45 @@ public final class BuilderBuildService {
             // leave the worker inside scaffold with onGround=false. Advance
             // the active scaffold session while it owns that physical motion
             // instead of freezing at CLIMB and repeatedly falling down.
+            long now=level.getGameTime();
+            if(activity.workTravelSince<0)activity.workTravelSince=now;
+            activity.observeTravel(worker,pos,now);
+            // Some narrow fence/scaffold caps leave a real worker with
+            // onGround=false but no active climb. A stalled worker once
+            // held a claim for 900 ticks, reclaimed it after each short
+            // cooldown, and denied idle teammates a turn at the same cell.
+            // Keep genuine physics and moving detours; relinquish the cell
+            // sooner only when both motion AND approach progress have ceased.
+            if(workApproachStalled(now-activity.workTravelSince,
+                    now-activity.lastMoved,now-activity.lastCloser)
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
+                BuilderPlacementSpace.cancelYield(worker);
+                BuilderPlacementSpace.invalidateApproach(worker,pos);
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                deferStalledWork(worker,table,index,now,
+                        "stalled work approach; allow another crew member to try");
+                activity.workTravelSince=-1;
+                table.setProblem("Deferred cycling work approach "+pos);
+                System.out.println("[FRONTIER RETRY] deferred unchanged step="+index
+                        +" after "+(now-activity.lastCloser)
+                        +" ticks without closing distance at "+worker.position()
+                        +" grounded="+worker.onGround());
+                return;
+            }
             if(!worker.onGround()){
                 if(BuilderScaffoldPlanA.hasPlan(worker))
                     BuilderScaffoldPlanA.reach(
                             level,worker,table,owner,pos,plan.steps());
+                else if(now-activity.lastMoved>=100
+                        &&BuilderScaffolding.descendForTravel(
+                                level,worker,table)){
+                    // A parked airborne worker beside its own tower can
+                    // physically return to its supported access route and
+                    // approach again. Never synthesize an airborne work
+                    // stance or grant placement while its feet are loose.
+                    activity.lastMoved=now;
+                }
                 return;
             }
             // Narrow final wall/fence caps support feet at Y+.5. If
@@ -774,29 +931,12 @@ public final class BuilderBuildService {
                 activity.phase=Action.MOVE_TO_WORK;
                 return;
             }
-            long now=level.getGameTime();
-            if(activity.workTravelSince<0)activity.workTravelSince=now;
             // Once an owned shaft/bridge starts, its controller owns all
             // physical movement. Do not replace it with a normal route
             // just because another nominal work pose becomes visible.
             if(BuilderScaffoldPlanA.hasPlan(worker)
                     &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
                 return;
-            if(now-activity.workTravelSince>900&&!BuilderGrappleAccess.active(worker)){
-                // Repeatedly executable movement is not proof that this
-                // placement is making progress. Preserve the cell/materials
-                // and let another feasible frontier on THIS Y run first.
-                BuilderPlacementSpace.cancelYield(worker);
-                BuilderPlacementSpace.invalidateApproach(worker,pos);
-                com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
-                table.waitForBuilderAccess(worker.getUUID(),index,now,
-                        "900-tick work approach without placement");
-                activity.workTravelSince=-1;
-                table.setProblem("Deferred cycling work approach "+pos);
-                System.out.println("[FRONTIER RETRY] deferred unchanged step="+index
-                        +" after 900 ticks without placement at "+worker.position());
-                return;
-            }
             int yDiff=pos.getY()-worker.blockPosition().getY();
             boolean temporaryWorkPose=BuilderScaffoldPlanA.safeTemporaryWorkPose(
                     level,worker,table,pos);
@@ -806,11 +946,46 @@ public final class BuilderBuildService {
                         pos,worker)
                     &&workDistance<14
                     &&BuilderPlacementSpace.horizontalClear(pos,worker)
+                    &&BuilderConstructionPlanner.fenceWallClearance(
+                            level,worker.getBoundingBox())
                     &&(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,pos)
                         ||BuilderConstructionPlanner.safeStand(
                                 level,worker,pos,worker.blockPosition()));
+            // If the trained route is idle, stuck behind a railing, or
+            // making no actual progress toward its work cell, offer the
+            // inventory-paid scaffold/step-back tool NOW. This applies
+            // at the same Y as well as on climbs; a reachable walking
+            // detour remains preferred while it is making progress.
+            if(!directOrdinaryWork&&activity.alternateAccessDue(now)
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
+                activity.lastAlternativeTry=now;
+                if(scaffoldBlockedWork(level,worker,table,owner,pos,
+                        plan.steps())){
+                    System.out.println("[BUILDER ACCESS ALTERNATE] step="+index
+                            +" localY="+(pos.getY()-table.builderOrigin().getY())
+                            +" moveIdle="+(now-activity.lastMoved)
+                            +" closerIdle="+(now-activity.lastCloser)
+                            +" via=paid_scaffold from="+worker.position());
+                    return;
+                }
+            }
+            // AIR below a roof block is not a reason to defer it for
+            // "missing support": full cubes can be placed in mid-air.
+            // It IS a strong sign that a golem needs temporary footing.
+            // Give the inventory-paid scaffold option an EARLY turn after
+            // an ordinary route has had time to make progress, including
+            // side-connected blocks that are not completely isolated.
+            // A fence beneath a block is real support and stays on the
+            // ordinary collision-checked approach path if reachable.
+            if(!directOrdinaryWork
+                    &&BuilderScaffoldPlanA.needsTemporaryWorkPlatform(level,pos)
+                    &&now-activity.workTravelSince>120
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&scaffoldBlockedWork(level,worker,table,owner,pos,
+                            plan.steps()))return;
             // Low dome walls and fence caps often sit two Y above a
             // grounded Builder. Its normal three-block hand reach may
             // already cover the target from a SIDE stance. Find that
@@ -867,6 +1042,8 @@ public final class BuilderBuildService {
             if(!BuilderPlacementSpace.placementHeight(pos,worker)
                     ||workDistance>14
                     ||!BuilderPlacementSpace.horizontalClear(pos,worker)
+                    ||!BuilderConstructionPlanner.fenceWallClearance(
+                            level,worker.getBoundingBox())
                     ||!(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,pos)
@@ -959,7 +1136,9 @@ public final class BuilderBuildService {
             // Re-evaluate the real work pose immediately before spending
             // any item: a teammate or a new schematic block may have
             // invalidated the cached approach while this worker walked.
-            if(!(BuilderScaffoldPlanA.safeTemporaryWorkPose(
+            if(!BuilderConstructionPlanner.fenceWallClearance(
+                        level,worker.getBoundingBox())
+                    ||!(BuilderScaffoldPlanA.safeTemporaryWorkPose(
                         level,worker,table,pos)
                     ||BuilderPlacementSpace.safeFractionalCapPose(
                             level,worker,pos)
@@ -1070,7 +1249,13 @@ public final class BuilderBuildService {
             int index=table.claimedStep(worker.getUUID());
             var action=workerActions.get(worker);
             String stage=action==null?"AWAITING TASK":action.phase.name();
-            if(index<0)return stage+" | zone tasks="+zone.size()
+            String belt="scaffold="+worker.getItem(
+                    BuilderGolem.SCAFFOLD_BELT_SLOT).getCount()
+                    +" hook="+worker.getItem(
+                            BuilderGolem.GRAPPLE_BELT_SLOT).getCount()
+                    +" bucket="+worker.getItem(
+                            BuilderGolem.BUCKET_BELT_SLOT).getCount();
+            if(index<0)return stage+" | belt="+belt+" | zone tasks="+zone.size()
                     +" | stage="+table.builderWorkOrder(worker.getUUID()).size()
                     +" | "+BuilderConstructionPlanner.blockedSummary(
                             level,table,plan.steps(),zone)
@@ -1094,8 +1279,16 @@ public final class BuilderBuildService {
                     +" | nav="+(worker.getNavigation().isDone()?"idle":"walking")
                     +" "+com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .debugStatus(worker)
+                    +" | accessProgress="+(action==null||action.lastMoved<0
+                            ?"not_observed"
+                            :"motionIdle="+(level.getGameTime()-action.lastMoved)
+                                    +"t closerIdle="+(level.getGameTime()-action.lastCloser)
+                                    +"t toolTryAgo="+(action.lastAlternativeTry<0
+                                            ?"none":level.getGameTime()
+                                                    -action.lastAlternativeTry+"t"))
                     +" | staged="+table.builderOrderPrepared(worker.getUUID())
                     +" | stock="+(current.requiredItem()==null?"none":current.requiredItem())
+                    +" | belt="+belt
                     +" | tower="+table.scaffoldPositions(worker.getUUID()).size()
                     +" | gravity="+(!worker.isNoGravity())
                     +" | sneaking="+worker.isShiftKeyDown()

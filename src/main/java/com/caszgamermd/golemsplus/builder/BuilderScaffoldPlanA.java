@@ -90,16 +90,14 @@ public final class BuilderScaffoldPlanA {
 
     public static boolean hasPlan(BuilderGolem worker){return jobs.containsKey(worker);}
     /** A free-floating full cube is valid in Minecraft. Its Builder still
-     * needs a physically reachable place to stand. An isolated cell has no
-     * floor or side geometry to approach using ordinary ground routes.
+     * needs a physically reachable place to stand. A side-connected roof
+     * block can also have AIR directly underneath, so side connections
+     * must never suppress the option of a temporary paid work platform.
      */
     public static boolean needsTemporaryWorkPlatform(ServerLevel level,
             BlockPos target){
-        if(!level.getBlockState(target).isAir()
-                ||!level.getBlockState(target.below()).isAir())return false;
-        for(Direction side:Direction.Plane.HORIZONTAL)
-            if(!level.getBlockState(target.relative(side)).isAir())return false;
-        return true;
+        return level.getBlockState(target).isAir()
+                &&level.getBlockState(target.below()).isAir();
     }
     /** Use a genuine owned bridge as a worker's temporary construction
      * position, even next to existing roof blocks. No schematic cell is
@@ -130,6 +128,8 @@ public final class BuilderScaffoldPlanA {
         return present(level,table,worker,j.base.atY(j.top))
                 &&BuilderPlacementSpace.placementHeight(target,worker)
                 &&BuilderPlacementSpace.horizontalClear(target,worker)
+                &&BuilderConstructionPlanner.fenceWallClearance(
+                        level,worker.getBoundingBox())
                 &&worker.distanceToSqr(target.getX()+.5,
                         target.getY()+.5,target.getZ()+.5)<14
                 &&BuilderConstructionPlanner.lineOfSight(
@@ -311,6 +311,18 @@ public final class BuilderScaffoldPlanA {
                             MAX_HORIZONTAL_SCAFFOLD_SPAN);distance++)
                 towerSites.add(target.relative(outward,distance));
         if(workPose){
+            // Cardinal-only tower searches miss a practical escape around
+            // a finished fence/wall corner. Consider diagonal STARTS too:
+            // the actual bridge still consists solely of <=6 adjacent,
+            // supported scaffold cells, proven by bentBridge(). This is
+            // a different paid route, not permission to climb diagonally.
+            for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
+                int length=Math.abs(dx)+Math.abs(dz);
+                if(dx==0||dz==0||length<3
+                        ||length>MAX_WORK_TOWER_DISTANCE)continue;
+                BlockPos diagonal=target.offset(dx,0,dz);
+                if(!towerSites.contains(diagonal))towerSites.add(diagonal);
+            }
             // A Builder already on the outer dome rim may have real,
             // head-clear footing diagonally offset from a roof gap. Do
             // not discard that supported launch solely because a long
@@ -822,6 +834,8 @@ public final class BuilderScaffoldPlanA {
             }
         }
         j.phase=Phase.CLIMB;
+        j.lastProgress=level.getGameTime();
+        j.closestApproach=Double.POSITIVE_INFINITY;
         BuilderScaffolding.begin(level,worker,j.base,top+1.0,false);
         return Result.MOVING;
     }
@@ -849,6 +863,50 @@ public final class BuilderScaffoldPlanA {
                 &&worker.getY()>=j.target.getY()-.12){
             j.phase=Phase.EXTEND_FIRST;
             j.lastProgress=level.getGameTime();
+        }
+        // A long shaft is erected in real 16-block stages. On reaching
+        // the first stage's rim the climb controller releases the rope-
+        // free scaffold ascent. The golem can settle 40-80cm sideways on
+        // the adjacent roof while still grounded on solid construction.
+        // Previously Phase.CLIMB required +/-35cm centering to extend the
+        // NEXT paid stage, but nobody owned movement back to the column:
+        // the exact Y23 dome reproduction remained at Y16 for 2,600 ticks.
+        // Walk a small, physically collision-resolved lateral step into
+        // its OWN supported shaft before continuing; never snap the body.
+        if(j.phase==Phase.CLIMB&&worker.onGround()
+                &&!BuilderScaffolding.climbingNow(level,worker)
+                &&worker.getY()>=j.base.getY()+1.5
+                &&worker.getY()<j.target.getY()-.15
+                &&level.getBlockEntity(j.planner)
+                        instanceof WorkerStationBlockEntity table
+                &&present(level,table,worker,
+                        j.base.atY(worker.blockPosition().getY()-1))){
+            double dx=j.base.getX()+.5-worker.getX();
+            double dz=j.base.getZ()+.5-worker.getZ();
+            double distance=Math.hypot(dx,dz);
+            if(distance>.35&&distance<1.5){
+                if(distance<j.closestApproach-.04){
+                    j.closestApproach=distance;
+                    j.lastProgress=level.getGameTime();
+                }
+                if(level.getGameTime()-j.lastProgress>140){
+                    rejectEntry(level,worker,j.base);
+                    jobs.remove(worker);
+                    System.out.println("[PLAN A MID-TOWER] abandoned blocked "
+                            +"physical recenter at "+j.base.toShortString());
+                    return false;
+                }
+                worker.getNavigation().stop();
+                worker.setJumping(false);
+                worker.setNoGravity(false);
+                double mx=Math.max(-.105,Math.min(.105,dx*.28));
+                double mz=Math.max(-.105,Math.min(.105,dz*.28));
+                // Normal mob collisions determine the actual displacement.
+                // The supported shaft must remain present before each step.
+                worker.setDeltaMovement(mx,
+                        Math.min(0,worker.getDeltaMovement().y),mz);
+                return true;
+            }
         }
         if(j.phase==Phase.APPROACH&&j.fractionalSideEntry){
             double[] step=fractionalSideMove(level,worker,j.base);

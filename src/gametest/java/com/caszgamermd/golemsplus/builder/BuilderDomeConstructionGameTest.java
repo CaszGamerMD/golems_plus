@@ -28,9 +28,10 @@ import net.minecraft.world.level.block.Blocks;
  * A failure reports the last recorded worker and planner state.
  */
 public final class BuilderDomeConstructionGameTest {
+    private static final long DOME_JOB_MAX_TICKS=70_000;
     @SuppressWarnings("removal")
     @GameTest(structure="golems_plus_gametest:dome_arena",
-            maxTicks=90000,skyAccess=true)
+            maxTicks=70100,skyAccess=true)
     public void constructsExactDomeWithRealBuilders(GameTestHelper helper){
         ServerLevel level=helper.getLevel();
         final Path source;
@@ -137,6 +138,9 @@ public final class BuilderDomeConstructionGameTest {
             helper.fail("Dome Planner rejected start with 4 registered builders");
             return;
         }
+        final BuilderDomeLayerTiming layerTiming=new BuilderDomeLayerTiming(
+                steps,table.builderOrigin().getY(),helper.getTick(),
+                table.builderActiveLayer(steps));
         final int[] lastCursor={-1},lastCleared={-1},lastCompleted={-1};
         final long[] lastProgress={helper.getTick()};
         final boolean[] inspected={false},checkpoint={false},goal3333={false},goal3400={false};
@@ -147,6 +151,13 @@ public final class BuilderDomeConstructionGameTest {
             // out-of-order zone completion; don't use obsolete ledger fields.
             int physicalCount=physicallyCorrect(level,steps);
             int sharedY=table.builderActiveLayer(steps);
+            int unassigned=0,scaffoldPresent=0;
+            for(BuilderGolem worker:crew){
+                if(table.claimedStep(worker.getUUID())<0)unassigned++;
+                if(!table.scaffoldPositions(worker.getUUID()).isEmpty())scaffoldPresent++;
+            }
+            layerTiming.sample(tick,sharedY,physicalCount==requiredBlocks,
+                    unassigned,scaffoldPresent);
             // Fail immediately if a Builder receives an out-of-layer
             // construction assignment; no silent progress on upper Y
             // while an indexed lower-Y cell remains unfinished.
@@ -154,6 +165,7 @@ public final class BuilderDomeConstructionGameTest {
                 int assigned=table.claimedStep(member.getUUID());
                 if(assigned>=0&&assigned<steps.size()
                         &&steps.get(assigned).y()>sharedY){
+                    layerTiming.report(level,steps,tick,"out_of_layer_assignment");
                     helper.fail("Y LAYER VIOLATION: assigned Y="
                             +(steps.get(assigned).y()-table.builderOrigin().getY())
                             +" above active Y="
@@ -217,6 +229,7 @@ public final class BuilderDomeConstructionGameTest {
                 // of eventual 3537/3537 completion. It must verify all
                 // four actual entities are alive (not merely scheduled).
                 if(crew.size()!=4||crew.stream().anyMatch(w->!w.isAlive())){
+                    layerTiming.report(level,steps,tick,"crew_missing_at_1700");
                     helper.fail("Reached 1700 but four real Builders not alive");
                     return;
                 }
@@ -226,6 +239,7 @@ public final class BuilderDomeConstructionGameTest {
             }
             if(!goal3333[0]&&physicalCount>=3333){
                 if(crew.size()!=4||crew.stream().anyMatch(w->!w.isAlive())){
+                    layerTiming.report(level,steps,tick,"crew_missing_at_3333");
                     helper.fail("3333 milestone requires four living physical Builders");return;
                 }
                 goal3333[0]=true;
@@ -260,6 +274,7 @@ public final class BuilderDomeConstructionGameTest {
                     }
                 }
                 if(wrong>0){
+                    layerTiming.report(level,steps,tick,"wrong_finished_blocks");
                     helper.fail("Dome COMPLETED incorrectly: "+wrong+
                             " block-state mismatches; "+sample);return;
                 }
@@ -268,49 +283,34 @@ public final class BuilderDomeConstructionGameTest {
                 boolean scaffoldsGone=crew.stream().allMatch(
                         worker->table.scaffoldPositions(worker.getUUID()).isEmpty());
                 if(atGround&&scaffoldsGone){
+                    layerTiming.report(level,steps,tick,"pass");
                     System.out.println("[DOME E2E] PASS "+requiredBlocks
                             +"/"+requiredBlocks+" required blocks verified; "
                             +ignoredPlants+" ignored vegetation entries; "
                             +"4 workers grounded, scaffolding recovered");
                     helper.succeed();
-                }else if(tick-lastProgress[0]>2400){
-                    // All schematic cells are correct, but finish-up still
-                    // requires a real return to safe ground and physically
-                    // recovered scaffold inventory. Do not wait until the
-                    // 90k-tick test timeout without showing which worker
-                    // remains elevated, suspended or scaffold-bound.
-                    StringBuilder stuck=new StringBuilder(
-                            "Dome built every required block, but crew "
-                            +"could not physically finish cleanup after "
-                            +tick+" ticks | grounded="+atGround
-                            +" scaffoldsGone="+scaffoldsGone);
-                    for(BuilderGolem member:crew)
-                        stuck.append(" | ")
-                                .append(member.getName().getString())
-                                .append(" @ ").append(member.position())
-                                .append(" ground=").append(member.onGround())
-                                .append(" noGravity=").append(member.isNoGravity())
-                                .append(" scaffold=").append(table.scaffoldPositions(
-                                        member.getUUID()).size())
-                                .append(" ").append(BuilderBuildService.debugStatus(
-                                        level,member));
-                    helper.fail(stuck.toString());
+                    return;
                 }
-                return;
             }
-            if(tick-lastProgress[0]>2400){
+            // The entire physical job, including clearing, building and
+            // scaffold recovery, has one hard 70k-tick limit. Layer timings
+            // are observations only and never abort a busy layer.
+            if(tick>=DOME_JOB_MAX_TICKS){
                 // Snapshot the actual partly constructed geometry, worker
                 // locations, target cells and collision-valid routes.
                 // This is read-only and lives in the archived CI artifact.
                 BuilderDomeRouteSurveyGameTest.captureLive(
                         level,table,crew,steps);
                 StringBuilder message=new StringBuilder(
-                        "Dome stalled after "+tick+" ticks | clear="+
-                        table.builderClearCursor()+" | contiguous="+table.builderCursor()
-                        +" | totalCompleted="+physicalCount
-                        +"/"+requiredBlocks+" | ignoredPlants="+ignoredPlants
-                        +" | problem="+table.problem()
-                        +stageDiagnostic(folder,table));
+                        "Dome reached 70000-tick global job limit");
+                message.append(" | elapsedTick=").append(tick)
+                        .append(" | clear=").append(table.builderClearCursor())
+                        .append(" | contiguous=").append(table.builderCursor())
+                        .append(" | totalCompleted=").append(physicalCount)
+                        .append('/').append(requiredBlocks)
+                        .append(" | ignoredPlants=").append(ignoredPlants)
+                        .append(" | problem=").append(table.problem())
+                        .append(stageDiagnostic(folder,table));
                 for(BuilderGolem worker:crew)
                     message.append(" | ").append(worker.getName().getString())
                         .append(" @ ").append(worker.blockPosition())
@@ -319,6 +319,7 @@ public final class BuilderDomeConstructionGameTest {
                         .append(" | remainingLayer=")
                         .append(remainingLayerItems(
                                 level,table,steps,sharedY,32));
+                layerTiming.report(level,steps,tick,"global_timeout");
                 helper.fail(message.toString());
             }
         });

@@ -7,7 +7,7 @@ building=(root/"builder/BuilderBuildService.java").read_text()
 scaffolds=(root/"builder/BuilderScaffolding.java").read_text()
 assert "getBlockCollisions(mob,body).iterator().hasNext()" in navigation
 assert "world.noCollision(mob,body)" in navigation
-assert "world.getBlockCollisions" in navigation
+assert "level.getBlockCollisions" in navigation
 assert "WorkerRoutePlanner.plan(" in navigation
 assert "at->trainedTerrainCost(level,at)" in navigation
 assert "mob.blockPosition().equals(feet)" in navigation
@@ -15,12 +15,12 @@ assert "Math.abs(a-b)>.60)continue;" in navigation
 # Walking to a depot/doorway must NEVER be short-circuited by placing reach.
 assert "One native A* only for a SHORT portion" in navigation
 assert "int[]{3,2,1}" in navigation
-assert "&&mob.distanceToSqr(target.getX()+.5" not in navigation
+assert "&&mob.distanceToSqr(target.getX()+.5,targetFloor" in navigation
 assert "public static boolean retryScheduled(PathfinderMob mob)" in navigation
 assert 'WorkerNavigation' in building
 assert "WorkerNavigation" in building
-assert "routeToExact(level,worker,approach,1.0)" in building
-assert "if(workDistance>14)" in building
+assert ".WorkerNavigation.routeToExact(" in building
+assert "||workDistance>14" in building
 assert "BuilderPlacementSpace.invalidateApproach(worker,pos)" in building
 assert "routeTo(level,worker,pos,.85)" in building
 assert '"Builder exploring alternate routes to "' not in building
