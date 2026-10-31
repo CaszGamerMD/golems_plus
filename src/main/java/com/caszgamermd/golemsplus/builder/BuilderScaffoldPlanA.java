@@ -70,9 +70,16 @@ public final class BuilderScaffoldPlanA {
     private static final int MAX_WORK_TOWER_DISTANCE=
             MAX_HORIZONTAL_SCAFFOLD_SPAN+2;
     private static final Map<BuilderGolem,Job> jobs=new WeakHashMap<>();
-    private record FailedEntry(BlockPos base,long until){}
-    private static final Map<BuilderGolem,FailedEntry> failedEntries=
+    // A single rejected base oscillated between two adjacent roof columns
+    // forever. Retain each physically failed entry for a bounded window so
+    // the next plan explores a DISTINCT safe support, not the last failure.
+    private static final Map<BuilderGolem,Map<BlockPos,Long>> failedEntries=
             new WeakHashMap<>();
+    private static void rejectEntry(ServerLevel level,BuilderGolem worker,
+            BlockPos base){
+        failedEntries.computeIfAbsent(worker,ignored->new java.util.HashMap<>())
+                .put(base.immutable(),level.getGameTime()+2400);
+    }
     private BuilderScaffoldPlanA(){}
 
     public static boolean hasPlan(BuilderGolem worker){return jobs.containsKey(worker);}
@@ -218,7 +225,7 @@ public final class BuilderScaffoldPlanA {
             WorkerStationBlockEntity table,BlockPos target,
             List<BuilderConstructionPlan.Step> steps,boolean workPose){
         Set<BlockPos> reserved=future(level,steps);
-        FailedEntry rejected=failedEntries.get(worker);
+        Map<BlockPos,Long> rejected=failedEntries.get(worker);
         boolean isolated=needsTemporaryWorkPlatform(level,target);
         List<Job> options=new ArrayList<>();
         for(Direction outward:Direction.Plane.HORIZONTAL)
@@ -247,8 +254,8 @@ public final class BuilderScaffoldPlanA {
             for(int dy=-4;dy<=5;dy++){
                 BlockPos base=towerXZ.atY(worker.blockPosition().getY()-dy);
                 int top=target.getY()-1;
-                if(rejected!=null&&level.getGameTime()<rejected.until()
-                        &&rejected.base().equals(base))continue;
+                if(rejected!=null&&level.getGameTime()<
+                        rejected.getOrDefault(base,Long.MIN_VALUE))continue;
                 if(!shaftClear(level,base,top,reserved,table,worker)
                         ||!bridgeClear(level,base,inward,target.getY(),
                                 span,reserved,table,worker))continue;
@@ -758,8 +765,7 @@ public final class BuilderScaffoldPlanA {
                         // body may now be on another roof elevation or
                         // behind a changed wall. Retire only this entry,
                         // leaving other towers/frontier cells available.
-                        failedEntries.put(worker,new FailedEntry(j.base,
-                                level.getGameTime()+240));
+                        rejectEntry(level,worker,j.base);
                         System.out.println("[PLAN A ENTRY] retry alternate base for "
                                 +j.target.toShortString()+" from "
                                 +worker.blockPosition().toShortString()
@@ -788,8 +794,7 @@ public final class BuilderScaffoldPlanA {
                     if(!BuilderScaffolding.climbingNow(level,worker)
                             &&worker.onGround()
                             &&worker.getY()<j.base.getY()-.35){
-                        failedEntries.put(worker,new FailedEntry(j.base,
-                                level.getGameTime()+400));
+                        rejectEntry(level,worker,j.base);
                         System.out.println("[PLAN A ENTRY] blocked climb, retry "
                                 +"another tower from real ground at "
                                 +worker.blockPosition().toShortString()
