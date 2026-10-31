@@ -735,16 +735,15 @@ public final class BuilderBuildService {
                 var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
                 if(access==BuilderGrappleAccess.Result.NEED_HOOK){
                     table.setProblem("Builder needs a Grapple Hook in OnSite Storage");
-                    return;
                 }
                 if(access==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR){
                     if(scaffoldWork(level,worker,table,owner,pos,plan.steps()))
                         return;
-                    table.waitForBuilderAccess(worker.getUUID(),index,
-                            level.getGameTime(),"grapple and scaffold entries inaccessible");
-                    table.setProblem("Deferred inaccessible grapple/scaffold work "+pos
-                            +" (other cells on Y="+activeLayer+" continue)");
-                    return;
+                    // Grapple and scaffold are optional ways to reach work,
+                    // not a prohibition on walking. In particular, ordinary
+                    // work-stance routing below may have an executable
+                    // terrain step or native fallback even if neither
+                    // specialized access tool has a safe entry here.
                 }
                 if(access==BuilderGrappleAccess.Result.MOVING)return;
             }
