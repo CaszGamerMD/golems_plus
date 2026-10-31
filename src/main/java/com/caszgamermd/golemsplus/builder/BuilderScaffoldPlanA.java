@@ -1054,6 +1054,29 @@ public final class BuilderScaffoldPlanA {
         if(j==null)return false;
         j.bridgeTicks++;
         j.highest=Math.max(j.highest,worker.getY());
+        // Recover a lost vertical controller while physically suspended in
+        // the paid scaffold shaft. Never treat an airborne scaffold occupant
+        // as a completed work stance, and never fake a position change.
+        if(j.phase==Phase.CLIMB
+                &&!BuilderScaffolding.climbingNow(level,worker)
+                &&level.getGameTime()-j.lastProgress>20
+                &&level.getBlockEntity(j.planner)
+                        instanceof WorkerStationBlockEntity table
+                &&physicalTowerTop(level,worker,table,j)==j.top
+                &&worker.getY()>=j.base.getY()-.15
+                &&worker.getY()<j.top+.88
+                &&Math.abs(worker.getX()-j.base.getX()-.5)<.35
+                &&Math.abs(worker.getZ()-j.base.getZ()-.5)<.35
+                &&(level.getBlockState(worker.blockPosition()).is(Blocks.SCAFFOLDING)
+                    ||level.getBlockState(worker.blockPosition().below()).is(Blocks.SCAFFOLDING))
+                &&level.getBlockState(j.base.atY(j.top+1)).isAir()
+                &&level.getBlockState(j.base.atY(j.top+2)).isAir()){
+            BuilderScaffolding.begin(level,worker,j.base,j.top+1.0,false);
+            j.lastProgress=level.getGameTime();
+            System.out.println("[PLAN A RECOVERY] restarted suspended scaffold climb "
+                    +worker.blockPosition().toShortString()
+                    +" shaft="+j.base.toShortString()+" top="+j.top);
+        }
         if(j.phase==Phase.CLIMB
                 &&releaseOrphanedClimb(level,worker,j))return false;
         if(j.phase==Phase.CLIMB&&j.bridgeTicks%10==0
