@@ -21,7 +21,7 @@
     "timestamp": "2026-10-30T22:49:33.765815+00:00",
     "verified": true
   },
-  "last_session": "2026-10-30T22:49:33.766000+00:00",
+  "last_session": "2026-10-31T00:00:52.276749+00:00",
   "last_session_cycles": 5,
   "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
   "state_branch": "training/dome-autotune-state-262",
@@ -78,10 +78,13 @@
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"12\",\"GOLEMS_DOME_SCAN_LIMIT\":\"16\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"12\",\"GOLEMS_DOME_SCAN_LIMIT\":\"32\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"12\",\"GOLEMS_DOME_SCAN_LIMIT\":\"48\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
+    "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"12\",\"GOLEMS_DOME_SCAN_LIMIT\":\"64\",\"GOLEMS_DOME_SKY_PENALTY\":\"0\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"12\",\"GOLEMS_DOME_SCAN_LIMIT\":\"64\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"12\",\"GOLEMS_DOME_SCAN_LIMIT\":\"96\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
+    "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"36\",\"GOLEMS_DOME_SCAN_LIMIT\":\"64\",\"GOLEMS_DOME_SKY_PENALTY\":\"0\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"36\",\"GOLEMS_DOME_SCAN_LIMIT\":\"64\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"48\",\"GOLEMS_DOME_SCAN_LIMIT\":\"16\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
+    "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"48\",\"GOLEMS_DOME_SCAN_LIMIT\":\"48\",\"GOLEMS_DOME_SKY_PENALTY\":\"0\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"48\",\"GOLEMS_DOME_SCAN_LIMIT\":\"48\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"48\",\"GOLEMS_DOME_SCAN_LIMIT\":\"64\",\"GOLEMS_DOME_SKY_PENALTY\":\"0\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"48\",\"GOLEMS_DOME_SCAN_LIMIT\":\"64\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"0.25\"}",
@@ -90,6 +93,7 @@
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"48\",\"GOLEMS_DOME_SCAN_LIMIT\":\"96\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"6\",\"GOLEMS_DOME_SCAN_LIMIT\":\"32\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"6\",\"GOLEMS_DOME_SCAN_LIMIT\":\"48\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
+    "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"6\",\"GOLEMS_DOME_SCAN_LIMIT\":\"64\",\"GOLEMS_DOME_SKY_PENALTY\":\"0\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}",
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"6\",\"GOLEMS_DOME_SCAN_LIMIT\":\"64\",\"GOLEMS_DOME_SKY_PENALTY\":\"12\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}"
   ],
   "trials": [
@@ -1851,6 +1855,116 @@
       "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
       "stall_tick": 60060,
       "timestamp": "2026-10-30T22:49:33.765815+00:00",
+      "verified": true
+    },
+    {
+      "active_y": 30,
+      "complete": false,
+      "cycle": 1,
+      "diagnosis": "grapple_access",
+      "duration_seconds": 238.9,
+      "log": "build/dome-autotune/cycle-1.log",
+      "peak_tick": 63200,
+      "real_blocks": 3427,
+      "return_code": 1,
+      "settings": {
+        "GOLEMS_DOME_FEASIBLE_LIMIT": "8",
+        "GOLEMS_DOME_GRAPPLE_PENALTY": "48",
+        "GOLEMS_DOME_SCAN_LIMIT": "64",
+        "GOLEMS_DOME_SKY_PENALTY": "0",
+        "GOLEMS_DOME_TARGET_WEIGHT": "1.75"
+      },
+      "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
+      "stall_tick": 65340,
+      "timestamp": "2026-10-30T23:46:13.846854+00:00",
+      "verified": true
+    },
+    {
+      "active_y": 30,
+      "complete": false,
+      "cycle": 2,
+      "diagnosis": "grapple_access",
+      "duration_seconds": 235.0,
+      "log": "build/dome-autotune/cycle-2.log",
+      "peak_tick": 61200,
+      "real_blocks": 3423,
+      "return_code": 1,
+      "settings": {
+        "GOLEMS_DOME_FEASIBLE_LIMIT": "8",
+        "GOLEMS_DOME_GRAPPLE_PENALTY": "6",
+        "GOLEMS_DOME_SCAN_LIMIT": "64",
+        "GOLEMS_DOME_SKY_PENALTY": "0",
+        "GOLEMS_DOME_TARGET_WEIGHT": "1.75"
+      },
+      "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
+      "stall_tick": 63300,
+      "timestamp": "2026-10-30T23:50:08.870303+00:00",
+      "verified": true
+    },
+    {
+      "active_y": 30,
+      "complete": false,
+      "cycle": 3,
+      "diagnosis": "grapple_access",
+      "duration_seconds": 222.3,
+      "log": "build/dome-autotune/cycle-3.log",
+      "peak_tick": 62400,
+      "real_blocks": 3424,
+      "return_code": 1,
+      "settings": {
+        "GOLEMS_DOME_FEASIBLE_LIMIT": "8",
+        "GOLEMS_DOME_GRAPPLE_PENALTY": "12",
+        "GOLEMS_DOME_SCAN_LIMIT": "64",
+        "GOLEMS_DOME_SKY_PENALTY": "0",
+        "GOLEMS_DOME_TARGET_WEIGHT": "1.75"
+      },
+      "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
+      "stall_tick": 64640,
+      "timestamp": "2026-10-30T23:53:51.140245+00:00",
+      "verified": true
+    },
+    {
+      "active_y": 30,
+      "complete": false,
+      "cycle": 4,
+      "diagnosis": "safe_work_pose",
+      "duration_seconds": 208.6,
+      "log": "build/dome-autotune/cycle-4.log",
+      "peak_tick": 58800,
+      "real_blocks": 3427,
+      "return_code": 1,
+      "settings": {
+        "GOLEMS_DOME_FEASIBLE_LIMIT": "8",
+        "GOLEMS_DOME_GRAPPLE_PENALTY": "36",
+        "GOLEMS_DOME_SCAN_LIMIT": "64",
+        "GOLEMS_DOME_SKY_PENALTY": "0",
+        "GOLEMS_DOME_TARGET_WEIGHT": "1.75"
+      },
+      "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
+      "stall_tick": 61160,
+      "timestamp": "2026-10-30T23:57:19.786284+00:00",
+      "verified": true
+    },
+    {
+      "active_y": 30,
+      "complete": false,
+      "cycle": 5,
+      "diagnosis": "trained_path_search",
+      "duration_seconds": 212.5,
+      "log": "build/dome-autotune/cycle-5.log",
+      "peak_tick": 61200,
+      "real_blocks": 3427,
+      "return_code": 1,
+      "settings": {
+        "GOLEMS_DOME_FEASIBLE_LIMIT": "8",
+        "GOLEMS_DOME_GRAPPLE_PENALTY": "48",
+        "GOLEMS_DOME_SCAN_LIMIT": "48",
+        "GOLEMS_DOME_SKY_PENALTY": "0",
+        "GOLEMS_DOME_TARGET_WEIGHT": "1.75"
+      },
+      "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
+      "stall_tick": 63420,
+      "timestamp": "2026-10-31T00:00:52.276593+00:00",
       "verified": true
     }
   ]
