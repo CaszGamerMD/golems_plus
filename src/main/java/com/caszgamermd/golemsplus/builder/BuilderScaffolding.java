@@ -635,7 +635,7 @@ public final class BuilderScaffolding {
                 .min(Comparator.comparingDouble(p->
                         BuilderScaffoldSiteScore.score(p,worker.blockPosition(),
                                 target,0,0,0,true))).orElse(null);
-        if(base==null){
+        if(base==null&&!blockedWork){
             // An existing platform is cheaper than a scaffold, but the
             // old code queried target.relative(side).below() ONLY.
             // That is often the SOLID FLOOR BLOCK rather than walkable
