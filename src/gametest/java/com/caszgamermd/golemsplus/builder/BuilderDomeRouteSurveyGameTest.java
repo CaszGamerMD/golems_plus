@@ -674,4 +674,70 @@ public final class BuilderDomeRouteSurveyGameTest {
         });
     }
 
+    /** The seven grounded legs above prove the route exists. This paired
+     * test asks the production navigator to discover it without any
+     * hand-fed tile sequence, exposing precisely the planning gap.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=1600,skyAccess=true)
+    public void actualY30FootingCanRouteDirectlyToRoof(GameTestHelper h){
+        ServerLevel world=h.getLevel();
+        BlockPos origin=h.absolutePos(new BlockPos(8,2,8));
+        world.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(origin.getX()>>4,
+                        origin.getZ()>>4),4);
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        Set<BlockPos> unfinished=Set.of(
+                new BlockPos(15,30,9),new BlockPos(15,30,10),
+                new BlockPos(15,30,11),new BlockPos(15,30,12),
+                new BlockPos(20,30,22));
+        try{
+            for(var b:LitematicFileReader.read(
+                    BuilderDomeFixture.unpack()).blocks()){
+                if(b.y()>30||b.y()==30&&unfinished.contains(
+                        new BlockPos(b.x(),b.y(),b.z()))
+                        ||BuilderVegetation.ignoreSchematicState(
+                                b.state()))continue;
+                var resolved=BuilderBlockResolver.resolve(b.state(),
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(resolved!=null)world.setBlock(origin.offset(
+                        b.x(),b.y(),b.z()),resolved.state(),2);
+            }
+        }catch(Exception e){h.fail("Direct roof fixture failed "+e);return;}
+        // Match the unoccupied first-leg headroom in the proven physical
+        // route, so direct and incremental navigation face identical blocks.
+        world.setBlock(origin.offset(8,27,10),Blocks.AIR.defaultBlockState(),2);
+        world.setBlock(origin.offset(9,27,10),Blocks.AIR.defaultBlockState(),2);
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(origin.getX()+8.834945218637586,origin.getY()+26,
+                origin.getZ()+10.432437775656581);
+        world.addFreshEntity(mob);
+        BlockPos goal=origin.offset(15,30,10);
+        final int[] accepted={0};
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.isNoGravity()
+                    ||mob.getY()<origin.getY()+24){
+                h.fail("Direct roof worker lost safe physical footing");return;
+            }
+            if(h.getTick()>=20&&h.getTick()%5==0
+                    &&WorkerNavigation.routeToExact(world,mob,goal,1))
+                accepted[0]++;
+            if(mob.onGround()&&mob.distanceToSqr(goal.getX()+.5,
+                    WorkerNavigation.surveyFloorHeight(world,goal),
+                    goal.getZ()+.5)<.15){
+                System.out.println("[DIRECT ROOF] PASS auto-planned roof access "
+                        +"ticks="+h.getTick()+" accepted="+accepted[0]);
+                h.succeed();return;
+            }
+            if(h.getTick()>1500)
+                h.fail("Automatic Y30 roof route stalled "
+                        +mob.position()+" accepted="+accepted[0]
+                        +" "+WorkerNavigation.debugStatus(mob)
+                        +" "+WorkerNavigation.diagnoseExecutableStand(
+                                world,mob,List.of(goal)));
+        });
+    }
+
 }
