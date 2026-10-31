@@ -587,6 +587,12 @@ public final class WorkerNavigation {
             ServerLevel level,PathfinderMob mob,List<BlockPos> goals,BlockPos avoid,
             java.util.function.Consumer<WorkerRoutePlanner.SearchStats> observer,
             Set<BlockPos> excluded){
+        return planExactRoute(level,mob,goals,avoid,observer,excluded,false);
+    }
+    private static WorkerRoutePlanner.Route planExactRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,BlockPos avoid,
+            java.util.function.Consumer<WorkerRoutePlanner.SearchStats> observer,
+            Set<BlockPos> excluded,boolean physicalEntrances){
         // Exact work probes must honor the same expiry as ordinary routing.
         // Otherwise a temporary congestion failure becomes a permanent wall
         // while a worker only asks for construction stances.
@@ -600,13 +606,13 @@ public final class WorkerNavigation {
         // The occupied start may straddle a ledge or partial block. Its
         // actual grounded height is authoritative; other nodes must still
         // prove their support and body clearance from world geometry.
-        var route=WorkerRoutePlanner.plan(start,goals,
+        var route=physicalEntrances?null:WorkerRoutePlanner.plan(start,goals,
                 at->standingTile(level,mob,at),
                 at->at.equals(start)&&mob.onGround()?mob.getY():floorAt(level,at),avoid,
                 at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
                 observer,excluded);
         if(!mob.onGround()||mob.isNoGravity()
-                ||standingTile(level,mob,start))return route;
+                ||!physicalEntrances&&standingTile(level,mob,start))return route;
         // A route planned from a block CENTER is not necessarily valid
         // from the golem's real offset feet when its integer tile center
         // has NO support. Baritone separates the route search from movement
@@ -618,6 +624,9 @@ public final class WorkerNavigation {
         // two tiles around an awkward roof corner. Search nearby true
         // floor elevations, but let the fractional collision lattice
         // prove that there is a supported way to reach each candidate.
+        // Also use these entrances AFTER a failed native/coarse first leg
+        // even when the start block center itself is standable. Its center
+        // is not the golem's real footing near a glass/slab roof corner.
         for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
             for(int dy=-1;dy<=1;dy++){
                 if(dx==0&&dz==0)continue;
@@ -681,9 +690,26 @@ public final class WorkerNavigation {
         if(progress!=null)progress.detourFirstLegRetries=0;
         for(int attempt=0;attempt<6;attempt++){
             WorkerRoutePlanner.Route route=planExactRoute(
-                    level,mob,goals,avoid,null,rejected);
+                    level,mob,goals,avoid,null,rejected,
+                    // The first two attempts use cheap ordinary A*.
+                    // If their first legs are physically impossible,
+                    // search verified alternate entrances FROM REAL FEET.
+                    attempt>=2&&mob.onGround());
             if(route==null||route.steps().isEmpty()
                     ||requireComplete&&!route.complete()){
+                // A path from the integer tile center can fail outright
+                // while a real off-center foothold has a legal first
+                // sidestep/downhill entrance. Try the bounded physical
+                // alternatives before treating that as an unreachable
+                // construction target.
+                if(attempt==0&&mob.onGround()&&!mob.isNoGravity()){
+                    var physical=planExactRoute(level,mob,goals,avoid,
+                            null,rejected,true);
+                    if(physical!=null&&!physical.steps().isEmpty()
+                            &&(!requireComplete||physical.complete())
+                            &&canBeginTrainedLeg(level,mob,physical))
+                        return physical;
+                }
                 // The coarse grid may have NO center-to-center edge even
                 // where the actual .65-wide body fits around a nearby
                 // corner. For local destinations, let the continuously
