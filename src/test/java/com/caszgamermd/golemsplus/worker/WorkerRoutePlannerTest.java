@@ -77,6 +77,21 @@ final class WorkerRoutePlannerTest {
         assertNull(find(from,List.of(goal),Set.of(from,goal)),
                 "Both cardinal clearance cells must be walkable for a diagonal");
     }
+    @Test void physicallyCertifiedDiagonalMayBypassBlockedTileCenters(){
+        BlockPos start=at(0,64,0),goal=at(1,64,1);
+        Set<BlockPos> floor=Set.of(start,goal);
+        assertNull(find(start,List.of(goal),floor));
+        var rejected=WorkerRoutePlanner.plan(start,List.of(goal),
+                floor::contains,BlockPos::getY,null,unused->0,
+                null,Set.of(),(a,b)->false);
+        assertNull(rejected,"An uncertified diagonal stays forbidden");
+        var certified=WorkerRoutePlanner.plan(start,List.of(goal),
+                floor::contains,BlockPos::getY,null,unused->0,
+                null,Set.of(),(a,b)->a.equals(start)&&b.equals(goal));
+        assertNotNull(certified);
+        assertEquals(List.of(goal),certified.steps());
+        assertEquals(14,certified.cost());
+    }
     @Test void trainedDoorCostSelectsCollisionValidLongerRoute(){
         BlockPos from=at(0,64,0),goal=at(4,64,0);
         Set<BlockPos> floor=new HashSet<>();

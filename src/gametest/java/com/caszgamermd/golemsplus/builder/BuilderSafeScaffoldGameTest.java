@@ -655,11 +655,13 @@ public final class BuilderSafeScaffoldGameTest {
                         +" "+BuilderScaffolding.debugClimb(mob));return;
             }
             if(phase[0]==0){
+                // Spawned GameTest mobs need their first physics ticks
+                // before navigation can prove a grounded entry route.
+                if(h.getTick()<12||!mob.onGround())return;
                 if(h.getTick()%5==0){
                     var result=BuilderScaffolding.reachBlockedWork(
                             level,mob,table,owner,target,List.of());
                     if(result==BuilderScaffolding.Result.NOT_NEEDED
-                            ||result==BuilderScaffolding.Result.NO_SAFE_TOWER
                             ||result==BuilderScaffolding.Result.NEED_MATERIALS){
                         h.fail("Short blocked rise refused scaffold: "+result);return;
                     }

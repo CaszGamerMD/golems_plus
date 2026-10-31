@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 import net.minecraft.core.BlockPos;
@@ -99,6 +100,20 @@ public final class WorkerRoutePlanner {
             BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty,
             java.util.function.Consumer<SearchStats> observer,
             Set<BlockPos> excluded){
+        return plan(start,goals,standable,floor,avoid,terrainPenalty,
+                observer,excluded,null);
+    }
+    /** A physical collision sweep may prove a tight diagonal even when
+     * the center of one orthogonal side tile is not walkable. The caller
+     * must verify the WHOLE body and continuous real footing; no implicit
+     * corner-cutting is permitted without that certificate.
+     */
+    public static Route plan(BlockPos start,List<BlockPos> goals,
+            Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
+            BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty,
+            java.util.function.Consumer<SearchStats> observer,
+            Set<BlockPos> excluded,
+            BiPredicate<BlockPos,BlockPos> sweptDiagonal){
         if(start==null||goals==null||goals.isEmpty())return null;
         Set<BlockPos> ends=new HashSet<>(goals);
         if(ends.contains(start))return new Route(List.of(),true,0,0);
@@ -158,18 +173,24 @@ public final class WorkerRoutePlanner {
                         if(rise>.6001)continue;
                         BlockPos sideX=current.offset(dir[0],0,0);
                         BlockPos sideZ=current.offset(0,0,dir[1]);
-                        if(!validCache.computeIfAbsent(sideX,standable::test)
-                                ||!validCache.computeIfAbsent(sideZ,standable::test))
-                            continue;
-                        double xHeight=heightCache.computeIfAbsent(sideX,
-                                floor::applyAsDouble);
-                        double zHeight=heightCache.computeIfAbsent(sideZ,
-                                floor::applyAsDouble);
-                        if(!Double.isFinite(xHeight)||!Double.isFinite(zHeight)
-                                ||Math.abs(xHeight-fromHeight)>.6001
-                                ||Math.abs(zHeight-fromHeight)>.6001
-                                ||Math.abs(xHeight-toHeight)>.6001
-                                ||Math.abs(zHeight-toHeight)>.6001)continue;
+                        boolean sideXValid=validCache.computeIfAbsent(
+                                sideX,standable::test);
+                        boolean sideZValid=validCache.computeIfAbsent(
+                                sideZ,standable::test);
+                        double xHeight=sideXValid
+                                ?heightCache.computeIfAbsent(sideX,
+                                        floor::applyAsDouble):Double.NaN;
+                        double zHeight=sideZValid
+                                ?heightCache.computeIfAbsent(sideZ,
+                                        floor::applyAsDouble):Double.NaN;
+                        boolean ordinarySides=sideXValid&&sideZValid
+                                &&Double.isFinite(xHeight)&&Double.isFinite(zHeight)
+                                &&Math.abs(xHeight-fromHeight)<=.6001
+                                &&Math.abs(zHeight-fromHeight)<=.6001
+                                &&Math.abs(xHeight-toHeight)<=.6001
+                                &&Math.abs(zHeight-toHeight)<=.6001;
+                        if(!ordinarySides&&(sweptDiagonal==null
+                                ||!sweptDiagonal.test(current,next)))continue;
                     }
                     int turn=0;
                     BlockPos parent=parents.get(current);

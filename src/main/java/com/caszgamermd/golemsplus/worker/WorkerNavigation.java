@@ -548,6 +548,20 @@ public final class WorkerNavigation {
                 at->at.equals(start)&&mob.onGround()?mob.getY():floorAt(level,at),avoid,
                 at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
                 observer,excluded);
+        if(route==null&&mob.onGround()&&!mob.isNoGravity()){
+            // Some narrow roof corners let the real 0.65-wide Builder
+            // pass diagonally although neither adjacent TILE CENTER is
+            // walkable. Retry the SAME A* with a certified physical edge;
+            // a continuous swept body and support probe must prove it.
+            // Ordinary eight-direction routes keep their fast path.
+            route=WorkerRoutePlanner.plan(start,goals,
+                    at->standingTile(level,mob,at),
+                    at->at.equals(start)&&mob.onGround()
+                            ?mob.getY():floorAt(level,at),avoid,
+                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
+                    observer,excluded,
+                    (from,to)->physicallySweptDiagonal(level,mob,from,to));
+        }
         if(!mob.onGround()||standingTile(level,mob,start))return route;
         // Corner-supported golems can be genuinely ON GROUND while the
         // integer tile under their FEET is not standable at its CENTER.
@@ -608,6 +622,19 @@ public final class WorkerNavigation {
         // cannot be physically executed from the offset body.
         if(best!=null)return best;
         return route!=null&&canBeginTrainedLeg(level,mob,route)?route:null;
+    }
+
+    private static boolean physicallySweptDiagonal(ServerLevel level,
+            PathfinderMob mob,BlockPos from,BlockPos to){
+        if(Math.abs(from.getX()-to.getX())!=1
+                ||Math.abs(from.getZ()-to.getZ())!=1)return false;
+        double a=floorAt(level,from),b=floorAt(level,to);
+        // Never use the same-height sweep as a synthetic jump or drop.
+        if(!Double.isFinite(a)||!Double.isFinite(b)
+                ||Math.abs(a-b)>.04)return false;
+        return supportedCornerSegment(level,mob,
+                new Vec3(from.getX()+.5,a,from.getZ()+.5),
+                new Vec3(to.getX()+.5,b,to.getZ()+.5));
     }
 
     /**
