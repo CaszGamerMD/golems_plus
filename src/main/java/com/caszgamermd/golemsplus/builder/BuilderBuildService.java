@@ -673,7 +673,12 @@ public final class BuilderBuildService {
             // After a genuine physical approach timeout, try a supported,
             // inventory-paid scaffold bridge rooted on this same build.
             // Never interrupt a moving rope or a current bridge session.
-            if(yDiff>=-1&&now-activity.workTravelSince>200
+            // Leave executable ordinary walking routes alone. A fixed
+            // same-height timeout was taking Builders off their valid
+            // low-layer work paths and onto needless scaffold searches.
+            // Same-Y scaffolding is instead offered below only AFTER
+            // all safe walking stances or their real routes are rejected.
+            if(yDiff>1&&now-activity.workTravelSince>260
                     &&!BuilderGrappleAccess.active(worker)
                     &&scaffoldBlockedWork(level,worker,table,owner,pos,
                             plan.steps()))
@@ -860,7 +865,12 @@ public final class BuilderBuildService {
             // Keep any deployed scaffolding until this ten-block work order
             // completes; retrieving per placed block caused route churn.
         }catch(Exception exception){
-            table.setProblem("Builder paused: "+exception.getMessage());
+            table.setProblem("Builder paused: "
+                    +exception.getClass().getSimpleName()+": "
+                    +exception.getMessage());
+            System.err.println("[BUILDER WORK EXCEPTION] "+worker.position()
+                    +" claimed="+table.claimedStep(worker.getUUID()));
+            exception.printStackTrace(System.err);
         }
     }
     /** Reconcile the selected job's visible materials immediately after
