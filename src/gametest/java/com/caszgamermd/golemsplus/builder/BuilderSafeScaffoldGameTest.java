@@ -680,4 +680,60 @@ public final class BuilderSafeScaffoldGameTest {
             }
         });
     }
+
+    /**
+     * Measure the real collision/feet heights of an idle Builder on a
+     * full cube, inside scaffolding, and initially above scaffolding.
+     * SetPos is only the GameTest's initial spawn placement; all measured
+     * positions follow 45 native entity-physics ticks with normal gravity.
+     */
+    @GameTest(maxTicks=90,skyAccess=true)
+    public void reportsRealBuilderFeetHeightsOnAndInsideScaffolding(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<11;x++)for(int z=0;z<7;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        var anchored=Blocks.SCAFFOLDING.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,0)
+                .setValue(net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM,true);
+        helper.setBlock(5,2,3,anchored);
+        helper.setBlock(8,2,3,anchored);
+        BlockPos full=helper.absolutePos(new BlockPos(2,1,3));
+        BlockPos inside=helper.absolutePos(new BlockPos(5,2,3));
+        BlockPos top=helper.absolutePos(new BlockPos(8,2,3));
+        BuilderGolem stone=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BuilderGolem in=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BuilderGolem on=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        stone.setPos(full.getX()+.5,full.getY()+1.5,full.getZ()+.5);
+        in.setPos(inside.getX()+.5,inside.getY()+.38,inside.getZ()+.5);
+        on.setPos(top.getX()+.5,top.getY()+1.5,top.getZ()+.5);
+        level.addFreshEntity(stone);
+        level.addFreshEntity(in);
+        level.addFreshEntity(on);
+        helper.onEachTick(()->{
+            long tick=helper.getTick();
+            if(tick!=1&&tick!=10&&tick!=25&&tick!=45)return;
+            System.out.println("[SCAFFOLD FEET MEASUREMENT] tick="+tick
+                    +" stoneBlockY="+full.getY()
+                    +" stoneFeetY="+stone.getY()
+                    +" stoneGrounded="+stone.onGround()
+                    +" stoneFeetBlockY="+stone.blockPosition().getY()
+                    +" scaffoldBlockY="+inside.getY()
+                    +" insideFeetY="+in.getY()
+                    +" insideGrounded="+in.onGround()
+                    +" insideFeetBlockY="+in.blockPosition().getY()
+                    +" aboveScaffoldFeetY="+on.getY()
+                    +" aboveScaffoldGrounded="+on.onGround()
+                    +" aboveFeetBlockY="+on.blockPosition().getY()
+                    +" insideCell="+level.getBlockState(in.blockPosition())
+                    +" aboveBelowFeet="+level.getBlockState(on.blockPosition().below()));
+            if(tick==45){
+                if(!stone.isAlive()||!in.isAlive()||!on.isAlive()){
+                    helper.fail("A real Builder disappeared during height measurement");
+                    return;
+                }
+                helper.succeed();
+            }
+        });
+    }
 }
