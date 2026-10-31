@@ -405,6 +405,50 @@ public final class BuilderConstructionFrontierGameTest {
         });
     }
     @GameTest(maxTicks=80,skyAccess=true)
+    public void roofWorkerKeepsGroundedLaunchTwoBelowFutureLayer(
+            GameTestHelper h){
+        floor(h);
+        var world=h.getLevel();
+        var mob=worker(h,h.absolutePos(new BlockPos(2,2,3)));
+        var beneath=worker(h,h.absolutePos(new BlockPos(5,2,3)));
+        var table=planner(h,mob,2);
+        BlockPos current=h.absolutePos(new BlockPos(5,4,3));
+        BlockPos future=h.absolutePos(new BlockPos(5,5,3));
+        var steps=List.of(
+                new BuilderConstructionPlan.Step(current.getX(),
+                        current.getY(),current.getZ(),"minecraft:stone",
+                        "minecraft:stone"),
+                new BuilderConstructionPlan.Step(future.getX(),
+                        future.getY(),future.getZ(),"minecraft:stone",
+                        "minecraft:stone"));
+        h.onEachTick(()->{
+            if(h.getTick()!=16)return;
+            if(!mob.onGround()||!BuilderBuildService.canWaitNearFrontier(
+                    world,mob,table,steps,List.of(0,1),current.getY())){
+                h.fail("Y-2 roof staging cannot hold while higher work waits");
+                return;
+            }
+            if(!beneath.onGround()||!BuilderBuildService.canWaitNearFrontier(
+                    world,beneath,table,steps,List.of(0,1),current.getY())){
+                h.fail("Below-roof waiting falsely used same-Y arm clearance");
+                return;
+            }
+            if(table.claimPreferredBuilderZoneStep(
+                    mob.getUUID(),List.of(0,1),steps,0)!=0
+                    ||!table.completeBuilderStep(mob.getUUID(),0)){
+                h.fail("Could not finish the lower roof zone task");return;
+            }
+            if(!BuilderBuildService.canWaitNearFrontier(
+                    world,mob,table,steps,List.of(0,1),current.getY())){
+                h.fail("Lost safe roof staging when only upper work remained");
+                return;
+            }
+            System.out.println("[FRONTIER] PASS kept Y-2 grounded roof "
+                    +"staging until upper layer unlocks");
+            h.succeed();
+        });
+    }
+    @GameTest(maxTicks=80,skyAccess=true)
     public void elevatedRetryWaitsClearOfEveryCrewsPendingTargets(GameTestHelper h){
         floor(h);
         for(int x=1;x<=6;x++)for(int z=1;z<=6;z++)

@@ -50,6 +50,7 @@ public final class BuilderBuildService {
         Action phase=Action.STAGE_MATERIALS;
         long blockedSince=-1;
         long frontierWaitSince=-1;
+        int frontierWaitLayer=Integer.MIN_VALUE;
         long workTravelSince=-1;
         void setStep(int next){
             if(index!=next){
@@ -66,20 +67,22 @@ public final class BuilderBuildService {
         return activity;
     }
     /** A retry cooldown is not a request to descend to storage. Keep a
-     * grounded worker on its current work level when it still owns work
-     * there, provided it occupies no unfinished placement envelope.
-     * All workers still honor explicit teammate yield requests first.
+     * grounded worker on its current work level, or up to two blocks
+     * BELOW its next work layer, when its zone still has work now OR
+     * ahead. This preserves hard-won high-roof access while another
+     * zone completes the previous layer. The worker must remain clear
+     * of every unfinished current-layer placement envelope.
      */
     static boolean canWaitNearFrontier(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,
             List<Integer> zone,int layer){
         if(!worker.onGround()||worker.isNoGravity()
-                ||worker.blockPosition().getY()<layer
+                ||worker.blockPosition().getY()<layer-2
                 ||worker.blockPosition().getY()>layer+1
                 ||!level.noCollision(worker,worker.getBoundingBox()))return false;
         boolean pending=false;
         for(int idx:zone)
-            if(idx>=0&&idx<steps.size()&&steps.get(idx).y()==layer
+            if(idx>=0&&idx<steps.size()&&steps.get(idx).y()>=layer
                     &&!table.builderZoneDone(List.of(idx))){pending=true;break;}
         if(!pending)return false;
         // Check the whole crew's current layer, not only this worker's
@@ -89,11 +92,28 @@ public final class BuilderBuildService {
             if(step.y()!=layer||step.ignorePlant()
                     ||table.builderZoneDone(List.of(idx)))continue;
             BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+            // Waiting TWO levels below an overhead cap is physically
+            // safe even directly under its X/Z footprint: the 1.62m
+            // Builder fits entirely below that future block. Apply the
+            // arm/shoulder margin only when its body actually rises
+            // into the target's height, otherwise the last roof workers
+            // discard a good staging ledge for a fictitious collision.
+            boolean bodyAtHeight=worker.getBoundingBox().maxY
+                    >target.getY()-.05;
             if(worker.getBoundingBox().intersects(
                     new net.minecraft.world.phys.AABB(target).inflate(.1,0,.1))
-                    ||!BuilderPlacementSpace.horizontalClear(target,worker))return false;
+                    ||bodyAtHeight
+                        &&!BuilderPlacementSpace.horizontalClear(target,worker))
+                return false;
         }
         return true;
+    }
+    private static boolean hasFutureZoneWork(WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,int layer){
+        for(int idx:zone)
+            if(idx>=0&&idx<steps.size()&&steps.get(idx).y()>layer
+                    &&!table.builderZoneDone(List.of(idx)))return true;
+        return false;
     }
 
     // Reuse the immutable server-side schematic work plan across queued
@@ -480,12 +500,21 @@ public final class BuilderBuildService {
                 }
                 if(canWaitNearFrontier(level,worker,table,plan.steps(),zone,layer)){
                     var waiting=workerActions.computeIfAbsent(worker,k->new WorkerAction());
-                    if(waiting.frontierWaitSince<0)
+                    if(waiting.frontierWaitSince<0
+                            ||waiting.frontierWaitLayer!=layer){
                         waiting.frontierWaitSince=level.getGameTime();
+                        waiting.frontierWaitLayer=layer;
+                    }
                     // Cover the 60-tick retry cooldown, but never camp
-                    // forever on a disconnected ledge. An expired wait
-                    // remains expired until a real assignment is found.
-                    if(level.getGameTime()-waiting.frontierWaitSince<=80){
+                    // forever on a disconnected ledge with no pending
+                    // higher work. If this zone HAS an unfinished upper
+                    // roof layer, retain the physical ledge until that
+                    // layer unlocks rather than descend 30 blocks and
+                    // later demand an impossible single grapple ascent.
+                    boolean future=hasFutureZoneWork(
+                            table,plan.steps(),zone,layer);
+                    if(future||level.getGameTime()
+                            -waiting.frontierWaitSince<=600){
                         com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                         return;
                     }
