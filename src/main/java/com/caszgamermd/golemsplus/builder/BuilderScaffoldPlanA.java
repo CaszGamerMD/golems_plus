@@ -44,6 +44,7 @@ public final class BuilderScaffoldPlanA {
         int bridgeTicks,reclimbs;
         double highest=-Double.MAX_VALUE;
         double lastDistance=Double.POSITIVE_INFINITY;
+        net.minecraft.world.phys.Vec3 lastApproachFeet;
         Job(BlockPos target,BlockPos base,BlockPos exit,
                 BlockPos planner,Direction direction,int top,int span,
                 boolean support,long now){
@@ -629,6 +630,22 @@ public final class BuilderScaffoldPlanA {
                 if(Math.abs(worker.getX()-j.base.getX()-.5)>.3
                         ||Math.abs(worker.getZ()-j.base.getZ()-.5)>.3
                         ||Math.abs(worker.getY()-j.base.getY())>.4){
+                    // A detour may initially go AWAY from the tower.
+                    // Physical displacement, not decreasing straight-line
+                    // distance, keeps this strategy alive. If its feet
+                    // have not moved for 100 ticks, release the unbuilt
+                    // tower plan so another tool can be offered.
+                    if(j.lastApproachFeet==null
+                            ||worker.position().distanceToSqr(
+                                    j.lastApproachFeet)>=.04){
+                        j.lastApproachFeet=worker.position();
+                        j.lastProgress=level.getGameTime();
+                    }
+                    if(level.getGameTime()-j.lastProgress>=100){
+                        jobs.remove(worker); // APPROACH spent no scaffold
+                        WorkerNavigation.stop(worker);
+                        return Result.NO_SAFE_ROUTE;
+                    }
                     WorkerNavigation.routeToExact(level,worker,j.base,1.0);
                     return Result.MOVING;
                 }

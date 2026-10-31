@@ -5,6 +5,7 @@ import com.caszgamermd.golemsplus.world.WorksiteContent;
 import com.caszgamermd.golemsplus.worker.WorkerPhase;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -60,6 +61,12 @@ public final class BuilderBuildService {
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
+    /** A tool that just failed is not forbidden forever, and an available
+     * tool does not automatically authorize a new construction claim.
+     * Option selection applies only to the worker's ALREADY claimed cell.
+     */
+    private static final Map<BuilderGolem,BuilderAccessOptionSelector>
+            accessSelectors=new WeakHashMap<>();
     private static WorkerAction action(BuilderGolem worker,int index){
         var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
         activity.setStep(index);
@@ -148,6 +155,59 @@ public final class BuilderBuildService {
         // When the shaft opens onto a real roof surface, leave the top
         // physically before starting an ordinary placement approach.
         return BuilderScaffolding.stepOffTowardWork(level,worker,table,target);
+    }
+    /** Recovery offers are advisory. Each underlying controller still
+     * proves footing, actual movement, items, and a safe return. We do
+     * not claim distant work just because a speculative tool exists.
+     *
+     * Check every ten ticks after ordinary travel has had time to work;
+     * otherwise dozens of separate expensive A* tower probes per Builder
+     * tick would make physically valid approaches feel stuck themselves.
+     */
+    private static boolean recoverWithOptions(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            ServerPlayer owner,BlockPos target,
+            List<BuilderConstructionPlan.Step> steps,long now){
+        if(now%10!=0||BuilderGrappleAccess.active(worker))return false;
+        var options=new ArrayList<BuilderAccessOptionSelector.Offer>();
+        BlockPos walk=BuilderPlacementSpace.approachWithRules(
+                level,worker,target,at->BuilderConstructionPlanner.safeStand(
+                        level,worker,target,at));
+        options.add(new BuilderAccessOptionSelector.Offer(
+                BuilderAccessOptionSelector.Tool.WALK,10,walk!=null));
+        boolean grapple=target.getY()>worker.blockPosition().getY()
+                &&worker.carriedCount(WorksiteContent.GRAPPLE_HOOK)>0
+                &&BuilderGrappleAccess.canPlanWorkAscent(level,worker,target);
+        options.add(new BuilderAccessOptionSelector.Offer(
+                BuilderAccessOptionSelector.Tool.GRAPPLE,35,grapple));
+        boolean scaffold=BuilderScaffoldPlanA.canPlan(
+                level,worker,table,target,steps)
+                ||BuilderScaffolding.canPlanAccess(
+                        level,worker,table,target,steps);
+        int scaffoldCost=70+Math.max(0,target.getY()
+                -worker.blockPosition().getY())*4;
+        options.add(new BuilderAccessOptionSelector.Offer(
+                BuilderAccessOptionSelector.Tool.SCAFFOLD,
+                scaffoldCost,scaffold));
+        var selector=accessSelectors.computeIfAbsent(worker,
+                k->new BuilderAccessOptionSelector());
+        var tool=selector.choose(target,worker.position(),now,options);
+        if(tool==null||tool==BuilderAccessOptionSelector.Tool.WALK)
+            return false;
+        if(tool==BuilderAccessOptionSelector.Tool.GRAPPLE){
+            var result=BuilderGrappleAccess.reachWork(
+                    level,worker,table,target);
+            if(result==BuilderGrappleAccess.Result.MOVING)return true;
+            if(result!=BuilderGrappleAccess.Result.READY)
+                selector.reject(tool,now);
+            return false;
+        }
+        if(scaffoldWork(level,worker,table,owner,target,steps))return true;
+        if(!BuilderScaffoldPlanA.hasPlan(worker)
+                ||!BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                        level,worker,table,target))
+            selector.reject(tool,now);
+        return false;
     }
     private BuilderBuildService(){}
     /** Start the warehouse packing reservation as soon as the user
@@ -661,15 +721,15 @@ public final class BuilderBuildService {
                 return;
             }
             int yDiff=pos.getY()-worker.blockPosition().getY();
-            // A grapple can repeatedly select an unreachable high ledge.
-            // After a genuine physical approach timeout, try a supported,
-            // inventory-paid scaffold bridge rooted on this same build.
-            // Never interrupt a moving rope or a current bridge session.
-            if(yDiff>1&&now-activity.workTravelSince>260
-                    &&!BuilderGrappleAccess.active(worker)
-                    &&BuilderScaffoldPlanA.canPlan(
-                            level,worker,table,pos,plan.steps())
+            // Once an actual claim stops making progress, consider tools
+            // with short-lived failure memory. The first choice remains an
+            // ordinary walk; a fallback isn't a mandatory height rule.
+            if(BuilderScaffoldPlanA.hasPlan(worker)
                     &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
+                return;
+            if(now-activity.workTravelSince>320
+                    &&recoverWithOptions(level,worker,table,owner,pos,
+                            plan.steps(),now))
                 return;
             if(yDiff>1){
                 var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
@@ -909,6 +969,8 @@ public final class BuilderBuildService {
                     +" | gravity="+(!worker.isNoGravity())
                     +" | sneaking="+worker.isShiftKeyDown()
                     +" | climb="+BuilderScaffolding.debugClimb(worker)
+                    +" | options="+(accessSelectors.get(worker)==null
+                            ?"none":accessSelectors.get(worker).status())
                     +" | depot="+(table.builderUnloadingStorage()==null
                             ?"unlinked":table.builderUnloadingStorage().toShortString());
         }catch(Exception error){
