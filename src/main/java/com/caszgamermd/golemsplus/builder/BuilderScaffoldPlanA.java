@@ -39,6 +39,9 @@ public final class BuilderScaffoldPlanA {
         final BlockPos target,base,exit,planner;
         final List<BlockPos> bridgePath;
         final int top,bridgeSpan;
+        // An adjacent, walkable launch lets the Builder STEP BACK from a
+        // roof lip before it pays for and climbs the elevated scaffold.
+        BlockPos launch;
         int bridgeStep=2,returnStep=1;
         Phase phase=Phase.APPROACH;
         long lastProgress;
@@ -384,6 +387,8 @@ public final class BuilderScaffoldPlanA {
         options.sort(Comparator.comparingDouble(j->j.lastDistance));
         List<BlockPos> entryCandidates=new ArrayList<>();
         List<BlockPos> levelEntries=new ArrayList<>();
+        List<BlockPos> stagedEntries=new ArrayList<>();
+        Map<BlockPos,Job> stagedJobs=new HashMap<>();
         for(Job candidate:options){
             // At most 4 directions x 6 distances x 10 elevations = 240
             // physical candidates. The old top-96 material-cost cut
@@ -437,6 +442,19 @@ public final class BuilderScaffoldPlanA {
                             level,worker,candidate.base))return candidate;
             if(!workPose&&WorkerNavigation.canReachExact(
                     level,worker,candidate.base))return candidate;
+            // The base is AIR above a supporting roof block. It is not
+            // itself a valid walking destination from the lower ledge.
+            // Search for a real adjacent standing tile: the trained
+            // route may initially go AWAY from the target, then walk
+            // back to a side from which an ordinary one-block climb
+            // can begin. Do not install scaffold until that walk ends.
+            if(workPose)
+                for(BlockPos launch:sideLaunchCandidates(
+                        level,worker,candidate.base))
+                    if(!stagedJobs.containsKey(launch)){
+                        stagedEntries.add(launch);
+                        stagedJobs.put(launch,candidate);
+                    }
             if(!entryCandidates.contains(candidate.base))
                 entryCandidates.add(candidate.base);
             if(candidate.base.getY()<=worker.blockPosition().getY()
@@ -444,6 +462,17 @@ public final class BuilderScaffoldPlanA {
                 levelEntries.add(candidate.base);
         }
         if(!workPose)return null;
+        BlockPos staged=stagedEntries.isEmpty()?null:
+                WorkerNavigation.selectExecutableStand(
+                        level,worker,stagedEntries);
+        if(staged!=null){
+            Job candidate=stagedJobs.get(staged);
+            candidate.launch=staged;
+            System.out.println("[PLAN A STEP BACK] walk to safe roof launch "
+                    +staged.toShortString()+" before scaffold base "
+                    +candidate.base.toShortString());
+            return candidate;
+        }
         // Use the same trained/fractional movement preflight as work
         // approaches, not native canReachExact, which rejects some real
         // off-center detours on high roofs. One bounded multi-goal search
@@ -590,6 +619,33 @@ public final class BuilderScaffoldPlanA {
                 // actual entity collision volume before buying the shaft.
                 &&level.noCollision(worker,
                         worker.getBoundingBox().move(0,.65,0));
+    }
+    /** Footprint-clear, one-tile-away roof standing positions from which
+     * the base can actually be placed and climbed. The planner separately
+     * proves a real walk from the current offset body to this position.
+     * A centered launch may be behind the worker, or around a roof corner.
+     */
+    private static List<BlockPos> sideLaunchCandidates(ServerLevel level,
+            BuilderGolem worker,BlockPos base){
+        List<BlockPos> result=new ArrayList<>();
+        if(!level.getBlockState(base).isAir()
+                ||!level.getBlockState(base.below()).isFaceSturdy(
+                        level,base.below(),Direction.UP))return result;
+        for(Direction side:Direction.Plane.HORIZONTAL){
+            BlockPos foot=base.below().relative(side);
+            if(!WorkerNavigation.canStandOn(level,worker,foot)
+                    ||!level.getBlockState(foot.below()).isFaceSturdy(
+                            level,foot.below(),Direction.UP))continue;
+            var body=worker.getBoundingBox().move(
+                    foot.getX()+.5-worker.getX(),
+                    foot.getY()-worker.getY(),
+                    foot.getZ()+.5-worker.getZ());
+            if(body.intersects(new net.minecraft.world.phys.AABB(base))
+                    ||!level.noCollision(worker,body)
+                    ||!level.noCollision(worker,body.move(0,.65,0)))continue;
+            result.add(foot);
+        }
+        return result;
     }
     /** Physically sidestep a few centimeters off a proposed elevated
      * scaffold footprint before paying for the real column. Every step
@@ -946,6 +1002,27 @@ public final class BuilderScaffoldPlanA {
                 double horizontal=worker.distanceToSqr(
                         j.base.getX()+.5,worker.getY(),j.base.getZ()+.5);
                 boolean sideEntry=canEnterFromBelow(level,worker,j.base);
+                if(j.launch!=null&&!sideEntry){
+                    double distance=worker.distanceToSqr(
+                            j.launch.getX()+.5,j.launch.getY(),
+                            j.launch.getZ()+.5);
+                    if(distance<j.closestApproach-.12){
+                        j.closestApproach=distance;
+                        j.lastProgress=level.getGameTime();
+                    }
+                    if(level.getGameTime()-j.lastProgress>180){
+                        rejectEntry(level,worker,j.base);
+                        System.out.println("[PLAN A STEP BACK] launch blocked "
+                                +j.launch.toShortString()+" from "
+                                +worker.blockPosition().toShortString()
+                                +"; try another scaffold base");
+                        jobs.remove(worker);
+                        return Result.NO_SAFE_ROUTE;
+                    }
+                    WorkerNavigation.routeToExact(
+                            level,worker,j.launch,1.0);
+                    return Result.MOVING;
+                }
                 if(!sideEntry&&j.base.getY()>worker.getY()+.40
                         &&j.base.getY()<=worker.getY()+1.10){
                     BlockPos launch=alternateSideLaunch(level,worker,j.base);
