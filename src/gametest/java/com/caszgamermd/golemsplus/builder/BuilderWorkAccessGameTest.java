@@ -79,6 +79,21 @@ public final class BuilderWorkAccessGameTest {
             if(helper.getTick()>=20&&helper.getTick()%5==0)
                 last[0]=BuilderScaffoldPlanA.reachWorkPose(
                         level,worker,table,owner,target,steps);
+            if(helper.getTick()>=40&&helper.getTick()<=210
+                    &&helper.getTick()%10==0){
+                var bbox=worker.getBoundingBox();
+                BlockPos feet=worker.blockPosition();
+                System.out.println("[ROOF JUMP CONTACT] tick="+helper.getTick()
+                        +" xyz="+worker.position()
+                        +" vel="+worker.getDeltaMovement()
+                        +" ground="+worker.onGround()
+                        +" roof="+level.getBlockState(feet.above())
+                        +" head="+level.getBlockState(feet.above(2))
+                        +" riseOpen="+level.noCollision(worker,bbox.move(0,.42,0))
+                        +" leftRiseOpen="+level.noCollision(worker,
+                                bbox.move(-.12,.42,0))
+                        +" session="+BuilderScaffolding.debugClimb(worker));
+            }
             if(helper.getTick()%150==0)
                 System.out.println("[ROOF SIDE CLIMB] tick="+helper.getTick()
                         +" y="+(worker.getY()-origin.getY())
