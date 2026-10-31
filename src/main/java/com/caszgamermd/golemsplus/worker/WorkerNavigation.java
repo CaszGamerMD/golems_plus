@@ -77,6 +77,14 @@ public final class WorkerNavigation {
         // remain persisted on the worker and may safely resume after reload.
         List<BlockPos> weightedRoute=List.of();
         int routeCursor;
+        // PathExecutor-style physical progress watchdog. A vanilla path
+        // can say "accepted" while the entity never leaves its footing.
+        // Track the FIRST planned leg across repeated route requests;
+        // changing native path handles must not reset this clock.
+        BlockPos executingFirstLeg;
+        Vec3 executionAnchor;
+        int executionProgressAt;
+        int physicallyRejectedLegs;
     }
     /** Sub-block collision searches are considerably more expensive than
      * following their results. Share repeated previews for the SAME real
@@ -93,6 +101,53 @@ public final class WorkerNavigation {
             new WeakHashMap<>();
     private static Progress state(PathfinderMob mob){
         return states.computeIfAbsent(mob,m->new Progress());
+    }
+    private static void trackFirstLeg(PathfinderMob mob,Progress p,
+            BlockPos first){
+        if(first==null)return;
+        if(!first.equals(p.executingFirstLeg)||p.executionAnchor==null){
+            p.executionAnchor=mob.position();
+            p.executionProgressAt=mob.tickCount;
+        }
+        p.executingFirstLeg=first.immutable();
+    }
+    /** A plan is not progress. If the mob never travels even a quarter
+     * block after 70 physical ticks, blacklist the stalled first edge
+     * briefly and let A* choose another opening (including backwards).
+     * Waiting at a door, in a crowd or under a special movement controller
+     * is not evidence of a broken ground route.
+     */
+    private static boolean executionStalled(ServerLevel level,
+            PathfinderMob mob,Progress p){
+        if(p.executingFirstLeg==null||p.executionAnchor==null)return false;
+        if(p.wait>0||p.queuedDoor!=null||p.waitingDoor
+                ||p.finishingDoor||p.terrainStep!=null
+                ||!p.cornerPath.isEmpty()||!mob.onGround()){
+            p.executionProgressAt=mob.tickCount;
+            return false;
+        }
+        if(mob.position().distanceToSqr(p.executionAnchor)>.25*.25){
+            p.executionAnchor=mob.position();
+            p.executionProgressAt=mob.tickCount;
+            return false;
+        }
+        if(mob.tickCount-p.executionProgressAt<70)return false;
+        boolean crowded=nearbyWorkers(level,mob).stream().anyMatch(other->
+                other.distanceToSqr(mob.position())<1.5*1.5);
+        if(crowded){
+            p.executionProgressAt=mob.tickCount;
+            return false;
+        }
+        p.lastBad=p.executingFirstLeg;
+        p.avoidUntil=mob.tickCount+90;
+        p.physicallyRejectedLegs++;
+        p.executingFirstLeg=null;p.executionAnchor=null;
+        p.weightedRoute=List.of();p.routeCursor=0;
+        p.centering=null;p.regionWaypoint=false;
+        p.nextRoute=mob.tickCount+CHECK_TICKS;
+        p.attempts++;
+        mob.getNavigation().stop();
+        return true;
     }
     /** Open wooden doors leave only 13/16 of a block of width. A .85
      * worker is physically too wide, so while it is *crossing a doorway*
@@ -1117,6 +1172,7 @@ public final class WorkerNavigation {
     private static boolean walkTrainedEdge(ServerLevel level,PathfinderMob mob,
             Progress p,BlockPos waypoint,boolean regionTravel){
         if(!canWalkTrainedEdge(level,mob,waypoint))return false;
+        trackFirstLeg(mob,p,waypoint);
         p.centering=waypoint.immutable();p.approach=waypoint.immutable();
         p.regionWaypoint=regionTravel;
         p.stalled=0;p.unsafeChecks=0;p.nextRoute=mob.tickCount+CHECK_TICKS;
@@ -1271,6 +1327,7 @@ public final class WorkerNavigation {
     private static boolean beginTerrainStep(ServerLevel level,
             PathfinderMob mob,Progress p,BlockPos next){
         if(!canBeginTerrainStep(level,mob,next))return false;
+        trackFirstLeg(mob,p,next);
         p.terrainStep=next.immutable();
         p.terrainStepStarted=mob.tickCount;
         p.approach=next.immutable();
@@ -1321,6 +1378,8 @@ public final class WorkerNavigation {
             }else p.terrainStep=null;
         }
         boolean same=target.equals(p.requested);
+        if(same&&executionStalled(level,mob,p))return false;
+        if(!same){p.executingFirstLeg=null;p.executionAnchor=null;}
         if(same&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
@@ -1369,6 +1428,7 @@ public final class WorkerNavigation {
             p.routeCursor=Math.min(plan.steps().size(),span);
             p.stalled=0;p.unsafeChecks=0;p.wait=0;p.lastBad=null;
             p.nextRoute=mob.tickCount+CHECK_TICKS;
+            trackFirstLeg(mob,p,plan.steps().get(0));
             return true;
         }
         if(walkTrainedEdge(level,mob,p,plan.steps().get(0),false)
@@ -1414,10 +1474,12 @@ public final class WorkerNavigation {
         boolean changed=!target.equals(p.requested);
         if(changed){
             p.centering=null;
+            p.executingFirstLeg=null;p.executionAnchor=null;
             p.requested=target.immutable();p.approach=null;
             p.attempts=0;p.nextRoute=0;p.stalled=0;p.unsafeChecks=0;
             p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
         }
+        if(!changed&&executionStalled(level,mob,p))return false;
         if(p.centering!=null&&tickExactCenter(level,mob))return true;
         updateDoorClearance(level,mob,p);
         if(p.openedDoor==null)openApproachDoor(level,mob,p);
@@ -1507,6 +1569,7 @@ public final class WorkerNavigation {
                     ||!safePath(level,mob,path,false))continue;
             if(!mob.getNavigation().moveTo(path,speed))continue;
             p.approach=waypoint;
+            trackFirstLeg(mob,p,p.weightedRoute.get(p.routeCursor));
             p.routeCursor=index+1;
             p.stalled=0;p.unsafeChecks=0;p.lastBad=null;
             p.nextRoute=mob.tickCount+CHECK_TICKS;
@@ -1548,6 +1611,10 @@ public final class WorkerNavigation {
                 +" retry="+remaining+"t attempts="+p.attempts
                 +" stalled="+p.stalled+" unsafe="+p.unsafeChecks
                 +" detourLegRetries="+p.detourFirstLegRetries
+                +" physicalRejects="+p.physicallyRejectedLegs
+                +(p.executingFirstLeg==null?"":" firstLeg="
+                    +p.executingFirstLeg.toShortString()+" noMotion="
+                    +Math.max(0,mob.tickCount-p.executionProgressAt)+"t")
                 +(p.cornerPath.isEmpty()?"":" cornerRecovery="
                     +p.cornerCursor+"/"+p.cornerPath.size())
                 +" doorYields="+p.doorReservationYields
