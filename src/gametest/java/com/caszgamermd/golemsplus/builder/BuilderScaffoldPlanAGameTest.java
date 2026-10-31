@@ -41,6 +41,10 @@ public final class BuilderScaffoldPlanAGameTest {
         h.setBlock(17,13,10,Blocks.STONE);
         BlockPos start=h.absolutePos(new BlockPos(10,10,10));
         BlockPos target=h.absolutePos(new BlockPos(17,14,10));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(start.getX()>>4,
+                        start.getZ()>>4),3);
         BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         mob.setItem(0,new ItemStack(Items.SCAFFOLDING,40));
@@ -53,7 +57,13 @@ public final class BuilderScaffoldPlanAGameTest {
             if(!mob.isAlive()||mob.isNoGravity()){
                 h.fail("Seven-cell bridge lost physical Builder");return;
             }
-            if(!mob.onGround()&&!BuilderScaffoldPlanA.hasPlan(mob))return;
+            if(!mob.onGround()&&!BuilderScaffoldPlanA.hasPlan(mob)){
+                if(h.getTick()>95)
+                    h.fail("Seven-cell Builder never settled onto footing "
+                            +mob.position()+" below="
+                            +level.getBlockState(mob.blockPosition().below()));
+                return;
+            }
             if(h.getTick()==20&&!BuilderScaffoldPlanA.canPlan(
                     level,mob,table,target,List.of())){
                 h.fail("A real six-scaffold bridge was rejected: "

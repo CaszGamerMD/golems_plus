@@ -546,14 +546,14 @@ public final class BuilderDomeRouteSurveyGameTest {
         });
     }
 
-    /** Replay the ACTUAL 3424/3493 worker's fractional roof footing,
-     * not the block center substituted by a schematic-only A* survey.
-     * The first small eastward step is isolated from every later climb.
-     * If this fails, tower-ranking changes cannot fix the physical start.
+    /** Replay the actual 3424/3493 worker's fractional roof footing and
+     * physically follow each intended rise toward the missing Y30 cap.
+     * Record the specific failed leg instead of declaring a coarse A*
+     * route successful before Minecraft has executed it.
      */
     @GameTest(structure="golems_plus_gametest:dome_arena",
-            maxTicks=460,skyAccess=true)
-    public void actualY30StalledFootingCanExecuteFirstRoofStep(
+            maxTicks=1600,skyAccess=true)
+    public void actualY30StalledFootingCanExecuteRoofAccessClimb(
             GameTestHelper h){
         ServerLevel world=h.getLevel();
         BlockPos origin=h.absolutePos(new BlockPos(8,2,8));
@@ -591,7 +591,13 @@ public final class BuilderDomeRouteSurveyGameTest {
         mob.setPos(origin.getX()+8.834945218637586,origin.getY()+26,
                 origin.getZ()+10.432437775656581);
         world.addFreshEntity(mob);
-        BlockPos first=origin.offset(9,26,10);
+        List<BlockPos> roofSteps=List.of(
+                origin.offset(9,26,10),origin.offset(10,27,10),
+                origin.offset(11,27,10),origin.offset(12,28,10),
+                origin.offset(13,28,11),origin.offset(14,29,11),
+                origin.offset(15,29,11),origin.offset(15,30,10));
+        BlockPos first=roofSteps.get(0);
+        final int[] leg={0};
         h.onEachTick(()->{
             if(!mob.isAlive()||mob.isNoGravity()
                     ||mob.getY()<origin.getY()+24){
@@ -628,19 +634,30 @@ public final class BuilderDomeRouteSurveyGameTest {
                         +" survey="+WorkerNavigation.diagnoseGroundedEdge(
                                 world,mob,first));
             }
+            BlockPos next=roofSteps.get(leg[0]);
             if(h.getTick()>=20&&h.getTick()%5==0)
-                WorkerNavigation.routeToExact(world,mob,first,1.0);
-            if(mob.onGround()&&mob.distanceToSqr(first.getX()+.5,
-                    first.getY(),first.getZ()+.5)<.15){
-                System.out.println("[EXACT ROOF FIRST] PASS real fractional "
-                        +"first move ticks="+h.getTick());
-                h.succeed();return;
+                WorkerNavigation.routeToExact(world,mob,next,1.0);
+            double floor=WorkerNavigation.surveyFloorHeight(world,next);
+            if(mob.onGround()&&Double.isFinite(floor)
+                    &&mob.distanceToSqr(next.getX()+.5,
+                            floor,next.getZ()+.5)<.15){
+                System.out.println("[EXACT ROOF LEG] PASS "+leg[0]
+                        +" target="+next.subtract(origin).toShortString()
+                        +" ticks="+h.getTick());
+                if(++leg[0]==roofSteps.size()){
+                    System.out.println("[EXACT ROOF CLIMB] PASS physical "
+                            +"access to Y30 from measured fractional feet");
+                    h.succeed();
+                }
+                return;
             }
-            if(h.getTick()>410)
-                h.fail("Actual fractional Y30 first leg stalled "
+            if(h.getTick()>1500)
+                h.fail("Actual fractional Y30 roof leg="+leg[0]
+                        +" target="+next.subtract(origin).toShortString()
+                        +" stalled "
                         +mob.position()+" "+WorkerNavigation.debugStatus(mob)
                         +" "+WorkerNavigation.diagnoseExecutableStand(
-                                world,mob,List.of(first)));
+                                world,mob,List.of(next)));
         });
     }
 
