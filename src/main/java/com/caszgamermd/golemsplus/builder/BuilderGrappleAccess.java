@@ -211,6 +211,45 @@ public final class BuilderGrappleAccess {
                         rope.upperX+.325,rope.supportY+.001,rope.upperZ+.325)))return true;
         return false;
     }
+    /** Connected wall/fence shapes can change as neighboring dome cells
+     * are placed. The hook remains attached to the SAME real block if
+     * its new collision top is at most half a block from the original
+     * attachment and still touches the original upper footing. Never
+     * substitute a remote block or an empty-air attachment. */
+    private static boolean refreshPartialAnchor(ServerLevel level,Rope rope){
+        if(!Double.isFinite(rope.supportY))return false;
+        var shape=level.getBlockState(rope.anchor).getCollisionShape(
+                level,rope.anchor);
+        for(AABB box:shape.toAabbs()){
+            double top=rope.anchor.getY()+box.maxY;
+            if(Math.abs(top-rope.supportY)>.55)continue;
+            var physical=box.move(rope.anchor);
+            if(physical.maxX<=rope.upperX-.325
+                    ||physical.minX>=rope.upperX+.325
+                    ||physical.maxZ<=rope.upperZ-.325
+                    ||physical.minZ>=rope.upperZ+.325)continue;
+            if(!lineClear(level,rope.column,rope.landing.getY(),
+                    (int)Math.ceil(top)))continue;
+            System.out.println("[GRAPPLE] RETAINED REAL SHAPED ANCHOR "
+                    +rope.anchor.toShortString()+" collision top "
+                    +rope.supportY+" -> "+top);
+            rope.supportY=top;
+            return true;
+        }
+        return false;
+    }
+    /** Releasing a changed hook is safe ONLY if the real mob is already
+     * touching another solid collision surface under its soles. A mob
+     * hanging in air stays secured; it is never teleported or dropped. */
+    private static boolean physicallyStandingWithoutRope(ServerLevel level,
+            BuilderGolem worker){
+        AABB box=worker.getBoundingBox();
+        AABB soles=new AABB(box.minX+.055,box.minY-.08,
+                box.minZ+.055,box.maxX-.055,
+                box.minY+.005,box.maxZ-.055);
+        return level.noCollision(worker,box)
+                &&level.getBlockCollisions(worker,soles).iterator().hasNext();
+    }
     /** Emergency descent from an actual grounded partial-block perch.
      * A centered standing tile need not exist on a fence rail. Attach only
      * to collision geometry touching the soles, then sweep the entire body
@@ -764,9 +803,18 @@ public final class BuilderGrappleAccess {
         }
         // Anchor may be modified by a player while the hook is attached:
         // stay suspended instead of dropping the Builder to its death.
-        if(!anchorPresent(level,r)){
-            // Missing support: stay attached rather than free-falling.
-            // Recovery is impossible without a solid upper anchor.
+        if(!anchorPresent(level,r)
+                &&!refreshPartialAnchor(level,r)){
+            if(physicallyStandingWithoutRope(level,mob)){
+                // A real roof surface has caught the Builder while the
+                // old wall top changed. Release the obsolete hook so
+                // normal grounded work can resume on that same support.
+                reject(level,mob,r);
+                release(mob,r,"CHANGED ANCHOR, PHYSICALLY SUPPORTED");
+                return false;
+            }
+            // Still suspended without a trustworthy anchor or floor:
+            // never fabricate a safe dismount or let gravity drop it.
             mob.setNoGravity(true);
             mob.setDeltaMovement(0,0,0);
             return true;
