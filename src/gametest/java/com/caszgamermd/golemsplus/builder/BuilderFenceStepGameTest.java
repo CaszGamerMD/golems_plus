@@ -9,6 +9,41 @@ import net.minecraft.world.level.block.Blocks;
 
 /** A Dome-like ledge: real floor -> fence top (+0.5) -> real floor. */
 public final class BuilderFenceStepGameTest {
+    /** A real two-block drop is valid when the NEXT tile has solid
+     * footing. It is never a two-block jump in the reverse direction.
+     */
+    @GameTest(maxTicks=280,skyAccess=true)
+    public void descendsTwoBlocksOntoVerifiedLowerLanding(GameTestHelper h){
+        var world=h.getLevel();
+        h.setBlock(3,3,3,Blocks.STONE);
+        h.setBlock(4,1,3,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(3,4,3));
+        BlockPos landing=h.absolutePos(new BlockPos(4,2,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(mob);
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.isNoGravity()){
+                h.fail("Drop test Builder lost ordinary gravity");return;
+            }
+            if(h.getTick()==15&&WorkerNavigation.selectExecutableStand(
+                    world,mob,java.util.List.of(landing))==null){
+                h.fail("Trained planner rejected legal two-block descent");return;
+            }
+            if(h.getTick()>=16&&h.getTick()%5==0)
+                WorkerNavigation.routeToExact(world,mob,landing,1.0);
+            if(mob.onGround()&&mob.distanceToSqr(
+                    landing.getX()+.5,landing.getY(),landing.getZ()+.5)<.13){
+                System.out.println("[TWO BLOCK DROP] PASS real gravity and "
+                        +"solid lower landing tick="+h.getTick());
+                h.succeed();
+            }
+            if(h.getTick()>245)
+                h.fail("Two-block descent stalled "+mob.position()
+                        +" nav="+WorkerNavigation.debugStatus(mob));
+        });
+    }
+
     @GameTest(maxTicks=350,skyAccess=true)
     public void physicallyStepsAcrossHalfBlockFenceRise(GameTestHelper h){
         runCase(h,false);
