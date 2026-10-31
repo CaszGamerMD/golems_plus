@@ -13,14 +13,14 @@ import net.minecraft.world.level.block.Blocks;
  * and for precise final centering inside the selected standing cell.
  */
 public final class BuilderWorkAccessGameTest {
-    /** The 3420/3493 live dome snapshot has EVERY built Y30 cap except
-     * eight holes. Replay its actual pre-target blocks and exact north
-     * fractional feet, but let the trained controller find its own path.
-     * No blocks are placed by this test after the worker is spawned.
+    /** The measured 3420/3493 dome has no legal grounded work stance
+     * around its eight Y30 holes. Rebuild the exact roof snapshot and
+     * verify a physically climbable, inventory-paid temporary work pose,
+     * never a fake walking route or creative block placement.
      */
     @GameTest(structure="golems_plus_gametest:dome_arena",
-            maxTicks=900,skyAccess=true)
-    public void northRoofWorkerWalksToMeasuredFinalGap(GameTestHelper helper){
+            maxTicks=1800,skyAccess=true)
+    public void northRoofScaffoldReachesMeasuredFinalGap(GameTestHelper helper){
         ServerLevel level=helper.getLevel();
         for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
@@ -29,9 +29,14 @@ public final class BuilderWorkAccessGameTest {
                 net.minecraft.server.level.TicketType.FORCED,
                 new net.minecraft.world.level.ChunkPos(
                         origin.getX()>>4,origin.getZ()>>4),4);
+        final java.util.List<BuilderConstructionPlan.Step> steps;
         try{
-            for(var b:LitematicFileReader.read(
-                    BuilderDomeFixture.unpack()).blocks()){
+            var schematic=LitematicFileReader.read(BuilderDomeFixture.unpack());
+            steps=BuilderConstructionPlan.create(schematic,
+                    new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                            BuildSite.Rotation.NONE,BuildSite.Mirror.NONE),true)
+                    .steps();
+            for(var b:schematic.blocks()){
                 if(b.y()>30||BuilderVegetation.ignoreSchematicState(b.state()))
                     continue;
                 boolean north=b.x()==15&&b.z()>=9&&b.z()<=12;
@@ -57,36 +62,43 @@ public final class BuilderWorkAccessGameTest {
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.setPos(origin.getX()+8.34569378,origin.getY()+26,
                 origin.getZ()+11.51642730);
+        worker.setItem(0,new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.SCAFFOLDING,64));
         level.addFreshEntity(worker);
-        boolean[] began={false};
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),1)
+                ||!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Cannot register paid roof scaffold worker");return;
+        }
+        final BuilderScaffoldPlanA.Result[] last={null};
         helper.onEachTick(()->{
             if(!worker.isAlive()||worker.isNoGravity()){
                 helper.fail("Original north roof worker lost physical motion");return;
             }
-            if(helper.getTick()>=20&&helper.getTick()%5==0&&worker.onGround())
-                began[0]|=BuilderBuildService.walkToOrdinaryWorkPose(
-                        level,worker,table,target);
-            if(worker.onGround()&&BuilderPlacementSpace.placementHeight(
-                    target,worker)
+            if(helper.getTick()>=20&&helper.getTick()%5==0)
+                last[0]=BuilderScaffoldPlanA.reachWorkPose(
+                        level,worker,table,owner,target,steps);
+            if(last[0]==BuilderScaffoldPlanA.Result.READY
+                    &&BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                            level,worker,table,target)
                     &&BuilderPlacementSpace.horizontalClear(target,worker)
                     &&worker.distanceToSqr(target.getX()+.5,
                             target.getY()+.5,target.getZ()+.5)<14
-                    &&BuilderConstructionPlanner.safeStand(
-                            level,worker,target,worker.blockPosition())){
-                if(!began[0]){
-                    helper.fail("North roof did not take a trained walk");return;
-                }
-                System.out.println("[ROOF FINAL GAP] PASS physical north Y30 "
-                        +"approach in "+helper.getTick()+" ticks from measured feet");
+                    &&!table.scaffoldPositions(worker.getUUID()).isEmpty()
+                    &&worker.carriedCount(net.minecraft.world.item.Items.SCAFFOLDING)<64){
+                System.out.println("[ROOF FINAL GAP] PASS inventory-paid physical "
+                        +"scaffold at measured north Y30 gap in "
+                        +helper.getTick()+" ticks");
                 helper.succeed();return;
             }
-            if(helper.getTick()>800)
-                helper.fail("North final gap is still unreachable: feet="
-                        +worker.position()+" "+WorkerNavigation.debugStatus(worker)
-                        +" "+BuilderPlacementSpace.diagnoseApproach(
-                                level,worker,target,
-                                at->BuilderConstructionPlanner.safeStand(
-                                        level,worker,target,at)));
+            if(helper.getTick()>1670)
+                helper.fail("North final gap scaffold stalled: feet="
+                        +worker.position()+" result="+last[0]
+                        +" status="+BuilderScaffoldPlanA.status(worker)
+                        +" nav="+WorkerNavigation.debugStatus(worker)
+                        +" access="+BuilderScaffoldPlanA.diagnoseAccess(
+                                level,worker,table,target,steps));
         });
     }
     /** Reproduces the dome's four-level work handoff: the block is high,
@@ -131,9 +143,15 @@ public final class BuilderWorkAccessGameTest {
             if(!worker.isAlive()||worker.isNoGravity()){
                 helper.fail("Builder left physical ground movement");return;
             }
-            if(helper.getTick()>=15&&helper.getTick()%5==0&&worker.onGround())
-                traveled[0]|=BuilderBuildService.walkToOrdinaryWorkPose(
-                        level,worker,table,target);
+            if(helper.getTick()>=15&&helper.getTick()%5==0&&worker.onGround()){
+                BlockPos approach=BuilderPlacementSpace.approachWithRules(
+                        level,worker,target,
+                        at->BuilderConstructionPlanner.safeStand(
+                                level,worker,target,at));
+                if(approach!=null)
+                    traveled[0]|=WorkerNavigation.routeToExact(
+                            level,worker,approach,1.0);
+            }
             if(worker.onGround()&&worker.getY()>=target.getY()-.05
                     &&worker.distanceToSqr(target.getX()+.5,
                             target.getY()+.5,target.getZ()+.5)<14
