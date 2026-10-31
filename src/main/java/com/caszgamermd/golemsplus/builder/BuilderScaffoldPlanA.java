@@ -824,6 +824,7 @@ public final class BuilderScaffoldPlanA {
             }
         }
         j.phase=Phase.CLIMB;
+        j.lastProgress=level.getGameTime();
         BuilderScaffolding.begin(level,worker,j.base,top+1.0,false);
         return Result.MOVING;
     }
@@ -851,6 +852,38 @@ public final class BuilderScaffoldPlanA {
         return present(level,table,worker,scaffold)
                 &&onScaffoldTop(level,worker,scaffold);
     }
+    /** A work-claim loop may stop calling reach() while its claimed
+     * block waits on another worker. Run the orphan watchdog from EACH
+     * entity tick, not only from an occasionally evaluated work step.
+     * Release a failed tower only on genuine grounded footing.
+     */
+    private static boolean releaseOrphanedClimb(ServerLevel level,
+            BuilderGolem worker,Job j){
+        if(BuilderScaffolding.climbingNow(level,worker)
+                ||!worker.onGround())return false;
+        double baseOffset=worker.distanceToSqr(
+                j.base.getX()+.5,worker.getY(),j.base.getZ()+.5);
+        boolean belowBase=worker.getY()<j.base.getY()-.35;
+        boolean offColumn=baseOffset>.16;
+        boolean waited=level.getGameTime()-j.lastProgress>80;
+        BlockPos underFeet=worker.blockPosition().below();
+        boolean supportedUpperLedge=worker.getY()>j.base.getY()+.25
+                &&offColumn&&waited
+                &&level.getBlockState(underFeet).isFaceSturdy(
+                        level,underFeet,Direction.UP);
+        if(!belowBase&&!(offColumn&&waited
+                &&worker.getY()<=j.base.getY()+.25)
+                &&!supportedUpperLedge)return false;
+        rejectEntry(level,worker,j.base);
+        System.out.println("[PLAN A ENTRY] orphaned climb, retry another "
+                +"real tower from grounded feet "
+                +worker.blockPosition().toShortString()
+                +" base="+j.base.toShortString()
+                +" offsetSq="+baseOffset
+                +" solidUnderFeet="+level.getBlockState(underFeet));
+        jobs.remove(worker);
+        return true;
+    }
     /** Physical bridge motion is reserved exclusively to the scaffold
      * controller; vanilla A* cannot treat an air-above-scaffold cell as
      * a generic walkable ground node. Keep gravity and actual collisions.
@@ -860,6 +893,22 @@ public final class BuilderScaffoldPlanA {
         if(j==null)return false;
         j.bridgeTicks++;
         j.highest=Math.max(j.highest,worker.getY());
+        if(j.phase==Phase.CLIMB
+                &&releaseOrphanedClimb(level,worker,j))return false;
+        if(j.phase==Phase.READY
+                &&level.getBlockEntity(j.planner)
+                        instanceof WorkerStationBlockEntity table){
+            BlockPos last=j.bridge(j.bridgeSpan);
+            if(!onOwnedScaffoldTop(level,worker,table,last)
+                    ||!close(worker,last.above())){
+                j.phase=j.bridgeSpan==1
+                        ?Phase.WALK_FIRST:Phase.WALK_SECOND;
+                if(j.bridgeSpan>1)j.bridgeStep=j.bridgeSpan;
+                System.out.println("[PLAN A FOOTING] reacquire lost "
+                        +"scaffold-top stance "+last.toShortString()
+                        +" from feetY="+worker.getY());
+            }
+        }
         // The climb may crest between five-tick work calls, but a
         // transient airborne Y value is NOT stable standing height.
         // Advance only after native gravity/collision settles the
@@ -1109,43 +1158,9 @@ public final class BuilderScaffoldPlanA {
                 j.phase=Phase.BUILD;
             }
             case CLIMB -> {
+                if(releaseOrphanedClimb(level,worker,j))
+                    return Result.NO_SAFE_ROUTE;
                 if(worker.getY()<j.target.getY()-.15){
-                    // The physical scaffold controller can abandon an
-                    // impossible climb after repeated collision timeouts.
-                    // A grounded Builder beside the base (not just BELOW
-                    // it) then has no climb session, while this job still
-                    // says CLIMB. Release that stale job after a short
-                    // entry grace period and reject this tower temporarily.
-                    // Never strand the worker beside an owned shaft forever.
-                    boolean climbing=BuilderScaffolding.climbingNow(level,worker);
-                    double baseOffset=worker.distanceToSqr(
-                            j.base.getX()+.5,worker.getY(),j.base.getZ()+.5);
-                    boolean belowBase=worker.getY()<j.base.getY()-.35;
-                    boolean besideBase=worker.getY()<=j.base.getY()+.25
-                            &&baseOffset>.16
-                            &&level.getGameTime()-j.lastProgress>80;
-                    // The abandoned column can also leave the Builder
-                    // safely standing on a HIGHER finished roof lip, one
-                    // block below the required work Y. The previous
-                    // base-only guard held such a job for thousands of
-                    // ticks with no climb session and no navigation.
-                    BlockPos actualFloor=worker.blockPosition().below();
-                    boolean aboveBaseOnSolidFloor=worker.getY()>j.base.getY()+.25
-                            &&baseOffset>.16
-                            &&level.getBlockState(actualFloor).isFaceSturdy(
-                                    level,actualFloor,Direction.UP)
-                            &&level.getGameTime()-j.lastProgress>80;
-                    if(!climbing&&worker.onGround()
-                            &&(belowBase||besideBase||aboveBaseOnSolidFloor)){
-                        rejectEntry(level,worker,j.base);
-                        System.out.println("[PLAN A ENTRY] orphaned climb, retry "
-                                +"another real tower from grounded feet "
-                                +worker.blockPosition().toShortString()
-                                +" base="+j.base.toShortString()
-                                +" offsetSq="+baseOffset);
-                        jobs.remove(worker);
-                        return Result.NO_SAFE_ROUTE;
-                    }
                     // Extend long shafts in real sixteen-block inventory
                     // stages, after physically finishing the prior climb.
                     if(!BuilderScaffolding.climbingNow(level,worker)
