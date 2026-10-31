@@ -574,8 +574,7 @@ public final class BuilderDomeRouteSurveyGameTest {
             h.setBlock(x,1,z,Blocks.STONE);
         Set<BlockPos> unfinished=Set.of(
                 new BlockPos(15,30,9),new BlockPos(15,30,10),
-                new BlockPos(15,30,11),new BlockPos(15,30,12),
-                new BlockPos(20,30,22));
+                new BlockPos(15,30,11),new BlockPos(15,30,12));
         try{
             for(var b:LitematicFileReader.read(
                     BuilderDomeFixture.unpack()).blocks()){
@@ -691,8 +690,7 @@ public final class BuilderDomeRouteSurveyGameTest {
             h.setBlock(x,1,z,Blocks.STONE);
         Set<BlockPos> unfinished=Set.of(
                 new BlockPos(15,30,9),new BlockPos(15,30,10),
-                new BlockPos(15,30,11),new BlockPos(15,30,12),
-                new BlockPos(20,30,22));
+                new BlockPos(15,30,11),new BlockPos(15,30,12));
         try{
             for(var b:LitematicFileReader.read(
                     BuilderDomeFixture.unpack()).blocks()){
@@ -711,8 +709,10 @@ public final class BuilderDomeRouteSurveyGameTest {
         world.setBlock(origin.offset(8,27,10),Blocks.AIR.defaultBlockState(),2);
         world.setBlock(origin.offset(9,27,10),Blocks.AIR.defaultBlockState(),2);
         BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
-        mob.setPos(origin.getX()+8.834945218637586,origin.getY()+26,
-                origin.getZ()+10.432437775656581);
+        // A second live 3424/3493 capture measured this Builder already
+        // past the first narrow ledge, with valid centered footing.
+        mob.setPos(origin.getX()+9.366045948117971,origin.getY()+26,
+                origin.getZ()+10.483065175823867);
         world.addFreshEntity(mob);
         BlockPos goal=origin.offset(15,30,10);
         final int[] accepted={0};
