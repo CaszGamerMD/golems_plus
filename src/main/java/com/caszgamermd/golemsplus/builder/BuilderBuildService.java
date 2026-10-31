@@ -674,10 +674,6 @@ public final class BuilderBuildService {
             if(yDiff>1){
                 var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
                 if(access==BuilderGrappleAccess.Result.NEED_HOOK){
-                    // A missing grapple is not a construction rule:
-                    // scaffolding remains a valid, paid physical tool.
-                    if(scaffoldWork(level,worker,table,owner,pos,plan.steps()))
-                        return;
                     table.setProblem("Builder needs a Grapple Hook in OnSite Storage");
                     return;
                 }
@@ -724,9 +720,6 @@ public final class BuilderBuildService {
                 // A roof can be on this very Y yet physically disconnected
                 // from its next work stance. Try a paid scaffold bridge here,
                 // not only when a vertical jump was requested.
-                // Use scaffold access once an existing claim genuinely
-                // needs it. A theoretical tower for EVERY same-height
-                // failure must not capture a worker's whole travel loop.
                 if((BuilderScaffoldPlanA.hasPlan(worker)
                         ||BuilderScaffoldPlanA.needsTemporaryWorkPlatform(level,pos)
                             &&BuilderScaffoldPlanA.canPlan(
