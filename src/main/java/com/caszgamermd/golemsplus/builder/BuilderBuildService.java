@@ -93,7 +93,10 @@ public final class BuilderBuildService {
             new WeakHashMap<>();
     /** Normally every X/Z zone is exclusive. A zone with no work on this
      * shared Y may help its stuck neighbor after construction has made
-     * no physical progress for ten seconds. This is read-only monitoring:
+     * no physical progress for eight seconds (160 ticks). Under the
+     * 18-ticks-per-block trial, a ten-second wait leaves too little time
+     * for a spare Builder to reach the last few blocks on the roof.
+     * This is read-only monitoring:
      * actual ownership stays with the Planner's single-step claim map.
      */
     private static final class RoofProgress {
@@ -111,7 +114,7 @@ public final class BuilderBuildService {
             progress.completed=completed;
             progress.lastChange=level.getGameTime();
         }
-        return level.getGameTime()-progress.lastChange>=600;
+        return level.getGameTime()-progress.lastChange>=160;
     }
     /** Only workers with NO unfinished task in their zone on the active Y assist: they
      * never abandon an assigned cell or break the global height gate.

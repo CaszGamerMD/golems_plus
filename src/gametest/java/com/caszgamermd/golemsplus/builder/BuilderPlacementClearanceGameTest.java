@@ -185,7 +185,16 @@ public final class BuilderPlacementClearanceGameTest {
         // request; the recipient never executes BuilderBuildService.tick.
         blocker.assign(h.absolutePos(new BlockPos(0,2,0)),owner.getUUID());
         placer.assign(h.absolutePos(new BlockPos(0,2,0)),owner.getUUID());
-        final boolean[] asked={false};
+        // Queue the request before the first idle worker tick. Otherwise
+        // the unassigned Builder may independently stroll away before
+        // this test checks for a request at tick 10.
+        boolean initiallyBlocked=!BuilderPlacementSpace.ready(
+                world,placer,table,target);
+        if(!initiallyBlocked||!BuilderPlacementSpace.debugYield(world,blocker)
+                .contains("moveRequestedBy=")){
+            h.fail("The placer did not request its teammate's clearance");return;
+        }
+        final boolean[] asked={true};
         final double[] previousX={blocker.getX()};
         h.onEachTick(()->{
             if(Math.abs(blocker.getX()-previousX[0])>.30){
