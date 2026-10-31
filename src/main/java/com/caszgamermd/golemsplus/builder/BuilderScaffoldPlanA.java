@@ -37,7 +37,7 @@ public final class BuilderScaffoldPlanA {
     }
     /** Diagnoses surviving owned blocks, not just the cached plan. */
     enum ScaffoldFault { NONE, TOWER_SHORT, BRIDGE_SHORT, EXIT_BLOCKED,
-        CLIMB_STALLED, CLIMB_HEADROOM_BLOCKED }
+        EXIT_TOO_LOW, CLIMB_STALLED, CLIMB_HEADROOM_BLOCKED }
     private static final class Job {
         final BlockPos target,base,planner;
         BlockPos exit;
@@ -1495,9 +1495,11 @@ public final class BuilderScaffoldPlanA {
                 escapeBlockedExit(level,worker,table,j);
                 return true;
             }
-            if(worker.getY()>j.base.getY()+1.1)
+            double safeStop=Math.min(j.base.getY()+1.0,
+                    j.exit.getY()+1.0);
+            if(worker.getY()>safeStop+.16)
                 BuilderScaffolding.begin(level,worker,j.base,
-                        j.base.getY()+1.0,true);
+                        safeStop,true);
             j.phase=Phase.DESCEND;
             return true;
         }
@@ -1506,10 +1508,20 @@ public final class BuilderScaffoldPlanA {
                 escapeBlockedExit(level,worker,table,j);
                 return true; // never descend to a sealed exit
             }
-            if(worker.getY()>j.base.getY()+1.16){
+            // One-block-lower solid ground needs the Builder's feet
+            // INSIDE the bottom scaffold, not parked on its upper lip.
+            // The physically paid shaft supports that extra descent.
+            double safeStop=Math.min(j.base.getY()+1.0,
+                    j.exit.getY()+1.0);
+            if(j.exit.getY()<j.base.getY()
+                    &&!j.lastFailure.equals(ScaffoldFault.EXIT_TOO_LOW.name())){
+                repairLog(level,worker,table,j,ScaffoldFault.EXIT_TOO_LOW,
+                        "descend one more real scaffold level before dismount");
+            }
+            if(worker.getY()>safeStop+.16){
                 if(!BuilderScaffolding.climbingNow(level,worker))
                     BuilderScaffolding.begin(level,worker,j.base,
-                            j.base.getY()+1.0,true);
+                            safeStop,true);
                 return true;
             }
             j.phase=Phase.DISMOUNT;

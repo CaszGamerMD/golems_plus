@@ -908,17 +908,26 @@ public final class BuilderSafeScaffoldGameTest {
                     helper.fail("Builder left a sealed scaffold without"
                             +" a real solid exit: "+worker.position());return;
                 }
-                level.setBlock(reopened[0],Blocks.AIR.defaultBlockState(),3);
+                // The only reopened landing is ONE BLOCK LOWER than the
+                // tower's own base. Do not permit a two-block side drop
+                // from the scaffold top.
+                level.setBlock(reopened[0].below(2),
+                        Blocks.STONE.defaultBlockState(),3);
+                level.setBlock(reopened[0].below(),
+                        Blocks.AIR.defaultBlockState(),3);
+                level.setBlock(reopened[0],
+                        Blocks.AIR.defaultBlockState(),3);
                 phase[0]=2;
-                System.out.println("[SCAFFOLD REPAIR TEST] reopened safe exit "
-                        +reopened[0].toShortString());
+                System.out.println("[SCAFFOLD REPAIR TEST] reopened lower exit "
+                        +reopened[0].below().toShortString());
                 return;
             }
             BuilderScaffoldPlanA.returnToGround(level,worker,table);
-            if(reopened[0].equals(BuilderScaffoldPlanA.activeExit(worker)))
+            if(reopened[0].below().equals(
+                    BuilderScaffoldPlanA.activeExit(worker)))
                 rerouted[0]=true;
             if(!BuilderScaffoldPlanA.hasPlan(worker)&&worker.onGround()
-                    &&Math.abs(worker.getY()-tower.getY())<.26){
+                    &&Math.abs(worker.getY()-(tower.getY()-1))<.26){
                 if(!rerouted[0]){
                     helper.fail("Builder reached ground without reporting exit repair");
                     return;
