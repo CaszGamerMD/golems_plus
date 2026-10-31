@@ -214,6 +214,14 @@ public final class BuilderDomeRouteSurveyGameTest {
                 report.append("[PAID SCAFFOLD] ")
                         .append(BuilderScaffoldPlanA.diagnoseAccess(
                                 world,mob,table,target,steps))
+                        .append(" planWorkPose=")
+                        .append(BuilderScaffoldPlanA.canPlanWorkPose(
+                                world,mob,table,target,steps))
+                        .append(" towerAccess=")
+                        .append(BuilderScaffolding.canPlanAccess(
+                                world,mob,table,target,steps))
+                        .append(" active=")
+                        .append(BuilderScaffoldPlanA.status(mob))
                         .append('\n');
                 for(int y:new int[]{26,28,29,30,31}){
                     Pair focus=new Pair(mob.getName().getString(),
