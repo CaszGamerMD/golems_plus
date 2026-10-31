@@ -14,8 +14,8 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 
 /** Real Fabric 26.2 entity traversal, not a simulated path: Builder
- * constructs the axis-three shaft, pays for two sideways scaffolds,
- * physically walks onto the bridge at work Y, then returns and descends.
+ * constructs the axis-three shaft, walks onto a paid bridge at work Y,
+ * extends separate scaffold support under a floating block, then returns.
  */
 public final class BuilderScaffoldPlanAGameTest {
     @GameTest(maxTicks=900,skyAccess=true)
@@ -94,24 +94,38 @@ public final class BuilderScaffoldPlanAGameTest {
                     helper.fail("Wrong work Y: "+mob.position());return;
                 }
                 BlockPos bridgeA=tower.east().atY(target.getY()-1);
-                BlockPos bridgeB=tower.east(2).atY(target.getY()-1);
+                BlockPos supportLink=tower.east(2).atY(target.getY()-1);
+                BlockPos supportUnder=target.below();
                 if(!level.getBlockState(bridgeA).is(Blocks.SCAFFOLDING)
-                        ||!level.getBlockState(bridgeB).is(Blocks.SCAFFOLDING)
+                        ||!level.getBlockState(supportLink).is(Blocks.SCAFFOLDING)
+                        ||!level.getBlockState(supportUnder).is(Blocks.SCAFFOLDING)
                         ||level.getBlockState(bridgeA).getValue(
                                 net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE)!=1
-                        ||level.getBlockState(bridgeB).getValue(
+                        ||level.getBlockState(supportLink).getValue(
                                 net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE)!=2
+                        ||level.getBlockState(supportUnder).getValue(
+                                net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE)!=3
                         ||!table.scaffoldPositions(mob.getUUID()).contains(bridgeA)
-                        ||!table.scaffoldPositions(mob.getUUID()).contains(bridgeB)
+                        ||!table.scaffoldPositions(mob.getUUID()).contains(supportLink)
+                        ||!table.scaffoldPositions(mob.getUUID()).contains(supportUnder)
                         ||table.scaffoldPositions(mob.getUUID()).contains(bridgeA.below())
-                        ||table.scaffoldPositions(mob.getUUID()).contains(bridgeB.below())
-                        ||Math.abs(mob.getX()-bridgeB.getX()-.5)>.4){
-                    helper.fail("Builder didn't physically reach a real paid bridge: "+
+                        ||table.scaffoldPositions(mob.getUUID()).contains(supportLink.below())
+                        ||Math.abs(mob.getX()-bridgeA.getX()-.5)>.4
+                        ||!BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                                level,mob,table,target)){
+                    helper.fail("Builder didn't reach a supported floating work pose: "+
                             mob.position()+" "+BuilderScaffoldPlanA.status(mob));
                     return;
                 }
-                if(initial[0]-mob.carriedCount(Items.SCAFFOLDING)<6){
+                // Four tower cells + one standing bridge + two separate
+                // support cells must all come from actual scaffold items.
+                if(initial[0]-mob.carriedCount(Items.SCAFFOLDING)<7){
                     helper.fail("Scaffold items weren't genuinely consumed");return;
+                }
+                if(!level.setBlock(target,Blocks.STONE.defaultBlockState(),3)
+                        ||!level.getBlockState(target).is(Blocks.STONE)){
+                    helper.fail("Couldn't place a real block above its owned support");
+                    return;
                 }
                 phase[0]=1;since[0]=helper.getTick();
             }else if(phase[0]==1){
@@ -120,7 +134,7 @@ public final class BuilderScaffoldPlanAGameTest {
                 if(!BuilderScaffoldPlanA.hasPlan(mob)
                         &&mob.onGround()
                         &&Math.abs(mob.getY()-tower.getY())<.25){
-                    System.out.println("[PLAN A] PASS real shaft+two cantilevered scaffolds"
+                    System.out.println("[PLAN A] PASS real shaft, floating support and block"
                             +" feetY="+target.getY()+" safe return tick="+helper.getTick());
                     helper.succeed();
                 }

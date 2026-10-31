@@ -872,7 +872,16 @@ public final class BuilderScaffolding {
                     return;
             }
         }
-        positions.sort(Comparator.comparingInt((BlockPos block)->block.getY()).reversed());
+        // Reclaim an overhanging bridge from its OUTER TIP toward the
+        // supporting shaft. Removing a same-Y tower first would collapse
+        // still-tracked, inventory-paid horizontal scaffolds as dropped
+        // physics blocks before they can be individually refunded.
+        positions.sort(Comparator.comparingInt((BlockPos block)->block.getY())
+                .thenComparingInt(block->level.getBlockState(block)
+                        .is(Blocks.SCAFFOLDING)
+                        ?level.getBlockState(block).getValue(
+                                net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE)
+                        :-1).reversed());
         for(BlockPos pos:positions){
             if(!level.hasChunkAt(pos))continue;
             if(!level.getBlockState(pos).is(Blocks.SCAFFOLDING)){
