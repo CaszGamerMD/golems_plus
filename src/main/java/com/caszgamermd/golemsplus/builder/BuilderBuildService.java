@@ -787,7 +787,24 @@ public final class BuilderBuildService {
             if(BuilderScaffoldPlanA.hasPlan(worker)
                     &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
                 return;
-            if(now-activity.workTravelSince>900&&!BuilderGrappleAccess.active(worker)){
+            if(now-activity.workTravelSince>180&&!BuilderGrappleAccess.active(worker)){
+                // Reposition before abandoning the assignment: try an
+                // alternate physical grapple or paid scaffold access route.
+                // Neither is mandatory; a failed attempt falls through to
+                // deferred frontier selection rather than spinning forever.
+                if(scaffoldBlockedWork(level,worker,table,owner,pos,
+                        plan.steps())){
+                    activity.workTravelSince=now;
+                    return;
+                }
+                if(pos.getY()>worker.blockPosition().getY()+1){
+                    var reposition=BuilderGrappleAccess.reachWork(
+                            level,worker,table,pos);
+                    if(reposition==BuilderGrappleAccess.Result.MOVING){
+                        activity.workTravelSince=now;
+                        return;
+                    }
+                }
                 // Repeatedly executable movement is not proof that this
                 // placement is making progress. Preserve the cell/materials
                 // and let another feasible frontier on THIS Y run first.
@@ -795,11 +812,11 @@ public final class BuilderBuildService {
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                 table.waitForBuilderAccess(worker.getUUID(),index,now,
-                        "900-tick work approach without placement");
+                        "180-tick work approach without placement");
                 activity.workTravelSince=-1;
                 table.setProblem("Deferred cycling work approach "+pos);
                 System.out.println("[FRONTIER RETRY] deferred unchanged step="+index
-                        +" after 900 ticks without placement at "+worker.position());
+                        +" after 180 ticks without placement at "+worker.position());
                 return;
             }
             int yDiff=pos.getY()-worker.blockPosition().getY();
@@ -845,7 +862,7 @@ public final class BuilderBuildService {
             // Same-Y scaffolding is instead offered below only AFTER
             // all safe walking stances or their real routes are rejected.
             if(yDiff>1&&!directOrdinaryWork
-                    &&now-activity.workTravelSince>260
+                    &&now-activity.workTravelSince>80
                     &&!BuilderGrappleAccess.active(worker)
                     &&scaffoldBlockedWork(level,worker,table,owner,pos,
                             plan.steps()))
