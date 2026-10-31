@@ -27,8 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t jars < <(find build/libs -maxdepth 1 -type f -name '*.jar' \
-            ! -name '*-sources.jar' ! -name '*-javadoc.jar' \
-            ! -name '*-dev.jar' | sort)
+            ! -name '*-sources.jar' ! -name '*-javadoc.jar' | sort)
           if [ "${#jars[@]}" -ne 1 ]; then
             printf 'Expected exactly one playable JAR, found %s\n' "${#jars[@]}"
             printf '%s\n' "${jars[@]}"
