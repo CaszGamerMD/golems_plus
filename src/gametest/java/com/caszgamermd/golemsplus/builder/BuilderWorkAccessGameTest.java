@@ -357,11 +357,13 @@ public final class BuilderWorkAccessGameTest {
                                         level,worker,target,at)));
         });
     }
-    /** 3490/3493 in the full run left this one Y35 sea lantern.
+    /** 3490/3493 in the full run left this one Y35 sea lantern and
+     * two consecutive birch fences directly above it.
      * Sawyer was physically grounded at (16.497,35.500,17.233), on a
      * narrow cap with no safe INTEGER-centered stance anywhere nearby.
      * Prove the existing per-tick 11.5cm step can retreat just beyond
-     * the .8m placement margin while retaining true wall-top footing.
+     * the .8m placement margin while retaining true wall-top footing,
+     * including for an overhead target on the NEXT schematic layer.
      */
     @GameTest(structure="golems_plus_gametest:dome_arena",
             maxTicks=700,skyAccess=true)
@@ -395,6 +397,8 @@ public final class BuilderWorkAccessGameTest {
             helper.fail("No Y35 cap Planner");return;
         }
         BlockPos target=origin.offset(15,35,17);
+        BlockPos upperFence=target.above();
+        int[] stage={0};
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.setPos(origin.getX()+16.497,origin.getY()+35.5,
                 origin.getZ()+17.233);
@@ -411,25 +415,35 @@ public final class BuilderWorkAccessGameTest {
             if(!worker.isAlive()||worker.isNoGravity()){
                 helper.fail("Final cap worker left natural physics");return;
             }
+            BlockPos activeTarget=stage[0]==0?target:upperFence;
             if(BuilderPlacementSpace.safeFractionalCapPose(
-                    level,worker,target)){
-                System.out.println("[Y35 CAP STEP BACK] PASS physical feet="
+                    level,worker,activeTarget)){
+                if(stage[0]==0){
+                    // Change only the reconstructed fixture: prove that
+                    // after the real lantern occupies its place, the
+                    // grounded cap stance can still reach the Y36 fence.
+                    level.setBlock(target,Blocks.SEA_LANTERN.defaultBlockState(),3);
+                    stage[0]=1;
+                    return;
+                }
+                System.out.println("[Y35/Y36 CAP STEP BACK] PASS physical feet="
                         +worker.position()+" after "+helper.getTick()
-                        +" ticks; can place real sea lantern");
+                        +" ticks; lantern placed and upper fence reachable");
                 helper.succeed();return;
             }
             if(helper.getTick()>=12&&helper.getTick()%5==0)
                 BuilderPlacementSpace.stepBackFromFractionalCap(
-                        level,worker,table,target);
+                        level,worker,table,activeTarget);
             if(helper.getTick()>620)
-                helper.fail("Y35 wall-top sidestep stalled feet="
+                helper.fail("Y35/Y36 wall-top sidestep stalled stage="
+                        +stage[0]+" feet="
                         +worker.position()+" grounded="+worker.onGround()
                         +" corners="+WorkerNavigation.supportedHitboxCorners(
                                 level,worker)
                         +" clear="+BuilderPlacementSpace.horizontalClear(
-                                target,worker)
+                                activeTarget,worker)
                         +" retreat="+BuilderPlacementSpace
-                                .canRetreatToFractionalCap(level,worker,target));
+                                .canRetreatToFractionalCap(level,worker,activeTarget));
         });
     }
     private static void measuredRoofScaffoldGap(GameTestHelper helper,

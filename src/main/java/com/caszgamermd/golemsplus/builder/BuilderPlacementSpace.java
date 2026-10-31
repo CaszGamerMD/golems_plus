@@ -94,9 +94,16 @@ public final class BuilderPlacementSpace {
     }
     private static boolean fractionalCapStart(ServerLevel level,
             BuilderGolem worker,BlockPos target){
+        int feetBlockY=worker.blockPosition().getY();
         return worker.onGround()&&!worker.isNoGravity()
-                &&worker.blockPosition().getY()==target.getY()
-                &&Math.abs(worker.getY()-target.getY()-.5)<.13
+                // A real narrow roof top supports the feet at Y+.5,
+                // not at any integer-centered A* stance. The last dome
+                // column is a sea lantern with TWO fences directly above:
+                // the same safely grounded cap stance must be allowed to
+                // reach those next two schematic layers without flying.
+                &&target.getY()>=feetBlockY
+                &&target.getY()<=feetBlockY+2
+                &&Math.abs(worker.getY()-feetBlockY-.5)<.13
                 &&level.getBlockState(target).isAir()
                 &&worker.distanceToSqr(target.getX()+.5,
                         target.getY()+.5,target.getZ()+.5)<14
