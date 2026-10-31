@@ -47,6 +47,7 @@ public final class BuilderScaffoldPlanA {
         double highest=-Double.MAX_VALUE;
         double lastDistance=Double.POSITIVE_INFINITY;
         double closestApproach=Double.POSITIVE_INFINITY;
+        boolean fractionalSideEntry;
         Job(BlockPos target,BlockPos base,BlockPos exit,
                 BlockPos planner,List<BlockPos> bridgePath,int top,long now){
             this.target=target.immutable();
@@ -416,6 +417,13 @@ public final class BuilderScaffoldPlanA {
                         +" bridge="+candidate.bridgeSpan);
                 return candidate;
             }
+            if(fractionalSideMove(level,worker,candidate.base)!=null){
+                candidate.fractionalSideEntry=true;
+                System.out.println("[PLAN A FRACTIONAL ENTRY] clear a real "
+                        +"roof-edge overlap before paid shaft at "
+                        +candidate.base.toShortString());
+                return candidate;
+            }
             // Prefer an immediately reachable grounded entry to a far
             // away roof tile that the abstract multi-goal graph claims is
             // reachable but cannot execute its FIRST collision-safe step.
@@ -580,6 +588,38 @@ public final class BuilderScaffoldPlanA {
                 &&level.noCollision(worker,
                         worker.getBoundingBox().move(0,.65,0));
     }
+    /** Physically sidestep a few centimeters off a proposed elevated
+     * scaffold footprint before paying for the real column. Every step
+     * must be collision-free and still touch genuine solid footing.
+     */
+    private static double[] fractionalSideMove(ServerLevel level,
+            BuilderGolem worker,BlockPos base){
+        double dy=base.getY()-worker.getY();
+        if(!worker.onGround()||worker.isNoGravity()
+                ||dy<.40||dy>1.10
+                ||worker.distanceToSqr(base.getX()+.5,worker.getY(),
+                        base.getZ()+.5)>1.20
+                ||!level.getBlockState(base).isAir()
+                ||!level.getBlockState(base.below()).isFaceSturdy(
+                        level,base.below(),Direction.UP))return null;
+        var box=worker.getBoundingBox();
+        if(!box.intersects(new net.minecraft.world.phys.AABB(base))
+                ||!level.noCollision(worker,box.move(0,.35,0)))return null;
+        double clearX=worker.getX()<base.getX()+.5
+                ?base.getX()-.025-box.maxX
+                :base.getX()+1.025-box.minX;
+        double clearZ=worker.getZ()<base.getZ()+.5
+                ?base.getZ()-.025-box.maxZ
+                :base.getZ()+1.025-box.minZ;
+        boolean moveX=Math.abs(clearX)<Math.abs(clearZ);
+        double mx=moveX?Math.max(-.085,Math.min(.085,clearX)):0;
+        double mz=moveX?0:Math.max(-.085,Math.min(.085,clearZ));
+        var shifted=box.move(mx,0,mz);
+        if(!level.noCollision(worker,shifted)
+                ||level.noCollision(worker,shifted.move(0,-.07,0)))
+            return null;
+        return new double[]{mx,mz};
+    }
     /** Find a WALKABLE, head-clear launch on another face of an elevated
      * base. The nearest side of the north dome rim has a diorite overhang;
      * its north face has real floor and enough headroom to jump onto the
@@ -736,6 +776,20 @@ public final class BuilderScaffoldPlanA {
         if(j==null)return false;
         j.bridgeTicks++;
         j.highest=Math.max(j.highest,worker.getY());
+        if(j.phase==Phase.APPROACH&&j.fractionalSideEntry){
+            double[] step=fractionalSideMove(level,worker,j.base);
+            if(step!=null){
+                worker.getNavigation().stop();
+                worker.setNoGravity(false);
+                worker.setJumping(false);
+                worker.getMoveControl().setWantedPosition(
+                        worker.getX()+step[0],worker.getY(),
+                        worker.getZ()+step[1],1.0);
+                worker.setDeltaMovement(step[0],
+                        Math.min(0,worker.getDeltaMovement().y),step[1]);
+                return true;
+            }
+        }
         BlockPos destination=switch(j.phase){
             case WALK_FIRST->j.first().above();
             case RETURN_FIRST->j.bridge(j.returnStep).above();
