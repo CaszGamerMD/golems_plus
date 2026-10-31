@@ -3,8 +3,10 @@ package com.caszgamermd.golemsplus.builder;
 import com.caszgamermd.golemsplus.worker.WorkerNavigation;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,7 +37,7 @@ public final class BuilderScaffoldPlanA {
     }
     private static final class Job {
         final BlockPos target,base,exit,planner;
-        final Direction towardTarget;
+        final List<BlockPos> bridgePath;
         final int top,bridgeSpan;
         int bridgeStep=2,returnStep=1;
         Phase phase=Phase.APPROACH;
@@ -46,17 +48,17 @@ public final class BuilderScaffoldPlanA {
         double lastDistance=Double.POSITIVE_INFINITY;
         double closestApproach=Double.POSITIVE_INFINITY;
         Job(BlockPos target,BlockPos base,BlockPos exit,
-                BlockPos planner,Direction direction,int top,int span,long now){
+                BlockPos planner,List<BlockPos> bridgePath,int top,long now){
             this.target=target.immutable();
             this.base=base.immutable();
             this.exit=exit.immutable();
             this.planner=planner.immutable();
-            this.towardTarget=direction;
+            this.bridgePath=List.copyOf(bridgePath);
             this.top=top;
-            this.bridgeSpan=span;
+            this.bridgeSpan=bridgePath.size();
             this.lastProgress=now;
         }
-        BlockPos bridge(int n){return base.relative(towardTarget,n).atY(top);}
+        BlockPos bridge(int n){return bridgePath.get(n-1);}
         BlockPos first(){return bridge(1);}
         BlockPos second(){return bridge(bridgeStep);}
     }
@@ -111,7 +113,9 @@ public final class BuilderScaffoldPlanA {
                 // reach to the actual work cube, not 3-D Manhattan
                 // distance, which includes the intentional Y offset.
                 ||Math.abs(j.bridge(j.bridgeSpan).getX()-target.getX())
-                    +Math.abs(j.bridge(j.bridgeSpan).getZ()-target.getZ())!=2
+                    +Math.abs(j.bridge(j.bridgeSpan).getZ()-target.getZ())<2
+                ||Math.abs(j.bridge(j.bridgeSpan).getX()-target.getX())
+                    +Math.abs(j.bridge(j.bridgeSpan).getZ()-target.getZ())>3
                 ||worker.blockPosition().getX()!=j.bridge(j.bridgeSpan).getX()
                 ||worker.blockPosition().getZ()!=j.bridge(j.bridgeSpan).getZ()
                 ||!present(level,table,worker,j.bridge(j.bridgeSpan)))return false;
@@ -172,21 +176,14 @@ public final class BuilderScaffoldPlanA {
         }
         return result;
     }
-    /** Horizontal owned scaffolding: 2-5 real paid cells, supported
-     * by a real vertical shaft. Protect the whole return route from
-     * unfinished schematic cells and head collisions.
+    /** Native scaffolding is supported by a six-step chain of neighboring
+     * scaffold blocks. A bend is legal if each successive paid block is
+     * adjacent and the whole chain is at most six cells long.
      */
-    private static boolean bridgeClear(ServerLevel world,BlockPos base,
-            Direction toward,int workY,int span,Set<BlockPos> reserved,
-            WorkerStationBlockEntity table,BuilderGolem worker){
-        for(int n=1;n<=span;n++){
-            BlockPos p=base.relative(toward,n).atY(workY-1);
-            // A sideways scaffold requires no blocks beneath it while
-            // within six horizontal cells of its tower. Validate the
-            // actual extension distance, ownership, headroom and blueprint
-            // reservation, not the BOTTOM flag.
-            if(n>MAX_HORIZONTAL_SCAFFOLD_SPAN
-                    ||!world.hasChunkAt(p)||reserved.contains(p)
+    private static boolean bridgeCellClear(ServerLevel world,BlockPos p,
+            Set<BlockPos> reserved,WorkerStationBlockEntity table,
+            BuilderGolem worker){
+            if(!world.hasChunkAt(p)||reserved.contains(p)
                     ||reserved.contains(p.above())
                     ||reserved.contains(p.above(2)))return false;
             if(world.getBlockState(p).is(Blocks.SCAFFOLDING)){
@@ -198,8 +195,67 @@ public final class BuilderScaffoldPlanA {
             }else if(!world.getBlockState(p).isAir())return false;
             if(!world.getBlockState(p.above()).isAir()
                     ||!world.getBlockState(p.above(2)).isAir())return false;
+        return true;
+    }
+    /** Horizontal owned scaffolding uses a real vertical shaft and
+     * reserves the whole return route from unfinished schematic cells.
+     */
+    private static boolean bridgeClear(ServerLevel world,BlockPos base,
+            Direction toward,int workY,int span,Set<BlockPos> reserved,
+            WorkerStationBlockEntity table,BuilderGolem worker){
+        if(span>MAX_HORIZONTAL_SCAFFOLD_SPAN)return false;
+        for(int n=1;n<=span;n++){
+            BlockPos p=base.relative(toward,n).atY(workY-1);
+            if(!bridgeCellClear(world,p,reserved,table,worker))return false;
         }
         return true;
+    }
+    /** Find a six-or-shorter SUPPORTED orthogonal scaffold path around
+     * an already built roof obstruction. The terminal stance may be three
+     * tiles from the block, still within placement reach and well beyond
+     * the required .8m edge clearance. No diagonal jumps, floating blocks,
+     * or unsupported seven-distance scaffolding are permitted.
+     */
+    private static List<BlockPos> bentBridge(ServerLevel world,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            BlockPos target,BlockPos base,Direction outward,
+            Set<BlockPos> reserved){
+        BlockPos start=base.atY(target.getY()-1);
+        BlockPos stance=target.relative(outward,3);
+        if(!BuilderConstructionPlanner.lineOfSight(world,worker,stance,target))
+            return null;
+        BlockPos goal=stance.atY(target.getY()-1);
+        ArrayDeque<BlockPos> queue=new ArrayDeque<>();
+        Map<BlockPos,BlockPos> previous=new HashMap<>();
+        Map<BlockPos,Integer> length=new HashMap<>();
+        queue.add(start);
+        length.put(start,0);
+        while(!queue.isEmpty()){
+            BlockPos from=queue.removeFirst();
+            int depth=length.get(from);
+            if(from.equals(goal)){
+                List<BlockPos> result=new ArrayList<>();
+                for(BlockPos p=goal;!p.equals(start);p=previous.get(p))
+                    result.add(p);
+                java.util.Collections.reverse(result);
+                return result.isEmpty()?null:result;
+            }
+            if(depth>=MAX_HORIZONTAL_SCAFFOLD_SPAN)continue;
+            for(Direction direction:Direction.Plane.HORIZONTAL){
+                BlockPos next=from.relative(direction);
+                if(length.containsKey(next)
+                        ||Math.abs(next.getX()-target.getX())
+                            >MAX_WORK_TOWER_DISTANCE
+                        ||Math.abs(next.getZ()-target.getZ())
+                            >MAX_WORK_TOWER_DISTANCE
+                        ||!bridgeCellClear(world,next,reserved,table,worker))
+                    continue;
+                previous.put(next,from);
+                length.put(next,depth+1);
+                queue.addLast(next);
+            }
+        }
+        return null;
     }
     private static boolean shaftClear(ServerLevel world,BlockPos base,int top,
             Set<BlockPos> reserved,WorkerStationBlockEntity table,
@@ -256,9 +312,17 @@ public final class BuilderScaffoldPlanA {
                 int top=target.getY()-1;
                 if(rejected!=null&&level.getGameTime()<
                         rejected.getOrDefault(base,Long.MIN_VALUE))continue;
-                if(!shaftClear(level,base,top,reserved,table,worker)
-                        ||!bridgeClear(level,base,inward,target.getY(),
-                                span,reserved,table,worker))continue;
+                if(!shaftClear(level,base,top,reserved,table,worker))continue;
+                List<BlockPos> bridge=new ArrayList<>();
+                if(bridgeClear(level,base,inward,target.getY(),
+                        span,reserved,table,worker)){
+                    for(int n=1;n<=span;n++)bridge.add(
+                            base.relative(inward,n).atY(top));
+                }else if(workPose){
+                    bridge=bentBridge(level,worker,table,target,base,
+                            outward,reserved);
+                    if(bridge==null)continue;
+                }else continue;
                 BlockPos exit=BuilderScaffolding.safeGroundExit(
                         level,worker,base,reserved);
                 if(exit==null)continue;
@@ -267,19 +331,18 @@ public final class BuilderScaffoldPlanA {
                     if(level.getBlockState(base.atY(y)).is(Blocks.SCAFFOLDING))
                         existing++;
                 }
-                for(int n=1;n<=span;n++)
-                    if(level.getBlockState(base.relative(inward,n)
-                            .atY(top)).is(Blocks.SCAFFOLDING))
+                for(BlockPos cell:bridge)
+                    if(level.getBlockState(cell).is(Blocks.SCAFFOLDING))
                         existing++;
                 double score=BuilderScaffoldSiteScore.score(base,
                         worker.blockPosition(),target,
-                        Math.max(0,top-base.getY()+1+span-existing),0,0,
+                        Math.max(0,top-base.getY()+1+bridge.size()-existing),0,0,
                         existing>0);
                 // Extra credit for not changing X/Z aisle from worker.
                 score+=Math.abs(worker.getX()-base.getX()-.5)
                         +Math.abs(worker.getZ()-base.getZ()-.5);
                 Job candidate=new Job(target,base,exit,
-                        table.getBlockPos(),inward,top,span,level.getGameTime());
+                        table.getBlockPos(),bridge,top,level.getGameTime());
                 candidate.lastDistance=score;
                 options.add(candidate);
             }
@@ -300,6 +363,14 @@ public final class BuilderScaffoldPlanA {
                     &&Math.abs(worker.getY()-candidate.base.getY())<.30
                     &&worker.onGround();
             if(onBase)return candidate;
+            // Prefer an immediately reachable grounded entry to a far
+            // away roof tile that the abstract multi-goal graph claims is
+            // reachable but cannot execute its FIRST collision-safe step.
+            if(candidate.base.getY()==worker.blockPosition().getY()
+                    &&worker.distanceToSqr(candidate.base.getX()+.5,
+                            candidate.base.getY(),candidate.base.getZ()+.5)<16
+                    &&WorkerNavigation.canReachExact(
+                            level,worker,candidate.base))return candidate;
             if(!workPose&&WorkerNavigation.canReachExact(
                     level,worker,candidate.base))return candidate;
             if(!entryCandidates.contains(candidate.base))
