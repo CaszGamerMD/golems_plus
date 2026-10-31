@@ -492,8 +492,16 @@ public final class BuilderScaffolding {
      */
     static boolean dismountAtBase(ServerLevel level,BuilderGolem worker,
                                    BlockPos column){
+        return dismountAtBase(level,worker,column,null);
+    }
+    /** Prefer the new physical exit after construction blocks the old one. */
+    static boolean dismountAtBase(ServerLevel level,BuilderGolem worker,
+                                   BlockPos column,BlockPos preferred){
         AccessRoute planned=access.get(worker);
-        BlockPos exit=planned!=null
+        BlockPos exit=preferred!=null
+                &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canStandOn(level,worker,preferred)
+                ?preferred:planned!=null
                 &&planned.base().equals(column)
                 &&com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .canStandOn(level,worker,planned.groundExit())
