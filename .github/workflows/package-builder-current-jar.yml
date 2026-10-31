@@ -1,0 +1,59 @@
+name: Package current Builder Golems JAR
+on:
+  push:
+    branches:
+      - experiment/builder-dome-starter-toolkit-262
+    paths:
+      - '.github/workflows/package-builder-current-jar.yml'
+  workflow_dispatch:
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Build Fabric playable JAR (without requiring unfinished dome tests)
+        run: gradle --no-daemon remapJar
+      - name: Select playable JAR and write manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t jars < <(find build/libs -maxdepth 1 -type f -name '*.jar' \
+            ! -name '*-sources.jar' ! -name '*-javadoc.jar' \
+            ! -name '*-dev.jar' | sort)
+          if [ "${#jars[@]}" -ne 1 ]; then
+            printf 'Expected exactly one playable JAR, found %s\n' "${#jars[@]}"
+            printf '%s\n' "${jars[@]}"
+            exit 1
+          fi
+          mkdir -p dist
+          cp "${jars[0]}" dist/golems-plus-0.3.58-dev-enhanced-scaffolding.jar
+          sha256sum dist/*.jar > dist/SHA256SUMS.txt
+          printf 'Source commit: %s\nFabric Minecraft: 26.2\nCurrent behavior snapshot; dome and teamwork tests are not yet passing.\n' \
+            "$GITHUB_SHA" > dist/BUILD-INFO.txt
+          jar tf dist/*.jar | grep -q 'com/caszgamermd/golemsplus/world/EnhancedScaffoldingBlock.class'
+          jar tf dist/*.jar | grep -q 'data/golems_plus/recipe/enhanced_scaffolding.json'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: golems-plus-current-enhanced-scaffolding
+          path: dist/
+          if-no-files-found: error
+      - name: Publish direct-download snapshot release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="builder-snapshot-${GITHUB_SHA:0:12}"
+          gh release create "$tag" dist/*.jar dist/SHA256SUMS.txt dist/BUILD-INFO.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Builder Golems snapshot with Enhanced Scaffolding" \
+            --notes "Fabric 26.2, mod 0.3.58-dev. Exact current behavior snapshot from commit ${GITHUB_SHA}. Enhanced Scaffolding block, recipe and current Builder navigation included. Dome and teamwork GameTests remain unfinished; this is not a verified stable release."
