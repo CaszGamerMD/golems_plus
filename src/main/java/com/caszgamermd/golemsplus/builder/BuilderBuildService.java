@@ -134,6 +134,23 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table,ServerPlayer owner,BlockPos target,
             List<BuilderConstructionPlan.Step> steps){
         if(BuilderScaffoldPlanA.hasPlan(worker)
+                &&table.scaffoldPositions(worker.getUUID()).isEmpty()
+                &&!BuilderScaffolding.isControllingMovement(worker)
+                &&worker.onGround()&&!worker.isNoGravity()
+                &&BuilderPlacementSpace.placementHeight(target,worker)
+                &&BuilderPlacementSpace.horizontalClear(target,worker)
+                &&worker.distanceToSqr(target.getX()+.5,
+                        target.getY()+.5,target.getZ()+.5)<14
+                &&BuilderConstructionPlanner.safeStand(
+                        level,worker,target,worker.blockPosition())){
+            // A worker may reach a legal roof stance while heading for
+            // an optional paid tower. If the tower has not been erected,
+            // release that obsolete approach and place from REAL footing;
+            // never interrupt an active climb or abandon owned scaffold.
+            BuilderScaffoldPlanA.cancel(worker);
+            return false;
+        }
+        if(BuilderScaffoldPlanA.hasPlan(worker)
                 ||BuilderScaffoldPlanA.canPlanWorkPose(
                         level,worker,table,target,steps)){
             var bridge=BuilderScaffoldPlanA.reachWorkPose(

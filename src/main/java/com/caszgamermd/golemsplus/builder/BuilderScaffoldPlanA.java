@@ -274,6 +274,7 @@ public final class BuilderScaffoldPlanA {
         options.sort(Comparator.comparingDouble(j->j.lastDistance));
         int probes=0;
         List<BlockPos> entryCandidates=new ArrayList<>();
+        List<BlockPos> levelEntries=new ArrayList<>();
         for(Job candidate:options){
             if(++probes>(workPose?96:64))break;
             // A scaffold already occupying its own base is not a native
@@ -287,13 +288,23 @@ public final class BuilderScaffoldPlanA {
                     level,worker,candidate.base))return candidate;
             if(!entryCandidates.contains(candidate.base))
                 entryCandidates.add(candidate.base);
+            if(candidate.base.getY()<=worker.blockPosition().getY()
+                    &&!levelEntries.contains(candidate.base))
+                levelEntries.add(candidate.base);
         }
         if(!workPose)return null;
         // Use the same trained/fractional movement preflight as work
         // approaches, not native canReachExact, which rejects some real
         // off-center detours on high roofs. One bounded multi-goal search
         // gives both Builders a fair shot at a reachable scaffold base.
-        BlockPos entry=WorkerNavigation.selectExecutableStand(
+        // On a finished high roof, the nearest elevated base can be a
+        // theoretical one-step jump behind a slab or glass edge. Try a
+        // center-reachable entry on the worker's existing/lower surface
+        // first; only then consider an ascent to a higher shaft base.
+        BlockPos entry=levelEntries.isEmpty()?null:
+                WorkerNavigation.selectExecutableStand(
+                        level,worker,levelEntries);
+        if(entry==null)entry=WorkerNavigation.selectExecutableStand(
                 level,worker,entryCandidates);
         if(entry!=null)
             for(Job candidate:options)
