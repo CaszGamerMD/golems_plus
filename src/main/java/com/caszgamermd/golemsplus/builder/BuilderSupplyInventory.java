@@ -286,17 +286,19 @@ public final class BuilderSupplyInventory {
         materials.put("golems_plus:grapple_hook",1);
         int highestSchematic=steps.stream().mapToInt(
                 BuilderConstructionPlan.Step::y).max().orElse(highest);
-        // A dome's upper-middle layers already create deep, isolated roof
-        // gaps. Waiting until the final eight layers to carry scaffolding
-        // forced workers at Y21-Y23 to climb down to storage AFTER their
-        // first route failed, then walk back toward a 20-block paid tower.
-        // Reserve 32 real blocks in one pouch slot from layer sixteen.
+        // A dome's upper layers create deep, isolated roof gaps. Waiting
+        // until the final eight layers to carry scaffolding forced workers
+        // at Y21-Y23 to climb down to storage AFTER their first route
+        // failed, then walk back toward a 20-block paid tower. Starting
+        // at Y20 also avoids needless equipment detours on the lower,
+        // already traversable walls, as observed during the Y19 trial.
+        // Reserve 32 real blocks in one pouch slot from layer twenty.
         // The shaft still constructs in 16-block physical stages, but a
         // 23-block tower can now finish both stages without descending
         // from its halfway perch for another visit to OnSite Storage.
         // Keep them across ten-block work batches; current job materials
         // still pack ahead of this optional, inventory-paid access tool.
-        if(highest-table.builderOrigin().getY()>=16
+        if(highest-table.builderOrigin().getY()>=20
                 &&highestSchematic-highest>=0)
             materials.put("minecraft:scaffolding",32);
         // Distant final-cap blocks still wait until the final eight

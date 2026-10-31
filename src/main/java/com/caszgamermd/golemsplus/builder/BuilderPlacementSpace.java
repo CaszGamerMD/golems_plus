@@ -339,15 +339,13 @@ public final class BuilderPlacementSpace {
             BlockPos target){
         BlockPos origin=worker.blockPosition();
         List<BlockPos> choices=new ArrayList<>();
-        // Probe a compact, predictable set of cardinal/diagonal safe
-        // standing locations instead of inspecting hundreds of cells on
-        // every 12-tick build update (which itself caused visible freezes).
-        // Include straight aisle exits. The old corner-only scan tried
-        // (radius,radius) diagonals and missed open cardinal paths along a
-        // wall, leaving builders stalled despite clear floor two blocks away.
-        // Eight directions x three heights x three radii is bounded; only
-        // the best candidates below perform expensive navigation probes.
-        for(int radius=1;radius<=4;radius++){
+        // A finished worker can be stuck on an upper dome lip while a
+        // teammate still needs the neighboring glass tile. Radius four
+        // may cover ONLY the enclosed lip: allow an eight-tile WALKING
+        // detour to a genuinely safe roof aisle before declaring a
+        // 10,000-tick body-occupancy deadlock. These are still collision-
+        // checked, solid-supported, real path candidates; no teleporting.
+        for(int radius=1;radius<=8;radius++){
             int[][] offsets={
                     {radius,0},{-radius,0},{0,radius},{0,-radius},
                     {radius,radius},{radius,-radius},
@@ -363,11 +361,18 @@ public final class BuilderPlacementSpace {
                 p.distSqr(origin)+Math.abs(p.getY()-origin.getY())*2));
         int attempted=0;
         for(BlockPos p:choices){
-            if(++attempted>16)break; // bounded path work; try more than one aisle side
+            if(++attempted>16)break; // fast local moves first
             // Favor a physically reachable tile; don't assume an air
             // candidate is reachable around walls/stairs/racks.
             if(WorkerNavigation.canReachExact(level,worker,p))return p.immutable();
         }
+        // The nearest sixteen may all be behind a railing, while a real
+        // corridor reaches a farther supported ledge. One trained
+        // multi-goal search examines the remaining bounded alternatives;
+        // repeated individual A* calls here would stall all four workers.
+        if(choices.size()>16)
+            return WorkerNavigation.selectExecutableStand(level,worker,
+                    choices.subList(16,Math.min(96,choices.size())));
         return null;
     }
 
@@ -657,6 +662,18 @@ public final class BuilderPlacementSpace {
                     &&destination.equals(target))destination=null;
             if(destination==null){
                 found=false;
+                if(level.getGameTime()%200==0)
+                    System.out.println("[BUILDER VACATE] no physically "
+                            +"reachable roof exit for blocker="
+                            +blocker.getUUID()+" feet="+blocker.position()
+                            +" target="+target.toShortString()
+                            +" grounded="+blocker.onGround()
+                            +" grapple="+BuilderGrappleAccess.debug(blocker)
+                            +" carriedHook="+blocker.carriedCount(
+                                    com.caszgamermd.golemsplus.world.WorksiteContent
+                                            .GRAPPLE_HOOK)
+                            +" carriedScaffold="+blocker.carriedCount(
+                                    net.minecraft.world.item.Items.SCAFFOLDING));
                 continue;
             }
             yielding.put(blocker,new Yield(target,destination,
