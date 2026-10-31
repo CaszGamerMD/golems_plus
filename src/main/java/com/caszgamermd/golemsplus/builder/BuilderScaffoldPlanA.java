@@ -393,6 +393,29 @@ public final class BuilderScaffoldPlanA {
                     &&Math.abs(worker.getY()-candidate.base.getY())<.30
                     &&worker.onGround();
             if(onBase)return candidate;
+            // A slab-edge Builder can already be BESIDE a supported
+            // scaffold base even when trained A* rejects its non-centered
+            // starting tile. If the worker is grounded, within real item
+            // placement range, and has vertical headroom, let it build
+            // that non-solid climb-through scaffold from its existing
+            // feet instead of demanding a long-distance route proof.
+            // The active scaffold controller still has to physically
+            // center and climb; this authorizes no movement shortcut.
+            boolean nearGroundedBase=worker.onGround()
+                    &&!worker.isNoGravity()
+                    &&Math.abs(worker.getY()-candidate.base.getY())<.30
+                    &&worker.distanceToSqr(candidate.base.getX()+.5,
+                            worker.getY(),candidate.base.getZ()+.5)<1.20
+                    &&level.noCollision(worker,
+                            worker.getBoundingBox().move(0,.35,0));
+            if(nearGroundedBase
+                    ||canEnterFromBelow(level,worker,candidate.base)){
+                System.out.println("[PLAN A LOCAL ENTRY] from grounded feet "
+                        +worker.position()+" at supported base "
+                        +candidate.base.toShortString()
+                        +" bridge="+candidate.bridgeSpan);
+                return candidate;
+            }
             // Prefer an immediately reachable grounded entry to a far
             // away roof tile that the abstract multi-goal graph claims is
             // reachable but cannot execute its FIRST collision-safe step.
@@ -438,6 +461,7 @@ public final class BuilderScaffoldPlanA {
         int shafts=0,bridges=0,exits=0,reached=0,lowerExits=0;
         int localShafts=0,localBridges=0,localExits=0;
         BlockPos nearestLocal=null;
+        List<String> localExamples=new ArrayList<>();
         Set<BlockPos> workGoals=workStanceGoals(level,worker,target);
         BlockPos feet=worker.blockPosition();
         for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
@@ -454,6 +478,7 @@ public final class BuilderScaffoldPlanA {
                         base,reserved)==null)continue;
                 localExits++;
                 if(nearestLocal==null)nearestLocal=base;
+                if(localExamples.size()<8)localExamples.add(base.toShortString());
             }
         }
         List<BlockPos> lowerBases=new ArrayList<>();
@@ -504,6 +529,8 @@ public final class BuilderScaffoldPlanA {
                 +" localBridges="+localBridges
                 +" localExits="+localExits
                 +" nearestLocal="+nearestLocal
+                +" goalPoses="+workGoals.size()
+                +" localOptions="+localExamples
                 +" goalPoses="+workGoals.size()
                 +" lowerExits="+lowerExits
                 +" lowerTrained="+WorkerNavigation.selectExecutableStand(
