@@ -139,6 +139,18 @@ public final class BuilderDomeConstructionGameTest {
         }
         final int[] lastCursor={-1},lastCleared={-1},lastCompleted={-1};
         final long[] lastProgress={helper.getTick()};
+        // Diagnostic-only per-worker motion/claim watches. These never
+        // change a Builder's task, movement, inventory or scheduling.
+        final net.minecraft.world.phys.Vec3[] lastWorkerPose=
+                new net.minecraft.world.phys.Vec3[crew.size()];
+        final int[] lastWorkerClaim=new int[crew.size()];
+        final long[] lastWorkerActivity=new long[crew.size()];
+        for(int i=0;i<crew.size();i++){
+            BuilderGolem worker=crew.get(i);
+            lastWorkerPose[i]=worker.position();
+            lastWorkerClaim[i]=table.claimedStep(worker.getUUID());
+            lastWorkerActivity[i]=helper.getTick();
+        }
         final boolean[] inspected={false},checkpoint={false},goal3333={false},goal3400={false};
         helper.onEachTick(()->{
             long tick=helper.getTick();
@@ -147,6 +159,57 @@ public final class BuilderDomeConstructionGameTest {
             // out-of-order zone completion; don't use obsolete ledger fields.
             int physicalCount=physicallyCorrect(level,steps);
             int sharedY=table.builderActiveLayer(steps);
+            // A crew can make overall progress while ONE member is trapped
+            // on a scaffold or holds one unreachable placement cell. Keep
+            // that member's coordinates and route state in the CI artifact.
+            for(int i=0;i<crew.size();i++){
+                BuilderGolem worker=crew.get(i);
+                int claim=table.claimedStep(worker.getUUID());
+                var pose=worker.position();
+                if(pose.distanceToSqr(lastWorkerPose[i])>=.0625
+                        ||claim!=lastWorkerClaim[i]){
+                    lastWorkerPose[i]=pose;
+                    lastWorkerClaim[i]=claim;
+                    lastWorkerActivity[i]=tick;
+                }
+                if(tick%400!=0||tick-lastWorkerActivity[i]<600
+                        ||claim<0&&table.scaffoldPositions(
+                                worker.getUUID()).isEmpty())continue;
+                BlockPos target=claim>=0&&claim<steps.size()
+                        ?new BlockPos(steps.get(claim).x(),
+                                steps.get(claim).y(),steps.get(claim).z())
+                        :null;
+                String snapshot="[DOME STUCK WORKER] tick="+tick
+                        +" idleTicks="+(tick-lastWorkerActivity[i])
+                        +" worker="+worker.getName().getString()
+                        +" feetXYZ="+worker.position().subtract(
+                                net.minecraft.world.phys.Vec3.atLowerCornerOf(
+                                        table.builderOrigin()))
+                        +" grounded="+worker.onGround()
+                        +" noGravity="+worker.isNoGravity()
+                        +" claimedStep="+claim
+                        +" targetXYZ="+(target==null?"none":
+                                target.subtract(table.builderOrigin()))
+                        +" ownedScaffolds="+table.scaffoldPositions(
+                                worker.getUUID()).size()
+                        +" scaffoldPlan="+BuilderScaffoldPlanA.status(worker)
+                        +" climb="+BuilderScaffolding.debugClimb(worker)
+                        +" grapple="+BuilderGrappleAccess.debug(worker)
+                        +" problem="+table.problem()
+                        +" | "+BuilderBuildService.debugStatus(level,worker)
+                        +" | targetNeighbors="+(target==null?"none":
+                                surroundingBlocks(level,target));
+                System.out.println(snapshot);
+                try{
+                    Path report=Path.of("route-survey/dome_stuck_workers.log");
+                    Files.createDirectories(report.getParent());
+                    Files.writeString(report,snapshot+System.lineSeparator(),
+                            java.nio.file.StandardOpenOption.CREATE,
+                            java.nio.file.StandardOpenOption.APPEND);
+                }catch(Exception e){
+                    System.err.println("[DOME STUCK REPORT] "+e);
+                }
+            }
             // Fail immediately if a Builder receives an out-of-layer
             // construction assignment; no silent progress on upper Y
             // while an indexed lower-Y cell remains unfinished.
@@ -365,6 +428,17 @@ public final class BuilderDomeConstructionGameTest {
             }
         }
         return out.toString();
+    }
+
+    /** Read-only six-sided collision/support context for any stuck target. */
+    private static String surroundingBlocks(ServerLevel level,BlockPos pos){
+        StringBuilder result=new StringBuilder();
+        for(var side:net.minecraft.core.Direction.values()){
+            if(result.length()>0)result.append(';');
+            result.append(side).append('=')
+                    .append(level.getBlockState(pos.relative(side)));
+        }
+        return result.toString();
     }
 
     /** Exact outstanding work at the current locked construction Y.
