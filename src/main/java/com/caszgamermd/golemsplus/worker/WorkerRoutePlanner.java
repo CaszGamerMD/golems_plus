@@ -43,9 +43,7 @@ public final class WorkerRoutePlanner {
         {1,0},{-1,0},{0,1},{0,-1},
         {1,1},{1,-1},{-1,1},{-1,-1}
     };
-    // Golems can intentionally descend two blocks onto a VERIFIED
-    // landing. This is a one-way edge: climbing still tops out at one.
-    private static final int[] HEIGHT_STEPS={0,-1,1,-2};
+    private static final int[] HEIGHT_STEPS={0,-1,1};
     private record Node(BlockPos pos,int travelled,int estimate){}
     /** A physically verified bridge from the entity's actual fractional
      * footing onto a standable cell of the block-scale graph. The cost
@@ -188,10 +186,8 @@ public final class WorkerRoutePlanner {
                             floor::applyAsDouble);
                     double toHeight=heightCache.computeIfAbsent(next,
                             floor::applyAsDouble);
-                    double delta=toHeight-fromHeight;
-                    double rise=Math.abs(delta);
-                    if(!Double.isFinite(delta)||delta>1.01
-                            ||delta< -2.01)continue;
+                    double rise=Math.abs(toHeight-fromHeight);
+                    if(!Double.isFinite(rise)||rise>1.01)continue;
                     if(diagonal){
                         // Swept 0.65+ Builder hitboxes cannot corner-cut
                         // between two blocked side cells. Both side
@@ -225,8 +221,7 @@ public final class WorkerRoutePlanner {
                     // Prefer smooth moves and realistic open corridors,
                     // never raw straight-line guesses through walls.
                     int weight=(diagonal?DIAGONAL_COST:MOVE_COST)
-                            +(rise>.51?HEIGHT_COST:0)
-                            +(delta< -1.01?20:0)+turn
+                            +(rise>.51?HEIGHT_COST:0)+turn
                             +(int)Math.round(Math.min(100,extra)*MOVE_COST);
                     int candidate=node.travelled()+weight;
                     if(candidate>=cost.getOrDefault(next,Integer.MAX_VALUE))continue;

@@ -619,15 +619,13 @@ public final class WorkerNavigation {
         // floor elevations, but let the fractional collision lattice
         // prove that there is a supported way to reach each candidate.
         for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
-            for(int dy=-2;dy<=1;dy++){
+            for(int dy=-1;dy<=1;dy++){
                 if(dx==0&&dz==0)continue;
                 BlockPos seed=start.offset(dx,dy,dz);
                 if(seed.equals(avoid)||excluded.contains(seed)
                         ||!standingTile(level,mob,seed))continue;
                 double floor=floorAt(level,seed);
-                double heightChange=floor-mob.getY();
-                if(!Double.isFinite(floor)||heightChange>1.01
-                        ||heightChange< -2.01)
+                if(!Double.isFinite(floor)||Math.abs(floor-mob.getY())>1.01)
                     continue;
                 // Both alternatives execute ONLY through real collisions.
                 // Rejoining the same floor requires continuous under-foot
@@ -1184,8 +1182,8 @@ public final class WorkerNavigation {
     /**
      * Native Minecraft pathfinding frequently refuses a short first leg
      * across a half slab, stair, wall or fence, even though our trained A*
-     * has verified both collision-height endpoints. Try one adjacent
-     * physical step (up to one block up or two down). No long-range steering,
+     * has verified both collision-height endpoints. Try only ONE cardinal
+     * 0.6-block step as a physical alternative. No long-range steering,
      * teleport, gravity bypass, jump over a barrier or unsupported gap.
      *
      * Execution is per tick and sends motion through Minecraft collision;
@@ -1203,17 +1201,16 @@ public final class WorkerNavigation {
         // arbitrary long jumps. A diagonal ONE-BLOCK DOWN step can be
         // safe even when neither cardinal side has a centered waypoint.
         if(dxBlocks>1||dzBlocks>1||dxBlocks+dzBlocks==0
-                ||next.getY()-at.getY()>1
-                ||at.getY()-next.getY()>2)return false;
+                ||Math.abs(at.getY()-next.getY())>1)return false;
         boolean diagonal=dxBlocks==1&&dzBlocks==1;
         double floor=floorAt(level,next);
         double delta=floor-mob.getY();
-        // A* proves supported landings for one-block rises and up-to-two
-        // descents. The fallback uses the golem's REAL jump or gravity,
-        // never a synthetic vertical impulse.
+        // A* already proves one-block supported rises and drops. The
+        // fallback must use the golem's REAL one-block jump rather than
+        // discarding these legal detours as physically impossible.
         // 1.5-block walls remain excluded by the actual collision height.
-        if(!Double.isFinite(delta)||delta>1.01||delta< -2.01
-                ||diagonal&&(delta>.6001||delta< -1.01))return false;
+        if(!Double.isFinite(delta)||Math.abs(delta)>1.01
+                ||diagonal&&delta>.6001)return false;
         if(diagonal&&delta>=-.6001){
             // For level or half-slab diagonals, the swept BODY alone is
             // not enough: require both orthogonal corridors to have
@@ -1297,8 +1294,7 @@ public final class WorkerNavigation {
         // away from the real, previously checked single block transition.
         if(mob.isNoGravity()||mob.tickCount-p.terrainStepStarted>50
                 ||!Double.isFinite(floor)
-                ||floor-mob.getY()>1.10
-                ||floor-mob.getY()< -2.10
+                ||Math.abs(floor-mob.getY())>1.10
                 ||gap>3.0
                 ||!standingTile(level,mob,next)){
             p.terrainStep=null;
