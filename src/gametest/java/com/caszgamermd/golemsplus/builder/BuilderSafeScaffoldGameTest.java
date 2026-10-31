@@ -903,9 +903,10 @@ public final class BuilderSafeScaffoldGameTest {
             if(phase[0]==1){
                 BuilderScaffoldPlanA.returnToGround(level,worker,table);
                 if(helper.getTick()-changed[0]<60)return;
-                if(worker.getY()<tower.getY()+1.0){
-                    helper.fail("Builder descended through a sealed scaffold exit");
-                    return;
+                if(!BuilderScaffoldPlanA.hasPlan(worker)
+                        ||worker.getY()<tower.getY()+1.0){
+                    helper.fail("Builder left a sealed scaffold without"
+                            +" a real solid exit: "+worker.position());return;
                 }
                 level.setBlock(reopened[0],Blocks.AIR.defaultBlockState(),3);
                 phase[0]=2;
