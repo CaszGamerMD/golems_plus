@@ -100,8 +100,9 @@ public final class BuilderScaffoldPlanA {
     /** Use a genuine owned bridge as a worker's temporary construction
      * position, even next to existing roof blocks. No schematic cell is
      * occupied and the reserved return shaft/bridge remains accessible.
-     * A full two-block center offset is necessary: standing only one
-     * tile from the target violates the 0.8m edge-clearance rule.
+     * A two-or-more-block center offset is necessary: standing only one
+     * tile from the target violates the 0.8m edge-clearance rule. A
+     * three-by-two diagonal can also be a real, in-reach construction pose.
      */
     public static boolean safeTemporaryWorkPose(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos target){
@@ -112,10 +113,11 @@ public final class BuilderScaffoldPlanA {
                 // The scaffold occupies targetY-1. Compare HORIZONTAL
                 // reach to the actual work cube, not 3-D Manhattan
                 // distance, which includes the intentional Y offset.
-                ||Math.abs(j.bridge(j.bridgeSpan).getX()-target.getX())
-                    +Math.abs(j.bridge(j.bridgeSpan).getZ()-target.getZ())<2
-                ||Math.abs(j.bridge(j.bridgeSpan).getX()-target.getX())
-                    +Math.abs(j.bridge(j.bridgeSpan).getZ()-target.getZ())>3
+                ||Math.max(
+                        Math.abs(j.bridge(j.bridgeSpan).getX()-target.getX()),
+                        Math.abs(j.bridge(j.bridgeSpan).getZ()-target.getZ()))<2
+                ||Math.pow(j.bridge(j.bridgeSpan).getX()-target.getX(),2)
+                    +Math.pow(j.bridge(j.bridgeSpan).getZ()-target.getZ(),2)>13
                 ||worker.blockPosition().getX()!=j.bridge(j.bridgeSpan).getX()
                 ||worker.blockPosition().getZ()!=j.bridge(j.bridgeSpan).getZ()
                 ||!present(level,table,worker,j.bridge(j.bridgeSpan)))return false;
@@ -216,15 +218,24 @@ public final class BuilderScaffoldPlanA {
      * the required .8m edge clearance. No diagonal jumps, floating blocks,
      * or unsupported seven-distance scaffolding are permitted.
      */
+    private static Set<BlockPos> workStanceGoals(ServerLevel world,
+            BuilderGolem worker,BlockPos target){
+        Set<BlockPos> result=new HashSet<>();
+        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
+            if(Math.max(Math.abs(dx),Math.abs(dz))<2
+                    ||dx*dx+dz*dz>13)continue;
+            BlockPos stance=target.offset(dx,0,dz);
+            if(BuilderConstructionPlanner.lineOfSight(
+                    world,worker,stance,target))
+                result.add(stance.below());
+        }
+        return result;
+    }
     private static List<BlockPos> bentBridge(ServerLevel world,
             BuilderGolem worker,WorkerStationBlockEntity table,
-            BlockPos target,BlockPos base,Direction outward,
+            BlockPos target,BlockPos base,Set<BlockPos> goals,
             Set<BlockPos> reserved){
         BlockPos start=base.atY(target.getY()-1);
-        BlockPos stance=target.relative(outward,3);
-        if(!BuilderConstructionPlanner.lineOfSight(world,worker,stance,target))
-            return null;
-        BlockPos goal=stance.atY(target.getY()-1);
         ArrayDeque<BlockPos> queue=new ArrayDeque<>();
         Map<BlockPos,BlockPos> previous=new HashMap<>();
         Map<BlockPos,Integer> length=new HashMap<>();
@@ -233,9 +244,9 @@ public final class BuilderScaffoldPlanA {
         while(!queue.isEmpty()){
             BlockPos from=queue.removeFirst();
             int depth=length.get(from);
-            if(from.equals(goal)){
+            if(goals.contains(from)){
                 List<BlockPos> result=new ArrayList<>();
-                for(BlockPos p=goal;!p.equals(start);p=previous.get(p))
+                for(BlockPos p=from;!p.equals(start);p=previous.get(p))
                     result.add(p);
                 java.util.Collections.reverse(result);
                 return result.isEmpty()?null:result;
@@ -273,9 +284,9 @@ public final class BuilderScaffoldPlanA {
         }
         return true;
     }
-    /** Prefer a previously erected owned axis-3 tower; otherwise
-     * choose a genuinely reachable ground shaft with a verified exit.
-     * No diagonal tower in Plan A.
+    /** Prefer a genuinely reachable ground shaft with a verified exit.
+     * A short, paid scaffold can bend around a finished roof corner;
+     * a tower need not share the target's X or Z to support that bend.
      */
     private static Job choose(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos target,
@@ -284,25 +295,43 @@ public final class BuilderScaffoldPlanA {
         Map<BlockPos,Long> rejected=failedEntries.get(worker);
         boolean isolated=needsTemporaryWorkPlatform(level,target);
         List<Job> options=new ArrayList<>();
+        Set<BlockPos> workGoals=workPose?
+                workStanceGoals(level,worker,target):Set.of();
+        List<BlockPos> towerSites=new ArrayList<>();
         for(Direction outward:Direction.Plane.HORIZONTAL)
-            // Short travel bridges may end adjacent to connected blocks.
-            // A true work pose requires two cells of horizontal standoff;
-            // the old travel tests must retain their one-span mobility.
             for(int distance=workPose?3:2;
                     distance<=(workPose?MAX_WORK_TOWER_DISTANCE:
-                            MAX_HORIZONTAL_SCAFFOLD_SPAN);distance++){
-            BlockPos towerXZ=target.relative(outward,distance);
-            Direction inward=outward.getOpposite();
-            if(isolated&&distance<3)continue;
-            int span=workPose||isolated?distance-2:distance-1;
-            if(workPose){
-                BlockPos stance=target.relative(outward,2);
-                // A proposed work pose must see the target; a neighboring
-                // wall may obstruct this approach even when travel works.
-                if(stance.distSqr(target)>=14
-                        ||!BuilderConstructionPlanner.lineOfSight(
-                                level,worker,stance,target))continue;
+                            MAX_HORIZONTAL_SCAFFOLD_SPAN);distance++)
+                towerSites.add(target.relative(outward,distance));
+        if(workPose){
+            // A Builder already on the outer dome rim may have real,
+            // head-clear footing diagonally offset from a roof gap. Do
+            // not discard that supported launch solely because a long
+            // straight cardinal bridge would intersect the roof fence.
+            BlockPos feet=worker.blockPosition();
+            for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+                BlockPos near=new BlockPos(feet.getX()+dx,
+                        target.getY(),feet.getZ()+dz);
+                if(Math.abs(near.getX()-target.getX())
+                            >MAX_WORK_TOWER_DISTANCE
+                        ||Math.abs(near.getZ()-target.getZ())
+                            >MAX_WORK_TOWER_DISTANCE)continue;
+                if(!towerSites.contains(near))towerSites.add(near);
             }
+        }
+        for(BlockPos towerXZ:towerSites){
+            int dx=towerXZ.getX()-target.getX();
+            int dz=towerXZ.getZ()-target.getZ();
+            boolean straight=dx==0||dz==0;
+            Direction outward=dx<0?Direction.WEST:dx>0?Direction.EAST:
+                    dz<0?Direction.NORTH:Direction.SOUTH;
+            Direction inward=outward.getOpposite();
+            int distance=Math.abs(dx)+Math.abs(dz);
+            if((isolated||workPose)&&distance<3)continue;
+            int span=workPose||isolated?distance-2:distance-1;
+            boolean straightSight=!workPose||straight
+                    &&BuilderConstructionPlanner.lineOfSight(level,worker,
+                            target.relative(outward,2),target);
             // Search real standing elevations ABOVE the worker as well
             // as below. Existing pillars, stairs, slabs and complete roof
             // blocks can put a Builder onto a reachable elevated ledge.
@@ -314,13 +343,14 @@ public final class BuilderScaffoldPlanA {
                         rejected.getOrDefault(base,Long.MIN_VALUE))continue;
                 if(!shaftClear(level,base,top,reserved,table,worker))continue;
                 List<BlockPos> bridge=new ArrayList<>();
-                if(bridgeClear(level,base,inward,target.getY(),
+                if(straight&&straightSight
+                        &&bridgeClear(level,base,inward,target.getY(),
                         span,reserved,table,worker)){
                     for(int n=1;n<=span;n++)bridge.add(
                             base.relative(inward,n).atY(top));
                 }else if(workPose){
                     bridge=bentBridge(level,worker,table,target,base,
-                            outward,reserved);
+                            workGoals,reserved);
                     if(bridge==null)continue;
                 }else continue;
                 BlockPos exit=BuilderScaffolding.safeGroundExit(
