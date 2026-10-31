@@ -436,6 +436,26 @@ public final class BuilderScaffoldPlanA {
             List<BuilderConstructionPlan.Step> steps){
         Set<BlockPos> reserved=future(level,steps);
         int shafts=0,bridges=0,exits=0,reached=0,lowerExits=0;
+        int localShafts=0,localBridges=0,localExits=0;
+        BlockPos nearestLocal=null;
+        Set<BlockPos> workGoals=workStanceGoals(level,worker,target);
+        BlockPos feet=worker.blockPosition();
+        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+            BlockPos xz=feet.offset(dx,0,dz);
+            for(int dy=-4;dy<=5;dy++){
+                BlockPos base=xz.atY(feet.getY()-dy);
+                if(!shaftClear(level,base,target.getY()-1,
+                        reserved,table,worker))continue;
+                localShafts++;
+                if(bentBridge(level,worker,table,target,base,
+                        workGoals,reserved)==null)continue;
+                localBridges++;
+                if(BuilderScaffolding.safeGroundExit(level,worker,
+                        base,reserved)==null)continue;
+                localExits++;
+                if(nearestLocal==null)nearestLocal=base;
+            }
+        }
         List<BlockPos> lowerBases=new ArrayList<>();
         String example="";
         for(Direction outward:Direction.Plane.HORIZONTAL)
@@ -480,6 +500,11 @@ public final class BuilderScaffoldPlanA {
                 +" grounded="+worker.onGround()
                 +" shafts="+shafts+" clearBridges="+bridges
                 +" safeExits="+exits+" reachable="+reached
+                +" localShafts="+localShafts
+                +" localBridges="+localBridges
+                +" localExits="+localExits
+                +" nearestLocal="+nearestLocal
+                +" goalPoses="+workGoals.size()
                 +" lowerExits="+lowerExits
                 +" lowerTrained="+WorkerNavigation.selectExecutableStand(
                         level,worker,lowerBases)
