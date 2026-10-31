@@ -95,6 +95,12 @@ public final class BuilderScaffoldPlanAGameTest {
                 }
                 BlockPos bridgeA=tower.east().atY(target.getY()-1);
                 BlockPos bridgeB=tower.east(2).atY(target.getY()-1);
+                if(!BuilderScaffoldPlanA.onScaffoldTop(level,mob,bridgeB)){
+                    helper.fail("Plan A declared READY before a settled "
+                            +"scaffold-top landing: feetY="+mob.getY()
+                            +" grounded="+mob.onGround()
+                            +" scaffoldY="+bridgeB.getY());return;
+                }
                 if(!level.getBlockState(bridgeA).is(Blocks.SCAFFOLDING)
                         ||!level.getBlockState(bridgeB).is(Blocks.SCAFFOLDING)
                         ||level.getBlockState(bridgeA).getValue(

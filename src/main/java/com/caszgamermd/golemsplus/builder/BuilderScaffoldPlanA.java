@@ -132,6 +132,8 @@ public final class BuilderScaffoldPlanA {
                 &&BuilderPlacementSpace.horizontalClear(target,worker)
                 &&worker.distanceToSqr(target.getX()+.5,
                         target.getY()+.5,target.getZ()+.5)<14
+                &&onOwnedScaffoldTop(level,worker,table,
+                        j.bridge(j.bridgeSpan))
                 &&BuilderConstructionPlanner.lineOfSight(
                         level,worker,worker.blockPosition(),target);
     }
@@ -828,7 +830,26 @@ public final class BuilderScaffoldPlanA {
     private static boolean close(BuilderGolem worker,BlockPos p){
         return worker.distanceToSqr(p.getX()+.5,p.getY(),
                 p.getZ()+.5)<.12
-                &&Math.abs(worker.getY()-p.getY())<.30;
+                &&Math.abs(worker.getY()-p.getY())<.12;
+    }
+    /**
+     * Physical scaffold-only footing: a Builder inside a climb-through
+     * scaffold may report onGround=true while its feet are one block below
+     * the scaffold top. A completed scaffold step requires the actual top
+     * elevation AND settled collision support. Never apply this rule to
+     * ordinary stone, slabs, stairs, or other work navigation.
+     */
+    static boolean onScaffoldTop(ServerLevel level,BuilderGolem worker,
+            BlockPos scaffold){
+        return level.getBlockState(scaffold).is(Blocks.SCAFFOLDING)
+                &&worker.onGround()&&!worker.isNoGravity()
+                &&Math.abs(worker.getY()-(scaffold.getY()+1.0))<.12;
+    }
+    private static boolean onOwnedScaffoldTop(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            BlockPos scaffold){
+        return present(level,table,worker,scaffold)
+                &&onScaffoldTop(level,worker,scaffold);
     }
     /** Physical bridge motion is reserved exclusively to the scaffold
      * controller; vanilla A* cannot treat an air-above-scaffold cell as
@@ -839,14 +860,12 @@ public final class BuilderScaffoldPlanA {
         if(j==null)return false;
         j.bridgeTicks++;
         j.highest=Math.max(j.highest,worker.getY());
-        // A real scaffold climber can crest the column BETWEEN the
-        // Builder's five-tick work calls, then settle back inside the
-        // climb-through scaffold. Remember that physically observed
-        // arrival immediately so the next work tick can install its
-        // inventory-paid horizontal bridge. Requiring the worker to be
-        // at the crest on the exact work tick stranded high roof caps.
+        // The climb may crest between five-tick work calls, but a
+        // transient airborne Y value is NOT stable standing height.
+        // Advance only after native gravity/collision settles the
+        // Builder ON TOP of the actual scaffold shaft.
         if(j.phase==Phase.CLIMB
-                &&worker.getY()>=j.target.getY()-.12){
+                &&onScaffoldTop(level,worker,j.base.atY(j.top))){
             j.phase=Phase.EXTEND_FIRST;
             j.lastProgress=level.getGameTime();
         }
@@ -903,7 +922,8 @@ public final class BuilderScaffoldPlanA {
         worker.setShiftKeyDown(false);
         worker.setNoGravity(false);
         double tx=destination.getX()+.5,tz=destination.getZ()+.5;
-        if(close(worker,destination)){
+        if(close(worker,destination)
+                &&onOwnedScaffoldTop(level,worker,table,destination.below())){
             Phase completed=j.phase;
             j.phase=switch(completed){
                 case WALK_FIRST->j.bridgeSpan==1
@@ -992,7 +1012,9 @@ public final class BuilderScaffoldPlanA {
             if(worker.blockPosition().getY()==target.getY()
                     &&worker.distanceToSqr(target.getX()+.5,
                             target.getY()+.5,target.getZ()+.5)<=4
-                    &&j.phase==Phase.READY)return Result.READY;
+                    &&j.phase==Phase.READY
+                    &&onOwnedScaffoldTop(level,worker,table,
+                            j.bridge(j.bridgeSpan)))return Result.READY;
             if(returnToGround(level,worker,table))return Result.MOVING;
             j=null;
         }
@@ -1124,9 +1146,19 @@ public final class BuilderScaffoldPlanA {
                     return Result.MOVING;
                 }
                 if(j.top>j.target.getY()-1)return Result.NO_SAFE_ROUTE;
+                if(!onOwnedScaffoldTop(level,worker,table,
+                        j.base.atY(j.top)))return Result.MOVING;
                 j.phase=Phase.EXTEND_FIRST;
             }
             case EXTEND_FIRST -> {
+                // The climb may have crested transiently before real
+                // collision support settled. Do not lay the bridge from
+                // inside the shaft or while airborne.
+                if(!onOwnedScaffoldTop(level,worker,table,
+                        j.base.atY(j.top))){
+                    j.phase=Phase.CLIMB;
+                    return Result.MOVING;
+                }
                 Result result=place(level,worker,table,owner,j.first(),
                         j.base.atY(j.top));
                 if(result!=Result.READY)return result;
@@ -1136,6 +1168,17 @@ public final class BuilderScaffoldPlanA {
                 return Result.MOVING;
             }
             case EXTEND_SECOND -> {
+                // Every paid bridge cell is laid from a physically settled
+                // prior cell, never from a fleeting midair Y coordinate.
+                BlockPos previous=j.bridge(j.bridgeStep-1);
+                if(!onOwnedScaffoldTop(level,worker,table,previous)){
+                    if(j.bridgeStep==2)j.phase=Phase.WALK_FIRST;
+                    else{
+                        j.bridgeStep--;
+                        j.phase=Phase.WALK_SECOND;
+                    }
+                    return Result.MOVING;
+                }
                 Result result=place(level,worker,table,owner,j.second(),
                         j.bridge(j.bridgeStep-1));
                 if(result!=Result.READY)return result;
@@ -1145,8 +1188,22 @@ public final class BuilderScaffoldPlanA {
                 return Result.MOVING;
             }
             case READY -> {
-                if(worker.blockPosition().getY()!=target.getY())
+                BlockPos finalScaffold=j.bridge(j.bridgeSpan);
+                if(!onOwnedScaffoldTop(level,worker,table,finalScaffold)
+                        ||!close(worker,finalScaffold.above())){
+                    // A real Builder can sink back INTO the climb-through
+                    // scaffold just after a horizontal step. Re-enter the
+                    // physical last bridge step instead of leaving a READY
+                    // plan with no active motion for thousands of ticks.
+                    j.phase=j.bridgeSpan==1
+                            ?Phase.WALK_FIRST:Phase.WALK_SECOND;
+                    if(j.bridgeSpan>1)j.bridgeStep=j.bridgeSpan;
+                    System.out.println("[PLAN A FOOTING] rejoin unfinished "
+                            +"scaffold bridge at "+finalScaffold.toShortString()
+                            +" feetY="+worker.getY()
+                            +" grounded="+worker.onGround());
                     return Result.MOVING;
+                }
                 return Result.READY;
             }
             case RETURN_FIRST,RETURN_TOWER,DESCEND,DISMOUNT -> {

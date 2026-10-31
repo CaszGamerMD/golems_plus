@@ -698,18 +698,29 @@ public final class BuilderSafeScaffoldGameTest {
                 .setValue(net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM,true);
         helper.setBlock(5,2,3,anchored);
         helper.setBlock(8,2,3,anchored);
+        // Partial-height controls use untouched vanilla collision/grounding.
+        helper.setBlock(1,2,5,Blocks.STONE_SLAB);
+        helper.setBlock(3,2,5,Blocks.STONE_STAIRS);
         BlockPos full=helper.absolutePos(new BlockPos(2,1,3));
         BlockPos inside=helper.absolutePos(new BlockPos(5,2,3));
         BlockPos top=helper.absolutePos(new BlockPos(8,2,3));
+        BlockPos slabPos=helper.absolutePos(new BlockPos(1,2,5));
+        BlockPos stairPos=helper.absolutePos(new BlockPos(3,2,5));
         BuilderGolem stone=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         BuilderGolem in=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         BuilderGolem on=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BuilderGolem slab=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BuilderGolem stairs=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         stone.setPos(full.getX()+.5,full.getY()+1.5,full.getZ()+.5);
         in.setPos(inside.getX()+.5,inside.getY()+.38,inside.getZ()+.5);
         on.setPos(top.getX()+.5,top.getY()+1.5,top.getZ()+.5);
+        slab.setPos(slabPos.getX()+.5,slabPos.getY()+1.5,slabPos.getZ()+.5);
+        stairs.setPos(stairPos.getX()+.5,stairPos.getY()+1.5,stairPos.getZ()+.5);
         level.addFreshEntity(stone);
         level.addFreshEntity(in);
         level.addFreshEntity(on);
+        level.addFreshEntity(slab);
+        level.addFreshEntity(stairs);
         helper.onEachTick(()->{
             long tick=helper.getTick();
             if(tick!=1&&tick!=10&&tick!=25&&tick!=45)return;
@@ -725,11 +736,32 @@ public final class BuilderSafeScaffoldGameTest {
                     +" aboveScaffoldFeetY="+on.getY()
                     +" aboveScaffoldGrounded="+on.onGround()
                     +" aboveFeetBlockY="+on.blockPosition().getY()
+                    +" slabFeetY="+slab.getY()
+                    +" slabGrounded="+slab.onGround()
+                    +" stairFeetY="+stairs.getY()
+                    +" stairGrounded="+stairs.onGround()
                     +" insideCell="+level.getBlockState(in.blockPosition())
                     +" aboveBelowFeet="+level.getBlockState(on.blockPosition().below()));
             if(tick==45){
-                if(!stone.isAlive()||!in.isAlive()||!on.isAlive()){
+                if(!stone.isAlive()||!in.isAlive()||!on.isAlive()
+                        ||!slab.isAlive()||!stairs.isAlive()){
                     helper.fail("A real Builder disappeared during height measurement");
+                    return;
+                }
+                if(BuilderScaffoldPlanA.onScaffoldTop(level,in,inside)
+                        ||!BuilderScaffoldPlanA.onScaffoldTop(level,on,top)){
+                    helper.fail("Scaffold footing confused grounded INSIDE"
+                            +" with standing ON TOP: insideY="+in.getY()
+                            +" topY="+on.getY());
+                    return;
+                }
+                if(!slab.onGround()||!stairs.onGround()
+                        ||slab.getY()<=slabPos.getY()+.40
+                        ||stairs.getY()<=stairPos.getY()+.40
+                        ||BuilderScaffoldPlanA.onScaffoldTop(level,slab,slabPos)
+                        ||BuilderScaffoldPlanA.onScaffoldTop(level,stairs,stairPos)){
+                    helper.fail("Scaffold-only footing changed slab/stair behavior"
+                            +" slabY="+slab.getY()+" stairY="+stairs.getY());
                     return;
                 }
                 helper.succeed();
