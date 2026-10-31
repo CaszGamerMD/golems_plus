@@ -27,6 +27,13 @@ public final class BuilderPlacementSpace {
     private record Yield(BlockPos target,BlockPos destination,
             long until,boolean placingWorker,boolean precision){}
     private static final Map<BuilderGolem,Yield> yielding=new WeakHashMap<>();
+    /** Cooperative inter-worker request. The blocking Builder may finish
+     * its current placement before yielding, rather than having another
+     * worker unilaterally overwrite its navigation mid-task. */
+    private record MoveRequest(BlockPos target,java.util.UUID requester,
+            long since,long until){}
+    private static final Map<BuilderGolem,MoveRequest> moveRequests=
+            new WeakHashMap<>();
     // A work target must keep the same approach position across successive
     // 12-tick updates. Recomputing the nearest spot from a moving golem
     // makes it switch sides every few steps and continually resets A*.
@@ -295,6 +302,38 @@ public final class BuilderPlacementSpace {
         else if(!worker.getNavigation().isDone())
             worker.getNavigation().stop();
         return true;
+    }
+
+    /** The recipient, not the requester, owns the physical response.
+     * Respect an active construction task for 200 ticks, but do not let
+     * a task that cannot complete block its teammate for an entire layer.
+     * There is never an instant displacement or a forced placement. */
+    public static boolean answerMoveRequest(ServerLevel level,
+            BuilderGolem worker,boolean currentTaskDone){
+        MoveRequest request=moveRequests.get(worker);
+        if(request==null)return false;
+        if(level.getGameTime()>=request.until()
+                ||!level.getBlockState(request.target()).isAir()
+                ||!occupied(request.target(),worker)){
+            moveRequests.remove(worker);
+            return false;
+        }
+        if(!currentTaskDone&&level.getGameTime()-request.since()<200)
+            return false;
+        boolean precision=canPrecisionStep(level,worker,request.target());
+        BlockPos destination=precision?worker.blockPosition():
+                escape(level,worker,request.target());
+        if(destination==null)return false;
+        moveRequests.remove(worker);
+        yielding.put(worker,new Yield(request.target(),destination,
+                level.getGameTime()+90,false,precision));
+        System.out.println("[BUILDER MOVE ACCEPTED] builder="+worker.getUUID()
+                +" askedBy="+request.requester()
+                +" target="+request.target().toShortString()
+                +" after="+(level.getGameTime()-request.since())+"t"
+                +" taskDone="+currentTaskDone
+                +" mode="+(precision?"precision_sidestepping":"ground_detour"));
+        return yieldTick(level,worker);
     }
 
     private static boolean canStand(ServerLevel level,BuilderGolem worker,
@@ -590,7 +629,14 @@ public final class BuilderPlacementSpace {
     public static String debugYield(ServerLevel level,BuilderGolem worker,
             BlockPos schematicOrigin){
         Yield hold=yielding.get(worker);
-        if(hold==null)return "yield=none";
+        if(hold==null){
+            MoveRequest pending=moveRequests.get(worker);
+            return pending==null?"yield=none":
+                    "moveRequestedBy="+pending.requester()
+                    +" targetXYZ="+pending.target()
+                            .subtract(schematicOrigin).toShortString()
+                    +" waiting="+(level.getGameTime()-pending.since())+"t";
+        }
         return "yieldTargetXYZ="+hold.target().subtract(schematicOrigin).toShortString()
                 +" escapeXYZ="+hold.destination().subtract(schematicOrigin).toShortString()
                 +" expiresIn="+Math.max(0,hold.until()-level.getGameTime())+"t"
@@ -651,6 +697,22 @@ public final class BuilderPlacementSpace {
             Yield old=yielding.get(blocker);
             if(old!=null&&old.target().equals(target)
                     &&old.until()>level.getGameTime())continue;
+            if(blocker!=placing){
+                MoveRequest asked=moveRequests.get(blocker);
+                // One request at a time: competing placers must not
+                // bounce a recipient between two proposed escape cells.
+                if(asked==null||asked.until()<=level.getGameTime()
+                        ||!occupied(asked.target(),blocker)){
+                    moveRequests.put(blocker,new MoveRequest(target,
+                            placing.getUUID(),level.getGameTime(),
+                            level.getGameTime()+600));
+                    System.out.println("[BUILDER MOVE REQUEST] builder="
+                            +placing.getUUID()+" asks="+blocker.getUUID()
+                            +" to clear="+target.toShortString()
+                            +" after current placement");
+                }
+                continue;
+            }
             // When standing adjacent on real ground, do a precise
             // horizontal edge-clearance move instead of targeting a tile
             // center that still intersects the future placement cube.

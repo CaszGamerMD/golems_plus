@@ -405,6 +405,16 @@ public final class BuilderBuildService {
         if(BuilderGrappleAccess.active(worker))return;
         if(BuilderScaffolding.isControllingMovement(worker))return;
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
+        // Another Builder can ask us to clear its NEXT placement cell.
+        // Finish this Builder's current action first when possible; the
+        // recipient acknowledges and plans the physical sidestep itself.
+        // A request older than 200 ticks is allowed to interrupt a stuck
+        // walking approach so neither crew member waits indefinitely.
+        var currentAction=workerActions.get(worker);
+        boolean currentTaskDone=table.claimedStep(worker.getUUID())<0
+                ||currentAction!=null&&currentAction.phase==Action.COMPLETE;
+        if(BuilderPlacementSpace.answerMoveRequest(
+                level,worker,currentTaskDone))return;
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
             // On job completion a Builder may still be on its LAST
             // scaffold tower. It must return to ground and dismount
@@ -1140,7 +1150,13 @@ public final class BuilderBuildService {
             int index=table.claimedStep(worker.getUUID());
             var action=workerActions.get(worker);
             String stage=action==null?"AWAITING TASK":action.phase.name();
-            if(index<0)return stage+" | zone tasks="+zone.size()
+            String belt="scaffold="+worker.getItem(
+                    BuilderGolem.SCAFFOLD_BELT_SLOT).getCount()
+                    +" hook="+worker.getItem(
+                            BuilderGolem.GRAPPLE_BELT_SLOT).getCount()
+                    +" bucket="+worker.getItem(
+                            BuilderGolem.BUCKET_BELT_SLOT).getCount();
+            if(index<0)return stage+" | belt="+belt+" | zone tasks="+zone.size()
                     +" | stage="+table.builderWorkOrder(worker.getUUID()).size()
                     +" | "+BuilderConstructionPlanner.blockedSummary(
                             level,table,plan.steps(),zone)
@@ -1173,6 +1189,7 @@ public final class BuilderBuildService {
                                                     -action.lastAlternativeTry+"t"))
                     +" | staged="+table.builderOrderPrepared(worker.getUUID())
                     +" | stock="+(current.requiredItem()==null?"none":current.requiredItem())
+                    +" | belt="+belt
                     +" | tower="+table.scaffoldPositions(worker.getUUID()).size()
                     +" | gravity="+(!worker.isNoGravity())
                     +" | sneaking="+worker.isShiftKeyDown()

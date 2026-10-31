@@ -156,4 +156,46 @@ public final class BuilderPlacementClearanceGameTest {
         });
     }
 
+    /** The placer requests clearance; the recipient performs its own
+     * physical movement. The requester never displaces its teammate. */
+    @GameTest(maxTicks=280,skyAccess=true)
+    public void builderAsksTeammateToMoveBeforePlacing(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        h.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        var table=(WorkerStationBlockEntity)world.getBlockEntity(
+                h.absolutePos(new BlockPos(0,2,0)));
+        BlockPos target=h.absolutePos(new BlockPos(3,2,3));
+        var blocker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        blocker.setPos(target.getX()+1.04,target.getY(),target.getZ()+.5);
+        world.addFreshEntity(blocker);
+        var placer=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        placer.setPos(target.getX()+3.5,target.getY(),target.getZ()+.5);
+        world.addFreshEntity(placer);
+        if(!table.registerBuilderWorker(blocker.getUUID())
+                ||!table.registerBuilderWorker(placer.getUUID())){
+            h.fail("Cannot register cooperating builders");return;
+        }
+        final boolean[] asked={false};
+        final double[] previousX={blocker.getX()};
+        h.onEachTick(()->{
+            if(Math.abs(blocker.getX()-previousX[0])>.30){
+                h.fail("A move request teleported its recipient");return;
+            }
+            previousX[0]=blocker.getX();
+            if(h.getTick()<10||h.getTick()%5!=0)return;
+            boolean clear=BuilderPlacementSpace.ready(
+                    world,placer,table,target);
+            if(!clear){asked[0]=true;return;}
+            if(!asked[0]||!BuilderPlacementSpace.horizontalClear(target,blocker)){
+                h.fail("Teammate clearance was granted without a real reply");return;
+            }
+            System.out.println("[BUILDER COOPERATION] PASS requested move, "
+                    +"recipient cleared target by physics in "
+                    +h.getTick()+" ticks");
+            h.succeed();
+        });
+    }
+
 }

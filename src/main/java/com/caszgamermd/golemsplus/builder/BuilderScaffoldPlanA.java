@@ -834,6 +834,8 @@ public final class BuilderScaffoldPlanA {
             }
         }
         j.phase=Phase.CLIMB;
+        j.lastProgress=level.getGameTime();
+        j.closestApproach=Double.POSITIVE_INFINITY;
         BuilderScaffolding.begin(level,worker,j.base,top+1.0,false);
         return Result.MOVING;
     }
@@ -861,6 +863,50 @@ public final class BuilderScaffoldPlanA {
                 &&worker.getY()>=j.target.getY()-.12){
             j.phase=Phase.EXTEND_FIRST;
             j.lastProgress=level.getGameTime();
+        }
+        // A long shaft is erected in real 16-block stages. On reaching
+        // the first stage's rim the climb controller releases the rope-
+        // free scaffold ascent. The golem can settle 40-80cm sideways on
+        // the adjacent roof while still grounded on solid construction.
+        // Previously Phase.CLIMB required +/-35cm centering to extend the
+        // NEXT paid stage, but nobody owned movement back to the column:
+        // the exact Y23 dome reproduction remained at Y16 for 2,600 ticks.
+        // Walk a small, physically collision-resolved lateral step into
+        // its OWN supported shaft before continuing; never snap the body.
+        if(j.phase==Phase.CLIMB&&worker.onGround()
+                &&!BuilderScaffolding.climbingNow(level,worker)
+                &&worker.getY()>=j.base.getY()+1.5
+                &&worker.getY()<j.target.getY()-.15
+                &&level.getBlockEntity(j.planner)
+                        instanceof WorkerStationBlockEntity table
+                &&present(level,table,worker,
+                        j.base.atY(worker.blockPosition().getY()-1))){
+            double dx=j.base.getX()+.5-worker.getX();
+            double dz=j.base.getZ()+.5-worker.getZ();
+            double distance=Math.hypot(dx,dz);
+            if(distance>.35&&distance<1.5){
+                if(distance<j.closestApproach-.04){
+                    j.closestApproach=distance;
+                    j.lastProgress=level.getGameTime();
+                }
+                if(level.getGameTime()-j.lastProgress>140){
+                    rejectEntry(level,worker,j.base);
+                    jobs.remove(worker);
+                    System.out.println("[PLAN A MID-TOWER] abandoned blocked "
+                            +"physical recenter at "+j.base.toShortString());
+                    return false;
+                }
+                worker.getNavigation().stop();
+                worker.setJumping(false);
+                worker.setNoGravity(false);
+                double mx=Math.max(-.105,Math.min(.105,dx*.28));
+                double mz=Math.max(-.105,Math.min(.105,dz*.28));
+                // Normal mob collisions determine the actual displacement.
+                // The supported shaft must remain present before each step.
+                worker.setDeltaMovement(mx,
+                        Math.min(0,worker.getDeltaMovement().y),mz);
+                return true;
+            }
         }
         if(j.phase==Phase.APPROACH&&j.fractionalSideEntry){
             double[] step=fractionalSideMove(level,worker,j.base);

@@ -12,12 +12,12 @@ import net.minecraft.server.level.ServerLevel;
 
 /** Per-Y wall-clock timing of the real four-Builder dome construction.
  *
- * Time trial target: 40 ticks per required block in the layer plus 100
+ * Time trial target: 18 ticks per required block in the layer plus 100
  * setup ticks; stop if elapsed layer time exceeds three times that target.
  * The target is a benchmark, not a proven minimum for the four-person crew.
  */
 final class BuilderDomeLayerTiming {
-    private static final int TICKS_PER_LAYER_BLOCK = 40;
+    private static final int TICKS_PER_LAYER_BLOCK = 18;
     private static final int LAYER_OVERHEAD_TICKS = 100;
     private static final int TIMEOUT_MULTIPLIER = 3;
     private static final int BUILDERS = 4;
@@ -60,7 +60,7 @@ final class BuilderDomeLayerTiming {
                 + " ticksPerLayerBlock=" + TICKS_PER_LAYER_BLOCK
                 + " setupTicksPerLayer=" + LAYER_OVERHEAD_TICKS
                 + " timeoutMultiplier=" + TIMEOUT_MULTIPLIER
-                + " formula=((requiredBlocks*40)+100)*3");
+                + " formula=((requiredBlocks*18)+100)*3");
     }
 
     /** Attribute each elapsed interval to the layer active at its start.
@@ -165,7 +165,7 @@ final class BuilderDomeLayerTiming {
                 .append(" idealAllLayers=").append(idealTotal)
                 .append(" measuredStartedLayers=").append(measuredTotal)
                 .append(" resolution=20ticks")
-                .append(" baseline=40ticks/block+100ticks/layer")
+                .append(" baseline=18ticks/block+100ticks/layer")
                 .append(" limit=3xBaseline")
                 .append(" (unassigned/scaffold columns are sampled builder-ticks,"
                         + " not mutually exclusive causes)\n");

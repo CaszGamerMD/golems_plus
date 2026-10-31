@@ -156,16 +156,27 @@ public final class BuilderSupplyInventory {
             ItemStack current=worker.getItem(i);
             if(current.isEmpty()||!ItemStack.isSameItemSameComponents(current,sample))
                 continue;
-            int space=Math.max(0,current.getMaxStackSize()-current.getCount());
+            int space=Math.max(0,worker.slotCapacity(i,sample)-current.getCount());
             int moved=Math.min(space,remaining);
             if(moved>0){
                 worker.setItem(i,current.copyWithCount(current.getCount()+moved));
                 remaining-=moved;
             }
         }
-        for(int i=0;i<worker.getContainerSize()&&remaining>0;i++){
+        // The three belt slots are genuinely dedicated: install a new
+        // scaffold/hook/bucket there BEFORE filling loose material pockets.
+        // Ordinary schematic blocks must never spill into the belt.
+        for(int i=BuilderGolem.SCAFFOLD_BELT_SLOT;
+                i<worker.getContainerSize()&&remaining>0;i++){
+            if(!worker.getItem(i).isEmpty()||!worker.canPlaceItem(i,sample))
+                continue;
+            int moved=Math.min(worker.slotCapacity(i,sample),remaining);
+            worker.setItem(i,sample.copyWithCount(moved));
+            remaining-=moved;
+        }
+        for(int i=0;i<BuilderGolem.SCAFFOLD_BELT_SLOT&&remaining>0;i++){
             if(!worker.getItem(i).isEmpty())continue;
-            int moved=Math.min(sample.getMaxStackSize(),remaining);
+            int moved=Math.min(worker.slotCapacity(i,sample),remaining);
             worker.setItem(i,sample.copyWithCount(moved));
             remaining-=moved;
         }
@@ -175,9 +186,10 @@ public final class BuilderSupplyInventory {
         int space=0;
         for(int i=0;i<worker.getContainerSize();i++){
             ItemStack have=worker.getItem(i);
-            if(have.isEmpty())space+=item.getMaxStackSize();
+            if(!worker.canPlaceItem(i,item))continue;
+            if(have.isEmpty())space+=worker.slotCapacity(i,item);
             else if(ItemStack.isSameItemSameComponents(have,item))
-                space+=Math.max(0,have.getMaxStackSize()-have.getCount());
+                space+=Math.max(0,worker.slotCapacity(i,item)-have.getCount());
         }
         return space;
     }
@@ -272,6 +284,7 @@ public final class BuilderSupplyInventory {
                     level,worker,depot,.83);
             return LoadStatus.MOVING;
         }
+        worker.organizeToolBelt();
         Map<String,Integer> materials=new LinkedHashMap<>();
         int highest=worker.blockPosition().getY();
         for(int index:indices){
@@ -281,26 +294,15 @@ public final class BuilderSupplyInventory {
             if(next.requiredItem()!=null)
                 materials.merge(next.requiredItem(),1,Integer::sum);
         }
-        // Plan B needs one reusable real item per Builder, not consumable
-        // scaffold blocks. Keep that tool in the 9-slot pouch on every trip.
+        // Every Builder carries a dedicated persistent TOOL BELT. Fill it
+        // only from real OnSite stock: one reusable hook, up to a full
+        // 64-block stack of scaffolding and one empty bucket. This does
+        // not take construction-material slots or fabricate absent tools.
         materials.put("golems_plus:grapple_hook",1);
+        materials.put("minecraft:scaffolding",64);
+        materials.put("minecraft:bucket",1);
         int highestSchematic=steps.stream().mapToInt(
                 BuilderConstructionPlan.Step::y).max().orElse(highest);
-        // A dome's upper layers create deep, isolated roof gaps. Waiting
-        // until the final eight layers to carry scaffolding forced workers
-        // at Y21-Y23 to climb down to storage AFTER their first route
-        // failed, then walk back toward a 20-block paid tower. Starting
-        // at Y20 also avoids needless equipment detours on the lower,
-        // already traversable walls, as observed during the Y19 trial.
-        // Reserve 32 real blocks in one pouch slot from layer twenty.
-        // The shaft still constructs in 16-block physical stages, but a
-        // 23-block tower can now finish both stages without descending
-        // from its halfway perch for another visit to OnSite Storage.
-        // Keep them across ten-block work batches; current job materials
-        // still pack ahead of this optional, inventory-paid access tool.
-        if(highest-table.builderOrigin().getY()>=20
-                &&highestSchematic-highest>=0)
-            materials.put("minecraft:scaffolding",32);
         // Distant final-cap blocks still wait until the final eight
         // schematic layers, because they would displace current materials.
         if(highest>=highestSchematic-8&&highestSchematic-highest>=0
@@ -610,11 +612,13 @@ public final class BuilderSupplyInventory {
         }
         int pocket=-1;
         for(int i=0;i<worker.getContainerSize();i++)
-            if(worker.getItem(i).isEmpty()){pocket=i;break;}
+            if(worker.getItem(i).isEmpty()
+                    &&worker.canPlaceItem(i,site.getItem(selected))){pocket=i;break;}
         if(pocket<0){
             returnPouch(table,worker);
             for(int i=0;i<worker.getContainerSize();i++)
-                if(worker.getItem(i).isEmpty()){pocket=i;break;}
+                if(worker.getItem(i).isEmpty()
+                        &&worker.canPlaceItem(i,site.getItem(selected))){pocket=i;break;}
         }
         if(pocket<0)return ToolStatus.MISSING;
         ItemStack stored=site.getItem(selected);

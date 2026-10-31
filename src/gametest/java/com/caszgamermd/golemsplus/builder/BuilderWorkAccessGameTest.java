@@ -13,6 +13,51 @@ import net.minecraft.world.level.block.Blocks;
  * and for precise final centering inside the selected standing cell.
  */
 public final class BuilderWorkAccessGameTest {
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void builderKeepsFullToolBeltBesideNineMaterialStacks(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        for(int i=0;i<9;i++)worker.setItem(i,
+                new net.minecraft.world.item.ItemStack(
+                        net.minecraft.world.item.Items.STONE,64));
+        worker.setItem(BuilderGolem.SCAFFOLD_BELT_SLOT,
+                new net.minecraft.world.item.ItemStack(
+                        net.minecraft.world.item.Items.SCAFFOLDING,64));
+        worker.setItem(BuilderGolem.GRAPPLE_BELT_SLOT,
+                new net.minecraft.world.item.ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        worker.setItem(BuilderGolem.BUCKET_BELT_SLOT,
+                new net.minecraft.world.item.ItemStack(
+                        net.minecraft.world.item.Items.BUCKET));
+        if(worker.getContainerSize()!=12
+                ||worker.carriedCount(net.minecraft.world.item.Items.STONE)!=576
+                ||worker.carriedCount(net.minecraft.world.item.Items.SCAFFOLDING)!=64
+                ||worker.carriedCount(WorksiteContent.GRAPPLE_HOOK)!=1
+                ||worker.carriedCount(net.minecraft.world.item.Items.BUCKET)!=1
+                ||worker.canPlaceItem(BuilderGolem.BUCKET_BELT_SLOT,
+                        new net.minecraft.world.item.ItemStack(
+                                net.minecraft.world.item.Items.STONE))){
+            helper.fail("Dedicated tool belt displaced materials or tools");return;
+        }
+        BuilderGolem legacy=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        legacy.setItem(0,new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.SCAFFOLDING,64));
+        legacy.setItem(1,new net.minecraft.world.item.ItemStack(
+                WorksiteContent.GRAPPLE_HOOK));
+        legacy.setItem(2,new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.BUCKET));
+        legacy.organizeToolBelt();
+        if(!legacy.getItem(0).isEmpty()||!legacy.getItem(1).isEmpty()
+                ||!legacy.getItem(2).isEmpty()
+                ||legacy.getItem(BuilderGolem.SCAFFOLD_BELT_SLOT).getCount()!=64
+                ||legacy.getItem(BuilderGolem.GRAPPLE_BELT_SLOT).getCount()!=1
+                ||legacy.getItem(BuilderGolem.BUCKET_BELT_SLOT).getCount()!=1){
+            helper.fail("Legacy Builder tools were not moved without loss");return;
+        }
+        System.out.println("[BUILDER TOOL BELT] PASS nine material stacks, "
+                +"64 paid scaffold, one grapple and one empty bucket");
+        helper.succeed();
+    }
     /** A fence's narrow post may leave the body collision-free while
      * there is only 10cm of space to squeeze past it. A Builder needs
      * a further 12cm work-pose margin, without banning ordinary footing
@@ -83,7 +128,8 @@ public final class BuilderWorkAccessGameTest {
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         BlockPos start=helper.absolutePos(new BlockPos(5,2,5));
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
-        worker.setItem(0,new net.minecraft.world.item.ItemStack(
+        worker.setItem(BuilderGolem.SCAFFOLD_BELT_SLOT,
+                new net.minecraft.world.item.ItemStack(
                 net.minecraft.world.item.Items.SCAFFOLDING,64));
         level.addFreshEntity(worker);
         var owner=helper.makeMockServerPlayerInLevel();
@@ -311,9 +357,11 @@ public final class BuilderWorkAccessGameTest {
         }
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.setPos(origin.getX()+11.5,origin.getY(),origin.getZ()+1.5);
-        worker.setItem(0,new net.minecraft.world.item.ItemStack(
+        worker.setItem(BuilderGolem.SCAFFOLD_BELT_SLOT,
+                new net.minecraft.world.item.ItemStack(
                 net.minecraft.world.item.Items.SCAFFOLDING,64));
-        worker.setItem(1,new net.minecraft.world.item.ItemStack(
+        worker.setItem(BuilderGolem.GRAPPLE_BELT_SLOT,
+                new net.minecraft.world.item.ItemStack(
                 WorksiteContent.GRAPPLE_HOOK));
         level.addFreshEntity(worker);
         var owner=helper.makeMockServerPlayerInLevel();

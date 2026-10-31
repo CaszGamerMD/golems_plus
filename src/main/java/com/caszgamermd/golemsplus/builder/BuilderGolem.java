@@ -38,10 +38,16 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     private BlockPos home=BlockPos.ZERO;
     private UUID owner;
     private ItemStack carriedSupplyBox=ItemStack.EMPTY;
-    // Nine real stacks: solo builders load once from their staging chest,
-    // walk to the site, and pay for placed blocks from this persisted pouch.
+    // Nine construction-material stacks and three RESERVED persistent tool
+    // belt slots. Materials cannot take the tool slots, so a full build
+    // order cannot displace the scaffold, reusable hook or future bucket.
+    public static final int SCAFFOLD_BELT_SLOT=9;
+    public static final int GRAPPLE_BELT_SLOT=10;
+    public static final int BUCKET_BELT_SLOT=11;
     private final NonNullList<ItemStack> materials=
             NonNullList.withSize(9,ItemStack.EMPTY);
+    private final NonNullList<ItemStack> toolBelt=
+            NonNullList.withSize(3,ItemStack.EMPTY);
     public BuilderGolem(EntityType<? extends PathfinderMob> type,Level world){
         super(type,world);
         setPersistenceRequired();
@@ -89,12 +95,12 @@ public final class BuilderGolem extends PathfinderMob implements Container {
      * discarding inventory-bearing workers and deleting their cargo.
      */
     public void dropCargo(ServerLevel world){
-        for(int i=0;i<materials.size();i++){
-            ItemStack stack=materials.get(i);
+        for(int i=0;i<getContainerSize();i++){
+            ItemStack stack=getItem(i);
             if(!stack.isEmpty()){
                 net.minecraft.world.Containers.dropItemStack(world,
                         getX(),getY(),getZ(),stack.copy());
-                materials.set(i,ItemStack.EMPTY);
+                setItem(i,ItemStack.EMPTY);
             }
         }
         if(!carriedSupplyBox.isEmpty()){
@@ -103,31 +109,83 @@ public final class BuilderGolem extends PathfinderMob implements Container {
             carriedSupplyBox=ItemStack.EMPTY;
         }
     }
-    @Override public int getContainerSize(){return materials.size();}
-    @Override public boolean isEmpty(){return materials.stream().allMatch(ItemStack::isEmpty);}
+    @Override public int getContainerSize(){return materials.size()+toolBelt.size();}
+    @Override public boolean isEmpty(){
+        return materials.stream().allMatch(ItemStack::isEmpty)
+                &&toolBelt.stream().allMatch(ItemStack::isEmpty);
+    }
     @Override public ItemStack getItem(int i){
-        return i>=0&&i<materials.size()?materials.get(i):ItemStack.EMPTY;
+        return i>=0&&i<materials.size()?materials.get(i)
+                :i>=materials.size()&&i<getContainerSize()
+                    ?toolBelt.get(i-materials.size()):ItemStack.EMPTY;
     }
     @Override public ItemStack removeItem(int i,int qty){
-        if(i<0||i>=materials.size())return ItemStack.EMPTY;
-        return ContainerHelper.removeItem(materials,i,qty);
+        if(i<0||i>=getContainerSize())return ItemStack.EMPTY;
+        return i<materials.size()?ContainerHelper.removeItem(materials,i,qty)
+                :ContainerHelper.removeItem(toolBelt,i-materials.size(),qty);
     }
     @Override public ItemStack removeItemNoUpdate(int i){
-        if(i<0||i>=materials.size())return ItemStack.EMPTY;
-        return ContainerHelper.takeItem(materials,i);
+        if(i<0||i>=getContainerSize())return ItemStack.EMPTY;
+        return i<materials.size()?ContainerHelper.takeItem(materials,i)
+                :ContainerHelper.takeItem(toolBelt,i-materials.size());
+    }
+    @Override public boolean canPlaceItem(int i,ItemStack item){
+        if(i<0||i>=getContainerSize())return false;
+        if(i<materials.size()||item.isEmpty())return true;
+        return switch(i){
+            case SCAFFOLD_BELT_SLOT -> item.is(net.minecraft.world.item.Items.SCAFFOLDING);
+            case GRAPPLE_BELT_SLOT -> item.is(
+                    com.caszgamermd.golemsplus.world.WorksiteContent.GRAPPLE_HOOK);
+            case BUCKET_BELT_SLOT -> item.is(net.minecraft.world.item.Items.BUCKET);
+            default -> false;
+        };
+    }
+    public int slotCapacity(int i,ItemStack item){
+        if(!canPlaceItem(i,item))return 0;
+        return i==GRAPPLE_BELT_SLOT||i==BUCKET_BELT_SLOT?1:
+                item.getMaxStackSize();
     }
     @Override public void setItem(int i,ItemStack item){
-        if(i>=0&&i<materials.size())materials.set(i,item.copy());
+        if(i<0||i>=getContainerSize())return;
+        if(!canPlaceItem(i,item)||item.getCount()>slotCapacity(i,item))
+            throw new IllegalArgumentException("Item cannot occupy Builder tool belt slot "+i);
+        if(i<materials.size())materials.set(i,item.copy());
+        else toolBelt.set(i-materials.size(),item.copy());
     }
     @Override public void setChanged(){}
     @Override public boolean stillValid(Player player){
         return isAlive()&&distanceToSqr(player)<64;
     }
-    @Override public void clearContent(){materials.replaceAll(item->ItemStack.EMPTY);}
+    @Override public void clearContent(){
+        materials.replaceAll(item->ItemStack.EMPTY);
+        toolBelt.replaceAll(item->ItemStack.EMPTY);
+    }
     public int carriedCount(net.minecraft.world.item.Item item){
         int n=0;
         for(ItemStack stack:materials)if(stack.is(item))n+=stack.getCount();
+        for(ItemStack stack:toolBelt)if(stack.is(item))n+=stack.getCount();
         return n;
+    }
+    /** Move legacy pouch tools into their protected slots without creating
+     * any item. Repeated calls are safe; partially filled scaffold stacks
+     * may be topped up on the next actual depot visit. */
+    public void organizeToolBelt(){
+        for(int slot=SCAFFOLD_BELT_SLOT;slot<=BUCKET_BELT_SLOT;slot++){
+            ItemStack belt=getItem(slot);
+            for(int i=0;i<materials.size();i++){
+                ItemStack have=materials.get(i);
+                if(have.isEmpty()||!canPlaceItem(slot,have)
+                        ||!belt.isEmpty()&&!ItemStack.isSameItemSameComponents(
+                                belt,have))continue;
+                int room=slotCapacity(slot,have)-belt.getCount();
+                int moved=Math.min(room,have.getCount());
+                if(moved<=0)continue;
+                setItem(slot,have.copyWithCount(
+                        moved+(belt.isEmpty()?0:belt.getCount())));
+                materials.set(i,have.copyWithCount(have.getCount()-moved));
+                belt=getItem(slot);
+            }
+        }
     }
     @Override public void tick(){
         // Scaffold climb and owned bridge movement have exclusive control.
@@ -185,6 +243,9 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         for(int i=0;i<materials.size();i++)
             if(!materials.get(i).isEmpty())
                 out.store("builder_material_"+i,ItemStack.CODEC,materials.get(i));
+        for(int i=0;i<toolBelt.size();i++)
+            if(!toolBelt.get(i).isEmpty())
+                out.store("builder_tool_"+i,ItemStack.CODEC,toolBelt.get(i));
     }
     @Override protected void readAdditionalSaveData(ValueInput in){
         super.readAdditionalSaveData(in);
@@ -199,5 +260,9 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         for(int i=0;i<materials.size();i++)
             materials.set(i,in.read("builder_material_"+i,ItemStack.CODEC)
                     .orElse(ItemStack.EMPTY));
+        for(int i=0;i<toolBelt.size();i++)
+            toolBelt.set(i,in.read("builder_tool_"+i,ItemStack.CODEC)
+                    .orElse(ItemStack.EMPTY));
+        organizeToolBelt();
     }
 }
