@@ -550,12 +550,11 @@ public final class WorkerNavigation {
                 at->at.equals(start)&&mob.onGround()?mob.getY():floorAt(level,at),avoid,
                 at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
                 observer,excluded);
-        if(!mob.onGround()||mob.isNoGravity())return route;
-        if(standingTile(level,mob,start)&&route!=null
-                &&canBeginTrainedLeg(level,mob,route))return route;
+        if(!mob.onGround()||mob.isNoGravity()
+                ||standingTile(level,mob,start))return route;
         // A route planned from a block CENTER is not necessarily valid
-        // from the golem's real offset feet, even when that center has
-        // support. Baritone separates the route search from the movement
+        // from the golem's real offset feet when its integer tile center
+        // has NO support. Baritone separates the route search from movement
         // controller: only physically executable first motions become
         // entrances to the A* graph. Consider them TOGETHER in one search
         // so a backward/downhill start can beat an attractive dead end.
