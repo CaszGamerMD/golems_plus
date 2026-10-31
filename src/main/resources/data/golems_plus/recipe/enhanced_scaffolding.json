@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "SSS",
+    "SCS",
+    "SSS"
+  ],
+  "key": {
+    "S": "minecraft:scaffolding",
+    "C": "minecraft:copper_ingot"
+  },
+  "result": {
+    "id": "golems_plus:enhanced_scaffolding",
+    "count": 8
+  }
+}
