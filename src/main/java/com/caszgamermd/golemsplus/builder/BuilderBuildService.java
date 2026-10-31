@@ -603,11 +603,11 @@ public final class BuilderBuildService {
             // Keep the previously failing worker from immediately
             // reclaiming the same cell while another Builder is available.
             long selectionTick=level.getGameTime();
-            if(index>=0&&reservedForTeammate(table,worker,index,selectionTick))
+            if(index>=0&&reservedForTeammate(table,worker.getUUID(),index,selectionTick))
                 index=-1;
             var handoffCandidates=new java.util.ArrayList<Integer>();
             for(int candidate:zone)
-                if(!reservedForTeammate(table,worker,candidate,selectionTick))
+                if(!reservedForTeammate(table,worker.getUUID(),candidate,selectionTick))
                     handoffCandidates.add(candidate);
             zone=handoffCandidates;
             if(index<0||index>=plan.steps().size()
