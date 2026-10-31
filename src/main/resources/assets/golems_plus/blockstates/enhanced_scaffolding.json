@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "distance=0,bottom=false,waterlogged=false": {
+      "model": "minecraft:block/scaffolding_stable"
+    },
+    "distance=0,bottom=false,waterlogged=true": {
+      "model": "minecraft:block/scaffolding_stable"
+    }
+  }
+}
