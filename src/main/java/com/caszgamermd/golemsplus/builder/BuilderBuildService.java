@@ -15,6 +15,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * First safe construction pass: air-only placement, one real item per block,
@@ -52,11 +53,40 @@ public final class BuilderBuildService {
         long frontierWaitSince=-1;
         int frontierWaitLayer=Integer.MIN_VALUE;
         long workTravelSince=-1;
+        long lastMoved=-1,lastCloser=-1,lastAlternativeTry=-1;
+        double bestDistanceSquared=Double.POSITIVE_INFINITY;
+        Vec3 lastObserved;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
                 blockedSince=-1;workTravelSince=-1;
+                lastMoved=-1;lastCloser=-1;lastAlternativeTry=-1;
+                bestDistanceSquared=Double.POSITIVE_INFINITY;
+                lastObserved=null;
             }
+        }
+        void observeTravel(BuilderGolem worker,BlockPos target,long now){
+            double distance=worker.distanceToSqr(target.getX()+.5,
+                    target.getY()+.5,target.getZ()+.5);
+            if(lastCloser<0||distance+.5<bestDistanceSquared){
+                bestDistanceSquared=distance;
+                lastCloser=now;
+            }
+            if(lastObserved==null
+                    ||worker.position().distanceToSqr(lastObserved)>.35*.35){
+                lastObserved=worker.position();
+                lastMoved=now;
+            }
+        }
+        /** A worker may walk AWAY from a goal on a correct detour. Give
+         * that physical navigation time to work; seek another tool only
+         * after 80 ticks without motion or 200 without getting closer.
+         * Failed scaffold previews are throttled to every 60 ticks.
+         */
+        boolean alternateAccessDue(long now){
+            return workTravelSince>=0&&now-workTravelSince>=80
+                    &&(now-lastMoved>=80||now-lastCloser>=200)
+                    &&(lastAlternativeTry<0||now-lastAlternativeTry>=60);
         }
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
@@ -776,6 +806,7 @@ public final class BuilderBuildService {
             }
             long now=level.getGameTime();
             if(activity.workTravelSince<0)activity.workTravelSince=now;
+            activity.observeTravel(worker,pos,now);
             // Once an owned shaft/bridge starts, its controller owns all
             // physical movement. Do not replace it with a normal route
             // just because another nominal work pose becomes visible.
@@ -806,11 +837,32 @@ public final class BuilderBuildService {
                         pos,worker)
                     &&workDistance<14
                     &&BuilderPlacementSpace.horizontalClear(pos,worker)
+                    &&BuilderConstructionPlanner.fenceWallClearance(
+                            level,worker.getBoundingBox())
                     &&(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,pos)
                         ||BuilderConstructionPlanner.safeStand(
                                 level,worker,pos,worker.blockPosition()));
+            // If the trained route is idle, stuck behind a railing, or
+            // making no actual progress toward its work cell, offer the
+            // inventory-paid scaffold/step-back tool NOW. This applies
+            // at the same Y as well as on climbs; a reachable walking
+            // detour remains preferred while it is making progress.
+            if(!directOrdinaryWork&&activity.alternateAccessDue(now)
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
+                activity.lastAlternativeTry=now;
+                if(scaffoldBlockedWork(level,worker,table,owner,pos,
+                        plan.steps())){
+                    System.out.println("[BUILDER ACCESS ALTERNATE] step="+index
+                            +" localY="+(pos.getY()-table.builderOrigin().getY())
+                            +" moveIdle="+(now-activity.lastMoved)
+                            +" closerIdle="+(now-activity.lastCloser)
+                            +" via=paid_scaffold from="+worker.position());
+                    return;
+                }
+            }
             // AIR below a roof block is not a reason to defer it for
             // "missing support": full cubes can be placed in mid-air.
             // It IS a strong sign that a golem needs temporary footing.
@@ -881,6 +933,8 @@ public final class BuilderBuildService {
             if(!BuilderPlacementSpace.placementHeight(pos,worker)
                     ||workDistance>14
                     ||!BuilderPlacementSpace.horizontalClear(pos,worker)
+                    ||!BuilderConstructionPlanner.fenceWallClearance(
+                            level,worker.getBoundingBox())
                     ||!(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,pos)
@@ -973,7 +1027,9 @@ public final class BuilderBuildService {
             // Re-evaluate the real work pose immediately before spending
             // any item: a teammate or a new schematic block may have
             // invalidated the cached approach while this worker walked.
-            if(!(BuilderScaffoldPlanA.safeTemporaryWorkPose(
+            if(!BuilderConstructionPlanner.fenceWallClearance(
+                        level,worker.getBoundingBox())
+                    ||!(BuilderScaffoldPlanA.safeTemporaryWorkPose(
                         level,worker,table,pos)
                     ||BuilderPlacementSpace.safeFractionalCapPose(
                             level,worker,pos)
@@ -1108,6 +1164,13 @@ public final class BuilderBuildService {
                     +" | nav="+(worker.getNavigation().isDone()?"idle":"walking")
                     +" "+com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .debugStatus(worker)
+                    +" | accessProgress="+(action==null||action.lastMoved<0
+                            ?"not_observed"
+                            :"motionIdle="+(level.getGameTime()-action.lastMoved)
+                                    +"t closerIdle="+(level.getGameTime()-action.lastCloser)
+                                    +"t toolTryAgo="+(action.lastAlternativeTry<0
+                                            ?"none":level.getGameTime()
+                                                    -action.lastAlternativeTry+"t"))
                     +" | staged="+table.builderOrderPrepared(worker.getUUID())
                     +" | stock="+(current.requiredItem()==null?"none":current.requiredItem())
                     +" | tower="+table.scaffoldPositions(worker.getUUID()).size()

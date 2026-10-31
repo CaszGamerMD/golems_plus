@@ -13,6 +13,92 @@ import net.minecraft.world.level.block.Blocks;
  * and for precise final centering inside the selected standing cell.
  */
 public final class BuilderWorkAccessGameTest {
+    /** A fence's narrow post may leave the body collision-free while
+     * there is only 10cm of space to squeeze past it. A Builder needs
+     * a further 12cm work-pose margin, without banning ordinary footing
+     * a full tile away or falsely treating the fence as a solid cube.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=100,skyAccess=true)
+    public void fenceCollisionNeedsWorkPoseBreathingRoom(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        helper.setBlock(6,1,6,Blocks.STONE);
+        helper.setBlock(7,2,6,Blocks.BIRCH_FENCE);
+        BlockPos footing=helper.absolutePos(new BlockPos(6,2,6));
+        BuilderGolem close=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        close.setPos(footing.getX()+.95,footing.getY(),footing.getZ()+.5);
+        level.addFreshEntity(close);
+        if(level.getBlockCollisions(close,close.getBoundingBox())
+                    .iterator().hasNext()){
+            helper.fail("Test stance must NOT intersect the fence itself");return;
+        }
+        if(BuilderConstructionPlanner.fenceWallClearance(
+                level,close.getBoundingBox())){
+            helper.fail("Builder accepted 10cm fence clearance as a work pose");
+            return;
+        }
+        BuilderGolem farther=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        farther.setPos(footing.getX()+.70,footing.getY(),footing.getZ()+.5);
+        level.addFreshEntity(farther);
+        if(!BuilderConstructionPlanner.fenceWallClearance(
+                level,farther.getBoundingBox())){
+            helper.fail("Builder rejected safely offset fence work pose");return;
+        }
+        System.out.println("[FENCE WORK MARGIN] PASS collision-free 10cm gap"
+                +" rejected, safer offset retained");
+        helper.succeed();
+    }
+
+    /** Four obstructed cardinal shaft lines do not rule out a safe
+     * inventory-paid scaffold reached from a diagonal roof approach.
+     * The tower still needs real floor, an exit and a supported bend.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=300,skyAccess=true)
+    public void diagonalScaffoldEntryWorksAroundRoofWalls(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos target=helper.absolutePos(new BlockPos(18,6,18));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        target.getX()>>4,target.getZ()>>4),4);
+        for(net.minecraft.core.Direction direction:
+                net.minecraft.core.Direction.Plane.HORIZONTAL)
+            for(int distance=3;distance<=8;distance++)
+                for(int y=2;y<=5;y++){
+                    BlockPos p=target.relative(direction,distance)
+                            .atY(helper.absolutePos(new BlockPos(0,y,0)).getY());
+                    level.setBlock(p,Blocks.STONE.defaultBlockState(),2);
+                }
+        helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
+        BlockPos planner=helper.absolutePos(new BlockPos(4,2,7));
+        if(!(level.getBlockEntity(planner)
+                instanceof WorkerStationBlockEntity table)){
+            helper.fail("No diagonal scaffold Planner");return;
+        }
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos start=helper.absolutePos(new BlockPos(5,2,5));
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        level.addFreshEntity(worker);
+        var plan=java.util.List.of(new BuilderConstructionPlan.Step(
+                target.getX(),target.getY(),target.getZ(),
+                "minecraft:stone","minecraft:stone"));
+        if(!BuilderScaffoldPlanA.canPlanWorkPose(
+                level,worker,table,target,plan)){
+            helper.fail("Missed diagonal paid scaffold around four blocked "
+                    +"cardinal tower lines: "
+                    +BuilderScaffoldPlanA.diagnoseAccess(
+                            level,worker,table,target,plan));return;
+        }
+        System.out.println("[DIAGONAL SCAFFOLD] PASS alternate paid bridge "
+                +"is physically supportable and entry-reachable");
+        helper.succeed();
+    }
+
     /** Full-dome main stalled at 3469/3493 with a floating cobblestone
      * at (18,31,17). A neighboring finished cell is not a floor. From
      * the worker's recorded lower-roof footing, a paid scaffold bridge

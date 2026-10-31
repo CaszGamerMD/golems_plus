@@ -119,6 +119,8 @@ public final class BuilderPlacementSpace {
         if(!fractionalCapStart(level,worker,target)
                 ||!horizontalClear(target,worker)
                 ||worker.getBoundingBox().intersects(volume(target))
+                ||!BuilderConstructionPlanner.fenceWallClearance(
+                        level,worker.getBoundingBox())
                 ||!BuilderConstructionPlanner.lineOfSightFrom(level,worker,
                         new net.minecraft.world.phys.Vec3(worker.getX(),
                                 worker.getEyeY(),worker.getZ()),target))return false;
@@ -439,8 +441,10 @@ public final class BuilderPlacementSpace {
                         ||!WorkerNavigation.canStandOn(level,worker,p)
                         ||bad!=null&&bad.target().equals(target)
                             &&bad.destination().equals(p))continue;
+                double feetY=WorkerNavigation.surveyFloorHeight(level,p);
+                if(!Double.isFinite(feetY))continue;
                 AABB shifted=worker.getBoundingBox().move(
-                        p.getX()+.5-worker.getX(),p.getY()-worker.getY(),
+                        p.getX()+.5-worker.getX(),feetY-worker.getY(),
                         p.getZ()+.5-worker.getZ());
                 // The trained A* permits a path through a tile
                 // temporarily occupied by another Builder, and physical
@@ -451,7 +455,9 @@ public final class BuilderPlacementSpace {
                 if(shifted.intersects(volume(target))
                         ||!level.noCollision(worker,shifted)
                             &&level.getBlockCollisions(worker,shifted)
-                                    .iterator().hasNext())continue;
+                                    .iterator().hasNext()
+                        ||!BuilderConstructionPlanner.fenceWallClearance(
+                                level,shifted))continue;
                 candidates.add(p);
             }
         // Prefer real ground near the worker, but also prefer a work

@@ -12,7 +12,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.WallBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
@@ -139,34 +143,68 @@ public final class BuilderConstructionPlanner {
     }
     static boolean safeStand(ServerLevel world,BuilderGolem builder,
             BlockPos target,BlockPos stance){
-        return stance.distSqr(target)<REACH_SQUARED
+        if(!(stance.distSqr(target)<REACH_SQUARED
                 // A target's interaction point is HALF A BLOCK ABOVE
                 // its integer Y, whereas the Builder's feet are at the
                 // stance Y. From Y-2, a three-tile horizontal offset is
                 // sqrt(3^2+2.5^2) away, NOT sqrt(3^2+2^2). The loose
                 // integer preview repeatedly chose a Y31 dome-cap pose
                 // that actual placement could never reach.
-                &&workReachFromFeet(stance,target)<REACH_SQUARED
                 &&(stance.getY()==target.getY()
                         ||stance.getY()==target.getY()+1
                         ||stance.getY()==target.getY()-1
-                        ||stance.getY()==target.getY()-2)
+                        ||stance.getY()==target.getY()-2)))return false;
+        // A top slab/stair or narrow elevated foothold can put the feet
+        // ABOVE the integer navigation tile. Evaluate the real standing
+        // height, or the planner may approve an impossible body position.
+        double feetY=WorkerNavigation.surveyFloorHeight(world,stance);
+        if(!Double.isFinite(feetY)
+                ||workReachFromFeet(stance,target,feetY)>=REACH_SQUARED)
+            return false;
+        AABB body=builder.getBoundingBox().move(
+                stance.getX()+.5-builder.getX(),
+                feetY-builder.getY(),stance.getZ()+.5-builder.getZ());
+        return
                 // A fence below a roof block IS valid support, but its
                 // 1.5-block-high narrow collision shape is not empty space.
                 // Evaluate the worker's actual 0.65m body at this stance;
                 // other workers may yield, real fence/wall collisions may not.
-                &&!world.getBlockCollisions(builder,builder.getBoundingBox().move(
-                        stance.getX()+.5-builder.getX(),
-                        stance.getY()-builder.getY(),
-                        stance.getZ()+.5-builder.getZ())).iterator().hasNext()
+                !world.getBlockCollisions(builder,body).iterator().hasNext()
+                &&fenceWallClearance(world,body)
                 &&lineOfSight(world,builder,stance,target)
                 &&exitAfterPlacement(world,builder,stance,target);
     }
     static double workReachFromFeet(BlockPos stance,BlockPos target){
+        return workReachFromFeet(stance,target,stance.getY());
+    }
+    private static double workReachFromFeet(BlockPos stance,BlockPos target,
+            double feetY){
         double dx=stance.getX()-target.getX();
         double dz=stance.getZ()-target.getZ();
-        double dy=stance.getY()-target.getY()-.5;
+        double dy=feetY-target.getY()-.5;
         return dx*dx+dy*dy+dz*dz;
+    }
+    /** Keep an extra 12 cm around fence/wall collision shapes at a
+     * construction pose. Ordinary walking may use a narrow passage, but
+     * reaching past a 1.5-high railing needs breathing room for the full
+     * 0.65m-wide body. Real fence-top support remains legal if the body
+     * is entirely ABOVE the shape; this is not an arbitrary tile ban.
+     */
+    static boolean fenceWallClearance(ServerLevel world,AABB body){
+        AABB margin=body.inflate(.12,0,.12);
+        for(BlockPos p:BlockPos.betweenClosed(
+                BlockPos.containing(margin.minX,margin.minY,margin.minZ),
+                BlockPos.containing(margin.maxX,margin.maxY,margin.maxZ))){
+            if(!world.hasChunkAt(p))return false;
+            var state=world.getBlockState(p);
+            if(!(state.getBlock() instanceof FenceBlock)
+                    &&!(state.getBlock() instanceof WallBlock)
+                    &&!(state.getBlock() instanceof FenceGateBlock))continue;
+            for(AABB shape:state.getCollisionShape(world,p).toAabbs())
+                if(shape.move(p.getX(),p.getY(),p.getZ()).intersects(margin))
+                    return false;
+        }
+        return true;
     }
     /**
      * Physical contact with a CORRECT, already-built schematic cell is a

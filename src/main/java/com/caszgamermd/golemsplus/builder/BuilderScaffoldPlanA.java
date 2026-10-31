@@ -128,6 +128,8 @@ public final class BuilderScaffoldPlanA {
         return present(level,table,worker,j.base.atY(j.top))
                 &&BuilderPlacementSpace.placementHeight(target,worker)
                 &&BuilderPlacementSpace.horizontalClear(target,worker)
+                &&BuilderConstructionPlanner.fenceWallClearance(
+                        level,worker.getBoundingBox())
                 &&worker.distanceToSqr(target.getX()+.5,
                         target.getY()+.5,target.getZ()+.5)<14
                 &&BuilderConstructionPlanner.lineOfSight(
@@ -309,6 +311,18 @@ public final class BuilderScaffoldPlanA {
                             MAX_HORIZONTAL_SCAFFOLD_SPAN);distance++)
                 towerSites.add(target.relative(outward,distance));
         if(workPose){
+            // Cardinal-only tower searches miss a practical escape around
+            // a finished fence/wall corner. Consider diagonal STARTS too:
+            // the actual bridge still consists solely of <=6 adjacent,
+            // supported scaffold cells, proven by bentBridge(). This is
+            // a different paid route, not permission to climb diagonally.
+            for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
+                int length=Math.abs(dx)+Math.abs(dz);
+                if(dx==0||dz==0||length<3
+                        ||length>MAX_WORK_TOWER_DISTANCE)continue;
+                BlockPos diagonal=target.offset(dx,0,dz);
+                if(!towerSites.contains(diagonal))towerSites.add(diagonal);
+            }
             // A Builder already on the outer dome rim may have real,
             // head-clear footing diagonally offset from a roof gap. Do
             // not discard that supported launch solely because a long
