@@ -80,7 +80,8 @@ public final class WorkerNavigation {
         // PathExecutor-style physical progress watchdog. A vanilla path
         // can say "accepted" while the entity never leaves its footing.
         // Track the FIRST planned leg across repeated route requests;
-        // changing native path handles must not reset this clock.
+        // changing native path handles or swapping a candidate first
+        // leg must not reset the physical-progress clock.
         BlockPos executingFirstLeg;
         Vec3 executionAnchor;
         int executionProgressAt;
@@ -105,7 +106,7 @@ public final class WorkerNavigation {
     private static void trackFirstLeg(PathfinderMob mob,Progress p,
             BlockPos first){
         if(first==null)return;
-        if(!first.equals(p.executingFirstLeg)||p.executionAnchor==null){
+        if(p.executionAnchor==null){
             p.executionAnchor=mob.position();
             p.executionProgressAt=mob.tickCount;
         }
