@@ -61,6 +61,44 @@ public final class BuilderBuildService {
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
+    /** Normally every X/Z zone is exclusive. A zone which has FINISHED
+     * may help its stuck neighbor after the whole construction has made
+     * no physical progress for ten seconds. This is read-only monitoring:
+     * actual ownership stays with the Planner's single-step claim map.
+     */
+    private static final class RoofProgress {
+        int completed=-1;
+        long lastChange;
+    }
+    private static final Map<WorkerStationBlockEntity,RoofProgress>
+            roofProgress=new WeakHashMap<>();
+    private static boolean roofNeedsHelp(ServerLevel level,
+            WorkerStationBlockEntity table){
+        RoofProgress progress=roofProgress.computeIfAbsent(table,
+                unused->new RoofProgress());
+        int completed=table.builderWorkDone();
+        if(progress.completed!=completed||level.getGameTime()<progress.lastChange){
+            progress.completed=completed;
+            progress.lastChange=level.getGameTime();
+        }
+        return level.getGameTime()-progress.lastChange>=600;
+    }
+    /** Only entirely finished workers assist: they never abandon an
+     * assigned cell or break the strict same-Y construction gate. Their
+     * extra candidates must be unclaimed and physically reachable, so a
+     * roof-bound worker can step back or scaffold toward a stuck zone.
+     */
+    private static List<Integer> roofRescueZone(WorkerStationBlockEntity table,
+            UUID worker,List<BuilderConstructionPlan.Step> steps,int layer){
+        var extra=new java.util.ArrayList<Integer>();
+        for(int idx=0;idx<steps.size();idx++){
+            var step=steps.get(idx);
+            if(step.y()==layer&&table.builderStepReadyForClaim(idx)
+                    &&!table.builderStepClaimedByOther(worker,idx))
+                extra.add(idx);
+        }
+        return extra;
+    }
     private static WorkerAction action(BuilderGolem worker,int index){
         var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
         activity.setStep(index);
@@ -76,8 +114,9 @@ public final class BuilderBuildService {
     static boolean canWaitNearFrontier(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,
             List<Integer> zone,int layer){
+        boolean highRoof=worker.getY()-table.getBlockPos().getY()>=12;
         if(!worker.onGround()||worker.isNoGravity()
-                ||worker.blockPosition().getY()<layer-2
+                ||worker.blockPosition().getY()<layer-(highRoof?5:2)
                 ||worker.blockPosition().getY()>layer+1
                 ||!level.noCollision(worker,worker.getBoundingBox()))return false;
         boolean pending=false;
@@ -470,6 +509,27 @@ public final class BuilderBuildService {
             // failed tasks are explicitly deferred and then reselected.
             int index=table.claimedStep(worker.getUUID());
             int layer=table.builderActiveLayer(plan.steps());
+            boolean ownZoneComplete=table.builderZoneDone(zone);
+            boolean emergencyRoofAssist=ownZoneComplete
+                    &&(index>=0&&!zone.contains(index)
+                        ||roofNeedsHelp(level,table));
+            // Monitoring must run for every working crew, including the
+            // worker still in its own zone: otherwise a fully active crew
+            // could never start the rescue clock.
+            if(!emergencyRoofAssist)roofNeedsHelp(level,table);
+            if(emergencyRoofAssist){
+                var rescue=roofRescueZone(table,worker.getUUID(),
+                        plan.steps(),layer);
+                if(!rescue.isEmpty()){
+                    zone=rescue;
+                    if(level.getGameTime()%200==0)
+                        System.out.println("[ROOF ASSIST] "
+                                +worker.getName().getString()+" can serve "
+                                +rescue.size()+" unfinished Y="
+                                +(layer-table.builderOrigin().getY())
+                                +" cells outside its finished zone");
+                }
+            }
             if(index<0||index>=plan.steps().size()
                     ||!zone.contains(index)
                     ||plan.steps().get(index).y()!=layer
@@ -491,7 +551,20 @@ public final class BuilderBuildService {
                     System.out.println("[FRONTIER BLOCKED] "
                             +worker.getName().getString()+" "+report);
                 }
-                if(canWaitNearFrontier(level,worker,table,plan.steps(),zone,layer)){
+                // When a finished zone still has a safe upper ledge,
+                // preserve it for emergency help on a stuck neighboring
+                // zone. Sending all three idle roof workers down to the
+                // OnSite chest leaves nobody who can step back and build
+                // a paid scaffold to the last few cap cells.
+                List<Integer> waitingZone=zone;
+                if(ownZoneComplete
+                        &&worker.getY()-table.getBlockPos().getY()>=12){
+                    var rescue=roofRescueZone(table,worker.getUUID(),
+                            plan.steps(),layer);
+                    if(!rescue.isEmpty())waitingZone=rescue;
+                }
+                if(canWaitNearFrontier(level,worker,table,
+                        plan.steps(),waitingZone,layer)){
                     var waiting=workerActions.computeIfAbsent(worker,k->new WorkerAction());
                     if(waiting.frontierWaitSince<0
                             ||waiting.frontierWaitLayer!=layer){
@@ -599,7 +672,7 @@ public final class BuilderBuildService {
                         ||BuilderGrappleAccess.rappelForTravel(level,worker,table))
                     return;
                 var prep=BuilderSupplyInventory.prepareWorkOrder(
-                        level,worker,table,plan.steps());
+                        level,worker,table,plan.steps(),zone);
                 if(prep==BuilderSupplyInventory.LoadStatus.MOVING)return;
                 if(prep==BuilderSupplyInventory.LoadStatus.MISSING){
                     table.setProblem("Builder work order waiting for reachable "

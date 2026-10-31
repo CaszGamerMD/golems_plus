@@ -1074,6 +1074,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 &&index<builderBlocks&&!builderFinishedSteps.contains(index)
                 &&builderMissingRetries.getOrDefault(index,0L)<=now;
     }
+    /** A finished-zone helper may rescue an inaccessible neighboring
+     * roof cell, but can never take a step already held by its owner.
+     * All claims are serialized on the Minecraft server thread. */
+    public boolean builderStepClaimedByOther(UUID requester,int index){
+        for(var claim:builderClaims.entrySet())
+            if(!claim.getKey().equals(requester)&&claim.getValue()==index)
+                return true;
+        return false;
+    }
 
     /** Claim one PREVALIDATED same-Y frontier cell instead of blindly
      * taking the first indexed block in the ten-block batch.
@@ -1090,7 +1099,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||steps==null||fullZone==null||preferred<0
                 ||preferred>=steps.size()||!fullZone.contains(preferred)
                 ||steps.get(preferred).y()!=builderActiveLayer(steps)
-                ||!builderStepReadyForClaim(preferred))return -1;
+                ||!builderStepReadyForClaim(preferred)
+                ||builderStepClaimedByOther(worker,preferred))return -1;
         int active=builderClaims.getOrDefault(worker,-1);
         if(active==preferred)return active;
         var stage=builderWorkOrders.get(worker);

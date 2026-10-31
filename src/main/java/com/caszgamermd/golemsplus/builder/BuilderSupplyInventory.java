@@ -246,15 +246,16 @@ public final class BuilderSupplyInventory {
         }
         return false;
     }
-    /** Stage the exact ten-coordinate work order ONCE at its physical depot.
-     * All unrelated pouch materials are deposited before loading, never
-     * fabricated and never transferred from a distant chest. Unavailable
-     * items do not block ready construction cells; the missing step will
-     * wait and be requested from the warehouse separately.
+    /** Stage the exclusive ten-coordinate work order at its physical depot.
+     * Near the roof, also carry a SMALL reserve of the worker's own final
+     * cap materials and paid scaffolding. A long real ascent must not be
+     * undone just because a new batch changes from glass to a rare fence.
+     * This never changes the ten-cell claim or draws from remote stock:
+     * every reserved item leaves the actual OnSite inventory now.
      */
     public static LoadStatus prepareWorkOrder(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,
-            List<BuilderConstructionPlan.Step> steps){
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
         var indices=table.builderWorkOrder(worker.getUUID());
         if(indices.isEmpty())return LoadStatus.MISSING;
         BlockPos depot=table.builderUnloadingStorage();
@@ -283,6 +284,28 @@ public final class BuilderSupplyInventory {
         // Plan B needs one reusable real item per Builder, not consumable
         // scaffold blocks. Keep that tool in the 9-slot pouch on every trip.
         materials.put("golems_plus:grapple_hook",1);
+        int highestSchematic=steps.stream().mapToInt(
+                BuilderConstructionPlan.Step::y).max().orElse(highest);
+        if(highest>=highestSchematic-16&&highestSchematic-highest>=0
+                &&highest-table.builderOrigin().getY()>=12){
+            // Keep paid scaffold available on the roof for the exact
+            // step-back-and-climb recovery. The current stage always has
+            // pouch priority over these optional future supplies.
+            materials.put("minecraft:scaffolding",16);
+            if(zone!=null)
+                for(int idx:zone){
+                    if(idx<0||idx>=steps.size())continue;
+                    var future=steps.get(idx);
+                    if(future.y()<highestSchematic-4
+                            ||future.y()<=highest
+                            ||future.requiredItem()==null)continue;
+                    // Reserve at most six per cap material. The ordinary
+                    // per-step inventory check still pays for every block.
+                    String item=future.requiredItem();
+                    int amount=materials.getOrDefault(item,0);
+                    if(amount<6)materials.put(item,amount+1);
+                }
+        }
         // Preserve enough actual items for the requested cells, unload the
         // rest. A full OnSite Storage never deletes carried block inventory.
         for(int slot=0;slot<worker.getContainerSize();slot++){
