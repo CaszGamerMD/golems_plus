@@ -134,8 +134,9 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table,ServerPlayer owner,BlockPos target,
             List<BuilderConstructionPlan.Step> steps){
         if(BuilderScaffoldPlanA.hasPlan(worker)
-                ||BuilderScaffoldPlanA.canPlan(level,worker,table,target,steps)){
-            var bridge=BuilderScaffoldPlanA.reach(
+                ||BuilderScaffoldPlanA.canPlanWorkPose(
+                        level,worker,table,target,steps)){
+            var bridge=BuilderScaffoldPlanA.reachWorkPose(
                     level,worker,table,owner,target,steps);
             if(bridge==BuilderScaffoldPlanA.Result.MOVING
                     ||bridge==BuilderScaffoldPlanA.Result.NEED_MATERIALS)
@@ -163,7 +164,7 @@ public final class BuilderBuildService {
             ServerPlayer owner,BlockPos target,
             List<BuilderConstructionPlan.Step> steps){
         return (BuilderScaffoldPlanA.hasPlan(worker)
-                    ||BuilderScaffoldPlanA.canPlan(
+                    ||BuilderScaffoldPlanA.canPlanWorkPose(
                             level,worker,table,target,steps))
                 &&scaffoldWork(level,worker,table,owner,target,steps);
     }

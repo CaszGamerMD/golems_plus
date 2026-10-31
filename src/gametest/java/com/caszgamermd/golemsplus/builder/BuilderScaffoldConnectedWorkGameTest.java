@@ -28,7 +28,8 @@ public final class BuilderScaffoldConnectedWorkGameTest {
             helper.fail("Missing Builder Planner");return;
         }
         ServerPlayer owner=helper.makeMockServerPlayerInLevel();
-        if(!table.claimIfUnowned(owner.getUUID())){
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),2)){
             helper.fail("Planner owner not registered");return;
         }
         // Both target cells are connected to real pre-existing stone, so
@@ -73,7 +74,7 @@ public final class BuilderScaffoldConnectedWorkGameTest {
                 }
                 if(phases[i]==0){
                     if(helper.getTick()%5!=0)continue;
-                    var result=BuilderScaffoldPlanA.reach(level,mob,table,
+                    var result=BuilderScaffoldPlanA.reachWorkPose(level,mob,table,
                             owner,targets[i],List.of());
                     if(result==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE
                             ||result==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
