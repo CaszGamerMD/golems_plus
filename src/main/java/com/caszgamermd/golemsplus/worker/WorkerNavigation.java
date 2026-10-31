@@ -360,7 +360,7 @@ public final class WorkerNavigation {
             // mobs; reject only taller climbs or dangerous drops. Clearance
             // is checked at the raised position before entering the ledge.
             if(Double.isNaN(a)||Double.isNaN(b)
-                    ||b-a>1.05||a-b>1.50)return false;
+                    ||b-a>1.05||a-b>2.05)return false;
             double startX=physicalStart?mob.getX():previous.x+.5;
             double startZ=physicalStart?mob.getZ():previous.z+.5;
             double dx=node.x+.5-startX,dz=node.z+.5-startZ;
@@ -1171,7 +1171,8 @@ public final class WorkerNavigation {
         // arbitrary long jumps. A diagonal ONE-BLOCK DOWN step can be
         // safe even when neither cardinal side has a centered waypoint.
         if(dxBlocks>1||dzBlocks>1||dxBlocks+dzBlocks==0
-                ||Math.abs(at.getY()-next.getY())>1)return false;
+                ||next.getY()-at.getY()>1
+                ||at.getY()-next.getY()>2)return false;
         boolean diagonal=dxBlocks==1&&dzBlocks==1;
         double floor=floorAt(level,next);
         double delta=floor-mob.getY();
@@ -1179,7 +1180,7 @@ public final class WorkerNavigation {
         // fallback must use the golem's REAL one-block jump rather than
         // discarding these legal detours as physically impossible.
         // 1.5-block walls remain excluded by the actual collision height.
-        if(!Double.isFinite(delta)||Math.abs(delta)>1.01
+        if(!Double.isFinite(delta)||delta>1.01||delta< -2.01
                 ||diagonal&&delta>.6001)return false;
         if(diagonal&&delta>=-.6001){
             // For level or half-slab diagonals, the swept BODY alone is
