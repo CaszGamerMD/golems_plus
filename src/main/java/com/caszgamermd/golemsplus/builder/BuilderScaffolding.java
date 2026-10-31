@@ -947,6 +947,50 @@ public final class BuilderScaffolding {
         }
         return null;
     }
+    /** Free a grounded worker snagged in its own scaffold footprint.
+     * Only remove tracked blocks intersecting its body, never the floor
+     * supporting it. Preserve every other part of the shared structure.
+     */
+    public static int clearGroundedScaffoldSnag(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table){
+        BlockPos floor=worker.blockPosition().below();
+        if(!worker.onGround()||worker.isNoGravity()
+                ||level.getBlockState(floor).is(Blocks.SCAFFOLDING)
+                ||!level.getBlockState(floor).isFaceSturdy(
+                        level,floor,Direction.UP))return 0;
+        int removed=0;
+        var positions=new java.util.ArrayList<>(table.scaffoldPositions(worker.getUUID()));
+        for(BlockPos pos:positions){
+            if(!level.hasChunkAt(pos)||pos.equals(floor))continue;
+            if(Math.abs(pos.getX()+.5-worker.getX())>=.9
+                    ||Math.abs(pos.getZ()+.5-worker.getZ())>=.9
+                    ||pos.getY()+1.0<=worker.getBoundingBox().minY-.1
+                    ||pos.getY()>=worker.getBoundingBox().maxY+.1)continue;
+            if(!level.getBlockState(pos).is(Blocks.SCAFFOLDING)){
+                table.untrackScaffold(worker.getUUID(),pos);
+                continue;
+            }
+            // Never dismantle a scaffold another Builder is occupying.
+            boolean teammateOnScaffold=false;
+            for(BuilderGolem other:level.getEntitiesOfClass(
+                    BuilderGolem.class,
+                    new net.minecraft.world.phys.AABB(pos).inflate(.15))){
+                if(other!=worker){teammateOnScaffold=true;break;}
+            }
+            if(teammateOnScaffold||!BuilderSupplyInventory.canStoreScaffolding(table))
+                continue;
+            if(!level.setBlock(pos,Blocks.AIR.defaultBlockState(),3))continue;
+            if(!BuilderSupplyInventory.storeScaffolding(table,
+                    new ItemStack(Items.SCAFFOLDING))){
+                net.minecraft.world.Containers.dropItemStack(level,
+                        pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5,
+                        new ItemStack(Items.SCAFFOLDING));
+            }
+            table.untrackScaffold(worker.getUUID(),pos);
+            removed++;
+        }
+        return removed;
+    }
     /**
      * Instant top-down removal only when worker is safely on the ground.
      * Refunds exactly one block per confirmed tracked scaffold; if storage
