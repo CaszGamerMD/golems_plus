@@ -28,6 +28,37 @@ jobs:
       - name: Render the ACTUAL stalled dome voxel map (even when test fails)
         if: always()
         run: python scripts/render_dome_route_model.py || true
+      - name: Record stuck Builder snapshots and scaffold recovery events
+        if: always()
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, re
+          logs=Path('build/run/gameTest/logs')
+          out=Path('build/run/gameTest/route-survey')
+          out.mkdir(parents=True,exist_ok=True)
+          sources=sorted(logs.rglob('*.log')) if logs.exists() else []
+          lines=[]
+          for source in sources:
+              for line in source.read_text(errors='replace').splitlines():
+                  if any(tag in line for tag in ('[DOME STUCK WORKER]', '[DOME STUCK REPORT]', '[DOME PROGRESS]', '[DOME COORD]', '[DOME REMAINING]', '[PLAN A RECOVERY]', '[PLAN A REPAIR]', '[LEGAL WORK POSE]')):
+                      lines.append(f'{source}: {line}')
+          (out/'stuck_golem_evidence.log').write_text('\\n'.join(lines)+'\\n')
+          pattern=re.compile(r'\\[DOME STUCK WORKER\\] tick=(?P<tick>\\d+) idleTicks=(?P<idle_ticks>\\d+) worker=(?P<worker>.*?) feetXYZ=\\((?P<feet_xyz>[^)]+)\\) grounded=(?P<grounded>\\w+) noGravity=(?P<no_gravity>\\w+) claimedStep=(?P<claimed_step>-?\\d+) targetXYZ=(?P<target_xyz>BlockPos\\{[^}]+\\}) ownedScaffolds=(?P<owned_scaffolds>\\d+) scaffoldPlan=(?P<scaffold_plan>.*?) climb=(?P<climb>\\w+) grapple=(?P<grapple>\\w+) problem=')
+          fields=['tick','idle_ticks','worker','feet_xyz','grounded','no_gravity','claimed_step','target_xyz','owned_scaffolds','scaffold_plan','climb','grapple','raw_log']
+          rows=[]
+          for line in lines:
+              if '[DOME STUCK WORKER]' not in line: continue
+              match=pattern.search(line)
+              row={key:match.group(key) if match else '' for key in fields if key!='raw_log'}
+              row['raw_log']=line
+              rows.append(row)
+          with (out/'stuck_golem_snapshots.csv').open('w',newline='') as handle:
+              writer=csv.DictWriter(handle,fieldnames=fields)
+              writer.writeheader()
+              writer.writerows(rows)
+          print(f'[STUCK REPORT] snapshots={len(rows)} recovery_events={sum("[PLAN A RECOVERY]" in line for line in lines)} sources={len(sources)} evidence_lines={len(lines)}')
+          PY
       - name: Save physical dome reports
         if: always()
         uses: actions/upload-artifact@v4
