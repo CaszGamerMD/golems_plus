@@ -21,6 +21,22 @@ public final class BuilderWorkAccessGameTest {
     @GameTest(structure="golems_plus_gametest:dome_arena",
             maxTicks=1800,skyAccess=true)
     public void northRoofScaffoldReachesMeasuredFinalGap(GameTestHelper helper){
+        measuredRoofScaffoldGap(helper,"north",15,30,10,
+                8.34569378,26,11.51642730);
+    }
+    /** The southern Y30 holes are part of the SAME saved 3420-block
+     * snapshot. Start from Morticia's measured position and use real
+     * physics, not a fabricated stand at roof level.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=1800,skyAccess=true)
+    public void southRoofScaffoldReachesMeasuredFinalGap(GameTestHelper helper){
+        measuredRoofScaffoldGap(helper,"south",15,30,22,
+                7.69798012,26.16610926,24.80114409);
+    }
+    private static void measuredRoofScaffoldGap(GameTestHelper helper,
+            String region,int targetX,int targetY,int targetZ,
+            double startX,double startY,double startZ){
         ServerLevel level=helper.getLevel();
         for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
@@ -54,14 +70,13 @@ public final class BuilderWorkAccessGameTest {
         if(!(level.getBlockEntity(station) instanceof WorkerStationBlockEntity table)){
             helper.fail("Missing work station for original roof");return;
         }
-        BlockPos target=origin.offset(15,30,10);
-        if(!level.getBlockState(target).isAir()
-                ||!level.getBlockState(origin.offset(15,30,9)).isAir()){
+        BlockPos target=origin.offset(targetX,targetY,targetZ);
+        if(!level.getBlockState(target).isAir()){
             helper.fail("Live roof target must remain unbuilt");return;
         }
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-        worker.setPos(origin.getX()+8.34569378,origin.getY()+26,
-                origin.getZ()+11.51642730);
+        worker.setPos(origin.getX()+startX,origin.getY()+startY,
+                origin.getZ()+startZ);
         worker.setItem(0,new net.minecraft.world.item.ItemStack(
                 net.minecraft.world.item.Items.SCAFFOLDING,64));
         level.addFreshEntity(worker);
@@ -79,23 +94,9 @@ public final class BuilderWorkAccessGameTest {
             if(helper.getTick()>=20&&helper.getTick()%5==0)
                 last[0]=BuilderScaffoldPlanA.reachWorkPose(
                         level,worker,table,owner,target,steps);
-            if(helper.getTick()>=40&&helper.getTick()<=210
-                    &&helper.getTick()%10==0){
-                var bbox=worker.getBoundingBox();
-                BlockPos feet=worker.blockPosition();
-                System.out.println("[ROOF JUMP CONTACT] tick="+helper.getTick()
-                        +" xyz="+worker.position()
-                        +" vel="+worker.getDeltaMovement()
-                        +" ground="+worker.onGround()
-                        +" roof="+level.getBlockState(feet.above())
-                        +" head="+level.getBlockState(feet.above(2))
-                        +" riseOpen="+level.noCollision(worker,bbox.move(0,.42,0))
-                        +" leftRiseOpen="+level.noCollision(worker,
-                                bbox.move(-.12,.42,0))
-                        +" session="+BuilderScaffolding.debugClimb(worker));
-            }
             if(helper.getTick()%150==0)
-                System.out.println("[ROOF SIDE CLIMB] tick="+helper.getTick()
+                System.out.println("[ROOF SIDE CLIMB] region="+region
+                        +" tick="+helper.getTick()
                         +" y="+(worker.getY()-origin.getY())
                         +" grounded="+worker.onGround()
                         +" vy="+worker.getDeltaMovement().y
@@ -111,12 +112,12 @@ public final class BuilderWorkAccessGameTest {
                     &&!table.scaffoldPositions(worker.getUUID()).isEmpty()
                     &&worker.carriedCount(net.minecraft.world.item.Items.SCAFFOLDING)<64){
                 System.out.println("[ROOF FINAL GAP] PASS inventory-paid physical "
-                        +"scaffold at measured north Y30 gap in "
+                        +"scaffold at measured "+region+" Y30 gap in "
                         +helper.getTick()+" ticks");
                 helper.succeed();return;
             }
             if(helper.getTick()>1670)
-                helper.fail("North final gap scaffold stalled: feet="
+                helper.fail(region+" final gap scaffold stalled: feet="
                         +worker.position()+" result="+last[0]
                         +" status="+BuilderScaffoldPlanA.status(worker)
                         +" climb="+BuilderScaffolding.debugClimb(worker)
