@@ -357,6 +357,81 @@ public final class BuilderWorkAccessGameTest {
                                         level,worker,target,at)));
         });
     }
+    /** 3490/3493 in the full run left this one Y35 sea lantern.
+     * Sawyer was physically grounded at (16.497,35.500,17.233), on a
+     * narrow cap with no safe INTEGER-centered stance anywhere nearby.
+     * Prove the existing per-tick 11.5cm step can retreat just beyond
+     * the .8m placement margin while retaining true wall-top footing.
+     */
+    @GameTest(structure="golems_plus_gametest:dome_arena",
+            maxTicks=700,skyAccess=true)
+    public void finalSeaLanternUsesSupportedFractionalStepBack(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        BlockPos origin=helper.absolutePos(new BlockPos(8,2,8));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        origin.getX()>>4,origin.getZ()>>4),4);
+        try{
+            var schematic=LitematicFileReader.read(BuilderDomeFixture.unpack());
+            for(var block:schematic.blocks()){
+                if(block.y()>35||BuilderVegetation.ignoreSchematicState(
+                        block.state())
+                        ||block.x()==15&&block.y()==35&&block.z()==17)
+                    continue;
+                var state=BuilderBlockResolver.resolve(block.state(),
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(state!=null)level.setBlock(origin.offset(
+                        block.x(),block.y(),block.z()),state.state(),2);
+            }
+        }catch(Exception e){helper.fail("Cannot reconstruct last lantern "+e);return;}
+        helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
+        BlockPos station=helper.absolutePos(new BlockPos(4,2,7));
+        if(!(level.getBlockEntity(station)
+                instanceof WorkerStationBlockEntity table)){
+            helper.fail("No Y35 cap Planner");return;
+        }
+        BlockPos target=origin.offset(15,35,17);
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(origin.getX()+16.497,origin.getY()+35.5,
+                origin.getZ()+17.233);
+        worker.setItem(0,new net.minecraft.world.item.ItemStack(
+                net.minecraft.world.item.Items.SEA_LANTERN,1));
+        level.addFreshEntity(worker);
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),1)
+                ||!table.registerBuilderWorker(worker.getUUID())){
+            helper.fail("Cannot register final cap worker");return;
+        }
+        helper.onEachTick(()->{
+            if(!worker.isAlive()||worker.isNoGravity()){
+                helper.fail("Final cap worker left natural physics");return;
+            }
+            if(BuilderPlacementSpace.safeFractionalCapPose(
+                    level,worker,target)){
+                System.out.println("[Y35 CAP STEP BACK] PASS physical feet="
+                        +worker.position()+" after "+helper.getTick()
+                        +" ticks; can place real sea lantern");
+                helper.succeed();return;
+            }
+            if(helper.getTick()>=12&&helper.getTick()%5==0)
+                BuilderPlacementSpace.stepBackFromFractionalCap(
+                        level,worker,table,target);
+            if(helper.getTick()>620)
+                helper.fail("Y35 wall-top sidestep stalled feet="
+                        +worker.position()+" grounded="+worker.onGround()
+                        +" corners="+WorkerNavigation.supportedHitboxCorners(
+                                level,worker)
+                        +" clear="+BuilderPlacementSpace.horizontalClear(
+                                target,worker)
+                        +" retreat="+BuilderPlacementSpace
+                                .canRetreatToFractionalCap(level,worker,target));
+        });
+    }
     private static void measuredRoofScaffoldGap(GameTestHelper helper,
             String region,int targetX,int targetY,int targetZ,
             double startX,double startY,double startZ){

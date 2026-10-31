@@ -63,6 +63,13 @@ public final class BuilderConstructionPlanner {
             BlockPos stance,BlockPos target){
         Vec3 eye=new Vec3(stance.getX()+.5,
                 stance.getY()+builder.getEyeHeight(),stance.getZ()+.5);
+        return lineOfSightFrom(world,builder,eye,target);
+    }
+    /** A wall-top Builder may be grounded at an actual half-block
+     * elevation and off-center X/Z. Its real eyes, not a fictional
+     * integer tile center, determine whether the cap is visible. */
+    static boolean lineOfSightFrom(ServerLevel world,BuilderGolem builder,
+            Vec3 eye,BlockPos target){
         Vec3 center=Vec3.atCenterOf(target);
         // Inset face samples remain inside the target cell. This permits
         // visible floor gaps without allowing rays through adjacent walls.
@@ -361,6 +368,14 @@ public final class BuilderConstructionPlanner {
             BlockPos stance=BuilderPlacementSpace.approachWithRules(
                     world,worker,target,
                     at->safeStand(world,worker,target,at));
+            if(stance==null&&(BuilderPlacementSpace.safeFractionalCapPose(
+                    world,worker,target)
+                    ||BuilderPlacementSpace.canRetreatToFractionalCap(
+                            world,worker,target)))
+                // The actual fractional body is already on a real roof
+                // support. The five-tick Builder task will execute a
+                // collision-checked sidestep before considering placement.
+                stance=worker.blockPosition();
             boolean grapple=false;
             if(stance==null
                     &&target.getY()-worker.blockPosition().getY()>0

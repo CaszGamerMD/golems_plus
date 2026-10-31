@@ -77,6 +77,97 @@ public final class BuilderPlacementSpace {
         return edgeDistance(target,worker.getX(),worker.getZ())
                 >=MIN_EDGE_CLEARANCE-.015;
     }
+    /** A wall/fence cap can support the Builder at an ACTUAL Y+.5
+     * elevation even though Minecraft has no integer-centered A* node
+     * there. Prove continuous block collision clearance and a real
+     * under-foot contact surface for each fractional retreat sample.
+     * This is read-only and grants no movement or placement by itself.
+     */
+    private static boolean supportedFractional(ServerLevel level,
+            BuilderGolem worker,double dx,double dz){
+        AABB body=worker.getBoundingBox().move(dx,0,dz);
+        if(!level.noCollision(worker,body))return false;
+        AABB footing=new AABB(body.minX+.055,body.minY-.075,
+                body.minZ+.055,body.maxX-.055,
+                body.minY+.006,body.maxZ-.055);
+        return level.getBlockCollisions(worker,footing).iterator().hasNext();
+    }
+    private static boolean fractionalCapStart(ServerLevel level,
+            BuilderGolem worker,BlockPos target){
+        return worker.onGround()&&!worker.isNoGravity()
+                &&worker.blockPosition().getY()==target.getY()
+                &&Math.abs(worker.getY()-target.getY()-.5)<.13
+                &&level.getBlockState(target).isAir()
+                &&worker.distanceToSqr(target.getX()+.5,
+                        target.getY()+.5,target.getZ()+.5)<14
+                &&supportedFractional(level,worker,0,0);
+    }
+    /** The current REAL half-height cap pose has full hand clearance,
+     * visible target and a supported physical retreat AFTER placement.
+     * No fictional tile-center exit is required for an entity already
+     * standing safely on its narrow wall-top collision geometry.
+     */
+    public static boolean safeFractionalCapPose(ServerLevel level,
+            BuilderGolem worker,BlockPos target){
+        if(!fractionalCapStart(level,worker,target)
+                ||!horizontalClear(target,worker)
+                ||worker.getBoundingBox().intersects(volume(target))
+                ||!BuilderConstructionPlanner.lineOfSightFrom(level,worker,
+                        new net.minecraft.world.phys.Vec3(worker.getX(),
+                                worker.getEyeY(),worker.getZ()),target))return false;
+        double fromX=worker.getX()-target.getX()-.5;
+        double fromZ=worker.getZ()-target.getZ()-.5;
+        double magnitude=Math.hypot(fromX,fromZ);
+        return magnitude>.01&&supportedFractional(level,worker,
+                .07*fromX/magnitude,.07*fromZ/magnitude);
+    }
+    /** Before choosing an otherwise impossible high cap, look ahead at
+     * the SAME real physics-controlled sidestep used for teammate yields.
+     * Require every 6cm segment to retain actual support and clearance,
+     * finish with >=.8m edge margin, and keep an additional safe exit.
+     */
+    public static boolean canRetreatToFractionalCap(ServerLevel level,
+            BuilderGolem worker,BlockPos target){
+        if(!fractionalCapStart(level,worker,target)
+                ||horizontalClear(target,worker))return false;
+        double x=worker.getX(),z=worker.getZ();
+        double fromX=x-target.getX()-.5,fromZ=z-target.getZ()-.5;
+        double[][] axes=Math.abs(fromX)>=Math.abs(fromZ)
+                ?new double[][]{{Math.copySign(1,fromX),0},
+                        {0,Math.copySign(1,fromZ)}}
+                :new double[][]{{0,Math.copySign(1,fromZ)},
+                        {Math.copySign(1,fromX),0}};
+        for(double[] axis:axes){
+            if(axis[0]==0&&Math.abs(fromZ)<.01
+                    ||axis[1]==0&&Math.abs(fromX)<.01)continue;
+            for(int n=1;n<=12;n++){
+                double dx=axis[0]*n*.06,dz=axis[1]*n*.06;
+                if(!supportedFractional(level,worker,dx,dz))break;
+                if(edgeDistance(target,x+dx,z+dz)
+                        <MIN_EDGE_CLEARANCE-.015)continue;
+                if(worker.getBoundingBox().move(dx,0,dz)
+                            .intersects(volume(target))
+                        ||!supportedFractional(level,worker,
+                                dx+axis[0]*.07,dz+axis[1]*.07))break;
+                var eye=new net.minecraft.world.phys.Vec3(x+dx,
+                        worker.getEyeY(),z+dz);
+                if(BuilderConstructionPlanner.lineOfSightFrom(
+                        level,worker,eye,target))return true;
+            }
+        }
+        return false;
+    }
+    /** Start the EXISTING real, inventory-free precision sidestep while
+     * this worker is still too near the cap. The per-entity controller
+     * moves at most 11.5cm per tick and stops at the safe margin.
+     */
+    public static boolean stepBackFromFractionalCap(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,BlockPos target){
+        if(!canRetreatToFractionalCap(level,worker,target))return false;
+        ready(level,worker,table,target);
+        Yield hold=yielding.get(worker);
+        return hold!=null&&hold.target().equals(target)&&hold.precision();
+    }
     private static boolean occupied(BlockPos target,BuilderGolem worker){
         if(!worker.isAlive())return false;
         boolean overlapsHeight=worker.getBoundingBox().maxY>target.getY()

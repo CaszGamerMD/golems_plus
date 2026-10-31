@@ -764,6 +764,16 @@ public final class BuilderBuildService {
                             level,worker,table,owner,pos,plan.steps());
                 return;
             }
+            // Narrow final wall/fence caps support feet at Y+.5. If
+            // the Builder is already perched there but its shoulder is
+            // 20-40cm too close to the next block, execute a short,
+            // support-proven step BACK before asking it to build a new
+            // scaffold or seek a nonexistent integer-centered A* node.
+            if(BuilderPlacementSpace.stepBackFromFractionalCap(
+                    level,worker,table,pos)){
+                activity.phase=Action.MOVE_TO_WORK;
+                return;
+            }
             long now=level.getGameTime();
             if(activity.workTravelSince<0)activity.workTravelSince=now;
             // Once an owned shaft/bridge starts, its controller owns all
@@ -796,8 +806,11 @@ public final class BuilderBuildService {
                         pos,worker)
                     &&workDistance<14
                     &&BuilderPlacementSpace.horizontalClear(pos,worker)
-                    &&(temporaryWorkPose||BuilderConstructionPlanner.safeStand(
-                            level,worker,pos,worker.blockPosition()));
+                    &&(temporaryWorkPose
+                        ||BuilderPlacementSpace.safeFractionalCapPose(
+                                level,worker,pos)
+                        ||BuilderConstructionPlanner.safeStand(
+                                level,worker,pos,worker.blockPosition()));
             // Low dome walls and fence caps often sit two Y above a
             // grounded Builder. Its normal three-block hand reach may
             // already cover the target from a SIDE stance. Find that
@@ -854,8 +867,11 @@ public final class BuilderBuildService {
             if(!BuilderPlacementSpace.placementHeight(pos,worker)
                     ||workDistance>14
                     ||!BuilderPlacementSpace.horizontalClear(pos,worker)
-                    ||!(temporaryWorkPose||BuilderConstructionPlanner.safeStand(
-                            level,worker,pos,worker.blockPosition()))){
+                    ||!(temporaryWorkPose
+                        ||BuilderPlacementSpace.safeFractionalCapPose(
+                                level,worker,pos)
+                        ||BuilderConstructionPlanner.safeStand(
+                                level,worker,pos,worker.blockPosition()))){
                 // Even when within arm's reach, a Builder must first
                 // occupy a PREVALIDATED work stance. This prevents the
                 // repeated old deadlock where it arrived next to an AIR
@@ -945,6 +961,8 @@ public final class BuilderBuildService {
             // invalidated the cached approach while this worker walked.
             if(!(BuilderScaffoldPlanA.safeTemporaryWorkPose(
                         level,worker,table,pos)
+                    ||BuilderPlacementSpace.safeFractionalCapPose(
+                            level,worker,pos)
                     ||BuilderConstructionPlanner.safeStand(
                         level,worker,pos,worker.blockPosition()))){
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
