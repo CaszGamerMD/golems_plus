@@ -133,12 +133,25 @@ public final class BuilderConstructionPlanner {
     static boolean safeStand(ServerLevel world,BuilderGolem builder,
             BlockPos target,BlockPos stance){
         return stance.distSqr(target)<REACH_SQUARED
+                // A target's interaction point is HALF A BLOCK ABOVE
+                // its integer Y, whereas the Builder's feet are at the
+                // stance Y. From Y-2, a three-tile horizontal offset is
+                // sqrt(3^2+2.5^2) away, NOT sqrt(3^2+2^2). The loose
+                // integer preview repeatedly chose a Y31 dome-cap pose
+                // that actual placement could never reach.
+                &&workReachFromFeet(stance,target)<REACH_SQUARED
                 &&(stance.getY()==target.getY()
                         ||stance.getY()==target.getY()+1
                         ||stance.getY()==target.getY()-1
                         ||stance.getY()==target.getY()-2)
                 &&lineOfSight(world,builder,stance,target)
                 &&exitAfterPlacement(world,builder,stance,target);
+    }
+    static double workReachFromFeet(BlockPos stance,BlockPos target){
+        double dx=stance.getX()-target.getX();
+        double dz=stance.getZ()-target.getZ();
+        double dy=stance.getY()-target.getY()-.5;
+        return dx*dx+dy*dy+dz*dz;
     }
     /**
      * Physical contact with a CORRECT, already-built schematic cell is a
@@ -254,7 +267,7 @@ public final class BuilderConstructionPlanner {
                 continue;
             int feasible=0,feet=0,sight=0,escapes=0,routes=0,probes=0;
             for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
-                for(int dy:new int[]{0,1}){
+                for(int dy:new int[]{0,1,-1,-2}){
                     BlockPos at=target.offset(dx,dy,dz);
                     if(at.equals(target)||at.distSqr(target)>=REACH_SQUARED)
                         continue;

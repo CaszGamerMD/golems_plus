@@ -127,6 +127,7 @@ jobs:
               'com.caszgamermd.golemsplus.builder.BuilderGrappleReturnGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderDoorwayGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderPlacementClearanceGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderPlaceOneBelowGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderConstructionFrontierGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderFenceStepGameTest',
               'com.caszgamermd.golemsplus.builder.BuilderCornerRejoinGameTest',

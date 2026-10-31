@@ -404,7 +404,7 @@ public final class BuilderPlacementSpace {
         Rejected bad=rejected.get(worker);
         boolean liveBad=bad!=null&&bad.until()>level.getGameTime();
         for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
-            for(int dy:new int[]{0,1}){
+            for(int dy:new int[]{0,1,-1,-2}){
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos at=target.offset(dx,dy,dz);
                 if(!safe.test(at))continue;
