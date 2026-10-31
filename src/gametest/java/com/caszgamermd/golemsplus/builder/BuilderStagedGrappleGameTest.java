@@ -106,7 +106,10 @@ public final class BuilderStagedGrappleGameTest {
                             world,mob,target,mob.blockPosition())){
                 if(!sawLower[0]||!sawMiddle[0]
                         ||mob.carriedCount(WorksiteContent.GRAPPLE_HOOK)!=1){
-                    h.fail("Must use both intermediate ledges and retain hook");return;
+                    h.fail("Must use both intermediate ledges and retain hook"
+                            +" feet="+mob.position()+" lower="+sawLower[0]
+                            +" middle="+sawMiddle[0]+" "
+                            +BuilderGrappleAccess.debug(mob));return;
                 }
                 System.out.println("[STAGED GRAPPLE] PASS three real climbs "
                         +"tick="+h.getTick());
@@ -149,7 +152,9 @@ public final class BuilderStagedGrappleGameTest {
                     &&BuilderConstructionPlanner.safeStand(
                             world,mob,target,mob.blockPosition())){
                 if(!sawGroundEntry[0]){
-                    h.fail("Must physically walk down to the rope entry");return;
+                    h.fail("Must physically walk down to the rope entry"
+                            +" feet="+mob.position()+" "
+                            +BuilderGrappleAccess.debug(mob));return;
                 }
                 System.out.println("[ROPE ENTRY] PASS walked down then climbed "
                         +"tick="+h.getTick());
@@ -191,7 +196,10 @@ public final class BuilderStagedGrappleGameTest {
                 var result=BuilderGrappleAccess.reachWork(world,mob,table,target);
                 if(result==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR
                         ||result==BuilderGrappleAccess.Result.NEED_HOOK){
-                    h.fail("Remote real access ledge rejected "+result);return;
+                    h.fail("Remote real access ledge rejected "+result
+                            +" feet="+mob.position()+" "
+                            +BuilderPlacementSpace.diagnoseApproach(
+                                    world,mob,target));return;
                 }
             }
             if(mob.onGround()&&!BuilderGrappleAccess.active(mob)

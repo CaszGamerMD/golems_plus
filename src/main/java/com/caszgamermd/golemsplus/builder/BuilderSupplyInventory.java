@@ -286,16 +286,20 @@ public final class BuilderSupplyInventory {
         materials.put("golems_plus:grapple_hook",1);
         int highestSchematic=steps.stream().mapToInt(
                 BuilderConstructionPlan.Step::y).max().orElse(highest);
-        // Until the final eight schematic layers, ordinary ten-block
-        // batches need the pouch slots more than distant roof-cap items.
-        // Premature prefetch around mid-dome displaced materials and
-        // triggered expensive unnecessary depot trips from narrow ledges.
+        // A dome's upper-middle layers already create deep, isolated roof
+        // gaps. Waiting until the final eight layers to carry scaffolding
+        // forced workers at Y21-Y23 to climb down to storage AFTER their
+        // first route failed, then walk back toward a 20-block paid tower.
+        // Reserve one actual stack once construction passes sixteen layers.
+        // Keep it across ten-block work batches so the fallback is usable
+        // immediately; the current batch is packed ahead of this tool.
+        if(highest-table.builderOrigin().getY()>=16
+                &&highestSchematic-highest>=0)
+            materials.put("minecraft:scaffolding",16);
+        // Distant final-cap blocks still wait until the final eight
+        // schematic layers, because they would displace current materials.
         if(highest>=highestSchematic-8&&highestSchematic-highest>=0
                 &&highest-table.builderOrigin().getY()>=12){
-            // Keep paid scaffold available on the roof for the exact
-            // step-back-and-climb recovery. The current stage always has
-            // pouch priority over these optional future supplies.
-            materials.put("minecraft:scaffolding",16);
             if(zone!=null)
                 for(int idx:zone){
                     if(idx<0||idx>=steps.size())continue;
