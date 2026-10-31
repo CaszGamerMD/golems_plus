@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 import net.minecraft.core.BlockPos;
@@ -31,6 +32,10 @@ import net.minecraft.core.Direction;
 public final class WorkerRoutePlanner {
     public static final int RADIUS=40;
     public static final int NODE_BUDGET=2800;
+    // A bounded search can follow many legal one-block stair steps.
+    // The old eight-block window made ground-to-Y9 impossible regardless
+    // of connectivity. This changes search extent, never jump/drop size.
+    public static final int VERTICAL_RADIUS=40;
     private static final int MOVE_COST=10;
     private static final int DIAGONAL_COST=14;
     private static final int HEIGHT_COST=15;
@@ -42,6 +47,14 @@ public final class WorkerRoutePlanner {
     private static final int[] HEIGHT_STEPS={0,-1,1};
     private record Node(BlockPos pos,int travelled,int estimate){}
     public record Route(List<BlockPos> steps,boolean complete,int cost,int explored){}
+    public record SearchStats(int explored,int queued,boolean budgetExhausted,
+            Set<BlockPos> reachable){
+        @Override public String toString(){
+            return "SearchStats[explored="+explored+", queued="+queued
+                    +", budgetExhausted="+budgetExhausted
+                    +", reachable="+reachable.size()+"]";
+        }
+    }
     private WorkerRoutePlanner(){}
 
     private static int heuristic(BlockPos at,List<BlockPos> goals){
@@ -69,6 +82,38 @@ public final class WorkerRoutePlanner {
     public static Route plan(BlockPos start,List<BlockPos> goals,
             Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
             BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty){
+        return plan(start,goals,standable,floor,avoid,terrainPenalty,null);
+    }
+    public static Route plan(BlockPos start,List<BlockPos> goals,
+            Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
+            BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty,
+            java.util.function.Consumer<SearchStats> observer){
+        return plan(start,goals,standable,floor,avoid,
+                terrainPenalty,observer,Set.of());
+    }
+    /** Only blacklist a failed opening step, not its entire destination.
+     * Recovery may initially walk away from the goal, climb down, or circle
+     * obstacles as long as all A* transitions remain physically legal.
+     */
+    public static Route plan(BlockPos start,List<BlockPos> goals,
+            Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
+            BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty,
+            java.util.function.Consumer<SearchStats> observer,
+            Set<BlockPos> excluded){
+        return plan(start,goals,standable,floor,avoid,terrainPenalty,
+                observer,excluded,null);
+    }
+    /** A physical collision sweep may prove a tight diagonal even when
+     * the center of one orthogonal side tile is not walkable. The caller
+     * must verify the WHOLE body and continuous real footing; no implicit
+     * corner-cutting is permitted without that certificate.
+     */
+    public static Route plan(BlockPos start,List<BlockPos> goals,
+            Predicate<BlockPos> standable,ToDoubleFunction<BlockPos> floor,
+            BlockPos avoid,ToDoubleFunction<BlockPos> terrainPenalty,
+            java.util.function.Consumer<SearchStats> observer,
+            Set<BlockPos> excluded,
+            BiPredicate<BlockPos,BlockPos> sweptDiagonal){
         if(start==null||goals==null||goals.isEmpty())return null;
         Set<BlockPos> ends=new HashSet<>(goals);
         if(ends.contains(start))return new Route(List.of(),true,0,0);
@@ -109,9 +154,10 @@ public final class WorkerRoutePlanner {
                 boolean diagonal=dir[0]!=0&&dir[1]!=0;
                 for(int dy:HEIGHT_STEPS){
                     BlockPos next=current.offset(dir[0],dy,dir[1]);
-                    if(next.equals(avoid)||Math.abs(next.getX()-start.getX())>RADIUS
+                    if(next.equals(avoid)||excluded.contains(next)
+                            ||Math.abs(next.getX()-start.getX())>RADIUS
                             ||Math.abs(next.getZ()-start.getZ())>RADIUS
-                            ||Math.abs(next.getY()-start.getY())>8
+                            ||Math.abs(next.getY()-start.getY())>VERTICAL_RADIUS
                             ||!validCache.computeIfAbsent(next,standable::test))continue;
                     double fromHeight=heightCache.computeIfAbsent(current,
                             floor::applyAsDouble);
@@ -127,18 +173,24 @@ public final class WorkerRoutePlanner {
                         if(rise>.6001)continue;
                         BlockPos sideX=current.offset(dir[0],0,0);
                         BlockPos sideZ=current.offset(0,0,dir[1]);
-                        if(!validCache.computeIfAbsent(sideX,standable::test)
-                                ||!validCache.computeIfAbsent(sideZ,standable::test))
-                            continue;
-                        double xHeight=heightCache.computeIfAbsent(sideX,
-                                floor::applyAsDouble);
-                        double zHeight=heightCache.computeIfAbsent(sideZ,
-                                floor::applyAsDouble);
-                        if(!Double.isFinite(xHeight)||!Double.isFinite(zHeight)
-                                ||Math.abs(xHeight-fromHeight)>.6001
-                                ||Math.abs(zHeight-fromHeight)>.6001
-                                ||Math.abs(xHeight-toHeight)>.6001
-                                ||Math.abs(zHeight-toHeight)>.6001)continue;
+                        boolean sideXValid=validCache.computeIfAbsent(
+                                sideX,standable::test);
+                        boolean sideZValid=validCache.computeIfAbsent(
+                                sideZ,standable::test);
+                        double xHeight=sideXValid
+                                ?heightCache.computeIfAbsent(sideX,
+                                        floor::applyAsDouble):Double.NaN;
+                        double zHeight=sideZValid
+                                ?heightCache.computeIfAbsent(sideZ,
+                                        floor::applyAsDouble):Double.NaN;
+                        boolean ordinarySides=sideXValid&&sideZValid
+                                &&Double.isFinite(xHeight)&&Double.isFinite(zHeight)
+                                &&Math.abs(xHeight-fromHeight)<=.6001
+                                &&Math.abs(zHeight-fromHeight)<=.6001
+                                &&Math.abs(xHeight-toHeight)<=.6001
+                                &&Math.abs(zHeight-toHeight)<=.6001;
+                        if(!ordinarySides&&(sweptDiagonal==null
+                                ||!sweptDiagonal.test(current,next)))continue;
                     }
                     int turn=0;
                     BlockPos parent=parents.get(current);
@@ -163,6 +215,9 @@ public final class WorkerRoutePlanner {
                 }
             }
         }
+        if(observer!=null)observer.accept(new SearchStats(explored,queue.size(),
+                finish==null&&explored>=NODE_BUDGET&&!queue.isEmpty(),
+                Set.copyOf(cost.keySet())));
         boolean complete=finish!=null;
         if(!complete){
             if(!distant||frontier==null)return null;

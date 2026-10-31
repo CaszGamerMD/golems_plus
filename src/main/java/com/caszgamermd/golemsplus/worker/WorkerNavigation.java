@@ -1,7 +1,10 @@
 package com.caszgamermd.golemsplus.worker;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -15,6 +18,7 @@ import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.WallBlock;
 import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -49,15 +53,20 @@ public final class WorkerNavigation {
     private WorkerNavigation(){}
 
     private static final class Progress {
-        BlockPos requested,approach,openedDoor;
+        BlockPos requested,approach,openedDoor,centering,terrainStep;
+        int terrainStepStarted;
+        List<Vec3> cornerPath=List.of();
+        int cornerCursor,cornerStarted;
         Vec3 previous;
         int stalled,attempts,wait,doorAge,nextRoute;
         int unsafeChecks,avoidUntil;
         BlockPos lastBad;
+        int detourFirstLegRetries;
         boolean narrowDoorway;
         // Per-door traffic reservation: one crossing at a time, but no
         // cross-door or cross-site global lock.
         BlockPos queuedDoor,doorStandby,doorExit;
+        Direction doorOut;
         boolean waitingDoor,parkingAtDoor,finishingDoor;
         int doorLastProgressTick,doorReservationYields;
         double doorLastDistance=Double.POSITIVE_INFINITY;
@@ -67,6 +76,19 @@ public final class WorkerNavigation {
         List<BlockPos> weightedRoute=List.of();
         int routeCursor;
     }
+    /** Sub-block collision searches are considerably more expensive than
+     * following their results. Share repeated previews for the SAME real
+     * footing for at most five game ticks; live motion always rechecks
+     * collisions before moving. No saved-world state or global routes.
+     */
+    private static final class FractionalCache {
+        long sampledAt=Long.MIN_VALUE;
+        double x,y,z;
+        boolean grounded;
+        final Map<BlockPos,List<Vec3>> routes=new java.util.HashMap<>();
+    }
+    private static final Map<PathfinderMob,FractionalCache> fractionalCaches=
+            new WeakHashMap<>();
     private static Progress state(PathfinderMob mob){
         return states.computeIfAbsent(mob,m->new Progress());
     }
@@ -217,7 +239,19 @@ public final class WorkerNavigation {
             double top=feet.getY()+inside.max(Direction.Axis.Y);
             return top;
         }
-        if(footing.isEmpty())return Double.NaN;
+        if(footing.isEmpty()){
+            // Native ground paths round a fence/wall top UP to their
+            // integer feet node. A 1.5-high fence two cells below still
+            // physically supports feet at nodeY-0.5, despite AIR in the
+            // intervening block. Full cubes/stairs never bridge this gap.
+            BlockPos lower=feet.below(2);
+            VoxelShape extended=level.getBlockState(lower)
+                    .getCollisionShape(level,lower);
+            if(extended.isEmpty()||extended.max(Direction.Axis.Y)<=1.0)
+                return Double.NaN;
+            double top=lower.getY()+extended.max(Direction.Axis.Y);
+            return top>feet.getY()-1.0&&top<=feet.getY()?top:Double.NaN;
+        }
         double y=below.getY()+footing.max(Direction.Axis.Y);
         if(!inside.isEmpty()&&!handDoor(level,feet)){
             double height=inside.max(Direction.Axis.Y);
@@ -226,6 +260,37 @@ public final class WorkerNavigation {
         }
         return y;
     }
+    /** Read-only actual VoxelShape footing for exact dome route survey.
+     * The same floor routine is used by the production terrain A*;
+     * synthetic block-height shortcuts would mis-model slabs and walls.
+     */
+    public static double surveyFloorHeight(ServerLevel level,BlockPos feet){
+        return floorAt(level,feet);
+    }
+
+    /** Architectural walls are 1.5 blocks high and their collision top
+     * is not a stable normal walking waypoint. Treating that narrow lip
+     * as ordinary ground made Builders stand below a wall and try to jump
+     * onto it forever. This does NOT forbid an entity that is ALREADY
+     * physically supported there from walking OFF the wall.
+     *
+     * Fences keep their separately tested half-height-crossing handling;
+     * this specifically excludes WallBlock supports, not slabs/stairs.
+     */
+    private static boolean unenterableWallTop(ServerLevel level,
+            PathfinderMob mob,BlockPos feet,double floor){
+        BlockPos below=feet.below();
+        BlockState state=level.getBlockState(below);
+        if(!(state.getBlock() instanceof WallBlock))return false;
+        VoxelShape shape=state.getCollisionShape(level,below);
+        if(shape.isEmpty()||shape.max(Direction.Axis.Y)<=1.0)return false;
+        double wallTop=below.getY()+shape.max(Direction.Axis.Y);
+        if(Math.abs(wallTop-floor)>.06)return false;
+        // Allow an actual grounded golem already on this lip to safely
+        // descend or retreat; never fabricate arrival atop it in A*.
+        return !(mob.onGround()&&mob.blockPosition().equals(feet)
+                &&Math.abs(mob.getY()-wallTop)<.12);
+    }
     private static boolean standingTile(ServerLevel level,PathfinderMob mob,BlockPos feet){
         if(!level.hasChunkAt(feet)||!level.hasChunkAt(feet.above())
                 ||!level.hasChunkAt(feet.below()))return false;
@@ -233,7 +298,8 @@ public final class WorkerNavigation {
         if(!level.getFluidState(feet).isEmpty()||dangerous(state)
                 ||dangerous(level.getBlockState(feet.below())))return false;
         double floor=floorAt(level,feet);
-        if(Double.isNaN(floor))return false;
+        if(Double.isNaN(floor)
+                ||unenterableWallTop(level,mob,feet,floor))return false;
         return bodyClear(level,mob,feet.getX()+.5,floor,feet.getZ()+.5);
     }
     private static boolean bodyClear(ServerLevel world,PathfinderMob mob,
@@ -250,8 +316,22 @@ public final class WorkerNavigation {
         // noCollision alone rejects a valid route while another golem is
         // standing at a waypoint and makes a flat site look impossible.
         // Dynamic entities still yield to each other during movement.
-        if(door||world.noCollision(mob,body))return true;
-        return !world.getBlockCollisions(mob,body).iterator().hasNext();
+        if(world.noCollision(mob,body))return true;
+        // Opening a wooden passage is an executable route action. Ignore
+        // its movable leaf during preflight, but never ignore a neighboring
+        // jamb or wall just because the sample center lies in a door tile.
+        for(BlockPos at:BlockPos.betweenClosed(BlockPos.containing(body.minX,body.minY,body.minZ),
+                BlockPos.containing(body.maxX,body.maxY,body.maxZ))){
+            if(handDoor(world,at))continue;
+            for(AABB box:world.getBlockState(at).getCollisionShape(world,at).toAabbs())
+                if(box.move(at).intersects(body))return false;
+        }
+        return true;
+    }
+    private static boolean groundedNativeStart(PathfinderMob mob,BlockPos feet){
+        BlockPos actual=mob.blockPosition();
+        return mob.onGround()&&feet.getX()==actual.getX()
+                &&feet.getZ()==actual.getZ()&&Math.abs(feet.getY()-mob.getY())<=1.05;
     }
     private static boolean safePath(ServerLevel level,PathfinderMob mob,
                                     Path path,boolean lookAheadOnly){
@@ -268,23 +348,26 @@ public final class WorkerNavigation {
             // body on a slab/ledge. The worker is already physically there
             // and needs to be able to step OUT, not fail all routes because
             // the first sample slightly clips the block under its feet.
-            if(!(i==0&&path.getNodeCount()>1
-                    &&mob.blockPosition().equals(feet))
+            if(!(i==0&&path.getNodeCount()>1&&groundedNativeStart(mob,feet))
                     &&!standingTile(level,mob,feet))return false;
             if(i==start)continue;
             Node previous=path.getNode(i-1);
-            double a=floorAt(level,new BlockPos(previous.x,previous.y,previous.z));
+            BlockPos previousFeet=new BlockPos(previous.x,previous.y,previous.z);
+            boolean physicalStart=i==1&&groundedNativeStart(mob,previousFeet);
+            double a=physicalStart?mob.getY():floorAt(level,previousFeet);
             double b=floorAt(level,feet);
             // One-block jumps and stair steps are legal for vanilla ground
             // mobs; reject only taller climbs or dangerous drops. Clearance
             // is checked at the raised position before entering the ledge.
             if(Double.isNaN(a)||Double.isNaN(b)
                     ||b-a>1.05||a-b>1.50)return false;
-            double dx=node.x-previous.x,dz=node.z-previous.z;
+            double startX=physicalStart?mob.getX():previous.x+.5;
+            double startZ=physicalStart?mob.getZ():previous.z+.5;
+            double dx=node.x+.5-startX,dz=node.z+.5-startZ;
             int samples=Math.max(1,(int)Math.ceil(Math.hypot(dx,dz)*3));
             for(int k=1;k<samples;k++){
                 double t=(double)k/samples;
-                double x=previous.x+.5+dx*t,z=previous.z+.5+dz*t;
+                double x=startX+dx*t,z=startZ+dz*t;
                 BlockPos beforeFeet=new BlockPos(previous.x,previous.y,previous.z);
                 // Stair risers and half slabs are stepped over, not walked
                 // through diagonally at intermediate interpolated heights.
@@ -294,7 +377,13 @@ public final class WorkerNavigation {
                         ||partialFloor(level.getBlockState(feet))
                         ||partialFloor(level.getBlockState(beforeFeet.below()))
                         ||partialFloor(level.getBlockState(feet.below()));
-                double y=architecturalStep||Math.abs(a-b)>.60
+                // Collision surfaces are not limited to stairs/slabs.
+                // Fence tops stand 0.5 above neighboring full blocks;
+                // interpolating through that riser rejects a valid step.
+                // Sweep at the higher supported surface for every real
+                // rise/drop, retaining head/body collision checks.
+                boolean raisedSurface=Math.abs(a-b)>.05;
+                double y=architecturalStep||raisedSurface
                         ?Math.max(a,b):a+(b-a)*t;
                 // The game handles a one-block step as a hop, not a
                 // horizontal sweep through the vertical face of the step.
@@ -373,14 +462,19 @@ public final class WorkerNavigation {
                                      BlockPos target){
         return target!=null&&standingTile(level,mob,target);
     }
-    private static boolean endsAtExactTile(Path path,BlockPos target){
+    private static boolean endsAtExactTile(ServerLevel level,Path path,BlockPos target){
         if(path==null||path.getNodeCount()<1)return false;
         Node last=path.getNode(path.getNodeCount()-1);
         // canReach() may accept a waypoint near the requested cell.
         // A Builder requiring actual interaction range cannot mistake
         // that approximate endpoint for an exact standing destination.
-        return last.x==target.getX()&&last.z==target.getZ()
-                &&Math.abs(last.y-target.getY())<=1;
+        if(last.x!=target.getX()||last.z!=target.getZ())return false;
+        double expected=floorAt(level,target);
+        double actual=floorAt(level,new BlockPos(last.x,last.y,last.z));
+        // Integer aliases on fences/slabs are legal only when they mean
+        // the SAME physical standing height, never an arbitrary Y +/-1.
+        return Double.isFinite(expected)&&Double.isFinite(actual)
+                &&Math.abs(expected-actual)<.05;
     }
     public static boolean canReachExact(ServerLevel level,PathfinderMob mob,
                                         BlockPos target){
@@ -390,11 +484,830 @@ public final class WorkerNavigation {
         if(mob.blockPosition().equals(target)
                 &&standingTile(level,mob,target))return true;
         Path path=mob.getNavigation().createPath(target,0);
-        return endsAtExactTile(path,target)&&safePath(level,mob,path,false);
+        return endsAtExactTile(level,path,target)&&safePath(level,mob,path,false);
     }
+    /**
+     * Work-position preview uses the SAME terrain-weighted A* and the
+     * SAME executable short native waypoint handoff as routeToExact().
+     * A vanilla createPath(goal) alone is not proof that trained movement
+     * can start. This method never calls moveTo, changes reservations,
+     * or mutates navigation state.
+     *
+     * Multiple safe standing positions share a single bounded A* search
+     * instead of rebuilding up to 98 separate paths per work block.
+     * A partial route is not proof that the actual work pose is reachable.
+     */
+    public static BlockPos selectExecutableStand(ServerLevel level,
+            PathfinderMob mob,List<BlockPos> candidates){
+        if(candidates==null||candidates.isEmpty())return null;
+        List<BlockPos> goals=new ArrayList<>();
+        for(BlockPos p:candidates)
+            if(p!=null&&standingTile(level,mob,p))goals.add(p);
+        if(goals.isEmpty())return null;
+        if(goals.contains(mob.blockPosition()))
+            return mob.blockPosition().immutable();
+        Progress progress=states.get(mob);
+        // A blocked FIRST step does not mean the requested work pose is
+        // unreachable. Search alternate physically executable openings.
+        WorkerRoutePlanner.Route route=planExecutableRoute(
+                level,mob,goals,progress==null?null:progress.lastBad,true);
+        if(route==null||route.steps().isEmpty())return null;
+        BlockPos reached=route.steps().get(route.steps().size()-1);
+        return goals.contains(reached)?reached.immutable():null;
+    }
+
+    private static WorkerRoutePlanner.Route planExactRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
+            BlockPos avoid){
+        return planExactRoute(level,mob,goals,avoid,null,Set.of());
+    }
+    private static WorkerRoutePlanner.Route planExactRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,BlockPos avoid,
+            java.util.function.Consumer<WorkerRoutePlanner.SearchStats> observer){
+        return planExactRoute(level,mob,goals,avoid,observer,Set.of());
+    }
+    private static WorkerRoutePlanner.Route planExactRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,BlockPos avoid,
+            java.util.function.Consumer<WorkerRoutePlanner.SearchStats> observer,
+            Set<BlockPos> excluded){
+        // Exact work probes must honor the same expiry as ordinary routing.
+        // Otherwise a temporary congestion failure becomes a permanent wall
+        // while a worker only asks for construction stances.
+        Progress progress=states.get(mob);
+        if(progress!=null&&mob.tickCount>=progress.avoidUntil){
+            if(avoid!=null&&avoid.equals(progress.lastBad))avoid=null;
+            progress.lastBad=null;
+        }
+        List<Vec3> crowds=nearbyWorkers(level,mob);
+        BlockPos start=mob.blockPosition();
+        // The occupied start may straddle a ledge or partial block. Its
+        // actual grounded height is authoritative; other nodes must still
+        // prove their support and body clearance from world geometry.
+        var route=WorkerRoutePlanner.plan(start,goals,
+                at->standingTile(level,mob,at),
+                at->at.equals(start)&&mob.onGround()?mob.getY():floorAt(level,at),avoid,
+                at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
+                observer,excluded);
+        if(route==null&&mob.onGround()&&!mob.isNoGravity()){
+            // Some narrow roof corners let the real 0.65-wide Builder
+            // pass diagonally although neither adjacent TILE CENTER is
+            // walkable. Retry the SAME A* with a certified physical edge;
+            // a continuous swept body and support probe must prove it.
+            // Ordinary eight-direction routes keep their fast path.
+            route=WorkerRoutePlanner.plan(start,goals,
+                    at->standingTile(level,mob,at),
+                    at->at.equals(start)&&mob.onGround()
+                            ?mob.getY():floorAt(level,at),avoid,
+                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
+                    observer,excluded,
+                    (from,to)->physicallySweptDiagonal(level,mob,from,to));
+        }
+        if(!mob.onGround()||standingTile(level,mob,start))return route;
+        // Corner-supported golems can be genuinely ON GROUND while the
+        // integer tile under their FEET is not standable at its CENTER.
+        // An A* seeded from that fictitious center can return an appealing
+        // but physically unexecutable diagonal or upward first leg.
+        // Search local footholds from the ACTUAL body and require a safe
+        // first motion. Do not take the first three arbitrary loop-order
+        // candidates; they can all be behind the wrong fence/wall.
+        WorkerRoutePlanner.Route best=null;
+        List<BlockPos> seeds=new ArrayList<>();
+        // The old one-block cardinal lookup misses workable landings
+        // two tiles around an awkward roof corner. Search nearby true
+        // floor elevations, but let the fractional collision lattice
+        // prove that there is a supported way to reach each candidate.
+        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+            for(int dy=-1;dy<=1;dy++){
+                if(dx==0&&dz==0)continue;
+                BlockPos seed=start.offset(dx,dy,dz);
+                if(seed.equals(avoid)||excluded.contains(seed)
+                        ||!standingTile(level,mob,seed))continue;
+                double floor=floorAt(level,seed);
+                if(!Double.isFinite(floor)||Math.abs(floor-mob.getY())>1.01)
+                    continue;
+                // Both alternatives execute ONLY through real collisions.
+                // Rejoining the same floor requires continuous under-foot
+                // support. Climbing down/up uses the natural one-block step
+                // controller with its own body/head clearance checks.
+                if(!supportedRejoin(level,mob,seed)
+                        &&!canBeginTerrainStep(level,mob,seed)
+                        &&cornerRejoinPath(level,mob,seed).isEmpty())continue;
+                seeds.add(seed);
+            }
+        seeds.sort(Comparator.comparingDouble(p->
+                mob.distanceToSqr(p.getX()+.5,floorAt(level,p),p.getZ()+.5)));
+        int validCandidates=0;
+        for(BlockPos seed:seeds){
+            // A center-standable seed may still be unreachable from the
+            // worker's REAL fractional roof footing. Reject it before the
+            // expensive onward A* search, otherwise the twelve nearest
+            // seeds can all be fictitious first steps and starve the
+            // executable (possibly backwards/downhill) way around.
+            if(!canBeginTrainedLeg(level,mob,
+                    new WorkerRoutePlanner.Route(List.of(seed),true,0,0)))
+                continue;
+            if(++validCandidates>12)break; // bound expensive route search
+            var onward=WorkerRoutePlanner.plan(seed,goals,
+                    at->standingTile(level,mob,at),at->floorAt(level,at),avoid,
+                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
+                    null,excluded);
+            if(onward==null||!onward.complete())continue;
+            List<BlockPos> steps=new ArrayList<>();
+            steps.add(seed);steps.addAll(onward.steps());
+            var joined=new WorkerRoutePlanner.Route(List.copyOf(steps),
+                    true,onward.cost()+14,onward.explored());
+            if(best==null||joined.cost()<best.cost())best=joined;
+        }
+        // Never return a mathematically shortest route if its first edge
+        // cannot be physically executed from the offset body.
+        if(best!=null)return best;
+        return route!=null&&canBeginTrainedLeg(level,mob,route)?route:null;
+    }
+
+    private static boolean physicallySweptDiagonal(ServerLevel level,
+            PathfinderMob mob,BlockPos from,BlockPos to){
+        if(Math.abs(from.getX()-to.getX())!=1
+                ||Math.abs(from.getZ()-to.getZ())!=1)return false;
+        double a=floorAt(level,from),b=floorAt(level,to);
+        // Never use the same-height sweep as a synthetic jump or drop.
+        if(!Double.isFinite(a)||!Double.isFinite(b)
+                ||Math.abs(a-b)>.04)return false;
+        return supportedCornerSegment(level,mob,
+                new Vec3(from.getX()+.5,a,from.getZ()+.5),
+                new Vec3(to.getX()+.5,b,to.getZ()+.5));
+    }
+
+    /**
+     * A* can already walk BACKWARDS and DOWNHILL. The old failure was
+     * rejecting the whole goal when Minecraft refused its shortest FIRST
+     * step. Preserve the exact destination while excluding only the
+     * non-executable first step from an alternate terrain search.
+     *
+     * The rejected set is ephemeral. The world and its collision rules
+     * remain unchanged and no partial route is treated as an arrival.
+     */
+    private static WorkerRoutePlanner.Route planExecutableRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
+            BlockPos avoid,boolean requireComplete){
+        Set<BlockPos> rejected=new HashSet<>();
+        Progress progress=states.get(mob);
+        if(progress!=null)progress.detourFirstLegRetries=0;
+        for(int attempt=0;attempt<6;attempt++){
+            WorkerRoutePlanner.Route route=planExactRoute(
+                    level,mob,goals,avoid,null,rejected);
+            if(route==null||route.steps().isEmpty()
+                    ||requireComplete&&!route.complete()){
+                // The coarse grid may have NO center-to-center edge even
+                // where the actual .65-wide body fits around a nearby
+                // corner. For local destinations, let the continuously
+                // collision-checked fractional planner prove its own
+                // route. It cannot invent a long-distance path or claim
+                // arrival at a distant work position.
+                if(mob.onGround()&&!mob.isNoGravity()){
+                    List<BlockPos> local=new ArrayList<>(goals);
+                    local.sort(Comparator.comparingDouble(g->
+                            mob.distanceToSqr(g.getX()+.5,mob.getY(),g.getZ()+.5)));
+                    for(int i=0;i<Math.min(12,local.size());i++){
+                        BlockPos goal=local.get(i);
+                        if(goal.equals(avoid)||rejected.contains(goal)
+                                ||!standingTile(level,mob,goal)
+                                ||cornerRejoinPath(level,mob,goal).isEmpty())continue;
+                        if(progress!=null)progress.detourFirstLegRetries=rejected.size();
+                        return new WorkerRoutePlanner.Route(List.of(goal),
+                                true,14,0);
+                    }
+                }
+                return null;
+            }
+            if(canBeginTrainedLeg(level,mob,route)){
+                if(progress!=null)progress.detourFirstLegRetries=rejected.size();
+                return route;
+            }
+            BlockPos blocked=route.steps().get(0);
+            if(!rejected.add(blocked))return null;
+        }
+        if(progress!=null)progress.detourFirstLegRetries=6;
+        return null;
+    }
+
+    /** Read-only 3D footing and first-leg diagnostics from the worker's
+     * exact fractional position. Used to distinguish an impossible local
+     * corridor from a falsely rejected A* start node.
+     */
+    public static String diagnoseGroundedEdge(ServerLevel level,
+            PathfinderMob mob,BlockPos destination){
+        StringBuilder s=new StringBuilder(" actual=")
+            .append(mob.position()).append(" grounded=").append(mob.onGround())
+            .append(" current=").append(mob.blockPosition())
+            .append(" block=").append(level.getBlockState(mob.blockPosition()))
+            .append(" below=").append(level.getBlockState(mob.blockPosition().below()))
+            .append(" body=").append(mob.getBoundingBox())
+            .append(" cornerMask=").append(
+                    Integer.toBinaryString(supportedHitboxCorners(level,mob)))
+            .append(" startCenter=").append(standingTile(level,mob,mob.blockPosition()))
+            .append(" possible=[");
+        BlockPos origin=mob.blockPosition();
+        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++)
+            for(int dy=-1;dy<=1;dy++){
+                if(dx==0&&dz==0)continue;
+                BlockPos at=origin.offset(dx,dy,dz);
+                if(!standingTile(level,mob,at))continue;
+                double floor=floorAt(level,at);
+                if(Math.abs(floor-mob.getY())>1.01)continue;
+                boolean direct=supportedRejoin(level,mob,at);
+                boolean terrain=canBeginTerrainStep(level,mob,at);
+                s.append(at.subtract(origin).toShortString())
+                    .append(":height=").append(String.format(
+                        java.util.Locale.ROOT,"%.2f",floor-mob.getY()))
+                    .append(",slide=").append(direct)
+                    .append(",terrain=").append(terrain)
+                    .append(",ground=").append(level.getBlockState(at.below()))
+                    .append(';');
+            }
+        return s.append(']').toString();
+    }
+
+    /**
+     * Local free-space steering from the ACTUAL fractional feet position.
+     * The block A* chooses a corridor, not a mandatory sequence of tile
+     * centers: within that corridor a grounded Builder may take quarter-
+     * block diagonal/sideways waypoints around corners, even when the
+     * integer start tile itself is standable. Every short sweep checks
+     * the full collision body AND continuous contact with real terrain.
+     *
+     * The local search stays on one physical Y surface. Genuine rises,
+     * drops and long-range decisions remain with trained routing, jumps and grapples;
+     * there is no clipping, invented support, flight or teleportation.
+     */
+    private static boolean supportedAtFraction(ServerLevel level,
+            PathfinderMob mob,double x,double y,double z){
+        double half=mob.getBbWidth()*.5;
+        AABB body=new AABB(x-half,y+.012,z-half,
+                x+half,y+mob.getBbHeight()-.025,z+half);
+        if(level.getBlockCollisions(mob,body).iterator().hasNext()
+                ||!level.getFluidState(BlockPos.containing(x,y+.05,z))
+                    .isEmpty())return false;
+        AABB contact=new AABB(x-half,y-.055,z-half,
+                x+half,y+.002,z+half);
+        return level.getBlockCollisions(mob,contact).iterator().hasNext();
+    }
+    /** Four REAL inset hitbox corner-footing probes. A worker may have
+     * all its load supported by just one corner while the integer block
+     * underneath its origin has no valid centered walking stance.
+     * Returns a bitmask: NW=1, NE=2, SW=4, SE=8.
+     */
+    public static int supportedHitboxCorners(ServerLevel level,
+            PathfinderMob mob){
+        if(!mob.onGround())return 0;
+        AABB box=mob.getBoundingBox();
+        double y=box.minY;
+        double[] xs={box.minX+.05,box.maxX-.05};
+        double[] zs={box.minZ+.05,box.maxZ-.05};
+        int mask=0;
+        for(int x=0;x<2;x++)for(int z=0;z<2;z++){
+            double px=xs[x],pz=zs[z];
+            AABB foot=new AABB(px-.023,y-.055,pz-.023,
+                    px+.023,y+.002,pz+.023);
+            if(level.getBlockCollisions(mob,foot).iterator().hasNext())
+                mask|=1<<(x*2+z);
+        }
+        return mask;
+    }
+
+    /** Check intermediate positions, not just a clear endpoint. */
+    private static boolean supportedCornerSegment(ServerLevel level,
+            PathfinderMob mob,Vec3 a,Vec3 b){
+        if(Math.abs(a.y-b.y)>.04)return false;
+        int samples=Math.max(2,(int)Math.ceil(
+                Math.hypot(b.x-a.x,b.z-a.z)/.075));
+        for(int t=0;t<=samples;t++){
+            double u=t/(double)samples;
+            if(!supportedAtFraction(level,mob,
+                    a.x+(b.x-a.x)*u,a.y,a.z+(b.z-a.z)*u))
+                return false;
+        }
+        return true;
+    }
+    private static List<Vec3> cornerRejoinPath(ServerLevel level,
+            PathfinderMob mob,BlockPos seed){
+        FractionalCache cache=fractionalCaches.computeIfAbsent(
+                mob,unused->new FractionalCache());
+        long now=level.getGameTime();
+        if(cache.sampledAt==Long.MIN_VALUE
+                ||now-cache.sampledAt>4||now<cache.sampledAt
+                ||cache.grounded!=mob.onGround()
+                ||Math.abs(cache.x-mob.getX())>.075
+                ||Math.abs(cache.y-mob.getY())>.055
+                ||Math.abs(cache.z-mob.getZ())>.075){
+            cache.sampledAt=now;
+            cache.x=mob.getX();cache.y=mob.getY();cache.z=mob.getZ();
+            cache.grounded=mob.onGround();
+            cache.routes.clear();
+        }
+        if(cache.routes.size()>32)cache.routes.clear();
+        return cache.routes.computeIfAbsent(seed.immutable(),
+                at->computeCornerRejoinPath(level,mob,at));
+    }
+    private static List<Vec3> computeCornerRejoinPath(ServerLevel level,
+            PathfinderMob mob,BlockPos seed){
+        if(!(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem)
+                ||!mob.onGround()||mob.isNoGravity()
+                ||!standingTile(level,mob,seed)
+                ||Math.abs(floorAt(level,seed)-mob.getY())>.05
+                // Rotated GameTests and real off-center starts can be
+                // 2.30m from the neighbor's center (plus float error).
+                // The quarter-block search is still strictly bounded.
+                ||Math.abs(seed.getX()+.5-mob.getX())>2.65
+                ||Math.abs(seed.getZ()+.5-mob.getZ())>2.65)return List.of();
+        Vec3 start=mob.position();
+        // The next A* cell is a REGION, not necessarily its center.
+        // A fractional stance 0.25..0.75 inside its boundaries is enough
+        // to hand control back to long-range routing without snapping the
+        // worker to the middle of every block. Exact work arrivals are
+        // still centered separately by routeToExact when required.
+        Vec3 goal=new Vec3(
+                Math.max(seed.getX()+.25,
+                    Math.min(seed.getX()+.75,start.x)),
+                mob.getY(),
+                Math.max(seed.getZ()+.25,
+                    Math.min(seed.getZ()+.75,start.z)));
+        if(!supportedAtFraction(level,mob,goal.x,goal.y,goal.z))
+            goal=new Vec3(seed.getX()+.5,mob.getY(),seed.getZ()+.5);
+        // No claim is made that the entire tile center supports the body
+        // currently straddling its edge. Test its real current footprint.
+        if(supportedHitboxCorners(level,mob)==0
+                &&!supportedAtFraction(level,mob,start.x,start.y,start.z))
+            return List.of();
+        if(supportedCornerSegment(level,mob,start,goal))
+            return List.of(goal);
+        // The offset-footing planner is a 2-D fine-grained motion map,
+        // not a cardinal-only block graph. Quarter-block diagonals are
+        // accepted ONLY after checking full swept body and support on
+        // every intermediate sample, so no diagonal corner clipping.
+        final int radius=12,dimension=radius*2+1;
+        boolean[][] visited=new boolean[dimension][dimension];
+        int[][] prev=new int[dimension][dimension];
+        for(int[] row:prev)java.util.Arrays.fill(row,-1);
+        ArrayDeque<int[]> queue=new ArrayDeque<>();
+        visited[radius][radius]=true;
+        queue.add(new int[]{radius,radius});
+        int target=-1,explored=0;
+        int[][] directions={{1,0},{-1,0},{0,1},{0,-1},
+                            {1,1},{1,-1},{-1,1},{-1,-1}};
+        while(!queue.isEmpty()&&explored++<420){
+            int[] current=queue.removeFirst();
+            int i=current[0],j=current[1];
+            Vec3 here=new Vec3(start.x+(i-radius)*.25,
+                    start.y,start.z+(j-radius)*.25);
+            if(supportedCornerSegment(level,mob,here,goal)){
+                target=i*dimension+j;
+                break;
+            }
+            for(int[] dir:directions){
+                int x=i+dir[0],z=j+dir[1];
+                if(x<0||x>=dimension||z<0||z>=dimension||visited[x][z])
+                    continue;
+                Vec3 next=new Vec3(start.x+(x-radius)*.25,
+                        start.y,start.z+(z-radius)*.25);
+                // For a diagonal fine-step, the actual swept collision
+                // width tests the complete segment, not just endpoints.
+                // This is permitted if and only if the golem really fits.
+                if(!supportedCornerSegment(level,mob,here,next))continue;
+                visited[x][z]=true;
+                prev[x][z]=i*dimension+j;
+                queue.addLast(new int[]{x,z});
+            }
+        }
+        if(target<0)return List.of();
+        List<Vec3> reversed=new ArrayList<>();
+        int index=target;
+        while(index!=radius*dimension+radius){
+            int i=index/dimension,j=index%dimension;
+            reversed.add(new Vec3(start.x+(i-radius)*.25,
+                    start.y,start.z+(j-radius)*.25));
+            index=prev[i][j];
+            if(index<0)return List.of();
+        }
+        java.util.Collections.reverse(reversed);
+        reversed.add(goal);
+        return List.copyOf(reversed);
+    }
+    /** Non-mutating local route inspection for roof/obstacle diagnostics.
+     * Points are real world-space feet coordinates, not block centers.
+     * Empty means no safe same-elevation fractional route was proven.
+     */
+    public static List<Vec3> previewLocalFreeSpaceRoute(ServerLevel level,
+            PathfinderMob mob,BlockPos destination){
+        return cornerRejoinPath(level,mob,destination);
+    }
+    private static boolean startCornerRecovery(ServerLevel level,
+            PathfinderMob mob,Progress p,BlockPos seed,BlockPos requested){
+        // Door reservations own their narrow physical crossing. Never let
+        // fractional obstacle steering stop that movement or release its
+        // queue position while another worker is behind this one.
+        if(p.queuedDoor!=null||p.waitingDoor||p.finishingDoor)return false;
+        List<Vec3> corner=cornerRejoinPath(level,mob,seed);
+        if(corner.isEmpty())return false;
+        p.cornerPath=corner;
+        p.cornerCursor=0;
+        p.cornerStarted=mob.tickCount;
+        p.requested=requested.immutable();
+        p.approach=seed.immutable();
+        p.centering=null;
+        p.terrainStep=null;
+        p.weightedRoute=List.of();
+        p.routeCursor=0;
+        p.nextRoute=0;
+        p.stalled=0;
+        mob.getNavigation().stop();
+        return tickCornerRecovery(level,mob,p);
+    }
+    private static boolean tickCornerRecovery(ServerLevel level,
+            PathfinderMob mob,Progress p){
+        if(p.cornerPath.isEmpty())return false;
+        if(p.queuedDoor!=null||p.waitingDoor||p.finishingDoor){
+            p.cornerPath=List.of();p.cornerCursor=0;
+            return false;
+        }
+        if(!mob.onGround()||mob.isNoGravity()
+                ||mob.tickCount-p.cornerStarted>110){
+            p.cornerPath=List.of();p.cornerCursor=0;
+            mob.getNavigation().stop();
+            return false;
+        }
+        for(int skipped=0;skipped<3&&p.cornerCursor<p.cornerPath.size();skipped++){
+            Vec3 point=p.cornerPath.get(p.cornerCursor);
+            if(Math.hypot(point.x-mob.getX(),point.z-mob.getZ())>.085)break;
+            p.cornerCursor++;
+        }
+        if(p.cornerCursor>=p.cornerPath.size()){
+            p.cornerPath=List.of();p.cornerCursor=0;
+            p.nextRoute=0;p.weightedRoute=List.of();p.routeCursor=0;
+            mob.getNavigation().stop();
+            return false;
+        }
+        Vec3 point=p.cornerPath.get(p.cornerCursor);
+        double dx=point.x-mob.getX(),dz=point.z-mob.getZ();
+        double distance=Math.hypot(dx,dz);
+        double speed=Math.min(.075,distance*.38);
+        double vx=speed*dx/Math.max(.0001,distance);
+        double vz=speed*dz/Math.max(.0001,distance);
+        Vec3 next=new Vec3(mob.getX()+vx,mob.getY(),mob.getZ()+vz);
+        if(Math.abs(mob.getY()-point.y)>.08
+                ||!supportedCornerSegment(level,mob,mob.position(),next)){
+            p.cornerPath=List.of();p.cornerCursor=0;
+            mob.getNavigation().stop();
+            return false;
+        }
+        mob.getNavigation().stop();
+        mob.getMoveControl().setWantedPosition(
+                mob.getX(),mob.getY(),mob.getZ(),0);
+        mob.setDeltaMovement(vx,mob.getDeltaMovement().y,vz);
+        return true;
+    }
+
+    private static boolean supportedRejoin(ServerLevel level,PathfinderMob mob,
+            BlockPos seed){
+        if(!standingTile(level,mob,seed))return false;
+        double y=floorAt(level,seed);
+        if(Math.abs(y-mob.getY())>.05)return false; // no invented hop/fall
+        double half=mob.getBbWidth()*.5;
+        for(int sample=0;sample<=8;sample++){
+            double t=sample/8.0;
+            double x=mob.getX()+(seed.getX()+.5-mob.getX())*t;
+            double z=mob.getZ()+(seed.getZ()+.5-mob.getZ())*t;
+            AABB body=new AABB(x-half,y+.01,z-half,
+                    x+half,y+mob.getBbHeight()-.025,z+half);
+            if(!level.getFluidState(BlockPos.containing(x,y+.02,z)).isEmpty()
+                    ||level.getBlockCollisions(mob,body).iterator().hasNext())return false;
+            AABB contact=new AABB(x-half,y-.04,z-half,x+half,y+.001,z+half);
+            if(!level.getBlockCollisions(mob,contact).iterator().hasNext())
+                return false;
+        }
+        return true;
+    }
+
+    /** Geometry-only preview from a prospective grounded grapple landing.
+     * Does not relocate the entity or invoke native movement from fake feet.
+     * Execution still revalidates the actual first leg after dismounting.
+     */
+    public static boolean hasGroundRouteFrom(ServerLevel level,
+            PathfinderMob mob,BlockPos start,List<BlockPos> goals){
+        if(!standingTile(level,mob,start)||goals.isEmpty())return false;
+        var route=WorkerRoutePlanner.plan(start,goals,
+                at->standingTile(level,mob,at),at->floorAt(level,at),null,
+                at->trainedTerrainCost(level,at));
+        return route!=null&&route.complete();
+    }
+
+    /** Conservative set of grounded cells reached under the same trained
+     * rules and node budget. A goal outside the window makes the search
+     * expose its whole admitted component instead of stopping at one tile.
+     * A budget-limited result can miss access, but cannot invent access.
+     */
+    public static java.util.Set<BlockPos> groundReachableFrom(ServerLevel level,
+            PathfinderMob mob,BlockPos start){
+        if(!standingTile(level,mob,start))return java.util.Set.of();
+        WorkerRoutePlanner.SearchStats[] stats={null};
+        WorkerRoutePlanner.plan(start,
+                List.of(start.offset(WorkerRoutePlanner.RADIUS+1,0,0)),
+                at->standingTile(level,mob,at),at->floorAt(level,at),null,
+                at->trainedTerrainCost(level,at),s->stats[0]=s);
+        return stats[0]==null?java.util.Set.of(start):stats[0].reachable();
+    }
+
+    /** Read-only reason why the trained work selector cannot start. */
+    public static String diagnoseExecutableStand(ServerLevel level,
+            PathfinderMob mob,List<BlockPos> candidates){
+        if(candidates.isEmpty())return "no_candidates";
+        if(candidates.contains(mob.blockPosition()))return "already_at_candidate";
+        WorkerRoutePlanner.SearchStats[] stats={null};
+        WorkerRoutePlanner.Route route=planExactRoute(
+                level,mob,candidates,null,s->stats[0]=s);
+        if(route==null){
+            List<String> neighbors=new ArrayList<>();
+            BlockPos start=mob.blockPosition();
+            for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++)
+                for(int dy=-1;dy<=1;dy++){
+                    if(dx==0&&dz==0)continue;
+                    BlockPos at=start.offset(dx,dy,dz);
+                    if(standingTile(level,mob,at))
+                        neighbors.add(dx+","+dy+","+dz+" height="
+                                +(floorAt(level,at)-mob.getY()));
+                }
+            return "search_no_route stats="+stats[0]
+                    +" startCenter="+standingTile(level,mob,start)
+                    +" floor="+floorAt(level,start)+" physicalY="+mob.getY()
+                    +" neighbors="+neighbors
+                    +" native="+diagnoseFirstLeg(level,mob,
+                        new WorkerRoutePlanner.Route(List.of(candidates.get(0)),true,0,0));
+        }
+        if(!route.complete())return "search_partial explored="+route.explored();
+        if(route.steps().isEmpty())return "search_empty";
+        return canBeginTrainedLeg(level,mob,route)?"first_leg_valid":
+                "first_leg_rejected explored="+route.explored()
+                +" startFloor="+floorAt(level,mob.blockPosition())
+                +" physicalY="+mob.getY()+" grounded="+mob.onGround()
+                +" handoff="+diagnoseFirstLeg(level,mob,route);
+    }
+
+    private static String diagnoseFirstLeg(ServerLevel level,
+            PathfinderMob mob,WorkerRoutePlanner.Route route){
+        List<String> probes=new ArrayList<>();
+        BlockPos origin=mob.blockPosition();
+        for(int span:new int[]{3,2,1}){
+            BlockPos waypoint=route.steps().get(Math.min(route.steps().size(),span)-1);
+            Path path=mob.getNavigation().createPath(waypoint,0);
+            if(path==null){probes.add(span+":null");continue;}
+            List<String> nodes=new ArrayList<>();
+            for(int j=0;j<Math.min(8,path.getNodeCount());j++){
+                Node n=path.getNode(j);
+                BlockPos at=new BlockPos(n.x,n.y,n.z);
+                nodes.add(at.subtract(origin).toShortString()
+                        +" floor="+(floorAt(level,at)-origin.getY())
+                        +" stand="+standingTile(level,mob,at)
+                        +" below="+level.getBlockState(at.below()));
+            }
+            probes.add(span+":end="+endsAtExactTile(level,path,waypoint)
+                    +" reach="+path.canReach()+" safe="+safePath(level,mob,path,false)
+                    +" nodes="+nodes+" sweep="+diagnoseSweep(level,mob,path));
+        }
+        return probes.toString();
+    }
+
+    private static String diagnoseSweep(ServerLevel level,PathfinderMob mob,Path path){
+        BlockPos origin=mob.blockPosition();
+        for(int i=1;i<path.getNodeCount();i++){
+            Node prev=path.getNode(i-1),next=path.getNode(i);
+            BlockPos a=new BlockPos(prev.x,prev.y,prev.z),b=new BlockPos(next.x,next.y,next.z);
+            boolean actual=i==1&&groundedNativeStart(mob,a);
+            double fromY=actual?mob.getY():floorAt(level,a),toY=floorAt(level,b);
+            if(Math.abs(fromY-toY)>.60)continue;
+            double sx=actual?mob.getX():prev.x+.5,sz=actual?mob.getZ():prev.z+.5;
+            double dx=next.x+.5-sx,dz=next.z+.5-sz;
+            int samples=Math.max(1,(int)Math.ceil(Math.hypot(dx,dz)*3));
+            for(int k=1;k<samples;k++){
+                double x=sx+dx*k/samples,z=sz+dz*k/samples,y=Math.max(fromY,toY);
+                if(bodyClear(level,mob,x,y,z))continue;
+                List<String> blocks=new ArrayList<>();
+                double half=mob.getBbWidth()*.5;
+                AABB body=new AABB(x-half,y+.01,z-half,x+half,y+mob.getBbHeight()-.025,z+half);
+                for(BlockPos at:BlockPos.betweenClosed(BlockPos.containing(body.minX,body.minY,body.minZ),
+                        BlockPos.containing(body.maxX,body.maxY,body.maxZ))){
+                    for(AABB box:level.getBlockState(at).getCollisionShape(level,at).toAabbs())
+                        if(box.move(at).intersects(body)){
+                            blocks.add(at.subtract(origin).toShortString()+":"+level.getBlockState(at));break;
+                        }
+                }
+                return "blocked@"+(x-origin.getX())+","+(y-origin.getY())+","+(z-origin.getZ())
+                        +" by="+blocks+" body="+body;
+            }
+        }
+        return "no_sample_collision";
+    }
+
+    private static boolean canBeginTrainedLeg(ServerLevel level,
+            PathfinderMob mob,WorkerRoutePlanner.Route route){
+        if(!route.steps().isEmpty()&&mob.onGround()
+                &&!standingTile(level,mob,mob.blockPosition())
+                &&!cornerRejoinPath(level,mob,route.steps().get(0)).isEmpty())
+            return true;
+        // Preflight and execution must use identical door capabilities.
+        if(mob.getNavigation() instanceof GroundPathNavigation ground)
+            ground.setCanOpenDoors(true);
+        for(int span:new int[]{3,2,1}){
+            BlockPos waypoint=route.steps().get(
+                    Math.min(route.steps().size(),span)-1);
+            Path path=mob.getNavigation().createPath(waypoint,0);
+            if(endsAtExactTile(level,path,waypoint)
+                    &&safePath(level,mob,path,false))return true;
+        }
+        return !route.steps().isEmpty()
+                &&(canWalkTrainedEdge(level,mob,route.steps().get(0))
+                    ||canBeginTerrainStep(level,mob,route.steps().get(0))
+                    ||!cornerRejoinPath(level,mob,route.steps().get(0)).isEmpty());
+    }
+
+    /** Execute only the first same-height edge of the trained route when
+     * native navigation rejects its handoff (e.g. an off-center roof rim).
+     * Every sample must retain sole contact and full body clearance. This
+     * cannot jump, cross a gap, skip a route corner, or create support.
+     */
+    private static boolean canWalkTrainedEdge(ServerLevel level,
+            PathfinderMob mob,BlockPos waypoint){
+        return mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem
+                &&mob.onGround()&&!mob.isNoGravity()
+                &&mob.distanceToSqr(waypoint.getX()+.5,mob.getY(),waypoint.getZ()+.5)>.025*.025
+                &&mob.distanceToSqr(waypoint.getX()+.5,mob.getY(),waypoint.getZ()+.5)<=4
+                &&supportedRejoin(level,mob,waypoint);
+    }
+    private static boolean walkTrainedEdge(ServerLevel level,PathfinderMob mob,
+            Progress p,BlockPos waypoint){
+        if(!canWalkTrainedEdge(level,mob,waypoint))return false;
+        p.centering=waypoint.immutable();p.approach=waypoint.immutable();
+        p.stalled=0;p.unsafeChecks=0;p.nextRoute=mob.tickCount+CHECK_TICKS;
+        return tickExactCenter(level,mob);
+    }
+
+    /**
+     * Native Minecraft pathfinding frequently refuses a short first leg
+     * across a half slab, stair, wall or fence, even though our trained A*
+     * has verified both collision-height endpoints. Try only ONE cardinal
+     * 0.6-block step as a physical alternative. No long-range steering,
+     * teleport, gravity bypass, jump over a barrier or unsupported gap.
+     *
+     * Execution is per tick and sends motion through Minecraft collision;
+     * route selection uses this exact same non-mutating preflight.
+     */
+    private static boolean canBeginTerrainStep(ServerLevel level,
+            PathfinderMob mob,BlockPos next){
+        if(!(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem)
+                ||!mob.onGround()||mob.isNoGravity()
+                ||next==null||!standingTile(level,mob,next))return false;
+        BlockPos at=mob.blockPosition();
+        int dxBlocks=Math.abs(at.getX()-next.getX());
+        int dzBlocks=Math.abs(at.getZ()-next.getZ());
+        // One-cell angular movement is physically legal; forbid
+        // arbitrary long jumps. A diagonal ONE-BLOCK DOWN step can be
+        // safe even when neither cardinal side has a centered waypoint.
+        if(dxBlocks>1||dzBlocks>1||dxBlocks+dzBlocks==0
+                ||Math.abs(at.getY()-next.getY())>1)return false;
+        boolean diagonal=dxBlocks==1&&dzBlocks==1;
+        double floor=floorAt(level,next);
+        double delta=floor-mob.getY();
+        // A* already proves one-block supported rises and drops. The
+        // fallback must use the golem's REAL one-block jump rather than
+        // discarding these legal detours as physically impossible.
+        // 1.5-block walls remain excluded by the actual collision height.
+        if(!Double.isFinite(delta)||Math.abs(delta)>1.01
+                ||diagonal&&delta>.6001)return false;
+        if(diagonal&&delta>=-.6001){
+            // For level or half-slab diagonals, the swept BODY alone is
+            // not enough: require both orthogonal corridors to have
+            // compatible real footing. This mirrors the A* corner rule.
+            BlockPos sideX=at.offset(next.getX()-at.getX(),0,0);
+            BlockPos sideZ=at.offset(0,0,next.getZ()-at.getZ());
+            if(!standingTile(level,mob,sideX)
+                    ||!standingTile(level,mob,sideZ)
+                    ||Math.abs(floorAt(level,sideX)-mob.getY())>.6001
+                    ||Math.abs(floorAt(level,sideZ)-mob.getY())>.6001)
+                return false;
+        }
+        // For a diagonal downward step with a clear landing one block
+        // lower, gravity performs the drop. Check the full swept
+        // bounding box at the HIGHER floor to avoid clipping the
+        // corners of intervening walls or slabs.
+        // No diagonal corner-cutting, no leap across air. Both supported
+        // ends have already been checked; sample the full collision width
+        // at the higher surface. The real step-rise/drop is executed by
+        // the mob's normal collision solver, not by ignoring obstacle boxes.
+        int samples=10;
+        double x0=mob.getX(),z0=mob.getZ();
+        double dx=next.getX()+.5-x0,dz=next.getZ()+.5-z0;
+        double sweepY=Math.max(mob.getY(),floor);
+        for(int i=1;i<samples;i++){
+            double f=i/(double)samples;
+            if(!bodyClear(level,mob,x0+dx*f,sweepY,z0+dz*f))
+                return false;
+        }
+        return true;
+    }
+
+    /**
+     * A Builder cannot jump safely while its body is pointing into the
+     * vertex shared by two blocks. Before a REAL one-block ascent, line
+     * the body up with the actual side FACE of the higher block while it
+     * remains supported on the lower surface. Then ask normal Minecraft
+     * jump/collision to perform the height transition. A failed alignment
+     * is a rejected edge, not permission to fly or pass through the corner.
+     */
+    private static boolean alignForCardinalJump(ServerLevel level,
+            PathfinderMob mob,BlockPos next,double rise){
+        if(!mob.onGround()||rise<=.60||rise>1.01)return false;
+        BlockPos at=mob.blockPosition();
+        int x=next.getX()-at.getX(),z=next.getZ()-at.getZ();
+        if(Math.abs(x)+Math.abs(z)!=1)return false;
+        double targetX=mob.getX(),targetZ=mob.getZ();
+        if(x!=0)targetZ=next.getZ()+.5;
+        else targetX=next.getX()+.5;
+        double offsetX=targetX-mob.getX(),offsetZ=targetZ-mob.getZ();
+        if(Math.hypot(offsetX,offsetZ)<=.12)return false;
+        double moveX=Math.max(-.065,Math.min(.065,offsetX*.38));
+        double moveZ=Math.max(-.065,Math.min(.065,offsetZ*.38));
+        Vec3 point=new Vec3(mob.getX()+moveX,mob.getY(),
+                mob.getZ()+moveZ);
+        if(!supportedCornerSegment(level,mob,mob.position(),point))
+            return false;
+        mob.getNavigation().stop();
+        mob.getMoveControl().setWantedPosition(
+                mob.getX(),mob.getY(),mob.getZ(),0);
+        mob.setDeltaMovement(moveX,mob.getDeltaMovement().y,moveZ);
+        return true;
+    }
+
+    private static boolean tickTerrainStep(ServerLevel level,
+            PathfinderMob mob,Progress p){
+        BlockPos next=p.terrainStep;
+        if(next==null)return false;
+        double floor=floorAt(level,next);
+        double dx=next.getX()+.5-mob.getX();
+        double dz=next.getZ()+.5-mob.getZ();
+        double gap=dx*dx+dz*dz;
+        if(mob.onGround()&&gap<.12*.12
+                &&Double.isFinite(floor)&&Math.abs(mob.getY()-floor)<.10){
+            p.terrainStep=null;
+            mob.getNavigation().stop();
+            mob.setDeltaMovement(0,mob.getDeltaMovement().y,0);
+            return false;
+        }
+        // Never continue pushing a mob that has fallen below or drifted
+        // away from the real, previously checked single block transition.
+        if(mob.isNoGravity()||mob.tickCount-p.terrainStepStarted>50
+                ||!Double.isFinite(floor)
+                ||Math.abs(floor-mob.getY())>1.10
+                ||gap>3.0
+                ||!standingTile(level,mob,next)){
+            p.terrainStep=null;
+            p.lastBad=next;
+            p.avoidUntil=mob.tickCount+60;
+            p.weightedRoute=List.of();p.routeCursor=0;
+            mob.getNavigation().stop();
+            return false;
+        }
+        mob.getNavigation().stop();
+        // First sidestep into face alignment if approaching an upper
+        // block from its corner. All micro-moves retain real supported
+        // collision beneath the golem; no synthetic jump height.
+        double rise=floor-mob.getY();
+        if(alignForCardinalJump(level,mob,next,rise))return true;
+        // Vanilla jump: no fabricated lift, collision override, or flight.
+        boolean jump=mob.onGround()&&rise>.60&&rise<=1.01;
+        if(jump){mob.getJumpControl().jump();mob.setJumping(true);}
+        else mob.setJumping(false);
+        double vx=Math.max(-.115,Math.min(.115,dx*.35));
+        double vz=Math.max(-.115,Math.min(.115,dz*.35));
+        // If a step-up is physically blocked by an adjacent 0.5-height
+        // rim, the entity engine can step it; do not create lift here.
+        mob.getMoveControl().setWantedPosition(
+                next.getX()+.5,floor,next.getZ()+.5,1.0);
+        mob.setDeltaMovement(vx,mob.getDeltaMovement().y,vz);
+        return true;
+    }
+
+    private static boolean beginTerrainStep(ServerLevel level,
+            PathfinderMob mob,Progress p,BlockPos next){
+        if(!canBeginTerrainStep(level,mob,next))return false;
+        p.terrainStep=next.immutable();
+        p.terrainStepStarted=mob.tickCount;
+        p.approach=next.immutable();
+        p.stalled=0;p.unsafeChecks=0;
+        p.nextRoute=mob.tickCount+CHECK_TICKS;
+        return tickTerrainStep(level,mob,p);
+    }
+
     private static void clearDoor(ServerLevel level,PathfinderMob mob,Progress p){
         if(p.queuedDoor!=null)WorkerDoorTraffic.release(level,p.queuedDoor,mob);
-        p.queuedDoor=null;p.doorStandby=null;p.doorExit=null;
+        p.queuedDoor=null;p.doorStandby=null;p.doorExit=null;p.doorOut=null;
         p.waitingDoor=false;p.parkingAtDoor=false;p.finishingDoor=false;
         p.doorLastDistance=Double.POSITIVE_INFINITY;
         p.doorLastPoint=null;
@@ -403,6 +1316,11 @@ public final class WorkerNavigation {
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
         Progress progress=state(mob);
+        if(progress.centering!=null){
+            if(target!=null&&target.equals(progress.requested)
+                    &&tickExactCenter(level,mob))return true;
+            progress.centering=null;
+        }
         if(progress.queuedDoor!=null&&target!=null
                 &&progress.requested!=null&&!target.equals(progress.requested))
             clearDoor(level,mob,progress);
@@ -416,6 +1334,18 @@ public final class WorkerNavigation {
             speed=1.0; // nominal 4 m/s from Builder movement attribute .40
         if(target==null||!level.hasChunkAt(target))return false;
         Progress p=state(mob);
+        if(!p.cornerPath.isEmpty()){
+            if(target.equals(p.requested)){
+                tickCornerRecovery(level,mob,p);
+                return true;
+            }
+            p.cornerPath=List.of();p.cornerCursor=0;
+        }
+        if(p.terrainStep!=null){
+            if(target.equals(p.requested)){
+                if(tickTerrainStep(level,mob,p))return true;
+            }else p.terrainStep=null;
+        }
         boolean same=target.equals(p.requested);
         if(same&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
@@ -423,46 +1353,40 @@ public final class WorkerNavigation {
             ground.setCanOpenDoors(true);
         // If the exact safe standing tile was reached on the previous
         // tick, do not reconstruct the same route and toggle navigation.
-        if(mob.blockPosition().equals(target)
+        double targetFloor=floorAt(level,target);
+        boolean nearCenter=mob.onGround()
+                &&mob.distanceToSqr(target.getX()+.5,targetFloor,target.getZ()+.5)<.81
+                &&Math.abs(mob.getY()-targetFloor)<.05
+                &&supportedRejoin(level,mob,target);
+        if((mob.blockPosition().equals(target)||nearCenter)
                 &&standingTile(level,mob,target)){
             p.requested=target.immutable();p.approach=target.immutable();
-            // A cell match is not physical arrival: a Builder can be
-            // 0.45 block off-center at the edge of an otherwise valid
-            // work stance, too far to place its assigned block. A* to
-            // the current cell returns no path and endlessly retries.
-            // Finish the LAST FRACTION OF A BLOCK with collision-tested
-            // real motion. Never setPos, jump, or ignore other entities.
-            double tx=target.getX()+.5,tz=target.getZ()+.5;
-            double dx=tx-mob.getX(),dz=tz-mob.getZ();
-            if(dx*dx+dz*dz>.05*.05){
-                mob.getMoveControl().setWantedPosition(tx,
-                        floorAt(level,target),tz,speed);
-                double vx=Math.max(-.10,Math.min(.10,dx*.25));
-                double vz=Math.max(-.10,Math.min(.10,dz*.25));
-                if(level.noCollision(mob,
-                        mob.getBoundingBox().move(vx,0,vz))){
-                    Vec3 v=mob.getDeltaMovement();
-                    mob.setDeltaMovement(vx,v.y,vz);
-                }
-            }else mob.getNavigation().stop();
-            return true;
+            // Normal MoveControl acceleration must not fight the final
+            // fraction of a block. A per-entity-tick physical controller
+            // centers this pose with current collision/support checks.
+            p.centering=target.immutable();
+            mob.getNavigation().stop();
+            boolean moving=tickExactCenter(level,mob);
+            return moving||mob.distanceToSqr(target.getX()+.5,
+                    targetFloor,target.getZ()+.5)<.05*.05;
         }
         if(!standingTile(level,mob,target))return false;
         // Exact destinations also use the ONE trained planner. A
         // native navigation path is used solely to physically execute
         // a short already-scored waypoint, not as an alternate AI.
-        List<Vec3> crowds=nearbyWorkers(level,mob);
-        WorkerRoutePlanner.Route plan=WorkerRoutePlanner.plan(
-                mob.blockPosition(),List.of(target),
-                at->standingTile(level,mob,at),
-                at->floorAt(level,at),p.lastBad,
-                at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
+        WorkerRoutePlanner.Route plan=planExecutableRoute(
+                level,mob,List.of(target),p.lastBad,true);
         if(plan==null||plan.steps().isEmpty())return false;
+        p.requested=target.immutable();
+        if(!standingTile(level,mob,mob.blockPosition())
+                &&startCornerRecovery(level,mob,p,plan.steps().get(0),target))
+            return true;
+        if(prepareTrainedDoor(level,mob,p,plan.steps()))return true;
         for(int span:new int[]{3,2,1}){
             BlockPos waypoint=plan.steps().get(Math.min(
                     plan.steps().size(),span)-1);
             Path path=mob.getNavigation().createPath(waypoint,0);
-            if(!endsAtExactTile(path,waypoint)
+            if(!endsAtExactTile(level,path,waypoint)
                     ||!safePath(level,mob,path,false)
                     ||!mob.getNavigation().moveTo(path,speed))continue;
             p.requested=target.immutable();p.approach=waypoint.immutable();
@@ -472,7 +1396,16 @@ public final class WorkerNavigation {
             p.nextRoute=mob.tickCount+CHECK_TICKS;
             return true;
         }
-        return false;
+        if(walkTrainedEdge(level,mob,p,plan.steps().get(0))
+                ||beginTerrainStep(level,mob,p,plan.steps().get(0))){
+            p.weightedRoute=plan.steps();p.routeCursor=1;
+            return true;
+        }
+        // A valid centered start does not imply a straight center-to-
+        // center edge is executable. Skirt a real corner via fractional
+        // supported positions if the native short leg and terrain step
+        // both fail; the exact final stance is still checked afterward.
+        return startCornerRecovery(level,mob,p,plan.steps().get(0),target);
     }
 
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
@@ -491,12 +1424,26 @@ public final class WorkerNavigation {
         // Door crossing owns movement until the threshold is clear.
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
             ground.setCanOpenDoors(true);
+        if(!p.cornerPath.isEmpty()){
+            if(target.equals(p.requested)){
+                tickCornerRecovery(level,mob,p);
+                return true;
+            }
+            p.cornerPath=List.of();p.cornerCursor=0;
+        }
+        if(p.terrainStep!=null){
+            if(target.equals(p.requested)){
+                if(tickTerrainStep(level,mob,p))return true;
+            }else p.terrainStep=null;
+        }
         boolean changed=!target.equals(p.requested);
         if(changed){
+            p.centering=null;
             p.requested=target.immutable();p.approach=null;
             p.attempts=0;p.nextRoute=0;p.stalled=0;p.unsafeChecks=0;
             p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
         }
+        if(p.centering!=null&&tickExactCenter(level,mob))return true;
         updateDoorClearance(level,mob,p);
         if(p.openedDoor==null)openApproachDoor(level,mob,p);
         if(p.waitingDoor)return true;
@@ -548,12 +1495,8 @@ public final class WorkerNavigation {
                     goals.add(candidate.feet());
                 }
             }
-            List<Vec3> crowds=nearbyWorkers(level,mob);
-            WorkerRoutePlanner.Route route=WorkerRoutePlanner.plan(
-                    mob.blockPosition(),goals,
-                    at->standingTile(level,mob,at),
-                    at->floorAt(level,at),p.lastBad,
-                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds));
+            WorkerRoutePlanner.Route route=planExecutableRoute(
+                    level,mob,goals,p.lastBad,false);
             // Never report an empty physical route as success solely
             // because the Builder is within placement range of target.
             // Storage, doorway and return-to-tower movements require
@@ -569,13 +1512,25 @@ public final class WorkerNavigation {
         // cheapest route. Trying shorter checkpoints prevents false "cannot
         // path" reports from the vanilla navigation radius.
         int count=p.weightedRoute.size();
+        if(p.routeCursor==0
+                &&!standingTile(level,mob,mob.blockPosition())){
+            if(startCornerRecovery(level,mob,p,p.weightedRoute.get(0),target))
+                return true;
+            // A failed first fractional sweep may have already cleared
+            // the current route while updating the local recovery state.
+            // Never keep indexing a route that its controller retired.
+            if(p.weightedRoute.isEmpty()
+                    ||p.routeCursor>=p.weightedRoute.size())return false;
+        }
+        if(prepareTrainedDoor(level,mob,p,p.weightedRoute.subList(p.routeCursor,count)))return true;
         for(int distance:new int[]{3,2,1}){
             int index=Math.min(count-1,p.routeCursor+distance-1);
             if(index<p.routeCursor)continue;
             BlockPos waypoint=p.weightedRoute.get(index);
             if(!standingTile(level,mob,waypoint))continue;
             Path path=mob.getNavigation().createPath(waypoint,0);
-            if(!safePath(level,mob,path,false))continue;
+            if(!endsAtExactTile(level,path,waypoint)
+                    ||!safePath(level,mob,path,false))continue;
             if(!mob.getNavigation().moveTo(path,speed))continue;
             p.approach=waypoint;
             p.routeCursor=index+1;
@@ -583,6 +1538,20 @@ public final class WorkerNavigation {
             p.nextRoute=mob.tickCount+CHECK_TICKS;
             return true;
         }
+        if(walkTrainedEdge(level,mob,p,p.weightedRoute.get(p.routeCursor))
+                ||beginTerrainStep(level,mob,p,p.weightedRoute.get(p.routeCursor))){
+            p.routeCursor++;
+            return true;
+        }
+        if(startCornerRecovery(level,mob,p,
+                p.weightedRoute.get(p.routeCursor),target))return true;
+        // startCornerRecovery installs a local sub-block path and clears
+        // weightedRoute BEFORE its first physical tick. That tick can
+        // reject the sweep and return false; the old caller then indexed
+        // the now-empty route, throwing ArrayIndexOutOfBoundsException on
+        // live Builders returning to OnSite after their zone completed.
+        if(p.weightedRoute.isEmpty()
+                ||p.routeCursor>=p.weightedRoute.size())return false;
         p.lastBad=p.weightedRoute.get(p.routeCursor);
         p.avoidUntil=mob.tickCount+60;
         p.weightedRoute=List.of();p.routeCursor=0;
@@ -611,10 +1580,21 @@ public final class WorkerNavigation {
         return "goal="+requested+" via="+destination
                 +" retry="+remaining+"t attempts="+p.attempts
                 +" stalled="+p.stalled+" unsafe="+p.unsafeChecks
+                +" detourLegRetries="+p.detourFirstLegRetries
+                +(p.cornerPath.isEmpty()?"":" cornerRecovery="
+                    +p.cornerCursor+"/"+p.cornerPath.size())
                 +" doorYields="+p.doorReservationYields
                 +(p.queuedDoor==null?"":" door="+p.queuedDoor.toShortString()
                     +(p.waitingDoor?" WAIT":p.finishingDoor?" EXIT":" CROSS")
                     +" q#"+rank);
+    }
+
+    /** A retry timer alone is not evidence of a valid route. Equipment
+     * handoffs may defer only while an actual trained plan is retained.
+     */
+    public static boolean hasPlannedGroundRoute(PathfinderMob mob,BlockPos goal){
+        Progress p=states.get(mob);
+        return p!=null&&goal.equals(p.requested)&&!p.weightedRoute.isEmpty();
     }
 
     public static boolean retryScheduled(PathfinderMob mob){
@@ -626,15 +1606,56 @@ public final class WorkerNavigation {
     public static void stop(PathfinderMob mob){
         Progress p=state(mob);
         if(mob.level() instanceof ServerLevel level)clearDoor(level,mob,p);
-        p.requested=null;p.approach=null;p.stalled=0;p.unsafeChecks=0;
+        p.requested=null;p.approach=null;p.centering=null;p.terrainStep=null;
+        p.cornerPath=List.of();p.cornerCursor=0;
+        p.stalled=0;p.unsafeChecks=0;
         p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
         mob.getNavigation().stop();
         // Door clearance is reset during the next server navigation tick.
     }
 
+    /** Exact final centering is ordinary supported horizontal motion.
+     * Called before Builder physics so native acceleration cannot restart
+     * each five-tick work update and oscillate around the requested center.
+     */
+    public static boolean tickExactCenter(ServerLevel level,PathfinderMob mob){
+        Progress p=states.get(mob);
+        if(p==null||p.centering==null)return false;
+        BlockPos target=p.centering;
+        if(!mob.onGround()||mob.isNoGravity()
+                ||Math.abs(mob.getY()-floorAt(level,target))>.05
+                ||!supportedRejoin(level,mob,target)){
+            p.centering=null;return false;
+        }
+        mob.getNavigation().stop();
+        mob.getMoveControl().setWantedPosition(mob.getX(),mob.getY(),mob.getZ(),0);
+        double dx=target.getX()+.5-mob.getX(),dz=target.getZ()+.5-mob.getZ();
+        Vec3 velocity=mob.getDeltaMovement();
+        if(dx*dx+dz*dz<.025*.025){
+            mob.setDeltaMovement(0,velocity.y,0);
+            p.centering=null;return false;
+        }
+        double vx=Math.max(-.08,Math.min(.08,dx*.5));
+        double vz=Math.max(-.08,Math.min(.08,dz*.5));
+        if(!level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz))){
+            p.centering=null;return false;
+        }
+        mob.setDeltaMovement(vx,velocity.y,vz);
+        return true;
+    }
+
     /** Call every server tick, including when idle, to operate and close doors. */
     public static void tick(ServerLevel level,PathfinderMob mob){
         Progress p=state(mob);
+        if(!p.cornerPath.isEmpty()){
+            tickCornerRecovery(level,mob,p);
+            return;
+        }
+        if(p.terrainStep!=null){
+            tickTerrainStep(level,mob,p);
+            return;
+        }
+        if(tickExactCenter(level,mob))return;
         if(mob.getNavigation() instanceof GroundPathNavigation nav)
             nav.setCanOpenDoors(true);
         if(mob.tickCount%CHECK_TICKS!=0)return;
@@ -777,7 +1798,7 @@ public final class WorkerNavigation {
                 if(!standingTile(level,mob,tile)||neighborOccupied(level,mob,tile))
                     continue;
                 Path path=mob.getNavigation().createPath(tile,0);
-                if(!endsAtExactTile(path,tile)
+                if(!endsAtExactTile(level,path,tile)
                         ||!safePath(level,mob,path,false))continue;
                 // A queue position is on the ENTRANCE side. Do not send
                 // somebody through the busy door simply to get in line.
@@ -795,6 +1816,43 @@ public final class WorkerNavigation {
                 if(score<bestScore){best=tile;bestScore=score;}
             }
         return best;
+    }
+
+    /** Reserve the actual imminent trained passage, including detours
+     * that initially lead AWAY from the final work/depot destination. */
+    private static boolean prepareTrainedDoor(ServerLevel level,PathfinderMob mob,
+            Progress p,List<BlockPos> steps){
+        for(int i=0;i<Math.min(6,steps.size());i++){
+            BlockPos at=steps.get(i);
+            BlockPos door=handDoor(level,at)?WorkerDoorTraffic.canonical(level,at):null;
+            if(door==null||mob.distanceToSqr(door.getX()+.5,mob.getY(),door.getZ()+.5)>25)continue;
+            if(p.queuedDoor!=null&&!p.queuedDoor.equals(door))clearDoor(level,mob,p);
+            Direction normal=entranceFacing(level.getBlockState(door));
+            double advance=0;
+            for(int j=i+1;j<steps.size();j++){
+                BlockPos after=steps.get(j);
+                advance=(after.getX()-door.getX())*normal.getStepX()
+                        +(after.getZ()-door.getZ())*normal.getStepZ();
+                if(Math.abs(advance)>.5)break;
+            }
+            if(Math.abs(advance)<.5)
+                advance=-((mob.getX()-door.getX()-.5)*normal.getStepX()
+                        +(mob.getZ()-door.getZ()-.5)*normal.getStepZ());
+            if(Math.abs(advance)<.1)continue;
+            if(p.queuedDoor==null){
+                p.queuedDoor=door;p.doorLastPoint=mob.position();
+                p.doorLastDistance=Double.POSITIVE_INFINITY;p.doorLastProgressTick=mob.tickCount;
+            }
+            p.doorOut=advance>0?normal:normal.getOpposite();
+            if(!WorkerDoorTraffic.request(level,door,mob)){
+                p.waitingDoor=true;return true;
+            }
+            if(!isOpenPassage(level.getBlockState(door))){
+                setPassageOpen(level,mob,door,true);p.openedDoor=door;p.doorAge=0;
+            }
+            return false;
+        }
+        return false;
     }
 
     /** The native path often ends INSIDE an open door rather than beyond
@@ -834,8 +1892,8 @@ public final class WorkerNavigation {
         Direction facing=entranceFacing(gate);
         double advance=(p.requested.getX()-door.getX())*facing.getStepX()
                 +(p.requested.getZ()-door.getZ())*facing.getStepZ();
-        if(Math.abs(advance)<.5)return false;
-        Direction out=advance>0?facing:facing.getOpposite();
+        if(Math.abs(advance)<.5&&p.doorOut==null)return false;
+        Direction out=p.doorOut!=null?p.doorOut:advance>0?facing:facing.getOpposite();
         // Only take the straight physical corridor when this worker is
         // aligned with its real door opening. Others continue using A*
         // to approach it, so we never steer through a wall at an angle.
@@ -847,7 +1905,23 @@ public final class WorkerNavigation {
         // stranded the head just OUTSIDE the threshold and held the
         // other three workers forever. Continue steering toward the
         // centered exit; collision checks below still prevent phasing.
-        if(side>.46)return false;
+        if(side>.46){
+            // A worker can stop diagonally across a gate corner with its
+            // center just beyond the escort alignment tolerance. It is
+            // already the physical occupant: recenter across the passage
+            // before asking native A* to restart inside that same gate.
+            if(!WorkerDoorTraffic.inside(level,door,mob))return false;
+            if(!isOpenPassage(gate))setPassageOpen(level,mob,door,true);
+            double dx=out.getStepX()==0?door.getX()+.5-mob.getX():0;
+            double dz=out.getStepX()!=0?door.getZ()+.5-mob.getZ():0;
+            double vx=Math.max(-.08,Math.min(.08,dx));
+            double vz=Math.max(-.08,Math.min(.08,dz));
+            if(!level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz)))return false;
+            mob.getNavigation().stop();
+            mob.getMoveControl().setWantedPosition(mob.getX(),mob.getY(),mob.getZ(),0);
+            mob.setDeltaMovement(vx,Math.min(0,mob.getDeltaMovement().y),vz);
+            return true;
+        }
         double before=(mob.getX()-door.getX()-.5)*out.getStepX()
                 +(mob.getZ()-door.getZ()-.5)*out.getStepZ();
         if(before>2.75||before<-4.0)return false;
@@ -908,7 +1982,7 @@ public final class WorkerNavigation {
                     ||mob.distanceToSqr(p.queuedDoor.getX()+.5,
                             p.queuedDoor.getY()+.5,p.queuedDoor.getZ()+.5)>64){
                 WorkerDoorTraffic.release(level,p.queuedDoor,mob);
-                p.queuedDoor=null;p.waitingDoor=false;
+                p.queuedDoor=null;p.waitingDoor=false;p.doorOut=null;
                 p.doorStandby=null;p.parkingAtDoor=false;p.finishingDoor=false;
                 p.doorExit=null;p.nextRoute=0;
             }
@@ -988,7 +2062,7 @@ public final class WorkerNavigation {
                 p.parkingAtDoor=false;
             }else if(!p.parkingAtDoor||mob.getNavigation().isDone()){
                 Path park=mob.getNavigation().createPath(p.doorStandby,0);
-                if(endsAtExactTile(park,p.doorStandby)
+                if(endsAtExactTile(level,park,p.doorStandby)
                         &&safePath(level,mob,park,false)
                         &&mob.getNavigation().moveTo(park,1.0))
                     p.parkingAtDoor=true;

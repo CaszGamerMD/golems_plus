@@ -26,6 +26,28 @@ public final class BuilderDoorwayGameTest {
     public void builderCrossesFramedFenceGate(GameTestHelper helper){
         runCrossing(helper,true);
     }
+    @GameTest(maxTicks=400,skyAccess=true)
+    public void offCenterGateOccupantCanExitTowardLowerDepot(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)h.setBlock(x,1,z,Blocks.STONE);
+        for(int x=2;x<=4;x++)for(int z=1;z<=5;z++)h.setBlock(x,2,z,Blocks.STONE);
+        h.setBlock(3,3,3,Blocks.OAK_FENCE_GATE.defaultBlockState()
+                .setValue(FenceGateBlock.FACING,Direction.EAST)
+                .setValue(FenceGateBlock.OPEN,true));
+        BlockPos gate=h.absolutePos(new BlockPos(3,3,3));
+        BlockPos goal=h.absolutePos(new BlockPos(0,2,3));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        mob.setPos(gate.getX()+.979,gate.getY(),gate.getZ()+.982);
+        world.addFreshEntity(mob);
+        h.onEachTick(()->{
+            if(h.getTick()>=10&&h.getTick()%5==0)WorkerNavigation.routeTo(world,mob,goal,1.0);
+            if(mob.onGround()&&mob.distanceToSqr(goal.getX()+.5,goal.getY(),goal.getZ()+.5)<1){
+                h.succeed();return;
+            }
+            if(h.getTick()>350)h.fail("Off-center gate occupant stalled "+mob.position()
+                    +" "+WorkerNavigation.debugStatus(mob));
+        });
+    }
     private static void runCrossing(GameTestHelper helper,boolean gate){
         ServerLevel world=helper.getLevel();
         for(int x=0;x<=7;x++)for(int z=0;z<=7;z++)

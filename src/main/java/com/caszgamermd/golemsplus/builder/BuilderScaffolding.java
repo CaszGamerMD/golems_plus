@@ -103,9 +103,11 @@ public final class BuilderScaffolding {
      * a verified arrival/dismount (or after a safe abort).
      */
     public static boolean isControllingMovement(BuilderGolem worker){
-        return sessions.containsKey(worker)||exiting.containsKey(worker);
+        return sessions.containsKey(worker)||exiting.containsKey(worker)
+                ||BuilderScaffoldPlanA.controlsMotion(worker);
     }
     public static void cancel(BuilderGolem worker){
+        BuilderScaffoldPlanA.cancel(worker);
         clearMotion(worker);
         returning.remove(worker);
         exiting.remove(worker);
@@ -155,6 +157,21 @@ public final class BuilderScaffolding {
     public static boolean tickMotion(ServerLevel level,BuilderGolem worker){
         ExitRoute exit=exiting.get(worker);
         if(exit!=null){
+            // A roof can change under a returning Builder. If it is
+            // already GROUNDED on a solid ledge two or more levels above
+            // the recorded scaffold exit, that old dismount would need
+            // to walk THROUGH the roof to reach its lower X/Z tile.
+            // Release only the stale route; the Builder stays on its
+            // actual safe footing and must choose another physical path.
+            if(worker.onGround()
+                    &&worker.getY()>exit.ground().getY()+1.35){
+                System.out.println("[SCAFFOLD EXIT] abandoned unreachable lower "
+                        +exit.ground().toShortString()+" from grounded roof "
+                        +worker.blockPosition().toShortString());
+                exiting.remove(worker);
+                BuilderScaffoldPlanA.cancel(worker);
+                return false;
+            }
             if(level.getGameTime()>exit.expires()
                     ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .canStandOn(level,worker,exit.ground())){
@@ -274,15 +291,50 @@ public final class BuilderScaffolding {
             // block above the scaffold. Moving off that ledge lets gravity
             // land the Builder on the top scaffold before descent starts.
             worker.setNoGravity(false);
-            worker.setJumping(false);
+            // A paid Plan-A column can also start ONE BLOCK ABOVE the
+            // Builder's grounded roof ledge. The solid support UNDER that
+            // scaffold prevents horizontal entry at the lower Y. Jump
+            // from real footing first, then move sideways into the actual
+            // scaffold; never levitate through the supporting block.
+            double baseY=session.column().getY();
+            boolean sideJump=!session.descending()&&worker.onGround()
+                    &&baseY-worker.getY()>.40
+                    &&baseY-worker.getY()<=1.10
+                    &&horizontal<=1.15
+                    &&level.getBlockState(session.column()).is(Blocks.SCAFFOLDING)
+                    &&level.getBlockState(session.column().below()).isFaceSturdy(
+                            level,session.column().below(),Direction.UP);
+            if(sideJump){
+                worker.getJumpControl().jump();
+                worker.setJumping(true);
+                // Match the vanilla-sized .42 jump already used for
+                // Plan-A's one-block bridge hop. JumpControl alone can be
+                // cancelled by a stopped native path while the body is
+                // wedged against the scaffold's solid lower support.
+                // Native block collision still determines actual rise.
+                var initial=worker.getDeltaMovement();
+                worker.setDeltaMovement(initial.x,
+                        Math.max(.42,initial.y),initial.z);
+            }else worker.setJumping(false);
             worker.setShiftKeyDown(false);
-            worker.getMoveControl().setWantedPosition(cx,worker.getY(),cz,1.0);
+            worker.getMoveControl().setWantedPosition(cx,
+                    sideJump?baseY:worker.getY(),cz,1.0);
             double mx=Math.max(-.13,Math.min(.13,(cx-worker.getX())*.25));
             double mz=Math.max(-.13,Math.min(.13,(cz-worker.getZ())*.25));
             var tryBox=worker.getBoundingBox().move(mx,0,mz);
             if(level.noCollision(worker,tryBox)){
                 var motion=worker.getDeltaMovement();
-                worker.setDeltaMovement(mx,Math.min(0,motion.y),mz);
+                boolean insideColumn=!session.descending()
+                        &&worker.getY()>=baseY-.05
+                        &&worker.getBoundingBox().intersects(
+                                new net.minecraft.world.phys.AABB(session.column()));
+                // Preserve genuine upward jump momentum while clearing
+                // the lower support. Once inside the PAID scaffold volume,
+                // normal climb velocity may resume with native gravity.
+                double vy=insideColumn?Math.max(.12,motion.y)
+                        :worker.getY()<baseY&&motion.y>0
+                            ?motion.y:Math.min(0,motion.y);
+                worker.setDeltaMovement(mx,vy,mz);
             }
             return true;
         }
@@ -447,6 +499,11 @@ public final class BuilderScaffolding {
                         .canStandOn(level,worker,planned.groundExit())
                 ?planned.groundExit():exitGround(level,worker,column);
         if(exit==null)return false;
+        // A valid adjacent ground tile is NOT necessarily a valid
+        // dismount from the worker's present physical elevation. Do not
+        // create an EXIT instruction that crosses a solid roof slab.
+        if(worker.onGround()
+                &&worker.getY()>exit.getY()+1.35)return false;
         clearMotion(worker);
         access.remove(worker);
         exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));
@@ -460,6 +517,9 @@ public final class BuilderScaffolding {
      */
     public static boolean descendForTravel(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
+        // Return across a physical Plan-A bridge BEFORE descending the
+        // column. Native A* cannot safely cross untracked scaffold air.
+        if(BuilderScaffoldPlanA.returnToGround(level,worker,table))return true;
         // A long tower may require more than 30 ticks of descent.
         // Renew the permit while this worker's material/lower-floor task
         // still requests descent, without restarting the physics session.
@@ -529,9 +589,50 @@ public final class BuilderScaffolding {
         return false;
     }
 
+    /** Conservative, read-only tower preview for a blocked frontier.
+     * The base may stand on already built architecture: the structural
+     * support, shaft, future-block exclusions and ground/roof dismount
+     * remain mandatory.
+     */
+    public static boolean canPlanAccess(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos target,
+            List<BuilderConstructionPlan.Step> plan){
+        if(target.getY()<worker.blockPosition().getY())return false;
+        java.util.Set<BlockPos> future=new java.util.HashSet<>();
+        for(var cell:plan)if(!cell.ignorePlant()){
+            BlockPos p=new BlockPos(cell.x(),cell.y(),cell.z());
+            // Built blocks can support safe tower exits; only pending AIR
+            // cells must be protected from temporary scaffold placement.
+            if(level.getBlockState(p).isAir())future.add(p);
+        }
+        for(Tower tower:towers(level,table,worker))
+            if(BuilderScaffoldSiteScore.withinReach(tower.base(),target)
+                    &&safeGroundExit(level,worker,tower.base(),future)!=null)
+                return true;
+        return findBase(level,worker,target,worker.blockPosition().getY(),
+                table,plan,future)!=null;
+    }
+
     public static Result reach(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,BlockPos target,
             List<BuilderConstructionPlan.Step> plan){
+        return reach(level,worker,table,player,target,plan,false);
+    }
+
+    /** This entry is used only after every ordinary, safe work stance
+     * has failed. A one-block rise may still require a paid elevator if
+     * a fence, wall or unfinished roof prevents the normal jump route.
+     * It does not change the normal walking-first ascent preference.
+     */
+    public static Result reachBlockedWork(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,ServerPlayer player,BlockPos target,
+            List<BuilderConstructionPlan.Step> plan){
+        return reach(level,worker,table,player,target,plan,true);
+    }
+
+    private static Result reach(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,ServerPlayer player,BlockPos target,
+            List<BuilderConstructionPlan.Step> plan,boolean blockedWork){
         int feet=worker.blockPosition().getY();
         // A Builder could previously abort its climb one block early:
         // as soon as the desired work Y was within 1.35 blocks,
@@ -548,7 +649,8 @@ public final class BuilderScaffolding {
             }
             clearMotion(worker);
         }
-        if(target.getY()-worker.getY()<=1.35){
+        if(target.getY()-worker.getY()<=1.35
+                &&(!blockedWork||target.getY()<=worker.getY()+.15)){
             return Result.NOT_NEEDED;
         }
         // Tall routes are divided into physical, inventory-bounded stages.
@@ -562,8 +664,12 @@ public final class BuilderScaffolding {
         // Future schematic blocks must not enclose the reserved route
         // DOWN or block the Builder's two-block-high ground exit.
         java.util.Set<BlockPos> future=new java.util.HashSet<>();
-        for(var cell:plan)if(!cell.ignorePlant())
-            future.add(new BlockPos(cell.x(),cell.y(),cell.z()));
+        for(var cell:plan)if(!cell.ignorePlant()){
+            BlockPos p=new BlockPos(cell.x(),cell.y(),cell.z());
+            // Built blocks can support safe tower exits; only pending AIR
+            // cells must be protected from temporary scaffold placement.
+            if(level.getBlockState(p).isAir())future.add(p);
+        }
         // Prefer the retained legal access choice across job ticks.
         // If construction changes the approach, expire only this site
         // choice, and choose another safe route without moving the worker.
@@ -584,7 +690,7 @@ public final class BuilderScaffolding {
                 .min(Comparator.comparingDouble(p->
                         BuilderScaffoldSiteScore.score(p,worker.blockPosition(),
                                 target,0,0,0,true))).orElse(null);
-        if(base==null){
+        if(base==null&&!blockedWork){
             // An existing platform is cheaper than a scaffold, but the
             // old code queried target.relative(side).below() ONLY.
             // That is often the SOLID FLOOR BLOCK rather than walkable
@@ -657,10 +763,20 @@ public final class BuilderScaffolding {
                 approach=level.getBlockState(base).is(Blocks.SCAFFOLDING)
                         ?base.relative(side).immutable():base;
             }
-            if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeToExact(level,worker,approach,1.0))
-                com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .routeTo(level,worker,approach,1.0);
+            boolean moving=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeToExact(level,worker,approach,1.0);
+            if(!moving)moving=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeTo(level,worker,approach,1.0);
+            if(!moving){
+                // A site which passed a coarse preview can become
+                // unreachable from the worker's actual fractional feet.
+                // Do not report CLIMBING when no movement was accepted:
+                // that silently holds this build cell for 900 ticks.
+                access.remove(worker);
+                avoided.put(worker,new AvoidColumn(base.immutable(),
+                        level.getGameTime()+80));
+                return Result.NO_SAFE_TOWER;
+            }
             return Result.CLIMBING;
         }
         int wantedTop=target.getY()-1;
@@ -828,8 +944,14 @@ public final class BuilderScaffolding {
             // Never reclaim a column from beneath a Builder that is
             // still standing on its bottom or top platform.
             for(BlockPos scaffold:positions){
+                // An overhead bridge can have the same X/Z as a golem
+                // already standing safely three blocks below. Only block
+                // retrieval if the scaffold is genuinely touching the
+                // golem's BODY/feet; never remove scaffold from under it.
                 if(Math.abs(scaffold.getX()+.5-worker.getX())<.9
-                        &&Math.abs(scaffold.getZ()+.5-worker.getZ())<.9)
+                        &&Math.abs(scaffold.getZ()+.5-worker.getZ())<.9
+                        &&scaffold.getY()+1.0>worker.getBoundingBox().minY-.1
+                        &&scaffold.getY()<worker.getBoundingBox().maxY+.1)
                     return;
             }
         }

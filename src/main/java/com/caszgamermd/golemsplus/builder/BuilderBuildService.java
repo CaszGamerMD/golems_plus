@@ -48,24 +48,194 @@ public final class BuilderBuildService {
     private static final class WorkerAction {
         int index=-1;
         Action phase=Action.STAGE_MATERIALS;
+        long blockedSince=-1;
+        long frontierWaitSince=-1;
+        int frontierWaitLayer=Integer.MIN_VALUE;
+        long workTravelSince=-1;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
+                blockedSince=-1;workTravelSince=-1;
             }
         }
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
+    /** Normally every X/Z zone is exclusive. A zone with no work on this
+     * shared Y may help its stuck neighbor after construction has made
+     * no physical progress for ten seconds. This is read-only monitoring:
+     * actual ownership stays with the Planner's single-step claim map.
+     */
+    private static final class RoofProgress {
+        int completed=-1;
+        long lastChange;
+    }
+    private static final Map<WorkerStationBlockEntity,RoofProgress>
+            roofProgress=new WeakHashMap<>();
+    private static boolean roofNeedsHelp(ServerLevel level,
+            WorkerStationBlockEntity table){
+        RoofProgress progress=roofProgress.computeIfAbsent(table,
+                unused->new RoofProgress());
+        int completed=table.builderWorkDone();
+        if(progress.completed!=completed||level.getGameTime()<progress.lastChange){
+            progress.completed=completed;
+            progress.lastChange=level.getGameTime();
+        }
+        return level.getGameTime()-progress.lastChange>=600;
+    }
+    /** Only workers with NO unfinished task in their zone on the active Y assist: they
+     * never abandon an assigned cell or break the global height gate.
+     * A worker whose own next assignments are on Y+1 can safely help a
+     * blocked neighboring zone complete Y before those become runnable.
+     * Extra candidates must be unclaimed and physically reachable.
+     */
+    private static List<Integer> roofRescueZone(WorkerStationBlockEntity table,
+            UUID worker,List<BuilderConstructionPlan.Step> steps,int layer){
+        var extra=new java.util.ArrayList<Integer>();
+        for(int idx=0;idx<steps.size();idx++){
+            var step=steps.get(idx);
+            if(step.y()==layer&&table.builderStepReadyForClaim(idx)
+                    &&!table.builderStepClaimedByOther(worker,idx))
+                extra.add(idx);
+        }
+        return extra;
+    }
     private static WorkerAction action(BuilderGolem worker,int index){
         var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
         activity.setStep(index);
         return activity;
     }
+    /** A retry cooldown is not a request to descend to storage. Keep a
+     * grounded worker on its current work level, or up to two blocks
+     * BELOW its next work layer, when its zone still has work now OR
+     * ahead. This preserves hard-won high-roof access while another
+     * zone completes the previous layer. The worker must remain clear
+     * of every unfinished current-layer placement envelope.
+     */
+    static boolean canWaitNearFrontier(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,
+            List<Integer> zone,int layer){
+        boolean highRoof=worker.getY()-table.getBlockPos().getY()>=12;
+        if(!worker.onGround()||worker.isNoGravity()
+                ||worker.blockPosition().getY()<layer-(highRoof?5:2)
+                ||worker.blockPosition().getY()>layer+1
+                ||!level.noCollision(worker,worker.getBoundingBox()))return false;
+        boolean pending=false;
+        for(int idx:zone)
+            if(idx>=0&&idx<steps.size()&&steps.get(idx).y()>=layer
+                    &&!table.builderZoneDone(List.of(idx))){pending=true;break;}
+        if(!pending)return false;
+        // Check the whole crew's current layer, not only this worker's
+        // zone, so a waiting worker cannot occupy a teammate's target.
+        for(int idx=0;idx<steps.size();idx++){
+            var step=steps.get(idx);
+            if(step.y()!=layer||step.ignorePlant()
+                    ||table.builderZoneDone(List.of(idx)))continue;
+            BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+            // Waiting beside a future cap is NOT a placement attempt:
+            // the .8m arm-clearance margin applies to the Builder doing
+            // the placing. For idle staging, protect the actual body
+            // plus .1m collision allowance; requiring the arm margin
+            // needlessly drove rooftop helpers to the ground depot.
+            if(worker.getBoundingBox().intersects(
+                    new net.minecraft.world.phys.AABB(target).inflate(.1,0,.1)))
+                return false;
+        }
+        return true;
+    }
+
     // Reuse the immutable server-side schematic work plan across queued
     // warehouse retries. Parsing a 100k-block Litematica file every four
     // seconds caused visible freezes while a PTP was temporarily busy.
     private static final Map<WorkerStationBlockEntity,Cache>
             cachedWarehousePlans=new WeakHashMap<>();
+    /** Completed Builders must never camp on the structure or occupy
+     * another zone's future blocks. The OnSite buffer is outside the
+     * schematic; return via a genuine hook descent, then ordinary A*.
+     * Do not retire or despawn a worker while the other zones run.
+     */
+    private static void parkAtOnSite(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table){
+        BlockPos depot=table.builderUnloadingStorage();
+        if(depot==null)depot=table.getBlockPos();
+        if(BuilderScaffolding.descendForTravel(level,worker,table)
+                ||BuilderGrappleAccess.rappelToward(level,worker,table,depot))
+            return;
+        if(worker.distanceToSqr(depot.getX()+.5,depot.getY(),
+                depot.getZ()+.5)>4.0){
+            com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeTo(level,worker,depot,.8);
+        }else{
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+        }
+    }
+    private static void activityForFinished(BuilderGolem worker){
+        var a=workerActions.get(worker);
+        if(a!=null)a.phase=Action.COMPLETE;
+    }
+    /** Existing inventory-paid access systems, tried only after normal
+     * grounded work routing cannot find a reachable stance. Every shaft
+     * and bridge is tracked by the Planner and has a checked exit.
+     * A missing scaffolding stack never fabricates building materials.
+     */
+    private static boolean scaffoldWork(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,ServerPlayer owner,BlockPos target,
+            List<BuilderConstructionPlan.Step> steps){
+        if(BuilderScaffoldPlanA.hasPlan(worker)
+                &&table.scaffoldPositions(worker.getUUID()).isEmpty()
+                &&!BuilderScaffolding.isControllingMovement(worker)
+                &&worker.onGround()&&!worker.isNoGravity()
+                &&BuilderPlacementSpace.placementHeight(target,worker)
+                &&BuilderPlacementSpace.horizontalClear(target,worker)
+                &&worker.distanceToSqr(target.getX()+.5,
+                        target.getY()+.5,target.getZ()+.5)<14
+                &&BuilderConstructionPlanner.safeStand(
+                        level,worker,target,worker.blockPosition())){
+            // A worker may reach a legal roof stance while heading for
+            // an optional paid tower. If the tower has not been erected,
+            // release that obsolete approach and place from REAL footing;
+            // never interrupt an active climb or abandon owned scaffold.
+            BuilderScaffoldPlanA.cancel(worker);
+            return false;
+        }
+        if(BuilderScaffoldPlanA.hasPlan(worker)
+                ||BuilderScaffoldPlanA.canPlanWorkPose(
+                        level,worker,table,target,steps)){
+            var bridge=BuilderScaffoldPlanA.reachWorkPose(
+                    level,worker,table,owner,target,steps);
+            if(bridge==BuilderScaffoldPlanA.Result.MOVING
+                    ||bridge==BuilderScaffoldPlanA.Result.NEED_MATERIALS)
+            {
+                if(bridge==BuilderScaffoldPlanA.Result.NEED_MATERIALS)
+                    table.setProblem("Builder needs Scaffolding in OnSite Storage for "
+                            +target.toShortString());
+                return true;
+            }
+            if(bridge==BuilderScaffoldPlanA.Result.READY)return false;
+        }
+        var shaft=BuilderScaffolding.reachBlockedWork(
+                level,worker,table,owner,target,steps);
+        if(shaft==BuilderScaffolding.Result.CLIMBING
+                ||shaft==BuilderScaffolding.Result.NEED_MATERIALS)return true;
+        // When the shaft opens onto a real roof surface, leave the top
+        // physically before starting an ordinary placement approach.
+        return BuilderScaffolding.stepOffTowardWork(level,worker,table,target);
+    }
+    /** Work positions can fail on a completely built roof at the SAME Y.
+     * Give any Builder a paid, reversible scaffold approach without
+     * requiring a floating target or a positive vertical Y difference.
+     */
+    private static boolean scaffoldBlockedWork(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            ServerPlayer owner,BlockPos target,
+            List<BuilderConstructionPlan.Step> steps){
+        return (BuilderScaffoldPlanA.hasPlan(worker)
+                    ||BuilderScaffoldPlanA.canPlanWorkPose(
+                            level,worker,table,target,steps)
+                    ||BuilderScaffolding.canPlanAccess(
+                            level,worker,table,target,steps))
+                &&scaffoldWork(level,worker,table,owner,target,steps);
+    }
     private BuilderBuildService(){}
     /** Start the warehouse packing reservation as soon as the user
      * presses Start, before any Builder Golem has reached the first block.
@@ -202,13 +372,15 @@ public final class BuilderBuildService {
         // A teammate may need the block space currently occupied by this
         // Builder. Honor its short physical sidestep before resuming the
         // current 10-coordinate assignment or warehouse courier route.
+        if(BuilderGrappleAccess.active(worker))return;
+        if(BuilderScaffolding.isControllingMovement(worker))return;
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
             // On job completion a Builder may still be on its LAST
             // scaffold tower. It must return to ground and dismount
             // BEFORE reclaiming blocks, delivering tools or going home.
-            if(BuilderScaffolding.isControllingMovement(worker)
-                    ||BuilderScaffolding.descendForTravel(level,worker,table))
+            if(BuilderScaffolding.descendForTravel(level,worker,table)
+                    ||BuilderGrappleAccess.rappelForTravel(level,worker,table))
                 return;
             worker.setNoGravity(false);
             BuilderScaffolding.retrieve(level,worker,table,false);
@@ -257,18 +429,17 @@ public final class BuilderBuildService {
             return;
         }
         if(table.phase()==WorkerPhase.PAUSED){
-            BuilderScaffolding.cancel(worker);
+            BuilderGrappleAccess.cancel(worker);
             worker.getNavigation().stop();
             worker.setNoGravity(false);return;
         }
-        // Do not let a fresh route to supplies/work overwrite the last
-        // meter of ascent, descent, or dismount. The per-entity-tick
-        // scaffold controller alone owns movement until safe arrival.
-        if(BuilderScaffolding.isControllingMovement(worker))return;
+        // Plan B owns the rope maneuver exclusively until landing.
+        if(BuilderGrappleAccess.active(worker))return;
         int membership=table.builderWorkerIds().indexOf(worker.getUUID());
         if(membership>=table.crewTarget()&&table.claimedStep(worker.getUUID())<0
                 &&!worker.hasSupplyBox()){
             worker.setNoGravity(false);
+            if(BuilderScaffolding.descendForTravel(level,worker,table))return;
             BuilderScaffolding.retrieve(level,worker,table,false);
             com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .routeTo(level,worker,home,.8);
@@ -281,6 +452,9 @@ public final class BuilderBuildService {
         }
         try{
             Cache plan=cache(table,worker);
+            // Display required physical placements without waiting for
+            // site clearance. This is accounting only, never a completion.
+            table.previewBuilderWork(plan.steps());
             // Warehouse reconciliation and proactive orders are Planner-
             // level jobs running from dispatch() every two/four seconds.
             // Doing both here from EVERY Builder every five ticks generated
@@ -312,22 +486,124 @@ public final class BuilderBuildService {
                             plan.clearing(),plan.steps());
                 return;
             }
+            // Ignore-plant entries are virtual no-op completions, not
+            // physical work or a route a Builder must walk. This also
+            // completes a job with only ignored vegetation remaining.
+            table.reconcileBuilderWork(plan.steps());
+            if(table.phase()==WorkerPhase.COMPLETE)return;
             // All positions for each X/Z zone were pre-assigned as one
             // immutable ordered execution plan. The Planner does NOT
             // arbitrate between Builders on each move or block placement.
             var assigned=zoneSchedule(table,plan);
             var zone=assigned.tasks().steps(worker.getUUID());
-            // Retrieve temporary towers at a work-order boundary, never
-            // after each block: workers should complete all ten cells on
-            // their current scaffolding before returning for more stock.
-            if(table.builderWorkOrder(worker.getUUID()).isEmpty()
-                    &&!table.scaffoldPositions(worker.getUUID()).isEmpty())
-                BuilderScaffolding.retrieve(level,worker,table,false);
-            int index=table.claimBuilderZoneStep(worker.getUUID(),
-                    zone,plan.steps());
-            if(index<0)return; // only this zone's pending dependencies
+            // Unreachable frontier cells may now be served by owned,
+            // physically climbable scaffold towers or two-cell bridges.
+            // Construction intelligence runs BEFORE step claiming:
+            // assign only a frontier cell with an actually reachable,
+            // collision-safe work stance and a route out after placing.
+            // A currently claimed task is kept during physical travel;
+            // failed tasks are explicitly deferred and then reselected.
+            int index=table.claimedStep(worker.getUUID());
+            int layer=table.builderActiveLayer(plan.steps());
+            boolean ownLayerClear=true;
+            for(int idx:zone)
+                if(idx>=0&&idx<plan.steps().size()
+                        &&plan.steps().get(idx).y()==layer
+                        &&!table.builderZoneDone(List.of(idx))){
+                    ownLayerClear=false;break;
+                }
+            boolean emergencyRoofAssist=ownLayerClear
+                    &&(index>=0&&!zone.contains(index)
+                        ||roofNeedsHelp(level,table));
+            // Monitoring must run for every working crew, including the
+            // worker still in its own zone: otherwise a fully active crew
+            // could never start the rescue clock.
+            if(!emergencyRoofAssist)roofNeedsHelp(level,table);
+            if(emergencyRoofAssist){
+                var rescue=roofRescueZone(table,worker.getUUID(),
+                        plan.steps(),layer);
+                if(!rescue.isEmpty()){
+                    zone=rescue;
+                    if(level.getGameTime()%200==0)
+                        System.out.println("[ROOF ASSIST] "
+                                +worker.getName().getString()+" can serve "
+                                +rescue.size()+" unfinished Y="
+                                +(layer-table.builderOrigin().getY())
+                                +" cells outside its cleared layer zone");
+                }
+            }
+            if(index<0||index>=plan.steps().size()
+                    ||!zone.contains(index)
+                    ||plan.steps().get(index).y()!=layer
+                    ||!table.builderStepReadyForClaim(index)){
+                var next=BuilderConstructionPlanner.choose(
+                        level,worker,table,plan.steps(),zone);
+                index=next==null?-1:table.claimPreferredBuilderZoneStep(
+                        worker.getUUID(),zone,plan.steps(),next.index());
+            }
+            if(index<0){
+                // No safely reachable or runnable cell on this same Y
+                // in this worker's zone. Do NOT accept a random index or
+                // climb to a higher construction layer. Get out of the
+                // active construction volume so another Builder can work.
+                if(level.getGameTime()%80==0){
+                    String report=BuilderConstructionPlanner.blockedSummary(
+                            level,table,plan.steps(),zone);
+                    table.setProblem("FRONTIER: "+report);
+                    System.out.println("[FRONTIER BLOCKED] "
+                            +worker.getName().getString()+" "+report);
+                }
+                // When a finished zone still has a safe upper ledge,
+                // preserve it for emergency help on a stuck neighboring
+                // zone. Sending all three idle roof workers down to the
+                // OnSite chest leaves nobody who can step back and build
+                // a paid scaffold to the last few cap cells.
+                List<Integer> waitingZone=zone;
+                if(ownLayerClear
+                        &&worker.getY()-table.getBlockPos().getY()>=12){
+                    var rescue=roofRescueZone(table,worker.getUUID(),
+                            plan.steps(),layer);
+                    if(!rescue.isEmpty())waitingZone=rescue;
+                }
+                if(canWaitNearFrontier(level,worker,table,
+                        plan.steps(),waitingZone,layer)){
+                    var waiting=workerActions.computeIfAbsent(worker,k->new WorkerAction());
+                    if(waiting.frontierWaitSince<0
+                            ||waiting.frontierWaitLayer!=layer){
+                        waiting.frontierWaitSince=level.getGameTime();
+                        waiting.frontierWaitLayer=layer;
+                    }
+                    // Short low walls are cheap to approach again: keep
+                    // the old 80-tick courtesy wait so idle Builders do
+                    // not clog early dome corridors. At a high roof,
+                    // abandoning an otherwise safe ledge means losing
+                    // 12+ real blocks of hard-won vertical access. Hold
+                    // that ledge while this zone has unfinished work on
+                    // the current or a future layer. Completed zones
+                    // still leave immediately.
+                    boolean expensiveAscent=worker.getY()
+                            -table.getBlockPos().getY()>=12;
+                    if(expensiveAscent||level.getGameTime()
+                            -waiting.frontierWaitSince<=80){
+                        com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                        return;
+                    }
+                }
+                if(table.builderZoneDone(zone))activityForFinished(worker);
+                parkAtOnSite(level,worker,table);
+                return;
+            }
             var activity=action(worker,index);
+            activity.frontierWaitSince=-1;
             var step=plan.steps().get(index);
+            int activeLayer=table.builderActiveLayer(plan.steps());
+            if(step.y()!=activeLayer){
+                // Defensive execution guard: even a stale claim from a
+                // previous build version must not break the Y-layer rule.
+                table.setProblem("Builder waiting for completion of Y="+activeLayer
+                        +" before Y="+step.y());
+                return;
+            }
             if(step.ignorePlant()){
                 // The position stays in the saved indexed work order, but
                 // the requested crop/flower is never placed or debited.
@@ -375,23 +651,30 @@ public final class BuilderBuildService {
                 // dismantle the nearby scaffold to rebuild them.
                 return;
             }
-            // Finish the *actual* scaffold landing before a short
-            // remaining vertical distance causes the normal work route
-            // or depot order to cancel the last block of ascent.
-            if(BuilderScaffolding.finishActiveAscent(level,worker))
-                return;
+            // The hook controller retains exclusive movement until
+            // physically landed; do not issue an overlapping work route.
             // Every real Builder goes to the chosen OnSite depot ONCE per
             // exclusive ten-coordinate batch, unloads other materials and
             // collects actual stock (including flowers within shulkers).
             // It does not visit the Planning Table for assignments.
-            if(!table.builderOrderPrepared(worker.getUUID())){
+            // A frontier choice can change the ten/32-cell stage.
+            // That invalidates the prior *batch* marker, not the physical
+            // blocks ALREADY in this golem's persisted pouch. If it has
+            // the exact item needed for this step, proceed with that real
+            // inventory rather than repeatedly rappelling back to OnSite.
+            // The normal per-step load below will still require a genuine
+            // depot visit when a later item is actually missing.
+            if(!table.builderOrderPrepared(worker.getUUID())
+                    &&step.requiredItem()!=null
+                    &&worker.carriedCount(state.item())<=0){
                 activity.phase=Action.STAGE_MATERIALS;
                 // An A* route from the TOP of a temporary scaffold to
                 // OnSite Storage can never discover the vertical descent.
-                if(BuilderScaffolding.descendForTravel(level,worker,table))
+                if(BuilderScaffolding.descendForTravel(level,worker,table)
+                        ||BuilderGrappleAccess.rappelForTravel(level,worker,table))
                     return;
                 var prep=BuilderSupplyInventory.prepareWorkOrder(
-                        level,worker,table,plan.steps());
+                        level,worker,table,plan.steps(),zone);
                 if(prep==BuilderSupplyInventory.LoadStatus.MOVING)return;
                 if(prep==BuilderSupplyInventory.LoadStatus.MISSING){
                     table.setProblem("Builder work order waiting for reachable "
@@ -401,11 +684,9 @@ public final class BuilderBuildService {
                 table.prepareBuilderOrder(worker.getUUID());
             }
             activity.phase=Action.MOVE_TO_WORK;
-            // A newly assigned low cell may be underneath an old tower.
-            // Descent belongs to this worker, not a global path command.
-            if(step.y()+1.5<worker.getY()
-                    &&BuilderScaffolding.descendForTravel(level,worker,table))
-                return;
+            // Work descent is resolved against the actual work pose below.
+            // Do not send a stocked worker back to the depot merely
+            // because its legal work route temporarily crosses a high ledge.
             // Check the replacement's survival BEFORE clearing an existing
             // block. Clearing first destroyed a useful piece of completed
             // cobblestone/support, then deadlocked on "Missing supporting
@@ -468,82 +749,205 @@ public final class BuilderBuildService {
                     return;
                 }
             }
-            double horizontal=Math.pow(worker.getX()-(pos.getX()+.5),2)
-                    +Math.pow(worker.getZ()-(pos.getZ()+.5),2);
-            double distToTarget=worker.distanceToSqr(
-                    pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
-            if(pos.getY()-worker.getY()>2.5
-                    ||pos.getY()-worker.getY()>1.35&&distToTarget>14){
-                // Even targets only two blocks up may need scaffolding
-                // when no walkable route can bring the worker into reach.
-                // Select a safe ascent beside the desired X/Z
-                // and travel to it on foot before placing scaffolding.
-                var climbing=BuilderScaffolding.reach(level,worker,table,owner,pos,
-                        plan.steps());
-                if(climbing==BuilderScaffolding.Result.NEED_MATERIALS){
-                    table.setProblem("Needs scaffolding for height "+pos.getY()
-                            +" (minecraft:scaffolding)");
-                    if(BuilderWarehouseCoordinator.requestScaffolding(level,worker,
-                            table,owner,plan.steps()))return;
-                    return;
-                }
-                if(climbing==BuilderScaffolding.Result.NO_SAFE_TOWER){
-                    table.setProblem("No clear scaffold column beside "+pos);
-                    return;
-                }
-                if(climbing==BuilderScaffolding.Result.CLIMBING)return;
-            }
-            double workDistance=worker.distanceToSqr(
-                    pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
-            if(workDistance>14){
-                // Leave a completed scaffold onto an adjacent solid upper
-                // walkway BEFORE asking vanilla A* to path from its
-                // non-walkable scaffolding node. This is crucial for
-                // circling buildings after reaching the required height.
-                if(BuilderScaffolding.stepOffTowardWork(level,worker,table,pos))
-                    return;
-                // If no supported upper landing exists, return down the
-                // Builder's own real scaffold and dismount before invoking
-                // horizontal A*. Never route off the edge from midair.
-                BlockPos under=worker.blockPosition().below();
-                if(level.getBlockState(under).is(
-                            net.minecraft.world.level.block.Blocks.SCAFFOLDING)
-                        &&table.scaffoldPositions(worker.getUUID()).contains(under)
-                        &&BuilderScaffolding.descendForTravel(level,worker,table))
-                    return;
-                // The NEXT job step is not in physical placing range yet.
-                // Regardless of the previous navigation state, continue
-                // approaching until the distance check genuinely passes.
-                // An idle vanilla path at five/six blocks is not arrival.
-                activity.phase=Action.MOVE_TO_WORK;
-                // Do not drive Builders into the center of their own
-                // future flower/cobblestone placement. Close approaches
-                // stop alongside an unoccupied, genuinely reachable tile.
-                BlockPos approach=workDistance<=100
-                        ?BuilderPlacementSpace.approach(level,worker,pos):null;
-                if(approach!=null){
-                    // A Builder must arrive at its exact reachable side
-                    // tile, NOT an approximate pathfinder endpoint that can
-                    // be too far away to place the block. This was why a
-                    // MOVE_TO_WORK Builder showed nav=idle at range=6.
-                    boolean moving=com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .routeToExact(level,worker,approach,1.0);
-                    if(!moving){
-                        // The selected spot may have become unavailable;
-                        // immediately try moving toward the job and choose
-                        // another exact landing on the next evaluation.
-                        // Never count a stopped navigation as task progress.
-                        BuilderPlacementSpace.invalidateApproach(worker,pos);
-                        com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                .routeTo(level,worker,pos,.85);
-                    }
-                }else{
-                    // Long-distance travel still uses bounded multi-leg A*.
-                    com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .routeTo(level,worker,pos,.85);
-                }
+            // PLAN B: physical Grapple Hook up to 20 blocks, never a
+            // scaffold/flying/teleport fallback. Ordinary slopes use A*.
+            // A released rope leaves feet slightly above the ledge until
+            // gravity settles them. Do not reject a route or abandon the
+            // claim from that transient airborne start.
+            // A genuine scaffold climb is different: its top can momentarily
+            // leave the worker inside scaffold with onGround=false. Advance
+            // the active scaffold session while it owns that physical motion
+            // instead of freezing at CLIMB and repeatedly falling down.
+            if(!worker.onGround()){
+                if(BuilderScaffoldPlanA.hasPlan(worker))
+                    BuilderScaffoldPlanA.reach(
+                            level,worker,table,owner,pos,plan.steps());
                 return;
             }
+            // Narrow final wall/fence caps support feet at Y+.5. If
+            // the Builder is already perched there but its shoulder is
+            // 20-40cm too close to the next block, execute a short,
+            // support-proven step BACK before asking it to build a new
+            // scaffold or seek a nonexistent integer-centered A* node.
+            if(BuilderPlacementSpace.stepBackFromFractionalCap(
+                    level,worker,table,pos)){
+                activity.phase=Action.MOVE_TO_WORK;
+                return;
+            }
+            long now=level.getGameTime();
+            if(activity.workTravelSince<0)activity.workTravelSince=now;
+            // Once an owned shaft/bridge starts, its controller owns all
+            // physical movement. Do not replace it with a normal route
+            // just because another nominal work pose becomes visible.
+            if(BuilderScaffoldPlanA.hasPlan(worker)
+                    &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
+                return;
+            if(now-activity.workTravelSince>900&&!BuilderGrappleAccess.active(worker)){
+                // Repeatedly executable movement is not proof that this
+                // placement is making progress. Preserve the cell/materials
+                // and let another feasible frontier on THIS Y run first.
+                BuilderPlacementSpace.cancelYield(worker);
+                BuilderPlacementSpace.invalidateApproach(worker,pos);
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                table.waitForBuilderAccess(worker.getUUID(),index,now,
+                        "900-tick work approach without placement");
+                activity.workTravelSince=-1;
+                table.setProblem("Deferred cycling work approach "+pos);
+                System.out.println("[FRONTIER RETRY] deferred unchanged step="+index
+                        +" after 900 ticks without placement at "+worker.position());
+                return;
+            }
+            int yDiff=pos.getY()-worker.blockPosition().getY();
+            boolean temporaryWorkPose=BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                    level,worker,table,pos);
+            double workDistance=worker.distanceToSqr(
+                    pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+            boolean directOrdinaryWork=BuilderPlacementSpace.placementHeight(
+                        pos,worker)
+                    &&workDistance<14
+                    &&BuilderPlacementSpace.horizontalClear(pos,worker)
+                    &&(temporaryWorkPose
+                        ||BuilderPlacementSpace.safeFractionalCapPose(
+                                level,worker,pos)
+                        ||BuilderConstructionPlanner.safeStand(
+                                level,worker,pos,worker.blockPosition()));
+            // Low dome walls and fence caps often sit two Y above a
+            // grounded Builder. Its normal three-block hand reach may
+            // already cover the target from a SIDE stance. Find that
+            // safe, walkable position before spending time on a rope or
+            // scaffold tower. A trained route can walk backward first.
+            if(yDiff>1&&!directOrdinaryWork
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
+                BlockPos walk=BuilderPlacementSpace.approachWithRules(
+                        level,worker,pos,
+                        at->BuilderConstructionPlanner.safeStand(
+                                level,worker,pos,at));
+                if(walk!=null){
+                    activity.phase=Action.MOVE_TO_WORK;
+                    if(com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .routeToExact(level,worker,walk,1.0))return;
+                    BuilderPlacementSpace.invalidateApproach(worker,pos);
+                }
+            }
+            // A grapple can repeatedly select an unreachable high ledge.
+            // After a genuine physical approach timeout, try a supported,
+            // inventory-paid scaffold bridge rooted on this same build.
+            // Never interrupt a moving rope or a current bridge session.
+            // Leave executable ordinary walking routes alone. A fixed
+            // same-height timeout was taking Builders off their valid
+            // low-layer work paths and onto needless scaffold searches.
+            // Same-Y scaffolding is instead offered below only AFTER
+            // all safe walking stances or their real routes are rejected.
+            if(yDiff>1&&!directOrdinaryWork
+                    &&now-activity.workTravelSince>260
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&scaffoldBlockedWork(level,worker,table,owner,pos,
+                            plan.steps()))
+                return;
+            if(yDiff>1&&!directOrdinaryWork){
+                var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
+                if(access==BuilderGrappleAccess.Result.NEED_HOOK){
+                    // A hook shortage is not a movement prohibition.
+                    // Walking to a higher work stance and a paid scaffold
+                    // are still candidates for this same block.
+                    if(scaffoldWork(level,worker,table,owner,pos,plan.steps()))
+                        return;
+                }
+                if(access==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR){
+                    if(scaffoldWork(level,worker,table,owner,pos,plan.steps()))
+                        return;
+                    // Neither an anchor nor a tower is mandatory. An
+                    // ordinary detour may first descend or move away from
+                    // this target before arriving at a valid elevated pose.
+                    // Let the normal work-stance search prove that route.
+                }
+                if(access==BuilderGrappleAccess.Result.MOVING)return;
+            }
+            if(!BuilderPlacementSpace.placementHeight(pos,worker)
+                    ||workDistance>14
+                    ||!BuilderPlacementSpace.horizontalClear(pos,worker)
+                    ||!(temporaryWorkPose
+                        ||BuilderPlacementSpace.safeFractionalCapPose(
+                                level,worker,pos)
+                        ||BuilderConstructionPlanner.safeStand(
+                                level,worker,pos,worker.blockPosition()))){
+                // Even when within arm's reach, a Builder must first
+                // occupy a PREVALIDATED work stance. This prevents the
+                // repeated old deadlock where it arrived next to an AIR
+                // cell, then had to escape its own placement volume.
+                activity.phase=Action.MOVE_TO_WORK;
+                BlockPos approach=BuilderPlacementSpace.approachWithRules(
+                        level,worker,pos,
+                        at->BuilderConstructionPlanner.safeStand(
+                                level,worker,pos,at));
+                if(approach!=null){
+                    boolean moving=com.caszgamermd.golemsplus.worker
+                            .WorkerNavigation.routeToExact(
+                                    level,worker,approach,1.0);
+                    if(!moving){
+                        BuilderPlacementSpace.invalidateApproach(worker,pos);
+                        moving=com.caszgamermd.golemsplus.worker
+                                .WorkerNavigation.routeTo(
+                                        level,worker,approach,.85);
+                    }
+                    if(!moving&&scaffoldBlockedWork(
+                            level,worker,table,owner,pos,plan.steps()))return;
+                    if(!moving)
+                        table.waitForBuilderAccess(worker.getUUID(),index,
+                                level.getGameTime(),"trained routes rejected work pose and scaffold");
+                    return;
+                }
+                // An enclosed or connected roof cell can need temporary
+                // footing just as much as a floating one. Every scaffold
+                // is inventory-paid, on air outside the future schematic,
+                // and has a checked path back to its ground/roof exit.
+                if(scaffoldBlockedWork(level,worker,table,owner,pos,plan.steps()))
+                    return;
+                if(yDiff>0){
+                    var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
+                    if(access==BuilderGrappleAccess.Result.NEED_HOOK)
+                        table.setProblem("Builder needs a Grapple Hook");
+                    else if(access==BuilderGrappleAccess.Result.NO_SAFE_ANCHOR){
+                        table.waitForBuilderAccess(worker.getUUID(),index,
+                                level.getGameTime(),"one-block rise no grapple anchor");
+                        table.setProblem("Deferred blocked one-step rise "+pos);
+                    }else if(access==BuilderGrappleAccess.Result.READY)
+                        table.waitForBuilderAccess(worker.getUUID(),index,
+                                level.getGameTime(),"rise route ready but no safe pose");
+                    return;
+                }
+                if(yDiff< -1 && (BuilderScaffolding.descendForTravel(
+                        level,worker,table)||BuilderGrappleAccess.rappelToward(
+                        level,worker,table,pos)))return;
+                if(yDiff==-1){
+                    // One layer above the block is legal ONLY when a
+                    // physical standing location, side clearance and
+                    // post-placement exit all exist. Don't grapple down
+                    // unnecessarily or invent an unreachable stance.
+                    table.waitForBuilderAccess(worker.getUUID(),index,
+                            level.getGameTime(),"no Y+1 validated reachable work approach");
+                    table.setProblem("FRONTIER: no safe Y+1 work stance at "
+                            +pos+" (line of sight / exit / clearance)");
+                    return;
+                }
+                // Larger downward changes still require collision-safe
+                // navigation, not a free fall.
+                // This is only a MOVEMENT beacon when no safe work pose
+                // has been discovered yet, never permission to PLACE into
+                // the target. Actual placement still requires the 0.8m
+                // edge margin, grounded work pose and clear exit above.
+                // Retain the fractional branch's last-resort local motion
+                // so low-level connected cells are not deferred forever.
+                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeTo(level,worker,pos,.85))
+                    table.waitForBuilderAccess(worker.getUUID(),index,
+                            level.getGameTime(),"cannot walk to lower target");
+                return;
+            }
+            // A Builder may place from its assigned layer or from one
+            // grounded block ABOVE that layer. This changes only its
+            // physical feet height, never the crew-wide Y work gate.
             activity.phase=Action.PLACE;
             // Travel and placement are mutually exclusive for THIS worker:
             // stop the previous A* path and horizontal momentum before a
@@ -552,9 +956,47 @@ public final class BuilderBuildService {
             com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
             var velocity=worker.getDeltaMovement();
             worker.setDeltaMovement(0,velocity.y,0);
+            // Re-evaluate the real work pose immediately before spending
+            // any item: a teammate or a new schematic block may have
+            // invalidated the cached approach while this worker walked.
+            if(!(BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                        level,worker,table,pos)
+                    ||BuilderPlacementSpace.safeFractionalCapPose(
+                            level,worker,pos)
+                    ||BuilderConstructionPlanner.safeStand(
+                        level,worker,pos,worker.blockPosition()))){
+                BuilderPlacementSpace.invalidateApproach(worker,pos);
+                table.waitForBuilderAccess(worker.getUUID(),index,
+                        level.getGameTime(),"lost safe pose or exit during approach");
+                table.setProblem("FRONTIER: lost safe pose or exit at "+pos);
+                return;
+            }
             // Never place into any Builder's body. Check before spending
             // the item so waiting for a teammate to move consumes nothing.
-            if(!BuilderPlacementSpace.ready(level,worker,table,pos))return;
+            if(!BuilderPlacementSpace.ready(level,worker,table,pos)){
+                // Waiting at an impossible collision envelope must not
+                // pin one target or one Y-level forever. Give genuine
+                // sidesteps 100 ticks, then preserve the unfinished index
+                // and retry another SAFE cell on the same current Y.
+                if(activity.blockedSince<0)
+                    activity.blockedSince=level.getGameTime();
+                if(level.getGameTime()-activity.blockedSince>=100){
+                    BuilderPlacementSpace.cancelYield(worker);
+                    table.waitForBuilderAccess(worker.getUUID(),index,
+                            level.getGameTime(),"100-tick placement body-occupancy timeout");
+                    table.setProblem("Deferred block "+pos
+                            +" until a safe 0.8m placement stance is reachable");
+                    activity.blockedSince=-1;
+                }
+                return;
+            }
+            activity.blockedSince=-1;
+            if(!BuilderPlacementSpace.horizontalClear(pos,worker)){
+                // Defense-in-depth against a self-collision regression.
+                // Vertical separation NEVER waives the X/Z 0.8 margin.
+                table.setProblem("Builder still within 0.8 X/Z of "+pos);
+                return;
+            }
             // Upper door halves do not consume another door item; the
             // lower half was already placed and paid for in the prior
             // layer. Keep refund logic for all ordinary materials.
@@ -587,7 +1029,12 @@ public final class BuilderBuildService {
             // Keep any deployed scaffolding until this ten-block work order
             // completes; retrieving per placed block caused route churn.
         }catch(Exception exception){
-            table.setProblem("Builder paused: "+exception.getMessage());
+            table.setProblem("Builder paused: "
+                    +exception.getClass().getSimpleName()+": "
+                    +exception.getMessage());
+            System.err.println("[BUILDER WORK EXCEPTION] "+worker.position()
+                    +" claimed="+table.claimedStep(worker.getUUID()));
+            exception.printStackTrace(System.err);
         }
     }
     /** Reconcile the selected job's visible materials immediately after
@@ -625,10 +1072,23 @@ public final class BuilderBuildService {
             String stage=action==null?"AWAITING TASK":action.phase.name();
             if(index<0)return stage+" | zone tasks="+zone.size()
                     +" | stage="+table.builderWorkOrder(worker.getUUID()).size()
+                    +" | "+BuilderConstructionPlanner.blockedSummary(
+                            level,table,plan.steps(),zone)
+                    +BuilderConstructionPlanner.diagnoseBlockedZone(
+                            level,worker,table,plan.steps(),zone)
+                    +" | scan="+BuilderConstructionPlanner.scanStatus(worker)
+                    +" | claimTrace="+table.builderClaimDebug(worker.getUUID())
                     +" | "+table.problem();
             var current=plan.steps().get(index);
             BlockPos target=new BlockPos(current.x(),current.y(),current.z());
+            BlockPos local=target.subtract(table.builderOrigin());
             return stage+" step "+index+" at "+target.toShortString()
+                    +" | schematicXYZ="+local.toShortString()
+                    +" | placeBlock="+current.encodedState()
+                    +" | placeItem="+(current.requiredItem()==null
+                            ?"none":current.requiredItem())
+                    +" | targetNow="+level.getBlockState(target)
+                    +" | below="+level.getBlockState(target.below())
                     +" | range="+(int)Math.sqrt(worker.distanceToSqr(
                             target.getX()+.5,target.getY()+.5,target.getZ()+.5))
                     +" | nav="+(worker.getNavigation().isDone()?"idle":"walking")
@@ -659,6 +1119,14 @@ public final class BuilderBuildService {
                     materials.merge(step.requiredItem(),1L,Long::sum);
             }
             table.reconcileBuilderMaterials(materials);
+            table.previewBuilderWork(cache.steps());
+            // A running planner may have already cleared the site.
+            // Otherwise preserve the clearing gate until all real
+            // obstructions have actually been handled.
+            if((table.activeOrder()!=null
+                    ||table.phase()==WorkerPhase.COMPLETE)
+                    &&table.builderClearCursor()>=cache.clearing().size())
+                table.reconcileBuilderWork(cache.steps());
             return table.builderIgnorePlants()
                     ?"Ignoring "+ignored+" schematic vegetation placements; "
                             +"site clearing remains enabled"
@@ -681,7 +1149,8 @@ public final class BuilderBuildService {
         if(!table.hasPlacedSchematic())
             throw new IllegalArgumentException("No placed schematic");
         Path folder=FabricLoader.getInstance().getConfigDir()
-                .resolve("golems_plus").resolve("schematics");
+                .resolve("golems_plus").resolve("schematics")
+                .toAbsolutePath().normalize();
         Path file=folder.resolve(table.builderFile()).normalize();
         if(!file.startsWith(folder)||!Files.isRegularFile(file))
             throw new IllegalArgumentException("Saved schematic missing");

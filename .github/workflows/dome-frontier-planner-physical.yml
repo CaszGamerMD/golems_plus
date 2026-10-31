@@ -1,0 +1,284 @@
+name: Construction Frontier — Full Physical Dome
+run-name: "3,537 block dome / four physical Builder Golems / prevalidated frontier"
+on:
+  push:
+    branches: [main, test/dome-frontier-planner-262, fix/dome-final-access-262, experiment/builder-roof-handoff-retry-262, experiment/builder-on-build-scaffolding-262, experiment/builder-fractional-freespace-262, experiment/builder-fractional-scaffold-262]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Verify real original dome and frontier planner
+        run: |
+          test -f src/gametest/resources/data/golems_plus_gametest/gametest/structure/dome_arena.snbt
+          grep -q 'BuilderConstructionPlanner.choose' src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java
+      - name: Run full 3537-block dome with four real Builder Golems
+        run: gradle --no-daemon runGameTest
+      - name: Render the ACTUAL stalled dome voxel map (even when test fails)
+        if: always()
+        run: python scripts/render_dome_route_model.py || true
+      - name: Save physical dome reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontier-dome-physical-diagnostics
+          if-no-files-found: ignore
+          path: |
+            build/gametest/
+            build/test-results/
+            build/reports/
+            build/run/gameTest/logs/
+            build/run/gameTest/route-survey/
+  plants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Select ignored-crop completion regressions
+        run: |
+          python - <<'PYTEST'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=[
+            'com.caszgamermd.golemsplus.builder.BuilderIgnoredPlantProgressGameTest',
+          ]
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PYTEST
+      - name: Verify real Builder completion without crop placements
+        run: gradle --no-daemon runGameTest
+  roof-survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Run original dome geometry and reachable-route survey
+        run: |
+          python - <<'PYTEST'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=[
+            'com.caszgamermd.golemsplus.builder.BuilderDomeRouteSurveyGameTest',
+          ]
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PYTEST
+          gradle --no-daemon runGameTest
+      - name: Render original model as interactive offline HTML
+        if: always()
+        run: python scripts/render_dome_route_model.py || true
+      - name: Export accurate dome model and worker route evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accurate-dome-roof-route-model
+          if-no-files-found: warn
+          path: |
+            build/run/gameTest/route-survey/
+            build/run/gameTest/logs/
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Select focused tests in a separate physical world
+        run: |
+          python - <<'PYTEST'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=[
+              'com.caszgamermd.golemsplus.builder.BuilderGrappleWorkPoseGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderGrappleReturnGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderDoorwayGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderPlacementClearanceGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderPlaceOneBelowGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderConstructionFrontierGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderFenceStepGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderCornerRejoinGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderWorkAccessGameTest',
+              'com.caszgamermd.golemsplus.builder.BuilderStagedGrappleGameTest',
+          ]
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PYTEST
+      - name: Compile and run unit and focused physical regressions
+        run: gradle --no-daemon test runGameTest
+      - name: Save focused physical reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontier-focused-physical-diagnostics
+          if-no-files-found: ignore
+          path: |
+            build/gametest/
+            build/test-results/
+            build/reports/
+            build/run/gameTest/logs/
+  courtyard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Select focused tests in a separate physical world
+        run: |
+          python - <<'PYTEST'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderDomeApproachGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PYTEST
+      - name: Compile and run unit and focused physical regressions
+        run: gradle --no-daemon runGameTest
+      - name: Save focused physical reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontier-courtyard-physical-diagnostics
+          if-no-files-found: ignore
+          path: |
+            build/gametest/
+            build/test-results/
+            build/reports/
+            build/run/gameTest/logs/
+  courtyard-low:
+    runs-on: ubuntu-latest
+    env:
+      GOLEMS_COURTYARD_HEIGHT: '2'
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Select focused tests in a separate physical world
+        run: |
+          python - <<'PYTEST'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderDomeApproachGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PYTEST
+      - name: Compile and run unit and focused physical regressions
+        run: gradle --no-daemon runGameTest
+      - name: Save focused physical reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontier-courtyard-low-physical-diagnostics
+          if-no-files-found: ignore
+          path: |
+            build/gametest/
+            build/test-results/
+            build/reports/
+            build/run/gameTest/logs/
+  roof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Select roof handoff regression
+        run: |
+          python - <<'PYTEST'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderRoofHandoffGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PYTEST
+      - run: gradle --no-daemon runGameTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: roof-handoff-diagnostics
+          path: |
+            build/gametest/
+            build/run/gameTest/logs/
+
+  roof-scaffold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Select elevated roof scaffold tests
+        run: |
+          python - <<'PYTEST'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderSafeScaffoldGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PYTEST
+      - run: gradle --no-daemon runGameTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: elevated-roof-scaffold-diagnostics
+          path: |
+            build/gametest/
+            build/run/gameTest/logs/

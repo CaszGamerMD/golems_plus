@@ -77,6 +77,21 @@ final class WorkerRoutePlannerTest {
         assertNull(find(from,List.of(goal),Set.of(from,goal)),
                 "Both cardinal clearance cells must be walkable for a diagonal");
     }
+    @Test void physicallyCertifiedDiagonalMayBypassBlockedTileCenters(){
+        BlockPos start=at(0,64,0),goal=at(1,64,1);
+        Set<BlockPos> floor=Set.of(start,goal);
+        assertNull(find(start,List.of(goal),floor));
+        var rejected=WorkerRoutePlanner.plan(start,List.of(goal),
+                floor::contains,BlockPos::getY,null,unused->0,
+                null,Set.of(),(a,b)->false);
+        assertNull(rejected,"An uncertified diagonal stays forbidden");
+        var certified=WorkerRoutePlanner.plan(start,List.of(goal),
+                floor::contains,BlockPos::getY,null,unused->0,
+                null,Set.of(),(a,b)->a.equals(start)&&b.equals(goal));
+        assertNotNull(certified);
+        assertEquals(List.of(goal),certified.steps());
+        assertEquals(14,certified.cost());
+    }
     @Test void trainedDoorCostSelectsCollisionValidLongerRoute(){
         BlockPos from=at(0,64,0),goal=at(4,64,0);
         Set<BlockPos> floor=new HashSet<>();
@@ -161,5 +176,30 @@ final class WorkerRoutePlannerTest {
         assertNotNull(result);
         assertTrue(result.complete());
         assertEquals(at(3,82,0),result.steps().getLast());
+    }
+    @Test void climbsLongPhysicalStaircaseBeyondEightLayerSearchWindow(){
+        Set<BlockPos> stairs=new HashSet<>();
+        for(int step=0;step<=12;step++)stairs.add(at(step,64+step,0));
+        var route=find(at(0,64,0),List.of(at(12,76,0)),stairs);
+        assertNotNull(route,"Y9+ must not be hidden by an artificial vertical window");
+        assertTrue(route.complete());
+        assertEquals(at(12,76,0),route.steps().getLast());
+        BlockPos previous=at(0,64,0);
+        for(BlockPos next:route.steps()){
+            assertEquals(1,next.getY()-previous.getY(),
+                    "A taller search must still use real one-block climbs");
+            previous=next;
+        }
+    }
+    @Test void admittedComponentNeverIncludesDisconnectedGoal(){
+        BlockPos start=at(0,64,0),a=at(1,64,0),b=at(2,64,0),gap=at(4,64,0);
+        Set<BlockPos> floor=Set.of(start,a,b,gap);
+        WorkerRoutePlanner.SearchStats[] stats={null};
+        var route=WorkerRoutePlanner.plan(start,List.of(gap),floor::contains,
+                BlockPos::getY,null,unused->0,s->stats[0]=s);
+        assertNull(route);
+        assertNotNull(stats[0]);
+        assertEquals(Set.of(start,a,b),stats[0].reachable());
+        assertFalse(stats[0].budgetExhausted());
     }
 }

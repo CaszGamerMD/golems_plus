@@ -55,7 +55,7 @@ public final class WorksiteContent {
     public static EntityType<BeekeeperGolem> BEEKEEPER_GOLEM;
     public static EntityType<ChefGolem> CHEF_GOLEM;
     public static EntityType<FisherGolem> FISHER_GOLEM;
-    public static Item FISHING_BAIT,FISHING_MARKER_ITEM;
+    public static Item FISHING_BAIT,FISHING_MARKER_ITEM,GRAPPLE_HOOK;
     public static FishingSpotBlock FISHING_SPOT;
     public static Item BUILDER_WORKER_ITEM, TRADER_WORKER_ITEM, BEEKEEPER_WORKER_ITEM, CHEF_WORKER_ITEM, FISHER_WORKER_ITEM;
     private static final ResourceKey<CreativeModeTab> TAB = ResourceKey.create(
@@ -139,6 +139,10 @@ public final class WorksiteContent {
         FISHING_MARKER_ITEM=Registry.register(BuiltInRegistries.ITEM,markerKey,
                 new FishingSpotMarkerItem(new Item.Properties()
                         .stacksTo(1).setId(markerKey)));
+        ResourceKey<Item> grappleKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("grapple_hook"));
+        GRAPPLE_HOOK=Registry.register(BuiltInRegistries.ITEM,grappleKey,
+                new Item(new Item.Properties().stacksTo(1).setId(grappleKey)));
         TRADER_COUNTER_ITEM = blockItem("trader_counter", TRADER_COUNTER);
         BEEKEEPER_STATION_ITEM=blockItem("beekeeper_station",BEEKEEPER_STATION);
         COOKING_STATION_ITEM=blockItem("cooking_station",COOKING_STATION);
@@ -223,6 +227,7 @@ public final class WorksiteContent {
                             // but the bag workstation replaces it in new kitchens.
                             output.accept(FISHING_MARKER_ITEM);
                             output.accept(FISHING_BAIT);
+                            output.accept(GRAPPLE_HOOK);
                             output.accept(COOKING_STATION_ITEM);
                             output.accept(MEAL_COUNTER_ITEM);
                             output.accept(BUILDER_WORKER_ITEM);

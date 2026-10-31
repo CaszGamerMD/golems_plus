@@ -84,6 +84,18 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private String placedSchematicName="";
     private int builderCursor;
     private int builderClearCursor;
+    // Absolute schematic indices are preserved for save compatibility.
+    // These separate counts exclude ignored crop/vegetation placements.
+    private int builderWorkTotal=-1,builderWorkDone=-1;
+    // Which previously unbuilt crop positions were auto-acknowledged.
+    // Saved so switching the filter OFF while working can reopen them
+    // without losing physically completed placements.
+    private final java.util.Set<Integer> builderAutoSkippedPlants=
+            new java.util.HashSet<>();
+    private transient java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step>
+            builderProgressPlan;
+    private transient int builderProgressCursor=-1,builderProgressFinished=-1,
+            builderProgressIgnored=-1;
     // Separate claims let eight Builders clear different schematic cells
     // without advancing the saved contiguous verification cursor early.
     private final Map<UUID,Integer> builderClearClaims=new HashMap<>();
@@ -102,6 +114,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.List<UUID> additionalBuilderWorkers=new java.util.ArrayList<>();
     private final java.util.List<UUID> additionalTraderWorkers=new java.util.ArrayList<>();
     private final java.util.Map<UUID,Integer> builderClaims=new java.util.LinkedHashMap<>();
+    // Read-only per-crew trace for interrupted work claims. Not saved as
+    // gameplay state: persistent claims, inventory and retry timestamps
+    // continue to use their existing server-owned data structures.
+    private final java.util.Map<UUID,String> builderClaimDebug=new java.util.HashMap<>();
+    public String builderClaimDebug(UUID worker){
+        return builderClaimDebug.getOrDefault(worker,"no claim history");
+    }
     /** Persistent, disjoint ten-coordinate work orders. No worker must
      * walk to the Planning Table to request an order: the block entity
      * assigns coordinates on the server when a Builder becomes available.
@@ -460,6 +479,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(!isBuilder()||!canConfigure(actor)||!hasPlacedSchematic())return false;
         if(builderIgnorePlants==enabled)return true;
         builderIgnorePlants=enabled;
+        builderProgressPlan=null;
         if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
             builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
         // Existing packed shulkers belong to the old manifest. Request
@@ -580,7 +600,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderRemaining.clear();builderRemaining.putAll(selected.remaining());
         warehouse=selected.warehouse();builderMaterialStorage=selected.storage();
         builderIgnorePlants=selected.ignorePlants();
-        builderPlaced=true;completedAhead=0;builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
+        builderPlaced=true;completedAhead=0;builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
+        builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
+        builderProgressPlan=null;
         builderWarehouseStock.clear();builderStockChecked=false;builderWarehouseName="";
         try{phase=WorkerPhase.valueOf(selected.phase());}
         catch(IllegalArgumentException ex){phase=WorkerPhase.READY;}
@@ -615,6 +637,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderWarehouseStock.clear();builderStagedStock.clear();
             builderStockChecked=false;builderWarehouseName="";
             builderClaims.clear();completedAhead=0;phase=WorkerPhase.IDLE;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
+            builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
+            builderProgressPlan=null;
             sync();return true;
         }
         // Selecting a saved job automatically persists its snapshot.
@@ -624,6 +648,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return selectBuilderJob(actor,successor);
     }
     public int builderBlocks() { return builderBlocks; }
+    /** Genuine required placements, excluding crop/plant no-ops. */
+    public int builderWorkTotal(){
+        return builderWorkTotal>=0?builderWorkTotal:builderBlocks;
+    }
+    /** Completed required placements, including independent zones ahead. */
+    public int builderWorkDone(){
+        return builderWorkDone>=0?builderWorkDone:builderCursor;
+    }
     public int builderUnresolved() { return builderUnresolved; }
     public int builderRotation() { return builderRotation; }
     public int builderMirror(){return builderMirror;}
@@ -932,40 +964,87 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public void beginBuilderZonePlan(){
         if(!isBuilder()||activeOrder==null)return;
         builderClaims.clear();
+        builderClaimDebug.clear();
         builderWorkOrders.clear();
         builderPreparedOrders.clear();
         builderZoned=true;
         sync();
     }
 
-    /** Each worker owns its entire zone in the compiled plan. Return the
-     * SAME claimed step until it is completed or deliberately deferred.
-     * Only visit the OnSite depot at the boundary of a physical staging
-     * window; every window is drawn in order from this fixed worker plan.
-     *
-     * No full-schematic scans, no assignment stealing, no crew-wide barrier.
+    /** A finished zone has NO outstanding schematic coordinates, across
+     * ALL heights. This is not the same as a temporarily empty stage after
+     * a support/access/material retry. A finished worker returns OnSite.
+     */
+    public boolean builderZoneDone(java.util.List<Integer> fullZone){
+        if(fullZone==null||fullZone.isEmpty())return true;
+        for(int idx:fullZone)
+            if(idx>=builderCursor&&!builderFinishedSteps.contains(idx))
+                return false;
+        return true;
+    }
+
+    /** Crew-wide construction height gate. The placed schematic is
+     * compiled strictly bottom-to-top. builderCursor is the FIRST
+     * unfinished step, even when other workers have completed positions
+     * farther ahead on this same Y. A deferred, inaccessible or missing
+     * material step keeps its entire layer active until actually done.
+     * This does not restrict safe walking/grappling between heights.
+     */
+    public int builderActiveLayer(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(steps==null||builderCursor<0||builderCursor>=steps.size())
+            return Integer.MAX_VALUE;
+        return steps.get(builderCursor).y();
+    }
+
+    /** Each Builder owns its X/Z zone. ALL workers must finish ALL
+     * unfinished coordinates on the current shared Y before the Planner
+     * assigns any block on a higher Y. A blocked step is retried in
+     * the same layer (not discarded); idle workers return OnSite.
      */
     public int claimBuilderZoneStep(UUID worker,java.util.List<Integer> fullZone,
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(activeOrder==null||!builderWorkerIds().contains(worker)
-                ||fullZone==null||fullZone.isEmpty())return -1;
+                ||fullZone==null||fullZone.isEmpty()
+                ||steps==null||builderCursor>=steps.size())return -1;
+        int layer=builderActiveLayer(steps);
         int current=builderClaims.getOrDefault(worker,-1);
-        if(current>=0&&current<steps.size()
-                &&!builderFinishedSteps.contains(current))return current;
+        long now=level==null?0:level.getGameTime();
+        if(current>=builderCursor&&current<steps.size()
+                &&steps.get(current).y()==layer
+                &&!builderFinishedSteps.contains(current)
+                &&builderMissingRetries.getOrDefault(current,0L)<=now)
+            return current;
         builderClaims.remove(worker);
         var stage=builderWorkOrders.get(worker);
-        if(stage==null||stage.isEmpty()){
-            int lowest=Integer.MAX_VALUE;
-            for(int idx:fullZone){
-                if(idx>=0&&idx<steps.size()&&!builderFinishedSteps.contains(idx)){
-                    lowest=steps.get(idx).y();break;
+        if(stage!=null){
+            // An old persisted or in-flight batch may include a prior
+            // layer or higher-Y cells from the former free-Y policy.
+            // Restage with ONLY current-layer tasks, without losing any
+            // real saved completion or materials in the worker's pouch.
+            boolean wrongLayer=false,runnable=false;
+            for(int idx:stage){
+                if(idx<0||idx>=steps.size()
+                        ||steps.get(idx).y()!=layer){
+                    wrongLayer=true;break;
                 }
+                if(idx>=builderCursor&&!builderFinishedSteps.contains(idx)
+                        &&builderMissingRetries.getOrDefault(idx,0L)<=now)
+                    runnable=true;
             }
-            if(lowest==Integer.MAX_VALUE)return -1;
+            if(wrongLayer||!runnable){
+                builderWorkOrders.remove(worker);
+                builderPreparedOrders.remove(worker);
+                stage=null;
+            }
+        }
+        if(stage==null||stage.isEmpty()){
             var newStage=new java.util.ArrayList<Integer>(BUILDER_STAGE_SIZE);
             for(int idx:fullZone){
-                if(idx<0||idx>=steps.size()||builderFinishedSteps.contains(idx))continue;
-                if(steps.get(idx).y()!=lowest)break;
+                if(idx<builderCursor||idx>=steps.size()
+                        ||steps.get(idx).y()!=layer
+                        ||builderFinishedSteps.contains(idx)
+                        ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
                 newStage.add(idx);
                 if(newStage.size()>=BUILDER_STAGE_SIZE)break;
             }
@@ -973,16 +1052,102 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderWorkOrders.put(worker,newStage);
             builderPreparedOrders.remove(worker);
             stage=newStage;
-            sync(); // Only on stage refresh, not on each coordinate.
+            sync();
         }
-        long now=level==null?0:level.getGameTime();
         for(int idx:stage){
-            if(builderFinishedSteps.contains(idx)
+            if(idx<builderCursor||idx>=steps.size()
+                    ||steps.get(idx).y()!=layer
+                    ||builderFinishedSteps.contains(idx)
                     ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
             builderClaims.put(worker,idx);
             return idx;
         }
-        return -1; // deferred dependencies remain in this zone's layer
+        return -1;
+    }
+    /** The Frontier Planner may inspect pending work without claiming it.
+     * All previous completion, retries and strict shared-Y checks still
+     * belong to this authoritative persistent Planner, never the client.
+     */
+    public boolean builderStepReadyForClaim(int index){
+        long now=level==null?0:level.getGameTime();
+        return activeOrder!=null&&index>=builderCursor
+                &&index<builderBlocks&&!builderFinishedSteps.contains(index)
+                &&builderMissingRetries.getOrDefault(index,0L)<=now;
+    }
+    /** A finished-zone helper may rescue an inaccessible neighboring
+     * roof cell, but can never take a step already held by its owner.
+     * All claims are serialized on the Minecraft server thread. */
+    public boolean builderStepClaimedByOther(UUID requester,int index){
+        for(var claim:builderClaims.entrySet())
+            if(!claim.getKey().equals(requester)&&claim.getValue()==index)
+                return true;
+        return false;
+    }
+
+    /** Claim one PREVALIDATED same-Y frontier cell instead of blindly
+     * taking the first indexed block in the ten-block batch.
+     *
+     * No remote item movement: restaging clears the prepared flag only.
+     * The real Builder pouch and any already completed cell remain saved.
+     * A previously blocked worker can select another physically feasible
+     * block from its OWN X/Z zone, on the SAME strict global Y.
+     */
+    public int claimPreferredBuilderZoneStep(UUID worker,java.util.List<Integer> fullZone,
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
+            int preferred){
+        if(activeOrder==null||!builderWorkerIds().contains(worker)
+                ||steps==null||fullZone==null||preferred<0
+                ||preferred>=steps.size()||!fullZone.contains(preferred)
+                ||steps.get(preferred).y()!=builderActiveLayer(steps)
+                ||!builderStepReadyForClaim(preferred)
+                ||builderStepClaimedByOther(worker,preferred))return -1;
+        int active=builderClaims.getOrDefault(worker,-1);
+        if(active==preferred)return active;
+        var stage=builderWorkOrders.get(worker);
+        boolean inStage=stage!=null&&stage.contains(preferred);
+        if(!inStage){
+            // The incoming frontier cell must be the FIRST staged item,
+            // so it can begin while the other nine are merely stocked.
+            var fresh=new java.util.ArrayList<Integer>(BUILDER_STAGE_SIZE);
+            fresh.add(preferred);
+            for(int idx:fullZone){
+                if(fresh.size()>=BUILDER_STAGE_SIZE)break;
+                if(idx==preferred||idx<0||idx>=steps.size()
+                        ||steps.get(idx).y()!=steps.get(preferred).y()
+                        ||!builderStepReadyForClaim(idx))continue;
+                fresh.add(idx);
+            }
+            builderWorkOrders.put(worker,fresh);
+            builderPreparedOrders.remove(worker);
+        }
+        builderClaims.put(worker,preferred);
+        builderClaimDebug.put(worker,"claimed #"+preferred
+                +" at "+(level==null?0:level.getGameTime())
+                +" previous="+active);
+        sync();
+        return preferred;
+    }
+
+    /** No route or anchor is currently valid for a claimed cell. Keep
+     * the exact unfinished index to retry, while other Builders may
+     * work on the SAME shared Y. Higher Y remains locked until done.
+     */
+    public void waitForBuilderAccess(UUID worker,int step,long tick){
+        waitForBuilderAccess(worker,step,tick,"unspecified");
+    }
+    /** Keep the exact physical reason a claimed task was deferred.
+     * This trace is ephemeral and never alters build progress or material
+     * accounting. It lets dome pilots diagnose actual failed arrivals.
+     */
+    public void waitForBuilderAccess(UUID worker,int step,long tick,
+            String reason){
+        if(builderClaims.getOrDefault(worker,-1)!=step)return;
+        builderClaims.remove(worker);
+        builderClaimDebug.put(worker,"deferred #"+step
+                +" at "+tick+" retryAt="+(tick+60)
+                +" reason="+reason);
+        builderMissingRetries.put(step,tick+60);
+        setChanged();
     }
 
     /** Move one exact same-layer coordinate to a worker who already holds
@@ -1029,6 +1194,131 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return true;
     }
 
+    /** Read-only accounting while the site is still being cleared.
+     * Preview the correct denominator immediately, but never complete
+     * ignored coordinates before real clearing has finished.
+     */
+    public void previewBuilderWork(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(!isBuilder()||steps==null||steps.size()!=builderBlocks)return;
+        if(builderProgressPlan==steps&&builderProgressCursor==builderCursor
+                &&builderProgressFinished==builderFinishedSteps.size()
+                &&builderProgressIgnored==builderAutoSkippedPlants.size()
+                &&builderWorkTotal>=0)return;
+        int required=0,completed=0;
+        for(int i=0;i<steps.size();i++){
+            if(steps.get(i).ignorePlant())continue;
+            required++;
+            if(i<builderCursor||builderFinishedSteps.contains(i))completed++;
+        }
+        boolean changed=builderWorkTotal!=required||builderWorkDone!=completed;
+        builderWorkTotal=required;
+        builderWorkDone=completed;
+        builderProgressPlan=steps;
+        builderProgressCursor=builderCursor;
+        builderProgressFinished=builderFinishedSteps.size();
+        builderProgressIgnored=builderAutoSkippedPlants.size();
+        if(changed)sync();
+    }
+
+    /**
+     * Reconcile ignored vegetation against the actual server-side plan.
+     * Never compact the indexed schematic: saved claims, zones, clearance
+     * and historical cursor positions all address those original indices.
+     * Call only AFTER physical site clearing; an ignored schematic crop
+     * is not permission to leave a real obstruction in the world.
+     *
+     * A filtered plant is a confirmed no-op, not an assignment requiring
+     * pathfinding, stock, or a worker. An unfinished REAL cell can never
+     * be silently marked done. Disabling the filter reopens only the
+     * tracked no-ops, preserving the actual completed prefix and zone bits.
+     */
+    public void reconcileBuilderWork(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(!isBuilder()||steps==null||steps.size()!=builderBlocks)return;
+        boolean changed=false;
+        if(!builderIgnorePlants&&!builderAutoSkippedPlants.isEmpty()){
+            int oldCursor=builderCursor;
+            int restart=builderAutoSkippedPlants.stream().mapToInt(Integer::intValue)
+                    .min().orElse(oldCursor);
+            for(int i=restart;i<oldCursor;i++)
+                if(!builderAutoSkippedPlants.contains(i))
+                    builderFinishedSteps.add(i);
+            builderCursor=Math.min(builderCursor,restart);
+            builderFinishedSteps.removeAll(builderAutoSkippedPlants);
+            builderAutoSkippedPlants.clear();
+            builderClaims.clear();builderWorkOrders.clear();
+            builderPreparedOrders.clear();builderMissingRetries.clear();
+            changed=true;
+        }
+        if(builderIgnorePlants)
+            for(int i=builderCursor;i<steps.size();i++)
+                if(steps.get(i).ignorePlant()&&!builderFinishedSteps.contains(i)){
+                    builderAutoSkippedPlants.add(i);
+                    builderFinishedSteps.add(i);
+                    changed=true;
+                }
+        // Auto-acknowledged positions might be claimed by older saved
+        // work orders. Do not let those workers revisit already done cells.
+        if(changed){
+            builderClaims.entrySet().removeIf(e->
+                    builderAutoSkippedPlants.contains(e.getValue()));
+            for(var entry:new java.util.ArrayList<>(builderWorkOrders.entrySet())){
+                if(entry.getValue().removeIf(builderAutoSkippedPlants::contains))
+                    builderPreparedOrders.remove(entry.getKey());
+                if(entry.getValue().isEmpty()){
+                    builderWorkOrders.remove(entry.getKey());
+                    builderPreparedOrders.remove(entry.getKey());
+                }
+            }
+            builderMissingRetries.keySet().removeAll(builderAutoSkippedPlants);
+        }
+        int previousCursor=builderCursor;
+        while(builderCursor<builderBlocks
+                &&builderFinishedSteps.remove(builderCursor))
+            builderCursor++;
+        changed|=previousCursor!=builderCursor;
+        int finishedSize=builderFinishedSteps.size();
+        if(changed||builderProgressPlan!=steps
+                ||builderProgressCursor!=builderCursor
+                ||builderProgressFinished!=finishedSize
+                ||builderProgressIgnored!=builderAutoSkippedPlants.size()
+                ||builderWorkTotal<0){
+            int required=0,done=0;
+            for(int i=0;i<steps.size();i++){
+                if(steps.get(i).ignorePlant())continue;
+                required++;
+                if(i<builderCursor||builderFinishedSteps.contains(i))done++;
+            }
+            if(builderWorkTotal!=required||builderWorkDone!=done)changed=true;
+            builderWorkTotal=required;
+            builderWorkDone=done;
+            builderProgressPlan=steps;
+            builderProgressCursor=builderCursor;
+            builderProgressFinished=finishedSize;
+            builderProgressIgnored=builderAutoSkippedPlants.size();
+        }
+        // Re-enabling required vegetation on a previously finished job
+        // must not keep displaying a false 100% COMPLETE. The owner can
+        // start it again; real already-placed blocks are checked in-world.
+        if(activeOrder==null&&phase==WorkerPhase.COMPLETE
+                &&builderCursor<builderBlocks){
+            phase=WorkerPhase.READY;
+            changed=true;
+        }
+        if(activeOrder!=null&&builderCursor>=builderBlocks){
+            phase=WorkerPhase.COMPLETE;activeOrder=null;
+            builderClaims.clear();builderWorkOrders.clear();
+            builderPreparedOrders.clear();builderFinishedSteps.clear();
+            changed=true;
+        }
+        if(changed){
+            if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
+                builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
+            sync();
+        }
+    }
+
     public boolean completeBuilderStep(UUID worker,int index){
         if(builderClaims.getOrDefault(worker,-1)!=index)return false;
         builderClaims.remove(worker);
@@ -1042,6 +1332,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
             }
         }
         builderFinishedSteps.add(index);
+        // Real completed placements update the visible total immediately,
+        // even when this is the LAST step and the order closes now.
+        if(builderWorkTotal>=0&&!builderAutoSkippedPlants.contains(index))
+            builderWorkDone=Math.min(builderWorkTotal,builderWorkDone+1);
         while(builderFinishedSteps.remove(builderCursor))builderCursor++;
         if(builderCursor>=builderBlocks){
             phase=WorkerPhase.COMPLETE;activeOrder=null;builderClaims.clear();
@@ -1163,13 +1457,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderWarehouseName="";
         builderMaterialStorage=null;
         builderIgnorePlants=false;
+        builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
+        builderProgressPlan=null;
         selectedBuilderJob=builderJobs.size();
         builderJobs.add(snapshotBuilderJob());
         phase=WorkerPhase.READY;sync();return true;
     }
     public boolean startPlacedBuilder(UUID actor){
         if(!canConfigure(actor)||!isBuilder()||!hasPlacedSchematic()
-                ||activeOrder!=null||warehouse==null
+                ||activeOrder!=null||(warehouse==null&&builderMaterialStorage==null)
                 ||builderWorkerIds().isEmpty()||builderBlocks<1)return false;
         activeOrder=UUID.randomUUID();builderCursor=0;completedAhead=0;
         builderClearCursor=0;builderClearByFile.put(builderFile,0);
@@ -1177,6 +1473,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClearVerified.clear();
         builderMissingRetries.clear();
         builderClaims.clear();builderRecallRequested=false;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
+        builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
+        builderProgressPlan=null;
         phase=WorkerPhase.WORKING;sync();return true;
     }
     public void advanceBuilder(){
@@ -1578,6 +1876,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putString("builder_placement_name",placedSchematicName);
         out.putBoolean("builder_placed",builderPlaced);
         out.putInt("builder_cursor",builderCursor);
+        out.putInt("builder_work_total",builderWorkTotal);
+        out.putInt("builder_work_done",builderWorkDone);
+        var ignoredBits=new java.util.BitSet();
+        for(int index:builderAutoSkippedPlants)
+            if(index>=0&&index<builderBlocks)ignoredBits.set(index);
+        out.putString("builder_auto_ignored_bits_v1",
+                java.util.Base64.getEncoder().encodeToString(ignoredBits.toByteArray()));
         if(builderWorkerId!=null)out.putString("builder_worker",builderWorkerId.toString());
         out.putInt("trader_extra_workers",Math.min(3,additionalTraderWorkers.size()));
         for(int n=0;n<additionalTraderWorkers.size()&&n<3;n++)
@@ -1850,6 +2155,18 @@ public final class WorkerStationBlockEntity extends BlockEntity
             if(!id.isBlank()&&count>=0)builderWarehouseStock.put(id,count);
         }
         builderCursor=Math.clamp(in.getIntOr("builder_cursor",0),0,builderBlocks);
+        builderWorkTotal=in.getIntOr("builder_work_total",-1);
+        builderWorkDone=in.getIntOr("builder_work_done",-1);
+        builderProgressPlan=null;
+        builderAutoSkippedPlants.clear();
+        String ignoredEncoded=in.getStringOr("builder_auto_ignored_bits_v1","");
+        if(!ignoredEncoded.isBlank()&&ignoredEncoded.length()<=18000)try{
+            var bits=java.util.BitSet.valueOf(
+                    java.util.Base64.getDecoder().decode(ignoredEncoded));
+            for(int bit=bits.nextSetBit(0);bit>=0&&bit<builderBlocks;
+                    bit=bits.nextSetBit(bit+1))
+                builderAutoSkippedPlants.add(bit);
+        }catch(IllegalArgumentException ignored){}
         builderClearCursor=Math.max(0,in.getIntOr("builder_clear_cursor",
                 builderClearByFile.getOrDefault(builderFile,0)));
         builderClearClaims.clear();builderClearClaimTick.clear();
