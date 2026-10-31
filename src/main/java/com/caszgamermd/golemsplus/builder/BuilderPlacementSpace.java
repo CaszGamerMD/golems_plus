@@ -55,14 +55,19 @@ public final class BuilderPlacementSpace {
         double dz=Math.max(0,Math.max(block.getZ()-z,z-(block.getZ()+1.0)));
         return Math.hypot(dx,dz);
     }
-    /** Builders may work from the target layer OR one grounded block
-     * above it. Layer-by-layer assignments are unchanged; this defines
-     * where their FEET may stand, not which schematic Y is unlocked.
+    /** A Builder with a three-block reach can place an overhead block
+     * from grounded footing one or two blocks below it, provided the
+     * separate exact reach, line-of-sight and escape checks also pass.
+     * This is ordinary hand placement, not a flying work stance: it
+     * cannot license an out-of-reach target or unlock a schematic layer.
      */
     public static boolean placementHeight(BlockPos target,BuilderGolem worker){
         int feetY=worker.blockPosition().getY();
-        return feetY==target.getY() || feetY==target.getY()+1
-                &&worker.onGround()&&!worker.isNoGravity();
+        return feetY==target.getY()
+                ||worker.onGround()&&!worker.isNoGravity()
+                    &&(feetY==target.getY()+1
+                        ||feetY==target.getY()-1
+                        ||feetY==target.getY()-2);
     }
     /** The same horizontal margin applies when placing DOWN one block.
      * Being vertically above an AIR target is NOT an exemption: otherwise
@@ -292,7 +297,10 @@ public final class BuilderPlacementSpace {
     public static BlockPos approachWithRules(ServerLevel level,
             BuilderGolem worker,BlockPos target,
             java.util.function.Predicate<BlockPos> safe){
-        return approachWithHeight(level,worker,target,true,safe);
+        // A grounded Y-1/Y-2 work stance can be closer and safer than
+        // constructing a tower to stand beside an already in-reach block.
+        // The safeStand predicate still rejects any unsupported pose.
+        return approachWithHeight(level,worker,target,false,safe);
     }
     private static BlockPos approachWithHeight(ServerLevel level,
             BuilderGolem worker,BlockPos target,boolean sameHeight,

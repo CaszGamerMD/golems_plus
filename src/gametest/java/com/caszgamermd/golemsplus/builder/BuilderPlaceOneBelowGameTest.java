@@ -14,6 +14,51 @@ import net.minecraft.world.level.block.Blocks;
  * to schedule schematic layer Y+1 before finishing the current layer.
  */
 public final class BuilderPlaceOneBelowGameTest {
+    /** The third course of the dome is within a Builder's three-block
+     * hand reach from the adjacent ground. It should not require a
+     * grapple simply because its feet are two Y below the cap block.
+     */
+    @GameTest(maxTicks=120,skyAccess=true)
+    public void groundedBuilderCanPlaceTwoLevelsAboveWithinArmReach(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        helper.setBlock(3,2,3,Blocks.COBBLESTONE);
+        helper.setBlock(3,3,3,Blocks.COBBLESTONE);
+        BlockPos target=helper.absolutePos(new BlockPos(3,4,3));
+        var table=(WorkerStationBlockEntity)level.getBlockEntity(
+                helper.absolutePos(new BlockPos(0,2,0)));
+        BuilderGolem mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        mob.setPos(target.getX()+1.92,target.getY()-2,target.getZ()+.5);
+        level.addFreshEntity(mob);
+        if(!table.registerBuilderWorker(mob.getUUID())){
+            helper.fail("Builder registration failed");return;
+        }
+        helper.onEachTick(()->{
+            if(helper.getTick()<6)return;
+            if(!mob.onGround()||mob.blockPosition().getY()!=target.getY()-2
+                    ||!BuilderPlacementSpace.placementHeight(target,mob)
+                    ||!BuilderPlacementSpace.horizontalClear(target,mob)
+                    ||mob.distanceToSqr(target.getX()+.5,
+                            target.getY()+.5,target.getZ()+.5)>=14
+                    ||!BuilderConstructionPlanner.safeStand(
+                            level,mob,target,mob.blockPosition())
+                    ||!BuilderPlacementSpace.ready(level,mob,table,target)){
+                helper.fail("Rejected real, in-reach Y+2 roof cap from ground");
+                return;
+            }
+            if(!level.setBlock(target,Blocks.IRON_BLOCK.defaultBlockState(),3)
+                    ||mob.getBoundingBox().intersects(
+                            new net.minecraft.world.phys.AABB(target))){
+                helper.fail("Overhead placement collided with Builder");return;
+            }
+            System.out.println("[GROUND ROOF CAP] PASS real grounded arm reach "
+                    +"two Y above feet with exit and clearance");
+            helper.succeed();
+        });
+    }
     @GameTest(maxTicks=120,skyAccess=true)
     public void groundedBuilderPlacesBelowFromPointEightSideMargin(
             GameTestHelper helper){

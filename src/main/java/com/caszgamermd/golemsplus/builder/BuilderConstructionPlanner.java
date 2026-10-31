@@ -134,7 +134,9 @@ public final class BuilderConstructionPlanner {
             BlockPos target,BlockPos stance){
         return stance.distSqr(target)<REACH_SQUARED
                 &&(stance.getY()==target.getY()
-                        ||stance.getY()==target.getY()+1)
+                        ||stance.getY()==target.getY()+1
+                        ||stance.getY()==target.getY()-1
+                        ||stance.getY()==target.getY()-2)
                 &&lineOfSight(world,builder,stance,target)
                 &&exitAfterPlacement(world,builder,stance,target);
     }

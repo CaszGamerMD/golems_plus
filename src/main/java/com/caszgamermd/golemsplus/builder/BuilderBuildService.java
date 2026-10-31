@@ -689,6 +689,35 @@ public final class BuilderBuildService {
                 return;
             }
             int yDiff=pos.getY()-worker.blockPosition().getY();
+            boolean temporaryWorkPose=BuilderScaffoldPlanA.safeTemporaryWorkPose(
+                    level,worker,table,pos);
+            double workDistance=worker.distanceToSqr(
+                    pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+            boolean directOrdinaryWork=BuilderPlacementSpace.placementHeight(
+                        pos,worker)
+                    &&workDistance<14
+                    &&BuilderPlacementSpace.horizontalClear(pos,worker)
+                    &&(temporaryWorkPose||BuilderConstructionPlanner.safeStand(
+                            level,worker,pos,worker.blockPosition()));
+            // Low dome walls and fence caps often sit two Y above a
+            // grounded Builder. Its normal three-block hand reach may
+            // already cover the target from a SIDE stance. Find that
+            // safe, walkable position before spending time on a rope or
+            // scaffold tower. A trained route can walk backward first.
+            if(yDiff>1&&!directOrdinaryWork
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
+                BlockPos walk=BuilderPlacementSpace.approachWithRules(
+                        level,worker,pos,
+                        at->BuilderConstructionPlanner.safeStand(
+                                level,worker,pos,at));
+                if(walk!=null){
+                    activity.phase=Action.MOVE_TO_WORK;
+                    if(com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .routeToExact(level,worker,walk,1.0))return;
+                    BuilderPlacementSpace.invalidateApproach(worker,pos);
+                }
+            }
             // A grapple can repeatedly select an unreachable high ledge.
             // After a genuine physical approach timeout, try a supported,
             // inventory-paid scaffold bridge rooted on this same build.
@@ -698,12 +727,13 @@ public final class BuilderBuildService {
             // low-layer work paths and onto needless scaffold searches.
             // Same-Y scaffolding is instead offered below only AFTER
             // all safe walking stances or their real routes are rejected.
-            if(yDiff>1&&now-activity.workTravelSince>260
+            if(yDiff>1&&!directOrdinaryWork
+                    &&now-activity.workTravelSince>260
                     &&!BuilderGrappleAccess.active(worker)
                     &&scaffoldBlockedWork(level,worker,table,owner,pos,
                             plan.steps()))
                 return;
-            if(yDiff>1){
+            if(yDiff>1&&!directOrdinaryWork){
                 var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
                 if(access==BuilderGrappleAccess.Result.NEED_HOOK){
                     // A hook shortage is not a movement prohibition.
@@ -722,10 +752,6 @@ public final class BuilderBuildService {
                 }
                 if(access==BuilderGrappleAccess.Result.MOVING)return;
             }
-            boolean temporaryWorkPose=BuilderScaffoldPlanA.safeTemporaryWorkPose(
-                    level,worker,table,pos);
-            double workDistance=worker.distanceToSqr(
-                    pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
             if(!BuilderPlacementSpace.placementHeight(pos,worker)
                     ||workDistance>14
                     ||!BuilderPlacementSpace.horizontalClear(pos,worker)
