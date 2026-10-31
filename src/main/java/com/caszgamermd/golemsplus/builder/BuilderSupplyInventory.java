@@ -23,6 +23,12 @@ public final class BuilderSupplyInventory {
     public record Receipt(Container source,int slot,ItemStack previous,
                           ItemStack consumed) {}
     private BuilderSupplyInventory(){}
+    // Best-effort kit staging: short retry window for simultaneous crew
+    // visits to the same real OnSite chest. Never spawn tools or wait forever
+    // if the user has not actually supplied them.
+    private static final long STARTER_KIT_RETRY_TICKS=100;
+    private static final Map<BuilderGolem,Long> kitStageStarted=
+            new java.util.WeakHashMap<>();
     private static NonNullList<ItemStack> contents(ItemStack box){
         var slots=NonNullList.withSize(27,ItemStack.EMPTY);
         box.getOrDefault(DataComponents.CONTAINER,ItemContainerContents.EMPTY).copyInto(slots);
@@ -286,6 +292,10 @@ public final class BuilderSupplyInventory {
         }
         worker.organizeToolBelt();
         Map<String,Integer> materials=new LinkedHashMap<>();
+        // Prioritize the reserved tool belt before schematic material stacks.
+        materials.put("golems_plus:grapple_hook",1);
+        materials.put("minecraft:scaffolding",64);
+        materials.put("minecraft:bucket",1);
         int highest=worker.blockPosition().getY();
         for(int index:indices){
             if(index<0||index>=steps.size())continue;
@@ -298,9 +308,6 @@ public final class BuilderSupplyInventory {
         // only from real OnSite stock: one reusable hook, up to a full
         // 64-block stack of scaffolding and one empty bucket. This does
         // not take construction-material slots or fabricate absent tools.
-        materials.put("golems_plus:grapple_hook",1);
-        materials.put("minecraft:scaffolding",64);
-        materials.put("minecraft:bucket",1);
         int highestSchematic=steps.stream().mapToInt(
                 BuilderConstructionPlan.Step::y).max().orElse(highest);
         // Distant final-cap blocks still wait until the final eight
@@ -351,6 +358,21 @@ public final class BuilderSupplyInventory {
             if(needed<=0)continue;
             drawFromSources(table,worker,item,needed);
         }
+        int scaffolds=worker.getItem(BuilderGolem.SCAFFOLD_BELT_SLOT).getCount();
+        boolean hook=worker.getItem(BuilderGolem.GRAPPLE_BELT_SLOT).is(
+                com.caszgamermd.golemsplus.world.WorksiteContent.GRAPPLE_HOOK);
+        boolean bucket=worker.getItem(BuilderGolem.BUCKET_BELT_SLOT).is(
+                net.minecraft.world.item.Items.BUCKET);
+        if(scaffolds<20||!hook||!bucket){
+            long start=kitStageStarted.computeIfAbsent(worker,
+                    ignored->level.getGameTime());
+            if(level.getGameTime()-start<STARTER_KIT_RETRY_TICKS)
+                return LoadStatus.MISSING; // Retry physical chest next tick.
+            System.out.println("[BUILDER KIT] partial after actual stock retries"
+                    +" worker="+worker.getName().getString()
+                    +" scaffolds="+scaffolds+" hook="+hook+" bucket="+bucket);
+        }
+        kitStageStarted.remove(worker);
         return LoadStatus.READY;
     }
 
