@@ -616,8 +616,15 @@ public final class BuilderScaffoldPlanA {
         }
         switch(j.phase){
             case APPROACH -> {
-                if(Math.abs(worker.getX()-j.base.getX()-.5)>.3
-                        ||Math.abs(worker.getZ()-j.base.getZ()-.5)>.3
+                // The native ground leg normally stops within roughly
+                // 0.6m of a tile center. Requiring +/-0.3 on BOTH axes
+                // left all four dome Builders idle beside valid towers:
+                // they had reached the base tile but could not finish
+                // fractional centering around the roof's tight corners.
+                // The actual scaffold controller safely recenters the
+                // body before climbing, using real collision checks.
+                if(worker.distanceToSqr(j.base.getX()+.5,worker.getY(),
+                                j.base.getZ()+.5)>1.20
                         ||Math.abs(worker.getY()-j.base.getY())>.4){
                     WorkerNavigation.routeToExact(level,worker,j.base,1.0);
                     return Result.MOVING;

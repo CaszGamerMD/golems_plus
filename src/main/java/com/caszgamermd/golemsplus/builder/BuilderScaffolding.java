@@ -708,10 +708,20 @@ public final class BuilderScaffolding {
                 approach=level.getBlockState(base).is(Blocks.SCAFFOLDING)
                         ?base.relative(side).immutable():base;
             }
-            if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeToExact(level,worker,approach,1.0))
-                com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .routeTo(level,worker,approach,1.0);
+            boolean moving=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeToExact(level,worker,approach,1.0);
+            if(!moving)moving=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeTo(level,worker,approach,1.0);
+            if(!moving){
+                // A site which passed a coarse preview can become
+                // unreachable from the worker's actual fractional feet.
+                // Do not report CLIMBING when no movement was accepted:
+                // that silently holds this build cell for 900 ticks.
+                access.remove(worker);
+                avoided.put(worker,new AvoidColumn(base.immutable(),
+                        level.getGameTime()+80));
+                return Result.NO_SAFE_TOWER;
+            }
             return Result.CLIMBING;
         }
         int wantedTop=target.getY()-1;
