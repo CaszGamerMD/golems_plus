@@ -15,6 +15,10 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.network.chat.Component;
 
 /**
@@ -159,6 +163,79 @@ public final class LitematicaPlacementClient {
         if(choice==null)throw new IllegalArgumentException("Choose a placement");
         sendPlacementObject(choice.placement(),table);
     }
+    /** Resolve the ghost blocks from Litematica's own already-transformed
+     * schematic world. Never infer positions from raw signed Region.Size,
+     * or apply placement rotation/mirror on the server a second time.
+     */
+    private static BlockGetter hologramWorld()throws Exception{
+        for(String name:new String[]{
+                "fi.dy.masa.litematica.world.SchematicWorldHandler",
+                "litematica.world.SchematicWorldHandler"}){
+            try{
+                Object world=Class.forName(name)
+                        .getMethod("getSchematicWorld").invoke(null);
+                if(world instanceof BlockGetter getter)return getter;
+            }catch(ClassNotFoundException ignored){}
+        }
+        throw new IllegalArgumentException(
+                "Litematica's schematic world is unavailable; load the hologram first");
+    }
+    @SuppressWarnings({"rawtypes","unchecked"})
+    private static String propertyValue(Property property,Comparable value){
+        return property.getName(value);
+    }
+    private static String encodeState(BlockState state){
+        String id=BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+        if(state.getValues().isEmpty())return id;
+        var values=new java.util.TreeMap<String,String>();
+        state.getValues().forEach((property,value)->
+                values.put(property.getName(),propertyValue(property,value)));
+        return id+"["+String.join(",",values.entrySet().stream()
+                .map(e->e.getKey()+"="+e.getValue()).toList())+"]";
+    }
+    private static byte[] captureVisibleHologram(Object placement,Path original)
+            throws Exception{
+        Object box=optional(placement,"getEnclosingBox");
+        if(box==null)throw new IllegalArgumentException(
+                "No Litematica placement bounding box: enable all subregions");
+        BlockPos a=asPos(firstAvailable(box,"getPos1","getCorner1"));
+        BlockPos b=asPos(firstAvailable(box,"getPos2","getCorner2"));
+        if(a==null||b==null)
+            throw new IllegalArgumentException("Cannot read hologram boundaries");
+        int minX=Math.min(a.getX(),b.getX()),maxX=Math.max(a.getX(),b.getX());
+        int minY=Math.min(a.getY(),b.getY()),maxY=Math.max(a.getY(),b.getY());
+        int minZ=Math.min(a.getZ(),b.getZ()),maxZ=Math.max(a.getZ(),b.getZ());
+        long volume=((long)maxX-minX+1)*((long)maxY-minY+1)
+                *((long)maxZ-minZ+1);
+        if(volume<1||volume>400_000)
+            throw new IllegalArgumentException(
+                    "Hologram bounding volume "+volume+" is too large for import");
+        if(minY< -64||maxY>511)
+            throw new IllegalArgumentException("Hologram outside build height");
+        // Never read the actual game world. The selected ghost is the plan.
+        BlockGetter ghost=hologramWorld();
+        var solids=new ArrayList<LitematicFileReader.Block>();
+        var air=new ArrayList<LitematicFileReader.Block>();
+        for(int y=minY;y<=maxY;y++)
+            for(int z=minZ;z<=maxZ;z++)
+                for(int x=minX;x<=maxX;x++){
+                    BlockState state=ghost.getBlockState(new BlockPos(x,y,z));
+                    if(state.isAir())air.add(new LitematicFileReader.Block(
+                            x,y,z,"minecraft:air"));
+                    else solids.add(new LitematicFileReader.Block(
+                            x,y,z,encodeState(state)));
+                }
+        // A missing/unpopulated ghost chunk must not silently become AIR.
+        // Also catch overlapping other visible schematic placements.
+        int expected=LitematicFileReader.read(original).blocks().size();
+        if(solids.size()!=expected)
+            throw new IllegalArgumentException(
+                    "Hologram is not fully resolved ("+solids.size()+"/"+
+                    expected+" solid blocks). Move near it, let Litematica "+
+                    "load it, and ensure no other hologram overlaps");
+        return BuilderPlacementSnapshot.encode(
+                String.valueOf(firstAvailable(placement,"getName")),solids,air);
+    }
     private static void sendPlacementObject(Object placement,BlockPos selectedTable)
             throws Exception{
         if(!optionalBoolean(placement,"isEnabled",true))
@@ -168,9 +245,8 @@ public final class LitematicaPlacementClient {
         Object schematic=optional(placement,"getSchematic");
         if(schematic==null)
             throw new IllegalArgumentException("Load this schematic in Litematica first");
-        if(Boolean.TRUE.equals(invoke(placement,"isRegionPlacementModified")))
-            throw new IllegalArgumentException(
-                    "Modified subregion positions/rotations are not yet supported");
+        // Subregion offsets and rotations are supported: Litematica has
+        // already applied them when producing its visible schematic world.
         // Litematica 26.2 renamed both accessors. The old calls here
         // threw NoSuchMethodException when clicking *any* listed placement.
         // getAllSubRegionsPlacements() returns Collection<SubRegionPlacement>
@@ -224,7 +300,13 @@ public final class LitematicaPlacementClient {
                 "Place and claim a Builder's Planning Table within eight blocks");
         if(!ClientPlayNetworking.canSend(BuilderUploadNetworking.Piece.TYPE))
             throw new IllegalArgumentException("Golems Plus server does not support imports");
-        byte[] data=Files.readAllBytes(path);
+        // Freeze the exact world-position hologram ONCE, at this click.
+        // Subsequent movement of the Litematica placement cannot shift
+        // the committed Builder job's target coordinates.
+        byte[] data=captureVisibleHologram(placement,path);
+        if(data.length>BuilderUploadNetworking.MAX_BYTES)
+            throw new IllegalArgumentException(
+                    "Placed hologram snapshot exceeds the 2 MiB upload limit");
         int parts=(data.length+BuilderUploadNetworking.PART_SIZE-1)
                 /BuilderUploadNetworking.PART_SIZE;
         UUID upload=UUID.randomUUID();
@@ -237,7 +319,7 @@ public final class LitematicaPlacementClient {
             byte[] chunk=java.util.Arrays.copyOfRange(data,start,end);
             ClientPlayNetworking.send(new BuilderUploadNetworking.Piece(
                     table,upload,i,parts,data.length,origin,rotationCode,mirrorCode,
-                    label,chunk));
+                    label,true,chunk));
         }
     }
 }
