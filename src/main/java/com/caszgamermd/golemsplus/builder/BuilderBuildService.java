@@ -157,6 +157,9 @@ public final class BuilderBuildService {
         if(activity.lookaheadFinished||activity.workTravelSince<0
                 ||now-activity.workTravelSince<5
                 ||worker.getNavigation().isDone()
+                    &&!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .retryScheduled(worker)
+                ||BuilderScaffoldPlanA.hasPlan(worker)
                 ||worker.distanceToSqr(target.getX()+.5,
                         target.getY()+.5,target.getZ()+.5)>100)return;
         var eligible=new java.util.ArrayList<Integer>();
