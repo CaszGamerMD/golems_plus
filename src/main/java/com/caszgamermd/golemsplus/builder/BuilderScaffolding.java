@@ -453,10 +453,18 @@ public final class BuilderScaffolding {
     static boolean stepOffAtFootHeight(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos target){
         if(exiting.containsKey(worker))return true;
-        if(!worker.onGround()||climbingNow(level,worker))return false;
+        if(climbingNow(level,worker))return false;
         BlockPos feet=worker.blockPosition();
         var owned=table.scaffoldPositions(worker.getUUID());
         if(!owned.contains(feet)&&!owned.contains(feet.below()))return false;
+        // A BOTTOM=true horizontal bridge can support a mob whose feet
+        // are a fraction of a block INSIDE the scaffold while onGround is
+        // still false. A collision-checked move to nearby real stone is
+        // safer than forcing another climb through the same bridge.
+        boolean insideOwned=owned.contains(feet)
+                &&level.getBlockState(feet).is(Blocks.SCAFFOLDING)
+                &&worker.getY()<feet.getY()+.5;
+        if(!worker.onGround()&&!insideOwned)return false;
         BlockPos chosen=null;
         double best=Double.POSITIVE_INFINITY;
         for(Direction side:Direction.Plane.HORIZONTAL)
