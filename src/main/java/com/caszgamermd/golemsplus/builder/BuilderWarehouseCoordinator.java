@@ -103,18 +103,15 @@ public final class BuilderWarehouseCoordinator {
         }
     }
     /** Table-side inbound notification, including while no golem is near. */
-    /** Cancel an outstanding ticket only after the warehouse confirms
-     * that no physical shipment, picker, or packing inventory can be lost.
+    /** Cancellation overrides missing stock and in-progress picking.
+     * The warehouse immediately stops accepting new picker work, while
+     * existing physical cargo is retained for safe return/recovery.
+     * A Builder courier holding a real shulker can unload it OnSite
+     * even after the old warehouse ticket is cleared.
      */
     public static boolean cancelShipment(ServerLevel level,
             WorkerStationBlockEntity table){
         if(table.supplyRequest()==null)return true;
-        // Do not discard the reservation UUID while its courier holds a
-        // real shulker in the saved entity. It must reach OnSite Storage
-        // first so RE-CALCULATE counts those nested materials correctly.
-        for(UUID id:table.builderWorkerIds())
-            if(level.getEntity(id) instanceof BuilderGolem golem
-                    &&golem.hasSupplyBox())return false;
         var warehouse=table.warehouse();
         if(warehouse==null||table.owner()==null
                 ||!level.dimension().identifier().toString().equals(warehouse.dimension()))
@@ -125,6 +122,9 @@ public final class BuilderWarehouseCoordinator {
                 table.owner(),table.supplyRequest(),table.supplyPtp()))
             return false;
         table.clearSupplyRequest();
+        table.setProblem("Warehouse order cancelled. Already packed shulkers "
+                +"remain at the OUTPUT PTP for recovery; in-flight picker "
+                +"materials return to warehouse racks.");
         return true;
     }
     public static void pollTable(ServerLevel level,WorkerStationBlockEntity table){

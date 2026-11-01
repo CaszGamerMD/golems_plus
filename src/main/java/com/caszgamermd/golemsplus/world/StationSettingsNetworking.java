@@ -220,9 +220,11 @@ public final class StationSettingsNetworking {
                                     (net.minecraft.server.level.ServerLevel)player.level(),
                                     table);
                     reply(player,cancelled
-                            ?"Construction stopped and unshipped warehouse order cancelled"
-                            :"Construction stopped; active cargo prevents immediate warehouse "
-                                +"cancellation. The Planner will retry without losing items.");
+                            ?"Construction stopped. Warehouse picking cancelled; "
+                                +"existing packed stock stays physically recoverable."
+                            :"Construction stopped. Warehouse cancellation is queued; "
+                                +"install updated Caszual Additions for immediate "
+                                +"picker-stop support. No cargo will be deleted.");
                 }
             }
             case "builder_restart_order" -> {
