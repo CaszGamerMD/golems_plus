@@ -48,13 +48,20 @@ public final class EnhancedScaffoldingGameTest {
         BlockHitResult hit=new BlockHitResult(
                 Vec3.atCenterOf(clicked).add(0,.5,0),
                 Direction.UP,clicked,false);
-        WorksiteContent.ENHANCED_SCAFFOLDING_ITEM.useOn(
+        var placement=WorksiteContent.ENHANCED_SCAFFOLDING_ITEM.useOn(
                 new UseOnContext(player,InteractionHand.MAIN_HAND,hit));
         BlockPos expected=helper.absolutePos(new BlockPos(11,2,2));
         if(!helper.getLevel().getBlockState(expected).is(
                 WorksiteContent.ENHANCED_SCAFFOLDING)){
+            StringBuilder placed=new StringBuilder();
+            for(int x=0;x<15;x++)
+                if(helper.getLevel().getBlockState(helper.absolutePos(
+                        new BlockPos(x,2,2))).is(WorksiteContent.ENHANCED_SCAFFOLDING))
+                    placed.append(x).append(",");
             helper.fail("Top click did not extend east to the first open cell"
-                    +" past the vanilla 7-block limit");
+                    +" past the vanilla 7-block limit; facing="+player.getDirection()
+                    +" result="+placement+" placedX="+placed
+                    +" held="+player.getItemInHand(InteractionHand.MAIN_HAND).getCount());
             return;
         }
         helper.succeed();
