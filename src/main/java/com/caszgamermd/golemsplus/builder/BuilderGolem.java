@@ -237,7 +237,13 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         // per second. Offset different entities across server ticks: a
         // large crew must not all scan inventories/pathfind/serialize the
         // Planner on the SAME tick (the original synchronized sputter).
-        if((tickCount+getId())%5==0 && level() instanceof ServerLevel server)
+        // Heavy frontier selection still runs on the staggered cadence.
+        // A prevalidated, already-claimed follow-up placement is cheap:
+        // resume that same Builder on the very next physical tick instead
+        // of leaving an artificial 1-4-tick idle gap after each block.
+        boolean followup=BuilderBuildService.takeFastFollowup(this);
+        if(((tickCount+getId())%5==0||followup)
+                &&level() instanceof ServerLevel server)
             BuilderBuildService.tick(server,this);
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
