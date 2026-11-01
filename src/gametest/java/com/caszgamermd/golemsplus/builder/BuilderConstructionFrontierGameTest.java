@@ -248,8 +248,8 @@ public final class BuilderConstructionFrontierGameTest {
         BlockPos north=gap.north(),south=gap.south();
         // All four cells are genuine schematic members, not unrelated
         // terrain. Two adjacent blocks are already correctly placed.
-        h.setBlock(north,Blocks.STONE);
-        h.setBlock(south,Blocks.STONE);
+        world.setBlock(north,Blocks.STONE.defaultBlockState(),3);
+        world.setBlock(south,Blocks.STONE.defaultBlockState(),3);
         var expected=java.util.Map.of(
                 north,Blocks.STONE.defaultBlockState(),
                 south,Blocks.STONE.defaultBlockState(),
