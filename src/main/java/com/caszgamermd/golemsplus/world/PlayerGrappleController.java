@@ -9,7 +9,6 @@ import java.util.UUID;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
 import net.minecraft.resources.ResourceKey;
@@ -39,6 +38,7 @@ public final class PlayerGrappleController {
         final BlockPos anchor;
         final Vec3 approach,column,landing;
         final long started;
+        GrappleLineVisuals.Line visibleLine;
         Phase phase=Phase.APPROACH;
         double bestDistance=Double.POSITIVE_INFINITY;
         long lastProgress;
@@ -92,7 +92,8 @@ public final class PlayerGrappleController {
     }
 
     public static void release(ServerPlayer player,boolean manual){
-        active.remove(player.getUUID());
+        Rope old=active.remove(player.getUUID());
+        if(old!=null&&old.visibleLine!=null)old.visibleLine.close();
         if(manual)player.sendSystemMessage(Component.literal(
                 "Grapple retracted."));
     }
@@ -150,8 +151,11 @@ public final class PlayerGrappleController {
                     shaftOpen=false;break;
                 }
             if(!shaftOpen)continue;
-            active.put(player.getUUID(),new Rope(level,anchor,
-                    approach,column,landing));
+            Rope rope=new Rope(level,anchor,approach,column,landing);
+            rope.visibleLine=GrappleLineVisuals.attach(level,player.getUUID(),
+                    anchor,BlockPos.containing(approach),
+                    approach.y,anchor.getY()+1.0);
+            active.put(player.getUUID(),rope);
             player.sendSystemMessage(Component.literal(
                     "Grapple attached: reeling to "+anchor.toShortString()
                     +". Right-click again to retract."));
@@ -208,15 +212,8 @@ public final class PlayerGrappleController {
         player.hurtMarked=true;
         player.fallDistance=0;
         player.connection.send(new ClientboundSetEntityMotionPacket(player));
-        if(level.getGameTime()%4==0){
-            Vec3 start=player.getEyePosition().add(0,-.35,0);
-            Vec3 end=new Vec3(rope.anchor.getX()+.5,
-                    rope.anchor.getY()+1.0,rope.anchor.getZ()+.5);
-            for(int i=1;i<=10;i++){
-                Vec3 at=start.lerp(end,i/11.0);
-                level.sendParticles(ParticleTypes.CRIT,at.x,at.y,at.z,
-                        1,0,0,0,0);
-            }
-        }
+        // The real hook, bottom coil and vertical rope are world-visible
+        // item displays. Sparkle particles no longer stand in for equipment.
+        if(rope.visibleLine!=null)rope.visibleLine.touch();
     }
 }

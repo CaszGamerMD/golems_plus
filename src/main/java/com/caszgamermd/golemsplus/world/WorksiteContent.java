@@ -56,6 +56,9 @@ public final class WorksiteContent {
     public static EntityType<ChefGolem> CHEF_GOLEM;
     public static EntityType<FisherGolem> FISHER_GOLEM;
     public static Item FISHING_BAIT,FISHING_MARKER_ITEM,GRAPPLE_HOOK;
+    // Invisible to creative inventory: these are render-only displays,
+    // never physical Builder supplies or player-collectable rope.
+    public static Item GRAPPLE_ROPE_SEGMENT,GRAPPLE_ROPE_LINK;
     public static FishingSpotBlock FISHING_SPOT;
     public static EnhancedScaffoldingBlock ENHANCED_SCAFFOLDING;
     public static Item ENHANCED_SCAFFOLDING_ITEM;
@@ -156,6 +159,14 @@ public final class WorksiteContent {
                 GolemsPlus.id("grapple_hook"));
         GRAPPLE_HOOK=Registry.register(BuiltInRegistries.ITEM,grappleKey,
                 new PlayerGrappleHookItem(new Item.Properties().stacksTo(1).setId(grappleKey)));
+        ResourceKey<Item> ropeSegmentKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("grapple_rope_segment"));
+        GRAPPLE_ROPE_SEGMENT=Registry.register(BuiltInRegistries.ITEM,
+                ropeSegmentKey,new Item(new Item.Properties().setId(ropeSegmentKey)));
+        ResourceKey<Item> ropeLinkKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("grapple_rope_link"));
+        GRAPPLE_ROPE_LINK=Registry.register(BuiltInRegistries.ITEM,
+                ropeLinkKey,new Item(new Item.Properties().setId(ropeLinkKey)));
         TRADER_COUNTER_ITEM = blockItem("trader_counter", TRADER_COUNTER);
         BEEKEEPER_STATION_ITEM=blockItem("beekeeper_station",BEEKEEPER_STATION);
         COOKING_STATION_ITEM=blockItem("cooking_station",COOKING_STATION);

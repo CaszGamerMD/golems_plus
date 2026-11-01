@@ -2,6 +2,7 @@ package com.caszgamermd.golemsplus.builder;
 
 import com.caszgamermd.golemsplus.worker.WorkerNavigation;
 import com.caszgamermd.golemsplus.world.WorksiteContent;
+import com.caszgamermd.golemsplus.world.GrappleLineVisuals;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -10,7 +11,6 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -42,6 +42,7 @@ public final class BuilderGrappleAccess {
         final boolean down;
         final long started;
         Phase phase;
+        GrappleLineVisuals.Line visibleLine;
         int stalledTicks;
         int recoveryTicks;
         double lastX=Double.NaN,lastY=Double.NaN,lastZ=Double.NaN;
@@ -158,6 +159,7 @@ public final class BuilderGrappleAccess {
         blockedAnchors.put(mob,next);
     }
     private static void release(BuilderGolem mob,Rope rope,String event){
+        if(rope.visibleLine!=null)rope.visibleLine.close();
         active.remove(mob);
         BuilderPlacementSpace.forgetApproach(mob);
         mob.setNoGravity(false);
@@ -194,7 +196,8 @@ public final class BuilderGrappleAccess {
         // Cancellation is legal only on solid ground. Do not suddenly drop
         // an entity suspended halfway up a real rope.
         if(!worker.onGround()&&active.containsKey(worker))return;
-        active.remove(worker);
+        Rope old=active.remove(worker);
+        if(old!=null&&old.visibleLine!=null)old.visibleLine.close();
         worker.setNoGravity(false);
     }
     private static boolean solidTop(ServerLevel world,BlockPos p){
@@ -746,14 +749,11 @@ public final class BuilderGrappleAccess {
         WorkerNavigation.stop(worker);
         return true;
     }
-    private static void emitLine(ServerLevel level,Rope r,BuilderGolem mob){
-        if(mob.tickCount%5!=0)return;
-        // Lightweight rope preview at the real, fixed anchor line.
-        // The particles trace the rope; they do not create collisions.
-        for(double y=Math.min(mob.getY(),r.topY());y<=r.topY();y+=1.0)
-            level.sendParticles(ParticleTypes.CRIT,
-                    r.column.getX()+.5,y+.25,r.column.getZ()+.5,
-                    1,0,0,0,0);
+    private static void showLine(ServerLevel level,Rope r,BuilderGolem mob){
+        if(r.visibleLine==null||!r.visibleLine.valid())
+            r.visibleLine=GrappleLineVisuals.attach(level,mob.getUUID(),
+                    r.anchor,r.column,r.landing.getY(),r.topY());
+        if(r.visibleLine!=null)r.visibleLine.touch();
     }
     private static boolean steer(ServerLevel level,BuilderGolem mob,
             double x,double y,double z,double cap,boolean vertical){
@@ -791,6 +791,7 @@ public final class BuilderGrappleAccess {
                     ||level.getGameTime()-r.started>=2400)
                 &&mob.onGround()){
             reject(level,mob,r);
+            if(r.visibleLine!=null)r.visibleLine.close();
             active.remove(mob);
             WorkerNavigation.stop(mob);
             System.out.println("[GRAPPLE] ATTACHMENT ROUTE TIMED OUT; "
@@ -862,7 +863,7 @@ public final class BuilderGrappleAccess {
         mob.getMoveControl().setWantedPosition(mob.getX(),mob.getY(),mob.getZ(),0);
         mob.setNoGravity(true);
         mob.setShiftKeyDown(false);
-        emitLine(level,r,mob);
+        showLine(level,r,mob);
         double x=r.column.getX()+.5,z=r.column.getZ()+.5;
         boolean moved=true;
         switch(r.phase){
