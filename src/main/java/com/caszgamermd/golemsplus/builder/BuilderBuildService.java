@@ -713,6 +713,19 @@ public final class BuilderBuildService {
         if(BuilderGrappleAccess.active(worker))return;
         if(BuilderScaffolding.isControllingMovement(worker))return;
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
+        // A returning Builder does NOT need an online owner, task scan,
+        // warehouse manifest or rescue work to finish getting off the roof.
+        // Run this BEFORE all such code and even before a new task is
+        // considered. The normal completed-job branch below still owns
+        // final inventory unload and recycling.
+        if(table.activeOrder()!=null&&table.phase()!=WorkerPhase.COMPLETE){
+            WorkerAction returning=workerActions.get(worker);
+            if(returning!=null&&returning.returningToSite){
+                boolean arrived=parkAtOnSite(level,worker,table);
+                if(shouldContinueEvacuation(true,arrived))return;
+                returning.returningToSite=false;
+            }
+        }
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
             // On job completion a Builder may still be on its LAST
             // scaffold tower. It must return to ground and dismount
@@ -867,13 +880,6 @@ public final class BuilderBuildService {
             int currentClaim=table.claimedStep(worker.getUUID());
             WorkerAction returnAction=workerActions.computeIfAbsent(
                     worker,k->new WorkerAction());
-            if(returnAction.returningToSite){
-                // The return latch remains armed until real arrival; no
-                // fresh claim or rescue while traversing the work site.
-                boolean arrived=parkAtOnSite(level,worker,table);
-                if(shouldContinueEvacuation(true,arrived))return;
-                returnAction.returningToSite=false;
-            }
             if(shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim)){
                 activityForFinished(worker);
                 returnAction.returningToSite=!parkAtOnSite(level,worker,table);
