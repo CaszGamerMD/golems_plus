@@ -1,0 +1,60 @@
+name: Villager Matrix floating foundation - physical Builders
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/**'
+      - 'src/main/java/com/caszgamermd/golemsplus/world/WorkerStationBlockEntity.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixStartGameTest.java'
+      - 'src/gametest/resources/**'
+      - 'src/test/java/com/caszgamermd/golemsplus/builder/**'
+      - '.github/workflows/builder-villager-matrix-physical.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  floating-foundation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Verify shared scaffold route ownership
+        run: gradle --no-daemon test --tests 'com.caszgamermd.golemsplus.builder.BuilderSharedScaffoldRouteTest'
+      - name: Run only the four-Builder floating Matrix foundation
+        shell: bash
+        run: |
+          python3 - <<'PYTEST'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          data=json.loads(p.read_text())
+          data['entrypoints']['fabric-gametest']=[
+              'com.caszgamermd.golemsplus.builder.BuilderVillagerMatrixStartGameTest'
+          ]
+          p.write_text(json.dumps(data,indent=2)+'\n')
+          PYTEST
+          set -o pipefail
+          gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/villager-matrix.log"
+          grep -E '\[MATRIX (START|PROGRESS)' "$RUNNER_TEMP/villager-matrix.log" || true
+          if ! grep -Fq '[MATRIX START PASS]' "$RUNNER_TEMP/villager-matrix.log"; then
+            echo '::error::Four Builders did not complete eight physical foundation placements; see Matrix diagnostics.'
+            exit 1
+          fi
+      - name: Save Matrix build trace and Minecraft GameTest reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: villager-matrix-foundation-trace
+          if-no-files-found: ignore
+          path: |
+            build/gametest/
+            build/test-results/
+            build/reports/
+            build/run/gameTest/logs/
