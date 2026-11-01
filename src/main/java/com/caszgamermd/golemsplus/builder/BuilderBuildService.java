@@ -465,6 +465,19 @@ public final class BuilderBuildService {
                 .routeTo(level,worker,depot,.8);
         return false;
     }
+    /** A return request is a travel state, not a cooldown timer.
+     * Reassignment is forbidden until the worker physically arrives.
+     */
+    static boolean shouldContinueEvacuation(boolean returning,boolean arrived){
+        return returning&&!arrived;
+    }
+    /** Workers with nothing left on current Y must vacate the active
+     * structure before joining another Builder's roof-rescue work.
+     */
+    static boolean shouldEvacuateIdleLayer(boolean ownLayerClear,
+            int claimedStep,boolean atDepot){
+        return ownLayerClear&&claimedStep<0&&!atDepot;
+    }
     /** An active cross-zone rescue claim must finish before parking; a
      * worker with no live claim and no remaining OWN work returns OnSite.
      */
@@ -855,9 +868,11 @@ public final class BuilderBuildService {
             WorkerAction returnAction=workerActions.computeIfAbsent(
                     worker,k->new WorkerAction());
             if(returnAction.returningToSite){
-                if(parkAtOnSite(level,worker,table))
-                    returnAction.returningToSite=false;
-                else return;
+                // The return latch remains armed until real arrival; no
+                // fresh claim or rescue while traversing the work site.
+                boolean arrived=parkAtOnSite(level,worker,table);
+                if(shouldContinueEvacuation(true,arrived))return;
+                returnAction.returningToSite=false;
             }
             if(shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim)){
                 activityForFinished(worker);
@@ -888,7 +903,8 @@ public final class BuilderBuildService {
             if(ownLayerClear&&index<0){
                 BlockPos depot=table.builderUnloadingStorage();
                 if(depot==null)depot=table.getBlockPos();
-                if(!atOnSite(level,worker,depot)){
+                if(shouldEvacuateIdleLayer(true,index,
+                        atOnSite(level,worker,depot))){
                     returnAction.returningToSite=true;
                     parkAtOnSite(level,worker,table);
                     return;
