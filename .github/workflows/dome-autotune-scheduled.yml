@@ -1,0 +1,188 @@
+name: Dome Autotune — Physical Golem Navigation
+run-name: "Dome autotune: up to five physical GameTests"
+on:
+  schedule:
+    # GitHub schedules are best-effort. Check four times an hour, but the
+    # lightweight due gate permits one substantial session per ~hour.
+    # Offset from minute 0 to avoid GitHub's busiest scheduling boundary.
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+    inputs:
+      heartbeat_probe:
+        description: "Check GitHub self-dispatch without launching tests"
+        type: boolean
+        required: false
+        default: false
+  push:
+    branches: [main]
+    paths:
+      # Resync GitHub's scheduler and bootstrap a run when edited.
+      - '.github/workflows/dome-autotune-scheduled.yml'
+
+permissions:
+  contents: write  # Save scores ONLY on the isolated training state branch.
+
+concurrency:
+  group: ${{ inputs.heartbeat_probe == true && 'golems-plus-dome-probe' || 'golems-plus-physical-dome-autotune' }}
+  cancel-in-progress: false
+
+jobs:
+  check-due:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write  # Bootstrap a harmless proof that self-dispatch works.
+    outputs:
+      due: ${{ steps.gate.outputs.due }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Gate scheduled runs using persisted last successful training session
+        id: gate
+        shell: bash
+        env:
+          TRIGGER: ${{ github.event_name }}
+          PROBE: ${{ inputs.heartbeat_probe }}
+        run: |
+          set -euo pipefail
+          # A probe is never a real training session and must not self-chain.
+          if [[ "$TRIGGER" == "workflow_dispatch" && "$PROBE" == "true" ]]; then
+            echo "due=false" >> "$GITHUB_OUTPUT"
+            echo "SELF-DISPATCH PROBE PASS: dispatch arrived independently."
+            exit 0
+          fi
+          # Manual requests and workflow edits always execute once.
+          if [[ "$TRIGGER" != "schedule" ]]; then
+            echo "due=true" >> "$GITHUB_OUTPUT"
+            echo "Explicit bootstrap/manual trigger: training due."
+            exit 0
+          fi
+          # A missing/unreadable state must not permanently stop training.
+          if ! git fetch -q --no-tags origin refs/heads/training/dome-autotune-state-262; then
+            echo "due=true" >> "$GITHUB_OUTPUT"
+            echo "No prior state; training due."
+            exit 0
+          fi
+          if ! git show FETCH_HEAD:dome-training/state.json > "$RUNNER_TEMP/dome-training-state.json"; then
+            echo "due=true" >> "$GITHUB_OUTPUT"
+            echo "No readable prior session; training due."
+            exit 0
+          fi
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          from pathlib import Path
+          try:
+              saved = json.loads(
+                  (Path(os.environ["RUNNER_TEMP"]) / "dome-training-state.json").read_text()
+              )
+              last = dt.datetime.fromisoformat(saved["last_session"])
+              if last.tzinfo is None:
+                  raise ValueError("missing timezone")
+              age = (dt.datetime.now(dt.timezone.utc) - last).total_seconds()
+              due = age >= 50 * 60 or age < 0
+              print(f"Previous completed session: {round(age / 60, 1)} minutes ago. Due: {due}")
+          except (KeyError, ValueError, TypeError, OSError) as exc:
+              print(f"Cannot verify fresh session ({exc}); running instead.")
+              due = True
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"due={str(due).lower()}\n")
+          PY
+      - name: Verify self-dispatch on scheduler update (no training duplication)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh workflow run dome-autotune-scheduled.yml --ref main -f heartbeat_probe=true
+          echo "Probe dispatched; next workflow_dispatch run must report due=false."
+
+  tune-dome:
+    needs: check-due
+    if: needs.check-due.outputs.due == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Check out dome experiment, not production main
+        uses: actions/checkout@v4
+        with:
+          ref: test/dome-frontier-planner-262
+          fetch-depth: 1
+          persist-credentials: true
+      - name: Java 25 for Minecraft Fabric 26.2
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Gradle 9.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Verify autotune parser, scoring and replay protection
+        run: python3 -m unittest discover -s scripts -p 'test_dome_autotune.py' -v
+      - name: Run multiple real dome tests and keep best validated settings
+        run: python3 scripts/dome_autotune.py --cycles 5 --max-minutes 42
+      - name: Preserve every physical test and candidate result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dome-autotune-diagnostics
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            build/dome-autotune/
+            build/gametest/
+            build/test-results/
+            build/reports/
+            build/run/gameTest/logs/
+
+  # A code-change-triggered or manually-triggered run cannot rely on GitHub
+  # delivering future cron events. Requeue explicitly after a cooldown.
+  # GitHub permits workflow_dispatch events created by GITHUB_TOKEN.
+  # This deliberately uses idle GitHub-hosted runner time, not ChatGPT Work.
+  requeue:
+    needs: [check-due, tune-dome]
+    if: ${{ always() && needs.check-due.result == 'success' && needs.check-due.outputs.due == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Space completed training sessions by approximately one hour
+        shell: bash
+        run: |
+          echo "Explicit continuation scheduled after 52-minute cooldown."
+          sleep 3120
+      - name: Stop once fully verified; otherwise dispatch next training session
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Check the persisted result at dispatch time, not stale job start.
+          if gh api "repos/$GH_REPO/contents/dome-training/state.json?ref=training/dome-autotune-state-262" --jq .content > "$RUNNER_TEMP/state.b64"; then
+            python3 - <<'PY' > "$RUNNER_TEMP/finished"
+          import base64
+          import json
+          import os
+          from pathlib import Path
+          try:
+              raw = (Path(os.environ["RUNNER_TEMP"]) / "state.b64").read_text().strip()
+              state = json.loads(base64.b64decode(raw))
+              print("true" if state.get("best", {}).get("complete") else "false")
+          except (ValueError, TypeError, KeyError) as exc:
+              print("false")
+          PY
+          else
+            echo false > "$RUNNER_TEMP/finished"
+          fi
+          if [[ "$(cat "$RUNNER_TEMP/finished")" == "true" ]]; then
+            echo "Verified full 3537-block dome: stopping chain."
+            exit 0
+          fi
+          gh workflow run dome-autotune-scheduled.yml --ref main -f heartbeat_probe=false
+          echo "CONTINUATION DISPATCHED: next full dome training run queued via GitHub workflow_dispatch."
