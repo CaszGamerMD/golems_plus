@@ -163,8 +163,12 @@ public final class BuilderScaffolding {
             // to walk THROUGH the roof to reach its lower X/Z tile.
             // Release only the stale route; the Builder stays on its
             // actual safe footing and must choose another physical path.
+            BlockPos actualSupport=worker.blockPosition().below();
             if(worker.onGround()
-                    &&worker.getY()>exit.ground().getY()+1.35){
+                    &&worker.getY()>exit.ground().getY()+1.35
+                    &&!level.getBlockState(actualSupport).is(Blocks.SCAFFOLDING)
+                    &&level.getBlockState(actualSupport).isFaceSturdy(
+                            level,actualSupport,Direction.UP)){
                 System.out.println("[SCAFFOLD EXIT] abandoned unreachable lower "
                         +exit.ground().toShortString()+" from grounded roof "
                         +worker.blockPosition().toShortString());
@@ -441,6 +445,51 @@ public final class BuilderScaffolding {
         }
         return best;
     }
+    /** Step sideways off a one-cell horizontal bridge at the worker's
+     * ACTUAL feet elevation. A climb-through bridge may leave its feet
+     * inside the scaffold, with a legal full-block floor one cell lower
+     * than the nominal scaffold TOP. Don't force a needless climb first.
+     * Every sampled side step must be collision-free, with solid landing. */
+    static boolean stepOffAtFootHeight(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos target){
+        if(exiting.containsKey(worker))return true;
+        if(climbingNow(level,worker))return false;
+        BlockPos feet=worker.blockPosition();
+        var owned=table.scaffoldPositions(worker.getUUID());
+        if(!owned.contains(feet)&&!owned.contains(feet.below()))return false;
+        // A BOTTOM=true horizontal bridge can support a mob whose feet
+        // are a fraction of a block INSIDE the scaffold while onGround is
+        // still false. A collision-checked move to nearby real stone is
+        // safer than forcing another climb through the same bridge.
+        boolean insideOwned=owned.contains(feet)
+                &&level.getBlockState(feet).is(Blocks.SCAFFOLDING)
+                &&worker.getY()<feet.getY()+1.0;
+        if(!worker.onGround()&&!insideOwned)return false;
+        BlockPos chosen=null;
+        double best=Double.POSITIVE_INFINITY;
+        for(Direction side:Direction.Plane.HORIZONTAL)
+            for(int dy:new int[]{0,-1}){
+                BlockPos landing=feet.relative(side).offset(0,dy,0);
+                BlockPos floor=landing.below();
+                if(landing.getY()>worker.getY()+.2
+                        ||worker.getY()-landing.getY()>1.3
+                        ||level.getBlockState(floor).is(Blocks.SCAFFOLDING)
+                        ||!level.getBlockState(floor).isFaceSturdy(
+                                level,floor,Direction.UP)
+                        ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .canStandOn(level,worker,landing))continue;
+                double dx=landing.getX()+.5-worker.getX();
+                double dz=landing.getZ()+.5-worker.getZ();
+                boolean clear=true;
+                for(int i=1;i<=10;i++)
+                    if(!level.noCollision(worker,worker.getBoundingBox().move(
+                            dx*i/10.0,0,dz*i/10.0))){clear=false;break;}
+                if(!clear)continue;
+                double score=landing.distSqr(target)+Math.abs(dy)*3;
+                if(score<best){chosen=landing;best=score;}
+            }
+        return chosen!=null&&stepToPlatform(level,worker,chosen);
+    }
     /** Real side exit at the top of a scaffold. Vanilla pathfinding
      * cannot usually start from a scaffold node to an adjacent full-block
      * walkway. Move physically to the supported landing first, then
@@ -467,23 +516,46 @@ public final class BuilderScaffolding {
     public static boolean stepOffTowardWork(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos target){
         if(exiting.containsKey(worker))return true;
+        if(stepOffAtFootHeight(level,worker,table,target))return true;
         BlockPos feet=worker.blockPosition();
-        BlockPos under=feet.below();
-        if(!level.getBlockState(under).is(Blocks.SCAFFOLDING)
-                ||!table.scaffoldPositions(worker.getUUID()).contains(under))
-            return false;
+        BlockPos scaffold=feet.below();
+        var owned=table.scaffoldPositions(worker.getUUID());
+        if(!level.getBlockState(scaffold).is(Blocks.SCAFFOLDING)
+                ||!owned.contains(scaffold)){
+            // A one-high HORIZONTAL bridge is climb-through: its BOTTOM
+            // shape can let the Builder settle INSIDE this exact cell.
+            // It is still a physical owned bridge, not an absent tower.
+            scaffold=feet;
+            if(!level.getBlockState(scaffold).is(Blocks.SCAFFOLDING)
+                    ||!owned.contains(scaffold))return false;
+        }
+        BlockPos topFeet=scaffold.above();
         BlockPos chosen=null;
         double best=Double.POSITIVE_INFINITY;
         for(Direction dir:Direction.Plane.HORIZONTAL){
             for(int dy:new int[]{0,1,-1}){
-                BlockPos landing=feet.relative(dir).offset(0,dy,0);
-                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .canStandOn(level,worker,landing))continue;
+                BlockPos landing=topFeet.relative(dir).offset(0,dy,0);
+                BlockPos floor=landing.below();
+                // Only exit onto existing SOLID ground. Another scaffold
+                // (or a still-empty schematic cell) is not a safe ledge.
+                if(level.getBlockState(floor).is(Blocks.SCAFFOLDING)
+                        ||!level.getBlockState(floor).isFaceSturdy(
+                                level,floor,Direction.UP)
+                        ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .canStandOn(level,worker,landing))continue;
                 double score=landing.distSqr(target)+Math.abs(dy)*3;
                 if(score<best){best=score;chosen=landing;}
             }
         }
-        return chosen!=null&&stepToPlatform(level,worker,chosen);
+        if(chosen==null)return false;
+        if(worker.getY()<topFeet.getY()-.17){
+            // Climb the actual bridge cell to its top before walking
+            // sideways. No invented support, jump, or teleportation.
+            if(!climbingNow(level,worker))
+                begin(level,worker,scaffold,topFeet.getY(),false);
+            return true;
+        }
+        return stepToPlatform(level,worker,chosen);
     }
 
     /** Shared real dismount operation for both Builder jobs and the
@@ -492,18 +564,32 @@ public final class BuilderScaffolding {
      */
     static boolean dismountAtBase(ServerLevel level,BuilderGolem worker,
                                    BlockPos column){
+        return dismountAtBase(level,worker,column,null);
+    }
+    /** Prefer the new physical exit after construction blocks the old one. */
+    static boolean dismountAtBase(ServerLevel level,BuilderGolem worker,
+                                   BlockPos column,BlockPos preferred){
         AccessRoute planned=access.get(worker);
-        BlockPos exit=planned!=null
+        BlockPos exit=preferred!=null
+                &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canStandOn(level,worker,preferred)
+                ?preferred:planned!=null
                 &&planned.base().equals(column)
                 &&com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .canStandOn(level,worker,planned.groundExit())
                 ?planned.groundExit():exitGround(level,worker,column);
         if(exit==null)return false;
-        // A valid adjacent ground tile is NOT necessarily a valid
-        // dismount from the worker's present physical elevation. Do not
-        // create an EXIT instruction that crosses a solid roof slab.
-        if(worker.onGround()
-                &&worker.getY()>exit.getY()+1.35)return false;
+        // A Builder may safely fall TWO blocks from the scaffold lip
+        // onto verified ground. A bigger drop or a blocked lateral step
+        // is not a valid exit: the physical shaft must lower it first.
+        double drop=worker.getY()-exit.getY();
+        if(worker.onGround()&&drop>2.15)return false;
+        if(worker.onGround()&&drop>1.35){
+            double x=exit.getX()+.5-worker.getX();
+            double z=exit.getZ()+.5-worker.getZ();
+            if(!level.noCollision(worker,
+                    worker.getBoundingBox().move(x,0,z)))return false;
+        }
         clearMotion(worker);
         access.remove(worker);
         exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));
@@ -928,6 +1014,50 @@ public final class BuilderScaffolding {
                 return candidate.base();
         }
         return null;
+    }
+    /** Free a grounded worker snagged in its own scaffold footprint.
+     * Only remove tracked blocks intersecting its body, never the floor
+     * supporting it. Preserve every other part of the shared structure.
+     */
+    public static int clearGroundedScaffoldSnag(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table){
+        BlockPos floor=worker.blockPosition().below();
+        if(!worker.onGround()||worker.isNoGravity()
+                ||level.getBlockState(floor).is(Blocks.SCAFFOLDING)
+                ||!level.getBlockState(floor).isFaceSturdy(
+                        level,floor,Direction.UP))return 0;
+        int removed=0;
+        var positions=new java.util.ArrayList<>(table.scaffoldPositions(worker.getUUID()));
+        for(BlockPos pos:positions){
+            if(!level.hasChunkAt(pos)||pos.equals(floor))continue;
+            if(Math.abs(pos.getX()+.5-worker.getX())>=.9
+                    ||Math.abs(pos.getZ()+.5-worker.getZ())>=.9
+                    ||pos.getY()+1.0<=worker.getBoundingBox().minY-.1
+                    ||pos.getY()>=worker.getBoundingBox().maxY+.1)continue;
+            if(!level.getBlockState(pos).is(Blocks.SCAFFOLDING)){
+                table.untrackScaffold(worker.getUUID(),pos);
+                continue;
+            }
+            // Never dismantle a scaffold another Builder is occupying.
+            boolean teammateOnScaffold=false;
+            for(BuilderGolem other:level.getEntitiesOfClass(
+                    BuilderGolem.class,
+                    new net.minecraft.world.phys.AABB(pos).inflate(.15))){
+                if(other!=worker){teammateOnScaffold=true;break;}
+            }
+            if(teammateOnScaffold||!BuilderSupplyInventory.canStoreScaffolding(table))
+                continue;
+            if(!level.setBlock(pos,Blocks.AIR.defaultBlockState(),3))continue;
+            if(!BuilderSupplyInventory.storeScaffolding(table,
+                    new ItemStack(Items.SCAFFOLDING))){
+                net.minecraft.world.Containers.dropItemStack(level,
+                        pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5,
+                        new ItemStack(Items.SCAFFOLDING));
+            }
+            table.untrackScaffold(worker.getUUID(),pos);
+            removed++;
+        }
+        return removed;
     }
     /**
      * Instant top-down removal only when worker is safely on the ground.

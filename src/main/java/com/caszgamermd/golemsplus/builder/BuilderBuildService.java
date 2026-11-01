@@ -35,7 +35,8 @@ public final class BuilderBuildService {
     private record Cache(String file, int rotation,int mirror,BlockPos origin,
                          List<BuilderConstructionPlan.Step> steps,
                          List<BuilderSiteClearance.Target> clearing,
-                         boolean ignorePlants,BuilderZones.Layout zones){}
+                         boolean ignorePlants,int rulesRevision,
+                         BuilderZones.Layout zones){}
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
     /** One immutable COMPLETE job-zone plan per Planner/job/crew. Assignment
      * work is never repeated on each Builder tick or after a placement.
@@ -44,6 +45,11 @@ public final class BuilderBuildService {
             BuilderZoneWorkPlan tasks){}
     private static final Map<WorkerStationBlockEntity,ScheduledZones>
             schedules=new WeakHashMap<>();
+    /** The immutable job plan only needs its virtual skips reconciled once.
+     * Real placements update Planner totals directly on completion. */
+    private record ReconciledJob(UUID job,Cache plan){}
+    private static final Map<WorkerStationBlockEntity,ReconciledJob>
+            reconciledJobs=new WeakHashMap<>();
     private enum Action { STAGE_MATERIALS, MOVE_TO_WORK, PLACE, COMPLETE }
     private static final class WorkerAction {
         int index=-1;
@@ -52,18 +58,81 @@ public final class BuilderBuildService {
         long frontierWaitSince=-1;
         int frontierWaitLayer=Integer.MIN_VALUE;
         long workTravelSince=-1;
+        // Moving in circles is not progress toward the selected block.
+        // A generous 320-tick target-progress window allows real detours
+        // but eventually hands off a claim that never gets closer.
+        double bestTargetDistance=Double.POSITIVE_INFINITY;
+        long lastTargetProgressTick=-1;
+        // Track actual displacement, not repeated navigation requests.
+        double lastWorkX=Double.NaN,lastWorkY=Double.NaN,lastWorkZ=Double.NaN;
+        long lastMovementTick=-1;
+        long lastPerchEscapeTick=-1000;
+        long retreatUntil=-1;
+        int lastFailedStep=-1;
+        // Next-step prediction is read-only until the current block
+        // is actually placed. Never claim two cells or move the worker
+        // away from its current physical assignment.
+        BuilderConstructionPlanner.Choice lookahead;
+        List<Integer> lookaheadZone=List.of();
+        // Snapshot just 32 nearby candidates ONCE per active work target,
+        // instead of rescanning and allocating the entire 1k-cell zone
+        // on every five-tick travel callback. Claims/safety are still
+        // revalidated by the Planner before any next assignment.
+        List<Integer> lookaheadEligible=List.of();
+        int lookaheadEligibleLayer=Integer.MIN_VALUE;
+        int lookaheadFor=-1;
+        int lookaheadScanned;
+        boolean lookaheadFinished;
+        boolean fastFollowup;
+        // A completed or idle-layer Builder must PHYSICALLY reach OnSite
+        // before another rooftop rescue assignment may recruit it.
+        // Otherwise the six-second assist watchdog can keep a "finished"
+        // teammate camping inside the next Builder's placement volume.
+        boolean returningToSite;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
                 blockedSince=-1;workTravelSince=-1;
+                bestTargetDistance=Double.POSITIVE_INFINITY;
+                lastTargetProgressTick=-1;
+                lastMovementTick=-1;lastPerchEscapeTick=-1000;
+                lastWorkX=Double.NaN;
+                lookahead=null;lookaheadZone=List.of();
+                lookaheadEligible=List.of();
+                lookaheadEligibleLayer=Integer.MIN_VALUE;
+                lookaheadFor=-1;lookaheadScanned=0;
+                lookaheadFinished=false;
+                fastFollowup=false;
             }
         }
+    }
+    /** Shared per-station handoff board: a failed cell is offered to a
+     * different crew member before its previous owner can try again. */
+    private record Handoff(UUID failedWorker,long until,String reason){}
+    private static final Map<WorkerStationBlockEntity,Map<Integer,Handoff>>
+            handoffBoard=new WeakHashMap<>();
+    private static void publishHandoff(WorkerStationBlockEntity table,
+            UUID worker,int index,long now,String reason){
+        handoffBoard.computeIfAbsent(table,k->new java.util.HashMap<>())
+                .put(index,new Handoff(worker,now+1200,reason));
+    }
+    private static boolean reservedForTeammate(WorkerStationBlockEntity table,
+            UUID worker,int index,long now){
+        var board=handoffBoard.get(table);
+        if(board==null)return false;
+        Handoff record=board.get(index);
+        if(record==null)return false;
+        if(now>=record.until()){
+            board.remove(index);return false;
+        }
+        return record.failedWorker().equals(worker)
+                &&table.builderWorkerIds().size()>1;
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
     /** Normally every X/Z zone is exclusive. A zone with no work on this
      * shared Y may help its stuck neighbor after construction has made
-     * no physical progress for ten seconds. This is read-only monitoring:
+     * no physical progress for six seconds. This is read-only monitoring:
      * actual ownership stays with the Planner's single-step claim map.
      */
     private static final class RoofProgress {
@@ -81,7 +150,7 @@ public final class BuilderBuildService {
             progress.completed=completed;
             progress.lastChange=level.getGameTime();
         }
-        return level.getGameTime()-progress.lastChange>=600;
+        return level.getGameTime()-progress.lastChange>=120;
     }
     /** Only workers with NO unfinished task in their zone on the active Y assist: they
      * never abandon an assigned cell or break the global height gate.
@@ -99,6 +168,203 @@ public final class BuilderBuildService {
                 extra.add(idx);
         }
         return extra;
+    }
+    /** Spend a small, bounded planning slice WHILE the worker walks.
+     * No claim is made and the current route is not stopped. A blocked
+     * or too-distant next target simply falls back to normal selection.
+     */
+    private static void prefetchNext(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int current,BlockPos target,WorkerAction activity,long now){
+        if(activity.lookaheadFinished||activity.workTravelSince<0
+                ||now-activity.workTravelSince<5
+                ||worker.getNavigation().isDone()
+                    &&!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .retryScheduled(worker)
+                ||BuilderScaffoldPlanA.hasPlan(worker)
+                ||worker.distanceToSqr(target.getX()+.5,
+                        target.getY()+.5,target.getZ()+.5)>100)return;
+        int layer=table.builderActiveLayer(steps);
+        if(activity.lookaheadEligibleLayer!=layer){
+            activity.lookaheadEligible=nearbyLookaheadCandidates(
+                    table,worker,steps,zone,current,target,now);
+            activity.lookaheadEligibleLayer=layer;
+            activity.lookaheadScanned=0;
+        }
+        List<Integer> eligible=activity.lookaheadEligible;
+        int remaining=eligible.size()-activity.lookaheadScanned;
+        if(remaining<=0){
+            activity.lookaheadFinished=true;return;
+        }
+        int budget=Math.min(2,remaining);
+        var next=BuilderConstructionPlanner.chooseLookahead(
+                level,worker,table,steps,eligible,
+                activity.lookaheadScanned,budget,target);
+        activity.lookaheadScanned+=budget;
+        if(next!=null){
+            activity.lookahead=next;
+            activity.lookaheadFor=current;
+            activity.lookaheadZone=List.copyOf(zone);
+            activity.lookaheadFinished=true;
+        }else if(activity.lookaheadScanned>=eligible.size())
+            activity.lookaheadFinished=true;
+    }
+    /** Bounded nearest-first speculative work list. One pass over the
+     * assigned zone at task start is cheaper than repeating a full list
+     * allocation/sort and access checks on every walking callback.
+     * It is only a hint: current claims, materials, world geometry and Y
+     * restrictions remain server-validated before the next placement.
+     */
+    private static List<Integer> nearbyLookaheadCandidates(
+            WorkerStationBlockEntity table,BuilderGolem worker,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int current,BlockPos target,long now){
+        java.util.PriorityQueue<Integer> nearest=new java.util.PriorityQueue<>(
+                (a,b)->{
+                    double da=stepDistanceSquared(steps.get(a),target);
+                    double db=stepDistanceSquared(steps.get(b),target);
+                    int order=Double.compare(db,da);
+                    return order!=0?order:Integer.compare(b,a);
+                });
+        int layer=table.builderActiveLayer(steps);
+        for(int idx:zone){
+            if(idx==current||idx<0||idx>=steps.size()
+                    ||steps.get(idx).y()!=layer
+                    ||!table.builderStepReadyForClaim(idx)
+                    ||table.builderStepClaimedByOther(worker.getUUID(),idx)
+                    ||reservedForTeammate(table,worker.getUUID(),idx,now))
+                continue;
+            if(nearest.size()<32)nearest.add(idx);
+            else if(stepDistanceSquared(steps.get(idx),target)
+                    <stepDistanceSquared(steps.get(nearest.peek()),target)){
+                nearest.poll();
+                nearest.add(idx);
+            }
+        }
+        var result=new java.util.ArrayList<>(nearest);
+        result.sort(java.util.Comparator
+                .comparingDouble((Integer i)->stepDistanceSquared(steps.get(i),target))
+                .thenComparingInt(Integer::intValue));
+        return List.copyOf(result);
+    }
+    private static double stepDistanceSquared(
+            BuilderConstructionPlan.Step step,BlockPos target){
+        double dx=step.x()-target.getX(),dy=step.y()-target.getY(),
+                dz=step.z()-target.getZ();
+        return dx*dx+dy*dy+dz*dz;
+    }
+    /** Called by the real entity tick exactly once following a successful
+     * same-layer prevalidated handoff. Not a second planning pass.
+     */
+    static boolean takeFastFollowup(BuilderGolem worker){
+        WorkerAction action=workerActions.get(worker);
+        if(action==null||!action.fastFollowup)return false;
+        action.fastFollowup=false;
+        return true;
+    }
+    /** Cheap handoff when a Builder already occupies a verified pose for
+     * another block. This covers short roof runs with no travel time, where
+     * motion-only lookahead never fires. No A* probe or scaffold plan is
+     * started; the next ordinary work tick still checks world collision,
+     * placement support, material stock, and any crew moving into the cell.
+     */
+    private static BuilderConstructionPlanner.Choice nearbyDirectFollowup(
+            ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int completed){
+        if(!worker.onGround()||worker.isNoGravity()
+                ||BuilderScaffoldPlanA.hasPlan(worker)
+                ||BuilderGrappleAccess.active(worker)
+                ||completed<0||completed>=steps.size())return null;
+        var previous=steps.get(completed);
+        int layer=table.builderActiveLayer(steps);
+        BlockPos pose=worker.blockPosition();
+        int best=-1;
+        double bestDistance=Double.POSITIVE_INFINITY;
+        for(int idx:zone){
+            if(idx==completed||idx<0||idx>=steps.size()
+                    ||steps.get(idx).y()!=layer
+                    ||!table.builderStepReadyForClaim(idx)
+                    ||table.builderStepClaimedByOther(worker.getUUID(),idx)
+                    ||reservedForTeammate(table,worker.getUUID(),idx,
+                            level.getGameTime()))continue;
+            var step=steps.get(idx);
+            double dx=step.x()-previous.x(),dz=step.z()-previous.z();
+            double locality=dx*dx+dz*dz;
+            if(locality>9||locality>=bestDistance)continue;
+            BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+            if(!level.hasChunkAt(target)
+                    ||!BuilderPlacementSpace.placementHeight(target,worker)
+                    ||!BuilderPlacementSpace.horizontalClear(target,worker)
+                    ||worker.distanceToSqr(target.getX()+.5,
+                            target.getY()+.5,target.getZ()+.5)>=14)continue;
+            var resolved=BuilderBlockResolver.resolve(step.encodedState(),
+                    BuildSite.Rotation.values()[table.builderRotation()/90],
+                    BuildSite.Mirror.values()[table.builderMirror()]);
+            if(resolved==null
+                    ||!resolved.state().canSurvive(level,target)
+                    ||!level.getBlockState(target).isAir()
+                    ||step.requiredItem()!=null
+                        &&worker.carriedCount(resolved.item())==0
+                    ||!(BuilderPlacementSpace.safeFractionalCapPose(
+                                level,worker,target)
+                        ||BuilderConstructionPlanner.safeStand(
+                                level,worker,target,pose)))continue;
+            best=idx;
+            bestDistance=locality;
+        }
+        return best<0?null:
+                new BuilderConstructionPlanner.Choice(best,pose,false,
+                        level.canSeeSky(pose.above()),1);
+    }
+    /** After a REAL placement, consume the speculative choice only if
+     * the same Y gate, claim ownership, support and safe pose STILL hold.
+     * Start the next physical route immediately instead of spending five
+     * ticks motionless before the next Builder work callback.
+     */
+    private static void handoffNext(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            WorkerAction activity,int completed){
+        var choice=activity.lookaheadFor==completed?activity.lookahead:null;
+        // A nearby connected run may be placeable without any walking;
+        // in that case movement-based lookahead did not run at all.
+        if(choice==null)choice=nearbyDirectFollowup(
+                level,worker,table,steps,zone,completed);
+        if(choice==null)return;
+        int next=choice.index();
+        if(next<0||next>=steps.size()
+                ||steps.get(next).y()!=table.builderActiveLayer(steps)
+                ||!table.builderStepReadyForClaim(next)
+                ||table.builderStepClaimedByOther(worker.getUUID(),next)
+                ||reservedForTeammate(table,worker.getUUID(),next,
+                        level.getGameTime()))return;
+        var step=steps.get(next);
+        BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+        if(!level.hasChunkAt(target))return;
+        var state=BuilderBlockResolver.resolve(step.encodedState(),
+                BuildSite.Rotation.values()[table.builderRotation()/90],
+                BuildSite.Mirror.values()[table.builderMirror()]);
+        if(state==null)return;
+        if(!BuilderPlacementState.matches(level.getBlockState(target),
+                    state.state())&&!state.state().canSurvive(level,target))return;
+        BlockPos stance=choice.stance();
+        if(stance!=null&&!BuilderConstructionPlanner.safeStand(
+                level,worker,target,stance))return;
+        if(table.claimPreferredBuilderZoneStep(worker.getUUID(),
+                zone,steps,next)!=next)return;
+        activity.setStep(next);
+        // Move on the very next game tick, not at the next four-per-second
+        // Builder work cadence. This removes the visible idle beat between
+        // placements WITHOUT repeating expensive frontier selection.
+        activity.fastFollowup=true;
+        if(stance!=null&&step.requiredItem()!=null
+                &&worker.carriedCount(state.item())>0
+                &&!BuilderConstructionPlanner.safeStand(
+                        level,worker,target,worker.blockPosition()))
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(
+                    level,worker,stance,1.0);
     }
     private static WorkerAction action(BuilderGolem worker,int index){
         var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
@@ -154,20 +420,81 @@ public final class BuilderBuildService {
      * schematic; return via a genuine hook descent, then ordinary A*.
      * Do not retire or despawn a worker while the other zones run.
      */
-    private static void parkAtOnSite(ServerLevel level,BuilderGolem worker,
+    /** A return is complete only when the REAL worker stands beside
+     * OnSite on non-scaffold ground. A nearby roof at the same X/Z must
+     * never count as arriving at the depot.
+     */
+    private static boolean atOnSite(ServerLevel level,BuilderGolem worker,
+            BlockPos depot){
+        return worker.onGround()&&!worker.isNoGravity()
+                &&!BuilderScaffoldPlanA.hasPlan(worker)
+                &&!BuilderScaffolding.isControllingMovement(worker)
+                &&!BuilderGrappleAccess.active(worker)
+                &&!level.getBlockState(worker.blockPosition().below())
+                        .is(net.minecraft.world.level.block.Blocks.SCAFFOLDING)
+                &&worker.distanceToSqr(depot.getX()+.5,depot.getY(),
+                        depot.getZ()+.5)<=10.0;
+    }
+    /** Return while never issuing an ordinary A* command over an active
+     * owned scaffold bridge. Descend that real tower, then optionally
+     * rappel on a safe anchor and walk to OnSite. No teleporting or
+     * unphysical drop, and no new work claims until arrival.
+     *
+     * @return true only after the worker physically reaches OnSite.
+     */
+    static boolean parkAtOnSite(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null)depot=table.getBlockPos();
-        if(BuilderScaffolding.descendForTravel(level,worker,table)
-                ||BuilderGrappleAccess.rappelToward(level,worker,table,depot))
-            return;
-        if(worker.distanceToSqr(depot.getX()+.5,depot.getY(),
-                depot.getZ()+.5)>4.0){
-            com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeTo(level,worker,depot,.8);
-        }else{
+        if(atOnSite(level,worker,depot)){
             com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+            return true;
         }
+        // Plan-A bridges and tracked shafts are mandatory return routes:
+        // finish their bridge crossing and controlled dismount first.
+        if(BuilderScaffolding.descendForTravel(level,worker,table))
+            return false;
+        // A high roof with no available scaffold route should seek an
+        // actual descent, not endlessly routeTo() a depot far below.
+        if(worker.getY()>depot.getY()+1.5
+                &&BuilderGrappleAccess.rappelHome(level,worker,table,depot))
+            return false;
+        if(BuilderGrappleAccess.rappelToward(level,worker,table,depot))
+            return false;
+        com.caszgamermd.golemsplus.worker.WorkerNavigation
+                .routeTo(level,worker,depot,.8);
+        return false;
+    }
+    /** A return request is a travel state, not a cooldown timer.
+     * Reassignment is forbidden until the worker physically arrives.
+     */
+    static boolean shouldContinueEvacuation(boolean returning,boolean arrived){
+        return returning&&!arrived;
+    }
+    /** Workers with nothing left on current Y must vacate the active
+     * structure before joining another Builder's roof-rescue work.
+     */
+    static boolean shouldEvacuateIdleLayer(boolean ownLayerClear,
+            int claimedStep,boolean atDepot){
+        return ownLayerClear&&claimedStep<0&&!atDepot;
+    }
+    /** An active cross-zone rescue claim must finish before parking; a
+     * worker with no live claim and no remaining OWN work returns OnSite.
+     */
+    static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep){
+        return ownZoneDone&&claimedStep<0;
+    }
+    /** Re-check a high roof from its existing safe footing briefly, but
+     * never let an unavailable frontier strand a Builder forever. */
+    static boolean shouldHoldRoofFrontier(long waitingTicks,boolean highRoof){
+        return waitingTicks<= (highRoof?160:80);
+    }
+    /** A worker that has cleared its portion of the current shared Y
+     * returns OnSite while a teammate finishes, unless assigned a live
+     * cross-zone rescue. Future-layer tasks remain queued, not canceled. */
+    static boolean shouldParkWaitingForLayer(boolean ownLayerClear,
+            boolean assisting,int claimedStep){
+        return ownLayerClear&&!assisting&&claimedStep<0;
     }
     private static void activityForFinished(BuilderGolem worker){
         var a=workerActions.get(worker);
@@ -245,37 +572,37 @@ public final class BuilderBuildService {
     public static String primeWarehouse(ServerLevel level,
             WorkerStationBlockEntity table){
         if(!table.isBuilder()||table.activeOrder()==null)return "No active Builder job";
+        if(BuilderSupplyInventory.creativeSupply(table))
+            return "Creative Crate linked: unlimited Builder materials and tools. No warehouse scan required.";
         if(table.warehouse()==null)
             return "Manual supply mode: link a Rack Computer with a Warehouse Scanner to enable warehouse deliveries";
-        if(table.supplyRequest()!=null)return "Warehouse material request already active";
         try{
             var cache=jobCache(table);
             var plan=cache.steps();
-            if(table.builderRequired().isEmpty()&&table.activeOrder()!=null){
-                // Running legacy build: retain its current cursor and only
-                // backfill the static required-material checklist.
-                var required=new java.util.LinkedHashMap<String,Long>();
-                for(var step:plan)if(step.requiredItem()!=null)
-                    required.merge(step.requiredItem(),1L,Long::sum);
-                table.backfillBuilderMaterials(required);
-            }
-            var stock=BuilderSupplyInventory.available(table);
-            var warehouse=table.warehouse();
-            var pickable=warehouse==null?null:
-                    com.caszgamermd.golemsplus.warehouse.BuilderWarehousePort
-                        .stockSnapshot(level,new BlockPos(
-                                warehouse.x(),warehouse.y(),warehouse.z()),
-                                table.builderRemaining());
-            var materials=BuilderMaterialDemand.outstandingRemaining(
-                    table.builderRemaining(),stock,
-                    pickable==null?Map.of():pickable);
-            if(materials.isEmpty())
-                return "All remaining construction materials are already staged OnSite or with the crew";
-            if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan))
+            // A job may have been previewed BEFORE Ignore Crops was
+            // toggled. Reconcile its persisted material ledger BEFORE
+            // inspecting or creating a warehouse ticket, preserving the
+            // count of actual placements already completed.
+            table.reconcileBuilderMaterialsFromPlan(plan);
+            if(table.supplyRequest()!=null)
+                return "Warehouse material request already active"
+                        +(table.builderCancelShipment()
+                            ?"; cancelling the previous unfiltered manifest":"");
+            // queueMaterials owns the single OnSite + rack snapshot.
+            // Duplicating both scans here blocked the server at Start.
+            if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan)){
+                var window=BuilderMaterialDemand.nextWindow(
+                        plan,table.builderCursor(),
+                        table::builderStepCompletedForMaterials,
+                        BuilderMaterialRules.WINDOW_LAYERS);
+                if(BuilderMaterialDemand.outstandingRemaining(window,
+                        BuilderSupplyInventory.available(table),Map.of()).isEmpty())
+                    return "Next eight Builder layers are staged or require no new stock";
                 return table.problem().isBlank()?"Warehouse not ready":table.problem();
+            }
             if(table.supplyPtp().equals(BlockPos.ZERO))
                 return "Warehouse request saved; "+table.problem();
-            return "Warehouse preparing "+materials.size()
+            return "Warehouse preparing "+table.supplyManifest().size()
                     +" material types at PTP "+table.supplyPtp().toShortString()
                     +". One Builder Golem will collect the packed shulkers";
         }catch(Exception ex){
@@ -287,11 +614,19 @@ public final class BuilderBuildService {
 
     public static void dispatch(ServerLevel level,WorkerStationBlockEntity table){
         BuilderChunkTickets.tick(level,table);
-        // Keep cancellation on the JOB'S loaded block, not the player or
-        // courier entity. Retry while packing is in flight; never drop a
-        // live order UUID or orphan its physical shulkers.
+        // Also recover completed jobs saved by older versions with a live
+        // warehouse ticket. A stale request otherwise blocks retirement
+        // even after every schematic block has been placed.
+        if(table.isBuilder()&&table.phase()==WorkerPhase.COMPLETE
+                &&table.activeOrder()==null&&table.supplyRequest()!=null
+                &&!table.builderCancelShipment())
+            table.requestBuilderShipmentCancellation();
+        // A cancellation takes precedence over the remaining warehouse
+        // fulfillment workload. It is retried from the Planner even if
+        // every Builder is unloaded, paused or awaiting a stuck shipment.
+        // The warehouse stops picking, then safely drains REAL picker cargo.
         if(table.isBuilder()&&table.builderCancelShipment()
-                &&level.getGameTime()%40==0){
+                &&level.getGameTime()%20==0){
             var cancellation=BuilderWarehouseCoordinator.cancelShipmentDetailed(level,table);
             if(!cancellation.completed())
                 table.setProblem("Warehouse cancellation pending: "
@@ -300,7 +635,8 @@ public final class BuilderBuildService {
         }
         if(table.isBuilder()&&level.getGameTime()%40==0)
             table.updateBuilderStagedStock(BuilderSupplyInventory.available(table));
-        if(table.isBuilder()&&level.getGameTime()%80==0){
+        if(table.isBuilder()&&!BuilderSupplyInventory.creativeSupply(table)
+                &&level.getGameTime()%80==0){
             var link=table.warehouse();
             if(link!=null&&level.dimension().identifier().toString().equals(link.dimension())){
                 BlockPos computer=new BlockPos(link.x(),link.y(),link.z());
@@ -329,7 +665,9 @@ public final class BuilderBuildService {
         // no order is active. Actual rack stock is prioritized, and the
         // full remaining demand is never silently dropped.
         if(table.isBuilder()&&table.activeOrder()!=null
-                &&table.warehouse()!=null&&table.supplyRequest()==null
+                &&table.warehouse()!=null
+                &&!BuilderSupplyInventory.creativeSupply(table)
+                &&table.supplyRequest()==null
                 &&!table.builderCancelShipment()
                 &&level.getGameTime()%80==0)
             primeWarehouse(level,table);
@@ -377,10 +715,28 @@ public final class BuilderBuildService {
         if(BuilderGrappleAccess.active(worker))return;
         if(BuilderScaffolding.isControllingMovement(worker))return;
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
+        // A returning Builder does NOT need an online owner, task scan,
+        // warehouse manifest or rescue work to finish getting off the roof.
+        // Run this BEFORE all such code and even before a new task is
+        // considered. The normal completed-job branch below still owns
+        // final inventory unload and recycling.
+        if(table.activeOrder()!=null&&table.phase()!=WorkerPhase.COMPLETE){
+            WorkerAction returning=workerActions.get(worker);
+            if(returning!=null&&returning.returningToSite){
+                boolean arrived=parkAtOnSite(level,worker,table);
+                if(shouldContinueEvacuation(true,arrived))return;
+                returning.returningToSite=false;
+            }
+        }
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
             // On job completion a Builder may still be on its LAST
             // scaffold tower. It must return to ground and dismount
             // BEFORE reclaiming blocks, delivering tools or going home.
+            BlockPos returnGoal=table.builderUnloadingStorage();
+            if(returnGoal==null)returnGoal=table.getBlockPos();
+            if(!BuilderScaffoldPlanA.hasPlan(worker)
+                    &&BuilderGrappleAccess.rappelHome(
+                            level,worker,table,returnGoal))return;
             if(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table))
                 return;
@@ -401,12 +757,8 @@ public final class BuilderBuildService {
             // in the on-site debris/materials chest.
             if(BuilderSupplyInventory.hasTools(worker)){
                 BlockPos depot=BuilderSupplyInventory.pouchReturnPos(table);
-                if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                        depot.getZ()+.5)>12){
-                    com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .routeTo(level,worker,depot,.83);
+                if(BuilderReturnService.approach(level,worker,depot,.83))
                     return;
-                }
                 if(!BuilderSupplyInventory.returnTools(worker,table)){
                     table.setProblem("Make room in OnSite Storage for returned mining tools");
                     return;
@@ -415,11 +767,8 @@ public final class BuilderBuildService {
             if(!worker.hasSupplyBox()&&!worker.isEmpty()){
                 BlockPos returnTo=BuilderSupplyInventory.pouchReturnPos(table);
                 if(level.hasChunkAt(returnTo)){
-                    if(worker.distanceToSqr(returnTo.getX()+.5,returnTo.getY()+.5,
-                            returnTo.getZ()+.5)>12)
-                        com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                .routeTo(level,worker,returnTo,.8);
-                    else BuilderSupplyInventory.returnPouch(table,worker);
+                    if(!BuilderReturnService.approach(level,worker,returnTo,.8))
+                        BuilderSupplyInventory.returnPouch(table,worker);
                 }
                 return;
             }
@@ -429,6 +778,26 @@ public final class BuilderBuildService {
                     com.caszgamermd.golemsplus.worker.WorkerIdleRoam.tick(level,worker,home);
             }
             return;
+        }
+        // A failed worker relinquishes the cell and physically returns to
+        // OnSite before trying another assignment. Other crew members can
+        // claim the released cell without waiting for this worker.
+        WorkerAction retreat=workerActions.get(worker);
+        if(retreat!=null&&retreat.retreatUntil>0){
+            BlockPos depot=table.builderUnloadingStorage();
+            if(depot==null)depot=home;
+            if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                    depot.getZ()+.5)>12){
+                if(!BuilderScaffoldPlanA.hasPlan(worker)
+                        &&BuilderGrappleAccess.rappelHome(level,worker,table,depot))return;
+                if(BuilderScaffolding.descendForTravel(level,worker,table)
+                        ||BuilderGrappleAccess.rappelForTravel(level,worker,table))return;
+                com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeTo(level,worker,depot,.8);
+                return;
+            }
+            if(level.getGameTime()<retreat.retreatUntil)return;
+            retreat.retreatUntil=-1;
         }
         if(table.phase()==WorkerPhase.PAUSED){
             BuilderGrappleAccess.cancel(worker);
@@ -491,13 +860,33 @@ public final class BuilderBuildService {
             // Ignore-plant entries are virtual no-op completions, not
             // physical work or a route a Builder must walk. This also
             // completes a job with only ignored vegetation remaining.
-            table.reconcileBuilderWork(plan.steps());
+            // The full schematic sweep is expensive on large builds. Run
+            // it once when this immutable job/rule plan becomes active;
+            // completeBuilderStep maintains actual progress thereafter.
+            var lastReconciled=reconciledJobs.get(table);
+            if(lastReconciled==null||lastReconciled.plan()!=plan
+                    ||!java.util.Objects.equals(lastReconciled.job(),table.activeOrder())){
+                table.reconcileBuilderWork(plan.steps());
+                reconciledJobs.put(table,new ReconciledJob(table.activeOrder(),plan));
+            }
             if(table.phase()==WorkerPhase.COMPLETE)return;
             // All positions for each X/Z zone were pre-assigned as one
             // immutable ordered execution plan. The Planner does NOT
             // arbitrate between Builders on each move or block placement.
             var assigned=zoneSchedule(table,plan);
             var zone=assigned.tasks().steps(worker.getUUID());
+            // Completion is per Builder's ORIGINAL X/Z zone, across all
+            // heights. A worker that was already sent home must FINISH
+            // the physical trip before the rescue watchdog can recruit
+            // it again, even if a different layer became active en route.
+            int currentClaim=table.claimedStep(worker.getUUID());
+            WorkerAction returnAction=workerActions.computeIfAbsent(
+                    worker,k->new WorkerAction());
+            if(shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim)){
+                activityForFinished(worker);
+                returnAction.returningToSite=!parkAtOnSite(level,worker,table);
+                return;
+            }
             // Unreachable frontier cells may now be served by owned,
             // physically climbable scaffold towers or two-cell bridges.
             // Construction intelligence runs BEFORE step claiming:
@@ -514,8 +903,38 @@ public final class BuilderBuildService {
                         &&!table.builderZoneDone(List.of(idx))){
                     ownLayerClear=false;break;
                 }
+            // A worker that has cleared its own current layer must
+            // vacate the roof BEFORE volunteering as a cross-zone helper.
+            // This keeps finished Builders out of the placement envelopes
+            // seen in the narrow dome cap test. It can rejoin once it
+            // has actually arrived at OnSite; no claimed rescue is lost.
+            if(ownLayerClear&&index<0){
+                BlockPos depot=table.builderUnloadingStorage();
+                if(depot==null)depot=table.getBlockPos();
+                if(shouldEvacuateIdleLayer(true,index,
+                        atOnSite(level,worker,depot))){
+                    returnAction.returningToSite=true;
+                    parkAtOnSite(level,worker,table);
+                    return;
+                }
+            }
+            // A published failure is an immediate call for help, even
+            // before the normal ten-second roof-rescue watchdog expires.
+            boolean teammateRequested=false;
+            var requests=handoffBoard.get(table);
+            if(requests!=null)
+                for(var request:requests.entrySet()){
+                    int requested=request.getKey();
+                    if(request.getValue().until()>level.getGameTime()
+                            &&!request.getValue().failedWorker().equals(worker.getUUID())
+                            &&requested>=0&&requested<plan.steps().size()
+                            &&plan.steps().get(requested).y()==layer
+                            &&table.builderStepReadyForClaim(requested)){
+                        teammateRequested=true;break;
+                    }
+                }
             boolean emergencyRoofAssist=ownLayerClear
-                    &&(index>=0&&!zone.contains(index)
+                    &&(teammateRequested||index>=0&&!zone.contains(index)
                         ||roofNeedsHelp(level,table));
             // Monitoring must run for every working crew, including the
             // worker still in its own zone: otherwise a fully active crew
@@ -534,10 +953,35 @@ public final class BuilderBuildService {
                                 +" cells outside its cleared layer zone");
                 }
             }
+            // Keep the previously failing worker from immediately
+            // reclaiming the same cell while another Builder is available.
+            long selectionTick=level.getGameTime();
+            if(index>=0&&reservedForTeammate(table,worker.getUUID(),index,selectionTick))
+                index=-1;
+            var handoffCandidates=new java.util.ArrayList<Integer>();
+            for(int candidate:zone)
+                if(!reservedForTeammate(table,worker.getUUID(),candidate,selectionTick))
+                    handoffCandidates.add(candidate);
+            zone=handoffCandidates;
+            // No unfinished cell in this worker's portion of the active Y:
+            // go OnSite immediately, without burning a full search turn.
+            // A real cross-zone rescue is the only reason to stay active.
+            if(shouldParkWaitingForLayer(
+                    ownLayerClear,emergencyRoofAssist,index)){
+                returnAction.returningToSite=!parkAtOnSite(level,worker,table);
+                return;
+            }
             if(index<0||index>=plan.steps().size()
                     ||!zone.contains(index)
                     ||plan.steps().get(index).y()!=layer
                     ||!table.builderStepReadyForClaim(index)){
+                // Expensive frontier probes are spread across the crew's
+                // five-tick work cadence. Their walking/path execution
+                // continues every tick, and one blocked search cannot cause
+                // all Builders to launch A* probes in the same tick.
+                if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
+                        assigned.roster().indexOf(worker.getUUID()),
+                        assigned.roster().size()))return;
                 var next=BuilderConstructionPlanner.choose(
                         level,worker,table,plan.steps(),zone);
                 index=next==null?-1:table.claimPreferredBuilderZoneStep(
@@ -555,44 +999,50 @@ public final class BuilderBuildService {
                     System.out.println("[FRONTIER BLOCKED] "
                             +worker.getName().getString()+" "+report);
                 }
-                // When a finished zone still has a safe upper ledge,
-                // preserve it for emergency help on a stuck neighboring
-                // zone. Sending all three idle roof workers down to the
-                // OnSite chest leaves nobody who can step back and build
-                // a paid scaffold to the last few cap cells.
-                List<Integer> waitingZone=zone;
-                if(ownLayerClear
-                        &&worker.getY()-table.getBlockPos().getY()>=12){
-                    var rescue=roofRescueZone(table,worker.getUUID(),
-                            plan.steps(),layer);
-                    if(!rescue.isEmpty())waitingZone=rescue;
+                // All workers whose OWN current layer is finished wait
+                // at OnSite. The shared Y gate still holds, but idle crew
+                // no longer crowds the structure or freezes beside a stuck
+                // teammate. Roof assistance can reassign them from depot.
+                if(ownLayerClear){
+                    returnAction.returningToSite=!parkAtOnSite(level,worker,table);
+                    return;
                 }
+                // This worker still has unfinished current-layer work, but
+                // no safe pose was found. Keep a genuine elevated foothold
+                // briefly while its own retry search explores new routes.
                 if(canWaitNearFrontier(level,worker,table,
-                        plan.steps(),waitingZone,layer)){
+                        plan.steps(),zone,layer)){
                     var waiting=workerActions.computeIfAbsent(worker,k->new WorkerAction());
                     if(waiting.frontierWaitSince<0
                             ||waiting.frontierWaitLayer!=layer){
                         waiting.frontierWaitSince=level.getGameTime();
                         waiting.frontierWaitLayer=layer;
                     }
-                    // Short low walls are cheap to approach again: keep
-                    // the old 80-tick courtesy wait so idle Builders do
-                    // not clog early dome corridors. At a high roof,
-                    // abandoning an otherwise safe ledge means losing
-                    // 12+ real blocks of hard-won vertical access. Hold
-                    // that ledge while this zone has unfinished work on
-                    // the current or a future layer. Completed zones
-                    // still leave immediately.
+                    // A Builder with unfinished own work can retry from a
+                    // safe high-roof ledge. Those whose layer is finished
+                    // have already been sent back to OnSite above.
                     boolean expensiveAscent=worker.getY()
                             -table.getBlockPos().getY()>=12;
-                    if(expensiveAscent||level.getGameTime()
-                            -waiting.frontierWaitSince<=80){
+                    long waited=level.getGameTime()-waiting.frontierWaitSince;
+                    if(shouldHoldRoofFrontier(waited,expensiveAscent)){
                         com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                         return;
                     }
+                    // An elevated cap is not an eternal parking space.
+                    // After the bounded retry window, physically retreat
+                    // and restart approach planning from a different ledge.
+                    // Keep the exact unfinished cells and current Y gate.
+                    waiting.retreatUntil=level.getGameTime()+160;
+                    waiting.frontierWaitSince=-1;
+                    if(expensiveAscent)
+                        System.out.println("[ROOF REPOSITION] "
+                                +worker.getName().getString()
+                                +" has no executable stance after "+waited
+                                +" ticks at "+worker.blockPosition()
+                                +"; descending to retry from OnSite");
                 }
                 if(table.builderZoneDone(zone))activityForFinished(worker);
-                parkAtOnSite(level,worker,table);
+                returnAction.returningToSite=!parkAtOnSite(level,worker,table);
                 return;
             }
             var activity=action(worker,index);
@@ -648,6 +1098,8 @@ public final class BuilderBuildService {
                 // a correct block in pursuit of stale schematic geometry.
                 table.recordBuilderPlacement(step.requiredItem());
                 table.completeBuilderStep(worker.getUUID(),index);
+                // A pre-existing block is not this golem's physical work:
+                // do not relocate its last real placement anchor here.
                 activity.phase=Action.COMPLETE;
                 // Already-correct positions are NO-OPs, never mine or
                 // dismantle the nearby scaffold to rebuild them.
@@ -778,13 +1230,110 @@ public final class BuilderBuildService {
             }
             long now=level.getGameTime();
             if(activity.workTravelSince<0)activity.workTravelSince=now;
+            // Every meaningful physical movement refreshes the stall timer.
+            // A long detour, grapple, or scaffold climb must not be
+            // interrupted merely because it takes longer than 180 ticks.
+            double targetDistance=worker.distanceToSqr(
+                    pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+            if(activity.lastTargetProgressTick<0
+                    ||targetDistance<activity.bestTargetDistance-1.0){
+                activity.bestTargetDistance=targetDistance;
+                activity.lastTargetProgressTick=now;
+            }
+            if(activity.lastMovementTick<0){
+                activity.lastMovementTick=now;
+                activity.lastWorkX=worker.getX();
+                activity.lastWorkY=worker.getY();
+                activity.lastWorkZ=worker.getZ();
+            }else{
+                double dx=worker.getX()-activity.lastWorkX;
+                double dy=worker.getY()-activity.lastWorkY;
+                double dz=worker.getZ()-activity.lastWorkZ;
+                if(dx*dx+dy*dy+dz*dz>=0.36){
+                    activity.lastMovementTick=now;
+                    activity.lastWorkX=worker.getX();
+                    activity.lastWorkY=worker.getY();
+                    activity.lastWorkZ=worker.getZ();
+                }
+            }
+            // A genuinely stationary Builder on fence/wall/stair geometry
+            // may have no legal ground node even though a clear rope face
+            // and safe lower landing exist. Check that physical escape at
+            // most once every four seconds; no hook is used during normal
+            // movement, or while a scaffold controller is in charge.
+            if(now-activity.lastMovementTick>80
+                    &&now-activity.lastPerchEscapeTick>=80
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffoldPlanA.hasPlan(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
+                activity.lastPerchEscapeTick=now;
+                if(BuilderGrappleAccess.escapePerch(
+                        level,worker,table,pos)){
+                    activity.lastMovementTick=now;
+                    activity.workTravelSince=now;
+                    return;
+                }
+            }
+            // Prepare a bounded next-step choice during ordinary walking.
+            // This never issues movement to the next target prematurely.
+            prefetchNext(level,worker,table,plan.steps(),zone,index,pos,
+                    activity,now);
             // Once an owned shaft/bridge starts, its controller owns all
             // physical movement. Do not replace it with a normal route
             // just because another nominal work pose becomes visible.
             if(BuilderScaffoldPlanA.hasPlan(worker)
                     &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
                 return;
-            if(now-activity.workTravelSince>900&&!BuilderGrappleAccess.active(worker)){
+            if(now-activity.lastTargetProgressTick>320
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffoldPlanA.hasPlan(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
+                // A golem may move continuously while circling the same
+                // roof gap. Actual distance to its goal must improve
+                // eventually. Release the exact step for another crew
+                // member rather than treating motion as progress forever.
+                if(scaffoldBlockedWork(level,worker,table,owner,pos,
+                        plan.steps())){
+                    activity.lastTargetProgressTick=now;
+                    return;
+                }
+                BuilderPlacementSpace.cancelYield(worker);
+                BuilderPlacementSpace.invalidateApproach(worker,pos);
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                table.waitForBuilderAccess(worker.getUUID(),index,now,
+                        "320 ticks without target-distance progress");
+                activity.lastFailedStep=index;
+                activity.retreatUntil=now+100;
+                publishHandoff(table,worker.getUUID(),index,now,
+                        "circling without approaching work cell");
+                System.out.println("[BUILDER HANDOFF] worker="
+                        +worker.getName().getString()+" released="+index
+                        +" noCloserFor="+(now-activity.lastTargetProgressTick)
+                        +" ticks; teammate may try");
+                activity.lastTargetProgressTick=now;
+                return;
+            }
+            if(now-activity.lastMovementTick>180
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffoldPlanA.hasPlan(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
+                // Reposition before abandoning the assignment: try an
+                // alternate physical grapple or paid scaffold access route.
+                // Neither is mandatory; a failed attempt falls through to
+                // deferred frontier selection rather than spinning forever.
+                if(scaffoldBlockedWork(level,worker,table,owner,pos,
+                        plan.steps())){
+                    activity.workTravelSince=now;
+                    return;
+                }
+                if(pos.getY()>worker.blockPosition().getY()+1){
+                    var reposition=BuilderGrappleAccess.reachWork(
+                            level,worker,table,pos);
+                    if(reposition==BuilderGrappleAccess.Result.MOVING){
+                        activity.workTravelSince=now;
+                        return;
+                    }
+                }
                 // Repeatedly executable movement is not proof that this
                 // placement is making progress. Preserve the cell/materials
                 // and let another feasible frontier on THIS Y run first.
@@ -792,11 +1341,18 @@ public final class BuilderBuildService {
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                 table.waitForBuilderAccess(worker.getUUID(),index,now,
-                        "900-tick work approach without placement");
+                        "180-tick stationary work approach; alternative access exhausted");
+                activity.lastFailedStep=index;
+                activity.retreatUntil=now+100;
+                publishHandoff(table,worker.getUUID(),index,now,
+                        "stationary after alternate scaffold and grapple");
+                System.out.println("[BUILDER HANDOFF] worker="+worker.getName().getString()
+                        +" released="+index+" returnOnSite=true");
                 activity.workTravelSince=-1;
-                table.setProblem("Deferred cycling work approach "+pos);
+                activity.lastMovementTick=now;
+                table.setProblem("Deferred stationary work approach "+pos);
                 System.out.println("[FRONTIER RETRY] deferred unchanged step="+index
-                        +" after 900 ticks without placement at "+worker.position());
+                        +" after 180 stationary ticks at "+worker.position());
                 return;
             }
             int yDiff=pos.getY()-worker.blockPosition().getY();
@@ -832,6 +1388,19 @@ public final class BuilderBuildService {
                     BuilderPlacementSpace.invalidateApproach(worker,pos);
                 }
             }
+            // Elevated cells without a supporting block below need a
+            // construction platform, not repeated grapple ascents to a
+            // non-existent work stance. An inventory-paid scaffold bridge
+            // gets first refusal when ordinary walking cannot reach it.
+            // A failed scaffold preflight still permits grappling below.
+            if(yDiff>0
+                    &&BuilderConstructionPlanner.preferScaffoldForUnsupportedWork(
+                            directOrdinaryWork,
+                            level.getBlockState(pos.below()).isAir())
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&scaffoldBlockedWork(level,worker,table,owner,pos,
+                            plan.steps()))
+                return;
             // A grapple can repeatedly select an unreachable high ledge.
             // After a genuine physical approach timeout, try a supported,
             // inventory-paid scaffold bridge rooted on this same build.
@@ -842,7 +1411,7 @@ public final class BuilderBuildService {
             // Same-Y scaffolding is instead offered below only AFTER
             // all safe walking stances or their real routes are rejected.
             if(yDiff>1&&!directOrdinaryWork
-                    &&now-activity.workTravelSince>260
+                    &&now-activity.lastMovementTick>80
                     &&!BuilderGrappleAccess.active(worker)
                     &&scaffoldBlockedWork(level,worker,table,owner,pos,
                             plan.steps()))
@@ -888,10 +1457,12 @@ public final class BuilderBuildService {
                             .WorkerNavigation.routeToExact(
                                     level,worker,approach,1.0);
                     if(!moving){
+                        // Approximate routeTo() may stop short of the EXACT
+                        // 0.8m-clearance pose on narrow roofs. It reported
+                        // success while the worker repeatedly missed its
+                        // actual placement stance. Never use it as a
+                        // fallback for an exact construction destination.
                         BuilderPlacementSpace.invalidateApproach(worker,pos);
-                        moving=com.caszgamermd.golemsplus.worker
-                                .WorkerNavigation.routeTo(
-                                        level,worker,approach,.85);
                     }
                     if(!moving&&scaffoldBlockedWork(
                             level,worker,table,owner,pos,plan.steps()))return;
@@ -1003,9 +1574,10 @@ public final class BuilderBuildService {
             // lower half was already placed and paid for in the prior
             // layer. Keep refund logic for all ordinary materials.
             boolean freeHalf=step.requiredItem()==null;
-            BuilderSupplyInventory.Receipt payment=freeHalf?null:
+            boolean reusableFluid=BuilderBlockResolver.reusableSupply(step.requiredItem());
+            BuilderSupplyInventory.Receipt payment=freeHalf||reusableFluid?null:
                     BuilderSupplyInventory.consume(worker,state.item());
-            if(!freeHalf&&payment==null){
+            if(!freeHalf&&!reusableFluid&&payment==null){
                 table.waitForBuilderMaterial(worker.getUUID(),index,
                         level.getGameTime());
                 if(BuilderWarehouseCoordinator.request(level,worker,table,
@@ -1026,7 +1598,11 @@ public final class BuilderBuildService {
             }
             table.recordBuilderPlacement(step.requiredItem());
             table.completeBuilderStep(worker.getUUID(),index);
+            BuilderConstructionPlanner.noteCompleted(worker,pos);
             activity.phase=Action.COMPLETE;
+            // Use the already-validated next task, if still safe and
+            // claimable. No second full frontier search at this stop.
+            handoffNext(level,worker,table,plan.steps(),zone,activity,index);
             BuilderSupplyInventory.recycleEmptyShulkers(table);
             // Keep any deployed scaffolding until this ten-block work order
             // completes; retrieving per placed block caused route churn.
@@ -1113,26 +1689,19 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table){
         try{
             var cache=jobCache(table);
-            Map<String,Long> materials=new java.util.LinkedHashMap<>();
             int ignored=0;
-            for(var step:cache.steps()){
-                if(step.ignorePlant())ignored++;
-                else if(step.requiredItem()!=null)
-                    materials.merge(step.requiredItem(),1L,Long::sum);
-            }
-            table.reconcileBuilderMaterials(materials);
-            table.previewBuilderWork(cache.steps());
-            // A running planner may have already cleared the site.
-            // Otherwise preserve the clearing gate until all real
-            // obstructions have actually been handled.
+            for(var step:cache.steps())if(step.ignorePlant())ignored++;
+            // Reconcile virtual skips FIRST: an un-ignored cell may reopen
+            // from the saved completed prefix without recreating materials
+            // for physically placed work.
             if((table.activeOrder()!=null
                     ||table.phase()==WorkerPhase.COMPLETE)
                     &&table.builderClearCursor()>=cache.clearing().size())
                 table.reconcileBuilderWork(cache.steps());
-            return table.builderIgnorePlants()
-                    ?"Ignoring "+ignored+" schematic vegetation placements; "
-                            +"site clearing remains enabled"
-                    :"Crops and flowers restored to this job's material plan";
+            table.reconcileBuilderMaterialsFromPlan(cache.steps());
+            table.previewBuilderWork(cache.steps());
+            return "Builder plan updated: "+ignored+" skipped cells; "
+                    +"remaining inventory and next warehouse window recalculated";
         }catch(Exception e){
             return "Plant filter saved; unable to recalculate material list: "
                     +e.getClass().getSimpleName();
@@ -1146,7 +1715,8 @@ public final class BuilderBuildService {
                 &&previous.rotation()==table.builderRotation()
                 &&previous.mirror()==table.builderMirror()
                 &&previous.origin().equals(table.builderOrigin())
-                &&previous.ignorePlants()==table.builderIgnorePlants())
+                &&previous.ignorePlants()==table.builderIgnorePlants()
+                &&previous.rulesRevision()==table.builderRuleRevision())
             return previous;
         if(!table.hasPlacedSchematic())
             throw new IllegalArgumentException("No placed schematic");
@@ -1161,12 +1731,47 @@ public final class BuilderBuildService {
         var site=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
                 BuildSite.Rotation.values()[table.builderRotation()/90],
                 BuildSite.Mirror.values()[table.builderMirror()]);
-        var result=BuilderConstructionPlan.create(schematic,site,
+        var original=BuilderConstructionPlan.create(schematic,site,
                 table.builderIgnorePlants());
+        var steps=BuilderMaterialRules.apply(original.steps(),
+                table.builderMaterialRules(),table.builderStartY(),
+                table.builderHeightMode(),site.rotation(),site.mirror());
+        // The default job does no extra 100k-position map work.
+        List<BuilderSiteClearance.Target> clearing=
+                BuilderSiteClearance.targets(schematic,site);
+        if(!table.builderMaterialRules().isEmpty()
+                ||table.builderHeightMode()!=BuilderMaterialRules.ALL){
+            // Preserve clearance index stability across mid-job rule edits.
+            // A skipped target is a no-op, never a permission to remove it.
+            var byPosition=new java.util.HashMap<BlockPos,
+                    BuilderConstructionPlan.Step>();
+            var originallyIgnored=new java.util.HashSet<BlockPos>();
+            for(var step:original.steps()){
+                if(step.ignorePlant())
+                    originallyIgnored.add(new BlockPos(step.x(),step.y(),step.z()));
+            }
+            for(var step:steps)
+                byPosition.put(new BlockPos(step.x(),step.y(),step.z()),step);
+            var adjusted=new java.util.ArrayList<BuilderSiteClearance.Target>(
+                    clearing.size());
+            for(var target:clearing){
+                var effective=byPosition.get(target.pos());
+                boolean skip=!table.builderIncludesY(target.pos().getY())
+                        ||effective!=null&&effective.ignorePlant()
+                            &&!originallyIgnored.contains(target.pos());
+                adjusted.add(skip
+                        ?new BuilderSiteClearance.Target(target.pos(),
+                                "golems_plus:skip")
+                        :effective==null?target:
+                                new BuilderSiteClearance.Target(
+                                        target.pos(),effective.encodedState()));
+            }
+            clearing=List.copyOf(adjusted);
+        }
         Cache next=new Cache(table.builderFile(),table.builderRotation(),
-                table.builderMirror(),origin,result.steps(),
-                BuilderSiteClearance.targets(schematic,site),
-                table.builderIgnorePlants(),BuilderZones.footprint(result.steps()));
+                table.builderMirror(),origin,steps,List.copyOf(clearing),
+                table.builderIgnorePlants(),table.builderRuleRevision(),
+                BuilderZones.footprint(steps));
         cachedWarehousePlans.put(table,next);
         return next;
     }
@@ -1182,7 +1787,8 @@ public final class BuilderBuildService {
             return found;
         // Preserves completed cells and carried real items when adding or
         // retiring a Builder. Only unfinished staging reservations change.
-        var tasks=BuilderZoneWorkPlan.compile(cache.steps(),cache.zones(),roster);
+        var tasks=BuilderZoneWorkPlan.compile(cache.steps(),cache.zones(),
+                roster,table.builderHeightMode()==BuilderMaterialRules.FROM_Y_DOWN);
         table.beginBuilderZonePlan();
         ScheduledZones result=new ScheduledZones(table.activeOrder(),cache,
                 List.copyOf(roster),tasks);
@@ -1197,7 +1803,8 @@ public final class BuilderBuildService {
                 &&previous.rotation()==table.builderRotation()
                 &&previous.mirror()==table.builderMirror()
                 &&previous.origin().equals(table.builderOrigin())
-                &&previous.ignorePlants()==table.builderIgnorePlants())
+                &&previous.ignorePlants()==table.builderIgnorePlants()
+                &&previous.rulesRevision()==table.builderRuleRevision())
             return previous;
         // Share the same immutable validated work plan among all eight
         // Builders. A different Litematica parse per worker caused pauses

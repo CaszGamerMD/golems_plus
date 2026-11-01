@@ -12,6 +12,8 @@ public final class GolemsPlus implements ModInitializer {
     @Override public void onInitialize() {
         com.caszgamermd.golemsplus.builder.BuilderChunkTickets.initialize();
         WorksiteContent.initialize();
+        com.caszgamermd.golemsplus.world.GrappleLineVisuals.initialize();
+        com.caszgamermd.golemsplus.world.PlayerGrappleController.initialize();
         com.caszgamermd.golemsplus.world.StationSettingsNetworking.initialize();
         com.caszgamermd.golemsplus.world.OutputChestSelection.initialize();
         com.caszgamermd.golemsplus.builder.BuilderUploadNetworking.initialize();

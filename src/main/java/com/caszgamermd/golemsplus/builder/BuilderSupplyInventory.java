@@ -1,6 +1,7 @@
 package com.caszgamermd.golemsplus.builder;
 
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
+import com.caszgamermd.golemsplus.world.CreativeCrateBlockEntity;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.ArrayList;
@@ -23,6 +24,12 @@ public final class BuilderSupplyInventory {
     public record Receipt(Container source,int slot,ItemStack previous,
                           ItemStack consumed) {}
     private BuilderSupplyInventory(){}
+    // Best-effort kit staging: short retry window for simultaneous crew
+    // visits to the same real OnSite chest. Never spawn tools or wait forever
+    // if the user has not actually supplied them.
+    private static final long STARTER_KIT_RETRY_TICKS=100;
+    private static final Map<BuilderGolem,Long> kitStageStarted=
+            new java.util.WeakHashMap<>();
     private static NonNullList<ItemStack> contents(ItemStack box){
         var slots=NonNullList.withSize(27,ItemStack.EMPTY);
         box.getOrDefault(DataComponents.CONTAINER,ItemContainerContents.EMPTY).copyInto(slots);
@@ -36,6 +43,9 @@ public final class BuilderSupplyInventory {
         if(!table.builderRecallRequested()
                 &&table.builderOrigin().distSqr(pos)>128L*128L)return null;
         return world.getBlockEntity(pos) instanceof Container storage?storage:null;
+    }
+    public static boolean creativeSupply(WorkerStationBlockEntity table){
+        return selectedStorage(table) instanceof CreativeCrateBlockEntity;
     }
     /** Supplies physically accessible at the selected OnSite container.
      * Warehouse shulkers may be stored as items INSIDE this container or
@@ -63,6 +73,16 @@ public final class BuilderSupplyInventory {
     }
     public static Map<String,Integer> available(WorkerStationBlockEntity table){
         Map<String,Integer> stock=new LinkedHashMap<>();
+        if(creativeSupply(table)){
+            // No rack scan or 100k-item synthetic inventory. Advertise only
+            // the actual job palette and Builder kit to the normal planner.
+            for(String item:table.builderRemaining().keySet())
+                stock.put(item,Integer.MAX_VALUE/2);
+            stock.put("minecraft:scaffolding",Integer.MAX_VALUE/2);
+            stock.put("minecraft:bucket",Integer.MAX_VALUE/2);
+            stock.put("golems_plus:grapple_hook",Integer.MAX_VALUE/2);
+            return stock;
+        }
         for(Container store:sources(table)){
             int max=store.getContainerSize();
             for(int i=0;i<max;i++){
@@ -140,7 +160,8 @@ public final class BuilderSupplyInventory {
     public static boolean depositBox(WorkerStationBlockEntity table,ItemStack box){
         if(box.isEmpty()||!box.is(ItemTags.SHULKER_BOXES))return false;
         Container destination=selectedStorage(table);
-        if(destination==null)return false;
+        if(destination==null||destination instanceof CreativeCrateBlockEntity)
+            return false; // Existing physical warehouse shulkers must not be voided.
         int limit=destination.getContainerSize();
         for(int i=0;i<limit;i++)if(destination.getItem(i).isEmpty()
                 &&destination.canPlaceItem(i,box)){
@@ -156,16 +177,27 @@ public final class BuilderSupplyInventory {
             ItemStack current=worker.getItem(i);
             if(current.isEmpty()||!ItemStack.isSameItemSameComponents(current,sample))
                 continue;
-            int space=Math.max(0,current.getMaxStackSize()-current.getCount());
+            int space=Math.max(0,worker.slotCapacity(i,sample)-current.getCount());
             int moved=Math.min(space,remaining);
             if(moved>0){
                 worker.setItem(i,current.copyWithCount(current.getCount()+moved));
                 remaining-=moved;
             }
         }
-        for(int i=0;i<worker.getContainerSize()&&remaining>0;i++){
+        // The three belt slots are genuinely dedicated: install a new
+        // scaffold/hook/bucket there BEFORE filling loose material pockets.
+        // Ordinary schematic blocks must never spill into the belt.
+        for(int i=BuilderGolem.SCAFFOLD_BELT_SLOT;
+                i<worker.getContainerSize()&&remaining>0;i++){
+            if(!worker.getItem(i).isEmpty()||!worker.canPlaceItem(i,sample))
+                continue;
+            int moved=Math.min(worker.slotCapacity(i,sample),remaining);
+            worker.setItem(i,sample.copyWithCount(moved));
+            remaining-=moved;
+        }
+        for(int i=0;i<BuilderGolem.SCAFFOLD_BELT_SLOT&&remaining>0;i++){
             if(!worker.getItem(i).isEmpty())continue;
-            int moved=Math.min(sample.getMaxStackSize(),remaining);
+            int moved=Math.min(worker.slotCapacity(i,sample),remaining);
             worker.setItem(i,sample.copyWithCount(moved));
             remaining-=moved;
         }
@@ -175,9 +207,10 @@ public final class BuilderSupplyInventory {
         int space=0;
         for(int i=0;i<worker.getContainerSize();i++){
             ItemStack have=worker.getItem(i);
-            if(have.isEmpty())space+=item.getMaxStackSize();
+            if(!worker.canPlaceItem(i,item))continue;
+            if(have.isEmpty())space+=worker.slotCapacity(i,item);
             else if(ItemStack.isSameItemSameComponents(have,item))
-                space+=Math.max(0,have.getMaxStackSize()-have.getCount());
+                space+=Math.max(0,worker.slotCapacity(i,item)-have.getCount());
         }
         return space;
     }
@@ -187,6 +220,10 @@ public final class BuilderSupplyInventory {
      */
     private static int drawFromStorage(Container storage,BuilderGolem worker,
                                        Item material,int amount){
+        if(storage instanceof CreativeCrateBlockEntity){
+            ItemStack sample=new ItemStack(material);
+            return tryPocket(worker,sample,Math.min(amount,room(worker,sample)));
+        }
         int remaining=amount;
         for(int slot=0;slot<storage.getContainerSize()&&remaining>0;slot++){
             ItemStack held=storage.getItem(slot);
@@ -231,6 +268,7 @@ public final class BuilderSupplyInventory {
         return amount-remaining;
     }
     private static boolean containsInSources(WorkerStationBlockEntity table,Item item){
+        if(creativeSupply(table))return true;
         for(Container source:sources(table))
             if(includesItem(source,source.getContainerSize(),item))return true;
         return false;
@@ -262,17 +300,17 @@ public final class BuilderSupplyInventory {
         Container storage=selectedStorage(table);
         if(depot==null||storage==null)return LoadStatus.MISSING;
         if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                depot.getZ()+.5)>12){
-            // This is an ordinary construction-material trip. If the
-            // worker ALREADY owns its hook, controlled rappel is valid;
-            // otherwise try the trained A* route without inventing tools.
-            if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
-                return LoadStatus.MOVING;
-            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                    level,worker,depot,.83);
+                depot.getZ()+.5)>12
+                &&BuilderGrappleAccess.rappelForTravel(level,worker,table))
             return LoadStatus.MOVING;
-        }
+        if(BuilderReturnService.approach(level,worker,depot,.83))
+            return LoadStatus.MOVING;
+        worker.organizeToolBelt();
         Map<String,Integer> materials=new LinkedHashMap<>();
+        // Prioritize the reserved tool belt before schematic material stacks.
+        materials.put("golems_plus:grapple_hook",1);
+        materials.put("minecraft:scaffolding",64);
+        materials.put("minecraft:bucket",1);
         int highest=worker.blockPosition().getY();
         for(int index:indices){
             if(index<0||index>=steps.size())continue;
@@ -281,21 +319,20 @@ public final class BuilderSupplyInventory {
             if(next.requiredItem()!=null)
                 materials.merge(next.requiredItem(),1,Integer::sum);
         }
-        // Plan B needs one reusable real item per Builder, not consumable
-        // scaffold blocks. Keep that tool in the 9-slot pouch on every trip.
-        materials.put("golems_plus:grapple_hook",1);
+        // A reusable fluid source is one tool for the whole work order,
+        // independent of how many fluid cells are assigned.
+        for(String item:java.util.List.copyOf(materials.keySet()))
+            if(BuilderBlockResolver.reusableSupply(item))materials.put(item,1);
+        // Every Builder carries a dedicated persistent TOOL BELT. Fill it
+        // only from real OnSite stock: one reusable hook, up to a full
+        // 64-block stack of scaffolding and one empty bucket. This does
+        // not take construction-material slots or fabricate absent tools.
         int highestSchematic=steps.stream().mapToInt(
                 BuilderConstructionPlan.Step::y).max().orElse(highest);
-        // Until the final eight schematic layers, ordinary ten-block
-        // batches need the pouch slots more than distant roof-cap items.
-        // Premature prefetch around mid-dome displaced materials and
-        // triggered expensive unnecessary depot trips from narrow ledges.
+        // Distant final-cap blocks still wait until the final eight
+        // schematic layers, because they would displace current materials.
         if(highest>=highestSchematic-8&&highestSchematic-highest>=0
                 &&highest-table.builderOrigin().getY()>=12){
-            // Keep paid scaffold available on the roof for the exact
-            // step-back-and-climb recovery. The current stage always has
-            // pouch priority over these optional future supplies.
-            materials.put("minecraft:scaffolding",16);
             if(zone!=null)
                 for(int idx:zone){
                     if(idx<0||idx>=steps.size())continue;
@@ -340,6 +377,21 @@ public final class BuilderSupplyInventory {
             if(needed<=0)continue;
             drawFromSources(table,worker,item,needed);
         }
+        int scaffolds=worker.getItem(BuilderGolem.SCAFFOLD_BELT_SLOT).getCount();
+        boolean hook=worker.getItem(BuilderGolem.GRAPPLE_BELT_SLOT).is(
+                com.caszgamermd.golemsplus.world.WorksiteContent.GRAPPLE_HOOK);
+        boolean bucket=worker.getItem(BuilderGolem.BUCKET_BELT_SLOT).is(
+                net.minecraft.world.item.Items.BUCKET);
+        if(scaffolds<20||!hook||!bucket){
+            long start=kitStageStarted.computeIfAbsent(worker,
+                    ignored->level.getGameTime());
+            if(level.getGameTime()-start<STARTER_KIT_RETRY_TICKS)
+                return LoadStatus.MISSING; // Retry physical chest next tick.
+            System.out.println("[BUILDER KIT] partial after actual stock retries"
+                    +" worker="+worker.getName().getString()
+                    +" scaffolds="+scaffolds+" hook="+hook+" bucket="+bucket);
+        }
+        kitStageStarted.remove(worker);
         return LoadStatus.READY;
     }
 
@@ -414,13 +466,11 @@ public final class BuilderSupplyInventory {
             Container site=selectedStorage(table);
             if(site==null||depot==null)return LoadStatus.MISSING;
             if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                    depot.getZ()+.5)>12){
-                if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
-                    return LoadStatus.MOVING;
-                com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                        level,worker,depot,.83);
+                    depot.getZ()+.5)>12
+                    &&BuilderGrappleAccess.rappelForTravel(level,worker,table))
                 return LoadStatus.MOVING;
-            }
+            if(BuilderReturnService.approach(level,worker,depot,.83))
+                return LoadStatus.MOVING;
             returnPouch(table,worker);
             if(room(worker,new ItemStack(target))<=0)return LoadStatus.MISSING;
         }
@@ -455,13 +505,11 @@ public final class BuilderSupplyInventory {
                 if(needed==0||!containsInSources(table,requested))
                     continue;
                 if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                        depot.getZ()+.5)>12){
-                    if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
-                        return LoadStatus.MOVING;
-                    com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                            level,worker,depot,.83);
+                        depot.getZ()+.5)>12
+                        &&BuilderGrappleAccess.rappelForTravel(level,worker,table))
                     return LoadStatus.MOVING;
-                }
+                if(BuilderReturnService.approach(level,worker,depot,.83))
+                    return LoadStatus.MOVING;
                 drawFromSources(table,worker,requested,needed);
             }
         }
@@ -524,6 +572,8 @@ public final class BuilderSupplyInventory {
             java.util.List<ItemStack> drops,boolean commit){
         Container destination=selectedStorage(table);
         if(destination==null)return false;
+        if(destination instanceof CreativeCrateBlockEntity)
+            return true; // Creative clearing deliberately discards debris.
         int count=destination.getContainerSize();
         ItemStack[] planned=new ItemStack[count];
         for(int i=0;i<count;i++)planned[i]=destination.getItem(i).copy();
@@ -589,23 +639,36 @@ public final class BuilderSupplyInventory {
         if(toolSlot(worker,target)>=0)return ToolStatus.READY;
         Container site=selectedStorage(table);
         if(site==null)return ToolStatus.MISSING;
+        if(site instanceof CreativeCrateBlockEntity){
+            Item tool=target.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_AXE)
+                    ?net.minecraft.world.item.Items.NETHERITE_AXE:
+                    target.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_SHOVEL)
+                    ?net.minecraft.world.item.Items.NETHERITE_SHOVEL:
+                    target.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_HOE)
+                    ?net.minecraft.world.item.Items.NETHERITE_HOE:
+                    net.minecraft.world.item.Items.NETHERITE_PICKAXE;
+            if(BuilderReturnService.approach(level,worker,
+                    table.builderUnloadingStorage(),.83))return ToolStatus.MOVING;
+            if(room(worker,new ItemStack(tool))<=0)returnPouch(table,worker);
+            drawFromSources(table,worker,tool,1);
+            return toolSlot(worker,target)>=0?ToolStatus.READY:ToolStatus.MISSING;
+        }
         int selected=-1;
         for(int i=0;i<site.getContainerSize();i++)
             if(correctTool(site.getItem(i),target)){selected=i;break;}
         if(selected<0)return ToolStatus.MISSING;
         BlockPos depot=table.builderUnloadingStorage();
-        if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,depot.getZ()+.5)>12){
-            com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeTo(level,worker,depot,.83);
+        if(BuilderReturnService.approach(level,worker,depot,.83))
             return ToolStatus.MOVING;
-        }
         int pocket=-1;
         for(int i=0;i<worker.getContainerSize();i++)
-            if(worker.getItem(i).isEmpty()){pocket=i;break;}
+            if(worker.getItem(i).isEmpty()
+                    &&worker.canPlaceItem(i,site.getItem(selected))){pocket=i;break;}
         if(pocket<0){
             returnPouch(table,worker);
             for(int i=0;i<worker.getContainerSize();i++)
-                if(worker.getItem(i).isEmpty()){pocket=i;break;}
+                if(worker.getItem(i).isEmpty()
+                        &&worker.canPlaceItem(i,site.getItem(selected))){pocket=i;break;}
         }
         if(pocket<0)return ToolStatus.MISSING;
         ItemStack stored=site.getItem(selected);
@@ -663,16 +726,10 @@ public final class BuilderSupplyInventory {
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null||selectedStorage(table)==null
                 ||!containsInSources(table,tool))return LoadStatus.MISSING;
-        if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                depot.getZ()+.5)>12){
-            // Missing grapple equipment cannot summon its own rappel.
-            // It must follow a REAL reachable walking route, otherwise
-            // signal missing access instead of recursive self-calls.
-            if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeTo(level,worker,depot,.83))
-                return LoadStatus.MISSING;
+        // Missing hook cannot summon a grapple. Walk to a real adjacent
+        // depot stance rather than planning into its solid chest block.
+        if(BuilderReturnService.approach(level,worker,depot,.83))
             return LoadStatus.MOVING;
-        }
         if(room(worker,new ItemStack(tool))<=0)return LoadStatus.MISSING;
         drawFromSources(table,worker,tool,1);
         return worker.carriedCount(tool)>0?LoadStatus.READY:LoadStatus.MISSING;
@@ -690,14 +747,13 @@ public final class BuilderSupplyInventory {
         Container source=site!=null&&containsInSources(table,item)?site:null;
         if(source==null)return ScaffoldLoad.MISSING;
         BlockPos pos=table.builderUnloadingStorage();
-        if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>12){
-            if(BuilderScaffolding.descendForTravel(level,worker,table)
-                    ||BuilderGrappleAccess.rappelForTravel(level,worker,table))
-                return ScaffoldLoad.MOVING;
-            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                    level,worker,pos,.82);
+        if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,
+                pos.getZ()+.5)>12
+                &&(BuilderScaffolding.descendForTravel(level,worker,table)
+                    ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
             return ScaffoldLoad.MOVING;
-        }
+        if(BuilderReturnService.approach(level,worker,pos,.82))
+            return ScaffoldLoad.MOVING;
         drawFromSources(table,worker,item,required-worker.carriedCount(item));
         return worker.carriedCount(item)>=required?
                 ScaffoldLoad.READY:ScaffoldLoad.MISSING;

@@ -12,7 +12,7 @@ assert "List.copyOf(list)" in plan
 assert "private record ScheduledZones(" in service
 assert "schedules=new WeakHashMap" in service
 assert "found.cache()==cache&&found.roster().equals(roster)" in service
-assert "BuilderZoneWorkPlan.compile(cache.steps(),cache.zones(),roster)" in service
+assert "BuilderZoneWorkPlan.compile(cache.steps(),cache.zones()," in service
 assert "table.beginBuilderZonePlan();" in service
 assert "table.claimPreferredBuilderZoneStep(" in service
 assert "var activity=action(worker,index);" in service
@@ -20,7 +20,7 @@ assert "Action.STAGE_MATERIALS" in service
 assert "Action.MOVE_TO_WORK" in service
 assert "Action.PLACE" in service
 assert "Action.COMPLETE" in service
-assert "BUILDER_STAGE_SIZE=32" in station
+assert "BUILDER_STAGE_SIZE=64" in station
 assert "if(current>=builderCursor&&current<steps.size()" in station
 assert "builderMissingRetries.getOrDefault(idx,0L)>now" in station
 assert "builderClaims.put(worker,idx)" in station
@@ -38,4 +38,4 @@ assert "if(current>=builderCursor&&current<steps.size()" in station
 # Ensure a single builder's transient approach does not overwrite all
 # workers' Planner problem messages while traversing a valid route.
 assert '"Builder exploring alternate routes to "' not in service
-print("PASS full zone plans, independent worker phases, stable claims, 32-cell staging, throttled Planner packets")
+print("PASS full zone plans, independent worker phases, stable claims, 64-cell staging, throttled Planner packets")

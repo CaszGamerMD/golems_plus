@@ -60,6 +60,10 @@ public final class BuilderSiteClearance {
             int index=table.claimBuilderClear(worker.getUUID(),plan.size());
             if(index<0)return table.builderClearCursor()>=plan.size();
             Target step=plan.get(index);
+            if(step.state().equals("golems_plus:skip")){
+                table.completeBuilderClear(worker.getUUID(),index,false);
+                continue;
+            }
             BlockPos pos=step.pos();
             if(!world.hasChunkAt(pos))
                 BuilderChunkTickets.destination(world,worker,pos);

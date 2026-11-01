@@ -23,24 +23,30 @@ public final class UnemployedCenterBlockEntity extends BlockEntity
     public UnemployedCenterBlockEntity(BlockPos pos,BlockState state){
         super(WorksiteContent.UNEMPLOYED_CENTER_ENTITY,pos,state);
     }
+    private static ItemStack genericWorker(ItemStack worker){
+        // Never transfer custom names, components or entity identity into
+        // the reusable worker pool. Cargo is unloaded before return.
+        return new ItemStack(worker.getItem(),worker.getCount());
+    }
     public boolean acceptWorker(ItemStack golem){
-        if(!golem.is(WorksiteContent.BUILDER_WORKER_ITEM)
-                &&!golem.is(WorksiteContent.CHEF_WORKER_ITEM)
-                &&!golem.is(WorksiteContent.TRADER_WORKER_ITEM)
-                &&!golem.is(WorksiteContent.BEEKEEPER_WORKER_ITEM)
-                &&!golem.is(WorksiteContent.FISHER_WORKER_ITEM))return false;
+        if(!canPlaceItem(0,golem))return false;
+        ItemStack generic=genericWorker(golem).copyWithCount(1);
+        // Prefer an existing stack BEFORE an empty slot. This also makes
+        // partially filled bins behave like ordinary Minecraft containers.
         for(int slot=0;slot<items.size();slot++){
             ItemStack previous=items.get(slot);
-            if(previous.isEmpty()){
-                items.set(slot,golem.copyWithCount(1));
-                setChanged();return true;
-            }
-            if(ItemStack.isSameItemSameComponents(previous,golem)
+            if(!previous.isEmpty()
+                    &&ItemStack.isSameItemSameComponents(previous,generic)
                     &&previous.getCount()<previous.getMaxStackSize()){
                 items.set(slot,previous.copyWithCount(previous.getCount()+1));
                 setChanged();return true;
             }
         }
+        for(int slot=0;slot<items.size();slot++)
+            if(items.get(slot).isEmpty()){
+                items.set(slot,generic);
+                setChanged();return true;
+            }
         return false;
     }
     @Override public Component getDisplayName(){
@@ -69,7 +75,8 @@ public final class UnemployedCenterBlockEntity extends BlockEntity
     @Override public void setItem(int slot,ItemStack stack){
         if(slot<0||slot>=items.size()||!stack.isEmpty()
                 &&!canPlaceItem(slot,stack))return;
-        items.set(slot,stack.copy());setChanged();
+        items.set(slot,stack.isEmpty()?ItemStack.EMPTY:genericWorker(stack));
+        setChanged();
     }
     @Override public boolean canPlaceItem(int slot,ItemStack stack){
         return stack.getItem() instanceof com.caszgamermd.golemsplus.worker.WorkerGolemItem;
@@ -87,5 +94,29 @@ public final class UnemployedCenterBlockEntity extends BlockEntity
         super.loadAdditional(in);
         items.replaceAll(stack->ItemStack.EMPTY);
         ContainerHelper.loadAllItems(in,items);
+        // Older releases persisted individual names in the bin. Migrate
+        // them to anonymous, stackable profession items on world load.
+        // Consolidation never discards a worker, even in a full bin.
+        for(int slot=0;slot<items.size();slot++){
+            ItemStack old=items.get(slot);
+            if(!old.isEmpty()&&canPlaceItem(slot,old))
+                items.set(slot,genericWorker(old));
+        }
+        for(int slot=1;slot<items.size();slot++){
+            ItemStack source=items.get(slot);
+            if(source.isEmpty())continue;
+            for(int prior=0;prior<slot&&!source.isEmpty();prior++){
+                ItemStack target=items.get(prior);
+                if(target.isEmpty()
+                        ||!ItemStack.isSameItemSameComponents(target,source))
+                    continue;
+                int moved=Math.min(source.getCount(),
+                        target.getMaxStackSize()-target.getCount());
+                if(moved<=0)continue;
+                items.set(prior,target.copyWithCount(target.getCount()+moved));
+                source=source.copyWithCount(source.getCount()-moved);
+                items.set(slot,source.isEmpty()?ItemStack.EMPTY:source);
+            }
+        }
     }
 }

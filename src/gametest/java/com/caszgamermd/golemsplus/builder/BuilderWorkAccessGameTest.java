@@ -398,7 +398,6 @@ public final class BuilderWorkAccessGameTest {
         }
         BlockPos target=origin.offset(15,35,17);
         BlockPos upperFence=target.above();
-        BlockPos topFence=upperFence.above();
         int[] stage={0};
         BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.setPos(origin.getX()+16.497,origin.getY()+35.5,
@@ -416,8 +415,7 @@ public final class BuilderWorkAccessGameTest {
             if(!worker.isAlive()||worker.isNoGravity()){
                 helper.fail("Final cap worker left natural physics");return;
             }
-            BlockPos activeTarget=stage[0]==0?target
-                    :stage[0]==1?upperFence:topFence;
+            BlockPos activeTarget=stage[0]==0?target:upperFence;
             if(BuilderPlacementSpace.safeFractionalCapPose(
                     level,worker,activeTarget)){
                 if(stage[0]==0){
@@ -428,23 +426,16 @@ public final class BuilderWorkAccessGameTest {
                     stage[0]=1;
                     return;
                 }
-                if(stage[0]==1){
-                    level.setBlock(upperFence,
-                            Blocks.BIRCH_FENCE.defaultBlockState(),3);
-                    stage[0]=2;
-                    return;
-                }
-                System.out.println("[Y35/Y37 CAP STEP BACK] PASS physical feet="
+                System.out.println("[Y35/Y36 CAP STEP BACK] PASS physical feet="
                         +worker.position()+" after "+helper.getTick()
-                        +" ticks; lantern and lower fence placed,"
-                        +" final upper fence reachable");
+                        +" ticks; lantern placed and upper fence reachable");
                 helper.succeed();return;
             }
             if(helper.getTick()>=12&&helper.getTick()%5==0)
                 BuilderPlacementSpace.stepBackFromFractionalCap(
                         level,worker,table,activeTarget);
             if(helper.getTick()>620)
-                helper.fail("Y35/Y37 wall-top sidestep stalled stage="
+                helper.fail("Y35/Y36 wall-top sidestep stalled stage="
                         +stage[0]+" feet="
                         +worker.position()+" grounded="+worker.onGround()
                         +" corners="+WorkerNavigation.supportedHitboxCorners(

@@ -40,6 +40,7 @@ public final class WorksiteContent {
     public static WorkerStationBlock BUILDER_TABLE, FISHING_STATION, TRADER_COUNTER, BEEKEEPER_STATION, COOKING_STATION;
     public static BeeToolboxBlock BEE_TOOLBOX;
     public static UnemployedCenterBlock UNEMPLOYED_CENTER;
+    public static CreativeCrateBlock CREATIVE_CRATE;
     public static MealCounterBlock MEAL_COUNTER;
     public static CookingKioskTopBlock COOKING_KIOSK_TOP;
     public static Item MEAL_COUNTER_ITEM;
@@ -47,7 +48,8 @@ public final class WorksiteContent {
     public static Item BUILDER_TABLE_ITEM, FISHING_STATION_ITEM, TRADER_COUNTER_ITEM, BEEKEEPER_STATION_ITEM, BEE_TOOLBOX_ITEM, COOKING_STATION_ITEM;
     public static BlockEntityType<BeeToolboxBlockEntity> BEE_TOOLBOX_ENTITY;
     public static BlockEntityType<UnemployedCenterBlockEntity> UNEMPLOYED_CENTER_ENTITY;
-    public static Item UNEMPLOYED_CENTER_ITEM;
+    public static BlockEntityType<CreativeCrateBlockEntity> CREATIVE_CRATE_ENTITY;
+    public static Item UNEMPLOYED_CENTER_ITEM,CREATIVE_CRATE_ITEM,INFINITE_WATER_BUCKET,INFINITE_LAVA_BUCKET;
     public static BlockEntityType<WorkerStationBlockEntity> STATION_ENTITY;
     public static MenuType<WorkerStationMenu> STATION_MENU;
     public static EntityType<TraderGolem> TRADER_GOLEM;
@@ -56,7 +58,12 @@ public final class WorksiteContent {
     public static EntityType<ChefGolem> CHEF_GOLEM;
     public static EntityType<FisherGolem> FISHER_GOLEM;
     public static Item FISHING_BAIT,FISHING_MARKER_ITEM,GRAPPLE_HOOK;
+    // Invisible to creative inventory: these are render-only displays,
+    // never physical Builder supplies or player-collectable rope.
+    public static Item GRAPPLE_ROPE_SEGMENT,GRAPPLE_ROPE_LINK,GRAPPLE_ROPE_COIL;
     public static FishingSpotBlock FISHING_SPOT;
+    public static EnhancedScaffoldingBlock ENHANCED_SCAFFOLDING;
+    public static Item ENHANCED_SCAFFOLDING_ITEM;
     public static Item BUILDER_WORKER_ITEM, TRADER_WORKER_ITEM, BEEKEEPER_WORKER_ITEM, CHEF_WORKER_ITEM, FISHER_WORKER_ITEM;
     private static final ResourceKey<CreativeModeTab> TAB = ResourceKey.create(
             BuiltInRegistries.CREATIVE_MODE_TAB.key(), GolemsPlus.id("main"));
@@ -91,6 +98,17 @@ public final class WorksiteContent {
     }
 
     public static void initialize() {
+        ResourceKey<net.minecraft.world.level.block.Block> scaffoldKey=
+                ResourceKey.create(Registries.BLOCK,GolemsPlus.id("enhanced_scaffolding"));
+        ENHANCED_SCAFFOLDING=Registry.register(BuiltInRegistries.BLOCK,
+                scaffoldKey,new EnhancedScaffoldingBlock(BlockBehaviour.Properties
+                        .ofFullCopy(Blocks.SCAFFOLDING).setId(scaffoldKey)));
+        ResourceKey<Item> scaffoldItemKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("enhanced_scaffolding"));
+        ENHANCED_SCAFFOLDING_ITEM=Registry.register(BuiltInRegistries.ITEM,
+                scaffoldItemKey,new EnhancedScaffoldingItem(ENHANCED_SCAFFOLDING,
+                        new Item.Properties().setId(scaffoldItemKey)
+                                .useBlockDescriptionPrefix()));
         BUILDER_TABLE = station("builder_table", WorkerSpecialty.BUILDER);
         FISHING_STATION = station("fishing_station", WorkerSpecialty.FISHING);
         TRADER_COUNTER = station("trader_counter", WorkerSpecialty.TRADER);
@@ -129,6 +147,28 @@ public final class WorksiteContent {
                 unemployedItemKey,new BlockItem(UNEMPLOYED_CENTER,
                         new Item.Properties().setId(unemployedItemKey)
                                 .useBlockDescriptionPrefix()));
+        ResourceKey<net.minecraft.world.level.block.Block> creativeCrateKey=
+                ResourceKey.create(Registries.BLOCK,GolemsPlus.id("creative_crate"));
+        CREATIVE_CRATE=Registry.register(BuiltInRegistries.BLOCK,creativeCrateKey,
+                new CreativeCrateBlock(BlockBehaviour.Properties
+                        .ofFullCopy(Blocks.BARREL).strength(2.5f)
+                        .setId(creativeCrateKey)));
+        ResourceKey<Item> creativeCrateItemKey=
+                ResourceKey.create(Registries.ITEM,GolemsPlus.id("creative_crate"));
+        CREATIVE_CRATE_ITEM=Registry.register(BuiltInRegistries.ITEM,
+                creativeCrateItemKey,new BlockItem(CREATIVE_CRATE,
+                        new Item.Properties().setId(creativeCrateItemKey)
+                                .useBlockDescriptionPrefix()));
+        ResourceKey<Item> infiniteWaterKey=
+                ResourceKey.create(Registries.ITEM,GolemsPlus.id("infinite_water_bucket"));
+        INFINITE_WATER_BUCKET=Registry.register(BuiltInRegistries.ITEM,
+                infiniteWaterKey,new InfiniteFluidBucketItem(Blocks.WATER,
+                        new Item.Properties().stacksTo(1).setId(infiniteWaterKey)));
+        ResourceKey<Item> infiniteLavaKey=
+                ResourceKey.create(Registries.ITEM,GolemsPlus.id("infinite_lava_bucket"));
+        INFINITE_LAVA_BUCKET=Registry.register(BuiltInRegistries.ITEM,
+                infiniteLavaKey,new InfiniteFluidBucketItem(Blocks.LAVA,
+                        new Item.Properties().stacksTo(1).setId(infiniteLavaKey)));
         BUILDER_TABLE_ITEM = blockItem("builder_table", BUILDER_TABLE);
         FISHING_STATION_ITEM = blockItem("fishing_station", FISHING_STATION);
         ResourceKey<Item> baitKey=ResourceKey.create(Registries.ITEM,GolemsPlus.id("fishing_bait"));
@@ -142,7 +182,19 @@ public final class WorksiteContent {
         ResourceKey<Item> grappleKey=ResourceKey.create(Registries.ITEM,
                 GolemsPlus.id("grapple_hook"));
         GRAPPLE_HOOK=Registry.register(BuiltInRegistries.ITEM,grappleKey,
-                new Item(new Item.Properties().stacksTo(1).setId(grappleKey)));
+                new PlayerGrappleHookItem(new Item.Properties().stacksTo(1).setId(grappleKey)));
+        ResourceKey<Item> ropeSegmentKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("grapple_rope_segment"));
+        GRAPPLE_ROPE_SEGMENT=Registry.register(BuiltInRegistries.ITEM,
+                ropeSegmentKey,new Item(new Item.Properties().setId(ropeSegmentKey)));
+        ResourceKey<Item> ropeLinkKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("grapple_rope_link"));
+        GRAPPLE_ROPE_LINK=Registry.register(BuiltInRegistries.ITEM,
+                ropeLinkKey,new Item(new Item.Properties().setId(ropeLinkKey)));
+        ResourceKey<Item> ropeCoilKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("grapple_rope_coil"));
+        GRAPPLE_ROPE_COIL=Registry.register(BuiltInRegistries.ITEM,
+                ropeCoilKey,new Item(new Item.Properties().setId(ropeCoilKey)));
         TRADER_COUNTER_ITEM = blockItem("trader_counter", TRADER_COUNTER);
         BEEKEEPER_STATION_ITEM=blockItem("beekeeper_station",BEEKEEPER_STATION);
         COOKING_STATION_ITEM=blockItem("cooking_station",COOKING_STATION);
@@ -173,6 +225,10 @@ public final class WorksiteContent {
                 GolemsPlus.id("unemployed_center_entity"),
                 FabricBlockEntityTypeBuilder.create(UnemployedCenterBlockEntity::new,
                         UNEMPLOYED_CENTER).build());
+        CREATIVE_CRATE_ENTITY=Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE,
+                GolemsPlus.id("creative_crate_entity"),
+                FabricBlockEntityTypeBuilder.create(CreativeCrateBlockEntity::new,
+                        CREATIVE_CRATE).build());
         STATION_MENU=Registry.register(BuiltInRegistries.MENU,GolemsPlus.id("worker_station_menu"),
                 new ExtendedMenuType<>(
                         (menuId,inv,pos)->new WorkerStationMenu(menuId,inv,pos),
@@ -219,7 +275,11 @@ public final class WorksiteContent {
                         .icon(() -> new ItemStack(BUILDER_TABLE_ITEM))
                         .displayItems((parameters, output) -> {
                             output.accept(BUILDER_TABLE_ITEM);
+                            output.accept(ENHANCED_SCAFFOLDING_ITEM);
                             output.accept(UNEMPLOYED_CENTER_ITEM);
+                            output.accept(CREATIVE_CRATE_ITEM);
+                            output.accept(INFINITE_WATER_BUCKET);
+                            output.accept(INFINITE_LAVA_BUCKET);
                             output.accept(FISHING_STATION_ITEM);
                             output.accept(TRADER_COUNTER_ITEM);
                             output.accept(BEEKEEPER_STATION_ITEM);

@@ -41,17 +41,33 @@ public final class BuilderConstructionPlanner {
      * is search progress (not a saved route) and resets on a Y change.
      */
     private record SearchWindow(int layer,int offset,int pending,
-            int examined,int feasible,int chosen,int startOffset){}
+            int examined,int feasible,int chosen,int startOffset,
+            int connected,int chosenContact){}
     public static String scanStatus(BuilderGolem worker){
         SearchWindow w=windows.get(worker);
         return w==null?"not yet scanned":
                 "Y="+w.layer()+" pending="+w.pending()
                 +" from="+w.startOffset()+" checked="+w.examined()
-                +" possible="+w.feasible()+" lastChosen="+w.chosen()
-                +" nextOffset="+w.offset();
+                +" possible="+w.feasible()+" connected="+w.connected()
+                +" chosenTouch="+w.chosenContact()
+                +" lastChosen="+w.chosen()+" nextOffset="+w.offset();
     }
     private static final Map<BuilderGolem,SearchWindow> windows=
             new WeakHashMap<>();
+    /** Last REAL placement by this worker, not its last path request.
+     * A coherent run follows the previous placed cell rather than
+     * jumping between isolated schematic strips. Never saved as a
+     * claim, route or source of material: only a soft ordering hint.
+     */
+    private static final Map<BuilderGolem,BlockPos> lastPlaced=
+            new WeakHashMap<>();
+    static void noteCompleted(BuilderGolem worker,BlockPos target){
+        lastPlaced.put(worker,target.immutable());
+        // Re-evaluate the new edge after each confirmed world placement.
+        // Keep the rotating search window while merely trying (and
+        // failing) approaches, so a blocked strip cannot starve others.
+        windows.remove(worker);
+    }
     private static final int REACH_SQUARED=14;
 
     /** Ray from a real Builder's eye at the planned stance to the block
@@ -186,6 +202,101 @@ public final class BuilderConstructionPlanner {
         // foothold. Side connections allow outward growth along the roof.
         return Math.min(100,below*75+side*42+above*10);
     }
+    /** Horizontal contact matters more than a floor underneath.
+     * Almost every upper dome cell already has a lower-layer support;
+     * treating that support as equivalent to a completed SAME-Y run
+     * caused a field of isolated strips instead of a connected front.
+     */
+    static int sameLayerConnections(ServerLevel world,BlockPos target,
+            Map<BlockPos,BlockState> schematic){
+        int count=0;
+        for(Direction side:Direction.Plane.HORIZONTAL){
+            BlockPos adjacent=target.relative(side);
+            BlockState expected=schematic.get(adjacent);
+            if(expected!=null&&world.hasChunkAt(adjacent)
+                    &&BuilderPlacementState.matches(
+                            world.getBlockState(adjacent),expected))
+                count++;
+        }
+        return count;
+    }
+    /** Building a neighboring cell can close the THIRD or FOURTH
+     * side around an unfinished schematic position. Those holes are
+     * much harder to access later on a roof. Defer such closure when
+     * another physically valid cell exists, but never forbid it: an
+     * open-air grapple or paid scaffold may be the only way to finish.
+     */
+    static int pocketClosureRisk(ServerLevel world,BlockPos target,
+            Map<BlockPos,BlockState> schematic){
+        int worst=0;
+        for(Direction side:Direction.Plane.HORIZONTAL){
+            BlockPos neighbor=target.relative(side);
+            BlockState expected=schematic.get(neighbor);
+            if(expected==null||!world.hasChunkAt(neighbor)
+                    ||BuilderPlacementState.matches(
+                            world.getBlockState(neighbor),expected))continue;
+            int already=sameLayerConnections(world,neighbor,schematic);
+            if(already>=2)worst=Math.max(worst,already-1);
+        }
+        return worst;
+    }
+    /** 0 = safe connected run; 1 = connected but would narrow a gap;
+     * 2 = new island; 3 = would fully enclose an unfinished cell.
+     * This is a preference only, AFTER collision and exit validation.
+     */
+    static int frontierTier(int contacts,int closureRisk){
+        return closureRisk>=2?3:contacts>0?(closureRisk>0?1:0):2;
+    }
+    /** Stable cheap ordering of the entire current Y. This orders
+     * *which cells to PROBE*, not which cells may legally be placed.
+     * The ordinary physical pose/exit checks still decide feasibility.
+     * If all connected probes fail, the rotating scan proceeds to the
+     * other islands rather than imposing an impossible build order.
+     */
+    private static double stepDistanceSquared(BuilderConstructionPlan.Step step,
+            BlockPos anchor){
+        double dx=(double)step.x()-anchor.getX();
+        double dy=(double)step.y()-anchor.getY();
+        double dz=(double)step.z()-anchor.getZ();
+        return dx*dx+dy*dy+dz*dz;
+    }
+    static void orderConnectedFront(List<Integer> pending,
+            List<BuilderConstructionPlan.Step> steps,
+            Map<Integer,Integer> contacts,Map<Integer,Integer> risks,
+            BlockPos anchor){
+        pending.sort((left,right)->{
+            int a=contacts.getOrDefault(left,0);
+            int b=contacts.getOrDefault(right,0);
+            int ta=frontierTier(a,risks.getOrDefault(left,0));
+            int tb=frontierTier(b,risks.getOrDefault(right,0));
+            if(ta!=tb)return Integer.compare(ta,tb);
+            // Within the same safe frontier tier, travel locality wins.
+            // Filling extra contacts is helpful, but making a Builder cross
+            // its zone to do so wastes much more walking than extending the
+            // nearest safe run after its previous physical placement.
+            var x=steps.get(left);
+            var y=steps.get(right);
+            // No temporary BlockPos allocations during hundreds of sort
+            // comparisons at every layer handoff.
+            double da=stepDistanceSquared(x,anchor);
+            double db=stepDistanceSquared(y,anchor);
+            int distance=Double.compare(da,db);
+            if(distance!=0)return distance;
+            return a!=b?Integer.compare(b,a):Integer.compare(left,right);
+        });
+    }
+    /** Lookahead runs before its current block is placed, so the future
+     * neighbor is not yet part of the real built frontier. Count that one
+     * expected contact for ordering only; world support, reachability and
+     * collision checks still use real blocks, and the claim is rechecked. */
+    static int upcomingConnection(int builtContacts,BlockPos candidate,
+            BlockPos afterPlacement){
+        if(afterPlacement==null||candidate.getY()!=afterPlacement.getY())
+            return builtContacts;
+        int dx=Math.abs(candidate.getX()-afterPlacement.getX());
+        int dz=Math.abs(candidate.getZ()-afterPlacement.getZ());
+        return builtContacts+(dx+dz==1?1:0);
+    }
     private static final Map<List<BuilderConstructionPlan.Step>,
             Map<BlockPos,BlockState>> schematicStates=new WeakHashMap<>();
     private static Map<BlockPos,BlockState> schematicStates(
@@ -252,6 +363,13 @@ public final class BuilderConstructionPlanner {
                 +" next=["+String.join("; ",examples)+"]";
     }
 
+    /** A Builder with no ordinary work stance must build physical footing
+     * under an unsupported placement before trying an optional grapple. */
+    static boolean preferScaffoldForUnsupportedWork(
+            boolean ordinaryWorkStance,boolean unsupportedBelow){
+        return !ordinaryWorkStance&&unsupportedBelow;
+    }
+
     /** Diagnose the exact first supported frontier obstruction with the
      * current world and trained route finder; never move or alter blocks.
      * This is for failure reports, not the 5-tick claim hot path.
@@ -313,6 +431,47 @@ public final class BuilderConstructionPlanner {
     public static Choice choose(ServerLevel world,BuilderGolem worker,
             WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
+        return select(world,worker,table,steps,zone,false);
+    }
+    /** Speculatively evaluate only a small number of candidates while
+     * the current A* route is ALREADY moving. This is not a claim,
+     * a material reservation or a path command. It does not change
+     * the current work-approach cache or the fair full-scan cursor.
+     */
+    public static Choice chooseLookahead(ServerLevel world,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
+        return chooseLookahead(world,worker,table,steps,zone,0,8);
+    }
+    /** A two-probe time slice lets the worker think on several travel
+     * ticks instead of blocking a single server tick with eight A* probes.
+     * offset is in the ordered eligible work front, not the saved plan.
+     */
+    public static Choice chooseLookahead(ServerLevel world,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int offset,int budget){
+        return chooseLookahead(world,worker,table,steps,zone,offset,budget,null);
+    }
+    /** Order speculative next blocks from the placement being finished,
+     * not the worker's older completed cell or their moving path position. */
+    public static Choice chooseLookahead(ServerLevel world,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int offset,int budget,BlockPos afterPlacement){
+        return select(world,worker,table,steps,zone,true,offset,budget,afterPlacement);
+    }
+    private static Choice select(ServerLevel world,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            boolean lookahead){
+        return select(world,worker,table,steps,zone,lookahead,0,8,null);
+    }
+    private static Choice select(ServerLevel world,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            boolean lookahead,int lookaheadOffset,int lookaheadBudget,
+            BlockPos afterPlacement){
         int y=table.builderActiveLayer(steps);
         if(y==Integer.MAX_VALUE)return null;
         List<Integer> pending=new ArrayList<>();
@@ -322,6 +481,15 @@ public final class BuilderConstructionPlanner {
                     ||!table.builderStepReadyForClaim(idx))continue;
             pending.add(idx);
         }
+        // Lookahead needs a small, nearby candidate neighborhood, not a
+        // collision/closure-risk sweep of every unplaced block on this Y.
+        // The normal full selector retains its rotating whole-layer search.
+        if(lookahead&&pending.size()>32){
+            BlockPos focus=afterPlacement==null?worker.blockPosition():afterPlacement;
+            pending.sort(java.util.Comparator.comparingDouble(
+                    idx->stepDistanceSquared(steps.get(idx),focus)));
+            pending=new ArrayList<>(pending.subList(0,32));
+        }
         // Ignored vegetation is paperwork, not a world placement.
         // Complete these regardless of footing/line of sight. This
         // prevents a full 32-cell blocked strip from starving azaleas
@@ -329,22 +497,45 @@ public final class BuilderConstructionPlanner {
         for(int idx:pending)
             if(steps.get(idx).ignorePlant())
                 return new Choice(idx,null,false,true,0);
-        // Keep the scan window stable as the worker moves. Re-sorting by
-        // distance on every claim changes the meaning of its saved offset
-        // and can repeatedly hide unfinished sections of the current layer.
-        // Distance, skylight and grapple cost still rank feasible choices
-        // below; scan fairness must not depend on the worker's position.
-        pending.sort(Integer::compareTo);
-        Choice best=null;
-        double bestScore=Double.POSITIVE_INFINITY;
-        SearchWindow previous=windows.get(worker);
-        int offset=previous!=null&&previous.layer()==y
-                ?previous.offset():0;
-        int examined=0,feasible=0;
-        int count=Math.min(MAX_EXAMINED,pending.size());
+        // Rank the WHOLE current layer cheaply before spending any A*
+        // pathfinding probes. Finished horizontal neighbours define a
+        // connected work front. The last physically placed block keeps
+        // a worker on its current run, rather than hopping to another
+        // strip just because the other strip is a metre closer.
         Map<BlockPos,BlockState> builtSchematic=schematicStates(steps,
                 BuildSite.Rotation.values()[table.builderRotation()/90],
                 BuildSite.Mirror.values()[table.builderMirror()]);
+        var contacts=new java.util.HashMap<Integer,Integer>();
+        var closureRisks=new java.util.HashMap<Integer,Integer>();
+        int connected=0;
+        for(int idx:pending){
+            var step=steps.get(idx);
+            BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+            int touch=sameLayerConnections(world,target,builtSchematic);
+            if(lookahead)touch=upcomingConnection(touch,target,afterPlacement);
+            contacts.put(idx,touch);
+            closureRisks.put(idx,pocketClosureRisk(
+                    world,target,builtSchematic));
+            if(touch>0)connected++;
+        }
+        BlockPos last=afterPlacement==null?lastPlaced.get(worker):afterPlacement;
+        if(last!=null&&last.getY()!=y)last=null;
+        BlockPos anchor=last==null?worker.blockPosition():last;
+        orderConnectedFront(pending,steps,contacts,closureRisks,anchor);
+        Choice best=null;
+        int bestTier=Integer.MAX_VALUE;
+        int bestContact=0;
+        double bestScore=Double.POSITIVE_INFINITY;
+        SearchWindow previous=lookahead?null:windows.get(worker);
+        int offset=lookahead
+                ?(pending.isEmpty()?0:Math.floorMod(lookaheadOffset,pending.size()))
+                :previous!=null&&previous.layer()==y?previous.offset():0;
+        int examined=0,feasible=0;
+        // One speculative slice checks at most two physical approaches.
+        // Subsequent work callbacks continue at the next offset while
+        // the golem keeps following its existing path.
+        int count=Math.min(lookahead?Math.max(0,lookaheadBudget)
+                :MAX_EXAMINED,pending.size());
         for(int attempt=0;attempt<count;attempt++){
             int idx=pending.get((offset+attempt)%pending.size());
             examined++;
@@ -365,9 +556,13 @@ public final class BuilderConstructionPlanner {
             if(BuilderPlacementState.matches(actual,state.state()))
                 return new Choice(idx,null,false,true,examined);
             if(!state.state().canSurvive(world,target))continue;
-            BlockPos stance=BuilderPlacementSpace.approachWithRules(
-                    world,worker,target,
-                    at->safeStand(world,worker,target,at));
+            BlockPos stance=lookahead
+                    ?BuilderPlacementSpace.approachForLookahead(
+                            world,worker,target,
+                            at->safeStand(world,worker,target,at))
+                    :BuilderPlacementSpace.approachWithRules(
+                            world,worker,target,
+                            at->safeStand(world,worker,target,at));
             if(stance==null&&(BuilderPlacementSpace.safeFractionalCapPose(
                     world,worker,target)
                     ||BuilderPlacementSpace.canRetreatToFractionalCap(
@@ -376,27 +571,31 @@ public final class BuilderConstructionPlanner {
                 // support. The five-tick Builder task will execute a
                 // collision-checked sidestep before considering placement.
                 stance=worker.blockPosition();
+            // An elevated unsupported block needs construction footing.
+            // Prefer a real, item-paid scaffold platform if one can be
+            // built. A grapple is an access tool, not a replacement for a
+            // safe pose from which to PLACE the block. If a scaffold
+            // cannot be planned, ordinary grapple access stays available.
+            boolean unsupportedBelow=world.getBlockState(target.below()).isAir();
+            boolean preferPlatform=preferScaffoldForUnsupportedWork(
+                    stance!=null,unsupportedBelow);
+            boolean scaffold=preferPlatform
+                    &&BuilderScaffoldPlanA.canPlanWorkPose(
+                            world,worker,table,target,steps);
             boolean grapple=false;
-            if(stance==null
+            if(stance==null&&!scaffold
                     &&target.getY()-worker.blockPosition().getY()>0
                     &&worker.carriedCount(WorksiteContent.GRAPPLE_HOOK)>0
                     &&BuilderGrappleAccess.canPlanWorkAscent(world,worker,target))
                 grapple=true;
-            // Read-only scaffold preflight: a future work pose can be
-            // reached by a real paid tower/bridge, even if neither native
-            // A* nor a rope can currently get across an unfinished roof.
             boolean floating=BuilderScaffoldPlanA
                     .needsTemporaryWorkPlatform(world,target);
-            boolean scaffold=stance==null&&!grapple
-                    // An occupied same-layer roof can obstruct all walking
-                    // stances too. A real inventory-paid work bridge is
-                    // an access option, even when target sides are joined
-                    // to other blocks and the rise is only one block.
-                    &&(BuilderScaffoldPlanA.canPlanWorkPose(
-                            world,worker,table,target,steps)
+            if(stance==null&&!grapple&&!scaffold)
+                scaffold=BuilderScaffoldPlanA.canPlanWorkPose(
+                        world,worker,table,target,steps)
                         ||(target.getY()-worker.blockPosition().getY()>1
                             &&!floating&&BuilderScaffolding.canPlanAccess(
-                                    world,worker,table,target,steps)));
+                                    world,worker,table,target,steps));
             if(stance==null&&!grapple&&!scaffold)continue;
             boolean sky=stance==null
                     ?world.canSeeSky(target.above())
@@ -404,14 +603,30 @@ public final class BuilderConstructionPlanner {
             // Valid same-layer frontier candidates that TOUCH existing
             // completed architecture get scheduled first, making finished
             // roof ledges and columns useful access infrastructure.
+            int touch=contacts.getOrDefault(idx,0);
+            // A reachable extension of a SAME-Y strip always outranks
+            // seeding another island. Only valid, collision-checked work
+            // stances enter this comparison. If no connected work pose
+            // exists, unconnected cells remain completely eligible.
+            int risk=closureRisks.getOrDefault(idx,0);
+            int tier=frontierTier(touch,risk);
             double cost=score(worker,target,stance,sky,grapple)
-                    -connectedPlacementBonus(world,target,builtSchematic)
+                    // Greedy short-hop routing across the worker's valid,
+                    // same-Y frontier, anchored to its last placed block.
+                    +target.distSqr(anchor)*BuilderFrontierTuning.LOCALITY_WEIGHT
+                    // Connections still break close ties, but no longer
+                    // outweigh a long trip across the construction zone.
+                    -Math.min(24,connectedPlacementBonus(
+                            world,target,builtSchematic))
+                    -touch*6+risk*250
                     +(scaffold?BuilderFrontierTuning.GRAPPLE_PENALTY*2:0);
-            if(cost<bestScore){
+            if(tier<bestTier||tier==bestTier&&cost<bestScore){
+                bestTier=tier;
+                bestContact=touch;
                 bestScore=cost;
                 best=new Choice(idx,stance,grapple,sky,examined);
             }
-            if(++feasible>=MAX_FEASIBLE)break;
+            if(++feasible>=(lookahead?1:MAX_FEASIBLE))break;
         }
         // A fully blocked nearby strip must never monopolize this Y.
         // Subsequent passes explore another bounded window until every
@@ -420,10 +635,11 @@ public final class BuilderConstructionPlanner {
         // becomes blocked during the real walk. Retain search progress
         // across each claim so the NEXT claim tries another frontier
         // instead of restarting at the same five nearest cells forever.
-        windows.put(worker,new SearchWindow(y,
-                (offset+Math.max(1,examined))%Math.max(1,pending.size()),
-                pending.size(),examined,feasible,best==null?-1:best.index(),
-                offset));
+        if(!lookahead)
+            windows.put(worker,new SearchWindow(y,
+                    (offset+Math.max(1,examined))%Math.max(1,pending.size()),
+                    pending.size(),examined,feasible,best==null?-1:best.index(),
+                    offset,connected,bestContact));
         return best;
     }
 }

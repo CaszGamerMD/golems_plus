@@ -21,6 +21,7 @@ public final class BuilderWarehouseCoordinator {
      */
     public static boolean queueMaterials(ServerLevel level,
             WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps){
+        if(BuilderSupplyInventory.creativeSupply(table))return false;
         if(!table.isBuilder()||table.activeOrder()==null
                 ||table.warehouse()==null||table.supplyRequest()!=null
                 ||table.builderCursor()>=steps.size())return false;
@@ -33,14 +34,25 @@ public final class BuilderWarehouseCoordinator {
             table.setProblem("Install Caszual Additions with Builder warehouse support");
             return false;
         }
+        // Defensive check for callers other than primeWarehouse (e.g.
+        // a courier retry): an old saved ledger cannot re-order crops
+        // after the player enabled Ignore Plants.
+        table.reconcileBuilderMaterialsFromPlan(steps);
+        // A single request covers the NEXT eight vertical layers, not the
+        // full 100,000-cell blueprint. This reduces rack work and lets
+        // warehouse packing follow the Builder frontier.
+        Map<String,Long> window=BuilderMaterialDemand.nextWindow(
+                steps,table.builderCursor(),
+                table::builderStepCompletedForMaterials,
+                BuilderMaterialRules.WINDOW_LAYERS);
+        if(window.isEmpty())return false;
         BlockPos computer=new BlockPos(warehouse.x(),warehouse.y(),warehouse.z());
         Map<String,Integer> onsite=BuilderSupplyInventory.available(table);
         Map<String,Integer> warehouseStock=BuilderWarehousePort.stockSnapshot(
-                level,computer,table.builderRemaining());
+                level,computer,window);
         Map<String,Integer> needed=new java.util.LinkedHashMap<>(
                 BuilderMaterialDemand.outstandingRemaining(
-                        table.builderRemaining(),onsite,
-                        warehouseStock==null?Map.of():warehouseStock));
+                        window,onsite,warehouseStock==null?Map.of():warehouseStock));
         if(needed.isEmpty())return false;
         // Keep the ENTIRE remaining order at the Warehouse Computer,
         // including temporarily out-of-stock items. The old stockSnapshot
@@ -97,8 +109,11 @@ public final class BuilderWarehouseCoordinator {
         }
     }
     /** Table-side inbound notification, including while no golem is near. */
-    /** Cancel an outstanding ticket only after the warehouse confirms
-     * that no physical shipment, picker, or packing inventory can be lost.
+    /** Cancellation overrides missing stock and in-progress picking.
+     * The warehouse immediately stops accepting new picker work, while
+     * existing physical cargo is retained for safe return/recovery.
+     * A Builder courier holding a real shulker can unload it OnSite
+     * even after the old warehouse ticket is cleared.
      */
     public record Cancellation(boolean completed,String reason){}
 
@@ -122,6 +137,7 @@ public final class BuilderWarehouseCoordinator {
                 table.owner(),table.supplyRequest(),table.supplyPtp());
         if(!"CANCELLED".equals(status))return new Cancellation(false,status);
         table.clearSupplyRequest();
+        table.setProblem("Warehouse order cancelled. Already packed shulkers remain at the OUTPUT PTP for recovery; in-flight picker materials return to warehouse racks.");
         return new Cancellation(true,"CANCELLED");
     }
 
@@ -371,6 +387,7 @@ public final class BuilderWarehouseCoordinator {
     public static boolean requestScaffolding(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,
             List<BuilderConstructionPlan.Step> steps){
+        if(BuilderSupplyInventory.creativeSupply(table))return false;
         if(table.warehouse()==null){
             table.setProblem("Place minecraft:scaffolding in the Planner to climb higher");
             return false;
@@ -405,6 +422,7 @@ public final class BuilderWarehouseCoordinator {
     public static boolean request(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,
             List<BuilderConstructionPlan.Step> steps){
+        if(BuilderSupplyInventory.creativeSupply(table))return false;
         if(table.warehouse()==null)return false;
         String currentDimension=level.dimension().identifier().toString();
         if(!currentDimension.equals(table.warehouse().dimension())){

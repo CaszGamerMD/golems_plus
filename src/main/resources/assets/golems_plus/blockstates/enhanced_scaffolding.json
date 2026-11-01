@@ -1,0 +1,17 @@
+{
+  "multipart": [
+    {
+      "apply": {
+        "model": "golems_plus:block/enhanced_scaffolding"
+      }
+    },
+    {
+      "when": {
+        "bottom": "true"
+      },
+      "apply": {
+        "model": "golems_plus:block/enhanced_scaffolding_bottom_net"
+      }
+    }
+  ]
+}

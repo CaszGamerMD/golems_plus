@@ -230,6 +230,15 @@ public final class BuilderPlacementSpace {
                 continue;
             if(!level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz)))
                 continue;
+            // A narrow fence/wall cap can support a grounded Builder at
+            // fractional Y, even though its blockPosition stays unchanged
+            // while it walks past the ACTUAL support edge. Recheck real
+            // under-foot collision each precision tick; do not steer into
+            // empty air merely because the previous block coordinate was
+            // still the same.
+            if(Math.abs(mob.getY()-Math.rint(mob.getY()))>.08
+                    &&!supportedFractional(level,mob,vx,vz))
+                continue;
             double desiredX=direction[0]>0?target.getX()+1.84:target.getX()-.84;
             double desiredZ=direction[1]>0?target.getZ()+1.84:target.getZ()-.84;
             double distance=direction[0]!=0
@@ -400,9 +409,22 @@ public final class BuilderPlacementSpace {
         // The safeStand predicate still rejects any unsupported pose.
         return approachWithHeight(level,worker,target,false,safe);
     }
+    /** Read-only next-task preview. Do not overwrite the CURRENT work
+     * approach while the Builder is physically following that route.
+     */
+    static BlockPos approachForLookahead(ServerLevel level,
+            BuilderGolem worker,BlockPos target,
+            java.util.function.Predicate<BlockPos> safe){
+        return approachWithHeight(level,worker,target,false,safe,false);
+    }
     private static BlockPos approachWithHeight(ServerLevel level,
             BuilderGolem worker,BlockPos target,boolean sameHeight,
             java.util.function.Predicate<BlockPos> safe){
+        return approachWithHeight(level,worker,target,sameHeight,safe,true);
+    }
+    private static BlockPos approachWithHeight(ServerLevel level,
+            BuilderGolem worker,BlockPos target,boolean sameHeight,
+            java.util.function.Predicate<BlockPos> safe,boolean cacheResult){
         long now=level.getGameTime();
         Approach cached=workApproaches.get(worker);
         if(cached!=null&&cached.target().equals(target)
@@ -480,11 +502,12 @@ public final class BuilderPlacementSpace {
         BlockPos selected=WorkerNavigation.selectExecutableStand(
                 level,worker,candidates);
         if(selected!=null){
-            workApproaches.put(worker,new Approach(target,
-                    selected.immutable(),now+75));
+            if(cacheResult)
+                workApproaches.put(worker,new Approach(target,
+                        selected.immutable(),now+75));
             return selected.immutable();
         }
-        workApproaches.remove(worker);
+        if(cacheResult)workApproaches.remove(worker);
         return null;
     }
 

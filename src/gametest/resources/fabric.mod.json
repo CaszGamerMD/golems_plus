@@ -10,8 +10,13 @@
   },
   "entrypoints": {
     "fabric-gametest": [
+      "com.caszgamermd.golemsplus.builder.BuilderFinishedRoofEvacuationGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderDomeConstructionGameTest",
-      "com.caszgamermd.golemsplus.builder.BuilderScaffoldConnectedWorkGameTest"
+      "com.caszgamermd.golemsplus.builder.BuilderScaffoldConnectedWorkGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderHorizontalBridgeExitGameTest",
+      "com.caszgamermd.golemsplus.builder.GrappleLineVisualGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderCreativeCrateFluidGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderMaterialRulesGameTest"
     ]
   }
 }

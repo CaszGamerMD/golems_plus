@@ -2,6 +2,7 @@ package com.caszgamermd.golemsplus.builder;
 
 import com.caszgamermd.golemsplus.worker.WorkerNavigation;
 import com.caszgamermd.golemsplus.world.WorksiteContent;
+import com.caszgamermd.golemsplus.world.GrappleLineVisuals;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -10,9 +11,11 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.WallBlock;
+import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.phys.AABB;
 
 /**
@@ -42,6 +45,7 @@ public final class BuilderGrappleAccess {
         final boolean down;
         final long started;
         Phase phase;
+        GrappleLineVisuals.Line visibleLine;
         int stalledTicks;
         int recoveryTicks;
         double lastX=Double.NaN,lastY=Double.NaN,lastZ=Double.NaN;
@@ -158,6 +162,7 @@ public final class BuilderGrappleAccess {
         blockedAnchors.put(mob,next);
     }
     private static void release(BuilderGolem mob,Rope rope,String event){
+        if(rope.visibleLine!=null)rope.visibleLine.close();
         active.remove(mob);
         BuilderPlacementSpace.forgetApproach(mob);
         mob.setNoGravity(false);
@@ -194,7 +199,8 @@ public final class BuilderGrappleAccess {
         // Cancellation is legal only on solid ground. Do not suddenly drop
         // an entity suspended halfway up a real rope.
         if(!worker.onGround()&&active.containsKey(worker))return;
-        active.remove(worker);
+        Rope old=active.remove(worker);
+        if(old!=null&&old.visibleLine!=null)old.visibleLine.close();
         worker.setNoGravity(false);
     }
     private static boolean solidTop(ServerLevel world,BlockPos p){
@@ -634,6 +640,10 @@ public final class BuilderGrappleAccess {
     public static Result reachWork(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos target){
         if(active.containsKey(worker)||!worker.onGround())return Result.MOVING;
+        // An active paid scaffold owns this target's access/return route.
+        // Never attach a second controller while the Builder is traversing
+        // its bridge: an overlapping rope can strand BOTH controllers.
+        if(BuilderScaffoldPlanA.hasPlan(worker))return Result.NO_SAFE_ANCHOR;
         // Probe actual work poses before equipment. Never use an adjacent
         // target tile as evidence of valid work access.
         BlockPos pose=BuilderPlacementSpace.approachWithRules(level,worker,
@@ -680,15 +690,72 @@ public final class BuilderGrappleAccess {
             return Result.NO_SAFE_ANCHOR;
         return Result.MOVING;
     }
+    /** Emergency mobility option for a Builder physically stalled on a
+     * fence, wall, staircase or other fractional support. This does NOT
+     * interrupt normal walking: callers invoke it only after a genuine
+     * no-motion timeout. It only descends on a real, clear rope to a solid
+     * landing; unsuccessful attempts leave the existing job untouched. */
+    public static boolean escapePerch(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos goal){
+        if(active.containsKey(worker))return true;
+        if(!worker.onGround()||BuilderScaffolding.isControllingMovement(worker)
+                ||BuilderScaffoldPlanA.hasPlan(worker))return false;
+        BlockPos under=worker.blockPosition().below();
+        BlockState support=level.getBlockState(under);
+        boolean awkward=support.getBlock() instanceof FenceBlock
+                ||support.getBlock() instanceof WallBlock
+                ||support.getBlock() instanceof StairBlock
+                ||Math.abs(worker.getY()-Math.rint(worker.getY()))>.08;
+        if(!awkward||!hasHook(worker))return false;
+        Rope route=chooseSupportedDescent(level,worker,goal);
+        if(route==null)return false;
+        active.put(worker,route);
+        WorkerNavigation.stop(worker);
+        System.out.println("[GRAPPLE PERCH ESCAPE] "
+                +worker.blockPosition().toShortString()+" -> "
+                +route.landing.toShortString()+" support="+support.getBlock());
+        return true;
+    }
     /** Returns true while the hook owns descent or when a descent starts. */
     public static boolean rappelForTravel(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table){
         BlockPos goal=table.builderUnloadingStorage();
         return goal!=null&&rappelToward(level,worker,table,goal);
     }
+    /** Completed workers prioritize a safe grapple descent over a long
+     * ground detour; if no legal anchor exists, normal routing remains.
+     */
+    public static boolean rappelHome(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,BlockPos goal){
+        if(active.containsKey(worker))return true;
+        if(BuilderScaffoldPlanA.hasPlan(worker)
+                &&BuilderScaffoldPlanA.returnToGround(level,worker,table))
+            return true;
+        if(!worker.onGround())return true;
+        if(worker.blockPosition().getY()-goal.getY()<2)return false;
+        if(!hasHook(worker)){
+            var load=BuilderSupplyInventory.loadGrapple(level,worker,table);
+            if(load==BuilderSupplyInventory.LoadStatus.MISSING)return false;
+        }
+        Rope route=chooseDescent(level,worker,goal);
+        if(route==null)route=chooseSupportedDescent(level,worker,goal);
+        if(route==null)return false;
+        active.put(worker,route);
+        WorkerNavigation.stop(worker);
+        System.out.println("[GRAPPLE HOME] descending toward "
+                +goal.toShortString()+" from "
+                +worker.blockPosition().toShortString());
+        return true;
+    }
     public static boolean rappelToward(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos goal){
         if(active.containsKey(worker))return true;
+        // Returning from a high work bridge must retrace and descend
+        // its owned scaffold BEFORE considering a fresh grapple line.
+        // In particular Plan A WALK_FIRST is not safe to interrupt.
+        if(BuilderScaffoldPlanA.hasPlan(worker)
+                &&BuilderScaffoldPlanA.returnToGround(level,worker,table))
+            return true;
         if(continueLocalDrop(level,worker,goal))return true;
         int diff=worker.blockPosition().getY()-goal.getY();
         if(diff<1)return false; // ordinary depot pickup must still run
@@ -724,14 +791,11 @@ public final class BuilderGrappleAccess {
         WorkerNavigation.stop(worker);
         return true;
     }
-    private static void emitLine(ServerLevel level,Rope r,BuilderGolem mob){
-        if(mob.tickCount%5!=0)return;
-        // Lightweight rope preview at the real, fixed anchor line.
-        // The particles trace the rope; they do not create collisions.
-        for(double y=Math.min(mob.getY(),r.topY());y<=r.topY();y+=1.0)
-            level.sendParticles(ParticleTypes.CRIT,
-                    r.column.getX()+.5,y+.25,r.column.getZ()+.5,
-                    1,0,0,0,0);
+    private static void showLine(ServerLevel level,Rope r,BuilderGolem mob){
+        if(r.visibleLine==null||!r.visibleLine.valid())
+            r.visibleLine=GrappleLineVisuals.attach(level,mob.getUUID(),
+                    r.anchor,r.column,r.landing.getY(),r.topY());
+        if(r.visibleLine!=null)r.visibleLine.touch();
     }
     private static boolean steer(ServerLevel level,BuilderGolem mob,
             double x,double y,double z,double cap,boolean vertical){
@@ -769,6 +833,7 @@ public final class BuilderGrappleAccess {
                     ||level.getGameTime()-r.started>=2400)
                 &&mob.onGround()){
             reject(level,mob,r);
+            if(r.visibleLine!=null)r.visibleLine.close();
             active.remove(mob);
             WorkerNavigation.stop(mob);
             System.out.println("[GRAPPLE] ATTACHMENT ROUTE TIMED OUT; "
@@ -840,7 +905,7 @@ public final class BuilderGrappleAccess {
         mob.getMoveControl().setWantedPosition(mob.getX(),mob.getY(),mob.getZ(),0);
         mob.setNoGravity(true);
         mob.setShiftKeyDown(false);
-        emitLine(level,r,mob);
+        showLine(level,r,mob);
         double x=r.column.getX()+.5,z=r.column.getZ()+.5;
         boolean moved=true;
         switch(r.phase){

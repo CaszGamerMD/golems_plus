@@ -122,6 +122,49 @@ public final class StationSettingsNetworking {
                 reply(player,result);
                 return;
             }
+            case "builder_height_y" -> {
+                if(!table.isBuilder())return;
+                done=table.setBuilderStartY(player.getUUID(),change.amount());
+                reply(player,done
+                        ?com.caszgamermd.golemsplus.builder.BuilderBuildService
+                                .refreshPlantFilter((net.minecraft.server.level.ServerLevel)player.level(),table)
+                        :"Set a valid world Y before starting the job.");
+                return;
+            }
+            case "builder_height_mode" -> {
+                if(!table.isBuilder())return;
+                done=table.setBuilderHeightMode(player.getUUID(),change.amount());
+                reply(player,done
+                        ?com.caszgamermd.golemsplus.builder.BuilderBuildService
+                                .refreshPlantFilter((net.minecraft.server.level.ServerLevel)player.level(),table)
+                        :"Choose all/up/down before starting the job.");
+                return;
+            }
+            case "builder_material" -> {
+                if(!table.isBuilder())return;
+                String[] parts=change.item().split("\\|",2);
+                if(parts.length<1||parts[0].isBlank()){
+                    reply(player,"Select a material icon first");return;
+                }
+                String source=validatedItem(parts[0]);
+                String replacement=change.amount()==0?null:
+                        change.amount()==1
+                            ?com.caszgamermd.golemsplus.builder.BuilderMaterialRules.IGNORE
+                            :parts.length==2?validatedItem(parts[1]):null;
+                if(source==null||(change.amount()==2&&replacement==null)
+                        ||change.amount()<0||change.amount()>2){
+                    reply(player,"Replacement must be a registered, placeable block item ID");
+                    return;
+                }
+                done=table.setBuilderMaterialRule(player.getUUID(),source,replacement);
+                if(!done){
+                    reply(player,"Material rule rejected. Select a current source item "
+                            +"and a placeable target.");return;
+                }
+                reply(player,com.caszgamermd.golemsplus.builder.BuilderBuildService
+                        .refreshPlantFilter((net.minecraft.server.level.ServerLevel)player.level(),table));
+                return;
+            }
             case "builder_storage" -> {
                 if(!table.isBuilder())return;
                 OutputChestSelection.beginBuilder(player,table);
@@ -156,8 +199,10 @@ public final class StationSettingsNetworking {
             }
             case "builder_start" -> {
                 if(!table.isBuilder())return;
-                if(table.warehouse()==null){
-                    reply(player,"Link a warehouse with a Warehouse Scanner before starting.");
+                if(table.warehouse()==null
+                        &&!com.caszgamermd.golemsplus.builder
+                                .BuilderSupplyInventory.creativeSupply(table)){
+                    reply(player,"Link a warehouse or use a Creative Crate before starting.");
                     return;
                 }
                 if(!com.caszgamermd.golemsplus.builder.BuilderSupplyInventory.ready(table)){

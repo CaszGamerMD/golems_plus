@@ -680,4 +680,266 @@ public final class BuilderSafeScaffoldGameTest {
             }
         });
     }
+
+    /**
+     * Measure the real collision/feet heights of an idle Builder on a
+     * full cube, inside scaffolding, and initially above scaffolding.
+     * SetPos is only the GameTest's initial spawn placement; all measured
+     * positions follow 45 native entity-physics ticks with normal gravity.
+     */
+    @GameTest(maxTicks=90,skyAccess=true)
+    public void reportsRealBuilderFeetHeightsOnAndInsideScaffolding(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<11;x++)for(int z=0;z<7;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        var anchored=Blocks.SCAFFOLDING.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,0)
+                .setValue(net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM,true);
+        helper.setBlock(5,2,3,anchored);
+        helper.setBlock(8,2,3,anchored);
+        // Partial-height controls use untouched vanilla collision/grounding.
+        helper.setBlock(1,2,5,Blocks.STONE_SLAB);
+        helper.setBlock(3,2,5,Blocks.STONE_STAIRS);
+        BlockPos full=helper.absolutePos(new BlockPos(2,1,3));
+        BlockPos inside=helper.absolutePos(new BlockPos(5,2,3));
+        BlockPos top=helper.absolutePos(new BlockPos(8,2,3));
+        BlockPos slabPos=helper.absolutePos(new BlockPos(1,2,5));
+        BlockPos stairPos=helper.absolutePos(new BlockPos(3,2,5));
+        BuilderGolem stone=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BuilderGolem in=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BuilderGolem on=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BuilderGolem slab=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BuilderGolem stairs=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        stone.setPos(full.getX()+.5,full.getY()+1.5,full.getZ()+.5);
+        in.setPos(inside.getX()+.5,inside.getY()+.38,inside.getZ()+.5);
+        on.setPos(top.getX()+.5,top.getY()+1.5,top.getZ()+.5);
+        slab.setPos(slabPos.getX()+.5,slabPos.getY()+1.5,slabPos.getZ()+.5);
+        stairs.setPos(stairPos.getX()+.5,stairPos.getY()+1.5,stairPos.getZ()+.5);
+        level.addFreshEntity(stone);
+        level.addFreshEntity(in);
+        level.addFreshEntity(on);
+        level.addFreshEntity(slab);
+        level.addFreshEntity(stairs);
+        helper.onEachTick(()->{
+            long tick=helper.getTick();
+            if(tick!=1&&tick!=10&&tick!=25&&tick!=45)return;
+            System.out.println("[SCAFFOLD FEET MEASUREMENT] tick="+tick
+                    +" stoneBlockY="+full.getY()
+                    +" stoneFeetY="+stone.getY()
+                    +" stoneGrounded="+stone.onGround()
+                    +" stoneFeetBlockY="+stone.blockPosition().getY()
+                    +" scaffoldBlockY="+inside.getY()
+                    +" insideFeetY="+in.getY()
+                    +" insideGrounded="+in.onGround()
+                    +" insideFeetBlockY="+in.blockPosition().getY()
+                    +" aboveScaffoldFeetY="+on.getY()
+                    +" aboveScaffoldGrounded="+on.onGround()
+                    +" aboveFeetBlockY="+on.blockPosition().getY()
+                    +" slabFeetY="+slab.getY()
+                    +" slabGrounded="+slab.onGround()
+                    +" stairFeetY="+stairs.getY()
+                    +" stairGrounded="+stairs.onGround()
+                    +" insideCell="+level.getBlockState(in.blockPosition())
+                    +" aboveBelowFeet="+level.getBlockState(on.blockPosition().below()));
+            if(tick==45){
+                if(!stone.isAlive()||!in.isAlive()||!on.isAlive()
+                        ||!slab.isAlive()||!stairs.isAlive()){
+                    helper.fail("A real Builder disappeared during height measurement");
+                    return;
+                }
+                if(BuilderScaffoldPlanA.onScaffoldTop(level,in,inside)
+                        ||!BuilderScaffoldPlanA.onScaffoldTop(level,on,top)){
+                    helper.fail("Scaffold footing confused grounded INSIDE"
+                            +" with standing ON TOP: insideY="+in.getY()
+                            +" topY="+on.getY());
+                    return;
+                }
+                if(!slab.onGround()||!stairs.onGround()
+                        ||slab.getY()<=slabPos.getY()+.40
+                        ||stairs.getY()<=stairPos.getY()+.40
+                        ||BuilderScaffoldPlanA.onScaffoldTop(level,slab,slabPos)
+                        ||BuilderScaffoldPlanA.onScaffoldTop(level,stairs,stairPos)){
+                    helper.fail("Scaffold-only footing changed slab/stair behavior"
+                            +" slabY="+slab.getY()+" stairY="+stairs.getY());
+                    return;
+                }
+                helper.succeed();
+            }
+        });
+    }
+
+    /** Deliberately remove physical route cells and verify the diagnostic
+     * identifies the actual failing component, not just the intended plan.
+     */
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void diagnosesPhysicalScaffoldHeightSpanAndExit(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        BlockPos home=helper.absolutePos(new BlockPos(0,2,0));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            helper.fail("No planner");return;
+        }
+        ServerPlayer owner=helper.makeMockServerPlayerInLevel();
+        table.claimIfUnowned(owner.getUUID());
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos base=helper.absolutePos(new BlockPos(3,2,3));
+        worker.setPos(base.getX()+.5,base.getY(),base.getZ()+.5);
+        level.addFreshEntity(worker);
+        table.registerBuilderWorker(worker.getUUID());
+        BlockPos bridge=base.east().atY(5),exit=base.north();
+        for(int y=base.getY();y<=5;y++){
+            BlockPos cell=base.atY(y);
+            level.setBlock(cell,Blocks.SCAFFOLDING.defaultBlockState()
+                    .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,0),3);
+            table.trackScaffold(worker.getUUID(),cell);
+        }
+        level.setBlock(bridge,Blocks.SCAFFOLDING.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,1),3);
+        table.trackScaffold(worker.getUUID(),bridge);
+        if(BuilderScaffoldPlanA.diagnoseScaffold(level,worker,table,
+                base,5,List.of(bridge),exit)!=BuilderScaffoldPlanA.ScaffoldFault.NONE){
+            helper.fail("Intact scaffold was diagnosed as failed");return;
+        }
+        level.setBlock(base.atY(5),Blocks.AIR.defaultBlockState(),3);
+        if(BuilderScaffoldPlanA.diagnoseScaffold(level,worker,table,
+                base,5,List.of(bridge),exit)
+                !=BuilderScaffoldPlanA.ScaffoldFault.TOWER_SHORT){
+            helper.fail("Missing tower top was not diagnosed");return;
+        }
+        level.setBlock(base.atY(5),Blocks.SCAFFOLDING.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,0),3);
+        level.setBlock(bridge,Blocks.AIR.defaultBlockState(),3);
+        if(BuilderScaffoldPlanA.diagnoseScaffold(level,worker,table,
+                base,5,List.of(bridge),exit)
+                !=BuilderScaffoldPlanA.ScaffoldFault.BRIDGE_SHORT){
+            helper.fail("Missing bridge block was not diagnosed");return;
+        }
+        level.setBlock(bridge,Blocks.SCAFFOLDING.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,1),3);
+        level.setBlock(exit,Blocks.STONE.defaultBlockState(),3);
+        if(BuilderScaffoldPlanA.diagnoseScaffold(level,worker,table,
+                base,5,List.of(bridge),exit)
+                !=BuilderScaffoldPlanA.ScaffoldFault.EXIT_BLOCKED){
+            helper.fail("Blocked ground exit was not diagnosed");return;
+        }
+        helper.succeed();
+    }
+
+    /** Real paid scaffold repair, followed by a sealed exit that the Builder
+     * must wait out. Opening a DIFFERENT solid-ground side must let it
+     * descend and dismount without jumping through the new wall.
+     */
+    @GameTest(maxTicks=1250,skyAccess=true)
+    public void restoresFallenBridgeAndReroutesSealedGroundExit(
+            GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            helper.setBlock(x,1,z,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        BlockPos home=helper.absolutePos(new BlockPos(0,2,0));
+        if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)){
+            helper.fail("No planner");return;
+        }
+        ServerPlayer owner=helper.makeMockServerPlayerInLevel();
+        table.claimIfUnowned(owner.getUUID());
+        BlockPos tower=helper.absolutePos(new BlockPos(2,2,3));
+        BlockPos target=helper.absolutePos(new BlockPos(4,6,3));
+        BlockPos bridge=tower.east().atY(target.getY()-1);
+        level.setBlock(target.below(),Blocks.STONE.defaultBlockState(),3);
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(tower.getX()+.5,tower.getY(),tower.getZ()+.5);
+        worker.setItem(0,new ItemStack(Items.SCAFFOLDING,32));
+        level.addFreshEntity(worker);
+        table.registerBuilderWorker(worker.getUUID());
+        int[] phase={0};
+        long[] changed={0};
+        boolean[] brokeBridge={false},rerouted={false},sawTwoBlockDrop={false};
+        BlockPos[] reopened={null};
+        helper.onEachTick(()->{
+            if(helper.getTick()>1100){
+                helper.fail("Scaffold repair stalled phase="+phase[0]
+                        +" pos="+worker.position()+" "
+                        +BuilderScaffoldPlanA.status(worker));return;
+            }
+            if(helper.getTick()%5!=0)return;
+            if(phase[0]==0){
+                var result=BuilderScaffoldPlanA.reach(
+                        level,worker,table,owner,target,List.of());
+                if(result==BuilderScaffoldPlanA.Result.NO_SAFE_ROUTE
+                        ||result==BuilderScaffoldPlanA.Result.NEED_MATERIALS){
+                    helper.fail("Paid bridge repair was rejected: "+result
+                            +" "+BuilderScaffoldPlanA.status(worker));return;
+                }
+                if(!brokeBridge[0]&&level.getBlockState(bridge).is(Blocks.SCAFFOLDING)
+                        &&BuilderScaffoldPlanA.status(worker).contains("WALK_FIRST")){
+                    level.setBlock(bridge,Blocks.AIR.defaultBlockState(),3);
+                    brokeBridge[0]=true;
+                    System.out.println("[SCAFFOLD REPAIR TEST] removed paid bridge "
+                            +bridge.toShortString()+" with stale receipt");
+                    return;
+                }
+                if(result!=BuilderScaffoldPlanA.Result.READY
+                        ||!brokeBridge[0])return;
+                if(!level.getBlockState(bridge).is(Blocks.SCAFFOLDING)
+                        ||worker.carriedCount(Items.SCAFFOLDING)>26){
+                    helper.fail("Bridge not genuinely replaced with inventory:"
+                            +" count="+worker.carriedCount(Items.SCAFFOLDING));return;
+                }
+                BlockPos original=BuilderScaffoldPlanA.activeExit(worker);
+                if(original==null){helper.fail("Missing planned exit");return;}
+                reopened[0]=original.equals(tower.north())
+                        ?tower.south():tower.north();
+                for(net.minecraft.core.Direction direction:
+                        net.minecraft.core.Direction.Plane.HORIZONTAL)
+                    level.setBlock(tower.relative(direction),
+                            Blocks.STONE.defaultBlockState(),3);
+                phase[0]=1;
+                changed[0]=helper.getTick();
+                return;
+            }
+            if(phase[0]==1){
+                BuilderScaffoldPlanA.returnToGround(level,worker,table);
+                if(helper.getTick()-changed[0]<60)return;
+                if(!BuilderScaffoldPlanA.hasPlan(worker)
+                        ||worker.getY()<tower.getY()+1.0){
+                    helper.fail("Builder left a sealed scaffold without"
+                            +" a real solid exit: "+worker.position());return;
+                }
+                // The only reopened landing is one below the tower
+                // base: two blocks beneath its lip. The golem must
+                // step off physically and fall onto real solid ground.
+                level.setBlock(reopened[0].below(2),
+                        Blocks.STONE.defaultBlockState(),3);
+                level.setBlock(reopened[0].below(),
+                        Blocks.AIR.defaultBlockState(),3);
+                level.setBlock(reopened[0],
+                        Blocks.AIR.defaultBlockState(),3);
+                phase[0]=2;
+                System.out.println("[SCAFFOLD REPAIR TEST] reopened lower exit "
+                        +reopened[0].below().toShortString());
+                return;
+            }
+            BuilderScaffoldPlanA.returnToGround(level,worker,table);
+            if(BuilderScaffolding.debugClimb(worker).startsWith("EXIT via=")
+                    &&worker.getY()-reopened[0].below().getY()>1.85)
+                sawTwoBlockDrop[0]=true;
+            if(reopened[0].below().equals(
+                    BuilderScaffoldPlanA.activeExit(worker)))
+                rerouted[0]=true;
+            if(!BuilderScaffoldPlanA.hasPlan(worker)&&worker.onGround()
+                    &&Math.abs(worker.getY()-(tower.getY()-1))<.26){
+                if(!rerouted[0]||!sawTwoBlockDrop[0]){
+                    helper.fail("Builder did not prove a safe two-block "
+                            +"physical step-off: rerouted="+rerouted[0]
+                            +" fromLip="+sawTwoBlockDrop[0]);return;
+                }
+                System.out.println("[SCAFFOLD REPAIR] PASS paid bridge replacement"
+                        +" plus sealed-exit wait and physical alternate dismount");
+                helper.succeed();
+            }
+        });
+    }
 }

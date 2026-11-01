@@ -35,9 +35,14 @@ public final class BuilderScaffoldPlanA {
         EXTEND_SECOND, WALK_SECOND, READY,
         RETURN_FIRST, RETURN_TOWER, DESCEND, DISMOUNT
     }
+    /** Diagnoses surviving owned blocks, not just the cached plan. */
+    enum ScaffoldFault { NONE, TOWER_SHORT, BRIDGE_SHORT, EXIT_BLOCKED,
+        EXIT_DROP_OBSTRUCTED, CLIMB_STALLED, CLIMB_HEADROOM_BLOCKED }
     private static final class Job {
-        final BlockPos target,base,exit,planner;
+        final BlockPos target,base,planner;
+        BlockPos exit;
         final List<BlockPos> bridgePath;
+        final Set<BlockPos> reserved;
         final int top,bridgeSpan;
         // An adjacent, walkable launch lets the Builder STEP BACK from a
         // roof lip before it pays for and climbs the elevated scaffold.
@@ -46,18 +51,25 @@ public final class BuilderScaffoldPlanA {
         Phase phase=Phase.APPROACH;
         long lastProgress;
         int lastTick;
-        int bridgeTicks,reclimbs;
+        int bridgeTicks,reclimbs,repairs;
+        String lastFailure="NONE";
+        long lastRepairLog;
         double highest=-Double.MAX_VALUE;
         double lastDistance=Double.POSITIVE_INFINITY;
         double closestApproach=Double.POSITIVE_INFINITY;
         boolean fractionalSideEntry;
         Job(BlockPos target,BlockPos base,BlockPos exit,
-                BlockPos planner,List<BlockPos> bridgePath,int top,long now){
+                BlockPos planner,List<BlockPos> bridgePath,
+                Set<BlockPos> reserved,int top,long now){
             this.target=target.immutable();
             this.base=base.immutable();
             this.exit=exit.immutable();
             this.planner=planner.immutable();
             this.bridgePath=List.copyOf(bridgePath);
+            // One choose() invocation shares this private, unmodified
+            // blueprint snapshot across all candidates. Copying thousands
+            // of cells for every possible shaft is prohibitively expensive.
+            this.reserved=reserved;
             this.top=top;
             this.bridgeSpan=bridgePath.size();
             this.lastProgress=now;
@@ -132,6 +144,8 @@ public final class BuilderScaffoldPlanA {
                 &&BuilderPlacementSpace.horizontalClear(target,worker)
                 &&worker.distanceToSqr(target.getX()+.5,
                         target.getY()+.5,target.getZ()+.5)<14
+                &&onOwnedScaffoldTop(level,worker,table,
+                        j.bridge(j.bridgeSpan))
                 &&BuilderConstructionPlanner.lineOfSight(
                         level,worker,worker.blockPosition(),target);
     }
@@ -170,7 +184,12 @@ public final class BuilderScaffoldPlanA {
                 +" step="+j.bridgeStep+"/"+j.bridgeSpan
                 +" targetY="+j.target.getY()+" exit="+j.exit.toShortString()
                 +" ticks="+j.bridgeTicks+" reclimbs="+j.reclimbs
+                +" repairs="+j.repairs+" fault="+j.lastFailure
                 +" highest="+String.format(java.util.Locale.ROOT,"%.2f",j.highest);
+    }
+    static BlockPos activeExit(BuilderGolem worker){
+        Job j=jobs.get(worker);
+        return j==null?null:j.exit;
     }
     public static void cancel(BuilderGolem worker){jobs.remove(worker);}
 
@@ -379,7 +398,7 @@ public final class BuilderScaffoldPlanA {
                 score+=Math.abs(worker.getX()-base.getX()-.5)
                         +Math.abs(worker.getZ()-base.getZ()-.5);
                 Job candidate=new Job(target,base,exit,
-                        table.getBlockPos(),bridge,top,level.getGameTime());
+                        table.getBlockPos(),bridge,reserved,top,level.getGameTime());
                 candidate.lastDistance=score;
                 options.add(candidate);
             }
@@ -595,6 +614,143 @@ public final class BuilderScaffoldPlanA {
         return level.getBlockState(at).is(Blocks.SCAFFOLDING)
                 &&table.scaffoldPositions(worker.getUUID()).contains(at);
     }
+    /** Inspect actual owned blocks. Stale receipts do not make a missing
+     * scaffold physically safe, even if a route was previously approved.
+     */
+    static ScaffoldFault diagnoseScaffold(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            BlockPos base,int top,List<BlockPos> bridge,BlockPos exit){
+        for(int y=base.getY();y<=top;y++)
+            if(!present(level,table,worker,base.atY(y)))
+                return ScaffoldFault.TOWER_SHORT;
+        BlockPos parent=base.atY(top);
+        for(BlockPos cell:bridge){
+            if(!present(level,table,worker,cell)
+                    ||!structurallySupported(level,cell)
+                    ||Math.abs(cell.getX()-parent.getX())
+                        +Math.abs(cell.getZ()-parent.getZ())!=1)
+                return ScaffoldFault.BRIDGE_SHORT;
+            parent=cell;
+        }
+        if(exit==null||!WorkerNavigation.canStandOn(level,worker,exit))
+            return ScaffoldFault.EXIT_BLOCKED;
+        return ScaffoldFault.NONE;
+    }
+    private static int physicalTowerTop(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,Job j){
+        int y=j.base.getY()-1;
+        while(y<j.top&&present(level,table,worker,j.base.atY(y+1)))y++;
+        return y;
+    }
+    private static int physicalBridgeSpan(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,Job j){
+        int n=0;
+        for(BlockPos cell:j.bridgePath){
+            if(!present(level,table,worker,cell)
+                    ||!structurallySupported(level,cell))break;
+            n++;
+        }
+        return n;
+    }
+    private static void repairLog(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,Job j,ScaffoldFault fault,
+            String action){
+        j.lastFailure=fault.name();
+        j.lastRepairLog=level.getGameTime();
+        System.out.println("[PLAN A REPAIR] worker="+worker.getUUID()
+                +" fault="+fault+" action="+action
+                +" feet="+worker.position()+" grounded="+worker.onGround()
+                +" tower="+j.base.toShortString()
+                +" actualTop="+physicalTowerTop(level,worker,table,j)
+                +" requiredTop="+j.top
+                +" actualBridge="+physicalBridgeSpan(level,worker,table,j)
+                +" requiredBridge="+j.bridgeSpan
+                +" plannedExit="+j.exit);
+    }
+    /** The dome may change after the tower is planned. Prefer its reserved
+     * exit, then find another real ground tile; exclude unfinished blueprint
+     * cells but permit newly finished solid landings.
+     */
+    private static boolean refreshExit(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,Job j){
+        if(WorkerNavigation.canStandOn(level,worker,j.exit))return true;
+        Set<BlockPos> unfinished=new HashSet<>();
+        for(BlockPos p:j.reserved)
+            if(level.getBlockState(p).isAir())unfinished.add(p);
+        BlockPos safe=BuilderScaffolding.safeGroundExit(
+                level,worker,j.base,unfinished);
+        if(safe!=null){
+            BlockPos previous=j.exit;
+            j.exit=safe;
+            repairLog(level,worker,table,j,ScaffoldFault.EXIT_BLOCKED,
+                    "reroute real dismount "+previous+" -> "+safe);
+            return true;
+        }
+        if(level.getGameTime()-j.lastRepairLog>=100)
+            repairLog(level,worker,table,j,ScaffoldFault.EXIT_BLOCKED,
+                    "hold supported scaffold; no solid dismount");
+        return false;
+    }
+    private static boolean escapeBlockedExit(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,Job j){
+        if(BuilderScaffolding.isControllingMovement(worker))return true;
+        // If the old base is enclosed, use a nearby ALREADY solid upper
+        // ledge, but only through the native collision-safe side-step.
+        BlockPos feet=worker.blockPosition();
+        for(Direction dir:Direction.Plane.HORIZONTAL)
+            for(int dy:new int[]{0,-1,1}){
+                BlockPos landing=feet.relative(dir).offset(0,dy,0);
+                if(level.getBlockState(landing.below()).is(Blocks.SCAFFOLDING)
+                        ||!level.getBlockState(landing.below()).isFaceSturdy(
+                                level,landing.below(),Direction.UP)
+                        ||!WorkerNavigation.canStandOn(level,worker,landing))
+                    continue;
+                if(BuilderScaffolding.stepToPlatform(level,worker,landing)){
+                    j.phase=Phase.DISMOUNT;
+                    repairLog(level,worker,table,j,ScaffoldFault.EXIT_BLOCKED,
+                            "step onto existing solid ledge "
+                            +landing.toShortString());
+                    return true;
+                }
+            }
+        return false;
+    }
+    /** Replace only a missing NEXT cell from the Builder's settled,
+     * inventory-owned parent. reach() then pays for the replacement.
+     */
+    private static boolean repairBridge(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,Job j){
+        int step=j.phase==Phase.WALK_FIRST?1:
+                j.phase==Phase.WALK_SECOND?j.bridgeStep:0;
+        if(step==0)return false;
+        BlockPos parent=step==1?j.base.atY(j.top):j.bridge(step-1);
+        if(!present(level,table,worker,parent)
+                ||!structurallySupported(level,parent))return false;
+        double dx=worker.getX()-parent.getX()-.5;
+        double dz=worker.getZ()-parent.getZ()-.5;
+        if(dx*dx+dz*dz>.30||worker.getY()<parent.getY()-.20
+                ||worker.getY()>parent.getY()+1.20)return false;
+        if(!onOwnedScaffoldTop(level,worker,table,parent)){
+            if(!BuilderScaffolding.climbingNow(level,worker))
+                BuilderScaffolding.begin(level,worker,parent,
+                        parent.getY()+1.0,false);
+            return true;
+        }
+        if(j.repairs>=3){
+            rejectEntry(level,worker,j.base);
+            repairLog(level,worker,table,j,ScaffoldFault.BRIDGE_SHORT,
+                    "repair budget exhausted; return via supported route");
+            returnToGround(level,worker,table);
+            return true;
+        }
+        j.repairs++;
+        j.phase=step==1?Phase.EXTEND_FIRST:Phase.EXTEND_SECOND;
+        j.lastProgress=level.getGameTime();
+        repairLog(level,worker,table,j,ScaffoldFault.BRIDGE_SHORT,
+                "replace missing bridge cell "+step+" from real parent "
+                        +parent.toShortString()+" attempt="+j.repairs);
+        return true;
+    }
     /** A scaffold whose base is one block ABOVE nearby real footing can
      * be paid for and placed from the side. Do not demand that a Builder
      * first walk/jump into the EMPTY base cell: the finished dome's
@@ -748,6 +904,11 @@ public final class BuilderScaffoldPlanA {
             return Result.NEED_MATERIALS;
         var receipt=BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING);
         if(receipt==null)return Result.NEED_MATERIALS;
+        // A fallen physical block can leave an old ownership receipt.
+        // Replace it with a NEW paid block, never count stale tracking as
+        // support and never record the same coordinate twice.
+        if(table.scaffoldPositions(worker.getUUID()).contains(at))
+            table.untrackScaffold(worker.getUUID(),at);
         if(!level.setBlock(at,state,3)
                 ||!level.getBlockState(at).is(Blocks.SCAFFOLDING)){
             BuilderSupplyInventory.refund(table,receipt);
@@ -805,6 +966,8 @@ public final class BuilderScaffoldPlanA {
                 return Result.NO_SAFE_ROUTE;
             var item=BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING);
             if(item==null)return Result.NEED_MATERIALS;
+            if(table.scaffoldPositions(worker.getUUID()).contains(at))
+                table.untrackScaffold(worker.getUUID(),at);
             // Native Minecraft requires a supported vertical shaft to
             // carry DISTANCE=0. The block default is DISTANCE=7, which
             // makes the first horizontal extension incorrectly conclude
@@ -822,13 +985,65 @@ public final class BuilderScaffoldPlanA {
             }
         }
         j.phase=Phase.CLIMB;
+        j.lastProgress=level.getGameTime();
         BuilderScaffolding.begin(level,worker,j.base,top+1.0,false);
         return Result.MOVING;
     }
     private static boolean close(BuilderGolem worker,BlockPos p){
         return worker.distanceToSqr(p.getX()+.5,p.getY(),
                 p.getZ()+.5)<.12
-                &&Math.abs(worker.getY()-p.getY())<.30;
+                &&Math.abs(worker.getY()-p.getY())<.12;
+    }
+    /**
+     * Physical scaffold-only footing: a Builder inside a climb-through
+     * scaffold may report onGround=true while its feet are one block below
+     * the scaffold top. A completed scaffold step requires the actual top
+     * elevation AND settled collision support. Never apply this rule to
+     * ordinary stone, slabs, stairs, or other work navigation.
+     */
+    static boolean onScaffoldTop(ServerLevel level,BuilderGolem worker,
+            BlockPos scaffold){
+        return level.getBlockState(scaffold).is(Blocks.SCAFFOLDING)
+                &&worker.onGround()&&!worker.isNoGravity()
+                &&Math.abs(worker.getY()-(scaffold.getY()+1.0))<.12;
+    }
+    private static boolean onOwnedScaffoldTop(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            BlockPos scaffold){
+        return present(level,table,worker,scaffold)
+                &&onScaffoldTop(level,worker,scaffold);
+    }
+    /** A work-claim loop may stop calling reach() while its claimed
+     * block waits on another worker. Run the orphan watchdog from EACH
+     * entity tick, not only from an occasionally evaluated work step.
+     * Release a failed tower only on genuine grounded footing.
+     */
+    private static boolean releaseOrphanedClimb(ServerLevel level,
+            BuilderGolem worker,Job j){
+        if(BuilderScaffolding.climbingNow(level,worker)
+                ||!worker.onGround())return false;
+        double baseOffset=worker.distanceToSqr(
+                j.base.getX()+.5,worker.getY(),j.base.getZ()+.5);
+        boolean belowBase=worker.getY()<j.base.getY()-.35;
+        boolean offColumn=baseOffset>.16;
+        boolean waited=level.getGameTime()-j.lastProgress>80;
+        BlockPos underFeet=worker.blockPosition().below();
+        boolean supportedUpperLedge=worker.getY()>j.base.getY()+.25
+                &&offColumn&&waited
+                &&level.getBlockState(underFeet).isFaceSturdy(
+                        level,underFeet,Direction.UP);
+        if(!belowBase&&!(offColumn&&waited
+                &&worker.getY()<=j.base.getY()+.25)
+                &&!supportedUpperLedge)return false;
+        rejectEntry(level,worker,j.base);
+        System.out.println("[PLAN A ENTRY] orphaned climb, retry another "
+                +"real tower from grounded feet "
+                +worker.blockPosition().toShortString()
+                +" base="+j.base.toShortString()
+                +" offsetSq="+baseOffset
+                +" solidUnderFeet="+level.getBlockState(underFeet));
+        jobs.remove(worker);
+        return true;
     }
     /** Physical bridge motion is reserved exclusively to the scaffold
      * controller; vanilla A* cannot treat an air-above-scaffold cell as
@@ -839,14 +1054,115 @@ public final class BuilderScaffoldPlanA {
         if(j==null)return false;
         j.bridgeTicks++;
         j.highest=Math.max(j.highest,worker.getY());
-        // A real scaffold climber can crest the column BETWEEN the
-        // Builder's five-tick work calls, then settle back inside the
-        // climb-through scaffold. Remember that physically observed
-        // arrival immediately so the next work tick can install its
-        // inventory-paid horizontal bridge. Requiring the worker to be
-        // at the crest on the exact work tick stranded high roof caps.
+        // Recover a lost vertical controller while physically suspended in
+        // the paid scaffold shaft. Never treat an airborne scaffold occupant
+        // as a completed work stance, and never fake a position change.
         if(j.phase==Phase.CLIMB
-                &&worker.getY()>=j.target.getY()-.12){
+                &&!BuilderScaffolding.climbingNow(level,worker)
+                &&level.getGameTime()-j.lastProgress>20
+                &&level.getBlockEntity(j.planner)
+                        instanceof WorkerStationBlockEntity table
+                &&physicalTowerTop(level,worker,table,j)==j.top
+                &&worker.getY()>=j.base.getY()-.15
+                &&worker.getY()<j.top+.88
+                &&Math.abs(worker.getX()-j.base.getX()-.5)<.35
+                &&Math.abs(worker.getZ()-j.base.getZ()-.5)<.35
+                &&(level.getBlockState(worker.blockPosition()).is(Blocks.SCAFFOLDING)
+                    ||level.getBlockState(worker.blockPosition().below()).is(Blocks.SCAFFOLDING))
+                &&level.getBlockState(j.base.atY(j.top+1)).isAir()
+                &&level.getBlockState(j.base.atY(j.top+2)).isAir()){
+            BuilderScaffolding.begin(level,worker,j.base,j.top+1.0,false);
+            j.lastProgress=level.getGameTime();
+            System.out.println("[PLAN A RECOVERY] restarted suspended scaffold climb "
+                    +worker.blockPosition().toShortString()
+                    +" shaft="+j.base.toShortString()+" top="+j.top);
+        }
+        if(j.phase==Phase.CLIMB
+                &&releaseOrphanedClimb(level,worker,j))return false;
+        if(j.phase==Phase.CLIMB&&j.bridgeTicks%10==0
+                &&level.getGameTime()-j.lastProgress>80
+                &&!BuilderScaffolding.climbingNow(level,worker)
+                &&level.getBlockEntity(j.planner)
+                        instanceof WorkerStationBlockEntity table){
+            int actual=physicalTowerTop(level,worker,table,j);
+            double dx=worker.getX()-j.base.getX()-.5;
+            double dz=worker.getZ()-j.base.getZ()-.5;
+            if(actual<j.top&&dx*dx+dz*dz<1.32
+                    &&worker.getY()<=actual+1.2
+                    &&j.repairs<3){
+                j.repairs++;
+                j.phase=Phase.BUILD;
+                j.lastProgress=level.getGameTime();
+                repairLog(level,worker,table,j,ScaffoldFault.TOWER_SHORT,
+                        "extend/replace missing paid shaft from real column"
+                        +" attempt="+j.repairs);
+            }else if(actual==j.top&&dx*dx+dz*dz<1.32
+                    &&worker.getY()>=j.base.getY()-.15
+                    &&worker.getY()<j.top+.88
+                    &&level.getGameTime()-j.lastRepairLog>=100){
+                // The shaft exists, yet the previous climb controller is
+                // gone and the Builder is still INSIDE its top scaffold.
+                // Diagnose new overhead construction separately from
+                // an interrupted climb: neither permits a fake Y step.
+                BlockPos head=j.base.atY(j.top+1);
+                boolean blocked=!level.getBlockState(head).isAir()
+                        ||!level.getBlockState(head.above()).isAir();
+                if(blocked||j.repairs>=3){
+                    rejectEntry(level,worker,j.base);
+                    repairLog(level,worker,table,j,
+                            blocked?ScaffoldFault.CLIMB_HEADROOM_BLOCKED:
+                                    ScaffoldFault.CLIMB_STALLED,
+                            "abandon unsafe crest; descend real shaft and replan");
+                    returnToGround(level,worker,table);
+                }else{
+                    j.repairs++;
+                    j.lastProgress=level.getGameTime();
+                    BuilderScaffolding.begin(level,worker,j.base,
+                            j.top+1.0,false);
+                    repairLog(level,worker,table,j,ScaffoldFault.CLIMB_STALLED,
+                            "resume physical ascent inside complete shaft"
+                            +" attempt="+j.repairs);
+                }
+            }
+        }
+        if(j.phase==Phase.READY
+                &&level.getBlockEntity(j.planner)
+                        instanceof WorkerStationBlockEntity table){
+            BlockPos last=j.bridge(j.bridgeSpan);
+            if(!onOwnedScaffoldTop(level,worker,table,last)
+                    ||!close(worker,last.above())){
+                j.phase=j.bridgeSpan==1
+                        ?Phase.WALK_FIRST:Phase.WALK_SECOND;
+                if(j.bridgeSpan>1)j.bridgeStep=j.bridgeSpan;
+                System.out.println("[PLAN A FOOTING] reacquire lost "
+                        +"scaffold-top stance "+last.toShortString()
+                        +" from feetY="+worker.getY());
+            }
+        }
+        // The climb may crest between five-tick work calls, but a
+        // transient airborne Y value is NOT stable standing height.
+        // Advance only after native gravity/collision settles the
+        // Builder ON TOP of the actual scaffold shaft.
+        // A bridge can connect directly to sturdy stone beside a Builder
+        // whose feet have settled INSIDE the scaffold. After a real stall,
+        // leave at the current height instead of restarting the same climb.
+        if(level.getGameTime()-j.lastProgress>60
+                &&(j.phase==Phase.WALK_FIRST||j.phase==Phase.WALK_SECOND
+                    ||j.phase==Phase.READY
+                        &&!BuilderConstructionPlanner.safeStand(
+                                level,worker,j.target,worker.blockPosition()))
+                &&level.getBlockEntity(j.planner)
+                        instanceof WorkerStationBlockEntity exitTable
+                &&BuilderScaffolding.stepOffAtFootHeight(
+                        level,worker,exitTable,j.target)){
+            j.phase=Phase.DISMOUNT;
+            j.lastProgress=level.getGameTime();
+            System.out.println("[PLAN A SIDE EXIT] direct supported ledge "
+                    +worker.blockPosition().toShortString());
+            return true;
+        }
+        if(j.phase==Phase.CLIMB
+                &&onScaffoldTop(level,worker,j.base.atY(j.top))){
             j.phase=Phase.EXTEND_FIRST;
             j.lastProgress=level.getGameTime();
         }
@@ -873,9 +1189,15 @@ public final class BuilderScaffoldPlanA {
         };
         if(destination==null)return false;
         if(!(level.getBlockEntity(j.planner)
-                instanceof WorkerStationBlockEntity table)
-                ||!present(level,table,worker,destination.below())){
-            return true; // never deliberately step onto unsupported air
+                instanceof WorkerStationBlockEntity table))return true;
+        if(!present(level,table,worker,destination.below())){
+            // A bridge that fell is not a walkable node. Recover the exact
+            // paid missing step if the Builder still stands at its parent.
+            if(repairBridge(level,worker,table,j))return false;
+            if(level.getGameTime()-j.lastRepairLog>=100)
+                repairLog(level,worker,table,j,ScaffoldFault.BRIDGE_SHORT,
+                        "cannot step into air; await a supported repair pose");
+            return true;
         }
         // Before walking sideways, physically finish the current
         // scaffold climb. A Builder at the tower lip can drop INSIDE
@@ -903,7 +1225,8 @@ public final class BuilderScaffoldPlanA {
         worker.setShiftKeyDown(false);
         worker.setNoGravity(false);
         double tx=destination.getX()+.5,tz=destination.getZ()+.5;
-        if(close(worker,destination)){
+        if(close(worker,destination)
+                &&onOwnedScaffoldTop(level,worker,table,destination.below())){
             Phase completed=j.phase;
             j.phase=switch(completed){
                 case WALK_FIRST->j.bridgeSpan==1
@@ -989,10 +1312,23 @@ public final class BuilderScaffoldPlanA {
             boolean workPose){
         Job j=jobs.get(worker);
         if(j!=null&&!j.target.equals(target)){
+            // A completed horizontal bridge can meet a real roof walkway
+            // at the same height. Check that physical side exit BEFORE
+            // reusing the bridge for another nearby work cell; otherwise
+            // the old READY shortcut masks the ledge indefinitely.
+            if((j.phase==Phase.READY||j.phase==Phase.WALK_SECOND
+                    ||j.phase==Phase.DISMOUNT)
+                    &&BuilderScaffolding.stepOffTowardWork(
+                            level,worker,table,target)){
+                j.phase=Phase.DISMOUNT;
+                return Result.MOVING;
+            }
             if(worker.blockPosition().getY()==target.getY()
                     &&worker.distanceToSqr(target.getX()+.5,
                             target.getY()+.5,target.getZ()+.5)<=4
-                    &&j.phase==Phase.READY)return Result.READY;
+                    &&j.phase==Phase.READY
+                    &&onOwnedScaffoldTop(level,worker,table,
+                            j.bridge(j.bridgeSpan)))return Result.READY;
             if(returnToGround(level,worker,table))return Result.MOVING;
             j=null;
         }
@@ -1087,23 +1423,9 @@ public final class BuilderScaffoldPlanA {
                 j.phase=Phase.BUILD;
             }
             case CLIMB -> {
+                if(releaseOrphanedClimb(level,worker,j))
+                    return Result.NO_SAFE_ROUTE;
                 if(worker.getY()<j.target.getY()-.15){
-                    // The scaffold controller abandons an impossible climb
-                    // after three collision timeouts. A real Builder on the
-                    // grounded lower ledge must not wait forever for a
-                    // session which no longer exists. Replan another base
-                    // instead of restarting the same blocked side entry.
-                    if(!BuilderScaffolding.climbingNow(level,worker)
-                            &&worker.onGround()
-                            &&worker.getY()<j.base.getY()-.35){
-                        rejectEntry(level,worker,j.base);
-                        System.out.println("[PLAN A ENTRY] blocked climb, retry "
-                                +"another tower from real ground at "
-                                +worker.blockPosition().toShortString()
-                                +" base="+j.base.toShortString());
-                        jobs.remove(worker);
-                        return Result.NO_SAFE_ROUTE;
-                    }
                     // Extend long shafts in real sixteen-block inventory
                     // stages, after physically finishing the prior climb.
                     if(!BuilderScaffolding.climbingNow(level,worker)
@@ -1115,9 +1437,19 @@ public final class BuilderScaffoldPlanA {
                     return Result.MOVING;
                 }
                 if(j.top>j.target.getY()-1)return Result.NO_SAFE_ROUTE;
+                if(!onOwnedScaffoldTop(level,worker,table,
+                        j.base.atY(j.top)))return Result.MOVING;
                 j.phase=Phase.EXTEND_FIRST;
             }
             case EXTEND_FIRST -> {
+                // The climb may have crested transiently before real
+                // collision support settled. Do not lay the bridge from
+                // inside the shaft or while airborne.
+                if(!onOwnedScaffoldTop(level,worker,table,
+                        j.base.atY(j.top))){
+                    j.phase=Phase.CLIMB;
+                    return Result.MOVING;
+                }
                 Result result=place(level,worker,table,owner,j.first(),
                         j.base.atY(j.top));
                 if(result!=Result.READY)return result;
@@ -1127,6 +1459,17 @@ public final class BuilderScaffoldPlanA {
                 return Result.MOVING;
             }
             case EXTEND_SECOND -> {
+                // Every paid bridge cell is laid from a physically settled
+                // prior cell, never from a fleeting midair Y coordinate.
+                BlockPos previous=j.bridge(j.bridgeStep-1);
+                if(!onOwnedScaffoldTop(level,worker,table,previous)){
+                    if(j.bridgeStep==2)j.phase=Phase.WALK_FIRST;
+                    else{
+                        j.bridgeStep--;
+                        j.phase=Phase.WALK_SECOND;
+                    }
+                    return Result.MOVING;
+                }
                 Result result=place(level,worker,table,owner,j.second(),
                         j.bridge(j.bridgeStep-1));
                 if(result!=Result.READY)return result;
@@ -1136,12 +1479,33 @@ public final class BuilderScaffoldPlanA {
                 return Result.MOVING;
             }
             case READY -> {
-                if(worker.blockPosition().getY()!=target.getY())
+                BlockPos finalScaffold=j.bridge(j.bridgeSpan);
+                if(!onOwnedScaffoldTop(level,worker,table,finalScaffold)
+                        ||!close(worker,finalScaffold.above())){
+                    // A real Builder can sink back INTO the climb-through
+                    // scaffold just after a horizontal step. Re-enter the
+                    // physical last bridge step instead of leaving a READY
+                    // plan with no active motion for thousands of ticks.
+                    j.phase=j.bridgeSpan==1
+                            ?Phase.WALK_FIRST:Phase.WALK_SECOND;
+                    if(j.bridgeSpan>1)j.bridgeStep=j.bridgeSpan;
+                    System.out.println("[PLAN A FOOTING] rejoin unfinished "
+                            +"scaffold bridge at "+finalScaffold.toShortString()
+                            +" feetY="+worker.getY()
+                            +" grounded="+worker.onGround());
                     return Result.MOVING;
+                }
                 return Result.READY;
             }
-            case RETURN_FIRST,RETURN_TOWER,DESCEND,DISMOUNT,
-                    WALK_FIRST,WALK_SECOND-> {return Result.MOVING;}
+            case RETURN_FIRST,RETURN_TOWER,DESCEND,DISMOUNT -> {
+                // A Builder may still hold the SAME work cell after its
+                // scaffold return began. Service the physical return here
+                // as well as during a change of target; otherwise DISMOUNT
+                // remains a motionless MOVING result indefinitely.
+                return returnToGround(level,worker,table)
+                        ?Result.MOVING:Result.NO_SAFE_ROUTE;
+            }
+            case WALK_FIRST,WALK_SECOND -> {return Result.MOVING;}
             default -> {}
         }
         if(j.phase==Phase.BUILD)return shaft(level,worker,table,j);
@@ -1179,33 +1543,44 @@ public final class BuilderScaffoldPlanA {
         if(j.phase==Phase.RETURN_FIRST||j.phase==Phase.RETURN_TOWER)
             return true;
         if(j.phase==Phase.CLIMB){
-            if(worker.getY()>j.base.getY()+1.1)
+            if(!refreshExit(level,worker,table,j)){
+                escapeBlockedExit(level,worker,table,j);
+                return true;
+            }
+            // A real Builder can drop TWO blocks onto verified ground.
+            // Stop at the tower lip unless the exit is still farther below.
+            double safeStop=Math.min(j.base.getY()+1.0,
+                    j.exit.getY()+2.0);
+            if(worker.getY()>safeStop+.16)
                 BuilderScaffolding.begin(level,worker,j.base,
-                        j.base.getY()+1.0,true);
+                        safeStop,true);
             j.phase=Phase.DESCEND;
             return true;
         }
         if(j.phase==Phase.DESCEND){
-            if(worker.getY()>j.base.getY()+1.16){
+            if(!refreshExit(level,worker,table,j)){
+                escapeBlockedExit(level,worker,table,j);
+                return true; // never descend to a sealed exit
+            }
+            // A drop of up to two blocks to real solid ground is allowed.
+            // Larger drops first descend farther through the paid shaft.
+            double safeStop=Math.min(j.base.getY()+1.0,
+                    j.exit.getY()+2.0);
+            if(worker.getY()>safeStop+.16){
                 if(!BuilderScaffolding.climbingNow(level,worker))
                     BuilderScaffolding.begin(level,worker,j.base,
-                            j.base.getY()+1.0,true);
+                            safeStop,true);
                 return true;
             }
             j.phase=Phase.DISMOUNT;
         }
         if(j.phase==Phase.DISMOUNT){
-            // A returning worker can land safely on a NEW high roof
-            // surface above the old base exit. Repeatedly steering to
-            // the lower exit would require crossing completed solid
-            // blocks. Keep the genuine high footing, retire this route,
-            // and let the ordinary work planner select another way.
-            if(worker.onGround()
-                    &&worker.getY()>j.base.getY()+1.35
-                    &&!BuilderScaffolding.isControllingMovement(worker)){
-                jobs.remove(worker);
-                return false;
-            }
+            // Never release a high grounded worker merely because its
+            // feet Y is above the tower base. Scaffolding can report
+            // onGround=true while it is still the only support. The
+            // verified non-scaffold-solid-footing check below handles
+            // upper roof exits, ordinary ground, and lower safe landings.
+
             // Once the worker is physically standing on SOLID ground at
             // the tower's base elevation, its descent is complete; the
             // exact compass-side exit is no longer a mandatory position.
@@ -1231,16 +1606,85 @@ public final class BuilderScaffoldPlanA {
                     break;
                 }
             }
+            // A grounded Builder can be caught in the SIDE of its own
+            // scaffold despite having sturdy, non-scaffold footing. Remove
+            // only the intersecting paid scaffold, not the whole tower:
+            // other workers may still be using the remaining structure.
+            if(worker.onGround()&&!clearOfOwnedScaffold
+                    &&!level.getBlockState(below).is(Blocks.SCAFFOLDING)
+                    &&level.getBlockState(below).isFaceSturdy(
+                            level,below,Direction.UP)
+                    &&level.getGameTime()-j.lastProgress>40){
+                int removed=BuilderScaffolding.clearGroundedScaffoldSnag(
+                        level,worker,table);
+                if(removed>0){
+                    j.lastProgress=level.getGameTime();
+                    System.out.println("[PLAN A DISMOUNT RECOVERY] cleared "
+                            +removed+" owned scaffold snag(s) at "
+                            +worker.blockPosition().toShortString());
+                    jobs.remove(worker);
+                    return false;
+                }
+            }
+            // Stop repeating a dismount that has made no progress. On real
+            // solid footing the worker can safely abandon this scaffold
+            // job, reclaim unoccupied scaffolding and replan from scratch.
+            // Reject the old base so the next plan cannot recreate the
+            // exact same failed tower immediately.
             if(worker.onGround()
-                    &&Math.abs(worker.getY()-j.base.getY())<.26
+                    &&!worker.isNoGravity()
+                    &&!level.getBlockState(below).is(Blocks.SCAFFOLDING)
+                    &&level.getBlockState(below).isFaceSturdy(
+                            level,below,Direction.UP)
+                    &&level.getGameTime()-j.lastProgress>160){
+                if(!clearOfOwnedScaffold){
+                    BuilderScaffolding.clearGroundedScaffoldSnag(
+                            level,worker,table);
+                }
+                rejectEntry(level,worker,j.base);
+                System.out.println("[PLAN A DISMOUNT RESET] grounded stall; "
+                        +"abandoning scaffold base="
+                        +j.base.toShortString()+" worker="
+                        +worker.blockPosition().toShortString());
+                jobs.remove(worker);
+                BuilderScaffolding.retrieve(level,worker,table,false);
+                return false;
+            }
+            if(worker.onGround()
                     &&clearOfOwnedScaffold
+                    &&!level.getBlockState(below).is(Blocks.SCAFFOLDING)
                     &&level.getBlockState(below).isFaceSturdy(
                             level,below,Direction.UP)){
+                if(worker.getY()<j.base.getY()-.35)
+                    System.out.println("[PLAN A DISMOUNT] released stale tower "
+                            +j.base.toShortString()+" from lower real footing "
+                            +worker.blockPosition().toShortString());
                 jobs.remove(worker);
                 return false;
             }
-            if(!BuilderScaffolding.isControllingMovement(worker))
-                BuilderScaffolding.dismountAtBase(level,worker,j.base);
+            if(!refreshExit(level,worker,table,j)){
+                escapeBlockedExit(level,worker,table,j);
+                return true;
+            }
+            if(!BuilderScaffolding.isControllingMovement(worker)
+                    &&!BuilderScaffolding.dismountAtBase(
+                            level,worker,j.base,j.exit)){
+                // The physical two-block side drop was obstructed.
+                // Retreat ONE level inside owned scaffold and re-attempt
+                // the shorter natural drop. Never walk through a wall.
+                double dx=worker.getX()-j.base.getX()-.5;
+                double dz=worker.getZ()-j.base.getZ()-.5;
+                if(present(level,table,worker,j.base)
+                        &&dx*dx+dz*dz<1.32
+                        &&worker.getY()>j.exit.getY()+1.35){
+                    BuilderScaffolding.begin(level,worker,j.base,
+                            j.exit.getY()+1.0,true);
+                    if(level.getGameTime()-j.lastRepairLog>=80)
+                        repairLog(level,worker,table,j,
+                                ScaffoldFault.EXIT_DROP_OBSTRUCTED,
+                                "side drop blocked; lower real scaffold stance");
+                }
+            }
             return true;
         }
         return true;

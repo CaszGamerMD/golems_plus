@@ -7,6 +7,54 @@ import java.util.Map;
 /** Small forward-looking batches avoid reserving an entire large structure. */
 public final class BuilderMaterialDemand {
     private BuilderMaterialDemand(){}
+    /** Single source of truth for the warehouse manifest and preview:
+     * ignored vegetation never creates demand, even if an older saved
+     * Step still carries a requiredItem from before the toggle.
+     */
+    public static Map<String,Long> requiredMaterials(
+            List<BuilderConstructionPlan.Step> steps){
+        Map<String,Long> result=new LinkedHashMap<>();
+        for(var step:steps)
+            if(!step.ignorePlant()&&step.requiredItem()!=null
+                    &&!step.requiredItem().isBlank())
+                result.merge(step.requiredItem(),1L,Long::sum);
+        for(String id:java.util.List.copyOf(result.keySet()))
+            if(BuilderBlockResolver.reusableSupply(id))result.put(id,1L);
+        return result;
+    }
+    /** The next eight Y layers only, in the actual plan's step order.
+     * The plan is ascending normally and descending for FROM_Y_DOWN jobs.
+     * Finished out-of-order cells and ignored replacements create no demand.
+     */
+    public static Map<String,Long> nextWindow(
+            List<BuilderConstructionPlan.Step> steps,int cursor,
+            java.util.function.IntPredicate completed,int layers){
+        if(steps==null||cursor<0||cursor>=steps.size())return Map.of();
+        int start=-1;
+        for(int i=cursor;i<steps.size();i++)
+            if(!steps.get(i).ignorePlant()&&!completed.test(i)){
+                start=i;break;
+            }
+        if(start<0)return Map.of();
+        int startY=steps.get(start).y();
+        int direction=1;
+        for(int i=start+1;i<steps.size();i++)
+            if(steps.get(i).y()!=startY){
+                direction=steps.get(i).y()>startY?1:-1;break;
+            }
+        Map<String,Long> needed=new LinkedHashMap<>();
+        for(int i=start;i<steps.size();i++){
+            var step=steps.get(i);
+            int advance=(step.y()-startY)*direction;
+            if(advance>=Math.max(1,layers))break;
+            if(advance<0||step.ignorePlant()||completed.test(i)
+                    ||step.requiredItem()==null)continue;
+            needed.merge(step.requiredItem(),1L,Long::sum);
+        }
+        for(String id:java.util.List.copyOf(needed.keySet()))
+            if(BuilderBlockResolver.reusableSupply(id))needed.put(id,1L);
+        return needed;
+    }
     /** Reserve for the next three vertical Y-levels, bottom-up.
      * Request all needed stock for the selected material types, capped at
      * the warehouse's 4096-item per-line contract. The old 64-item cap
@@ -26,9 +74,12 @@ public final class BuilderMaterialDemand {
         if(cursor<0||cursor>=steps.size())return Map.of();
         Map<String,Integer> needed=new LinkedHashMap<>();
         for(int i=cursor;i<steps.size();i++){
-            String id=steps.get(i).requiredItem();
-            if(id!=null&&!id.isBlank())needed.merge(id,1,Integer::sum);
+            var step=steps.get(i);
+            String id=step.requiredItem();
+            if(!step.ignorePlant()&&id!=null&&!id.isBlank())
+                needed.merge(id,1,Integer::sum);
         }
+        needed.replaceAll((id,count)->BuilderBlockResolver.reusableSupply(id)?1:count);
         needed.replaceAll((id,count)->Math.min(4096,
                 Math.max(0,count-Math.max(0,onsite.getOrDefault(id,0)))));
         needed.values().removeIf(v->v<=0);
@@ -89,16 +140,18 @@ public final class BuilderMaterialDemand {
             var step=steps.get(i);
             if(step.y()>=firstY+3)break;
             String item=step.requiredItem();
-            if(item==null||item.isBlank())continue;
+            if(step.ignorePlant()||item==null||item.isBlank())continue;
             if(!needed.containsKey(item)&&needed.size()>=16)continue;
             needed.merge(item,1,Integer::sum);
         }
         Map<String,Integer> entireJob=new LinkedHashMap<>();
         for(int i=cursor;i<steps.size();i++){
-            String id=steps.get(i).requiredItem();
-            if(needed.containsKey(id))
+            var step=steps.get(i);
+            String id=step.requiredItem();
+            if(!step.ignorePlant()&&needed.containsKey(id))
                 entireJob.merge(id,1,Integer::sum);
         }
+        needed.replaceAll((k,v)->BuilderBlockResolver.reusableSupply(k)?1:v);
         needed.replaceAll((k,v)->{
             int shortage=Math.max(0,entireJob.getOrDefault(k,0)
                     -Math.max(0,stocked.getOrDefault(k,0)));

@@ -26,6 +26,57 @@ public final class BuilderGrappleRecoveryGameTest {
         world.addFreshEntity(g);
         return g;
     }
+    @GameTest(maxTicks=260,skyAccess=true)
+    public void fencePerchUsesPhysicalGrappleDescent(GameTestHelper h){
+        escapePerchFixture(h,Blocks.OAK_FENCE);
+    }
+    @GameTest(maxTicks=260,skyAccess=true)
+    public void wallPerchUsesPhysicalGrappleDescent(GameTestHelper h){
+        escapePerchFixture(h,Blocks.COBBLESTONE_WALL);
+    }
+    @GameTest(maxTicks=260,skyAccess=true)
+    public void stairPerchUsesPhysicalGrappleDescent(GameTestHelper h){
+        escapePerchFixture(h,Blocks.OAK_STAIRS);
+    }
+    private static void escapePerchFixture(GameTestHelper h,
+            net.minecraft.world.level.block.Block support){
+        ground(h);
+        ServerLevel level=h.getLevel();
+        BlockPos anchor=h.absolutePos(new BlockPos(4,4,3));
+        BlockPos landing=h.absolutePos(new BlockPos(5,2,3));
+        level.setBlock(anchor,support.defaultBlockState(),3);
+        double top=level.getBlockState(anchor).getCollisionShape(level,anchor)
+                .toAabbs().stream().mapToDouble(box->box.maxY)
+                .max().orElse(1.0);
+        BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(anchor.getX()+.5,anchor.getY()+top,anchor.getZ()+.5);
+        worker.setItem(0,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        level.addFreshEntity(worker);
+        var table=(WorkerStationBlockEntity)level.getBlockEntity(
+                h.absolutePos(new BlockPos(0,2,0)));
+        final boolean[] attached={false};
+        h.onEachTick(()->{
+            if(h.getTick()<8)return;
+            if(!worker.isAlive()){
+                h.fail("Perched Builder died on "+support);return;
+            }
+            if(!attached[0]&&worker.onGround()&&h.getTick()%5==0)
+                attached[0]=BuilderGrappleAccess.escapePerch(
+                        level,worker,table,landing);
+            if(attached[0]&&!BuilderGrappleAccess.active(worker)
+                    &&worker.onGround()
+                    &&worker.blockPosition().getY()==landing.getY()){
+                System.out.println("[GRAPPLE PERCH] PASS "+support
+                        +" escaped to "+worker.blockPosition());
+                h.succeed();return;
+            }
+            if(h.getTick()>=210)
+                h.fail("Partial-block perch escape stalled support="+support
+                        +" attached="+attached[0]+" position="+worker.position()
+                        +" state="+BuilderGrappleAccess.debug(worker));
+        });
+    }
+
     @GameTest(maxTicks=320,skyAccess=true)
     public void oneBlockStepTriesNativeJumpBeforeHook(GameTestHelper h){
         ground(h);

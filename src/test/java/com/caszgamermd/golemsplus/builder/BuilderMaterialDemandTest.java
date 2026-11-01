@@ -64,6 +64,21 @@ class BuilderMaterialDemandTest {
                 steps.size(),Map.of(),Map.of()));
     }
 
+    @Test void ignoredPlantsNeverProduceDemandEvenWithLegacyItemFields(){
+        var steps=List.of(
+                new BuilderConstructionPlan.Step(0,5,0,
+                        "minecraft:wheat","minecraft:wheat",true),
+                new BuilderConstructionPlan.Step(1,5,0,
+                        "minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(2,5,0,
+                        "minecraft:carrots","minecraft:carrot",true));
+        assertEquals(Map.of("minecraft:stone",1L),
+                BuilderMaterialDemand.requiredMaterials(steps));
+        assertEquals(Map.of("minecraft:stone",1),
+                BuilderMaterialDemand.outstanding(steps,0,Map.of(),Map.of()));
+        assertEquals(Map.of("minecraft:stone",1),
+                BuilderMaterialDemand.batch(steps,0,Map.of()));
+    }
     @Test void zonedProgressNeverOrdersAlreadyBuiltOrAlreadyStaged(){
         assertEquals(Map.of(),BuilderMaterialDemand.outstandingRemaining(
                 Map.of("minecraft:stone",40L),

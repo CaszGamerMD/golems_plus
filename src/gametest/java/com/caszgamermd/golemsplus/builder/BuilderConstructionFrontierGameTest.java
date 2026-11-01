@@ -169,6 +169,157 @@ public final class BuilderConstructionFrontierGameTest {
         });
     }
 
+    /** A crew member finishes one horizontal run before starting the
+     * isolated nearer island. After the next confirmed placement, the
+     * work-front anchor moves with that same Builder.
+     */
+    @GameTest(maxTicks=140,skyAccess=true)
+    public void followsConnectedStripBeforeCloserDisconnectedIsland(
+            GameTestHelper h){
+        floor(h);
+        ServerLevel world=h.getLevel();
+        var mob=worker(h,h.absolutePos(new BlockPos(3,2,3)));
+        var table=planner(h,mob,4);
+        BlockPos seed=h.absolutePos(new BlockPos(5,2,4));
+        BlockPos island=h.absolutePos(new BlockPos(3,2,5));
+        BlockPos next=h.absolutePos(new BlockPos(5,2,5));
+        BlockPos end=h.absolutePos(new BlockPos(5,2,6));
+        var steps=List.of(
+                new BuilderConstructionPlan.Step(
+                        seed.getX(),seed.getY(),seed.getZ(),
+                        "minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(
+                        island.getX(),island.getY(),island.getZ(),
+                        "minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(
+                        next.getX(),next.getY(),next.getZ(),
+                        "minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(
+                        end.getX(),end.getY(),end.getZ(),
+                        "minecraft:stone","minecraft:stone"));
+        var zone=List.of(0,1,2,3);
+        h.onEachTick(()->{
+            if(h.getTick()!=16)return;
+            world.setBlock(seed,Blocks.STONE.defaultBlockState(),3);
+            if(table.claimBuilderZoneStep(mob.getUUID(),zone,steps)!=0
+                    ||!table.completeBuilderStep(mob.getUUID(),0)){
+                h.fail("Could not seed the connected run");return;
+            }
+            BuilderConstructionPlanner.noteCompleted(mob,seed);
+            var choice=BuilderConstructionPlanner.choose(world,mob,table,
+                    steps,zone);
+            if(choice==null||choice.index()!=2||choice.stance()==null){
+                h.fail("Jumped to isolated strip instead of next adjacent block: "
+                        +choice);return;
+            }
+            if(table.claimPreferredBuilderZoneStep(mob.getUUID(),
+                    zone,steps,2)!=2){
+                h.fail("Could not claim first connected extension");return;
+            }
+            world.setBlock(next,Blocks.STONE.defaultBlockState(),3);
+            if(!table.completeBuilderStep(mob.getUUID(),2)){
+                h.fail("Could not complete first extension");return;
+            }
+            BuilderConstructionPlanner.noteCompleted(mob,next);
+            choice=BuilderConstructionPlanner.choose(world,mob,table,
+                    steps,zone);
+            if(choice==null||choice.index()!=3||choice.stance()==null){
+                h.fail("Did not continue same connected run: "+choice);return;
+            }
+            if(table.builderActiveLayer(steps)!=seed.getY()){
+                h.fail("Connected ordering broke shared Y gate");return;
+            }
+            System.out.println("[COHERENT FRONTIER] PASS finished connected "
+                    +"same-Y run before nearer isolated island");
+            h.succeed();
+        });
+    }
+
+    /** Completing a third side around an unfilled same-Y gap should
+     * be a lower-priority task than filling the gap itself.
+     * This protects the last work access to dome roof pockets.
+     */
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void roofFrontAvoidsSealingUnfinishedPocket(GameTestHelper h){
+        floor(h);
+        var world=h.getLevel();
+        BlockPos gap=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos third=gap.east();
+        BlockPos north=gap.north(),south=gap.south();
+        // All four cells are genuine schematic members, not unrelated
+        // terrain. Two adjacent blocks are already correctly placed.
+        world.setBlock(north,Blocks.STONE.defaultBlockState(),3);
+        world.setBlock(south,Blocks.STONE.defaultBlockState(),3);
+        var expected=java.util.Map.of(
+                north,Blocks.STONE.defaultBlockState(),
+                south,Blocks.STONE.defaultBlockState(),
+                third,Blocks.STONE.defaultBlockState(),
+                gap,Blocks.STONE.defaultBlockState());
+        int risk=BuilderConstructionPlanner.pocketClosureRisk(
+                world,third,expected);
+        if(risk!=1){
+            h.fail("Expected risk of creating a three-sided unfilled gap, got "
+                    +risk);return;
+        }
+        if(BuilderConstructionPlanner.frontierTier(1,risk)
+                <=BuilderConstructionPlanner.frontierTier(2,0)){
+            h.fail("Connected safe pocket must outrank closing its approach");
+            return;
+        }
+        System.out.println("[COHERENT FRONTIER] PASS recognizes third-side "
+                +"closure risk before a roof pocket becomes inaccessible");
+        h.succeed();
+    }
+
+    /** Lookahead is a read-only next-task prediction, not an early
+     * claim or a second movement command. The real Planner still
+     * authorizes the handoff only after the first step completes.
+     */
+    @GameTest(maxTicks=130,skyAccess=true)
+    public void lookaheadPreparesNextCellWithoutStealingCurrentClaim(
+            GameTestHelper h){
+        floor(h);
+        var world=h.getLevel();
+        var mob=worker(h,h.absolutePos(new BlockPos(3,2,3)));
+        var table=planner(h,mob,3);
+        BlockPos seed=h.absolutePos(new BlockPos(5,2,4));
+        BlockPos island=h.absolutePos(new BlockPos(3,2,5));
+        BlockPos next=h.absolutePos(new BlockPos(5,2,5));
+        var steps=List.of(
+                new BuilderConstructionPlan.Step(
+                        seed.getX(),seed.getY(),seed.getZ(),
+                        "minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(
+                        island.getX(),island.getY(),island.getZ(),
+                        "minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(
+                        next.getX(),next.getY(),next.getZ(),
+                        "minecraft:stone","minecraft:stone"));
+        h.onEachTick(()->{
+            if(h.getTick()!=16)return;
+            world.setBlock(seed,Blocks.STONE.defaultBlockState(),3);
+            if(table.claimBuilderZoneStep(mob.getUUID(),List.of(0,1,2),steps)!=0){
+                h.fail("Could not claim current work");return;
+            }
+            var predicted=BuilderConstructionPlanner.chooseLookahead(
+                    world,mob,table,steps,List.of(1,2));
+            if(predicted==null||predicted.index()!=2
+                    ||table.claimedStep(mob.getUUID())!=0){
+                h.fail("Lookahead stole current claim or missed connected work: "
+                        +predicted);return;
+            }
+            if(!table.completeBuilderStep(mob.getUUID(),0)
+                    ||table.claimPreferredBuilderZoneStep(mob.getUUID(),
+                            List.of(0,1,2),steps,predicted.index())!=2){
+                h.fail("Cannot claim prefetched step after physical completion");
+                return;
+            }
+            System.out.println("[BUILDER LOOKAHEAD] PASS predicted next "
+                    +"connected cell without changing active claim");
+            h.succeed();
+        });
+    }
+
     @GameTest(maxTicks=130,skyAccess=true)
     public void rejectsThroughWallWorkStanceRatherThanPlaceThroughWall(
             GameTestHelper h){
