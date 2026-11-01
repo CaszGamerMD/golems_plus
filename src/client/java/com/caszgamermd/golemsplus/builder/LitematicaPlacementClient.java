@@ -198,8 +198,22 @@ public final class LitematicaPlacementClient {
         Object box=optional(placement,"getEnclosingBox");
         if(box==null)throw new IllegalArgumentException(
                 "No Litematica placement bounding box: enable all subregions");
-        BlockPos a=asPos(firstAvailable(box,"getPos1","getCorner1"));
-        BlockPos b=asPos(firstAvailable(box,"getPos2","getCorner2"));
+        // Modern Litematica returns malilib IntBoundingBox with public
+        // minX/minY/minZ/maxX/maxY/maxZ fields, not a SelectionBox.
+        // Older implementations expose getPos1/getPos2 instead.
+        BlockPos a,b;
+        try{
+            Class<?> type=box.getClass();
+            a=new BlockPos(type.getField("minX").getInt(box),
+                    type.getField("minY").getInt(box),
+                    type.getField("minZ").getInt(box));
+            b=new BlockPos(type.getField("maxX").getInt(box),
+                    type.getField("maxY").getInt(box),
+                    type.getField("maxZ").getInt(box));
+        }catch(NoSuchFieldException exception){
+            a=asPos(firstAvailable(box,"getPos1","getCorner1"));
+            b=asPos(firstAvailable(box,"getPos2","getCorner2"));
+        }
         if(a==null||b==null)
             throw new IllegalArgumentException("Cannot read hologram boundaries");
         int minX=Math.min(a.getX(),b.getX()),maxX=Math.max(a.getX(),b.getX());
