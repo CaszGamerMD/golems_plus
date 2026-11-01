@@ -18,9 +18,14 @@ assert "public static boolean routeToExact(" in navigation
 assert "public static boolean canReachExact(" in navigation
 exact=navigation[navigation.index("public static boolean routeToExact("):
                  navigation.index("public static boolean routeTo(",navigation.index("public static boolean routeToExact("))]
-assert "WorkerRoutePlanner.plan(" in exact
+# Exact work evacuation uses the shared executable-route helper; it
+# reaches the same trained A* without duplicating planning in routeToExact.
+assert "planExecutableRoute(" in exact
 assert "List.of(target)" in exact
-assert "at->trainedTerrainCost(level,at)" in exact
+planner=navigation[navigation.index("private static WorkerRoutePlanner.Route planExactRoute("):
+                   navigation.index("private static WorkerRoutePlanner.Route planExecutableRoute(")]
+assert "WorkerRoutePlanner.plan(" in planner
+assert "at->trainedTerrainCost(level,at)" in planner
 assert "createPath(waypoint,0)" in exact
 assert "safePath(level,mob,path,false)" in exact
 assert "moveTo(path,speed)" in exact
