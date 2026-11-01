@@ -1218,8 +1218,27 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClaimDebug.put(worker,"claimed #"+preferred
                 +" at "+(level==null?0:level.getGameTime())
                 +" previous="+active);
-        sync();
+        syncBuilderClaim();
         return preferred;
+    }
+
+    /** Claiming the next block is routine, often several times within a
+     * second across the crew. Persist the claim IMMEDIATELY but do not
+     * serialize and broadcast the entire job to every client after EVERY
+     * claim. Visible Builder progress already uses the same 20-tick
+     * notification interval; new claims share it.
+     */
+    private void syncBuilderClaim(){
+        if(isBuilder()&&selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
+            builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
+        setChanged();
+        long now=level==null?0:level.getGameTime();
+        if(level!=null&&(builderProgressNotifyTick<0
+                ||now-builderProgressNotifyTick>=20)){
+            builderProgressNotifyTick=now;
+            BlockState state=getBlockState();
+            level.sendBlockUpdated(worldPosition,state,state,3);
+        }
     }
 
     /** No route or anchor is currently valid for a claimed cell. Keep
