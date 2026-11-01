@@ -155,7 +155,7 @@ public final class WorksiteContent {
         ResourceKey<Item> grappleKey=ResourceKey.create(Registries.ITEM,
                 GolemsPlus.id("grapple_hook"));
         GRAPPLE_HOOK=Registry.register(BuiltInRegistries.ITEM,grappleKey,
-                new Item(new Item.Properties().stacksTo(1).setId(grappleKey)));
+                new PlayerGrappleHookItem(new Item.Properties().stacksTo(1).setId(grappleKey)));
         TRADER_COUNTER_ITEM = blockItem("trader_counter", TRADER_COUNTER);
         BEEKEEPER_STATION_ITEM=blockItem("beekeeper_station",BEEKEEPER_STATION);
         COOKING_STATION_ITEM=blockItem("cooking_station",COOKING_STATION);
