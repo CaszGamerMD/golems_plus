@@ -1,6 +1,7 @@
 package com.caszgamermd.golemsplus.builder;
 
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
+import com.caszgamermd.golemsplus.world.CreativeCrateBlockEntity;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.ArrayList;
@@ -43,6 +44,9 @@ public final class BuilderSupplyInventory {
                 &&table.builderOrigin().distSqr(pos)>128L*128L)return null;
         return world.getBlockEntity(pos) instanceof Container storage?storage:null;
     }
+    public static boolean creativeSupply(WorkerStationBlockEntity table){
+        return selectedStorage(table) instanceof CreativeCrateBlockEntity;
+    }
     /** Supplies physically accessible at the selected OnSite container.
      * Warehouse shulkers may be stored as items INSIDE this container or
      * placed as real shulker blocks immediately next to it.
@@ -69,6 +73,16 @@ public final class BuilderSupplyInventory {
     }
     public static Map<String,Integer> available(WorkerStationBlockEntity table){
         Map<String,Integer> stock=new LinkedHashMap<>();
+        if(creativeSupply(table)){
+            // No rack scan or 100k-item synthetic inventory. Advertise only
+            // the actual job palette and Builder kit to the normal planner.
+            for(String item:table.builderRemaining().keySet())
+                stock.put(item,Integer.MAX_VALUE/2);
+            stock.put("minecraft:scaffolding",Integer.MAX_VALUE/2);
+            stock.put("minecraft:bucket",Integer.MAX_VALUE/2);
+            stock.put("golems_plus:grapple_hook",Integer.MAX_VALUE/2);
+            return stock;
+        }
         for(Container store:sources(table)){
             int max=store.getContainerSize();
             for(int i=0;i<max;i++){
@@ -146,7 +160,8 @@ public final class BuilderSupplyInventory {
     public static boolean depositBox(WorkerStationBlockEntity table,ItemStack box){
         if(box.isEmpty()||!box.is(ItemTags.SHULKER_BOXES))return false;
         Container destination=selectedStorage(table);
-        if(destination==null)return false;
+        if(destination==null||destination instanceof CreativeCrateBlockEntity)
+            return false; // Existing physical warehouse shulkers must not be voided.
         int limit=destination.getContainerSize();
         for(int i=0;i<limit;i++)if(destination.getItem(i).isEmpty()
                 &&destination.canPlaceItem(i,box)){
@@ -205,6 +220,10 @@ public final class BuilderSupplyInventory {
      */
     private static int drawFromStorage(Container storage,BuilderGolem worker,
                                        Item material,int amount){
+        if(storage instanceof CreativeCrateBlockEntity){
+            ItemStack sample=new ItemStack(material);
+            return tryPocket(worker,sample,Math.min(amount,room(worker,sample)));
+        }
         int remaining=amount;
         for(int slot=0;slot<storage.getContainerSize()&&remaining>0;slot++){
             ItemStack held=storage.getItem(slot);
@@ -249,6 +268,7 @@ public final class BuilderSupplyInventory {
         return amount-remaining;
     }
     private static boolean containsInSources(WorkerStationBlockEntity table,Item item){
+        if(creativeSupply(table))return true;
         for(Container source:sources(table))
             if(includesItem(source,source.getContainerSize(),item))return true;
         return false;
@@ -304,6 +324,10 @@ public final class BuilderSupplyInventory {
             if(next.requiredItem()!=null)
                 materials.merge(next.requiredItem(),1,Integer::sum);
         }
+        // A reusable fluid source is one tool for the whole work order,
+        // independent of how many fluid cells are assigned.
+        for(String item:java.util.List.copyOf(materials.keySet()))
+            if(BuilderBlockResolver.reusableSupply(item))materials.put(item,1);
         // Every Builder carries a dedicated persistent TOOL BELT. Fill it
         // only from real OnSite stock: one reusable hook, up to a full
         // 64-block stack of scaffolding and one empty bucket. This does
@@ -557,6 +581,8 @@ public final class BuilderSupplyInventory {
             java.util.List<ItemStack> drops,boolean commit){
         Container destination=selectedStorage(table);
         if(destination==null)return false;
+        if(destination instanceof CreativeCrateBlockEntity)
+            return true; // Creative clearing deliberately discards debris.
         int count=destination.getContainerSize();
         ItemStack[] planned=new ItemStack[count];
         for(int i=0;i<count;i++)planned[i]=destination.getItem(i).copy();
@@ -622,6 +648,20 @@ public final class BuilderSupplyInventory {
         if(toolSlot(worker,target)>=0)return ToolStatus.READY;
         Container site=selectedStorage(table);
         if(site==null)return ToolStatus.MISSING;
+        if(site instanceof CreativeCrateBlockEntity){
+            Item tool=target.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_AXE)
+                    ?net.minecraft.world.item.Items.NETHERITE_AXE:
+                    target.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_SHOVEL)
+                    ?net.minecraft.world.item.Items.NETHERITE_SHOVEL:
+                    target.is(net.minecraft.tags.BlockTags.MINEABLE_WITH_HOE)
+                    ?net.minecraft.world.item.Items.NETHERITE_HOE:
+                    net.minecraft.world.item.Items.NETHERITE_PICKAXE;
+            if(BuilderReturnService.approach(level,worker,
+                    table.builderUnloadingStorage(),.83))return ToolStatus.MOVING;
+            if(room(worker,new ItemStack(tool))<=0)returnPouch(table,worker);
+            drawFromSources(table,worker,tool,1);
+            return toolSlot(worker,target)>=0?ToolStatus.READY:ToolStatus.MISSING;
+        }
         int selected=-1;
         for(int i=0;i<site.getContainerSize();i++)
             if(correctTool(site.getItem(i),target)){selected=i;break;}
