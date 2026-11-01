@@ -29,7 +29,7 @@ public final class BuilderUploadNetworking {
     private BuilderUploadNetworking(){}
     public record Piece(BlockPos table,UUID token,int index,int total,
             int byteLength,BlockPos origin,int rotation,int mirror,
-            String name,byte[] bytes) implements CustomPacketPayload{
+            String name,boolean worldSnapshot,byte[] bytes) implements CustomPacketPayload{
         public static final Type<Piece> TYPE=new Type<>(GolemsPlus.id("placed_schematic"));
         public static final StreamCodec<RegistryFriendlyByteBuf,Piece> CODEC=
                 StreamCodec.of((buf,p)->{
@@ -38,11 +38,12 @@ public final class BuilderUploadNetworking {
                     buf.writeVarInt(p.total());buf.writeVarInt(p.byteLength());
                     buf.writeBlockPos(p.origin());buf.writeVarInt(p.rotation());
                     buf.writeVarInt(p.mirror());buf.writeUtf(p.name(),90);
+                    buf.writeBoolean(p.worldSnapshot());
                     buf.writeByteArray(p.bytes());
                 },buf->new Piece(buf.readBlockPos(),buf.readUUID(),buf.readVarInt(),
                         buf.readVarInt(),buf.readVarInt(),buf.readBlockPos(),
                         buf.readVarInt(),buf.readVarInt(),buf.readUtf(90),
-                        buf.readByteArray(PART_SIZE)));
+                        buf.readBoolean(),buf.readByteArray(PART_SIZE)));
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
     private static final class Incoming {
@@ -50,19 +51,22 @@ public final class BuilderUploadNetworking {
         final BlockPos table,origin;
         final int rotation,mirror,total,size;
         final String name;
+        final boolean worldSnapshot;
         final ByteArrayOutputStream data=new ByteArrayOutputStream();
         final long started;
         int next;
         Incoming(Piece p,long time){
             session=p.token();table=p.table();origin=p.origin();
             rotation=p.rotation();mirror=p.mirror();
-            total=p.total();size=p.byteLength();name=p.name();started=time;
+            total=p.total();size=p.byteLength();name=p.name();
+            worldSnapshot=p.worldSnapshot();started=time;
         }
         boolean matches(Piece p){
             return session.equals(p.token())&&table.equals(p.table())
                     &&origin.equals(p.origin())&&rotation==p.rotation()
                     &&mirror==p.mirror()&&total==p.total()
-                    &&size==p.byteLength()&&name.equals(p.name());
+                    &&size==p.byteLength()&&name.equals(p.name())
+                    &&worldSnapshot==p.worldSnapshot();
         }
     }
     public static void initialize(){
@@ -81,7 +85,8 @@ public final class BuilderUploadNetworking {
                 ||!player.getAbilities().mayBuild){
             pending.remove(uuid);return;
         }
-        if(p.byteLength()<1||p.byteLength()>MAX_BYTES||p.total()<1
+        if(!p.worldSnapshot()
+                ||p.byteLength()<1||p.byteLength()>MAX_BYTES||p.total()<1
                 ||p.total()>(MAX_BYTES+PART_SIZE-1)/PART_SIZE
                 ||p.index()<0||p.index()>=p.total()
                 ||p.bytes().length<1||p.bytes().length>PART_SIZE
@@ -114,13 +119,20 @@ public final class BuilderUploadNetworking {
             Path directory=FabricLoader.getInstance().getConfigDir()
                     .resolve("golems_plus").resolve("schematics");
             Files.createDirectories(directory);
-            saved=directory.resolve("placed-"+UUID.randomUUID()+".litematic");
+            saved=directory.resolve("placed-"+UUID.randomUUID()
+                    +BuilderPlacementSnapshot.EXTENSION);
             Files.write(saved,current.data.toByteArray());
-            var schematic=LitematicFileReader.read(saved);
-            BuildSite.Rotation rotation=BuildSite.Rotation.values()[p.rotation()];
-            BuildSite.Mirror mirror=BuildSite.Mirror.values()[p.mirror()];
-            var site=new BuildSite(p.origin().getX(),p.origin().getY(),
-                    p.origin().getZ(),rotation,mirror);
+            // Coordinates and states come ONLY from the rendered ghost at
+            // the instant the player clicked Import. Do not run BuildSite
+            // rotation, mirror or signed-size transformation again.
+            var schematic=BuilderPlacementSnapshot.read(saved);
+            var site=BuilderPlacementSnapshot.worldSpaceSite();
+            for(var block:schematic.blocks()){
+                if(Math.abs((long)block.x()-p.origin().getX())>256
+                        ||Math.abs((long)block.z()-p.origin().getZ())>256)
+                    throw new java.io.IOException(
+                            "Hologram outside 256-block Builder range");
+            }
             var plan=BuilderConstructionPlan.create(schematic,site);
             // The uploaded snapshot is now immutable and remains server-side;
             // only explicit confirmation from the Planning Table can begin work.
@@ -131,9 +143,10 @@ public final class BuilderUploadNetworking {
                 notify(player,"The table could not accept this placement.");return;
             }
             table.setBuilderMaterialsForFile(saved.getFileName().toString(),plan.required());
-            notify(player,"Imported placed '"+p.name()+"' at "+p.origin()+
-                    " ("+plan.steps().size()+" blocks; "+
-                    plan.unsupported().size()+" unsupported states).");
+            notify(player,"Captured EXACT placed hologram '"+p.name()+
+                    "' at "+p.origin()+" ("+plan.steps().size()+
+                    " blocks; "+plan.unsupported().size()+
+                    " unsupported states). Coordinates are frozen.");
             notify(player,"In the Planning Table, click Preview, then Start build to confirm.");
         }catch(Exception ex){
             if(saved!=null)try{Files.deleteIfExists(saved);}catch(Exception ignored){}
