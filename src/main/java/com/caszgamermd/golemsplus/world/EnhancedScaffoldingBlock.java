@@ -42,6 +42,14 @@ public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
                         context.getClickedPos()).isSource());
     }
 
+    @Override protected boolean canBeReplaced(BlockState state,
+            BlockPlaceContext context){
+        // Vanilla scaffolding is replaceable by its special item, allowing
+        // the item to find the tower/bridge extension from the clicked cell.
+        return context.getItemInHand().is(WorksiteContent.ENHANCED_SCAFFOLDING_ITEM)
+                ||super.canBeReplaced(state,context);
+    }
+
     private static boolean isEnhanced(Level level,BlockPos pos){
         return level.hasChunkAt(pos)
                 &&level.getBlockState(pos).getBlock() instanceof EnhancedScaffoldingBlock;
