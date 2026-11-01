@@ -60,7 +60,7 @@ public final class WorksiteContent {
     public static Item FISHING_BAIT,FISHING_MARKER_ITEM,GRAPPLE_HOOK;
     // Invisible to creative inventory: these are render-only displays,
     // never physical Builder supplies or player-collectable rope.
-    public static Item GRAPPLE_ROPE_SEGMENT,GRAPPLE_ROPE_LINK;
+    public static Item GRAPPLE_ROPE_SEGMENT,GRAPPLE_ROPE_LINK,GRAPPLE_ROPE_COIL;
     public static FishingSpotBlock FISHING_SPOT;
     public static EnhancedScaffoldingBlock ENHANCED_SCAFFOLDING;
     public static Item ENHANCED_SCAFFOLDING_ITEM;
@@ -191,6 +191,10 @@ public final class WorksiteContent {
                 GolemsPlus.id("grapple_rope_link"));
         GRAPPLE_ROPE_LINK=Registry.register(BuiltInRegistries.ITEM,
                 ropeLinkKey,new Item(new Item.Properties().setId(ropeLinkKey)));
+        ResourceKey<Item> ropeCoilKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("grapple_rope_coil"));
+        GRAPPLE_ROPE_COIL=Registry.register(BuiltInRegistries.ITEM,
+                ropeCoilKey,new Item(new Item.Properties().setId(ropeCoilKey)));
         TRADER_COUNTER_ITEM = blockItem("trader_counter", TRADER_COUNTER);
         BEEKEEPER_STATION_ITEM=blockItem("beekeeper_station",BEEKEEPER_STATION);
         COOKING_STATION_ITEM=blockItem("cooking_station",COOKING_STATION);

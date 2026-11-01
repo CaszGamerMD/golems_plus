@@ -445,6 +445,43 @@ public final class BuilderScaffolding {
         }
         return best;
     }
+    /** Step sideways off a one-cell horizontal bridge at the worker's
+     * ACTUAL feet elevation. A climb-through bridge may leave its feet
+     * inside the scaffold, with a legal full-block floor one cell lower
+     * than the nominal scaffold TOP. Don't force a needless climb first.
+     * Every sampled side step must be collision-free, with solid landing. */
+    static boolean stepOffAtFootHeight(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos target){
+        if(exiting.containsKey(worker))return true;
+        if(!worker.onGround()||climbingNow(level,worker))return false;
+        BlockPos feet=worker.blockPosition();
+        var owned=table.scaffoldPositions(worker.getUUID());
+        if(!owned.contains(feet)&&!owned.contains(feet.below()))return false;
+        BlockPos chosen=null;
+        double best=Double.POSITIVE_INFINITY;
+        for(Direction side:Direction.Plane.HORIZONTAL)
+            for(int dy:new int[]{0,-1}){
+                BlockPos landing=feet.relative(side).offset(0,dy,0);
+                BlockPos floor=landing.below();
+                if(landing.getY()>worker.getY()+.2
+                        ||worker.getY()-landing.getY()>1.3
+                        ||level.getBlockState(floor).is(Blocks.SCAFFOLDING)
+                        ||!level.getBlockState(floor).isFaceSturdy(
+                                level,floor,Direction.UP)
+                        ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .canStandOn(level,worker,landing))continue;
+                double dx=landing.getX()+.5-worker.getX();
+                double dz=landing.getZ()+.5-worker.getZ();
+                boolean clear=true;
+                for(int i=1;i<=10;i++)
+                    if(!level.noCollision(worker,worker.getBoundingBox().move(
+                            dx*i/10.0,0,dz*i/10.0))){clear=false;break;}
+                if(!clear)continue;
+                double score=landing.distSqr(target)+Math.abs(dy)*3;
+                if(score<best){chosen=landing;best=score;}
+            }
+        return chosen!=null&&stepToPlatform(level,worker,chosen);
+    }
     /** Real side exit at the top of a scaffold. Vanilla pathfinding
      * cannot usually start from a scaffold node to an adjacent full-block
      * walkway. Move physically to the supported landing first, then
@@ -471,6 +508,7 @@ public final class BuilderScaffolding {
     public static boolean stepOffTowardWork(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos target){
         if(exiting.containsKey(worker))return true;
+        if(stepOffAtFootHeight(level,worker,table,target))return true;
         BlockPos feet=worker.blockPosition();
         BlockPos scaffold=feet.below();
         var owned=table.scaffoldPositions(worker.getUUID());

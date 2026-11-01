@@ -17,7 +17,6 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 
 /**
  * World-visible, non-colliding equipment for an ACTUALLY attached grapple.
@@ -109,12 +108,12 @@ public final class GrappleLineVisuals {
             return null;
         Line line=new Line(owner);
         lines.put(owner,line);
-        // The reusable grapple hook sits on the UPPER block, not on the
-        // Golem. The lead sprite is a coiled rope at the LOWER footing.
+        // The reusable 3D hook sits on the UPPER block. A separate 3D
+        // rope coil sits flat on the LOWER footing; neither is a lead sprite.
         add(level,line,WorksiteContent.GRAPPLE_HOOK,
                 anchor.getX()+.5,topY+.12,anchor.getZ()+.5,0,70);
-        add(level,line,Items.LEAD,
-                column.getX()+.5,bottomY+.13,column.getZ()+.5,0,85);
+        add(level,line,WorksiteContent.GRAPPLE_ROPE_COIL,
+                column.getX()+.5,bottomY+.13,column.getZ()+.5,0,0);
 
         // One thin modeled rope length per vertical cell. Unlike sparks,
         // the full line stays visible while the Builder climbs/descends.

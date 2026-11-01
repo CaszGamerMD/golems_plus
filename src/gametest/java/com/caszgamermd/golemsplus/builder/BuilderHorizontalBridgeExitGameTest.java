@@ -17,7 +17,7 @@ public final class BuilderHorizontalBridgeExitGameTest {
      */
     @GameTest(maxTicks=350,skyAccess=true)
     public void sameHeightStoneExitFromHorizontalBridgeTop(GameTestHelper helper){
-        horizontalBridgeEqualHeightExit(helper,false);
+        horizontalBridgeEqualHeightExit(helper,false,false);
     }
 
     /** A BOTTOM=true horizontal bridge can let a real mob sink into the
@@ -25,11 +25,19 @@ public final class BuilderHorizontalBridgeExitGameTest {
      */
     @GameTest(maxTicks=350,skyAccess=true)
     public void sameHeightStoneExitFromInsideHorizontalBridge(GameTestHelper helper){
-        horizontalBridgeEqualHeightExit(helper,true);
+        horizontalBridgeEqualHeightExit(helper,true,false);
+    }
+
+    /** The Builder's feet are INSIDE the bridge, but the adjacent stone
+     * landing is level with those feet. Exit sideways without first
+     * climbing above the bridge and falling back down. */
+    @GameTest(maxTicks=300,skyAccess=true)
+    public void bridgeDismountsDirectlyToLowerStoneLedge(GameTestHelper helper){
+        horizontalBridgeEqualHeightExit(helper,true,true);
     }
 
     private static void horizontalBridgeEqualHeightExit(
-            GameTestHelper helper,boolean startInside){
+            GameTestHelper helper,boolean startInside,boolean lowerLedge){
         ServerLevel level=helper.getLevel();
         for(int x=0;x<8;x++)for(int z=0;z<8;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
@@ -44,7 +52,7 @@ public final class BuilderHorizontalBridgeExitGameTest {
         }
         BlockPos shaft=helper.absolutePos(new BlockPos(3,2,4));
         BlockPos bridge=shaft.east().atY(4);
-        BlockPos ledge=bridge.east();
+        BlockPos ledge=bridge.east().below(lowerLedge?1:0);
         // The bridge itself has NO scaffold directly below it. Only the
         // neighboring vertical column anchors this legitimate side piece.
         for(int y=shaft.getY();y<=bridge.getY();y++)
@@ -74,7 +82,13 @@ public final class BuilderHorizontalBridgeExitGameTest {
             helper.fail("Physical bridge/ledge fixture missing");return;
         }
         final long started=helper.getTick();
+        final double[] highest={builder.getY()};
         helper.onEachTick(()->{
+            highest[0]=Math.max(highest[0],builder.getY());
+            if(lowerLedge&&highest[0]>bridge.getY()+.75){
+                helper.fail("Bridge forced an unnecessary tower climb before "
+                        +"legal foot-height exit: "+highest[0]);return;
+            }
             if(!builder.isAlive()){
                 helper.fail("Bridge Builder disappeared");return;
             }

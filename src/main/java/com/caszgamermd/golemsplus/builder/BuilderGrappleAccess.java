@@ -13,6 +13,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.WallBlock;
+import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.phys.AABB;
 
 /**
@@ -682,6 +685,32 @@ public final class BuilderGrappleAccess {
         if(route==null||!startAscent(level,worker,route))
             return Result.NO_SAFE_ANCHOR;
         return Result.MOVING;
+    }
+    /** Emergency mobility option for a Builder physically stalled on a
+     * fence, wall, staircase or other fractional support. This does NOT
+     * interrupt normal walking: callers invoke it only after a genuine
+     * no-motion timeout. It only descends on a real, clear rope to a solid
+     * landing; unsuccessful attempts leave the existing job untouched. */
+    public static boolean escapePerch(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos goal){
+        if(active.containsKey(worker))return true;
+        if(!worker.onGround()||BuilderScaffolding.isControllingMovement(worker)
+                ||BuilderScaffoldPlanA.hasPlan(worker))return false;
+        BlockPos under=worker.blockPosition().below();
+        BlockState support=level.getBlockState(under);
+        boolean awkward=support.getBlock() instanceof FenceBlock
+                ||support.getBlock() instanceof WallBlock
+                ||support.getBlock() instanceof StairBlock
+                ||Math.abs(worker.getY()-Math.rint(worker.getY()))>.08;
+        if(!awkward||!hasHook(worker))return false;
+        Rope route=chooseSupportedDescent(level,worker,goal);
+        if(route==null)return false;
+        active.put(worker,route);
+        WorkerNavigation.stop(worker);
+        System.out.println("[GRAPPLE PERCH ESCAPE] "
+                +worker.blockPosition().toShortString()+" -> "
+                +route.landing.toShortString()+" support="+support.getBlock());
+        return true;
     }
     /** Returns true while the hook owns descent or when a descent starts. */
     public static boolean rappelForTravel(ServerLevel level,

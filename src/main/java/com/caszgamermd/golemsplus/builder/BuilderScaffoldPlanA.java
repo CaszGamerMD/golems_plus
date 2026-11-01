@@ -1143,6 +1143,24 @@ public final class BuilderScaffoldPlanA {
         // transient airborne Y value is NOT stable standing height.
         // Advance only after native gravity/collision settles the
         // Builder ON TOP of the actual scaffold shaft.
+        // A bridge can connect directly to sturdy stone beside a Builder
+        // whose feet have settled INSIDE the scaffold. After a real stall,
+        // leave at the current height instead of restarting the same climb.
+        if(level.getGameTime()-j.lastProgress>60
+                &&(j.phase==Phase.WALK_FIRST||j.phase==Phase.WALK_SECOND
+                    ||j.phase==Phase.READY
+                        &&!BuilderConstructionPlanner.safeStand(
+                                level,worker,j.target,worker.blockPosition()))
+                &&level.getBlockEntity(j.planner)
+                        instanceof WorkerStationBlockEntity exitTable
+                &&BuilderScaffolding.stepOffAtFootHeight(
+                        level,worker,exitTable,j.target)){
+            j.phase=Phase.DISMOUNT;
+            j.lastProgress=level.getGameTime();
+            System.out.println("[PLAN A SIDE EXIT] direct supported ledge "
+                    +worker.blockPosition().toShortString());
+            return true;
+        }
         if(j.phase==Phase.CLIMB
                 &&onScaffoldTop(level,worker,j.base.atY(j.top))){
             j.phase=Phase.EXTEND_FIRST;

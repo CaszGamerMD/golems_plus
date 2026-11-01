@@ -9,7 +9,6 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 
@@ -39,7 +38,7 @@ public final class GrappleLineVisualGameTest {
             if(helper.getTick()<10)return;
             var displays=level.getEntitiesOfClass(Display.ItemDisplay.class,region);
             if(count(displays,WorksiteContent.GRAPPLE_HOOK)!=1
-                    ||count(displays,Items.LEAD)!=1
+                    ||count(displays,WorksiteContent.GRAPPLE_ROPE_COIL)!=1
                     ||count(displays,WorksiteContent.GRAPPLE_ROPE_SEGMENT)
                             !=expectedSegments
                     ||count(displays,WorksiteContent.GRAPPLE_ROPE_LINK)!=1){

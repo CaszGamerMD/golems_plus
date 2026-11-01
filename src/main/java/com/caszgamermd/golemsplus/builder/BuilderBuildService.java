@@ -66,6 +66,7 @@ public final class BuilderBuildService {
         // Track actual displacement, not repeated navigation requests.
         double lastWorkX=Double.NaN,lastWorkY=Double.NaN,lastWorkZ=Double.NaN;
         long lastMovementTick=-1;
+        long lastPerchEscapeTick=-1000;
         long retreatUntil=-1;
         int lastFailedStep=-1;
         // Next-step prediction is read-only until the current block
@@ -82,7 +83,8 @@ public final class BuilderBuildService {
                 blockedSince=-1;workTravelSince=-1;
                 bestTargetDistance=Double.POSITIVE_INFINITY;
                 lastTargetProgressTick=-1;
-                lastMovementTick=-1;lastWorkX=Double.NaN;
+                lastMovementTick=-1;lastPerchEscapeTick=-1000;
+                lastWorkX=Double.NaN;
                 lookahead=null;lookaheadZone=List.of();
                 lookaheadFor=-1;lookaheadScanned=0;
                 lookaheadFinished=false;
@@ -1029,6 +1031,24 @@ public final class BuilderBuildService {
                     activity.lastWorkX=worker.getX();
                     activity.lastWorkY=worker.getY();
                     activity.lastWorkZ=worker.getZ();
+                }
+            }
+            // A genuinely stationary Builder on fence/wall/stair geometry
+            // may have no legal ground node even though a clear rope face
+            // and safe lower landing exist. Check that physical escape at
+            // most once every four seconds; no hook is used during normal
+            // movement, or while a scaffold controller is in charge.
+            if(now-activity.lastMovementTick>80
+                    &&now-activity.lastPerchEscapeTick>=80
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffoldPlanA.hasPlan(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
+                activity.lastPerchEscapeTick=now;
+                if(BuilderGrappleAccess.escapePerch(
+                        level,worker,table,pos)){
+                    activity.lastMovementTick=now;
+                    activity.workTravelSince=now;
+                    return;
                 }
             }
             // Prepare a bounded next-step choice during ordinary walking.
