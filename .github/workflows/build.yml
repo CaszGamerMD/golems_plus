@@ -33,7 +33,7 @@ jobs:
           python3 scripts/builder_placement_space_smoke.py
           python3 scripts/builder_zoned_workflow_smoke.py
       - name: Compile and run unit tests
-        run: gradle --no-daemon clean test build compileGametestJava
+        run: gradle --no-daemon clean test jar compileGametestJava
       - name: Run Minecraft in-game construction checks
         shell: bash
         run: |
