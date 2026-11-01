@@ -282,18 +282,20 @@ public final class BuilderBuildService {
         if(!table.isBuilder()||table.activeOrder()==null)return "No active Builder job";
         if(table.warehouse()==null)
             return "Manual supply mode: link a Rack Computer with a Warehouse Scanner to enable warehouse deliveries";
-        if(table.supplyRequest()!=null)return "Warehouse material request already active";
         try{
             var cache=jobCache(table);
             var plan=cache.steps();
-            if(table.builderRequired().isEmpty()&&table.activeOrder()!=null){
-                // Running legacy build: retain its current cursor and only
-                // backfill the static required-material checklist.
-                var required=new java.util.LinkedHashMap<String,Long>();
-                for(var step:plan)if(step.requiredItem()!=null)
-                    required.merge(step.requiredItem(),1L,Long::sum);
-                table.backfillBuilderMaterials(required);
-            }
+            // A job may have been previewed BEFORE Ignore Crops was
+            // toggled. Reconcile its persisted material ledger BEFORE
+            // inspecting or creating a warehouse ticket, preserving the
+            // count of actual placements already completed.
+            var filtered=BuilderMaterialDemand.requiredMaterials(plan);
+            if(!table.builderRequired().equals(filtered))
+                table.reconcileBuilderMaterials(filtered);
+            if(table.supplyRequest()!=null)
+                return "Warehouse material request already active"
+                        +(table.builderCancelShipment()
+                            ?"; cancelling the previous unfiltered manifest":"");
             var stock=BuilderSupplyInventory.available(table);
             var warehouse=table.warehouse();
             var pickable=warehouse==null?null:
@@ -1281,14 +1283,11 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table){
         try{
             var cache=jobCache(table);
-            Map<String,Long> materials=new java.util.LinkedHashMap<>();
             int ignored=0;
-            for(var step:cache.steps()){
-                if(step.ignorePlant())ignored++;
-                else if(step.requiredItem()!=null)
-                    materials.merge(step.requiredItem(),1L,Long::sum);
-            }
-            table.reconcileBuilderMaterials(materials);
+            for(var step:cache.steps())if(step.ignorePlant())ignored++;
+            var materials=BuilderMaterialDemand.requiredMaterials(cache.steps());
+            if(!table.builderRequired().equals(materials))
+                table.reconcileBuilderMaterials(materials);
             table.previewBuilderWork(cache.steps());
             // A running planner may have already cleared the site.
             // Otherwise preserve the clearing gate until all real

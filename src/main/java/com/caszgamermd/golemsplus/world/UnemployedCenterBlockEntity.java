@@ -29,13 +29,18 @@ public final class UnemployedCenterBlockEntity extends BlockEntity
                 &&!golem.is(WorksiteContent.TRADER_WORKER_ITEM)
                 &&!golem.is(WorksiteContent.BEEKEEPER_WORKER_ITEM)
                 &&!golem.is(WorksiteContent.FISHER_WORKER_ITEM))return false;
+        // Recycling retires the worker's individual identity. A fresh
+        // profession item has no CUSTOM_NAME or saved entity components,
+        // so named workers can combine into normal stacks in the bin.
+        // The caller unloads any real cargo before this conversion.
+        ItemStack generic=new ItemStack(golem.getItem(),1);
         for(int slot=0;slot<items.size();slot++){
             ItemStack previous=items.get(slot);
             if(previous.isEmpty()){
-                items.set(slot,golem.copyWithCount(1));
+                items.set(slot,generic);
                 setChanged();return true;
             }
-            if(ItemStack.isSameItemSameComponents(previous,golem)
+            if(ItemStack.isSameItemSameComponents(previous,generic)
                     &&previous.getCount()<previous.getMaxStackSize()){
                 items.set(slot,previous.copyWithCount(previous.getCount()+1));
                 setChanged();return true;

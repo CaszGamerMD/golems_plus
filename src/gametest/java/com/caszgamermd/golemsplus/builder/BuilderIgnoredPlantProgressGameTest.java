@@ -84,6 +84,36 @@ public final class BuilderIgnoredPlantProgressGameTest {
         h.succeed();
     }
     @GameTest(maxTicks=100,skyAccess=true)
+    public void oldWarehouseLedgerDropsCropsWhenFilterEnabled(GameTestHelper h){
+        var f=setup(h,3);
+        if(f==null)return;
+        var steps=List.of(
+                new BuilderConstructionPlan.Step(f.at.getX()+3,
+                        f.at.getY(),f.at.getZ()+3,
+                        "minecraft:wheat","minecraft:wheat",true),
+                new BuilderConstructionPlan.Step(f.at.getX()+4,
+                        f.at.getY(),f.at.getZ()+3,
+                        "minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(f.at.getX()+5,
+                        f.at.getY(),f.at.getZ()+3,
+                        "minecraft:carrots","minecraft:carrot",true));
+        // Simulate the stale pre-filter material list from a saved job.
+        f.table.setBuilderMaterials(java.util.Map.of(
+                "minecraft:wheat",1L,"minecraft:stone",1L,
+                "minecraft:carrot",1L));
+        var filtered=BuilderMaterialDemand.requiredMaterials(steps);
+        f.table.reconcileBuilderMaterials(filtered);
+        var order=BuilderMaterialDemand.outstandingRemaining(
+                f.table.builderRemaining(),java.util.Map.of(),java.util.Map.of());
+        if(!order.equals(java.util.Map.of("minecraft:stone",1))
+                ||f.table.builderRequired().containsKey("minecraft:wheat")
+                ||f.table.builderRemaining().containsKey("minecraft:carrot")){
+            h.fail("Old warehouse ledger still orders ignored crops: "+order);
+            return;
+        }
+        h.succeed();
+    }
+    @GameTest(maxTicks=100,skyAccess=true)
     public void allIgnoredCropsFinishWithZeroRequiredPlacements(GameTestHelper h){
         var f=setup(h,3);
         if(f==null)return;

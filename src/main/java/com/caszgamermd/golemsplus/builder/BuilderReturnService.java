@@ -4,7 +4,6 @@ import com.caszgamermd.golemsplus.world.UnemployedCenterBlockEntity;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import com.caszgamermd.golemsplus.world.WorksiteContent;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 
@@ -61,9 +60,9 @@ public final class BuilderReturnService {
                     level,worker,pos,.82);
             return true;
         }
+        // The worker's named entity identity ends on recycling. The
+        // Unemployed Center also normalizes items inserted manually.
         ItemStack stored=new ItemStack(WorksiteContent.BUILDER_WORKER_ITEM);
-        if(worker.hasCustomName())stored.set(DataComponents.CUSTOM_NAME,
-                worker.getCustomName());
         // Commit item into the actual 27-slot bin first, then unlink and
         // discard the now empty entity. No disappearance when the bin is full.
         if(!closest.acceptWorker(stored)){

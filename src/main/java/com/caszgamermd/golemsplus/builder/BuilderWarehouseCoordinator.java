@@ -33,6 +33,12 @@ public final class BuilderWarehouseCoordinator {
             table.setProblem("Install Caszual Additions with Builder warehouse support");
             return false;
         }
+        // Defensive check for callers other than primeWarehouse (e.g.
+        // a courier retry): an old saved ledger cannot re-order crops
+        // after the player enabled Ignore Plants.
+        var filtered=BuilderMaterialDemand.requiredMaterials(steps);
+        if(!table.builderRequired().equals(filtered))
+            table.reconcileBuilderMaterials(filtered);
         BlockPos computer=new BlockPos(warehouse.x(),warehouse.y(),warehouse.z());
         Map<String,Integer> onsite=BuilderSupplyInventory.available(table);
         Map<String,Integer> warehouseStock=BuilderWarehousePort.stockSnapshot(

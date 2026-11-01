@@ -7,6 +7,19 @@ import java.util.Map;
 /** Small forward-looking batches avoid reserving an entire large structure. */
 public final class BuilderMaterialDemand {
     private BuilderMaterialDemand(){}
+    /** Single source of truth for the warehouse manifest and preview:
+     * ignored vegetation never creates demand, even if an older saved
+     * Step still carries a requiredItem from before the toggle.
+     */
+    public static Map<String,Long> requiredMaterials(
+            List<BuilderConstructionPlan.Step> steps){
+        Map<String,Long> result=new LinkedHashMap<>();
+        for(var step:steps)
+            if(!step.ignorePlant()&&step.requiredItem()!=null
+                    &&!step.requiredItem().isBlank())
+                result.merge(step.requiredItem(),1L,Long::sum);
+        return result;
+    }
     /** Reserve for the next three vertical Y-levels, bottom-up.
      * Request all needed stock for the selected material types, capped at
      * the warehouse's 4096-item per-line contract. The old 64-item cap
@@ -26,8 +39,10 @@ public final class BuilderMaterialDemand {
         if(cursor<0||cursor>=steps.size())return Map.of();
         Map<String,Integer> needed=new LinkedHashMap<>();
         for(int i=cursor;i<steps.size();i++){
-            String id=steps.get(i).requiredItem();
-            if(id!=null&&!id.isBlank())needed.merge(id,1,Integer::sum);
+            var step=steps.get(i);
+            String id=step.requiredItem();
+            if(!step.ignorePlant()&&id!=null&&!id.isBlank())
+                needed.merge(id,1,Integer::sum);
         }
         needed.replaceAll((id,count)->Math.min(4096,
                 Math.max(0,count-Math.max(0,onsite.getOrDefault(id,0)))));
@@ -89,14 +104,15 @@ public final class BuilderMaterialDemand {
             var step=steps.get(i);
             if(step.y()>=firstY+3)break;
             String item=step.requiredItem();
-            if(item==null||item.isBlank())continue;
+            if(step.ignorePlant()||item==null||item.isBlank())continue;
             if(!needed.containsKey(item)&&needed.size()>=16)continue;
             needed.merge(item,1,Integer::sum);
         }
         Map<String,Integer> entireJob=new LinkedHashMap<>();
         for(int i=cursor;i<steps.size();i++){
-            String id=steps.get(i).requiredItem();
-            if(needed.containsKey(id))
+            var step=steps.get(i);
+            String id=step.requiredItem();
+            if(!step.ignorePlant()&&needed.containsKey(id))
                 entireJob.merge(id,1,Integer::sum);
         }
         needed.replaceAll((k,v)->{
