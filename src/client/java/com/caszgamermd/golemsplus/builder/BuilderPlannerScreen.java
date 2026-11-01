@@ -183,7 +183,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         if(page==Page.MATERIAL_EDIT&&event.button()==0){
             int slot=inventoryPickerSlot(event.x(),event.y());
             if(slot>=0){
-                ItemStack stack=playerInventory.getItem(slot);
+                ItemStack stack=currentPlayerInventory().getItem(slot);
                 if(stack.isEmpty()){
                     notice="Choose a nonempty inventory slot";
                 }else if(!(stack.getItem() instanceof BlockItem)){
@@ -434,6 +434,14 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     // The Builder kiosk has no real container slots. This is a read-only
     // view of the player's 27 main slots and 9 hotbar slots. Clicking a block
     // chooses its item ID; the physical stack never leaves the inventory.
+    // The Builder table deliberately has NO container/menu slots. Use
+    // the locally synced player inventory for an explicit read-only picker.
+    // A container inventory object supplied during screen construction can
+    // be stale after a client-side screen rebuild or inventory update.
+    private Inventory currentPlayerInventory(){
+        return minecraft!=null&&minecraft.player!=null
+                ?minecraft.player.getInventory():playerInventory;
+    }
     private int inventoryPickerX(int index){
         return leftPos+26+(index%9)*19;
     }
@@ -448,18 +456,36 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         }
         return -1;
     }
+    private int inventoryStackCount(){
+        Inventory inventory=currentPlayerInventory();
+        int count=0;
+        for(int i=0;i<36;i++)
+            if(!inventory.getItem(i).isEmpty())count++;
+        return count;
+    }
+    /** Draw in the BACKGROUND's ABSOLUTE coordinate space, just like
+     * the rest of this full-screen planner. The previous pseudo-slots
+     * were emitted in extractLabels() using local coordinates and were
+     * not reliably visible in the slotless kiosk at all GUI scales.
+     * Hitboxes use inventoryPickerX/Y directly, so clicks and icons share
+     * precisely the same positions, regardless of the viewport origin.
+     */
     private void renderInventoryPicker(GuiGraphicsExtractor g){
+        Inventory inventory=currentPlayerInventory();
+        int x0=leftPos+19,y0=topPos+107;
+        g.fill(x0-2,y0-2,x0+185,y0+105,0xff4b6875);
+        g.fill(x0,y0,x0+183,y0+103,0xff142631);
         for(int i=0;i<36;i++){
-            ItemStack stack=playerInventory.getItem(i);
-            int x=inventoryPickerX(i)-leftPos,y=inventoryPickerY(i)-topPos;
+            ItemStack stack=inventory.getItem(i);
+            int x=inventoryPickerX(i),y=inventoryPickerY(i);
             boolean block=!stack.isEmpty()&&stack.getItem() instanceof BlockItem;
             boolean selected=block&&ruleText.equals(
                     BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
-            g.fill(x-1,y-1,x+18,y+18,selected?GREEN:0xff627d88);
-            g.fill(x,y,x+17,y+17,0xff15252d);
+            g.fill(x-1,y-1,x+18,y+18,selected?GREEN:0xff68838f);
+            g.fill(x,y,x+17,y+17,0xff233a44);
             if(!stack.isEmpty()){
                 g.item(stack,x,y);
-                if(!block)g.fill(x,y,x+16,y+16,0x990e1b21);
+                if(!block)g.fill(x,y,x+16,y+16,0x770e1b21);
                 if(stack.getCount()>1){
                     String count=Integer.toString(stack.getCount());
                     g.text(font,count,x+17-font.width(count),y+9,WHITE,true);
@@ -512,13 +538,14 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         // Builder Planner is a job dashboard only. Its old inventory
         // slots have been removed from the menu and cannot be used for
         // deposits; all materials, tools and scaffolding live OnSite.
+        if(page==Page.MATERIAL_EDIT)renderInventoryPicker(g);
     }
     @Override protected void extractTooltip(GuiGraphicsExtractor g,int mouseX,int mouseY){
         super.extractTooltip(g,mouseX,mouseY);
         if(page==Page.MATERIAL_EDIT){
             int slot=inventoryPickerSlot(mouseX,mouseY);
             if(slot>=0){
-                ItemStack actual=playerInventory.getItem(slot);
+                ItemStack actual=currentPlayerInventory().getItem(slot);
                 if(!actual.isEmpty()){
                     ItemStack shown=actual.copy();
                     shown.set(DataComponents.LORE,
@@ -569,8 +596,9 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
                 18,85,TEXT,false);
         if(page==Page.MATERIAL_EDIT){
             g.text(font,"CLICK A BLOCK TO SELECT",18,98,MUTED,false);
-            renderInventoryPicker(g);
             g.text(font,"HOTBAR",18,178,MUTED,false);
+            g.text(font,"INVENTORY STACKS: "+inventoryStackCount()+"/36",
+                    18,214,inventoryStackCount()==0?YELLOW:MUTED,false);
             g.text(font,"EDIT MATERIAL",SIDE+18,80,GREEN,false);
             g.text(font,ruleSource==null?"No material selected":
                     shorten(ruleSource,Math.max(16,(panelWidth-SIDE-35)/6)),
