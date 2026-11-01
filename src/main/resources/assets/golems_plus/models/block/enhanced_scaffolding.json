@@ -5,7 +5,8 @@
     "particle": "minecraft:block/copper_block",
     "frame": "minecraft:block/copper_block",
     "edge": "minecraft:block/cut_copper",
-    "brace": "minecraft:block/exposed_copper"
+    "brace": "minecraft:block/exposed_copper",
+    "net": "minecraft:block/copper_grate"
   },
   "elements": [
     {
@@ -574,6 +575,468 @@
         "axis": "x",
         "angle": -45,
         "rescale": false
+      }
+    },
+    {
+      "name": "upper net strand east-west",
+      "from": [
+        2,
+        15.12,
+        2.62
+      ],
+      "to": [
+        14,
+        15.32,
+        2.88
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand north-south",
+      "from": [
+        2.62,
+        15.12,
+        2
+      ],
+      "to": [
+        2.88,
+        15.32,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand east-west",
+      "from": [
+        2,
+        15.12,
+        4.37
+      ],
+      "to": [
+        14,
+        15.32,
+        4.63
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand north-south",
+      "from": [
+        4.37,
+        15.12,
+        2
+      ],
+      "to": [
+        4.63,
+        15.32,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand east-west",
+      "from": [
+        2,
+        15.12,
+        6.12
+      ],
+      "to": [
+        14,
+        15.32,
+        6.38
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand north-south",
+      "from": [
+        6.12,
+        15.12,
+        2
+      ],
+      "to": [
+        6.38,
+        15.32,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand east-west",
+      "from": [
+        2,
+        15.12,
+        7.87
+      ],
+      "to": [
+        14,
+        15.32,
+        8.13
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand north-south",
+      "from": [
+        7.87,
+        15.12,
+        2
+      ],
+      "to": [
+        8.13,
+        15.32,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand east-west",
+      "from": [
+        2,
+        15.12,
+        9.62
+      ],
+      "to": [
+        14,
+        15.32,
+        9.88
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand north-south",
+      "from": [
+        9.62,
+        15.12,
+        2
+      ],
+      "to": [
+        9.88,
+        15.32,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand east-west",
+      "from": [
+        2,
+        15.12,
+        11.37
+      ],
+      "to": [
+        14,
+        15.32,
+        11.63
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand north-south",
+      "from": [
+        11.37,
+        15.12,
+        2
+      ],
+      "to": [
+        11.63,
+        15.32,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand east-west",
+      "from": [
+        2,
+        15.12,
+        13.12
+      ],
+      "to": [
+        14,
+        15.32,
+        13.38
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "upper net strand north-south",
+      "from": [
+        13.12,
+        15.12,
+        2
+      ],
+      "to": [
+        13.38,
+        15.32,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
       }
     }
   ],

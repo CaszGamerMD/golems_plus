@@ -43,11 +43,20 @@ public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
 
     @Override public MapCodec<ScaffoldingBlock> codec(){return codec;}
 
+    /** The hanging bottom net is only visible if the block below cannot
+     * support anything. A floor or another scaffold hides the net. */
+    private boolean needsBottomNet(BlockGetter level,BlockPos pos){
+        BlockPos belowPos=pos.below();
+        BlockState below=level.getBlockState(belowPos);
+        return !below.is(this)&&below.getCollisionShape(level,belowPos,
+                CollisionContext.empty()).isEmpty();
+    }
+
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext context){
         BlockPos pos=context.getClickedPos();
         return defaultBlockState().setValue(DISTANCE,0)
-                .setValue(BOTTOM,!context.getLevel().getBlockState(pos.below()).is(this))
+                .setValue(BOTTOM,needsBottomNet(context.getLevel(),pos))
                 .setValue(WATERLOGGED,context.getLevel().getFluidState(pos).isSource());
     }
 
@@ -66,11 +75,13 @@ public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
 
     @Override protected VoxelShape getCollisionShape(BlockState state,BlockGetter level,
             BlockPos pos,CollisionContext context){
+        boolean lowest=!level.getBlockState(pos.below()).is(this);
+        // Crouching must let players descend THROUGH each mesh deck, even if
+        // the vanilla scaffold shape would otherwise catch their feet.
+        // Keep the bottom catch floor so the tower cannot drop them into air.
+        if(context.isDescending())return lowest?BASE_FLOOR:Shapes.empty();
         VoxelShape top=super.getCollisionShape(state,level,pos,context);
-        // Upper scaffold tiers remain pass-through for smooth climbing. Only
-        // the bottom tier gets a thin catch floor to prevent falling through.
-        return level.getBlockState(pos.below()).is(this)
-                ?top:Shapes.or(top,BASE_FLOOR);
+        return lowest?Shapes.or(top,BASE_FLOOR):top;
     }
 
     @Override protected boolean canBeReplaced(BlockState state,
@@ -144,7 +155,7 @@ public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
     @Override protected void tick(BlockState state,ServerLevel level,
             BlockPos pos,RandomSource random){
         if(!isEnhanced(level,pos))return;
-        boolean bottom=!level.getBlockState(pos.below()).is(this);
+        boolean bottom=needsBottomNet(level,pos);
         if(state.getValue(BOTTOM)!=bottom)
             level.setBlock(pos,state.setValue(BOTTOM,bottom),2);
         boolean[] anchored={false};

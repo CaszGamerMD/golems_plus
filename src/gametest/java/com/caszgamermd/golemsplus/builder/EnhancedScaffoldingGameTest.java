@@ -10,6 +10,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ScaffoldingBlock;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.BlockHitResult;
@@ -34,6 +35,59 @@ public final class EnhancedScaffoldingGameTest {
             helper.fail("Bottom scaffold should catch a falling player");return;
         }
         helper.succeed();
+    }
+
+    @GameTest(maxTicks=50,skyAccess=true)
+    public void crouchingDescendsInsideTowerButBottomStillCatches(GameTestHelper helper){
+        helper.setBlock(2,1,2,Blocks.STONE);
+        helper.setBlock(2,2,2,WorksiteContent.ENHANCED_SCAFFOLDING);
+        helper.setBlock(2,3,2,WorksiteContent.ENHANCED_SCAFFOLDING);
+        ServerPlayer player=helper.makeMockServerPlayerInLevel();
+        player.setShiftKeyDown(true);
+        CollisionContext crouching=CollisionContext.of(player);
+        BlockPos top=helper.absolutePos(new BlockPos(2,3,2));
+        BlockPos base=helper.absolutePos(new BlockPos(2,2,2));
+        if(!helper.getLevel().getBlockState(top)
+                .getCollisionShape(helper.getLevel(),top,crouching).isEmpty()){
+            helper.fail("Crouch must allow passing through upper scaffold floors");
+            return;
+        }
+        var bottomShape=helper.getLevel().getBlockState(base)
+                .getCollisionShape(helper.getLevel(),base,crouching);
+        if(bottomShape.isEmpty()||bottomShape.min(Direction.Axis.Y)>.01){
+            helper.fail("Crouch must not drop through the bottom of the tower");
+            return;
+        }
+        helper.succeed();
+    }
+
+    @GameTest(maxTicks=60,skyAccess=true)
+    public void bottomMeshAppearsOnlyWithNoFloorBelow(GameTestHelper helper){
+        helper.setBlock(4,2,2,Blocks.STONE); // Side anchor for a hanging platform
+        helper.setBlock(5,2,2,WorksiteContent.ENHANCED_SCAFFOLDING);
+        BlockPos scaffold=helper.absolutePos(new BlockPos(5,2,2));
+        helper.onEachTick(()->{
+            int tick=helper.getTick();
+            if(tick==10){
+                if(!helper.getLevel().getBlockState(scaffold)
+                        .getValue(ScaffoldingBlock.BOTTOM)){
+                    helper.fail("Unsupported scaffold must show bottom net");return;
+                }
+                helper.setBlock(5,1,2,Blocks.STONE);
+            }else if(tick==20){
+                if(helper.getLevel().getBlockState(scaffold)
+                        .getValue(ScaffoldingBlock.BOTTOM)){
+                    helper.fail("Floor-supported scaffold must hide bottom net");return;
+                }
+                helper.setBlock(5,1,2,Blocks.AIR);
+            }else if(tick==30){
+                if(!helper.getLevel().getBlockState(scaffold)
+                        .getValue(ScaffoldingBlock.BOTTOM)){
+                    helper.fail("Bottom net must return when floor is removed");return;
+                }
+                helper.succeed();
+            }
+        });
     }
 
     @GameTest(maxTicks=120,skyAccess=true)

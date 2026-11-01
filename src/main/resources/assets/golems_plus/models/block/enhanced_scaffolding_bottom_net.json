@@ -1,0 +1,472 @@
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "minecraft:block/copper_block",
+    "net": "minecraft:block/copper_grate"
+  },
+  "elements": [
+    {
+      "name": "hanging bottom net strand east-west",
+      "from": [
+        2,
+        0.72,
+        2.62
+      ],
+      "to": [
+        14,
+        0.92,
+        2.88
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand north-south",
+      "from": [
+        2.62,
+        0.72,
+        2
+      ],
+      "to": [
+        2.88,
+        0.92,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand east-west",
+      "from": [
+        2,
+        0.72,
+        4.37
+      ],
+      "to": [
+        14,
+        0.92,
+        4.63
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand north-south",
+      "from": [
+        4.37,
+        0.72,
+        2
+      ],
+      "to": [
+        4.63,
+        0.92,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand east-west",
+      "from": [
+        2,
+        0.72,
+        6.12
+      ],
+      "to": [
+        14,
+        0.92,
+        6.38
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand north-south",
+      "from": [
+        6.12,
+        0.72,
+        2
+      ],
+      "to": [
+        6.38,
+        0.92,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand east-west",
+      "from": [
+        2,
+        0.72,
+        7.87
+      ],
+      "to": [
+        14,
+        0.92,
+        8.13
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand north-south",
+      "from": [
+        7.87,
+        0.72,
+        2
+      ],
+      "to": [
+        8.13,
+        0.92,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand east-west",
+      "from": [
+        2,
+        0.72,
+        9.62
+      ],
+      "to": [
+        14,
+        0.92,
+        9.88
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand north-south",
+      "from": [
+        9.62,
+        0.72,
+        2
+      ],
+      "to": [
+        9.88,
+        0.92,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand east-west",
+      "from": [
+        2,
+        0.72,
+        11.37
+      ],
+      "to": [
+        14,
+        0.92,
+        11.63
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand north-south",
+      "from": [
+        11.37,
+        0.72,
+        2
+      ],
+      "to": [
+        11.63,
+        0.92,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand east-west",
+      "from": [
+        2,
+        0.72,
+        13.12
+      ],
+      "to": [
+        14,
+        0.92,
+        13.38
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    },
+    {
+      "name": "hanging bottom net strand north-south",
+      "from": [
+        13.12,
+        0.72,
+        2
+      ],
+      "to": [
+        13.38,
+        0.92,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#net"
+        },
+        "south": {
+          "texture": "#net"
+        },
+        "east": {
+          "texture": "#net"
+        },
+        "west": {
+          "texture": "#net"
+        },
+        "up": {
+          "texture": "#net"
+        },
+        "down": {
+          "texture": "#net"
+        }
+      }
+    }
+  ]
+}
