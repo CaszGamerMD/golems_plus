@@ -35,7 +35,11 @@ public final class BuilderMaterialRules {
     }
     public static String originalItem(String encoded,BuildSite.Rotation rotation,
             BuildSite.Mirror mirror){
-        var original=BuilderBlockResolver.resolve(encoded,rotation,mirror);
+        // The water-finishing step inherits the source BLOCK's material
+        // rule, not the bucket's. Ignoring/replacing a root must also
+        // account for the subsequent waterlogging action.
+        var original=BuilderBlockResolver.resolve(
+                BuilderWaterPass.originalState(encoded),rotation,mirror);
         return original==null?null:
                 BuiltInRegistries.ITEM.getKey(original.item()).toString();
     }
@@ -81,6 +85,7 @@ public final class BuilderMaterialRules {
         if(rules.isEmpty()&&mode==ALL)return source;
         List<BuilderConstructionPlan.Step> result=new ArrayList<>(source.size());
         for(var step:source){
+            boolean waterPass=BuilderWaterPass.isWaterlogPass(step.encodedState());
             boolean outside=!includesY(step.y(),startY,mode);
             String original=rules.isEmpty()?null:
                     originalItem(step.encodedState(),rotation,mirror);
@@ -89,12 +94,19 @@ public final class BuilderMaterialRules {
             String state=step.encodedState();
             String item=step.requiredItem();
             if(!ignored&&rule!=null&&!rule.isBlank()){
-                String rewritten=rewrittenState(state,rule);
+                String rewritten=rewrittenState(
+                        BuilderWaterPass.originalState(state),rule);
                 if(rewritten!=null){
                     var resolved=BuilderBlockResolver.resolve(rewritten,rotation,mirror);
                     if(resolved!=null){
-                        state=rewritten;
-                        if(item!=null)
+                        if(waterPass){
+                            if(BuilderWaterPass.isWaterlogged(rewritten))
+                                state=BuilderWaterPass.waterlog(rewritten);
+                            else ignored=true; // replacement cannot hold water
+                        }else{
+                            state=rewritten;
+                        }
+                        if(item!=null&&!waterPass)
                             item=BuiltInRegistries.ITEM.getKey(resolved.item()).toString();
                     }
                 }

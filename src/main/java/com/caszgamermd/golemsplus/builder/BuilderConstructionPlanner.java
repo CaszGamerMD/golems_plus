@@ -477,7 +477,7 @@ public final class BuilderConstructionPlanner {
         List<Integer> pending=new ArrayList<>();
         for(int idx:zone){
             if(idx<0||idx>=steps.size()
-                    ||steps.get(idx).y()!=y
+                    ||!table.builderStepInActivePhase(steps,idx)
                     ||!table.builderStepReadyForClaim(idx))continue;
             pending.add(idx);
         }

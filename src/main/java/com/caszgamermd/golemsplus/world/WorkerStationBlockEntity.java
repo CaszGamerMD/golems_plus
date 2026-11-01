@@ -1091,6 +1091,19 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return steps.get(builderCursor).y();
     }
 
+    /** The first unfinished index also gates water within its Y layer.
+     * Builders across ALL zones must finish the dry phase before any
+     * source water or waterlogging action can be claimed. */
+    public boolean builderStepInActivePhase(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
+            int index){
+        return steps!=null&&builderCursor>=0&&builderCursor<steps.size()
+                &&index>=builderCursor&&index<steps.size()
+                &&steps.get(index).y()==steps.get(builderCursor).y()
+                &&com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
+                        steps.get(index).encodedState(),steps.get(builderCursor).encodedState());
+    }
+
     /** Each Builder owns its X/Z zone. ALL workers must finish ALL
      * unfinished coordinates on the current shared Y before the Planner
      * assigns any block on a higher Y. A blocked step is retried in
@@ -1105,7 +1118,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         int current=builderClaims.getOrDefault(worker,-1);
         long now=level==null?0:level.getGameTime();
         if(current>=builderCursor&&current<steps.size()
-                &&steps.get(current).y()==layer
+                &&builderStepInActivePhase(steps,current)
                 &&!builderFinishedSteps.contains(current)
                 &&builderMissingRetries.getOrDefault(current,0L)<=now)
             return current;
@@ -1119,7 +1132,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             boolean wrongLayer=false,runnable=false;
             for(int idx:stage){
                 if(idx<0||idx>=steps.size()
-                        ||steps.get(idx).y()!=layer){
+                        ||!builderStepInActivePhase(steps,idx)){
                     wrongLayer=true;break;
                 }
                 if(idx>=builderCursor&&!builderFinishedSteps.contains(idx)
@@ -1136,7 +1149,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             var newStage=new java.util.ArrayList<Integer>(BUILDER_STAGE_SIZE);
             for(int idx:fullZone){
                 if(idx<builderCursor||idx>=steps.size()
-                        ||steps.get(idx).y()!=layer
+                        ||!builderStepInActivePhase(steps,idx)
                         ||builderFinishedSteps.contains(idx)
                         ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
                 newStage.add(idx);
@@ -1150,7 +1163,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         for(int idx:stage){
             if(idx<builderCursor||idx>=steps.size()
-                    ||steps.get(idx).y()!=layer
+                    ||!builderStepInActivePhase(steps,idx)
                     ||builderFinishedSteps.contains(idx)
                     ||builderMissingRetries.getOrDefault(idx,0L)>now)continue;
             builderClaims.put(worker,idx);
@@ -1192,7 +1205,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(activeOrder==null||!builderWorkerIds().contains(worker)
                 ||steps==null||fullZone==null||preferred<0
                 ||preferred>=steps.size()||!fullZone.contains(preferred)
-                ||steps.get(preferred).y()!=builderActiveLayer(steps)
+                ||!builderStepInActivePhase(steps,preferred)
                 ||!builderStepReadyForClaim(preferred)
                 ||builderStepClaimedByOther(worker,preferred))return -1;
         int active=builderClaims.getOrDefault(worker,-1);
@@ -1207,7 +1220,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             for(int idx:fullZone){
                 if(fresh.size()>=BUILDER_STAGE_SIZE)break;
                 if(idx==preferred||idx<0||idx>=steps.size()
-                        ||steps.get(idx).y()!=steps.get(preferred).y()
+                        ||!builderStepInActivePhase(steps,idx)
                         ||!builderStepReadyForClaim(idx))continue;
                 fresh.add(idx);
             }

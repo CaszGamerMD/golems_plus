@@ -163,7 +163,7 @@ public final class BuilderBuildService {
         var extra=new java.util.ArrayList<Integer>();
         for(int idx=0;idx<steps.size();idx++){
             var step=steps.get(idx);
-            if(step.y()==layer&&table.builderStepReadyForClaim(idx)
+            if(table.builderStepInActivePhase(steps,idx)&&table.builderStepReadyForClaim(idx)
                     &&!table.builderStepClaimedByOther(worker,idx))
                 extra.add(idx);
         }
@@ -230,7 +230,7 @@ public final class BuilderBuildService {
         int layer=table.builderActiveLayer(steps);
         for(int idx:zone){
             if(idx==current||idx<0||idx>=steps.size()
-                    ||steps.get(idx).y()!=layer
+                    ||!table.builderStepInActivePhase(steps,idx)
                     ||!table.builderStepReadyForClaim(idx)
                     ||table.builderStepClaimedByOther(worker.getUUID(),idx)
                     ||reservedForTeammate(table,worker.getUUID(),idx,now))
@@ -284,7 +284,7 @@ public final class BuilderBuildService {
         double bestDistance=Double.POSITIVE_INFINITY;
         for(int idx:zone){
             if(idx==completed||idx<0||idx>=steps.size()
-                    ||steps.get(idx).y()!=layer
+                    ||!table.builderStepInActivePhase(steps,idx)
                     ||!table.builderStepReadyForClaim(idx)
                     ||table.builderStepClaimedByOther(worker.getUUID(),idx)
                     ||reservedForTeammate(table,worker.getUUID(),idx,
@@ -335,7 +335,7 @@ public final class BuilderBuildService {
         if(choice==null)return;
         int next=choice.index();
         if(next<0||next>=steps.size()
-                ||steps.get(next).y()!=table.builderActiveLayer(steps)
+                ||!table.builderStepInActivePhase(steps,next)
                 ||!table.builderStepReadyForClaim(next)
                 ||table.builderStepClaimedByOther(worker.getUUID(),next)
                 ||reservedForTeammate(table,worker.getUUID(),next,
@@ -909,7 +909,7 @@ public final class BuilderBuildService {
             boolean ownLayerClear=true;
             for(int idx:zone)
                 if(idx>=0&&idx<plan.steps().size()
-                        &&plan.steps().get(idx).y()==layer
+                        &&table.builderStepInActivePhase(plan.steps(),idx)
                         &&!table.builderZoneDone(List.of(idx))){
                     ownLayerClear=false;break;
                 }
@@ -938,7 +938,7 @@ public final class BuilderBuildService {
                     if(request.getValue().until()>level.getGameTime()
                             &&!request.getValue().failedWorker().equals(worker.getUUID())
                             &&requested>=0&&requested<plan.steps().size()
-                            &&plan.steps().get(requested).y()==layer
+                            &&table.builderStepInActivePhase(plan.steps(),requested)
                             &&table.builderStepReadyForClaim(requested)){
                         teammateRequested=true;break;
                     }
@@ -1057,7 +1057,8 @@ public final class BuilderBuildService {
             activity.frontierWaitSince=-1;
             var step=plan.steps().get(index);
             int activeLayer=table.builderActiveLayer(plan.steps());
-            if(step.y()!=activeLayer){
+            if(step.y()!=activeLayer
+                    ||!table.builderStepInActivePhase(plan.steps(),index)){
                 // Defensive execution guard: even a stale claim from a
                 // previous build version must not break the Y-layer rule.
                 table.setProblem("Builder waiting for completion of Y="+activeLayer
@@ -1112,6 +1113,22 @@ public final class BuilderBuildService {
                 // Already-correct positions are NO-OPs, never mine or
                 // dismantle the nearby scaffold to rebuild them.
                 return;
+            }
+            boolean waterlog=BuilderWaterPass.isWaterlogPass(step.encodedState());
+            if(waterlog){
+                var dry=BuilderBlockResolver.resolve(
+                        BuilderWaterPass.dryState(
+                                BuilderWaterPass.originalState(step.encodedState())),
+                        BuildSite.Rotation.values()[table.builderRotation()/90],
+                        BuildSite.Mirror.values()[table.builderMirror()]);
+                if(dry==null||!BuilderPlacementState.matches(existing,dry.state())){
+                    // Water goes INTO the already-built block. Never mine
+                    // that block merely to create the finishing fluid pass.
+                    table.waitForBuilderSupport(worker.getUUID(),index,
+                            level.getGameTime());
+                    table.setProblem("Water pass waiting for dry block at "+pos);
+                    return;
+                }
             }
             // The hook controller retains exclusive movement until
             // physically landed; do not issue an overlapping work route.
@@ -1170,7 +1187,7 @@ public final class BuilderBuildService {
                         +" (other Builders continuing this layer)");
                 return;
             }
-            if(!existing.isAir()){
+            if(!existing.isAir()&&!waterlog){
                 // A player may add a block after the initial site-clear
                 // phase. Never destroy it until its planned replacement
                 // has support. This protects physical build progress.

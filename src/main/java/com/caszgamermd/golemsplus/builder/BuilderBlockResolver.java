@@ -23,6 +23,12 @@ public final class BuilderBlockResolver {
     public record Resolved(BlockState state,Item item){}
     public static Resolved resolve(String encoded,BuildSite.Rotation rotation,BuildSite.Mirror mirror){
         if(encoded==null||encoded.isBlank())return null;
+        if(BuilderWaterPass.isWaterlogPass(encoded)){
+            String original=BuilderWaterPass.originalState(encoded);
+            if(!BuilderWaterPass.isWaterlogged(original))return null;
+            var wet=resolve(original,rotation,mirror);
+            return wet==null?null:new Resolved(wet.state(),WorksiteContent.INFINITE_WATER_BUCKET);
+        }
         int open=encoded.indexOf('[');
         String id=open<0?encoded:encoded.substring(0,open);
         Identifier identifier=Identifier.tryParse(id);
@@ -70,9 +76,6 @@ public final class BuilderBlockResolver {
         if((id.equals("minecraft:water")||id.equals("minecraft:lava"))
                 &&state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL)
                 &&state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL)!=0)
-            return null;
-        if(state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED)
-                &&state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED))
             return null;
         Mirror m=switch(mirror){
             case NONE->Mirror.NONE;

@@ -26,14 +26,11 @@ import net.minecraft.world.level.block.Blocks;
  * This test intentionally does not claim to reproduce the entire 15378-block
  * redstone machine. Its purpose is to prove or disprove a cold start with
  * four real Builders, real inventory-paid scaffold towers and a world-space
- * hologram snapshot. The one waterlogged mangrove-roots cell is retained
- * as an unsupported-state diagnostic (not silently deleted).
+ * hologram snapshot. Waterlogged mangrove roots are physically built
+ * DRY first, then waterlogged as the very last action on their layer.
  */
 public final class BuilderVillagerMatrixStartGameTest {
-    // Physical diagnostic currently reproduces the known incomplete
-    // shared-scaffold-start behavior. Keep it registered and reporting
-    // all blocked poses, but don't block main's distribution release
-    // before the planner learns to coordinate access across worker zones.
+    // Keep the full physical diagnostic registered, including water finish.
     @GameTest(structure="golems_plus_gametest:dome_arena",
             maxTicks=4200,skyAccess=true,required=false)
     public void fourBuildersStartFloatingVillagerMatrixFoundation(GameTestHelper h){
@@ -67,8 +64,12 @@ public final class BuilderVillagerMatrixStartGameTest {
             var decoded=BuilderPlacementSnapshot.decode(snapshot);
             var site=BuilderPlacementSnapshot.worldSpaceSite();
             var plan=BuilderConstructionPlan.create(decoded,site);
-            if(plan.steps().size()!=27||plan.steps().stream()
-                    .anyMatch(s->s.y()!=high)){
+            if(plan.steps().size()!=28||!plan.unsupported().isEmpty()
+                    ||plan.steps().stream().anyMatch(s->s.y()!=high)
+                    ||!BuilderWaterPass.isWaterlogPass(
+                            plan.steps().getLast().encodedState())
+                    ||!BuilderWaterPass.WATER_BUCKET.equals(
+                            plan.steps().getLast().requiredItem())){
                 h.fail("Frozen hologram changed starter Y or position");return;
             }
             for(int x=1;x<=43;x++)for(int z=1;z<=43;z++)
@@ -94,6 +95,7 @@ public final class BuilderVillagerMatrixStartGameTest {
                 stock.setItem(slot,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
             for(int slot=20;slot<24;slot++)
                 stock.setItem(slot,new ItemStack(Items.BUCKET));
+            stock.setItem(24,new ItemStack(WorksiteContent.INFINITE_WATER_BUCKET));
             ServerPlayer owner=h.makeMockServerPlayerInLevel();
             UUID ownerId=owner.getUUID();
             if(!table.claimIfUnowned(ownerId)||!table.setCrewTarget(ownerId,4)){
@@ -106,7 +108,7 @@ public final class BuilderVillagerMatrixStartGameTest {
             Files.write(folder.resolve(filename),snapshot);
             if(!table.setPlacedBuilderPlan(ownerId,filename,
                     "Villager Matrix starter",tablePos,0,0,
-                    targets.size(),plan.unsupported().size())
+                    plan.steps().size(),plan.unsupported().size())
                     ||!table.setBuilderMaterialStorage(ownerId,chestPos)){
                 h.fail("Matrix Planner rejected hologram snapshot");return;
             }
@@ -139,27 +141,41 @@ public final class BuilderVillagerMatrixStartGameTest {
                             &&mob.getY()<=high+1.8)
                         elevatedWorkers.add(mob.getUUID());
                 int placed=0;
-                for(var step:plan.steps()){
-                    var at=new BlockPos(step.x(),step.y(),step.z());
-                    if(level.getBlockState(at).is(Blocks.SMOOTH_STONE)
-                            &&step.encodedState().equals("minecraft:smooth_stone")
-                        ||level.getBlockState(at).is(Blocks.REDSTONE_BLOCK)
-                            &&step.encodedState().equals("minecraft:redstone_block")
-                        ||level.getBlockState(at).is(Blocks.SOUL_SAND)
-                            &&step.encodedState().equals("minecraft:soul_sand"))
+                boolean wetRoot=false;
+                for(var cell:targets){
+                    var at=new BlockPos(cell.x(),cell.y(),cell.z());
+                    var actual=level.getBlockState(at);
+                    if(actual.is(Blocks.SMOOTH_STONE)
+                            &&cell.state().equals("minecraft:smooth_stone")
+                        ||actual.is(Blocks.REDSTONE_BLOCK)
+                            &&cell.state().equals("minecraft:redstone_block")
+                        ||actual.is(Blocks.SOUL_SAND)
+                            &&cell.state().equals("minecraft:soul_sand")
+                        ||actual.is(Blocks.MANGROVE_ROOTS)
+                            &&cell.state().contains("waterlogged=true")
+                            &&actual.getValue(net.minecraft.world.level.block.state
+                                    .properties.BlockStateProperties.WATERLOGGED))
                         placed++;
+                    if(actual.is(Blocks.MANGROVE_ROOTS)
+                            &&actual.getValue(net.minecraft.world.level.block.state
+                                    .properties.BlockStateProperties.WATERLOGGED))
+                        wetRoot=true;
+                }
+                if(wetRoot&&placed<27){
+                    h.fail("Waterlogging began before the last dry foundation cell");
+                    return;
                 }
                 if(placed>best[0]){
                     best[0]=placed;
                     lastChange[0]=h.getTick();
                     System.out.println("[MATRIX PROGRESS] tick="+h.getTick()
-                            +" physicallyPlaced="+placed+"/26"
+                            +" physicallyPlaced="+placed+"/27"
                             +" cursor="+table.builderCursor()
                             +" clear="+table.builderClearCursor()
                             +" activeY="+table.builderActiveLayer(plan.steps())
                             +" elevatedBuilders="+elevatedWorkers.size());
                 }
-                if(placed==26&&elevatedWorkers.size()>=2){
+                if(placed==27&&elevatedWorkers.size()>=2){
                     System.out.println("[MATRIX START PASS] "+placed+
                             " true foundation blocks placed by Builders"
                             +" with no prebuilt tower; elevatedBuilders="
@@ -180,7 +196,7 @@ public final class BuilderVillagerMatrixStartGameTest {
                             &&!activeAccess){
                     StringBuilder error=new StringBuilder(
                             "Villager Matrix cold start stalled: placed="+placed
-                            +"/26 after tick "+h.getTick()
+                            +"/27 after tick "+h.getTick()
                             +" cursor="+table.builderCursor()
                             +" clear="+table.builderClearCursor()
                             +" Y="+table.builderActiveLayer(plan.steps())

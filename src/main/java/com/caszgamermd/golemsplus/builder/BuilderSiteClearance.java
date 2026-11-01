@@ -106,7 +106,14 @@ public final class BuilderSiteClearance {
                 }
                 expected=resolved.state();
             }
-            if(BuilderPlacementState.matches(existing,expected)){
+            boolean dryWaterlog=BuilderWaterPass.isWaterlogged(step.state());
+            var dryExpected=dryWaterlog?BuilderBlockResolver.resolve(
+                    BuilderWaterPass.dryState(step.state()),
+                    BuildSite.Rotation.values()[table.builderRotation()/90],
+                    BuildSite.Mirror.values()[table.builderMirror()]):null;
+            if(BuilderPlacementState.matches(existing,expected)
+                    ||dryExpected!=null&&BuilderPlacementState.matches(
+                            existing,dryExpected.state())){
                 // A saved wall/stair shape may have recomputed when nearby
                 // blocks were placed. It is still an existing correct
                 // schematic block, never an obstruction to tear down.

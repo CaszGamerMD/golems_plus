@@ -32,14 +32,18 @@ public final class BuilderConstructionPlan {
         List<Step> steps=new ArrayList<>();
         Map<String,Long> quantities=new LinkedHashMap<>();
         java.util.Set<String> unsupported=new java.util.LinkedHashSet<>();
-        // Sort low-to-high to reduce unsupported floating placements. Physics
-        // is validated again in-world before any actual material is spent.
+        // Low-to-high, with a SECOND water phase on each Y. Even another
+        // Builder's water source must wait until every dry cell is finished.
         var blocks=new ArrayList<>(schematic.blocks());
         blocks.sort(java.util.Comparator.comparingInt(LitematicFileReader.Block::y));
         for(var b:blocks){
             boolean ignored=ignorePlants&&BuilderVegetation.ignoreSchematicState(b.state());
+            boolean waterlogged=!ignored&&BuilderWaterPass.isWaterlogged(b.state());
+            String dry=waterlogged?BuilderWaterPass.dryState(b.state()):b.state();
             var resolved=ignored?null:
-                    BuilderBlockResolver.resolve(b.state(),site.rotation(),site.mirror());
+                    BuilderBlockResolver.resolve(dry,site.rotation(),site.mirror());
+            if(waterlogged&&BuilderBlockResolver.resolve(b.state(),
+                    site.rotation(),site.mirror())==null)resolved=null;
             var world=site.locate(new BuilderMaterialPlan.Placement(
                     b.x(),b.y(),b.z(),b.state(),resolved==null?null:
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(resolved.item()).toString()));
@@ -56,9 +60,18 @@ public final class BuilderConstructionPlan {
             // Retain the original coordinate index for existing saved job
             // cursors and disjoint ten-position work orders. Ignored plants
             // require no placement, no tools and no warehouse materials.
-            steps.add(new Step(world.x(),world.y(),world.z(),b.state(),item,ignored));
+            steps.add(new Step(world.x(),world.y(),world.z(),dry,item,ignored));
             if(item!=null)quantities.merge(item,1L,Long::sum);
+            if(waterlogged&&resolved!=null){
+                steps.add(new Step(world.x(),world.y(),world.z(),
+                        BuilderWaterPass.waterlog(b.state()),BuilderWaterPass.WATER_BUCKET));
+                quantities.merge(BuilderWaterPass.WATER_BUCKET,1L,Long::sum);
+            }
         }
+        steps.sort(java.util.Comparator.comparingInt(Step::y)
+                .thenComparingInt(s->BuilderWaterPass.isWaterStep(s.encodedState())?1:0));
+        if(steps.size()>100_000)
+            throw new IllegalArgumentException("At most 100,000 construction steps per build");
         for(String id:java.util.List.copyOf(quantities.keySet()))
             if(BuilderBlockResolver.reusableSupply(id))quantities.put(id,1L);
         return new Result(steps,quantities,unsupported);
