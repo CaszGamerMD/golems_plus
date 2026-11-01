@@ -598,7 +598,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             g.text(font,"CLICK A BLOCK TO SELECT",18,98,MUTED,false);
             g.text(font,"HOTBAR",18,178,MUTED,false);
             g.text(font,"INVENTORY STACKS: "+inventoryStackCount()+"/36",
-                    18,214,inventoryStackCount()==0?YELLOW:MUTED,false);
+                    18,panelHeight-12,inventoryStackCount()==0?YELLOW:MUTED,false);
             g.text(font,"EDIT MATERIAL",SIDE+18,80,GREEN,false);
             g.text(font,ruleSource==null?"No material selected":
                     shorten(ruleSource,Math.max(16,(panelWidth-SIDE-35)/6)),
@@ -618,7 +618,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             }else{
                 g.text(font,"NONE - CLICK A BLOCK",SIDE+22,149,YELLOW,false);
             }
-            g.text(font,"No items consumed.",18,244,MUTED,false);
+            g.text(font,"No items consumed.",SIDE+18,245,MUTED,false);
             if(!notice.isBlank())
                 g.text(font,shorten(notice,Math.max(14,(panelWidth-SIDE-45)/6)),
                         SIDE+18,panelHeight-14,YELLOW,false);
