@@ -297,6 +297,12 @@ public final class BuilderBuildService {
             com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
         }
     }
+    /** An active cross-zone rescue claim must finish before parking; a
+     * worker with no live claim and no remaining OWN work returns OnSite.
+     */
+    static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep){
+        return ownZoneDone&&claimedStep<0;
+    }
     private static void activityForFinished(BuilderGolem worker){
         var a=workerActions.get(worker);
         if(a!=null)a.phase=Action.COMPLETE;
@@ -652,6 +658,15 @@ public final class BuilderBuildService {
             // arbitrate between Builders on each move or block placement.
             var assigned=zoneSchedule(table,plan);
             var zone=assigned.tasks().steps(worker.getUUID());
+            // Completion is per Builder's ORIGINAL X/Z zone, across all
+            // heights. An idle roof helper must not keep a finished worker
+            // stranded until every teammate's zone is also complete.
+            int currentClaim=table.claimedStep(worker.getUUID());
+            if(shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim)){
+                activityForFinished(worker);
+                parkAtOnSite(level,worker,table);
+                return;
+            }
             // Unreachable frontier cells may now be served by owned,
             // physically climbable scaffold towers or two-cell bridges.
             // Construction intelligence runs BEFORE step claiming:

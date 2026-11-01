@@ -472,22 +472,44 @@ public final class BuilderScaffolding {
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos target){
         if(exiting.containsKey(worker))return true;
         BlockPos feet=worker.blockPosition();
-        BlockPos under=feet.below();
-        if(!level.getBlockState(under).is(Blocks.SCAFFOLDING)
-                ||!table.scaffoldPositions(worker.getUUID()).contains(under))
-            return false;
+        BlockPos scaffold=feet.below();
+        var owned=table.scaffoldPositions(worker.getUUID());
+        if(!level.getBlockState(scaffold).is(Blocks.SCAFFOLDING)
+                ||!owned.contains(scaffold)){
+            // A one-high HORIZONTAL bridge is climb-through: its BOTTOM
+            // shape can let the Builder settle INSIDE this exact cell.
+            // It is still a physical owned bridge, not an absent tower.
+            scaffold=feet;
+            if(!level.getBlockState(scaffold).is(Blocks.SCAFFOLDING)
+                    ||!owned.contains(scaffold))return false;
+        }
+        BlockPos topFeet=scaffold.above();
         BlockPos chosen=null;
         double best=Double.POSITIVE_INFINITY;
         for(Direction dir:Direction.Plane.HORIZONTAL){
             for(int dy:new int[]{0,1,-1}){
-                BlockPos landing=feet.relative(dir).offset(0,dy,0);
-                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .canStandOn(level,worker,landing))continue;
+                BlockPos landing=topFeet.relative(dir).offset(0,dy,0);
+                BlockPos floor=landing.below();
+                // Only exit onto existing SOLID ground. Another scaffold
+                // (or a still-empty schematic cell) is not a safe ledge.
+                if(level.getBlockState(floor).is(Blocks.SCAFFOLDING)
+                        ||!level.getBlockState(floor).isFaceSturdy(
+                                level,floor,Direction.UP)
+                        ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .canStandOn(level,worker,landing))continue;
                 double score=landing.distSqr(target)+Math.abs(dy)*3;
                 if(score<best){best=score;chosen=landing;}
             }
         }
-        return chosen!=null&&stepToPlatform(level,worker,chosen);
+        if(chosen==null)return false;
+        if(worker.getY()<topFeet.getY()-.17){
+            // Climb the actual bridge cell to its top before walking
+            // sideways. No invented support, jump, or teleportation.
+            if(!climbingNow(level,worker))
+                begin(level,worker,scaffold,topFeet.getY(),false);
+            return true;
+        }
+        return stepToPlatform(level,worker,chosen);
     }
 
     /** Shared real dismount operation for both Builder jobs and the

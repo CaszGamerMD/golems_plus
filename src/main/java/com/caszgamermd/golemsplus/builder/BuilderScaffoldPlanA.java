@@ -1300,6 +1300,16 @@ public final class BuilderScaffoldPlanA {
                     &&j.phase==Phase.READY
                     &&onOwnedScaffoldTop(level,worker,table,
                             j.bridge(j.bridgeSpan)))return Result.READY;
+            // A completed bridge may finish beside a real roof walkway
+            // at exactly the bridge's height. Step onto that solid ledge
+            // directly instead of trying to descend an unrelated tower.
+            if((j.phase==Phase.READY||j.phase==Phase.WALK_SECOND
+                    ||j.phase==Phase.DISMOUNT)
+                    &&BuilderScaffolding.stepOffTowardWork(
+                            level,worker,table,target)){
+                j.phase=Phase.DISMOUNT;
+                return Result.MOVING;
+            }
             if(returnToGround(level,worker,table))return Result.MOVING;
             j=null;
         }
