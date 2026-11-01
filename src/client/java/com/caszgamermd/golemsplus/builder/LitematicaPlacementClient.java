@@ -18,7 +18,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.network.chat.Component;
 
 /**
@@ -180,18 +179,13 @@ public final class LitematicaPlacementClient {
         throw new IllegalArgumentException(
                 "Litematica's schematic world is unavailable; load the hologram first");
     }
-    @SuppressWarnings({"rawtypes","unchecked"})
-    private static String propertyValue(Property property,Comparable value){
-        return property.getName(value);
-    }
     private static String encodeState(BlockState state){
         String id=BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
-        if(state.getValues().isEmpty())return id;
-        var values=new java.util.TreeMap<String,String>();
-        state.getValues().forEach((property,value)->
-                values.put(property.getName(),propertyValue(property,value)));
-        return id+"["+String.join(",",values.entrySet().stream()
-                .map(e->e.getKey()+"="+e.getValue()).toList())+"]";
+        // Minecraft 26.2 exposes the actual property/value pairs as
+        // Stream<Property.Value<?>> (not the older Map API). Each Value
+        // prints as its canonical serialized 'facing=north' text.
+        var values=state.getValues().map(Object::toString).sorted().toList();
+        return values.isEmpty()?id:id+"["+String.join(",",values)+"]";
     }
     private static byte[] captureVisibleHologram(Object placement,Path original)
             throws Exception{
