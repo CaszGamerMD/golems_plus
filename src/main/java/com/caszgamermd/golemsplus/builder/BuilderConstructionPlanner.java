@@ -263,16 +263,30 @@ public final class BuilderConstructionPlanner {
             int ta=frontierTier(a,risks.getOrDefault(left,0));
             int tb=frontierTier(b,risks.getOrDefault(right,0));
             if(ta!=tb)return Integer.compare(ta,tb);
-            // Fill existing two- or three-sided gaps BEFORE growing
-            // another one-sided run that could seal the last approach.
-            if(a!=b)return Integer.compare(b,a);
+            // Within the same safe frontier tier, travel locality wins.
+            // Filling extra contacts is helpful, but making a Builder cross
+            // its zone to do so wastes much more walking than extending the
+            // nearest safe run after its previous physical placement.
             var x=steps.get(left);
             var y=steps.get(right);
             double da=new BlockPos(x.x(),x.y(),x.z()).distSqr(anchor);
             double db=new BlockPos(y.x(),y.y(),y.z()).distSqr(anchor);
             int distance=Double.compare(da,db);
-            return distance!=0?distance:Integer.compare(left,right);
+            if(distance!=0)return distance;
+            return a!=b?Integer.compare(b,a):Integer.compare(left,right);
         });
+    }
+    /** Lookahead runs before its current block is placed, so the future
+     * neighbor is not yet part of the real built frontier. Count that one
+     * expected contact for ordering only; world support, reachability and
+     * collision checks still use real blocks, and the claim is rechecked. */
+    static int upcomingConnection(int builtContacts,BlockPos candidate,
+            BlockPos afterPlacement){
+        if(afterPlacement==null||candidate.getY()!=afterPlacement.getY())
+            return builtContacts;
+        int dx=Math.abs(candidate.getX()-afterPlacement.getX());
+        int dz=Math.abs(candidate.getZ()-afterPlacement.getZ());
+        return builtContacts+(dx+dz==1?1:0);
     }
     private static final Map<List<BuilderConstructionPlan.Step>,
             Map<BlockPos,BlockState>> schematicStates=new WeakHashMap<>();
@@ -421,18 +435,27 @@ public final class BuilderConstructionPlanner {
             WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             int offset,int budget){
-        return select(world,worker,table,steps,zone,true,offset,budget);
+        return chooseLookahead(world,worker,table,steps,zone,offset,budget,null);
+    }
+    /** Order speculative next blocks from the placement being finished,
+     * not the worker's older completed cell or their moving path position. */
+    public static Choice chooseLookahead(ServerLevel world,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int offset,int budget,BlockPos afterPlacement){
+        return select(world,worker,table,steps,zone,true,offset,budget,afterPlacement);
     }
     private static Choice select(ServerLevel world,BuilderGolem worker,
             WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             boolean lookahead){
-        return select(world,worker,table,steps,zone,lookahead,0,8);
+        return select(world,worker,table,steps,zone,lookahead,0,8,null);
     }
     private static Choice select(ServerLevel world,BuilderGolem worker,
             WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
-            boolean lookahead,int lookaheadOffset,int lookaheadBudget){
+            boolean lookahead,int lookaheadOffset,int lookaheadBudget,
+            BlockPos afterPlacement){
         int y=table.builderActiveLayer(steps);
         if(y==Integer.MAX_VALUE)return null;
         List<Integer> pending=new ArrayList<>();
@@ -464,12 +487,13 @@ public final class BuilderConstructionPlanner {
             var step=steps.get(idx);
             BlockPos target=new BlockPos(step.x(),step.y(),step.z());
             int touch=sameLayerConnections(world,target,builtSchematic);
+            if(lookahead)touch=upcomingConnection(touch,target,afterPlacement);
             contacts.put(idx,touch);
             closureRisks.put(idx,pocketClosureRisk(
                     world,target,builtSchematic));
             if(touch>0)connected++;
         }
-        BlockPos last=lastPlaced.get(worker);
+        BlockPos last=afterPlacement==null?lastPlaced.get(worker):afterPlacement;
         if(last!=null&&last.getY()!=y)last=null;
         BlockPos anchor=last==null?worker.blockPosition():last;
         orderConnectedFront(pending,steps,contacts,closureRisks,anchor);
@@ -558,9 +582,14 @@ public final class BuilderConstructionPlanner {
             int risk=closureRisks.getOrDefault(idx,0);
             int tier=frontierTier(touch,risk);
             double cost=score(worker,target,stance,sky,grapple)
-                    -connectedPlacementBonus(world,target,builtSchematic)
-                    -touch*150+risk*250
-                    +(last==null?0:target.distSqr(last)*.20)
+                    // Greedy short-hop routing across the worker's valid,
+                    // same-Y frontier, anchored to its last placed block.
+                    +target.distSqr(anchor)*BuilderFrontierTuning.LOCALITY_WEIGHT
+                    // Connections still break close ties, but no longer
+                    // outweigh a long trip across the construction zone.
+                    -Math.min(24,connectedPlacementBonus(
+                            world,target,builtSchematic))
+                    -touch*6+risk*250
                     +(scaffold?BuilderFrontierTuning.GRAPPLE_PENALTY*2:0);
             if(tier<bestTier||tier==bestTier&&cost<bestScore){
                 bestTier=tier;

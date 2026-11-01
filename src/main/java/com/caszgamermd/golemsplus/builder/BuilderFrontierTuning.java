@@ -12,12 +12,14 @@ final class BuilderFrontierTuning {
     static final double SKY_PENALTY = decimal("GOLEMS_DOME_SKY_PENALTY",12,0,24);
     static final double GRAPPLE_PENALTY = decimal("GOLEMS_DOME_GRAPPLE_PENALTY",24,0,48);
     static final double TARGET_WEIGHT = decimal("GOLEMS_DOME_TARGET_WEIGHT",.65,0,2);
+    static final double LOCALITY_WEIGHT = decimal("GOLEMS_DOME_LOCALITY_WEIGHT",1.5,0,4);
 
     static {
         if ("1".equals(System.getenv("GOLEMS_DOME_TRAINING")))
             System.out.println("[DOME TUNING] scan="+SCAN_LIMIT
                     +" feasible="+FEASIBLE_LIMIT+" sky="+SKY_PENALTY
-                    +" grapple="+GRAPPLE_PENALTY+" target="+TARGET_WEIGHT);
+                    +" grapple="+GRAPPLE_PENALTY+" target="+TARGET_WEIGHT
+                    +" locality="+LOCALITY_WEIGHT);
     }
 
     private BuilderFrontierTuning(){}

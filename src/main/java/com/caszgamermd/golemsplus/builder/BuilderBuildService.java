@@ -178,7 +178,7 @@ public final class BuilderBuildService {
         int budget=Math.min(2,remaining);
         var next=BuilderConstructionPlanner.chooseLookahead(
                 level,worker,table,steps,eligible,
-                activity.lookaheadScanned,budget);
+                activity.lookaheadScanned,budget,target);
         activity.lookaheadScanned+=budget;
         if(next!=null){
             activity.lookahead=next;
