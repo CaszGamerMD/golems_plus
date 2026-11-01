@@ -181,10 +181,12 @@ public final class LitematicaPlacementClient {
     }
     private static String encodeState(BlockState state){
         String id=BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
-        // Minecraft 26.2 exposes the actual property/value pairs as
-        // Stream<Property.Value<?>> (not the older Map API). Each Value
-        // prints as its canonical serialized 'facing=north' text.
-        var values=state.getValues().map(Object::toString).sorted().toList();
+        // Minecraft 26.2 uses Stream<Property.Value<?>>, not a Map.
+        // Value is a record: toString() is NOT a valid block state
+        // selector. Serialize each property's canonical name/value.
+        var values=state.getValues()
+                .map(v->v.property().getName()+"="+v.valueName())
+                .sorted().toList();
         return values.isEmpty()?id:id+"["+String.join(",",values)+"]";
     }
     private static byte[] captureVisibleHologram(Object placement,Path original)
