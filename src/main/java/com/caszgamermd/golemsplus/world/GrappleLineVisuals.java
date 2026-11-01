@@ -12,7 +12,9 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Display;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -34,7 +36,8 @@ public final class GrappleLineVisuals {
         // when a world/chunk reloads after a server restart mid-grapple.
         ServerEntityEvents.ENTITY_LOAD.register((entity,world)->{
             if(entity instanceof Display.ItemDisplay
-                    &&entity.getTags().contains(TAG)
+                    &&entity.getCustomName()!=null
+                    &&TAG.equals(entity.getCustomName().getString())
                     &&!activePieces.contains(entity.getUUID()))
                 entity.discard();
         });
@@ -76,14 +79,16 @@ public final class GrappleLineVisuals {
 
     private static void add(ServerLevel level,Line line,Item item,
             double x,double y,double z,float yaw,float pitch){
-        Display.ItemDisplay model=new Display.ItemDisplay(
-                EntityType.ITEM_DISPLAY,level);
+        var type=BuiltInRegistries.ENTITY_TYPE.getValue(
+                Identifier.fromNamespaceAndPath("minecraft","item_display"));
+        if(type==null)return;
+        Display.ItemDisplay model=new Display.ItemDisplay(type,level);
         model.setPos(x,y,z);
         model.setYRot(yaw);
         model.setXRot(pitch);
         model.setNoGravity(true);
         model.setInvulnerable(true);
-        model.addTag(TAG);
+        model.setCustomName(Component.literal(TAG));
         if(!model.getSlot(0).set(new ItemStack(item)))return;
         activePieces.add(model.getUUID());
         if(level.addFreshEntity(model))line.pieces.add(model);
