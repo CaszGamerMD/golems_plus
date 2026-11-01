@@ -139,7 +139,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
      * assigns coordinates on the server when a Builder becomes available.
      */
     private final Map<UUID,java.util.List<Integer>> builderWorkOrders=new java.util.LinkedHashMap<>();
-    // Work orders now stage up to 32 adjacent tasks out of each worker's
+    // Work orders now stage up to 64 adjacent tasks out of each worker's
     // COMPLETE precompiled zone plan. They do not create new assignments.
     private static final int BUILDER_STAGE_SIZE=64;
     private long builderProgressNotifyTick=-1;
@@ -953,7 +953,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         sync();
     }
     /** Preserve existing single-step API for compatibility with old worlds.
-     * A worker now receives up to ten exclusive same-layer coordinates.
+     * A worker now receives up to 64 exclusive same-layer coordinates.
      * Assignments are stable across ticks, saved/reloaded with the Planner,
      * and fully separate from the physical Builder's nine-slot inventory.
      */
@@ -1246,7 +1246,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
 
     /** Move one exact same-layer coordinate to a worker who already holds
      * the material physically. Ten-coordinate work orders remain disjoint:
-     * when the stocked worker already has ten cells, exchange an unfinished
+     * when the stocked worker already has 64 cells, exchange an unfinished
      * non-active cell back to the original worker. No item moves remotely.
      */
     public boolean reassignBuilderStep(UUID requester,UUID stocked,int index){
