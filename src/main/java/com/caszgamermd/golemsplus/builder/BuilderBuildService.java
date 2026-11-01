@@ -488,6 +488,10 @@ public final class BuilderBuildService {
         // OnSite must be eligible to rescue unclaimed same-layer cells.
         return ownZoneDone&&claimedStep<0&&!roofNeedsRescue;
     }
+    /** Retain the ordinary no-rescue policy for existing callers/tests. */
+    static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep){
+        return shouldParkFinishedZone(ownZoneDone,claimedStep,false);
+    }
     /** Re-check a high roof from its existing safe footing briefly, but
      * never let an unavailable frontier strand a Builder forever. */
     static boolean shouldHoldRoofFrontier(long waitingTicks,boolean highRoof){
