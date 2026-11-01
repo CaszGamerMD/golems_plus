@@ -147,6 +147,13 @@ public final class BuilderUploadNetworking {
                     "' at "+p.origin()+" ("+plan.steps().size()+
                     " blocks; "+plan.unsupported().size()+
                     " unsupported states). Coordinates are frozen.");
+            int minY=plan.steps().stream().mapToInt(
+                    BuilderConstructionPlan.Step::y).min().orElse(0);
+            int maxY=plan.steps().stream().mapToInt(
+                    BuilderConstructionPlan.Step::y).max().orElse(0);
+            notify(player,"Exact imported world Y range: "+minY+".."+maxY+
+                    ". Lowest non-air layer: Y="+minY+
+                    ". Reimport after moving the hologram.");
             notify(player,"In the Planning Table, click Preview, then Start build to confirm.");
         }catch(Exception ex){
             if(saved!=null)try{Files.deleteIfExists(saved);}catch(Exception ignored){}
