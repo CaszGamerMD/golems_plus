@@ -97,12 +97,30 @@ public final class BuilderWarehousePort {
      */
     public static boolean cancel(ServerLevel level,BlockPos computer,BlockPos table,
             UUID owner,UUID ticket,BlockPos ptp){
+        return "CANCELLED".equals(cancelStatus(level,computer,table,owner,ticket,ptp));
+    }
+    /** Prefer the detailed API when present. Older Additions builds can
+     * still cancel safely, but cannot identify why a ticket is busy.
+     */
+    public static String cancelStatus(ServerLevel level,BlockPos computer,BlockPos table,
+            UUID owner,UUID ticket,BlockPos ptp){
         try{
             Class<?> cls=Class.forName(IMPL);
-            Method method=cls.getMethod("cancel",ServerLevel.class,BlockPos.class,
-                    BlockPos.class,UUID.class,UUID.class,BlockPos.class);
-            return (boolean)method.invoke(null,level,computer,table,owner,ticket,ptp);
-        }catch(ReflectiveOperationException|LinkageError ex){return false;}
+            try{
+                Method detailed=cls.getMethod("cancelDetailed",ServerLevel.class,
+                        BlockPos.class,BlockPos.class,UUID.class,UUID.class,BlockPos.class);
+                return (String)detailed.invoke(null,level,computer,table,owner,ticket,ptp);
+            }catch(NoSuchMethodException olderApi){
+                Method legacy=cls.getMethod("cancel",ServerLevel.class,BlockPos.class,
+                        BlockPos.class,UUID.class,UUID.class,BlockPos.class);
+                return (boolean)legacy.invoke(null,level,computer,table,owner,ticket,ptp)
+                        ?"CANCELLED":"LEGACY_CANCELLATION_PENDING";
+            }
+        }catch(ClassNotFoundException missing){
+            return "INTEGRATION_MISSING";
+        }catch(ReflectiveOperationException|LinkageError ex){
+            return "INTEGRATION_ERROR";
+        }
     }
     public static boolean release(ServerLevel level,BlockPos computer,BlockPos table,
             UUID owner,UUID ticket,BlockPos ptp){
