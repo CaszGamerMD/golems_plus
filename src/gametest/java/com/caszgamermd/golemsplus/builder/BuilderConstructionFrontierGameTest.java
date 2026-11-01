@@ -169,6 +169,72 @@ public final class BuilderConstructionFrontierGameTest {
         });
     }
 
+    /** A crew member finishes one horizontal run before starting the
+     * isolated nearer island. After the next confirmed placement, the
+     * work-front anchor moves with that same Builder.
+     */
+    @GameTest(maxTicks=140,skyAccess=true)
+    public void followsConnectedStripBeforeCloserDisconnectedIsland(
+            GameTestHelper h){
+        floor(h);
+        ServerLevel world=h.getLevel();
+        var mob=worker(h,h.absolutePos(new BlockPos(3,2,3)));
+        var table=planner(h,mob,4);
+        BlockPos seed=h.absolutePos(new BlockPos(5,2,4));
+        BlockPos island=h.absolutePos(new BlockPos(3,2,5));
+        BlockPos next=h.absolutePos(new BlockPos(5,2,5));
+        BlockPos end=h.absolutePos(new BlockPos(5,2,6));
+        var steps=List.of(
+                new BuilderConstructionPlan.Step(
+                        seed.getX(),seed.getY(),seed.getZ(),
+                        "minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(
+                        island.getX(),island.getY(),island.getZ(),
+                        "minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(
+                        next.getX(),next.getY(),next.getZ(),
+                        "minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(
+                        end.getX(),end.getY(),end.getZ(),
+                        "minecraft:stone","minecraft:stone"));
+        var zone=List.of(0,1,2,3);
+        h.onEachTick(()->{
+            if(h.getTick()!=16)return;
+            world.setBlock(seed,Blocks.STONE.defaultBlockState(),3);
+            if(table.claimBuilderZoneStep(mob.getUUID(),zone,steps)!=0
+                    ||!table.completeBuilderStep(mob.getUUID(),0)){
+                h.fail("Could not seed the connected run");return;
+            }
+            BuilderConstructionPlanner.noteCompleted(mob,seed);
+            var choice=BuilderConstructionPlanner.choose(world,mob,table,
+                    steps,zone);
+            if(choice==null||choice.index()!=2||choice.stance()==null){
+                h.fail("Jumped to isolated strip instead of next adjacent block: "
+                        +choice);return;
+            }
+            if(table.claimPreferredBuilderZoneStep(mob.getUUID(),
+                    zone,steps,2)!=2){
+                h.fail("Could not claim first connected extension");return;
+            }
+            world.setBlock(next,Blocks.STONE.defaultBlockState(),3);
+            if(!table.completeBuilderStep(mob.getUUID(),2)){
+                h.fail("Could not complete first extension");return;
+            }
+            BuilderConstructionPlanner.noteCompleted(mob,next);
+            choice=BuilderConstructionPlanner.choose(world,mob,table,
+                    steps,zone);
+            if(choice==null||choice.index()!=3||choice.stance()==null){
+                h.fail("Did not continue same connected run: "+choice);return;
+            }
+            if(table.builderActiveLayer(steps)!=seed.getY()){
+                h.fail("Connected ordering broke shared Y gate");return;
+            }
+            System.out.println("[COHERENT FRONTIER] PASS finished connected "
+                    +"same-Y run before nearer isolated island");
+            h.succeed();
+        });
+    }
+
     @GameTest(maxTicks=130,skyAccess=true)
     public void rejectsThroughWallWorkStanceRatherThanPlaceThroughWall(
             GameTestHelper h){

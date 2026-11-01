@@ -724,6 +724,7 @@ public final class BuilderBuildService {
                 // a correct block in pursuit of stale schematic geometry.
                 table.recordBuilderPlacement(step.requiredItem());
                 table.completeBuilderStep(worker.getUUID(),index);
+                BuilderConstructionPlanner.noteCompleted(worker,pos);
                 activity.phase=Action.COMPLETE;
                 // Already-correct positions are NO-OPs, never mine or
                 // dismantle the nearby scaffold to rebuild them.
@@ -1148,6 +1149,7 @@ public final class BuilderBuildService {
             }
             table.recordBuilderPlacement(step.requiredItem());
             table.completeBuilderStep(worker.getUUID(),index);
+            BuilderConstructionPlanner.noteCompleted(worker,pos);
             activity.phase=Action.COMPLETE;
             BuilderSupplyInventory.recycleEmptyShulkers(table);
             // Keep any deployed scaffolding until this ten-block work order
