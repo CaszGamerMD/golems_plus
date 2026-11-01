@@ -258,6 +258,61 @@ public final class BuilderBuildService {
         action.fastFollowup=false;
         return true;
     }
+    /** Cheap handoff when a Builder already occupies a verified pose for
+     * another block. This covers short roof runs with no travel time, where
+     * motion-only lookahead never fires. No A* probe or scaffold plan is
+     * started; the next ordinary work tick still checks world collision,
+     * placement support, material stock, and any crew moving into the cell.
+     */
+    private static BuilderConstructionPlanner.Choice nearbyDirectFollowup(
+            ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int completed){
+        if(!worker.onGround()||worker.isNoGravity()
+                ||BuilderScaffoldPlanA.hasPlan(worker)
+                ||BuilderGrappleAccess.active(worker)
+                ||completed<0||completed>=steps.size())return null;
+        var previous=steps.get(completed);
+        int layer=table.builderActiveLayer(steps);
+        BlockPos pose=worker.blockPosition();
+        int best=-1;
+        double bestDistance=Double.POSITIVE_INFINITY;
+        for(int idx:zone){
+            if(idx==completed||idx<0||idx>=steps.size()
+                    ||steps.get(idx).y()!=layer
+                    ||!table.builderStepReadyForClaim(idx)
+                    ||table.builderStepClaimedByOther(worker.getUUID(),idx)
+                    ||reservedForTeammate(table,worker.getUUID(),idx,
+                            level.getGameTime()))continue;
+            var step=steps.get(idx);
+            double dx=step.x()-previous.x(),dz=step.z()-previous.z();
+            double locality=dx*dx+dz*dz;
+            if(locality>9||locality>=bestDistance)continue;
+            BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+            if(!level.hasChunkAt(target)
+                    ||!BuilderPlacementSpace.placementHeight(target,worker)
+                    ||!BuilderPlacementSpace.horizontalClear(target,worker)
+                    ||worker.distanceToSqr(target.getX()+.5,
+                            target.getY()+.5,target.getZ()+.5)>=14)continue;
+            var resolved=BuilderBlockResolver.resolve(step.encodedState(),
+                    BuildSite.Rotation.values()[table.builderRotation()/90],
+                    BuildSite.Mirror.values()[table.builderMirror()]);
+            if(resolved==null
+                    ||!resolved.state().canSurvive(level,target)
+                    ||!level.getBlockState(target).isAir()
+                    ||step.requiredItem()!=null
+                        &&worker.carriedCount(resolved.item())==0
+                    ||!(BuilderPlacementSpace.safeFractionalCapPose(
+                                level,worker,target)
+                        ||BuilderConstructionPlanner.safeStand(
+                                level,worker,target,pose)))continue;
+            best=idx;
+            bestDistance=locality;
+        }
+        return best<0?null:
+                new BuilderConstructionPlanner.Choice(best,pose,false,
+                        level.canSeeSky(pose.above()),1);
+    }
     /** After a REAL placement, consume the speculative choice only if
      * the same Y gate, claim ownership, support and safe pose STILL hold.
      * Start the next physical route immediately instead of spending five
@@ -265,10 +320,14 @@ public final class BuilderBuildService {
      */
     private static void handoffNext(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,
-            List<BuilderConstructionPlan.Step> steps,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             WorkerAction activity,int completed){
-        var choice=activity.lookahead;
-        if(choice==null||activity.lookaheadFor!=completed)return;
+        var choice=activity.lookaheadFor==completed?activity.lookahead:null;
+        // A nearby connected run may be placeable without any walking;
+        // in that case movement-based lookahead did not run at all.
+        if(choice==null)choice=nearbyDirectFollowup(
+                level,worker,table,steps,zone,completed);
+        if(choice==null)return;
         int next=choice.index();
         if(next<0||next>=steps.size()
                 ||steps.get(next).y()!=table.builderActiveLayer(steps)
@@ -289,7 +348,7 @@ public final class BuilderBuildService {
         if(stance!=null&&!BuilderConstructionPlanner.safeStand(
                 level,worker,target,stance))return;
         if(table.claimPreferredBuilderZoneStep(worker.getUUID(),
-                activity.lookaheadZone,steps,next)!=next)return;
+                zone,steps,next)!=next)return;
         activity.setStep(next);
         // Move on the very next game tick, not at the next four-per-second
         // Builder work cadence. This removes the visible idle beat between
@@ -1462,7 +1521,7 @@ public final class BuilderBuildService {
             activity.phase=Action.COMPLETE;
             // Use the already-validated next task, if still safe and
             // claimable. No second full frontier search at this stop.
-            handoffNext(level,worker,table,plan.steps(),activity,index);
+            handoffNext(level,worker,table,plan.steps(),zone,activity,index);
             BuilderSupplyInventory.recycleEmptyShulkers(table);
             // Keep any deployed scaffolding until this ten-block work order
             // completes; retrieving per placed block caused route churn.
