@@ -32,6 +32,12 @@ public final class BuilderZoneWorkPlan {
     public static BuilderZoneWorkPlan compile(
             List<BuilderConstructionPlan.Step> steps,
             BuilderZones.Layout footprint,List<UUID> activeWorkers){
+        return compile(steps,footprint,activeWorkers,false);
+    }
+    public static BuilderZoneWorkPlan compile(
+            List<BuilderConstructionPlan.Step> steps,
+            BuilderZones.Layout footprint,List<UUID> activeWorkers,
+            boolean downward){
         if(steps==null||footprint==null||activeWorkers==null)
             throw new IllegalArgumentException("Builder plan missing");
         if(activeWorkers.isEmpty()||activeWorkers.size()>8)
@@ -52,7 +58,8 @@ public final class BuilderZoneWorkPlan {
         for(var zone:data.values())zone.sort((left,right)->{
             var a=steps.get(left);
             var b=steps.get(right);
-            int height=Integer.compare(a.y(),b.y());
+            int height=downward?Integer.compare(b.y(),a.y()):
+                    Integer.compare(a.y(),b.y());
             if(height!=0)return height;
             int strip=Integer.compare(a.x(),b.x());
             if(strip!=0)return strip;

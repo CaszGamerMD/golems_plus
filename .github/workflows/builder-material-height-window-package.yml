@@ -1,0 +1,48 @@
+name: Builder material rules and layer window package
+on:
+  push:
+    branches:
+      - feature/builder-material-height-window-262
+  workflow_dispatch:
+
+jobs:
+  package-material-height-window:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Compile production, unit tests and GameTest sources
+        run: gradle --no-daemon clean test jar compileGametestJava
+      - uses: actions/upload-artifact@v4
+        with:
+          name: golems-plus-material-height-window-package
+          path: build/libs/*.jar
+          if-no-files-found: error
+      - name: Publish playable material-height-window JAR
+        if: success() && github.ref == 'refs/heads/feature/builder-material-height-window-262'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t jars < <(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | sort)
+          if [ "${#jars[@]}" -ne 1 ]; then
+            printf 'Expected one playable JAR, got %s\n' "${#jars[@]}"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/material-height-window-release"
+          cp "${jars[0]}" "$RUNNER_TEMP/material-height-window-release/golems-plus-0.3.58-dev-material-height-window.jar"
+          (cd "$RUNNER_TEMP/material-height-window-release" && sha256sum *.jar > SHA256SUMS.txt)
+          tag="material-height-window-package-${GITHUB_SHA:0:12}"
+          gh release create "$tag" "$RUNNER_TEMP/material-height-window-release/"*.jar "$RUNNER_TEMP/material-height-window-release/SHA256SUMS.txt" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Golems Plus right-click material rules, start height and eight-layer warehouse batches" \
+            --notes "Builds on the verified Creative Crate and recycling snapshot. Adds right-click ignore/replace/reset material rules in the Planner, per-job start world Y with all/up/down scope, and warehouse requests for the next eight working Y layers. The compile and GameTest sources are verified by this package workflow; a full GameTest workflow runs separately."

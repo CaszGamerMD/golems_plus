@@ -35,7 +35,8 @@ public final class BuilderBuildService {
     private record Cache(String file, int rotation,int mirror,BlockPos origin,
                          List<BuilderConstructionPlan.Step> steps,
                          List<BuilderSiteClearance.Target> clearing,
-                         boolean ignorePlants,BuilderZones.Layout zones){}
+                         boolean ignorePlants,int rulesRevision,
+                         BuilderZones.Layout zones){}
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
     /** One immutable COMPLETE job-zone plan per Planner/job/crew. Assignment
      * work is never repeated on each Builder tick or after a placement.
@@ -390,9 +391,7 @@ public final class BuilderBuildService {
             // toggled. Reconcile its persisted material ledger BEFORE
             // inspecting or creating a warehouse ticket, preserving the
             // count of actual placements already completed.
-            var filtered=BuilderMaterialDemand.requiredMaterials(plan);
-            if(!table.builderRequired().equals(filtered))
-                table.reconcileBuilderMaterials(filtered);
+            table.reconcileBuilderMaterialsFromPlan(plan);
             if(table.supplyRequest()!=null)
                 return "Warehouse material request already active"
                         +(table.builderCancelShipment()
@@ -400,10 +399,13 @@ public final class BuilderBuildService {
             // queueMaterials owns the single OnSite + rack snapshot.
             // Duplicating both scans here blocked the server at Start.
             if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan)){
-                if(BuilderMaterialDemand.outstandingRemaining(
-                        table.builderRemaining(),
+                var window=BuilderMaterialDemand.nextWindow(
+                        plan,table.builderCursor(),
+                        table::builderStepCompletedForMaterials,
+                        BuilderMaterialRules.WINDOW_LAYERS);
+                if(BuilderMaterialDemand.outstandingRemaining(window,
                         BuilderSupplyInventory.available(table),Map.of()).isEmpty())
-                    return "All remaining construction materials are already staged OnSite or with the crew";
+                    return "Next eight Builder layers are staged or require no new stock";
                 return table.problem().isBlank()?"Warehouse not ready":table.problem();
             }
             if(table.supplyPtp().equals(BlockPos.ZERO))
@@ -1402,21 +1404,17 @@ public final class BuilderBuildService {
             var cache=jobCache(table);
             int ignored=0;
             for(var step:cache.steps())if(step.ignorePlant())ignored++;
-            var materials=BuilderMaterialDemand.requiredMaterials(cache.steps());
-            if(!table.builderRequired().equals(materials))
-                table.reconcileBuilderMaterials(materials);
-            table.previewBuilderWork(cache.steps());
-            // A running planner may have already cleared the site.
-            // Otherwise preserve the clearing gate until all real
-            // obstructions have actually been handled.
+            // Reconcile virtual skips FIRST: an un-ignored cell may reopen
+            // from the saved completed prefix without recreating materials
+            // for physically placed work.
             if((table.activeOrder()!=null
                     ||table.phase()==WorkerPhase.COMPLETE)
                     &&table.builderClearCursor()>=cache.clearing().size())
                 table.reconcileBuilderWork(cache.steps());
-            return table.builderIgnorePlants()
-                    ?"Ignoring "+ignored+" schematic vegetation placements; "
-                            +"site clearing remains enabled"
-                    :"Crops and flowers restored to this job's material plan";
+            table.reconcileBuilderMaterialsFromPlan(cache.steps());
+            table.previewBuilderWork(cache.steps());
+            return "Builder plan updated: "+ignored+" skipped cells; "
+                    +"remaining inventory and next warehouse window recalculated";
         }catch(Exception e){
             return "Plant filter saved; unable to recalculate material list: "
                     +e.getClass().getSimpleName();
@@ -1430,7 +1428,8 @@ public final class BuilderBuildService {
                 &&previous.rotation()==table.builderRotation()
                 &&previous.mirror()==table.builderMirror()
                 &&previous.origin().equals(table.builderOrigin())
-                &&previous.ignorePlants()==table.builderIgnorePlants())
+                &&previous.ignorePlants()==table.builderIgnorePlants()
+                &&previous.rulesRevision()==table.builderRuleRevision())
             return previous;
         if(!table.hasPlacedSchematic())
             throw new IllegalArgumentException("No placed schematic");
@@ -1445,12 +1444,47 @@ public final class BuilderBuildService {
         var site=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
                 BuildSite.Rotation.values()[table.builderRotation()/90],
                 BuildSite.Mirror.values()[table.builderMirror()]);
-        var result=BuilderConstructionPlan.create(schematic,site,
+        var original=BuilderConstructionPlan.create(schematic,site,
                 table.builderIgnorePlants());
+        var steps=BuilderMaterialRules.apply(original.steps(),
+                table.builderMaterialRules(),table.builderStartY(),
+                table.builderHeightMode(),site.rotation(),site.mirror());
+        // The default job does no extra 100k-position map work.
+        List<BuilderSiteClearance.Target> clearing=
+                BuilderSiteClearance.targets(schematic,site);
+        if(!table.builderMaterialRules().isEmpty()
+                ||table.builderHeightMode()!=BuilderMaterialRules.ALL){
+            // Preserve clearance index stability across mid-job rule edits.
+            // A skipped target is a no-op, never a permission to remove it.
+            var byPosition=new java.util.HashMap<BlockPos,
+                    BuilderConstructionPlan.Step>();
+            var originallyIgnored=new java.util.HashSet<BlockPos>();
+            for(var step:original.steps()){
+                if(step.ignorePlant())
+                    originallyIgnored.add(new BlockPos(step.x(),step.y(),step.z()));
+            }
+            for(var step:steps)
+                byPosition.put(new BlockPos(step.x(),step.y(),step.z()),step);
+            var adjusted=new java.util.ArrayList<BuilderSiteClearance.Target>(
+                    clearing.size());
+            for(var target:clearing){
+                var effective=byPosition.get(target.pos());
+                boolean skip=!table.builderIncludesY(target.pos().getY())
+                        ||effective!=null&&effective.ignorePlant()
+                            &&!originallyIgnored.contains(target.pos());
+                adjusted.add(skip
+                        ?new BuilderSiteClearance.Target(target.pos(),
+                                "golems_plus:skip")
+                        :effective==null?target:
+                                new BuilderSiteClearance.Target(
+                                        target.pos(),effective.encodedState()));
+            }
+            clearing=List.copyOf(adjusted);
+        }
         Cache next=new Cache(table.builderFile(),table.builderRotation(),
-                table.builderMirror(),origin,result.steps(),
-                BuilderSiteClearance.targets(schematic,site),
-                table.builderIgnorePlants(),BuilderZones.footprint(result.steps()));
+                table.builderMirror(),origin,steps,List.copyOf(clearing),
+                table.builderIgnorePlants(),table.builderRuleRevision(),
+                BuilderZones.footprint(steps));
         cachedWarehousePlans.put(table,next);
         return next;
     }
@@ -1466,7 +1500,8 @@ public final class BuilderBuildService {
             return found;
         // Preserves completed cells and carried real items when adding or
         // retiring a Builder. Only unfinished staging reservations change.
-        var tasks=BuilderZoneWorkPlan.compile(cache.steps(),cache.zones(),roster);
+        var tasks=BuilderZoneWorkPlan.compile(cache.steps(),cache.zones(),
+                roster,table.builderHeightMode()==BuilderMaterialRules.FROM_Y_DOWN);
         table.beginBuilderZonePlan();
         ScheduledZones result=new ScheduledZones(table.activeOrder(),cache,
                 List.copyOf(roster),tasks);
@@ -1481,7 +1516,8 @@ public final class BuilderBuildService {
                 &&previous.rotation()==table.builderRotation()
                 &&previous.mirror()==table.builderMirror()
                 &&previous.origin().equals(table.builderOrigin())
-                &&previous.ignorePlants()==table.builderIgnorePlants())
+                &&previous.ignorePlants()==table.builderIgnorePlants()
+                &&previous.rulesRevision()==table.builderRuleRevision())
             return previous;
         // Share the same immutable validated work plan among all eight
         // Builders. A different Litematica parse per worker caused pauses

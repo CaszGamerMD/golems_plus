@@ -60,14 +60,27 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private WarehouseAssignment pendingBuilderWarehouse;
     private boolean builderStockChecked;
     private boolean builderIgnorePlants;
+    private final java.util.Map<String,String> builderMaterialRules=new java.util.LinkedHashMap<>();
+    private int builderStartY, builderHeightMode, builderRuleRevision;
     private String builderWarehouseName="";
     public record BuilderJob(String file,String name,BlockPos origin,int rotation,
             int mirror,int blocks,int unsupported,int cursor,
             Map<String,Long> required,Map<String,Long> remaining,
             WarehouseAssignment warehouse,BlockPos storage,String phase,
-            boolean ignorePlants){
+            boolean ignorePlants,Map<String,String> materialRules,
+            int startY,int heightMode){
         public BuilderJob{
             required=Map.copyOf(required);remaining=Map.copyOf(remaining);
+            materialRules=Map.copyOf(materialRules);
+        }
+        public BuilderJob(String file,String name,BlockPos origin,int rotation,
+                int mirror,int blocks,int unsupported,int cursor,
+                Map<String,Long> required,Map<String,Long> remaining,
+                WarehouseAssignment warehouse,BlockPos storage,String phase,
+                boolean ignorePlants){
+            this(file,name,origin,rotation,mirror,blocks,unsupported,cursor,
+                    required,remaining,warehouse,storage,phase,ignorePlants,
+                    Map.of(),origin.getY(),0);
         }
         // Older callers/saved job formats default to normal vegetation
         // placement. Existing worlds retain their previous behavior.
@@ -471,6 +484,81 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public java.util.List<BuilderJob> builderJobs(){return java.util.List.copyOf(builderJobs);}
     public int selectedBuilderJob(){return selectedBuilderJob;}
     public boolean builderIgnorePlants(){return builderIgnorePlants;}
+    public Map<String,String> builderMaterialRules(){return Map.copyOf(builderMaterialRules);}
+    public int builderStartY(){return builderStartY;}
+    public int builderHeightMode(){return builderHeightMode;}
+    public int builderRuleRevision(){return builderRuleRevision;}
+    public boolean builderIncludesY(int worldY){
+        return com.caszgamermd.golemsplus.builder.BuilderMaterialRules
+                .includesY(worldY,builderStartY,builderHeightMode);
+    }
+    public boolean setBuilderStartY(UUID actor,int worldY){
+        if(!isBuilder()||!canConfigure(actor)||!hasPlacedSchematic()
+                ||activeOrder!=null||worldY<getLevel().getMinY()
+                ||worldY>=getLevel().getMaxY())return false;
+        builderStartY=worldY;builderRuleRevision++;
+        if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
+            builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
+        sync();return true;
+    }
+    public boolean setBuilderHeightMode(UUID actor,int mode){
+        if(!isBuilder()||!canConfigure(actor)||!hasPlacedSchematic()
+                ||activeOrder!=null||mode<0||mode>2)return false;
+        builderHeightMode=mode;builderRuleRevision++;
+        if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
+            builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
+        sync();return true;
+    }
+    /** Replaces or ignores only unfinished placements. Source schematic
+     * blocks remain unchanged, so resetting a rule restores their palette.
+     */
+    public boolean setBuilderMaterialRule(UUID actor,String source,String target){
+        if(!isBuilder()||!canConfigure(actor)||!hasPlacedSchematic()
+                ||source==null||source.isBlank()||source.length()>100
+                ||!(builderRequired.containsKey(source)
+                    ||builderMaterialRules.containsKey(source)))return false;
+        if(target!=null&&!target.isBlank()&&!target.equals(
+                com.caszgamermd.golemsplus.builder.BuilderMaterialRules.IGNORE)
+                &&!com.caszgamermd.golemsplus.builder.BuilderMaterialRules
+                        .isBuildableReplacement(target))return false;
+        if(target==null)builderMaterialRules.remove(source);
+        else builderMaterialRules.put(source,target);
+        builderRuleRevision++;builderProgressPlan=null;
+        if(supplyRequest!=null)requestBuilderShipmentCancellation();
+        if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
+            builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
+        sync();return true;
+    }
+    public boolean builderStepCompletedForMaterials(int index){
+        return (index<builderCursor||builderFinishedSteps.contains(index))
+                &&!builderAutoSkippedPlants.contains(index);
+    }
+    public void reconcileBuilderMaterialsFromPlan(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        java.util.Map<String,Long> required=new java.util.LinkedHashMap<>();
+        java.util.Map<String,Long> remaining=new java.util.LinkedHashMap<>();
+        for(int i=0;i<steps.size();i++){
+            var step=steps.get(i);
+            if(step.ignorePlant()||step.requiredItem()==null)continue;
+            required.merge(step.requiredItem(),1L,Long::sum);
+            if(!builderStepCompletedForMaterials(i))
+                remaining.merge(step.requiredItem(),1L,Long::sum);
+        }
+        for(String id:java.util.List.copyOf(required.keySet()))
+            if(com.caszgamermd.golemsplus.builder.BuilderBlockResolver
+                    .reusableSupply(id)){
+                required.put(id,1L);
+                remaining.put(id,remaining.containsKey(id)?1L:0L);
+            }
+        if(builderRequired.equals(required)&&builderRemaining.equals(remaining))
+            return;
+        builderRequired.clear();builderRequired.putAll(required);
+        builderRemaining.clear();builderRemaining.putAll(remaining);
+        builderWarehouseStock.clear();builderStockChecked=false;
+        if(selectedBuilderJob>=0&&selectedBuilderJob<builderJobs.size())
+            builderJobs.set(selectedBuilderJob,snapshotBuilderJob());
+        sync();
+    }
     /** Job-specific, can be changed even while an existing build is
      * blocked on an unsupported tall flower. We retain all indexed
      * assignments; the new schematic cache marks only plant steps no-op.
@@ -554,7 +642,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderJobs.set(i,new BuilderJob(job.file(),job.name(),job.origin(),
                     job.rotation(),job.mirror(),job.blocks(),job.unsupported(),
                     job.cursor(),copy,copy,job.warehouse(),job.storage(),
-                    job.phase(),job.ignorePlants()));
+                    job.phase(),job.ignorePlants(),job.materialRules(),
+                    job.startY(),job.heightMode()));
             sync();return;
         }
     }
@@ -579,7 +668,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return new BuilderJob(builderFile,placedSchematicName,builderOrigin,
                 builderRotation,builderMirror,builderBlocks,builderUnresolved,
                 builderCursor,builderRequired,builderRemaining,warehouse,
-                builderMaterialStorage,phase.name(),builderIgnorePlants);
+                builderMaterialStorage,phase.name(),builderIgnorePlants,
+                builderMaterialRules,builderStartY,builderHeightMode);
     }
     public boolean selectBuilderJob(UUID actor,int index){
         if(!isBuilder()||!canConfigure(actor)||index<0||index>=builderJobs.size()
@@ -600,6 +690,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderRemaining.clear();builderRemaining.putAll(selected.remaining());
         warehouse=selected.warehouse();builderMaterialStorage=selected.storage();
         builderIgnorePlants=selected.ignorePlants();
+        builderMaterialRules.clear();builderMaterialRules.putAll(selected.materialRules());
+        builderStartY=selected.startY();builderHeightMode=selected.heightMode();
+        builderRuleRevision++;
         builderPlaced=true;completedAhead=0;builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
         builderProgressPlan=null;
@@ -896,16 +989,17 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(order==null||order.isEmpty()){
             order=new java.util.ArrayList<>(10);
             if(zoned){
-                int lowest=Integer.MAX_VALUE;
-                // Locate the lowest outstanding layer IN THIS ZONE, not
-                // the lowest layer in the entire schematic.
+                boolean downward=builderHeightMode==2;
+                int lowest=downward?Integer.MIN_VALUE:Integer.MAX_VALUE;
+                // The zone frontier follows the configured build direction.
                 for(int i=builderCursor;i<steps.size();i++){
                     if(builderFinishedSteps.contains(i))continue;
                     var step=steps.get(i);
                     if(footprint.contains(step,workerZone,activeCount))
-                        lowest=Math.min(lowest,step.y());
+                        lowest=downward?Math.max(lowest,step.y())
+                                :Math.min(lowest,step.y());
                 }
-                if(lowest==Integer.MAX_VALUE)return -1;
+                if(lowest==(downward?Integer.MIN_VALUE:Integer.MAX_VALUE))return -1;
                 for(int i=builderCursor;i<steps.size()&&order.size()<10;i++){
                     if(steps.get(i).y()!=lowest
                             ||!footprint.contains(steps.get(i),workerZone,activeCount)
@@ -1237,23 +1331,28 @@ public final class WorkerStationBlockEntity extends BlockEntity
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(!isBuilder()||steps==null||steps.size()!=builderBlocks)return;
         boolean changed=false;
-        if(!builderIgnorePlants&&!builderAutoSkippedPlants.isEmpty()){
+        // The saved set includes ALL virtual skips: vegetation, excluded
+        // heights and material ignores. Reopen only indices whose CURRENT
+        // plan no longer ignores them, never a truly placed block.
+        java.util.Set<Integer> reopened=new java.util.HashSet<>();
+        for(int index:builderAutoSkippedPlants)
+            if(index>=0&&index<steps.size()&&!steps.get(index).ignorePlant())
+                reopened.add(index);
+        if(!reopened.isEmpty()){
             int oldCursor=builderCursor;
-            int restart=builderAutoSkippedPlants.stream().mapToInt(Integer::intValue)
+            int restart=reopened.stream().mapToInt(Integer::intValue)
                     .min().orElse(oldCursor);
             for(int i=restart;i<oldCursor;i++)
-                if(!builderAutoSkippedPlants.contains(i))
-                    builderFinishedSteps.add(i);
+                if(!reopened.contains(i))builderFinishedSteps.add(i);
             builderCursor=Math.min(builderCursor,restart);
-            builderFinishedSteps.removeAll(builderAutoSkippedPlants);
-            builderAutoSkippedPlants.clear();
+            builderFinishedSteps.removeAll(reopened);
+            builderAutoSkippedPlants.removeAll(reopened);
             builderClaims.clear();builderWorkOrders.clear();
             builderPreparedOrders.clear();builderMissingRetries.clear();
             changed=true;
         }
-        if(builderIgnorePlants)
-            for(int i=builderCursor;i<steps.size();i++)
-                if(steps.get(i).ignorePlant()&&!builderFinishedSteps.contains(i)){
+        for(int i=builderCursor;i<steps.size();i++)
+            if(steps.get(i).ignorePlant()&&!builderFinishedSteps.contains(i)){
                     builderAutoSkippedPlants.add(i);
                     builderFinishedSteps.add(i);
                     changed=true;
@@ -1459,7 +1558,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderWarehouseStock.clear();builderStockChecked=false;
         builderWarehouseName="";
         builderMaterialStorage=null;
-        builderIgnorePlants=false;
+        builderIgnorePlants=false;builderMaterialRules.clear();
+        builderStartY=origin.getY();builderHeightMode=0;builderRuleRevision++;
         builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
         builderProgressPlan=null;
         selectedBuilderJob=builderJobs.size();
@@ -1847,6 +1947,16 @@ public final class WorkerStationBlockEntity extends BlockEntity
             out.putInt(key+"clearing",builderClearByFile.getOrDefault(job.file(),0));
             out.putString(key+"phase",job.phase());
             out.putBoolean(key+"ignore_plants",job.ignorePlants());
+            out.putInt(key+"start_y",job.startY());
+            out.putInt(key+"height_mode",job.heightMode());
+            out.putInt(key+"rule_count",Math.min(256,job.materialRules().size()));
+            int rule=0;
+            for(var setting:job.materialRules().entrySet()){
+                if(rule>=256)break;
+                out.putString(key+"rule_source_"+rule,setting.getKey());
+                out.putString(key+"rule_target_"+rule,setting.getValue());
+                rule++;
+            }
             if(job.storage()!=null)out.store(key+"storage",BlockPos.CODEC,job.storage());
             if(job.warehouse()!=null){
                 out.putString(key+"warehouse_dim",job.warehouse().dimension());
@@ -2111,6 +2221,16 @@ public final class WorkerStationBlockEntity extends BlockEntity
                     in.getIntOr(key+"warehouse_x",0),in.getIntOr(key+"warehouse_y",0),
                     in.getIntOr(key+"warehouse_z",0));
             builderClearByFile.put(file,Math.max(0,in.getIntOr(key+"clearing",0)));
+            java.util.Map<String,String> rules=new java.util.LinkedHashMap<>();
+            for(int n=0,nmax=Math.clamp(in.getIntOr(key+"rule_count",0),0,256);
+                    n<nmax;n++){
+                String source=in.getStringOr(key+"rule_source_"+n,"");
+                String target=in.getStringOr(key+"rule_target_"+n,"");
+                if(!source.isBlank()&&(target.equals("!")
+                        ||com.caszgamermd.golemsplus.builder.BuilderMaterialRules
+                            .isBuildableReplacement(target)))
+                    rules.put(source,target);
+            }
             builderJobs.add(new BuilderJob(file,in.getStringOr(key+"name",file),
                     in.read(key+"origin",BlockPos.CODEC).orElse(BlockPos.ZERO),
                     in.getIntOr(key+"rotation",0),in.getIntOr(key+"mirror",0),
@@ -2118,7 +2238,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
                     in.getIntOr(key+"cursor",0),materials,pending,wh,
                     in.read(key+"storage",BlockPos.CODEC).orElse(null),
                     in.getStringOr(key+"phase","READY"),
-                    in.getBooleanOr(key+"ignore_plants",false)));
+                    in.getBooleanOr(key+"ignore_plants",false),rules,
+                    in.getIntOr(key+"start_y",0),
+                    Math.clamp(in.getIntOr(key+"height_mode",0),0,2)));
         }
         selectedBuilderJob=Math.clamp(in.getIntOr("builder_selected_job",-1),-1,
                 Math.max(-1,builderJobs.size()-1));
@@ -2133,6 +2255,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         placedSchematicName=in.getStringOr("builder_placement_name","");
         builderPlaced=in.getBooleanOr("builder_placed",false);
         builderIgnorePlants=in.getBooleanOr("builder_ignore_plants",false);
+        builderMaterialRules.clear();
+        builderStartY=builderOrigin.getY();builderHeightMode=0;builderRuleRevision++;
         builderRequired.clear();builderRemaining.clear();
         if(selectedBuilderJob>=0){
             BuilderJob job=builderJobs.get(selectedBuilderJob);
@@ -2140,6 +2264,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderRemaining.putAll(job.remaining());
             builderMaterialStorage=job.storage();
             builderIgnorePlants=job.ignorePlants();
+            builderMaterialRules.putAll(job.materialRules());
+            builderStartY=job.startY();builderHeightMode=job.heightMode();
         }else builderMaterialStorage=null;
         builderWarehouseStock.clear();builderStagedStock.clear();
         for(int i=0,n=Math.clamp(in.getIntOr("builder_staged_count",0),0,1024);i<n;i++){

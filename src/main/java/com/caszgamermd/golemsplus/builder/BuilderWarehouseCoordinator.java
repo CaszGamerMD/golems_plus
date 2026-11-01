@@ -37,17 +37,22 @@ public final class BuilderWarehouseCoordinator {
         // Defensive check for callers other than primeWarehouse (e.g.
         // a courier retry): an old saved ledger cannot re-order crops
         // after the player enabled Ignore Plants.
-        var filtered=BuilderMaterialDemand.requiredMaterials(steps);
-        if(!table.builderRequired().equals(filtered))
-            table.reconcileBuilderMaterials(filtered);
+        table.reconcileBuilderMaterialsFromPlan(steps);
+        // A single request covers the NEXT eight vertical layers, not the
+        // full 100,000-cell blueprint. This reduces rack work and lets
+        // warehouse packing follow the Builder frontier.
+        Map<String,Long> window=BuilderMaterialDemand.nextWindow(
+                steps,table.builderCursor(),
+                table::builderStepCompletedForMaterials,
+                BuilderMaterialRules.WINDOW_LAYERS);
+        if(window.isEmpty())return false;
         BlockPos computer=new BlockPos(warehouse.x(),warehouse.y(),warehouse.z());
         Map<String,Integer> onsite=BuilderSupplyInventory.available(table);
         Map<String,Integer> warehouseStock=BuilderWarehousePort.stockSnapshot(
-                level,computer,table.builderRemaining());
+                level,computer,window);
         Map<String,Integer> needed=new java.util.LinkedHashMap<>(
                 BuilderMaterialDemand.outstandingRemaining(
-                        table.builderRemaining(),onsite,
-                        warehouseStock==null?Map.of():warehouseStock));
+                        window,onsite,warehouseStock==null?Map.of():warehouseStock));
         if(needed.isEmpty())return false;
         // Keep the ENTIRE remaining order at the Warehouse Computer,
         // including temporarily out-of-stock items. The old stockSnapshot

@@ -22,6 +22,39 @@ public final class BuilderMaterialDemand {
             if(BuilderBlockResolver.reusableSupply(id))result.put(id,1L);
         return result;
     }
+    /** The next eight Y layers only, in the actual plan's step order.
+     * The plan is ascending normally and descending for FROM_Y_DOWN jobs.
+     * Finished out-of-order cells and ignored replacements create no demand.
+     */
+    public static Map<String,Long> nextWindow(
+            List<BuilderConstructionPlan.Step> steps,int cursor,
+            java.util.function.IntPredicate completed,int layers){
+        if(steps==null||cursor<0||cursor>=steps.size())return Map.of();
+        int start=-1;
+        for(int i=cursor;i<steps.size();i++)
+            if(!steps.get(i).ignorePlant()&&!completed.test(i)){
+                start=i;break;
+            }
+        if(start<0)return Map.of();
+        int startY=steps.get(start).y();
+        int direction=1;
+        for(int i=start+1;i<steps.size();i++)
+            if(steps.get(i).y()!=startY){
+                direction=steps.get(i).y()>startY?1:-1;break;
+            }
+        Map<String,Long> needed=new LinkedHashMap<>();
+        for(int i=start;i<steps.size();i++){
+            var step=steps.get(i);
+            int advance=(step.y()-startY)*direction;
+            if(advance>=Math.max(1,layers))break;
+            if(advance<0||step.ignorePlant()||completed.test(i)
+                    ||step.requiredItem()==null)continue;
+            needed.merge(step.requiredItem(),1L,Long::sum);
+        }
+        for(String id:java.util.List.copyOf(needed.keySet()))
+            if(BuilderBlockResolver.reusableSupply(id))needed.put(id,1L);
+        return needed;
+    }
     /** Reserve for the next three vertical Y-levels, bottom-up.
      * Request all needed stock for the selected material types, capped at
      * the warehouse's 4096-item per-line contract. The old 64-item cap

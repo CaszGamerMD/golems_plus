@@ -15,6 +15,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -30,7 +31,7 @@ import net.minecraft.world.item.ItemStack;
  * cache keeps only presentation state when the player closes/reopens.
  */
 public final class BuilderPlannerScreen extends WorkerStationScreen {
-    private enum Page { JOB, PLACEMENTS }
+    private enum Page { JOB, PLACEMENTS, RULES }
     private enum Sort { ALPHABETICAL, VOLUME, LEFT }
     private record Memory(Page page,Sort sort,int scroll,int placementPage,
                           int jobPage,String search){}
@@ -39,7 +40,8 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     private Sort sort=Sort.ALPHABETICAL;
     private int scroll,placementPage,jobPage;
     private String search="";
-    private EditBox query;
+    private EditBox query,heightInput,replacementInput;
+    private String ruleSource,ruleText="";
     private String notice="";
     private int deleteConfirm=-1;
     private List<LitematicaPlacementClient.PlacementChoice> choices=List.of();
@@ -146,6 +148,56 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
                 menu.stationPos(),action,"",number,0,0,0));
         notice="Requested: "+action.replace('_',' ');
     }
+    private void sendRule(int mode){
+        if(ruleSource==null)return;
+        String value=mode==2&&replacementInput!=null
+                ?replacementInput.getValue().trim().toLowerCase():"";
+        String packed=ruleSource+"|"+value;
+        if(packed.length()>120){
+            notice="Material IDs too long for settings packet";return;
+        }
+        Identifier replacement=Identifier.tryParse(value);
+        if(mode==2&&(replacement==null
+                ||!BuiltInRegistries.ITEM.containsKey(replacement))){
+            notice="Enter an item ID, e.g. minecraft:oak_planks";return;
+        }
+        if(!ClientPlayNetworking.canSend(StationSettingsNetworking.Change.TYPE)){
+            notice="Server missing material rule support";return;
+        }
+        ClientPlayNetworking.send(new StationSettingsNetworking.Change(
+                menu.stationPos(),"builder_material",packed,mode,0,0,0));
+        notice=mode==1?"Ignoring unplaced "+ruleSource:
+                mode==0?"Restoring original "+ruleSource:
+                        "Replacing unplaced "+ruleSource+" with "+value;
+        ruleSource=null;ruleText="";show(Page.JOB);
+    }
+    private String sourceFor(String shown,WorkerStationBlockEntity table){
+        for(var row:table.builderMaterialRules().entrySet())
+            if(shown.equals(row.getValue()))return row.getKey();
+        return shown;
+    }
+    @Override public boolean mouseClicked(MouseButtonEvent event,boolean doubleClick){
+        if(page==Page.JOB&&event.button()==1&&ruleSource==null){
+            var rows=materials();
+            int columns=columns(),first=scroll*columns;
+            for(int i=first;i<Math.min(rows.size(),first+pageSize());i++){
+                int n=i-first,px=leftPos+SIDE+22+(n%columns)*76;
+                int py=topPos+139+(n/columns)*62;
+                if(event.x()>=px&&event.x()<px+45
+                        &&event.y()>=py&&event.y()<py+45){
+                    var table=station();
+                    if(table==null)return true;
+                    ruleSource=sourceFor(rows.get(i).getKey(),table);
+                    ruleText=table.builderMaterialRules()
+                            .getOrDefault(ruleSource,"");
+                    if(ruleText.equals("!"))ruleText="";
+                    show(Page.JOB);
+                    return true;
+                }
+            }
+        }
+        return super.mouseClicked(event,doubleClick);
+    }
     private void placements(){
         try{
             choices=LitematicaPlacementClient.placements();
@@ -216,6 +268,36 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             });
             return;
         }
+        if(page==Page.RULES){
+            button("BACK TO MATERIALS",SIDE+15,91,175,()->{
+                scroll=0;show(Page.JOB);
+            });
+            if(table!=null){
+                var rules=new ArrayList<>(table.builderMaterialRules().entrySet());
+                rules.sort(Map.Entry.comparingByKey());
+                int perPage=Math.max(3,(panelHeight-180)/30);
+                int first=scroll*perPage;
+                for(int i=first;i<Math.min(rules.size(),first+perPage);i++){
+                    var entry=rules.get(i);
+                    String source=entry.getKey(),target=entry.getValue();
+                    int row=i-first;
+                    button(shorten(source+" -> "+(target.equals("!")?
+                            "IGNORED":target),70),SIDE+16,126+row*30,
+                            panelWidth-SIDE-45,()->{
+                        ruleSource=source;ruleText=target.equals("!")?"":target;
+                        show(Page.JOB);
+                    });
+                }
+                button("PREV",SIDE+16,panelHeight-43,85,()->{
+                    scroll=Math.max(0,scroll-1);show(Page.RULES);
+                });
+                button("NEXT",SIDE+110,panelHeight-43,85,()->{
+                    scroll=Math.min(Math.max(0,(rules.size()-1)/perPage),
+                            scroll+1);show(Page.RULES);
+                });
+            }
+            return;
+        }
         button(sort==Sort.ALPHABETICAL?"SORT: A-Z":sort==Sort.VOLUME?"SORT: QTY":"SORT: LEFT",SIDE+14,94,116,()->{
             sort=sort==Sort.ALPHABETICAL?Sort.VOLUME:sort==Sort.VOLUME?Sort.LEFT:Sort.ALPHABETICAL;
             scroll=0;show(Page.JOB);
@@ -254,11 +336,14 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             notice="Job delete requested. Saved material inventory is not destroyed.";
             show(Page.JOB);
         });
-        button("RECALCULATE ORDER",SIDE+158,y+54,180,()->{
+        button("RECALC ORDER",SIDE+158,y+54,86,()->{
             if(table!=null&&table.activeOrder()!=null){
                 send("builder_restart_order",0);
                 notice="Requesting new remaining-blocks minus OnSite Storage order";
             }else notice="Start the selected build before restarting its order";
+        });
+        button("RULES",SIDE+249,y+54,89,()->{
+            scroll=0;show(Page.RULES);
         });
         // Saved per job, not globally. Keep this control on the Planner's
         // left side so it does not overlap the material list/footer.
@@ -279,6 +364,48 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
                     +"site clearing remains enabled";
         }).bounds(leftPos+18,topPos+232,194,20).build();
         addRenderableWidget(vegetation);
+        heightInput=new EditBox(font,leftPos+18,topPos+114,90,18,
+                Component.literal("World start Y"));
+        heightInput.setMaxLength(7);
+        heightInput.setValue(table==null?"0":""+table.builderStartY());
+        addRenderableWidget(heightInput);
+        button("APPLY Y",117,113,86,()->{
+            try{
+                int worldY=Integer.parseInt(heightInput.getValue().trim());
+                send("builder_height_y",worldY);
+                if(table!=null&&table.builderHeightMode()==0)
+                    send("builder_height_mode",1);
+                notice="Starting layer set to world Y="+worldY;
+            }catch(NumberFormatException ex){
+                notice="Enter a valid world height, e.g. 64";
+            }
+        });
+        button("Y -",18,139,91,()->{
+            if(table!=null)send("builder_height_y",table.builderStartY()-1);
+        });
+        button("Y +",113,139,90,()->{
+            if(table!=null)send("builder_height_y",table.builderStartY()+1);
+        });
+        button("LAYERS: "+(table==null||table.builderHeightMode()==0?"ALL":
+                table.builderHeightMode()==1?"Y UP":"Y DOWN"),18,163,185,()->{
+            if(table!=null)send("builder_height_mode",
+                    (table.builderHeightMode()+1)%3);
+        });
+        if(ruleSource!=null){
+            int px=SIDE+20,py=panelHeight-252;
+            replacementInput=new EditBox(font,leftPos+px+12,topPos+py+43,
+                    Math.min(320,panelWidth-SIDE-75),18,
+                    Component.literal("New block item ID"));
+            replacementInput.setMaxLength(90);
+            replacementInput.setValue(ruleText);
+            addRenderableWidget(replacementInput);
+            button("IGNORE",px+12,py+73,80,()->sendRule(1));
+            button("REPLACE",px+98,py+73,83,()->sendRule(2));
+            button("RESET",px+187,py+73,78,()->sendRule(0));
+            button("X",Math.min(panelWidth-58,px+272),py+73,32,()->{
+                ruleSource=null;show(Page.JOB);
+            });
+        }
         button("CREW -",18,285,90,()->{
             if(table!=null)send("crew",Math.max(1,table.crewTarget()-1));
         });
@@ -357,7 +484,8 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             stack.set(DataComponents.LORE,
                     new net.minecraft.world.item.component.ItemLore(List.of(
                             Component.literal("Amount Needed: "+need),
-                            Component.literal(stacks(need,stack.getMaxStackSize())))));
+                            Component.literal(stacks(need,stack.getMaxStackSize())),
+                            Component.literal("RIGHT CLICK to ignore or replace"))));
             g.setTooltipForNextFrame(font,stack,mouseX,mouseY);
             return;
         }
@@ -385,6 +513,14 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             g.text(font,"SITE CONTAINER",18,374,MUTED,false);
             g.text(font,t.builderMaterialStorage()==null?"NOT SELECTED":
                     t.builderMaterialStorage().toShortString(),18,388,TEXT,false);
+        }
+        if(page==Page.RULES){
+            g.text(font,"SAVED MATERIAL RULES - CLICK TO EDIT / RESET",
+                    SIDE+15,80,TEXT,false);
+            if(t.builderMaterialRules().isEmpty())
+                g.text(font,"No substitutions or ignored materials yet.",
+                        SIDE+17,151,MUTED,false);
+            return;
         }
         if(page==Page.PLACEMENTS){
             g.text(font,"SELECT AN ACTIVE LITEMATICA PLACEMENT",SIDE+15,80,TEXT,false);
@@ -440,6 +576,15 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
                 SIDE+16,panelHeight-128,YELLOW,false);
         else if(!notice.isBlank())g.text(font,shorten(notice,93),
                 SIDE+16,panelHeight-128,MUTED,false);
+        if(ruleSource!=null){
+            int px=SIDE+20,py=panelHeight-252;
+            g.fill(px,py,Math.min(panelWidth-18,px+365),py+106,0xff101b26);
+            g.fill(px+2,py+2,Math.min(panelWidth-20,px+363),py+30,0xff36506a);
+            g.text(font,"EDIT MATERIAL: "+shorten(ruleSource,38),
+                    px+11,py+11,WHITE,false);
+            g.text(font,"Replacement item ID (same remaining count):",
+                    px+12,py+33,MUTED,false);
+        }
     }
     private static String shorten(String s,int max){
         return s.length()<=max?s:s.substring(0,Math.max(0,max-1))+"…";
