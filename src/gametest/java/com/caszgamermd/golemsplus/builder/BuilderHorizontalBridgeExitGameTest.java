@@ -83,6 +83,13 @@ public final class BuilderHorizontalBridgeExitGameTest {
         }
         final long started=helper.getTick();
         helper.onEachTick(()->{
+            // Let Minecraft settle the spawned body onto the actual bridge
+            // support before asking it to navigate. The bug being tested
+            // is a worker already stranded on a scaffold during a job.
+            if(lowerLedge&&helper.getTick()<10)return;
+            if(lowerLedge&&helper.getTick()==10)
+                System.out.println("[BRIDGE SETTLED] feet="+builder.position()
+                        +" grounded="+builder.onGround());
             // Native scaffold collision may gently lift a spawned mob as
             // its body settles. That is NOT a forced climb. Fail only if
             // the vertical scaffold controller explicitly starts a tower
