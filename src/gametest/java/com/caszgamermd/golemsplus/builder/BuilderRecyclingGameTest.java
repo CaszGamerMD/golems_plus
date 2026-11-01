@@ -34,6 +34,17 @@ public final class BuilderRecyclingGameTest {
             h.fail("Recycled Builder items retained names or failed to stack");
             return;
         }
+        // Manual insertion into a recycling bin also strips a legacy
+        // custom name, and later recycling joins the existing stack.
+        var manual=new ItemStack(WorksiteContent.BUILDER_WORKER_ITEM);
+        manual.set(DataComponents.CUSTOM_NAME,Component.literal("Legacy"));
+        bin.setItem(5,manual);
+        if(bin.getItem(5).has(DataComponents.CUSTOM_NAME)
+                ||!bin.acceptWorker(manual)
+                ||bin.getItem(0).getCount()!=3){
+            h.fail("Manual named workers were not normalized/stacked");
+            return;
+        }
         var chef=new ItemStack(WorksiteContent.CHEF_WORKER_ITEM);
         chef.set(DataComponents.CUSTOM_NAME,Component.literal("Chef"));
         if(!bin.acceptWorker(chef)
