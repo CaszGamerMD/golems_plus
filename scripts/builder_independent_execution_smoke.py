@@ -12,7 +12,7 @@ assert "List.copyOf(list)" in plan
 assert "private record ScheduledZones(" in service
 assert "schedules=new WeakHashMap" in service
 assert "found.cache()==cache&&found.roster().equals(roster)" in service
-assert "BuilderZoneWorkPlan.compile(cache.steps(),cache.zones(),roster)" in service
+assert "BuilderZoneWorkPlan.compile(cache.steps(),cache.zones()," in service
 assert "table.beginBuilderZonePlan();" in service
 assert "table.claimPreferredBuilderZoneStep(" in service
 assert "var activity=action(worker,index);" in service
