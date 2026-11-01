@@ -188,19 +188,25 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         }
     }
     @Override public void tick(){
-        // Scaffold climb and owned bridge movement have exclusive control.
-        // The Planner may not cancel their physical motion with a new path.
-        boolean scaffolding=level() instanceof ServerLevel scaffoldWorld
+        // Active attached ropes own physical motion until their safe
+        // landing or recovery, EVEN if an old scaffold work plan still
+        // exists. Previously Plan A WALK_FIRST could preempt a grapple
+        // in RETURN_TO_TOP forever, trapping the Builder on the dome.
+        // Rope attachment walking still permits ordinary A* to run.
+        boolean ropeActive=BuilderGrappleAccess.active(this);
+        boolean grappling=level() instanceof ServerLevel grappleWorld
+                &&BuilderGrappleAccess.tickMotion(grappleWorld,this);
+        boolean scaffolding=!ropeActive
+                &&level() instanceof ServerLevel scaffoldWorld
                 &&(BuilderScaffolding.tickMotion(scaffoldWorld,this)
                     ||BuilderScaffoldPlanA.tickMotion(scaffoldWorld,this));
-        boolean precisionYield=!scaffolding&&level() instanceof ServerLevel precisionWorld
+        boolean precisionYield=!ropeActive&&!scaffolding
+                &&level() instanceof ServerLevel precisionWorld
                 &&BuilderPlacementSpace.tickPrecisionYield(precisionWorld,this);
-        boolean centering=!scaffolding&&!precisionYield&&level() instanceof ServerLevel centerWorld
+        boolean centering=!ropeActive&&!scaffolding&&!precisionYield
+                &&level() instanceof ServerLevel centerWorld
                 &&com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .tickExactCenter(centerWorld,this);
-        boolean grappling=!scaffolding&&!precisionYield&&!centering
-                &&level() instanceof ServerLevel grappleWorld
-                &&BuilderGrappleAccess.tickMotion(grappleWorld,this);
         // Never retain the old no-gravity state after switching jobs,
         // unloading, leaving a tower, or reloading an entity from disk.
         if(level() instanceof ServerLevel server
