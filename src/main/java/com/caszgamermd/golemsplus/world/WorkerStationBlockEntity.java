@@ -1552,7 +1552,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             BlockPos origin,int rotation,int mirror,int blocks,int unresolved){
         if(!canConfigure(actor)||!isBuilder()
                 ||supplyRequest!=null||filename==null||!filename.startsWith("placed-")
-                ||!filename.endsWith(".litematic")
+                ||!(filename.endsWith(".litematic")
+                    ||filename.endsWith(
+                        com.caszgamermd.golemsplus.builder.BuilderPlacementSnapshot.EXTENSION))
                 ||filename.contains("/")||filename.contains("..")||filename.contains("\\")
                 ||origin==null||rotation<0||rotation>3||mirror<0||mirror>2
                 ||blocks<1||blocks>100000||unresolved<0
