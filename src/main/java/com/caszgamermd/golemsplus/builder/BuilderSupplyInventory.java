@@ -300,16 +300,11 @@ public final class BuilderSupplyInventory {
         Container storage=selectedStorage(table);
         if(depot==null||storage==null)return LoadStatus.MISSING;
         if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                depot.getZ()+.5)>12){
-            // This is an ordinary construction-material trip. If the
-            // worker ALREADY owns its hook, controlled rappel is valid;
-            // otherwise try the trained A* route without inventing tools.
-            if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
-                return LoadStatus.MOVING;
-            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                    level,worker,depot,.83);
+                depot.getZ()+.5)>12
+                &&BuilderGrappleAccess.rappelForTravel(level,worker,table))
             return LoadStatus.MOVING;
-        }
+        if(BuilderReturnService.approach(level,worker,depot,.83))
+            return LoadStatus.MOVING;
         worker.organizeToolBelt();
         Map<String,Integer> materials=new LinkedHashMap<>();
         // Prioritize the reserved tool belt before schematic material stacks.
@@ -471,13 +466,11 @@ public final class BuilderSupplyInventory {
             Container site=selectedStorage(table);
             if(site==null||depot==null)return LoadStatus.MISSING;
             if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                    depot.getZ()+.5)>12){
-                if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
-                    return LoadStatus.MOVING;
-                com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                        level,worker,depot,.83);
+                    depot.getZ()+.5)>12
+                    &&BuilderGrappleAccess.rappelForTravel(level,worker,table))
                 return LoadStatus.MOVING;
-            }
+            if(BuilderReturnService.approach(level,worker,depot,.83))
+                return LoadStatus.MOVING;
             returnPouch(table,worker);
             if(room(worker,new ItemStack(target))<=0)return LoadStatus.MISSING;
         }
@@ -512,13 +505,11 @@ public final class BuilderSupplyInventory {
                 if(needed==0||!containsInSources(table,requested))
                     continue;
                 if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                        depot.getZ()+.5)>12){
-                    if(BuilderGrappleAccess.rappelForTravel(level,worker,table))
-                        return LoadStatus.MOVING;
-                    com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                            level,worker,depot,.83);
+                        depot.getZ()+.5)>12
+                        &&BuilderGrappleAccess.rappelForTravel(level,worker,table))
                     return LoadStatus.MOVING;
-                }
+                if(BuilderReturnService.approach(level,worker,depot,.83))
+                    return LoadStatus.MOVING;
                 drawFromSources(table,worker,requested,needed);
             }
         }
@@ -667,11 +658,8 @@ public final class BuilderSupplyInventory {
             if(correctTool(site.getItem(i),target)){selected=i;break;}
         if(selected<0)return ToolStatus.MISSING;
         BlockPos depot=table.builderUnloadingStorage();
-        if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,depot.getZ()+.5)>12){
-            com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeTo(level,worker,depot,.83);
+        if(BuilderReturnService.approach(level,worker,depot,.83))
             return ToolStatus.MOVING;
-        }
         int pocket=-1;
         for(int i=0;i<worker.getContainerSize();i++)
             if(worker.getItem(i).isEmpty()
@@ -738,16 +726,10 @@ public final class BuilderSupplyInventory {
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null||selectedStorage(table)==null
                 ||!containsInSources(table,tool))return LoadStatus.MISSING;
-        if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                depot.getZ()+.5)>12){
-            // Missing grapple equipment cannot summon its own rappel.
-            // It must follow a REAL reachable walking route, otherwise
-            // signal missing access instead of recursive self-calls.
-            if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeTo(level,worker,depot,.83))
-                return LoadStatus.MISSING;
+        // Missing hook cannot summon a grapple. Walk to a real adjacent
+        // depot stance rather than planning into its solid chest block.
+        if(BuilderReturnService.approach(level,worker,depot,.83))
             return LoadStatus.MOVING;
-        }
         if(room(worker,new ItemStack(tool))<=0)return LoadStatus.MISSING;
         drawFromSources(table,worker,tool,1);
         return worker.carriedCount(tool)>0?LoadStatus.READY:LoadStatus.MISSING;
@@ -765,14 +747,13 @@ public final class BuilderSupplyInventory {
         Container source=site!=null&&containsInSources(table,item)?site:null;
         if(source==null)return ScaffoldLoad.MISSING;
         BlockPos pos=table.builderUnloadingStorage();
-        if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>12){
-            if(BuilderScaffolding.descendForTravel(level,worker,table)
-                    ||BuilderGrappleAccess.rappelForTravel(level,worker,table))
-                return ScaffoldLoad.MOVING;
-            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                    level,worker,pos,.82);
+        if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,
+                pos.getZ()+.5)>12
+                &&(BuilderScaffolding.descendForTravel(level,worker,table)
+                    ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
             return ScaffoldLoad.MOVING;
-        }
+        if(BuilderReturnService.approach(level,worker,pos,.82))
+            return ScaffoldLoad.MOVING;
         drawFromSources(table,worker,item,required-worker.carriedCount(item));
         return worker.carriedCount(item)>=required?
                 ScaffoldLoad.READY:ScaffoldLoad.MISSING;
