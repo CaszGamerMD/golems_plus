@@ -311,14 +311,14 @@ public final class BuilderBuildService {
     static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep){
         return ownZoneDone&&claimedStep<0;
     }
-    /** A worker that has cleared its portion of the current shared Y
-     * returns OnSite while a teammate finishes, unless assigned a live
-     * cross-zone rescue. Future-layer tasks remain queued, not canceled. */
     /** Re-check a high roof from its existing safe footing briefly, but
      * never let an unavailable frontier strand a Builder forever. */
     static boolean shouldHoldRoofFrontier(long waitingTicks,boolean highRoof){
         return waitingTicks<= (highRoof?160:80);
     }
+    /** A worker that has cleared its portion of the current shared Y
+     * returns OnSite while a teammate finishes, unless assigned a live
+     * cross-zone rescue. Future-layer tasks remain queued, not canceled. */
     static boolean shouldParkWaitingForLayer(boolean ownLayerClear,
             boolean assisting,int claimedStep){
         return ownLayerClear&&!assisting&&claimedStep<0;
@@ -762,15 +762,6 @@ public final class BuilderBuildService {
             // A real cross-zone rescue is the only reason to stay active.
             if(shouldParkWaitingForLayer(
                     ownLayerClear,emergencyRoofAssist,index)){
-                parkAtOnSite(level,worker,table);
-                return;
-            }
-            // Once a roof search has exhausted its bounded wait,
-            // complete the real retreat before attempting another
-            // approach from the same failed partial-block perch.
-            var resting=workerActions.get(worker);
-            if(index<0&&resting!=null
-                    &&resting.retreatUntil>level.getGameTime()){
                 parkAtOnSite(level,worker,table);
                 return;
             }
