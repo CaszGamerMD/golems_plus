@@ -724,7 +724,8 @@ public final class BuilderBuildService {
                 // a correct block in pursuit of stale schematic geometry.
                 table.recordBuilderPlacement(step.requiredItem());
                 table.completeBuilderStep(worker.getUUID(),index);
-                BuilderConstructionPlanner.noteCompleted(worker,pos);
+                // A pre-existing block is not this golem's physical work:
+                // do not relocate its last real placement anchor here.
                 activity.phase=Action.COMPLETE;
                 // Already-correct positions are NO-OPs, never mine or
                 // dismantle the nearby scaffold to rebuild them.
