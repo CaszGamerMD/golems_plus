@@ -43,8 +43,8 @@ jobs:
           set -o pipefail
           gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/villager-matrix.log"
           grep -E '\[MATRIX (START|PROGRESS)' "$RUNNER_TEMP/villager-matrix.log" || true
-          if ! grep -Fq '[MATRIX START PASS]' "$RUNNER_TEMP/villager-matrix.log"; then
-            echo '::error::Four Builders did not complete eight physical foundation placements; see Matrix diagnostics.'
+          if ! grep -Fq '[MATRIX START PASS] 26' "$RUNNER_TEMP/villager-matrix.log"; then
+            echo '::error::Matrix foundation incomplete or fewer than two Builders climbed; see Matrix diagnostics.'
             exit 1
           fi
       - name: Save Matrix build trace and Minecraft GameTest reports

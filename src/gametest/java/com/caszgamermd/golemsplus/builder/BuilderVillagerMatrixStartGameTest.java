@@ -35,7 +35,7 @@ public final class BuilderVillagerMatrixStartGameTest {
     // all blocked poses, but don't block main's distribution release
     // before the planner learns to coordinate access across worker zones.
     @GameTest(structure="golems_plus_gametest:dome_arena",
-            maxTicks=3200,skyAccess=true,required=false)
+            maxTicks=4200,skyAccess=true,required=false)
     public void fourBuildersStartFloatingVillagerMatrixFoundation(GameTestHelper h){
         ServerLevel level=h.getLevel();
         // Original schematic's bottom visible layer: Region.Position Y=2
@@ -131,8 +131,13 @@ public final class BuilderVillagerMatrixStartGameTest {
                     +" unsupportedStates="+plan.unsupported());
             final int[] best={0};
             final long[] lastChange={h.getTick()};
+            final java.util.Set<UUID> elevatedWorkers=new java.util.HashSet<>();
             h.onEachTick(()->{
                 if(h.getTick()%20!=0)return;
+                for(var mob:crew)
+                    if(mob.isAlive()&&mob.getY()>=high-.35
+                            &&mob.getY()<=high+1.8)
+                        elevatedWorkers.add(mob.getUUID());
                 int placed=0;
                 for(var step:plan.steps()){
                     var at=new BlockPos(step.x(),step.y(),step.z());
@@ -151,22 +156,25 @@ public final class BuilderVillagerMatrixStartGameTest {
                             +" physicallyPlaced="+placed+"/26"
                             +" cursor="+table.builderCursor()
                             +" clear="+table.builderClearCursor()
-                            +" activeY="+table.builderActiveLayer(plan.steps()));
+                            +" activeY="+table.builderActiveLayer(plan.steps())
+                            +" elevatedBuilders="+elevatedWorkers.size());
                 }
-                if(placed>=8){
+                if(placed==26&&elevatedWorkers.size()>=2){
                     System.out.println("[MATRIX START PASS] "+placed+
                             " true foundation blocks placed by Builders"
-                            +" with no prebuilt tower");
+                            +" with no prebuilt tower; elevatedBuilders="
+                            +elevatedWorkers.size());
                     h.succeed();return;
                 }
-                if(h.getTick()>2400
-                        ||h.getTick()>700&&h.getTick()-lastChange[0]>650){
+                if(h.getTick()>3600
+                        ||h.getTick()>800&&h.getTick()-lastChange[0]>850){
                     StringBuilder error=new StringBuilder(
                             "Villager Matrix cold start stalled: placed="+placed
                             +"/26 after tick "+h.getTick()
                             +" cursor="+table.builderCursor()
                             +" clear="+table.builderClearCursor()
                             +" Y="+table.builderActiveLayer(plan.steps())
+                            +" elevatedBuilders="+elevatedWorkers.size()
                             +" problem="+table.problem());
                     for(var mob:crew){
                         error.append(" | builder=").append(mob.getName().getString())
