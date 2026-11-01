@@ -52,6 +52,11 @@ public final class BuilderBuildService {
         long frontierWaitSince=-1;
         int frontierWaitLayer=Integer.MIN_VALUE;
         long workTravelSince=-1;
+        // Moving in circles is not progress toward the selected block.
+        // A generous 320-tick target-progress window allows real detours
+        // but eventually hands off a claim that never gets closer.
+        double bestTargetDistance=Double.POSITIVE_INFINITY;
+        long lastTargetProgressTick=-1;
         // Track actual displacement, not repeated navigation requests.
         double lastWorkX=Double.NaN,lastWorkY=Double.NaN,lastWorkZ=Double.NaN;
         long lastMovementTick=-1;
@@ -61,6 +66,8 @@ public final class BuilderBuildService {
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
                 blockedSince=-1;workTravelSince=-1;
+                bestTargetDistance=Double.POSITIVE_INFINITY;
+                lastTargetProgressTick=-1;
                 lastMovementTick=-1;lastWorkX=Double.NaN;
             }
         }
@@ -859,6 +866,13 @@ public final class BuilderBuildService {
             // Every meaningful physical movement refreshes the stall timer.
             // A long detour, grapple, or scaffold climb must not be
             // interrupted merely because it takes longer than 180 ticks.
+            double targetDistance=worker.distanceToSqr(
+                    pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+            if(activity.lastTargetProgressTick<0
+                    ||targetDistance<activity.bestTargetDistance-1.0){
+                activity.bestTargetDistance=targetDistance;
+                activity.lastTargetProgressTick=now;
+            }
             if(activity.lastMovementTick<0){
                 activity.lastMovementTick=now;
                 activity.lastWorkX=worker.getX();
@@ -881,6 +895,35 @@ public final class BuilderBuildService {
             if(BuilderScaffoldPlanA.hasPlan(worker)
                     &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
                 return;
+            if(now-activity.lastTargetProgressTick>320
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffoldPlanA.hasPlan(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)){
+                // A golem may move continuously while circling the same
+                // roof gap. Actual distance to its goal must improve
+                // eventually. Release the exact step for another crew
+                // member rather than treating motion as progress forever.
+                if(scaffoldBlockedWork(level,worker,table,owner,pos,
+                        plan.steps())){
+                    activity.lastTargetProgressTick=now;
+                    return;
+                }
+                BuilderPlacementSpace.cancelYield(worker);
+                BuilderPlacementSpace.invalidateApproach(worker,pos);
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                table.waitForBuilderAccess(worker.getUUID(),index,now,
+                        "320 ticks without target-distance progress");
+                activity.lastFailedStep=index;
+                activity.retreatUntil=now+100;
+                publishHandoff(table,worker.getUUID(),index,now,
+                        "circling without approaching work cell");
+                System.out.println("[BUILDER HANDOFF] worker="
+                        +worker.getName().getString()+" released="+index
+                        +" noCloserFor="+(now-activity.lastTargetProgressTick)
+                        +" ticks; teammate may try");
+                activity.lastTargetProgressTick=now;
+                return;
+            }
             if(now-activity.lastMovementTick>180
                     &&!BuilderGrappleAccess.active(worker)
                     &&!BuilderScaffoldPlanA.hasPlan(worker)

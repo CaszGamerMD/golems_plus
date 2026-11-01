@@ -220,6 +220,33 @@ public final class BuilderConstructionPlanner {
         }
         return count;
     }
+    /** Building a neighboring cell can close the THIRD or FOURTH
+     * side around an unfinished schematic position. Those holes are
+     * much harder to access later on a roof. Defer such closure when
+     * another physically valid cell exists, but never forbid it: an
+     * open-air grapple or paid scaffold may be the only way to finish.
+     */
+    static int pocketClosureRisk(ServerLevel world,BlockPos target,
+            Map<BlockPos,BlockState> schematic){
+        int worst=0;
+        for(Direction side:Direction.Plane.HORIZONTAL){
+            BlockPos neighbor=target.relative(side);
+            BlockState expected=schematic.get(neighbor);
+            if(expected==null||!world.hasChunkAt(neighbor)
+                    ||BuilderPlacementState.matches(
+                            world.getBlockState(neighbor),expected))continue;
+            int already=sameLayerConnections(world,neighbor,schematic);
+            if(already>=2)worst=Math.max(worst,already-1);
+        }
+        return worst;
+    }
+    /** 0 = safe connected run; 1 = connected but would narrow a gap;
+     * 2 = new island; 3 = would fully enclose an unfinished cell.
+     * This is a preference only, AFTER collision and exit validation.
+     */
+    static int frontierTier(int contacts,int closureRisk){
+        return closureRisk>=2?3:contacts>0?(closureRisk>0?1:0):2;
+    }
     /** Stable cheap ordering of the entire current Y. This orders
      * *which cells to PROBE*, not which cells may legally be placed.
      * The ordinary physical pose/exit checks still decide feasibility.
@@ -228,19 +255,23 @@ public final class BuilderConstructionPlanner {
      */
     static void orderConnectedFront(List<Integer> pending,
             List<BuilderConstructionPlan.Step> steps,
-            Map<Integer,Integer> contacts,BlockPos anchor){
+            Map<Integer,Integer> contacts,Map<Integer,Integer> risks,
+            BlockPos anchor){
         pending.sort((left,right)->{
             int a=contacts.getOrDefault(left,0);
             int b=contacts.getOrDefault(right,0);
-            if((a>0)!=(b>0))return a>0?-1:1;
+            int ta=frontierTier(a,risks.getOrDefault(left,0));
+            int tb=frontierTier(b,risks.getOrDefault(right,0));
+            if(ta!=tb)return Integer.compare(ta,tb);
+            // Fill existing two- or three-sided gaps BEFORE growing
+            // another one-sided run that could seal the last approach.
+            if(a!=b)return Integer.compare(b,a);
             var x=steps.get(left);
             var y=steps.get(right);
             double da=new BlockPos(x.x(),x.y(),x.z()).distSqr(anchor);
             double db=new BlockPos(y.x(),y.y(),y.z()).distSqr(anchor);
             int distance=Double.compare(da,db);
-            if(distance!=0)return distance;
-            if(a!=b)return Integer.compare(b,a);
-            return Integer.compare(left,right);
+            return distance!=0?distance:Integer.compare(left,right);
         });
     }
     private static final Map<List<BuilderConstructionPlan.Step>,
@@ -395,18 +426,21 @@ public final class BuilderConstructionPlanner {
                 BuildSite.Rotation.values()[table.builderRotation()/90],
                 BuildSite.Mirror.values()[table.builderMirror()]);
         var contacts=new java.util.HashMap<Integer,Integer>();
+        var closureRisks=new java.util.HashMap<Integer,Integer>();
         int connected=0;
         for(int idx:pending){
             var step=steps.get(idx);
             BlockPos target=new BlockPos(step.x(),step.y(),step.z());
             int touch=sameLayerConnections(world,target,builtSchematic);
             contacts.put(idx,touch);
+            closureRisks.put(idx,pocketClosureRisk(
+                    world,target,builtSchematic));
             if(touch>0)connected++;
         }
         BlockPos last=lastPlaced.get(worker);
         if(last!=null&&last.getY()!=y)last=null;
         BlockPos anchor=last==null?worker.blockPosition():last;
-        orderConnectedFront(pending,steps,contacts,anchor);
+        orderConnectedFront(pending,steps,contacts,closureRisks,anchor);
         Choice best=null;
         int bestTier=Integer.MAX_VALUE;
         int bestContact=0;
@@ -480,10 +514,11 @@ public final class BuilderConstructionPlanner {
             // seeding another island. Only valid, collision-checked work
             // stances enter this comparison. If no connected work pose
             // exists, unconnected cells remain completely eligible.
-            int tier=touch>0?0:1;
+            int risk=closureRisks.getOrDefault(idx,0);
+            int tier=frontierTier(touch,risk);
             double cost=score(worker,target,stance,sky,grapple)
                     -connectedPlacementBonus(world,target,builtSchematic)
-                    -touch*150
+                    -touch*150+risk*250
                     +(last==null?0:target.distSqr(last)*.20)
                     +(scaffold?BuilderFrontierTuning.GRAPPLE_PENALTY*2:0);
             if(tier<bestTier||tier==bestTier&&cost<bestScore){

@@ -235,6 +235,42 @@ public final class BuilderConstructionFrontierGameTest {
         });
     }
 
+    /** Completing a third side around an unfilled same-Y gap should
+     * be a lower-priority task than filling the gap itself.
+     * This protects the last work access to dome roof pockets.
+     */
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void roofFrontAvoidsSealingUnfinishedPocket(GameTestHelper h){
+        floor(h);
+        var world=h.getLevel();
+        BlockPos gap=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos third=gap.east();
+        BlockPos north=gap.north(),south=gap.south();
+        // All four cells are genuine schematic members, not unrelated
+        // terrain. Two adjacent blocks are already correctly placed.
+        h.setBlock(north,Blocks.STONE);
+        h.setBlock(south,Blocks.STONE);
+        var expected=java.util.Map.of(
+                north,Blocks.STONE.defaultBlockState(),
+                south,Blocks.STONE.defaultBlockState(),
+                third,Blocks.STONE.defaultBlockState(),
+                gap,Blocks.STONE.defaultBlockState());
+        int risk=BuilderConstructionPlanner.pocketClosureRisk(
+                world,third,expected);
+        if(risk!=1){
+            h.fail("Expected risk of creating a three-sided unfilled gap, got "
+                    +risk);return;
+        }
+        if(BuilderConstructionPlanner.frontierTier(1,risk)
+                <=BuilderConstructionPlanner.frontierTier(2,0)){
+            h.fail("Connected safe pocket must outrank closing its approach");
+            return;
+        }
+        System.out.println("[COHERENT FRONTIER] PASS recognizes third-side "
+                +"closure risk before a roof pocket becomes inaccessible");
+        h.succeed();
+    }
+
     @GameTest(maxTicks=130,skyAccess=true)
     public void rejectsThroughWallWorkStanceRatherThanPlaceThroughWall(
             GameTestHelper h){
