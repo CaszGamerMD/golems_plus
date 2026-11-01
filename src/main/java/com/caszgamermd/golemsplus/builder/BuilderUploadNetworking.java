@@ -136,8 +136,13 @@ public final class BuilderUploadNetworking {
             var plan=BuilderConstructionPlan.create(schematic,site);
             // The uploaded snapshot is now immutable and remains server-side;
             // only explicit confirmation from the Planning Table can begin work.
+            // This snapshot already contains Litematica's final rotated
+            // block STATES, not just rotated coordinates. Store identity
+            // rotation/mirror on the job as well: every runtime resolver
+            // consults the station orientation when placing directional
+            // blocks (pistons, signs, stairs), and must not rotate again.
             if(!table.setPlacedBuilderPlan(uuid,saved.getFileName().toString(),
-                    p.name(),p.origin(),p.rotation(),p.mirror(),
+                    p.name(),p.origin(),0,0,
                     plan.steps().size(),plan.unsupported().size())){
                 Files.deleteIfExists(saved);
                 notify(player,"The table could not accept this placement.");return;
