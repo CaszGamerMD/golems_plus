@@ -481,8 +481,12 @@ public final class BuilderBuildService {
     /** An active cross-zone rescue claim must finish before parking; a
      * worker with no live claim and no remaining OWN work returns OnSite.
      */
-    static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep){
-        return ownZoneDone&&claimedStep<0;
+    static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep,
+            boolean roofNeedsRescue){
+        // A cleared zone is not the end of a crew job. Once all other
+        // active Builders have stopped making progress, volunteers at
+        // OnSite must be eligible to rescue unclaimed same-layer cells.
+        return ownZoneDone&&claimedStep<0&&!roofNeedsRescue;
     }
     /** Re-check a high roof from its existing safe footing briefly, but
      * never let an unavailable frontier strand a Builder forever. */
@@ -882,7 +886,9 @@ public final class BuilderBuildService {
             int currentClaim=table.claimedStep(worker.getUUID());
             WorkerAction returnAction=workerActions.computeIfAbsent(
                     worker,k->new WorkerAction());
-            if(shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim)){
+            boolean stalledRoof=roofNeedsHelp(level,table);
+            if(shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim,
+                    stalledRoof)){
                 activityForFinished(worker);
                 returnAction.returningToSite=!parkAtOnSite(level,worker,table);
                 return;
@@ -935,11 +941,9 @@ public final class BuilderBuildService {
                 }
             boolean emergencyRoofAssist=ownLayerClear
                     &&(teammateRequested||index>=0&&!zone.contains(index)
-                        ||roofNeedsHelp(level,table));
-            // Monitoring must run for every working crew, including the
-            // worker still in its own zone: otherwise a fully active crew
-            // could never start the rescue clock.
-            if(!emergencyRoofAssist)roofNeedsHelp(level,table);
+                        ||stalledRoof);
+            // Monitoring already ran before the early finished-zone
+            // return, so every crew member sees the SAME rescue window.
             if(emergencyRoofAssist){
                 var rescue=roofRescueZone(table,worker.getUUID(),
                         plan.steps(),layer);

@@ -26,7 +26,11 @@ final class BuilderFinishedRoofEvacuationTest {
                 "Do not cancel a rescue already claimed and being worked");
         assertFalse(BuilderBuildService.shouldEvacuateIdleLayer(false,-1,false),
                 "Own-layer Builder with work remaining can search from the roof");
-        assertTrue(BuilderBuildService.shouldParkFinishedZone(true,-1),
-                "Permanently completed zone must stay out of teammates' roof work");
+        assertTrue(BuilderBuildService.shouldParkFinishedZone(true,-1,false),
+                "Completed zone should return OnSite while the crew is progressing");
+        assertFalse(BuilderBuildService.shouldParkFinishedZone(true,-1,true),
+                "A worker who has returned OnSite can rescue stalled neighboring zones");
+        assertFalse(BuilderBuildService.shouldParkFinishedZone(true,19,true),
+                "A worker with a claimed rescue must keep its assignment");
     }
 }
