@@ -45,6 +45,11 @@ public final class BuilderBuildService {
             BuilderZoneWorkPlan tasks){}
     private static final Map<WorkerStationBlockEntity,ScheduledZones>
             schedules=new WeakHashMap<>();
+    /** The immutable job plan only needs its virtual skips reconciled once.
+     * Real placements update Planner totals directly on completion. */
+    private record ReconciledJob(UUID job,Cache plan){}
+    private static final Map<WorkerStationBlockEntity,ReconciledJob>
+            reconciledJobs=new WeakHashMap<>();
     private enum Action { STAGE_MATERIALS, MOVE_TO_WORK, PLACE, COMPLETE }
     private static final class WorkerAction {
         int index=-1;
@@ -110,7 +115,7 @@ public final class BuilderBuildService {
             new WeakHashMap<>();
     /** Normally every X/Z zone is exclusive. A zone with no work on this
      * shared Y may help its stuck neighbor after construction has made
-     * no physical progress for ten seconds. This is read-only monitoring:
+     * no physical progress for six seconds. This is read-only monitoring:
      * actual ownership stays with the Planner's single-step claim map.
      */
     private static final class RoofProgress {
@@ -128,7 +133,7 @@ public final class BuilderBuildService {
             progress.completed=completed;
             progress.lastChange=level.getGameTime();
         }
-        return level.getGameTime()-progress.lastChange>=600;
+        return level.getGameTime()-progress.lastChange>=120;
     }
     /** Only workers with NO unfinished task in their zone on the active Y assist: they
      * never abandon an assigned cell or break the global height gate.
@@ -303,6 +308,13 @@ public final class BuilderBuildService {
      */
     static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep){
         return ownZoneDone&&claimedStep<0;
+    }
+    /** A worker that has cleared its portion of the current shared Y
+     * returns OnSite while a teammate finishes, unless assigned a live
+     * cross-zone rescue. Future-layer tasks remain queued, not canceled. */
+    static boolean shouldParkWaitingForLayer(boolean ownLayerClear,
+            boolean assisting,int claimedStep){
+        return ownLayerClear&&!assisting&&claimedStep<0;
     }
     private static void activityForFinished(BuilderGolem worker){
         var a=workerActions.get(worker);
@@ -653,7 +665,15 @@ public final class BuilderBuildService {
             // Ignore-plant entries are virtual no-op completions, not
             // physical work or a route a Builder must walk. This also
             // completes a job with only ignored vegetation remaining.
-            table.reconcileBuilderWork(plan.steps());
+            // The full schematic sweep is expensive on large builds. Run
+            // it once when this immutable job/rule plan becomes active;
+            // completeBuilderStep maintains actual progress thereafter.
+            var lastReconciled=reconciledJobs.get(table);
+            if(lastReconciled==null||lastReconciled.plan()!=plan
+                    ||!java.util.Objects.equals(lastReconciled.job(),table.activeOrder())){
+                table.reconcileBuilderWork(plan.steps());
+                reconciledJobs.put(table,new ReconciledJob(table.activeOrder(),plan));
+            }
             if(table.phase()==WorkerPhase.COMPLETE)return;
             // All positions for each X/Z zone were pre-assigned as one
             // immutable ordered execution plan. The Planner does NOT
@@ -730,10 +750,25 @@ public final class BuilderBuildService {
                 if(!reservedForTeammate(table,worker.getUUID(),candidate,selectionTick))
                     handoffCandidates.add(candidate);
             zone=handoffCandidates;
+            // No unfinished cell in this worker's portion of the active Y:
+            // go OnSite immediately, without burning a full search turn.
+            // A real cross-zone rescue is the only reason to stay active.
+            if(shouldParkWaitingForLayer(
+                    ownLayerClear,emergencyRoofAssist,index)){
+                parkAtOnSite(level,worker,table);
+                return;
+            }
             if(index<0||index>=plan.steps().size()
                     ||!zone.contains(index)
                     ||plan.steps().get(index).y()!=layer
                     ||!table.builderStepReadyForClaim(index)){
+                // Expensive frontier probes are spread across the crew's
+                // five-tick work cadence. Their walking/path execution
+                // continues every tick, and one blocked search cannot cause
+                // all Builders to launch A* probes in the same tick.
+                if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
+                        assigned.roster().indexOf(worker.getUUID()),
+                        assigned.roster().size()))return;
                 var next=BuilderConstructionPlanner.choose(
                         level,worker,table,plan.steps(),zone);
                 index=next==null?-1:table.claimPreferredBuilderZoneStep(
@@ -751,34 +786,28 @@ public final class BuilderBuildService {
                     System.out.println("[FRONTIER BLOCKED] "
                             +worker.getName().getString()+" "+report);
                 }
-                // When a finished zone still has a safe upper ledge,
-                // preserve it for emergency help on a stuck neighboring
-                // zone. Sending all three idle roof workers down to the
-                // OnSite chest leaves nobody who can step back and build
-                // a paid scaffold to the last few cap cells.
-                List<Integer> waitingZone=zone;
-                if(ownLayerClear
-                        &&worker.getY()-table.getBlockPos().getY()>=12){
-                    var rescue=roofRescueZone(table,worker.getUUID(),
-                            plan.steps(),layer);
-                    if(!rescue.isEmpty())waitingZone=rescue;
+                // All workers whose OWN current layer is finished wait
+                // at OnSite. The shared Y gate still holds, but idle crew
+                // no longer crowds the structure or freezes beside a stuck
+                // teammate. Roof assistance can reassign them from depot.
+                if(ownLayerClear){
+                    parkAtOnSite(level,worker,table);
+                    return;
                 }
+                // This worker still has unfinished current-layer work, but
+                // no safe pose was found. Keep a genuine elevated foothold
+                // briefly while its own retry search explores new routes.
                 if(canWaitNearFrontier(level,worker,table,
-                        plan.steps(),waitingZone,layer)){
+                        plan.steps(),zone,layer)){
                     var waiting=workerActions.computeIfAbsent(worker,k->new WorkerAction());
                     if(waiting.frontierWaitSince<0
                             ||waiting.frontierWaitLayer!=layer){
                         waiting.frontierWaitSince=level.getGameTime();
                         waiting.frontierWaitLayer=layer;
                     }
-                    // Short low walls are cheap to approach again: keep
-                    // the old 80-tick courtesy wait so idle Builders do
-                    // not clog early dome corridors. At a high roof,
-                    // abandoning an otherwise safe ledge means losing
-                    // 12+ real blocks of hard-won vertical access. Hold
-                    // that ledge while this zone has unfinished work on
-                    // the current or a future layer. Completed zones
-                    // still leave immediately.
+                    // A Builder with unfinished own work can retry from a
+                    // safe high-roof ledge. Those whose layer is finished
+                    // have already been sent back to OnSite above.
                     boolean expensiveAscent=worker.getY()
                             -table.getBlockPos().getY()>=12;
                     if(expensiveAscent||level.getGameTime()

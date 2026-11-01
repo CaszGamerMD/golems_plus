@@ -10,6 +10,16 @@ final class BuilderIndividualReturnTest {
                 "Builder with no remaining own coordinates should go OnSite");
     }
 
+    @Test void idleLayerWorkersReturnOnSiteWithoutCancelingFutureWork(){
+        assertTrue(BuilderBuildService.shouldParkWaitingForLayer(true,false,-1),
+                "Only a teammate has unfinished cells on the active Y");
+        assertFalse(BuilderBuildService.shouldParkWaitingForLayer(false,false,-1),
+                "An unblocked worker must keep searching its own layer");
+        assertFalse(BuilderBuildService.shouldParkWaitingForLayer(true,true,-1),
+                "A requested rescue may claim neighboring unfinished cells");
+        assertFalse(BuilderBuildService.shouldParkWaitingForLayer(true,false,7),
+                "An already claimed rescue must not be abandoned");
+    }
     @Test void futureLayerWorkAndActiveRescueClaimsRemainEligible(){
         assertFalse(BuilderBuildService.shouldParkFinishedZone(false,-1),
                 "An empty current layer does not finish future assignments");

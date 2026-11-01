@@ -253,6 +253,13 @@ public final class BuilderConstructionPlanner {
      * If all connected probes fail, the rotating scan proceeds to the
      * other islands rather than imposing an impossible build order.
      */
+    private static double stepDistanceSquared(BuilderConstructionPlan.Step step,
+            BlockPos anchor){
+        double dx=(double)step.x()-anchor.getX();
+        double dy=(double)step.y()-anchor.getY();
+        double dz=(double)step.z()-anchor.getZ();
+        return dx*dx+dy*dy+dz*dz;
+    }
     static void orderConnectedFront(List<Integer> pending,
             List<BuilderConstructionPlan.Step> steps,
             Map<Integer,Integer> contacts,Map<Integer,Integer> risks,
@@ -269,8 +276,10 @@ public final class BuilderConstructionPlanner {
             // nearest safe run after its previous physical placement.
             var x=steps.get(left);
             var y=steps.get(right);
-            double da=new BlockPos(x.x(),x.y(),x.z()).distSqr(anchor);
-            double db=new BlockPos(y.x(),y.y(),y.z()).distSqr(anchor);
+            // No temporary BlockPos allocations during hundreds of sort
+            // comparisons at every layer handoff.
+            double da=stepDistanceSquared(x,anchor);
+            double db=stepDistanceSquared(y,anchor);
             int distance=Double.compare(da,db);
             if(distance!=0)return distance;
             return a!=b?Integer.compare(b,a):Integer.compare(left,right);
@@ -464,6 +473,15 @@ public final class BuilderConstructionPlanner {
                     ||steps.get(idx).y()!=y
                     ||!table.builderStepReadyForClaim(idx))continue;
             pending.add(idx);
+        }
+        // Lookahead needs a small, nearby candidate neighborhood, not a
+        // collision/closure-risk sweep of every unplaced block on this Y.
+        // The normal full selector retains its rotating whole-layer search.
+        if(lookahead&&pending.size()>32){
+            BlockPos focus=afterPlacement==null?worker.blockPosition():afterPlacement;
+            pending.sort(java.util.Comparator.comparingDouble(
+                    idx->stepDistanceSquared(steps.get(idx),focus)));
+            pending=new ArrayList<>(pending.subList(0,32));
         }
         // Ignored vegetation is paperwork, not a world placement.
         // Complete these regardless of footing/line of sight. This

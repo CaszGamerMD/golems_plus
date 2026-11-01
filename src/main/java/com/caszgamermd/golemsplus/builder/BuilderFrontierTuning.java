@@ -7,8 +7,10 @@ package com.caszgamermd.golemsplus.builder;
  * Unset or malformed environment variables preserve the existing behavior.
  */
 final class BuilderFrontierTuning {
-    static final int SCAN_LIMIT = integer("GOLEMS_DOME_SCAN_LIMIT",32,8,128);
-    static final int FEASIBLE_LIMIT = integer("GOLEMS_DOME_FEASIBLE_LIMIT",5,1,16);
+    // A blocked frontier can require costly A* and scaffold probes. Slice
+    // that work across ticks so one Builder does not stall the whole server.
+    static final int SCAN_LIMIT = integer("GOLEMS_DOME_SCAN_LIMIT",12,8,128);
+    static final int FEASIBLE_LIMIT = integer("GOLEMS_DOME_FEASIBLE_LIMIT",3,1,16);
     static final double SKY_PENALTY = decimal("GOLEMS_DOME_SKY_PENALTY",12,0,24);
     static final double GRAPPLE_PENALTY = decimal("GOLEMS_DOME_GRAPPLE_PENALTY",24,0,48);
     static final double TARGET_WEIGHT = decimal("GOLEMS_DOME_TARGET_WEIGHT",.65,0,2);

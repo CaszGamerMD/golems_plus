@@ -8,6 +8,13 @@ import java.util.Collection;
  */
 public final class BuilderCrewSchedule {
     public record Progress(int cursor,long finishedAhead) {}
+    /** Exactly one crew member may start a costly full frontier search in
+     * each five-tick work window. Turns rotate; an inaccessible task cannot
+     * monopolize planning time at the next layer transition. */
+    public static boolean frontierTurn(long gameTick,int rosterIndex,int crewSize){
+        return crewSize>0&&rosterIndex>=0&&rosterIndex<crewSize
+                &&Math.floorMod(Math.floorDiv(gameTick,5L),crewSize)==rosterIndex;
+    }
     private BuilderCrewSchedule(){}
 
     public static int next(int cursor,int total,long finishedAhead,
