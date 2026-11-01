@@ -1726,11 +1726,17 @@ public final class BuilderBuildService {
         Path file=folder.resolve(table.builderFile()).normalize();
         if(!file.startsWith(folder)||!Files.isRegularFile(file))
             throw new IllegalArgumentException("Saved schematic missing");
-        var schematic=LitematicFileReader.read(file);
+        boolean frozen=BuilderPlacementSnapshot.isSnapshot(file);
+        var schematic=frozen?BuilderPlacementSnapshot.read(file)
+                :LitematicFileReader.read(file);
         var origin=table.builderOrigin();
-        var site=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
-                BuildSite.Rotation.values()[table.builderRotation()/90],
-                BuildSite.Mirror.values()[table.builderMirror()]);
+        // Snapshot cells are already ABSOLUTE world positions from the
+        // selected Litematica ghost. A second transform is forbidden.
+        // Keep legacy .litematic jobs readable until they are reimported.
+        var site=frozen?BuilderPlacementSnapshot.worldSpaceSite()
+                :new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                        BuildSite.Rotation.values()[table.builderRotation()/90],
+                        BuildSite.Mirror.values()[table.builderMirror()]);
         var original=BuilderConstructionPlan.create(schematic,site,
                 table.builderIgnorePlants());
         var steps=BuilderMaterialRules.apply(original.steps(),
