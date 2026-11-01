@@ -84,6 +84,11 @@ public final class BuilderBuildService {
         int lookaheadScanned;
         boolean lookaheadFinished;
         boolean fastFollowup;
+        // A completed or idle-layer Builder must PHYSICALLY reach OnSite
+        // before another rooftop rescue assignment may recruit it.
+        // Otherwise the six-second assist watchdog can keep a "finished"
+        // teammate camping inside the next Builder's placement volume.
+        boolean returningToSite;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
@@ -415,20 +420,50 @@ public final class BuilderBuildService {
      * schematic; return via a genuine hook descent, then ordinary A*.
      * Do not retire or despawn a worker while the other zones run.
      */
-    private static void parkAtOnSite(ServerLevel level,BuilderGolem worker,
+    /** A return is complete only when the REAL worker stands beside
+     * OnSite on non-scaffold ground. A nearby roof at the same X/Z must
+     * never count as arriving at the depot.
+     */
+    private static boolean atOnSite(ServerLevel level,BuilderGolem worker,
+            BlockPos depot){
+        return worker.onGround()&&!worker.isNoGravity()
+                &&!BuilderScaffoldPlanA.hasPlan(worker)
+                &&!BuilderScaffolding.isControllingMovement(worker)
+                &&!BuilderGrappleAccess.active(worker)
+                &&!level.getBlockState(worker.blockPosition().below())
+                        .is(net.minecraft.world.level.block.Blocks.SCAFFOLDING)
+                &&worker.distanceToSqr(depot.getX()+.5,depot.getY(),
+                        depot.getZ()+.5)<=10.0;
+    }
+    /** Return while never issuing an ordinary A* command over an active
+     * owned scaffold bridge. Descend that real tower, then optionally
+     * rappel on a safe anchor and walk to OnSite. No teleporting or
+     * unphysical drop, and no new work claims until arrival.
+     *
+     * @return true only after the worker physically reaches OnSite.
+     */
+    private static boolean parkAtOnSite(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null)depot=table.getBlockPos();
-        if(BuilderScaffolding.descendForTravel(level,worker,table)
-                ||BuilderGrappleAccess.rappelToward(level,worker,table,depot))
-            return;
-        if(worker.distanceToSqr(depot.getX()+.5,depot.getY(),
-                depot.getZ()+.5)>4.0){
-            com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeTo(level,worker,depot,.8);
-        }else{
+        if(atOnSite(level,worker,depot)){
             com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+            return true;
         }
+        // Plan-A bridges and tracked shafts are mandatory return routes:
+        // finish their bridge crossing and controlled dismount first.
+        if(BuilderScaffolding.descendForTravel(level,worker,table))
+            return false;
+        // A high roof with no available scaffold route should seek an
+        // actual descent, not endlessly routeTo() a depot far below.
+        if(worker.getY()>depot.getY()+1.5
+                &&BuilderGrappleAccess.rappelHome(level,worker,table,depot))
+            return false;
+        if(BuilderGrappleAccess.rappelToward(level,worker,table,depot))
+            return false;
+        com.caszgamermd.golemsplus.worker.WorkerNavigation
+                .routeTo(level,worker,depot,.8);
+        return false;
     }
     /** An active cross-zone rescue claim must finish before parking; a
      * worker with no live claim and no remaining OWN work returns OnSite.
@@ -813,12 +848,20 @@ public final class BuilderBuildService {
             var assigned=zoneSchedule(table,plan);
             var zone=assigned.tasks().steps(worker.getUUID());
             // Completion is per Builder's ORIGINAL X/Z zone, across all
-            // heights. An idle roof helper must not keep a finished worker
-            // stranded until every teammate's zone is also complete.
+            // heights. A worker that was already sent home must FINISH
+            // the physical trip before the rescue watchdog can recruit
+            // it again, even if a different layer became active en route.
             int currentClaim=table.claimedStep(worker.getUUID());
+            WorkerAction returnAction=workerActions.computeIfAbsent(
+                    worker,k->new WorkerAction());
+            if(returnAction.returningToSite){
+                if(parkAtOnSite(level,worker,table))
+                    returnAction.returningToSite=false;
+                else return;
+            }
             if(shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim)){
                 activityForFinished(worker);
-                parkAtOnSite(level,worker,table);
+                returnAction.returningToSite=!parkAtOnSite(level,worker,table);
                 return;
             }
             // Unreachable frontier cells may now be served by owned,
@@ -837,6 +880,20 @@ public final class BuilderBuildService {
                         &&!table.builderZoneDone(List.of(idx))){
                     ownLayerClear=false;break;
                 }
+            // A worker that has cleared its own current layer must
+            // vacate the roof BEFORE volunteering as a cross-zone helper.
+            // This keeps finished Builders out of the placement envelopes
+            // seen in the narrow dome cap test. It can rejoin once it
+            // has actually arrived at OnSite; no claimed rescue is lost.
+            if(ownLayerClear&&index<0){
+                BlockPos depot=table.builderUnloadingStorage();
+                if(depot==null)depot=table.getBlockPos();
+                if(!atOnSite(level,worker,depot)){
+                    returnAction.returningToSite=true;
+                    parkAtOnSite(level,worker,table);
+                    return;
+                }
+            }
             // A published failure is an immediate call for help, even
             // before the normal ten-second roof-rescue watchdog expires.
             boolean teammateRequested=false;
@@ -887,7 +944,7 @@ public final class BuilderBuildService {
             // A real cross-zone rescue is the only reason to stay active.
             if(shouldParkWaitingForLayer(
                     ownLayerClear,emergencyRoofAssist,index)){
-                parkAtOnSite(level,worker,table);
+                returnAction.returningToSite=!parkAtOnSite(level,worker,table);
                 return;
             }
             if(index<0||index>=plan.steps().size()
@@ -923,7 +980,7 @@ public final class BuilderBuildService {
                 // no longer crowds the structure or freezes beside a stuck
                 // teammate. Roof assistance can reassign them from depot.
                 if(ownLayerClear){
-                    parkAtOnSite(level,worker,table);
+                    returnAction.returningToSite=!parkAtOnSite(level,worker,table);
                     return;
                 }
                 // This worker still has unfinished current-layer work, but
@@ -961,7 +1018,7 @@ public final class BuilderBuildService {
                                 +"; descending to retry from OnSite");
                 }
                 if(table.builderZoneDone(zone))activityForFinished(worker);
-                parkAtOnSite(level,worker,table);
+                returnAction.returningToSite=!parkAtOnSite(level,worker,table);
                 return;
             }
             var activity=action(worker,index);
