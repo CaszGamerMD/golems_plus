@@ -1,0 +1,48 @@
+name: Builder Creative Crate verified package
+on:
+  push:
+    branches:
+      - feature/builder-creative-crate-buckets-262
+  workflow_dispatch:
+
+jobs:
+  package-creative-crate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Compile production, unit tests and GameTest sources
+        run: gradle --no-daemon clean test jar compileGametestJava
+      - uses: actions/upload-artifact@v4
+        with:
+          name: golems-plus-creative-crate-buckets-package
+          path: build/libs/*.jar
+          if-no-files-found: error
+      - name: Publish playable Creative Crate and reusable-buckets JAR
+        if: success() && github.ref == 'refs/heads/feature/builder-creative-crate-buckets-262'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t jars < <(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | sort)
+          if [ "${#jars[@]}" -ne 1 ]; then
+            printf 'Expected one playable JAR, got %s\n' "${#jars[@]}"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/creative-crate-buckets-release"
+          cp "${jars[0]}" "$RUNNER_TEMP/creative-crate-buckets-release/golems-plus-0.3.58-dev-creative-crate-buckets.jar"
+          (cd "$RUNNER_TEMP/creative-crate-buckets-release" && sha256sum *.jar > SHA256SUMS.txt)
+          tag="creative-crate-package-${GITHUB_SHA:0:12}"
+          gh release create "$tag" "$RUNNER_TEMP/creative-crate-buckets-release/"*.jar "$RUNNER_TEMP/creative-crate-buckets-release/SHA256SUMS.txt" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Golems Plus Creative Crate, infinite buckets and Builder recycling" \
+            --notes "Includes the latest grapple visuals, Builder recycling path and warehouse-ticket cleanup, Creative Crate unlimited OnSite Builder supplies, reusable fluid-source buckets, and fewer synchronous warehouse scans at job start. Compiled and unit-tested; full Builder GameTest workflow is also running separately."
