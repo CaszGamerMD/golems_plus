@@ -463,7 +463,7 @@ public final class BuilderScaffolding {
         // safer than forcing another climb through the same bridge.
         boolean insideOwned=owned.contains(feet)
                 &&level.getBlockState(feet).is(Blocks.SCAFFOLDING)
-                &&worker.getY()<feet.getY()+.5;
+                &&worker.getY()<feet.getY()+1.0;
         if(!worker.onGround()&&!insideOwned)return false;
         BlockPos chosen=null;
         double best=Double.POSITIVE_INFINITY;
