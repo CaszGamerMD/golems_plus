@@ -28,12 +28,11 @@ public final class BuilderHorizontalBridgeExitGameTest {
         horizontalBridgeEqualHeightExit(helper,true,false);
     }
 
-    /** The Builder's feet are INSIDE the bridge, but the adjacent stone
-     * landing is level with those feet. Exit sideways without first
-     * climbing above the bridge and falling back down. */
+    /** A Builder standing on a bridge must be able to walk sideways onto
+     * a stone ledge one block lower, without starting another tower climb. */
     @GameTest(maxTicks=300,skyAccess=true)
     public void bridgeDismountsDirectlyToLowerStoneLedge(GameTestHelper helper){
-        horizontalBridgeEqualHeightExit(helper,true,true);
+        horizontalBridgeEqualHeightExit(helper,false,true);
     }
 
     private static void horizontalBridgeEqualHeightExit(
@@ -83,7 +82,7 @@ public final class BuilderHorizontalBridgeExitGameTest {
         }
         final long started=helper.getTick();
         helper.onEachTick(()->{
-            // Let Minecraft settle the spawned body onto the actual bridge
+            // Let Minecraft settle the spawned body on its actual scaffold
             // support before asking it to navigate. The bug being tested
             // is a worker already stranded on a scaffold during a job.
             if(lowerLedge&&helper.getTick()<10)return;
