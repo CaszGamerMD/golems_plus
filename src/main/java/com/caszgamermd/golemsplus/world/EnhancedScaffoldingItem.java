@@ -29,7 +29,7 @@ public final class EnhancedScaffoldingItem extends BlockItem {
     }
 
     @Override
-    protected @Nullable BlockPlaceContext updatePlacementContext(
+    public @Nullable BlockPlaceContext updatePlacementContext(
             BlockPlaceContext context){
         BlockPos clicked=context.getClickedPos();
         if(!(context.getLevel().getBlockState(clicked).getBlock()
