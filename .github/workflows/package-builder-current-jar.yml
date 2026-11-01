@@ -3,8 +3,6 @@ on:
   push:
     branches:
       - experiment/builder-dome-starter-toolkit-262
-    paths:
-      - '.github/workflows/package-builder-current-jar.yml'
   workflow_dispatch:
 jobs:
   package:
