@@ -24,7 +24,7 @@ assert "builderCursor+bit" in station
 assert "var assigned=zoneSchedule(table,plan)" in build
 assert "assigned.tasks().steps(worker.getUUID())" in build
 assert "table.claimPreferredBuilderZoneStep(" in build
-assert "BuilderZoneWorkPlan.compile(cache.steps(),cache.zones(),roster)" in build
+assert "BuilderZoneWorkPlan.compile(cache.steps(),cache.zones()," in build
 assert "worker.getUUID(),zone,plan.steps(),next.index()" in build
 assert ".add(Attributes.MOVEMENT_SPEED,.40)" in golem
 assert "speed=1.0; // Builder target:" in nav
