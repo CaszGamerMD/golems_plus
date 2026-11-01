@@ -22,6 +22,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.EntityCollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
@@ -73,15 +74,33 @@ public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
         return new ItemStack(WorksiteContent.ENHANCED_SCAFFOLDING_ITEM);
     }
 
+    /** Vanilla's descending collision flag is not guaranteed to be set
+     * on the first crouch frame or when the player is already standing on
+     * the mesh deck. Check the actual player's sneak input as well, so
+     * holding Shift starts descent without needing to walk off the edge.
+     * No client-only input or forced velocity is required.
+     */
+    private static boolean isCrouchingPlayer(CollisionContext context){
+        return context instanceof EntityCollisionContext entityContext
+                &&entityContext.getEntity() instanceof Player player
+                &&player.isShiftKeyDown();
+    }
+
     @Override protected VoxelShape getCollisionShape(BlockState state,BlockGetter level,
             BlockPos pos,CollisionContext context){
-        boolean lowest=!level.getBlockState(pos.below()).is(this);
-        // Crouching must let players descend THROUGH each mesh deck, even if
-        // the vanilla scaffold shape would otherwise catch their feet.
-        // Keep the bottom catch floor so the tower cannot drop them into air.
-        if(context.isDescending())return lowest?BASE_FLOOR:Shapes.empty();
+        // The last enhanced scaffold in each vertical column always keeps
+        // its catch floor, even when the column hangs over open air. Middle
+        // and top pieces have NO platform collision while crouch-descending.
+        // Every player can therefore move down the tower by holding Shift,
+        // but cannot crouch-fall through its bottom.
+        boolean bottomOfColumn=!level.getBlockState(pos.below()).is(this);
+        boolean descending=context.isDescending()||isCrouchingPlayer(context);
+        if(descending)return bottomOfColumn?BASE_FLOOR:Shapes.empty();
+
+        // Standing and walking retain the vanilla scaffold's ordinary top
+        // surface; the thin catch floor is additive at the bottom only.
         VoxelShape top=super.getCollisionShape(state,level,pos,context);
-        return lowest?Shapes.or(top,BASE_FLOOR):top;
+        return bottomOfColumn?Shapes.or(top,BASE_FLOOR):top;
     }
 
     @Override protected boolean canBeReplaced(BlockState state,
