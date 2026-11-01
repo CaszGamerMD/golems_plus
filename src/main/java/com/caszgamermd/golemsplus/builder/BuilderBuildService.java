@@ -62,6 +62,13 @@ public final class BuilderBuildService {
         long lastMovementTick=-1;
         long retreatUntil=-1;
         int lastFailedStep=-1;
+        // Next-step prediction is read-only until the current block
+        // is actually placed. Never claim two cells or move the worker
+        // away from its current physical assignment.
+        BuilderConstructionPlanner.Choice lookahead;
+        List<Integer> lookaheadZone=List.of();
+        int lookaheadFor=-1;
+        boolean lookaheadAttempted;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
@@ -69,6 +76,8 @@ public final class BuilderBuildService {
                 bestTargetDistance=Double.POSITIVE_INFINITY;
                 lastTargetProgressTick=-1;
                 lastMovementTick=-1;lastWorkX=Double.NaN;
+                lookahead=null;lookaheadZone=List.of();
+                lookaheadFor=-1;lookaheadAttempted=false;
             }
         }
     }
@@ -134,6 +143,78 @@ public final class BuilderBuildService {
                 extra.add(idx);
         }
         return extra;
+    }
+    /** Spend a small, bounded planning slice WHILE the worker walks.
+     * No claim is made and the current route is not stopped. A blocked
+     * or too-distant next target simply falls back to normal selection.
+     */
+    private static void prefetchNext(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int current,BlockPos target,WorkerAction activity,long now){
+        if(activity.lookaheadAttempted||activity.workTravelSince<0
+                ||now-activity.workTravelSince<5
+                ||worker.getNavigation().isDone()
+                ||worker.distanceToSqr(target.getX()+.5,
+                        target.getY()+.5,target.getZ()+.5)>100)return;
+        activity.lookaheadAttempted=true;
+        var eligible=new java.util.ArrayList<Integer>();
+        int layer=table.builderActiveLayer(steps);
+        for(int idx:zone)
+            if(idx!=current&&idx>=0&&idx<steps.size()
+                    &&steps.get(idx).y()==layer
+                    &&table.builderStepReadyForClaim(idx)
+                    &&!table.builderStepClaimedByOther(worker.getUUID(),idx)
+                    &&!reservedForTeammate(table,worker.getUUID(),idx,now))
+                eligible.add(idx);
+        if(eligible.isEmpty())return;
+        var next=BuilderConstructionPlanner.chooseLookahead(
+                level,worker,table,steps,eligible);
+        if(next!=null){
+            activity.lookahead=next;
+            activity.lookaheadFor=current;
+            activity.lookaheadZone=List.copyOf(zone);
+        }
+    }
+    /** After a REAL placement, consume the speculative choice only if
+     * the same Y gate, claim ownership, support and safe pose STILL hold.
+     * Start the next physical route immediately instead of spending five
+     * ticks motionless before the next Builder work callback.
+     */
+    private static void handoffNext(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,
+            WorkerAction activity,int completed){
+        var choice=activity.lookahead;
+        if(choice==null||activity.lookaheadFor!=completed)return;
+        int next=choice.index();
+        if(next<0||next>=steps.size()
+                ||steps.get(next).y()!=table.builderActiveLayer(steps)
+                ||!table.builderStepReadyForClaim(next)
+                ||table.builderStepClaimedByOther(worker.getUUID(),next)
+                ||reservedForTeammate(table,worker.getUUID(),next,
+                        level.getGameTime()))return;
+        var step=steps.get(next);
+        BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+        if(!level.hasChunkAt(target))return;
+        var state=BuilderBlockResolver.resolve(step.encodedState(),
+                BuildSite.Rotation.values()[table.builderRotation()/90],
+                BuildSite.Mirror.values()[table.builderMirror()]);
+        if(state==null)return;
+        if(!BuilderPlacementState.matches(level.getBlockState(target),
+                    state.state())&&!state.state().canSurvive(level,target))return;
+        BlockPos stance=choice.stance();
+        if(stance!=null&&!BuilderConstructionPlanner.safeStand(
+                level,worker,target,stance))return;
+        if(table.claimPreferredBuilderZoneStep(worker.getUUID(),
+                activity.lookaheadZone,steps,next)!=next)return;
+        activity.setStep(next);
+        if(stance!=null&&step.requiredItem()!=null
+                &&worker.carriedCount(state.item())>0
+                &&!BuilderConstructionPlanner.safeStand(
+                        level,worker,target,worker.blockPosition()))
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(
+                    level,worker,stance,1.0);
     }
     private static WorkerAction action(BuilderGolem worker,int index){
         var activity=workerActions.computeIfAbsent(worker,k->new WorkerAction());
@@ -891,6 +972,10 @@ public final class BuilderBuildService {
                     activity.lastWorkZ=worker.getZ();
                 }
             }
+            // Prepare a bounded next-step choice during ordinary walking.
+            // This never issues movement to the next target prematurely.
+            prefetchNext(level,worker,table,plan.steps(),zone,index,pos,
+                    activity,now);
             // Once an owned shaft/bridge starts, its controller owns all
             // physical movement. Do not replace it with a normal route
             // just because another nominal work pose becomes visible.
@@ -1197,6 +1282,9 @@ public final class BuilderBuildService {
             table.completeBuilderStep(worker.getUUID(),index);
             BuilderConstructionPlanner.noteCompleted(worker,pos);
             activity.phase=Action.COMPLETE;
+            // Use the already-validated next task, if still safe and
+            // claimable. No second full frontier search at this stop.
+            handoffNext(level,worker,table,plan.steps(),activity,index);
             BuilderSupplyInventory.recycleEmptyShulkers(table);
             // Keep any deployed scaffolding until this ten-block work order
             // completes; retrieving per placed block caused route churn.

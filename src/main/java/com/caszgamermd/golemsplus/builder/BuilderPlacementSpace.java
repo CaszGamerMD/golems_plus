@@ -400,9 +400,22 @@ public final class BuilderPlacementSpace {
         // The safeStand predicate still rejects any unsupported pose.
         return approachWithHeight(level,worker,target,false,safe);
     }
+    /** Read-only next-task preview. Do not overwrite the CURRENT work
+     * approach while the Builder is physically following that route.
+     */
+    static BlockPos approachForLookahead(ServerLevel level,
+            BuilderGolem worker,BlockPos target,
+            java.util.function.Predicate<BlockPos> safe){
+        return approachWithHeight(level,worker,target,false,safe,false);
+    }
     private static BlockPos approachWithHeight(ServerLevel level,
             BuilderGolem worker,BlockPos target,boolean sameHeight,
             java.util.function.Predicate<BlockPos> safe){
+        return approachWithHeight(level,worker,target,sameHeight,safe,true);
+    }
+    private static BlockPos approachWithHeight(ServerLevel level,
+            BuilderGolem worker,BlockPos target,boolean sameHeight,
+            java.util.function.Predicate<BlockPos> safe,boolean cacheResult){
         long now=level.getGameTime();
         Approach cached=workApproaches.get(worker);
         if(cached!=null&&cached.target().equals(target)
@@ -480,11 +493,12 @@ public final class BuilderPlacementSpace {
         BlockPos selected=WorkerNavigation.selectExecutableStand(
                 level,worker,candidates);
         if(selected!=null){
-            workApproaches.put(worker,new Approach(target,
-                    selected.immutable(),now+75));
+            if(cacheResult)
+                workApproaches.put(worker,new Approach(target,
+                        selected.immutable(),now+75));
             return selected.immutable();
         }
-        workApproaches.remove(worker);
+        if(cacheResult)workApproaches.remove(worker);
         return null;
     }
 

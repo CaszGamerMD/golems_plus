@@ -401,6 +401,22 @@ public final class BuilderConstructionPlanner {
     public static Choice choose(ServerLevel world,BuilderGolem worker,
             WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
+        return select(world,worker,table,steps,zone,false);
+    }
+    /** Speculatively evaluate only a small number of candidates while
+     * the current A* route is ALREADY moving. This is not a claim,
+     * a material reservation or a path command. It does not change
+     * the current work-approach cache or the fair full-scan cursor.
+     */
+    public static Choice chooseLookahead(ServerLevel world,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
+        return select(world,worker,table,steps,zone,true);
+    }
+    private static Choice select(ServerLevel world,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            boolean lookahead){
         int y=table.builderActiveLayer(steps);
         if(y==Integer.MAX_VALUE)return null;
         List<Integer> pending=new ArrayList<>();
@@ -445,11 +461,14 @@ public final class BuilderConstructionPlanner {
         int bestTier=Integer.MAX_VALUE;
         int bestContact=0;
         double bestScore=Double.POSITIVE_INFINITY;
-        SearchWindow previous=windows.get(worker);
+        SearchWindow previous=lookahead?null:windows.get(worker);
         int offset=previous!=null&&previous.layer()==y
                 ?previous.offset():0;
         int examined=0,feasible=0;
-        int count=Math.min(MAX_EXAMINED,pending.size());
+        // A speculative scan is deliberately cheaper than an ordinary
+        // 32-cell/5-feasible full frontier selection. It runs once per
+        // current step, in travel time rather than at a stop.
+        int count=Math.min(lookahead?8:MAX_EXAMINED,pending.size());
         for(int attempt=0;attempt<count;attempt++){
             int idx=pending.get((offset+attempt)%pending.size());
             examined++;
@@ -470,9 +489,13 @@ public final class BuilderConstructionPlanner {
             if(BuilderPlacementState.matches(actual,state.state()))
                 return new Choice(idx,null,false,true,examined);
             if(!state.state().canSurvive(world,target))continue;
-            BlockPos stance=BuilderPlacementSpace.approachWithRules(
-                    world,worker,target,
-                    at->safeStand(world,worker,target,at));
+            BlockPos stance=lookahead
+                    ?BuilderPlacementSpace.approachForLookahead(
+                            world,worker,target,
+                            at->safeStand(world,worker,target,at))
+                    :BuilderPlacementSpace.approachWithRules(
+                            world,worker,target,
+                            at->safeStand(world,worker,target,at));
             if(stance==null&&(BuilderPlacementSpace.safeFractionalCapPose(
                     world,worker,target)
                     ||BuilderPlacementSpace.canRetreatToFractionalCap(
@@ -527,7 +550,7 @@ public final class BuilderConstructionPlanner {
                 bestScore=cost;
                 best=new Choice(idx,stance,grapple,sky,examined);
             }
-            if(++feasible>=MAX_FEASIBLE)break;
+            if(++feasible>=(lookahead?1:MAX_FEASIBLE))break;
         }
         // A fully blocked nearby strip must never monopolize this Y.
         // Subsequent passes explore another bounded window until every
@@ -536,10 +559,11 @@ public final class BuilderConstructionPlanner {
         // becomes blocked during the real walk. Retain search progress
         // across each claim so the NEXT claim tries another frontier
         // instead of restarting at the same five nearest cells forever.
-        windows.put(worker,new SearchWindow(y,
-                (offset+Math.max(1,examined))%Math.max(1,pending.size()),
-                pending.size(),examined,feasible,best==null?-1:best.index(),
-                offset,connected,bestContact));
+        if(!lookahead)
+            windows.put(worker,new SearchWindow(y,
+                    (offset+Math.max(1,examined))%Math.max(1,pending.size()),
+                    pending.size(),examined,feasible,best==null?-1:best.index(),
+                    offset,connected,bestContact));
         return best;
     }
 }
