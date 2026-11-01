@@ -67,7 +67,7 @@ public final class EnhancedScaffoldingGameTest {
         helper.setBlock(5,2,2,WorksiteContent.ENHANCED_SCAFFOLDING);
         BlockPos scaffold=helper.absolutePos(new BlockPos(5,2,2));
         helper.onEachTick(()->{
-            int tick=helper.getTick();
+            long tick=helper.getTick();
             if(tick==10){
                 if(!helper.getLevel().getBlockState(scaffold)
                         .getValue(ScaffoldingBlock.BOTTOM)){
