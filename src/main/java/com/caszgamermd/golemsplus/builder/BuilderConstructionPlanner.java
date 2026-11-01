@@ -411,12 +411,28 @@ public final class BuilderConstructionPlanner {
     public static Choice chooseLookahead(ServerLevel world,BuilderGolem worker,
             WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
-        return select(world,worker,table,steps,zone,true);
+        return chooseLookahead(world,worker,table,steps,zone,0,8);
+    }
+    /** A two-probe time slice lets the worker think on several travel
+     * ticks instead of blocking a single server tick with eight A* probes.
+     * offset is in the ordered eligible work front, not the saved plan.
+     */
+    public static Choice chooseLookahead(ServerLevel world,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int offset,int budget){
+        return select(world,worker,table,steps,zone,true,offset,budget);
     }
     private static Choice select(ServerLevel world,BuilderGolem worker,
             WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             boolean lookahead){
+        return select(world,worker,table,steps,zone,lookahead,0,8);
+    }
+    private static Choice select(ServerLevel world,BuilderGolem worker,
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            boolean lookahead,int lookaheadOffset,int lookaheadBudget){
         int y=table.builderActiveLayer(steps);
         if(y==Integer.MAX_VALUE)return null;
         List<Integer> pending=new ArrayList<>();
@@ -462,13 +478,15 @@ public final class BuilderConstructionPlanner {
         int bestContact=0;
         double bestScore=Double.POSITIVE_INFINITY;
         SearchWindow previous=lookahead?null:windows.get(worker);
-        int offset=previous!=null&&previous.layer()==y
-                ?previous.offset():0;
+        int offset=lookahead
+                ?(pending.isEmpty()?0:Math.floorMod(lookaheadOffset,pending.size()))
+                :previous!=null&&previous.layer()==y?previous.offset():0;
         int examined=0,feasible=0;
-        // A speculative scan is deliberately cheaper than an ordinary
-        // 32-cell/5-feasible full frontier selection. It runs once per
-        // current step, in travel time rather than at a stop.
-        int count=Math.min(lookahead?8:MAX_EXAMINED,pending.size());
+        // One speculative slice checks at most two physical approaches.
+        // Subsequent work callbacks continue at the next offset while
+        // the golem keeps following its existing path.
+        int count=Math.min(lookahead?Math.max(0,lookaheadBudget)
+                :MAX_EXAMINED,pending.size());
         for(int attempt=0;attempt<count;attempt++){
             int idx=pending.get((offset+attempt)%pending.size());
             examined++;

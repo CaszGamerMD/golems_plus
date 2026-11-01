@@ -68,7 +68,8 @@ public final class BuilderBuildService {
         BuilderConstructionPlanner.Choice lookahead;
         List<Integer> lookaheadZone=List.of();
         int lookaheadFor=-1;
-        boolean lookaheadAttempted;
+        int lookaheadScanned;
+        boolean lookaheadFinished;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
@@ -77,7 +78,8 @@ public final class BuilderBuildService {
                 lastTargetProgressTick=-1;
                 lastMovementTick=-1;lastWorkX=Double.NaN;
                 lookahead=null;lookaheadZone=List.of();
-                lookaheadFor=-1;lookaheadAttempted=false;
+                lookaheadFor=-1;lookaheadScanned=0;
+                lookaheadFinished=false;
             }
         }
     }
@@ -152,12 +154,11 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             int current,BlockPos target,WorkerAction activity,long now){
-        if(activity.lookaheadAttempted||activity.workTravelSince<0
+        if(activity.lookaheadFinished||activity.workTravelSince<0
                 ||now-activity.workTravelSince<5
                 ||worker.getNavigation().isDone()
                 ||worker.distanceToSqr(target.getX()+.5,
                         target.getY()+.5,target.getZ()+.5)>100)return;
-        activity.lookaheadAttempted=true;
         var eligible=new java.util.ArrayList<Integer>();
         int layer=table.builderActiveLayer(steps);
         for(int idx:zone)
@@ -167,14 +168,22 @@ public final class BuilderBuildService {
                     &&!table.builderStepClaimedByOther(worker.getUUID(),idx)
                     &&!reservedForTeammate(table,worker.getUUID(),idx,now))
                 eligible.add(idx);
-        if(eligible.isEmpty())return;
+        int remaining=Math.min(32,eligible.size())-activity.lookaheadScanned;
+        if(remaining<=0){
+            activity.lookaheadFinished=true;return;
+        }
+        int budget=Math.min(2,remaining);
         var next=BuilderConstructionPlanner.chooseLookahead(
-                level,worker,table,steps,eligible);
+                level,worker,table,steps,eligible,
+                activity.lookaheadScanned,budget);
+        activity.lookaheadScanned+=budget;
         if(next!=null){
             activity.lookahead=next;
             activity.lookaheadFor=current;
             activity.lookaheadZone=List.copyOf(zone);
-        }
+            activity.lookaheadFinished=true;
+        }else if(activity.lookaheadScanned>=Math.min(32,eligible.size()))
+            activity.lookaheadFinished=true;
     }
     /** After a REAL placement, consume the speculative choice only if
      * the same Y gate, claim ownership, support and safe pose STILL hold.
