@@ -61,6 +61,81 @@ public final class EnhancedScaffoldingGameTest {
         helper.succeed();
     }
 
+    /** Players must descend from the TOP of a real tower by crouching,
+     * not by walking off its edge. Releasing Shift restores normal decks.
+     * The floor of the last scaffold always stops them, even in open air.
+     */
+    @GameTest(maxTicks=80,skyAccess=true)
+    public void holdingCrouchOpensTowerDecksButNotBottomCatch(GameTestHelper helper){
+        helper.setBlock(2,1,2,Blocks.STONE);
+        for(int y=2;y<=5;y++)
+            helper.setBlock(2,y,2,WorksiteContent.ENHANCED_SCAFFOLDING);
+        ServerPlayer player=helper.makeMockServerPlayerInLevel();
+        BlockPos top=helper.absolutePos(new BlockPos(2,5,2));
+        player.setPos(top.getX()+.5,top.getY()+1.0,top.getZ()+.5);
+
+        player.setShiftKeyDown(false);
+        CollisionContext walking=CollisionContext.of(player);
+        for(int y=3;y<=5;y++){
+            BlockPos at=helper.absolutePos(new BlockPos(2,y,2));
+            var shape=helper.getLevel().getBlockState(at).getCollisionShape(
+                    helper.getLevel(),at,walking);
+            if(shape.isEmpty()){
+                helper.fail("Standing player fell through tower deck Y="+y);
+                return;
+            }
+        }
+
+        player.setShiftKeyDown(true);
+        CollisionContext descending=CollisionContext.of(player);
+        for(int y=3;y<=5;y++){
+            BlockPos at=helper.absolutePos(new BlockPos(2,y,2));
+            var shape=helper.getLevel().getBlockState(at).getCollisionShape(
+                    helper.getLevel(),at,descending);
+            if(!shape.isEmpty()){
+                helper.fail("Crouch did not open the tower deck Y="+y);
+                return;
+            }
+        }
+        BlockPos base=helper.absolutePos(new BlockPos(2,2,2));
+        var floor=helper.getLevel().getBlockState(base).getCollisionShape(
+                helper.getLevel(),base,descending);
+        if(floor.isEmpty()||floor.min(Direction.Axis.Y)>.01){
+            helper.fail("Crouching player can drop through supported base");
+            return;
+        }
+
+        // A tower attached only at its side must also keep a bottom net
+        // when there is EMPTY AIR below it.
+        helper.setBlock(7,3,2,Blocks.STONE);
+        for(int y=3;y<=5;y++)
+            helper.setBlock(6,y,2,WorksiteContent.ENHANCED_SCAFFOLDING);
+        BlockPos hanging=helper.absolutePos(new BlockPos(6,3,2));
+        var hangingFloor=helper.getLevel().getBlockState(hanging)
+                .getCollisionShape(helper.getLevel(),hanging,descending);
+        if(hangingFloor.isEmpty()
+                ||hangingFloor.min(Direction.Axis.Y)>.01){
+            helper.fail("Crouching player could fall out of hanging scaffold");
+            return;
+        }
+        for(int y=4;y<=5;y++){
+            BlockPos at=helper.absolutePos(new BlockPos(6,y,2));
+            if(!helper.getLevel().getBlockState(at)
+                    .getCollisionShape(helper.getLevel(),at,descending).isEmpty()){
+                helper.fail("Hanging tower blocked crouch descent at Y="+y);
+                return;
+            }
+        }
+        player.setShiftKeyDown(false);
+        var topAgain=helper.getLevel().getBlockState(top)
+                .getCollisionShape(helper.getLevel(),top,CollisionContext.of(player));
+        if(topAgain.isEmpty()){
+            helper.fail("Releasing crouch did not restore top deck");
+            return;
+        }
+        helper.succeed();
+    }
+
     @GameTest(maxTicks=60,skyAccess=true)
     public void bottomMeshAppearsOnlyWithNoFloorBelow(GameTestHelper helper){
         helper.setBlock(4,2,2,Blocks.STONE); // Side anchor for a hanging platform
