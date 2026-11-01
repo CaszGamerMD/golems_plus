@@ -23,4 +23,12 @@ assert "BuilderBuildService.takeFastFollowup(this)" in entity
 assert "((tickCount+getId())%5==0||followup)" in entity
 assert "WorkerNavigation.routeToExact(" in build
 assert "BuilderSupplyInventory.consume(worker,state.item())" in build
+station = Path("src/main/java/com/caszgamermd/golemsplus/world/WorkerStationBlockEntity.java").read_text()
+claim = station.split("public int claimPreferredBuilderZoneStep(",1)[1].split(
+    "/** No route or anchor",1)[0]
+assert "syncBuilderClaim();" in claim
+assert "sync();" not in claim
+assert "setChanged();" in claim
+assert "now-builderProgressNotifyTick>=20" in claim
+assert "level.sendBlockUpdated(worldPosition,state,state,3);" in claim
 print("Builder bounded lookahead + safe direct handoff + next-tick followup OK")
