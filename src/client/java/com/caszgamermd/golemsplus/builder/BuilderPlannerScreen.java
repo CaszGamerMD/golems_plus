@@ -22,6 +22,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -40,7 +41,8 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     private Sort sort=Sort.ALPHABETICAL;
     private int scroll,placementPage,jobPage;
     private String search="";
-    private EditBox query,heightInput,replacementInput;
+    private EditBox query,heightInput;
+    private final Inventory playerInventory;
     private String ruleSource,ruleText="";
     private String notice="";
     private int deleteConfirm=-1;
@@ -51,6 +53,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     private int panelWidth=600,panelHeight=390;
     public BuilderPlannerScreen(WorkerStationMenu menu,Inventory inventory,Component title){
         super(menu,inventory,title);
+        playerInventory=inventory;
         titleLabelX=15;titleLabelY=10;inventoryLabelX=18;inventoryLabelY=188;
     }
     /** Full viewport JEI exclusion area. Container's default width is
@@ -150,16 +153,16 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     }
     private void sendRule(int mode){
         if(ruleSource==null)return;
-        String value=mode==2&&replacementInput!=null
-                ?replacementInput.getValue().trim().toLowerCase():"";
+        String value=mode==2?ruleText.trim().toLowerCase():"";
         String packed=ruleSource+"|"+value;
         if(packed.length()>120){
             notice="Material IDs too long for settings packet";return;
         }
         Identifier replacement=Identifier.tryParse(value);
         if(mode==2&&(replacement==null
-                ||!BuiltInRegistries.ITEM.containsKey(replacement))){
-            notice="Enter an item ID, e.g. minecraft:oak_planks";return;
+                ||!BuiltInRegistries.ITEM.containsKey(replacement)
+                ||!(BuiltInRegistries.ITEM.getValue(replacement) instanceof BlockItem))){
+            notice="Click a placeable block in your inventory first";return;
         }
         if(!ClientPlayNetworking.canSend(StationSettingsNetworking.Change.TYPE)){
             notice="Server missing material rule support";return;
@@ -177,6 +180,21 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         return shown;
     }
     @Override public boolean mouseClicked(MouseButtonEvent event,boolean doubleClick){
+        if(page==Page.MATERIAL_EDIT&&event.button()==0){
+            int slot=inventoryPickerSlot(event.x(),event.y());
+            if(slot>=0){
+                ItemStack stack=playerInventory.getItem(slot);
+                if(stack.isEmpty()){
+                    notice="Choose a nonempty inventory slot";
+                }else if(!(stack.getItem() instanceof BlockItem)){
+                    notice="Choose a placeable block item (not a tool or material)";
+                }else{
+                    ruleText=BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+                    notice="Selected "+ruleText+". Confirm with APPLY REPLACEMENT.";
+                }
+                return true; // Visual picker only: never move or consume items.
+            }
+        }
         if(page==Page.JOB&&event.button()==1&&ruleSource==null){
             var rows=materials();
             int columns=columns(),first=scroll*columns;
@@ -269,23 +287,16 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             return;
         }
         if(page==Page.MATERIAL_EDIT){
-            int fieldWidth=Math.max(120,panelWidth-SIDE-46);
-            int y=Math.max(110,Math.min(170,panelHeight-144));
+            int fieldWidth=Math.max(100,panelWidth-SIDE-46);
             if(ruleSource!=null){
-                replacementInput=new EditBox(font,
-                        leftPos+SIDE+22,topPos+y,fieldWidth,20,
-                        Component.literal("Replacement block item ID"));
-                replacementInput.setMaxLength(90);
-                replacementInput.setValue(ruleText);
-                addRenderableWidget(replacementInput);
-                button("IGNORE ALL UNPLACED",SIDE+22,y+26,fieldWidth,
-                        ()->sendRule(1));
-                button("APPLY REPLACEMENT",SIDE+22,y+52,fieldWidth,
-                        ()->sendRule(2));
-                button("RESET TO ORIGINAL",SIDE+22,y+78,fieldWidth,
-                        ()->sendRule(0));
-                button("CANCEL",SIDE+22,y+104,fieldWidth,()->{
-                    ruleSource=null;show(Page.JOB);
+                button(fieldWidth<165?"APPLY":"APPLY REPLACEMENT",
+                        SIDE+22,166,fieldWidth,()->sendRule(2));
+                button(fieldWidth<165?"IGNORE":"IGNORE ALL UNPLACED",
+                        SIDE+22,191,fieldWidth,()->sendRule(1));
+                button(fieldWidth<165?"RESET":"RESET TO ORIGINAL",
+                        SIDE+22,216,fieldWidth,()->sendRule(0));
+                button("CANCEL",22,panelHeight-35,176,()->{
+                    ruleSource=null;ruleText="";show(Page.JOB);
                 });
             }
             return;
@@ -420,6 +431,42 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             if(table!=null)send("crew",Math.min(8,table.crewTarget()+1));
         });
     }
+    // The Builder kiosk has no real container slots. This is a read-only
+    // view of the player's 27 main slots and 9 hotbar slots. Clicking a block
+    // chooses its item ID; the physical stack never leaves the inventory.
+    private int inventoryPickerX(int index){
+        return leftPos+26+(index%9)*19;
+    }
+    private int inventoryPickerY(int index){
+        return topPos+(index<9?190:112+((index-9)/9)*19);
+    }
+    private int inventoryPickerSlot(double mouseX,double mouseY){
+        for(int i=0;i<36;i++){
+            int x=inventoryPickerX(i),y=inventoryPickerY(i);
+            if(mouseX>=x&&mouseX<x+18&&mouseY>=y&&mouseY<y+18)
+                return i;
+        }
+        return -1;
+    }
+    private void renderInventoryPicker(GuiGraphicsExtractor g){
+        for(int i=0;i<36;i++){
+            ItemStack stack=playerInventory.getItem(i);
+            int x=inventoryPickerX(i)-leftPos,y=inventoryPickerY(i)-topPos;
+            boolean block=!stack.isEmpty()&&stack.getItem() instanceof BlockItem;
+            boolean selected=block&&ruleText.equals(
+                    BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+            g.fill(x-1,y-1,x+18,y+18,selected?GREEN:0xff627d88);
+            g.fill(x,y,x+17,y+17,0xff15252d);
+            if(!stack.isEmpty()){
+                g.item(stack,x,y);
+                if(!block)g.fill(x,y,x+16,y+16,0x990e1b21);
+                if(stack.getCount()>1){
+                    String count=Integer.toString(stack.getCount());
+                    g.text(font,count,x+17-font.width(count),y+9,WHITE,true);
+                }
+            }
+        }
+    }
     private List<Map.Entry<String,Long>> materials(){
         WorkerStationBlockEntity table=station();
         if(table==null)return List.of();
@@ -468,6 +515,22 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
     }
     @Override protected void extractTooltip(GuiGraphicsExtractor g,int mouseX,int mouseY){
         super.extractTooltip(g,mouseX,mouseY);
+        if(page==Page.MATERIAL_EDIT){
+            int slot=inventoryPickerSlot(mouseX,mouseY);
+            if(slot>=0){
+                ItemStack actual=playerInventory.getItem(slot);
+                if(!actual.isEmpty()){
+                    ItemStack shown=actual.copy();
+                    shown.set(DataComponents.LORE,
+                            new net.minecraft.world.item.component.ItemLore(List.of(
+                                    Component.literal(actual.getItem() instanceof BlockItem
+                                            ?"CLICK to choose this replacement block"
+                                            :"Not a placeable block"))));
+                    g.setTooltipForNextFrame(font,shown,mouseX,mouseY);
+                }
+            }
+            return;
+        }
         if(page!=Page.JOB)return;
         var list=materials();
         int columns=columns(),size=pageSize(),first=scroll*columns;
@@ -501,8 +564,38 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         var t=station();
         g.text(font,"CASZUAL BUILDERS  /  JOB PLANNER",16,14,0xffeff6eb,false);
         g.text(font,"ACTIVE / SAVED JOBS",16,73,MUTED,false);
-        g.text(font,"PLANNER: TOOLS / BLOCKS / SCAFFOLD",18,85,TEXT,false);
-        g.text(font,"PLAYER INVENTORY",18,188,TEXT,false);
+        g.text(font,page==Page.MATERIAL_EDIT
+                ?"INVENTORY BLOCK PICKER":"PLANNER: TOOLS / BLOCKS / SCAFFOLD",
+                18,85,TEXT,false);
+        if(page==Page.MATERIAL_EDIT){
+            g.text(font,"CLICK A BLOCK TO SELECT",18,98,MUTED,false);
+            renderInventoryPicker(g);
+            g.text(font,"HOTBAR",18,178,MUTED,false);
+            g.text(font,"EDIT MATERIAL",SIDE+18,80,GREEN,false);
+            g.text(font,ruleSource==null?"No material selected":
+                    shorten(ruleSource,Math.max(16,(panelWidth-SIDE-35)/6)),
+                    SIDE+18,96,WHITE,false);
+            g.text(font,shorten("Pick a block from your inventory.",
+                            Math.max(12,(panelWidth-SIDE-30)/6)),
+                    SIDE+18,119,TEXT,false);
+            g.text(font,"Selected replacement:",SIDE+18,133,MUTED,false);
+            Identifier selected=Identifier.tryParse(ruleText);
+            if(selected!=null&&BuiltInRegistries.ITEM.containsKey(selected)
+                    &&BuiltInRegistries.ITEM.getValue(selected) instanceof BlockItem){
+                g.item(new ItemStack(BuiltInRegistries.ITEM.getValue(selected)),
+                        SIDE+22,144);
+                g.text(font,shorten(ruleText,
+                                Math.max(11,(panelWidth-SIDE-85)/6)),
+                        SIDE+44,149,GREEN,false);
+            }else{
+                g.text(font,"NONE - CLICK A BLOCK",SIDE+22,149,YELLOW,false);
+            }
+            g.text(font,"No items consumed.",18,244,MUTED,false);
+            if(!notice.isBlank())
+                g.text(font,shorten(notice,Math.max(14,(panelWidth-SIDE-45)/6)),
+                        SIDE+18,panelHeight-14,YELLOW,false);
+            return;
+        }
         g.text(font,"Schematic placement only; clearing stays ON",
                 18,258,MUTED,false);
         if(t!=null){
@@ -520,13 +613,6 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             g.text(font,"SITE CONTAINER",18,374,MUTED,false);
             g.text(font,t.builderMaterialStorage()==null?"NOT SELECTED":
                     t.builderMaterialStorage().toShortString(),18,388,TEXT,false);
-        }
-        if(page==Page.MATERIAL_EDIT){
-            g.text(font,"EDIT MATERIAL",SIDE+18,80,GREEN,false);
-            g.text(font,ruleSource==null?"No material selected":
-                    shorten(ruleSource,Math.max(16,(panelWidth-SIDE-35)/6)),
-                    SIDE+18,96,WHITE,false);
-            return; // Render the editor's actual EditBox and Buttons normally.
         }
         if(page==Page.RULES){
             g.text(font,"SAVED MATERIAL RULES - CLICK TO EDIT / RESET",
