@@ -1294,15 +1294,10 @@ public final class BuilderScaffoldPlanA {
             boolean workPose){
         Job j=jobs.get(worker);
         if(j!=null&&!j.target.equals(target)){
-            if(worker.blockPosition().getY()==target.getY()
-                    &&worker.distanceToSqr(target.getX()+.5,
-                            target.getY()+.5,target.getZ()+.5)<=4
-                    &&j.phase==Phase.READY
-                    &&onOwnedScaffoldTop(level,worker,table,
-                            j.bridge(j.bridgeSpan)))return Result.READY;
-            // A completed bridge may finish beside a real roof walkway
-            // at exactly the bridge's height. Step onto that solid ledge
-            // directly instead of trying to descend an unrelated tower.
+            // A completed horizontal bridge can meet a real roof walkway
+            // at the same height. Check that physical side exit BEFORE
+            // reusing the bridge for another nearby work cell; otherwise
+            // the old READY shortcut masks the ledge indefinitely.
             if((j.phase==Phase.READY||j.phase==Phase.WALK_SECOND
                     ||j.phase==Phase.DISMOUNT)
                     &&BuilderScaffolding.stepOffTowardWork(
@@ -1310,6 +1305,12 @@ public final class BuilderScaffoldPlanA {
                 j.phase=Phase.DISMOUNT;
                 return Result.MOVING;
             }
+            if(worker.blockPosition().getY()==target.getY()
+                    &&worker.distanceToSqr(target.getX()+.5,
+                            target.getY()+.5,target.getZ()+.5)<=4
+                    &&j.phase==Phase.READY
+                    &&onOwnedScaffoldTop(level,worker,table,
+                            j.bridge(j.bridgeSpan)))return Result.READY;
             if(returnToGround(level,worker,table))return Result.MOVING;
             j=null;
         }
