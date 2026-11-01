@@ -100,26 +100,76 @@ public final class BuilderWarehouseCoordinator {
     /** Cancel an outstanding ticket only after the warehouse confirms
      * that no physical shipment, picker, or packing inventory can be lost.
      */
-    public static boolean cancelShipment(ServerLevel level,
+    public record Cancellation(boolean completed,String reason){}
+
+    public static Cancellation cancelShipmentDetailed(ServerLevel level,
             WorkerStationBlockEntity table){
-        if(table.supplyRequest()==null)return true;
-        // Do not discard the reservation UUID while its courier holds a
-        // real shulker in the saved entity. It must reach OnSite Storage
-        // first so RE-CALCULATE counts those nested materials correctly.
+        if(table.supplyRequest()==null)return new Cancellation(true,"CANCELLED");
+        // A courier with a real shulker must deposit it at OnSite Storage
+        // before the warehouse ticket can be forgotten.
         for(UUID id:table.builderWorkerIds())
             if(level.getEntity(id) instanceof BuilderGolem golem
-                    &&golem.hasSupplyBox())return false;
+                    &&golem.hasSupplyBox())
+                return new Cancellation(false,"COURIER_RETURNING_SHULKER");
         var warehouse=table.warehouse();
         if(warehouse==null||table.owner()==null
                 ||!level.dimension().identifier().toString().equals(warehouse.dimension()))
-            return false;
+            return new Cancellation(false,"WAREHOUSE_LINK_INVALID");
         BlockPos computer=new BlockPos(warehouse.x(),warehouse.y(),warehouse.z());
-        if(!level.hasChunkAt(computer))return false;
-        if(!BuilderWarehousePort.cancel(level,computer,table.getBlockPos(),
-                table.owner(),table.supplyRequest(),table.supplyPtp()))
-            return false;
+        if(!level.hasChunkAt(computer))
+            return new Cancellation(false,"WAREHOUSE_UNLOADED");
+        String status=BuilderWarehousePort.cancelStatus(level,computer,table.getBlockPos(),
+                table.owner(),table.supplyRequest(),table.supplyPtp());
+        if(!"CANCELLED".equals(status))return new Cancellation(false,status);
         table.clearSupplyRequest();
-        return true;
+        return new Cancellation(true,"CANCELLED");
+    }
+
+    public static boolean cancelShipment(ServerLevel level,
+            WorkerStationBlockEntity table){
+        return cancelShipmentDetailed(level,table).completed();
+    }
+
+    public static String cancellationExplanation(String reason){
+        return switch(reason){
+            case "COURIER_RETURNING_SHULKER" ->
+                    "Builder courier is returning a real shulker to OnSite Storage";
+            case "WAREHOUSE_LINK_INVALID" ->
+                    "the warehouse link or dimension is invalid";
+            case "WAREHOUSE_UNLOADED" ->
+                    "Rack Computer chunk is unloaded";
+            case "WAREHOUSE_OFFLINE" ->
+                    "linked Rack Computer is missing or offline";
+            case "INVALID_REQUEST" ->
+                    "warehouse cancellation ticket is invalid";
+            case "ORDER_MISMATCH" ->
+                    "the warehouse ticket belongs to another Builder";
+            case "ORDER_CHANGED" ->
+                    "warehouse order changed during cancellation";
+            case "PALLET_TRANSFER_ACTIVE" ->
+                    "a Storage Golem is preparing or moving the output pallet";
+            case "SHULKER_PACKING_IN_PROGRESS" ->
+                    "the Shulker Station is still packing or holding items";
+            case "STATION_UNAVAILABLE" ->
+                    "Shulker Station is disconnected or unavailable";
+            case "PACKED_CARGO_PRESENT" ->
+                    "the output PTP still contains packed cargo";
+            case "PICKER_IN_FLIGHT" ->
+                    "Storage Golems have reserved or are carrying output items";
+            case "PALLET_MOVING" ->
+                    "the output pallet is still moving";
+            case "RESERVATION_BUSY" ->
+                    "the output PTP still holds an active reservation";
+            case "ORDER_NOT_FOUND" ->
+                    "the warehouse no longer recognizes this ticket; verify the link";
+            case "INTEGRATION_MISSING" ->
+                    "Caszual Additions warehouse integration is not installed";
+            case "INTEGRATION_ERROR" ->
+                    "Caszual Additions warehouse API failed; check installed versions and logs";
+            case "LEGACY_CANCELLATION_PENDING" ->
+                    "older Caszual Additions cannot report its cancellation blocker";
+            default -> "waiting for warehouse confirmation ("+reason+")";
+        };
     }
     public static void pollTable(ServerLevel level,WorkerStationBlockEntity table){
         if(table.supplyRequest()==null||table.warehouse()==null

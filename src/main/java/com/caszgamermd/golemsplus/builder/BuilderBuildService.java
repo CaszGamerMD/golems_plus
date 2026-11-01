@@ -292,9 +292,11 @@ public final class BuilderBuildService {
         // live order UUID or orphan its physical shulkers.
         if(table.isBuilder()&&table.builderCancelShipment()
                 &&level.getGameTime()%40==0){
-            if(!BuilderWarehouseCoordinator.cancelShipment(level,table))
+            var cancellation=BuilderWarehouseCoordinator.cancelShipmentDetailed(level,table);
+            if(!cancellation.completed())
                 table.setProblem("Warehouse cancellation pending: "
-                        +"finish/collect any packed shulkers or active picker cargo");
+                        +BuilderWarehouseCoordinator.cancellationExplanation(
+                                cancellation.reason()));
         }
         if(table.isBuilder()&&level.getGameTime()%40==0)
             table.updateBuilderStagedStock(BuilderSupplyInventory.available(table));
