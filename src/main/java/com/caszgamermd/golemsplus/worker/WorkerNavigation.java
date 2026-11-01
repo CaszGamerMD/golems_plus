@@ -1409,6 +1409,11 @@ public final class WorkerNavigation {
         return startCornerRecovery(level,mob,p,plan.steps().get(0),target);
     }
 
+    /** Route recoveries may empty their shared waypoint list mid-call. */
+    static boolean hasWaypoint(List<BlockPos> route,int cursor){
+        return route!=null&&cursor>=0&&cursor<route.size();
+    }
+
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
                                   double speed){
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder){
@@ -1509,24 +1514,25 @@ public final class WorkerNavigation {
             }
             p.weightedRoute=route.steps();p.routeCursor=0;
         }
-        // One native A* only for a SHORT portion of the already-validated
-        // cheapest route. Trying shorter checkpoints prevents false "cannot
-        // path" reports from the vanilla navigation radius.
-        int count=p.weightedRoute.size();
+        // Terrain and corner recovery helpers can synchronously retire
+        // this shared route, including when they return false. Check the
+        // cursor after EVERY such helper before reading the next waypoint.
+        if(!hasWaypoint(p.weightedRoute,p.routeCursor))return false;
         if(p.routeCursor==0
                 &&!standingTile(level,mob,mob.blockPosition())){
             if(startCornerRecovery(level,mob,p,p.weightedRoute.get(0),target))
                 return true;
-            // A failed first fractional sweep may have already cleared
-            // the current route while updating the local recovery state.
-            // Never keep indexing a route that its controller retired.
-            if(p.weightedRoute.isEmpty()
-                    ||p.routeCursor>=p.weightedRoute.size())return false;
+            if(!hasWaypoint(p.weightedRoute,p.routeCursor))return false;
         }
-        if(prepareTrainedDoor(level,mob,p,p.weightedRoute.subList(p.routeCursor,count)))return true;
+        if(prepareTrainedDoor(level,mob,p,p.weightedRoute.subList(
+                p.routeCursor,p.weightedRoute.size())))return true;
+        if(!hasWaypoint(p.weightedRoute,p.routeCursor))return false;
+        // The door helper may have changed the route; refresh its bound.
+        int count=p.weightedRoute.size();
         for(int distance:new int[]{3,2,1}){
+            if(!hasWaypoint(p.weightedRoute,p.routeCursor))return false;
             int index=Math.min(count-1,p.routeCursor+distance-1);
-            if(index<p.routeCursor)continue;
+            if(index<p.routeCursor||index>=p.weightedRoute.size())continue;
             BlockPos waypoint=p.weightedRoute.get(index);
             if(!standingTile(level,mob,waypoint))continue;
             Path path=mob.getNavigation().createPath(waypoint,0);
@@ -1539,20 +1545,23 @@ public final class WorkerNavigation {
             p.nextRoute=mob.tickCount+CHECK_TICKS;
             return true;
         }
-        if(walkTrainedEdge(level,mob,p,p.weightedRoute.get(p.routeCursor))
-                ||beginTerrainStep(level,mob,p,p.weightedRoute.get(p.routeCursor))){
-            p.routeCursor++;
+        if(!hasWaypoint(p.weightedRoute,p.routeCursor))return false;
+        BlockPos nextStep=p.weightedRoute.get(p.routeCursor);
+        if(walkTrainedEdge(level,mob,p,nextStep)){
+            if(hasWaypoint(p.weightedRoute,p.routeCursor))p.routeCursor++;
             return true;
         }
+        if(!hasWaypoint(p.weightedRoute,p.routeCursor))return false;
+        nextStep=p.weightedRoute.get(p.routeCursor);
+        if(beginTerrainStep(level,mob,p,nextStep)){
+            if(hasWaypoint(p.weightedRoute,p.routeCursor))p.routeCursor++;
+            return true;
+        }
+        if(!hasWaypoint(p.weightedRoute,p.routeCursor))return false;
         if(startCornerRecovery(level,mob,p,
                 p.weightedRoute.get(p.routeCursor),target))return true;
-        // startCornerRecovery installs a local sub-block path and clears
-        // weightedRoute BEFORE its first physical tick. That tick can
-        // reject the sweep and return false; the old caller then indexed
-        // the now-empty route, throwing ArrayIndexOutOfBoundsException on
-        // live Builders returning to OnSite after their zone completed.
-        if(p.weightedRoute.isEmpty()
-                ||p.routeCursor>=p.weightedRoute.size())return false;
+        // The final corner sweep can also retire the route.
+        if(!hasWaypoint(p.weightedRoute,p.routeCursor))return false;
         p.lastBad=p.weightedRoute.get(p.routeCursor);
         p.avoidUntil=mob.tickCount+60;
         p.weightedRoute=List.of();p.routeCursor=0;
