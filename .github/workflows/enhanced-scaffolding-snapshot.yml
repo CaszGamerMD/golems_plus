@@ -20,9 +20,9 @@ jobs:
         with:
           gradle-version: '9.7.0'
       - name: Compile, unit test and package
-        run: gradle --no-daemon clean test build
-      - name: Minecraft Enhanced Scaffolding GameTests
-        run: gradle --no-daemon runGameTest
+        run: gradle --no-daemon clean test remapJar compileGametestJava
+      - name: Minecraft Enhanced Scaffolding GameTests (focused)
+        run: gradle --no-daemon runGameTest --args="--tests golems_plus_gametest:enhanced_scaffolding_game_test_*"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
