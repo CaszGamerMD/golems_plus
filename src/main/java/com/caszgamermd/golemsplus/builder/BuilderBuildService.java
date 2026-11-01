@@ -314,6 +314,11 @@ public final class BuilderBuildService {
     /** A worker that has cleared its portion of the current shared Y
      * returns OnSite while a teammate finishes, unless assigned a live
      * cross-zone rescue. Future-layer tasks remain queued, not canceled. */
+    /** Re-check a high roof from its existing safe footing briefly, but
+     * never let an unavailable frontier strand a Builder forever. */
+    static boolean shouldHoldRoofFrontier(long waitingTicks,boolean highRoof){
+        return waitingTicks<= (highRoof?160:80);
+    }
     static boolean shouldParkWaitingForLayer(boolean ownLayerClear,
             boolean assisting,int claimedStep){
         return ownLayerClear&&!assisting&&claimedStep<0;
@@ -760,6 +765,15 @@ public final class BuilderBuildService {
                 parkAtOnSite(level,worker,table);
                 return;
             }
+            // Once a roof search has exhausted its bounded wait,
+            // complete the real retreat before attempting another
+            // approach from the same failed partial-block perch.
+            var resting=workerActions.get(worker);
+            if(index<0&&resting!=null
+                    &&resting.retreatUntil>level.getGameTime()){
+                parkAtOnSite(level,worker,table);
+                return;
+            }
             if(index<0||index>=plan.steps().size()
                     ||!zone.contains(index)
                     ||plan.steps().get(index).y()!=layer
@@ -812,11 +826,23 @@ public final class BuilderBuildService {
                     // have already been sent back to OnSite above.
                     boolean expensiveAscent=worker.getY()
                             -table.getBlockPos().getY()>=12;
-                    if(expensiveAscent||level.getGameTime()
-                            -waiting.frontierWaitSince<=80){
+                    long waited=level.getGameTime()-waiting.frontierWaitSince;
+                    if(shouldHoldRoofFrontier(waited,expensiveAscent)){
                         com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                         return;
                     }
+                    // An elevated cap is not an eternal parking space.
+                    // After the bounded retry window, physically retreat
+                    // and restart approach planning from a different ledge.
+                    // Keep the exact unfinished cells and current Y gate.
+                    waiting.retreatUntil=level.getGameTime()+160;
+                    waiting.frontierWaitSince=-1;
+                    if(expensiveAscent)
+                        System.out.println("[ROOF REPOSITION] "
+                                +worker.getName().getString()
+                                +" has no executable stance after "+waited
+                                +" ticks at "+worker.blockPosition()
+                                +"; descending to retry from OnSite");
                 }
                 if(table.builderZoneDone(zone))activityForFinished(worker);
                 parkAtOnSite(level,worker,table);
@@ -1221,10 +1247,12 @@ public final class BuilderBuildService {
                             .WorkerNavigation.routeToExact(
                                     level,worker,approach,1.0);
                     if(!moving){
+                        // Approximate routeTo() may stop short of the EXACT
+                        // 0.8m-clearance pose on narrow roofs. It reported
+                        // success while the worker repeatedly missed its
+                        // actual placement stance. Never use it as a
+                        // fallback for an exact construction destination.
                         BuilderPlacementSpace.invalidateApproach(worker,pos);
-                        moving=com.caszgamermd.golemsplus.worker
-                                .WorkerNavigation.routeTo(
-                                        level,worker,approach,.85);
                     }
                     if(!moving&&scaffoldBlockedWork(
                             level,worker,table,owner,pos,plan.steps()))return;
