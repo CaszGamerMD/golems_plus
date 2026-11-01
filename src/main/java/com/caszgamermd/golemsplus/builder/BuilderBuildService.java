@@ -442,7 +442,7 @@ public final class BuilderBuildService {
      *
      * @return true only after the worker physically reaches OnSite.
      */
-    private static boolean parkAtOnSite(ServerLevel level,BuilderGolem worker,
+    static boolean parkAtOnSite(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null)depot=table.getBlockPos();
