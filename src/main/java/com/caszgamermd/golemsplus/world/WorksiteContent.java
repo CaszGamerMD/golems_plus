@@ -101,7 +101,7 @@ public final class WorksiteContent {
         ResourceKey<Item> scaffoldItemKey=ResourceKey.create(Registries.ITEM,
                 GolemsPlus.id("enhanced_scaffolding"));
         ENHANCED_SCAFFOLDING_ITEM=Registry.register(BuiltInRegistries.ITEM,
-                scaffoldItemKey,new BlockItem(ENHANCED_SCAFFOLDING,
+                scaffoldItemKey,new EnhancedScaffoldingItem(ENHANCED_SCAFFOLDING,
                         new Item.Properties().setId(scaffoldItemKey)
                                 .useBlockDescriptionPrefix()));
         BUILDER_TABLE = station("builder_table", WorkerSpecialty.BUILDER);
