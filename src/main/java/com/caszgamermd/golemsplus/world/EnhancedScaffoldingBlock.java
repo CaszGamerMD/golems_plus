@@ -42,6 +42,14 @@ public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
                         context.getClickedPos()).isSource());
     }
 
+    @Override protected boolean canSurvive(BlockState state,
+            net.minecraft.world.level.LevelReader level,BlockPos pos){
+        // Vanilla scaffolding rejects placement once its support distance
+        // reaches seven. Enhanced scaffolding is allowed to extend farther;
+        // its scheduled component-anchor check handles actual falling.
+        return true;
+    }
+
     @Override protected boolean canBeReplaced(BlockState state,
             BlockPlaceContext context){
         // Vanilla scaffolding is replaceable by its special item, allowing
