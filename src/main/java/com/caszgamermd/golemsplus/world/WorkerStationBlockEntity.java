@@ -1308,6 +1308,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         if(activeOrder!=null&&builderCursor>=builderBlocks){
             phase=WorkerPhase.COMPLETE;activeOrder=null;
+            if(supplyRequest!=null)builderCancelShipment=true;
             builderClaims.clear();builderWorkOrders.clear();
             builderPreparedOrders.clear();builderFinishedSteps.clear();
             changed=true;
@@ -1338,7 +1339,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderWorkDone=Math.min(builderWorkTotal,builderWorkDone+1);
         while(builderFinishedSteps.remove(builderCursor))builderCursor++;
         if(builderCursor>=builderBlocks){
-            phase=WorkerPhase.COMPLETE;activeOrder=null;builderClaims.clear();
+            phase=WorkerPhase.COMPLETE;activeOrder=null;
+            if(supplyRequest!=null)builderCancelShipment=true;
+            builderClaims.clear();
             builderWorkOrders.clear();builderPreparedOrders.clear();
             builderFinishedSteps.clear();
         }
@@ -1481,7 +1484,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(builderCursor<builderBlocks){
             builderCursor++;setChanged();
             if(builderCursor>=builderBlocks){
-                phase=WorkerPhase.COMPLETE;activeOrder=null;sync();
+                phase=WorkerPhase.COMPLETE;activeOrder=null;
+                if(supplyRequest!=null)builderCancelShipment=true;
+                sync();
             }
         }
     }

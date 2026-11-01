@@ -420,6 +420,13 @@ public final class BuilderBuildService {
 
     public static void dispatch(ServerLevel level,WorkerStationBlockEntity table){
         BuilderChunkTickets.tick(level,table);
+        // Also recover completed jobs saved by older versions with a live
+        // warehouse ticket. A stale request otherwise blocks retirement
+        // even after every schematic block has been placed.
+        if(table.isBuilder()&&table.phase()==WorkerPhase.COMPLETE
+                &&table.activeOrder()==null&&table.supplyRequest()!=null
+                &&!table.builderCancelShipment())
+            table.requestBuilderShipmentCancellation();
         // A cancellation takes precedence over the remaining warehouse
         // fulfillment workload. It is retried from the Planner even if
         // every Builder is unloaded, paused or awaiting a stuck shipment.
