@@ -230,6 +230,15 @@ public final class BuilderPlacementSpace {
                 continue;
             if(!level.noCollision(mob,mob.getBoundingBox().move(vx,0,vz)))
                 continue;
+            // A narrow fence/wall cap can support a grounded Builder at
+            // fractional Y, even though its blockPosition stays unchanged
+            // while it walks past the ACTUAL support edge. Recheck real
+            // under-foot collision each precision tick; do not steer into
+            // empty air merely because the previous block coordinate was
+            // still the same.
+            if(Math.abs(mob.getY()-Math.rint(mob.getY()))>.08
+                    &&!supportedFractional(level,mob,vx,vz))
+                continue;
             double desiredX=direction[0]>0?target.getX()+1.84:target.getX()-.84;
             double desiredZ=direction[1]>0?target.getZ()+1.84:target.getZ()-.84;
             double distance=direction[0]!=0
