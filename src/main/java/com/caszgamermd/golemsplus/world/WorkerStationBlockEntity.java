@@ -141,7 +141,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final Map<UUID,java.util.List<Integer>> builderWorkOrders=new java.util.LinkedHashMap<>();
     // Work orders now stage up to 32 adjacent tasks out of each worker's
     // COMPLETE precompiled zone plan. They do not create new assignments.
-    private static final int BUILDER_STAGE_SIZE=32;
+    private static final int BUILDER_STAGE_SIZE=64;
     private long builderProgressNotifyTick=-1;
     private final java.util.Set<UUID> builderPreparedOrders=new java.util.HashSet<>();
     // True once the current job has used strict X/Z crew ownership.
