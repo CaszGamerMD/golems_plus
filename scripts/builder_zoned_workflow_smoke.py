@@ -12,7 +12,7 @@ warehouse=(server/"builder/BuilderWarehouseCoordinator.java").read_text()
 nav=(server/"worker/WorkerNavigation.java").read_text()
 assert "Math.abs(Math.log(" in zones
 assert "zi*columns+xi" in zones
-assert "int lowest=Integer.MAX_VALUE" in station
+assert "public int builderActiveLayer(" in station
 assert "claimBuilderZoneStep(UUID worker" in station
 assert "BUILDER_STAGE_SIZE=64" in station
 assert "footprint.contains(step,workerZone,activeCount)" in station
