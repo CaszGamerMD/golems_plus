@@ -74,9 +74,16 @@ public final class BuilderBuildService {
         // away from its current physical assignment.
         BuilderConstructionPlanner.Choice lookahead;
         List<Integer> lookaheadZone=List.of();
+        // Snapshot just 32 nearby candidates ONCE per active work target,
+        // instead of rescanning and allocating the entire 1k-cell zone
+        // on every five-tick travel callback. Claims/safety are still
+        // revalidated by the Planner before any next assignment.
+        List<Integer> lookaheadEligible=List.of();
+        int lookaheadEligibleLayer=Integer.MIN_VALUE;
         int lookaheadFor=-1;
         int lookaheadScanned;
         boolean lookaheadFinished;
+        boolean fastFollowup;
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
@@ -86,8 +93,11 @@ public final class BuilderBuildService {
                 lastMovementTick=-1;lastPerchEscapeTick=-1000;
                 lastWorkX=Double.NaN;
                 lookahead=null;lookaheadZone=List.of();
+                lookaheadEligible=List.of();
+                lookaheadEligibleLayer=Integer.MIN_VALUE;
                 lookaheadFor=-1;lookaheadScanned=0;
                 lookaheadFinished=false;
+                fastFollowup=false;
             }
         }
     }
@@ -170,16 +180,15 @@ public final class BuilderBuildService {
                 ||BuilderScaffoldPlanA.hasPlan(worker)
                 ||worker.distanceToSqr(target.getX()+.5,
                         target.getY()+.5,target.getZ()+.5)>100)return;
-        var eligible=new java.util.ArrayList<Integer>();
         int layer=table.builderActiveLayer(steps);
-        for(int idx:zone)
-            if(idx!=current&&idx>=0&&idx<steps.size()
-                    &&steps.get(idx).y()==layer
-                    &&table.builderStepReadyForClaim(idx)
-                    &&!table.builderStepClaimedByOther(worker.getUUID(),idx)
-                    &&!reservedForTeammate(table,worker.getUUID(),idx,now))
-                eligible.add(idx);
-        int remaining=Math.min(32,eligible.size())-activity.lookaheadScanned;
+        if(activity.lookaheadEligibleLayer!=layer){
+            activity.lookaheadEligible=nearbyLookaheadCandidates(
+                    table,worker,steps,zone,current,target,now);
+            activity.lookaheadEligibleLayer=layer;
+            activity.lookaheadScanned=0;
+        }
+        List<Integer> eligible=activity.lookaheadEligible;
+        int remaining=eligible.size()-activity.lookaheadScanned;
         if(remaining<=0){
             activity.lookaheadFinished=true;return;
         }
@@ -193,8 +202,61 @@ public final class BuilderBuildService {
             activity.lookaheadFor=current;
             activity.lookaheadZone=List.copyOf(zone);
             activity.lookaheadFinished=true;
-        }else if(activity.lookaheadScanned>=Math.min(32,eligible.size()))
+        }else if(activity.lookaheadScanned>=eligible.size())
             activity.lookaheadFinished=true;
+    }
+    /** Bounded nearest-first speculative work list. One pass over the
+     * assigned zone at task start is cheaper than repeating a full list
+     * allocation/sort and access checks on every walking callback.
+     * It is only a hint: current claims, materials, world geometry and Y
+     * restrictions remain server-validated before the next placement.
+     */
+    private static List<Integer> nearbyLookaheadCandidates(
+            WorkerStationBlockEntity table,BuilderGolem worker,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int current,BlockPos target,long now){
+        java.util.PriorityQueue<Integer> nearest=new java.util.PriorityQueue<>(
+                (a,b)->{
+                    double da=stepDistanceSquared(steps.get(a),target);
+                    double db=stepDistanceSquared(steps.get(b),target);
+                    int order=Double.compare(db,da);
+                    return order!=0?order:Integer.compare(b,a);
+                });
+        int layer=table.builderActiveLayer(steps);
+        for(int idx:zone){
+            if(idx==current||idx<0||idx>=steps.size()
+                    ||steps.get(idx).y()!=layer
+                    ||!table.builderStepReadyForClaim(idx)
+                    ||table.builderStepClaimedByOther(worker.getUUID(),idx)
+                    ||reservedForTeammate(table,worker.getUUID(),idx,now))
+                continue;
+            if(nearest.size()<32)nearest.add(idx);
+            else if(stepDistanceSquared(steps.get(idx),target)
+                    <stepDistanceSquared(steps.get(nearest.peek()),target)){
+                nearest.poll();
+                nearest.add(idx);
+            }
+        }
+        var result=new java.util.ArrayList<>(nearest);
+        result.sort(java.util.Comparator
+                .comparingDouble((Integer i)->stepDistanceSquared(steps.get(i),target))
+                .thenComparingInt(Integer::intValue));
+        return List.copyOf(result);
+    }
+    private static double stepDistanceSquared(
+            BuilderConstructionPlan.Step step,BlockPos target){
+        double dx=step.x()-target.getX(),dy=step.y()-target.getY(),
+                dz=step.z()-target.getZ();
+        return dx*dx+dy*dy+dz*dz;
+    }
+    /** Called by the real entity tick exactly once following a successful
+     * same-layer prevalidated handoff. Not a second planning pass.
+     */
+    static boolean takeFastFollowup(BuilderGolem worker){
+        WorkerAction action=workerActions.get(worker);
+        if(action==null||!action.fastFollowup)return false;
+        action.fastFollowup=false;
+        return true;
     }
     /** After a REAL placement, consume the speculative choice only if
      * the same Y gate, claim ownership, support and safe pose STILL hold.
@@ -229,6 +291,10 @@ public final class BuilderBuildService {
         if(table.claimPreferredBuilderZoneStep(worker.getUUID(),
                 activity.lookaheadZone,steps,next)!=next)return;
         activity.setStep(next);
+        // Move on the very next game tick, not at the next four-per-second
+        // Builder work cadence. This removes the visible idle beat between
+        // placements WITHOUT repeating expensive frontier selection.
+        activity.fastFollowup=true;
         if(stance!=null&&step.requiredItem()!=null
                 &&worker.carriedCount(state.item())>0
                 &&!BuilderConstructionPlanner.safeStand(
