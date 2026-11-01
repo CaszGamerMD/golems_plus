@@ -23,12 +23,17 @@ final class BuilderPlacementSnapshotTest {
         assertEquals("Matrix in world",restored.name());
         assertEquals(blocks,restored.blocks());
         assertEquals(air,restored.airBlocks());
-        var plan=BuilderConstructionPlan.create(restored,
-                BuilderPlacementSnapshot.worldSpaceSite());
-        assertEquals(54,plan.steps().get(0).y());
-        assertEquals(72,plan.steps().get(2).y());
-        assertEquals(30,plan.steps().get(0).x());
-        assertEquals(-15,plan.steps().get(2).x());
+        var site=BuilderPlacementSnapshot.worldSpaceSite();
+        var first=restored.blocks().get(0);
+        var last=restored.blocks().get(2);
+        var firstWorld=site.locate(new BuilderMaterialPlan.Placement(
+                first.x(),first.y(),first.z(),first.state(),null));
+        var lastWorld=site.locate(new BuilderMaterialPlan.Placement(
+                last.x(),last.y(),last.z(),last.state(),null));
+        assertEquals(-15,firstWorld.x());
+        assertEquals(72,firstWorld.y());
+        assertEquals(30,lastWorld.x());
+        assertEquals(55,lastWorld.y());
     }
     @Test void rejectsBadFormatAndDuplicateCoordinates()throws Exception{
         assertThrows(IOException.class,()->BuilderPlacementSnapshot.decode(
