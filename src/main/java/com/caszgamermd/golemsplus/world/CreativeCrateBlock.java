@@ -2,6 +2,7 @@ package com.caszgamermd.golemsplus.world;
 
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -25,10 +26,10 @@ public final class CreativeCrateBlock extends Block implements EntityBlock {
     }
     @Override protected InteractionResult useWithoutItem(BlockState state,Level level,
             BlockPos pos,Player player,BlockHitResult hit){
-        if(!level.isClientSide())
-            player.displayClientMessage(Component.literal(
+        if(player instanceof ServerPlayer server)
+            server.sendSystemMessage(Component.literal(
                     "Creative Crate: link this block as the Builder's OnSite Storage. "
-                    +"It supplies unlimited items at pickup and voids returned items."),true);
+                    +"It supplies unlimited items at pickup and voids returned items."));
         return InteractionResult.SUCCESS;
     }
 }
