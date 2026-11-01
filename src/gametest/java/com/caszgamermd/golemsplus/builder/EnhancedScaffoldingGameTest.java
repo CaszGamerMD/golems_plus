@@ -10,11 +10,32 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 
 /** Physical regression tests for vanilla-style enhanced scaffolding controls. */
 public final class EnhancedScaffoldingGameTest {
+    @GameTest(maxTicks=40,skyAccess=true)
+    public void scaffoldCanBePickedClimbedAndHasBottomFloor(GameTestHelper helper){
+        helper.setBlock(2,1,2,Blocks.STONE);
+        helper.setBlock(2,2,2,WorksiteContent.ENHANCED_SCAFFOLDING);
+        BlockPos pos=helper.absolutePos(new BlockPos(2,2,2));
+        var state=helper.getLevel().getBlockState(pos);
+        if(!state.is(BlockTags.CLIMBABLE)){
+            helper.fail("Enhanced scaffolding must be in minecraft:climbable");return;
+        }
+        if(state.getBlock().asItem()!=WorksiteContent.ENHANCED_SCAFFOLDING_ITEM){
+            helper.fail("Pick-block should return the enhanced scaffolding item");return;
+        }
+        var shape=state.getCollisionShape(helper.getLevel(),pos,CollisionContext.empty());
+        if(shape.isEmpty()||shape.min(Direction.Axis.Y)>.01){
+            helper.fail("Bottom scaffold should catch a falling player");return;
+        }
+        helper.succeed();
+    }
+
     @GameTest(maxTicks=120,skyAccess=true)
     public void enhancedScaffoldingBridgeSurvivesWithoutFooting(GameTestHelper helper){
         helper.setBlock(1,1,2,Blocks.STONE);

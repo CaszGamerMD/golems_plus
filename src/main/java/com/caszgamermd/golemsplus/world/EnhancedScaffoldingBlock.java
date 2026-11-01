@@ -13,12 +13,17 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.ScaffoldingBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
  * Unlimited horizontal bridging while connected to a real anchor.
@@ -27,6 +32,9 @@ import net.minecraft.world.phys.BlockHitResult;
  */
 public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
     private static final int MAX_COMPONENT=32768;
+    // A bottom scaffold needs a floor even when the player is already inside
+    // the climbable block. Vanilla's top-only collision can let them fall out.
+    private static final VoxelShape BASE_FLOOR=Block.box(0,0,0,16,1,16);
     private final MapCodec<ScaffoldingBlock> codec=MapCodec.unit(this);
 
     public EnhancedScaffoldingBlock(BlockBehaviour.Properties properties){
@@ -37,9 +45,10 @@ public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
 
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext context){
-        return defaultBlockState().setValue(DISTANCE,0).setValue(BOTTOM,false)
-                .setValue(WATERLOGGED,context.getLevel().getFluidState(
-                        context.getClickedPos()).isSource());
+        BlockPos pos=context.getClickedPos();
+        return defaultBlockState().setValue(DISTANCE,0)
+                .setValue(BOTTOM,!context.getLevel().getBlockState(pos.below()).is(this))
+                .setValue(WATERLOGGED,context.getLevel().getFluidState(pos).isSource());
     }
 
     @Override protected boolean canSurvive(BlockState state,
@@ -48,6 +57,20 @@ public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
         // reaches seven. Enhanced scaffolding is allowed to extend farther;
         // its scheduled component-anchor check handles actual falling.
         return true;
+    }
+
+    @Override protected ItemStack getCloneItemStack(LevelReader level,BlockPos pos,
+            BlockState state,boolean includeData){
+        return new ItemStack(WorksiteContent.ENHANCED_SCAFFOLDING_ITEM);
+    }
+
+    @Override protected VoxelShape getCollisionShape(BlockState state,BlockGetter level,
+            BlockPos pos,CollisionContext context){
+        VoxelShape top=super.getCollisionShape(state,level,pos,context);
+        // Upper scaffold tiers remain pass-through for smooth climbing. Only
+        // the bottom tier gets a thin catch floor to prevent falling through.
+        return level.getBlockState(pos.below()).is(this)
+                ?top:Shapes.or(top,BASE_FLOOR);
     }
 
     @Override protected boolean canBeReplaced(BlockState state,
@@ -121,6 +144,9 @@ public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
     @Override protected void tick(BlockState state,ServerLevel level,
             BlockPos pos,RandomSource random){
         if(!isEnhanced(level,pos))return;
+        boolean bottom=!level.getBlockState(pos.below()).is(this);
+        if(state.getValue(BOTTOM)!=bottom)
+            level.setBlock(pos,state.setValue(BOTTOM,bottom),2);
         boolean[] anchored={false};
         Set<BlockPos> component=connected(level,pos,anchored);
         if(anchored[0])return;

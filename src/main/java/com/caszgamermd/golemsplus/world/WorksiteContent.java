@@ -232,6 +232,7 @@ public final class WorksiteContent {
                         .icon(() -> new ItemStack(BUILDER_TABLE_ITEM))
                         .displayItems((parameters, output) -> {
                             output.accept(BUILDER_TABLE_ITEM);
+                            output.accept(ENHANCED_SCAFFOLDING_ITEM);
                             output.accept(UNEMPLOYED_CENTER_ITEM);
                             output.accept(FISHING_STATION_ITEM);
                             output.accept(TRADER_COUNTER_ITEM);
