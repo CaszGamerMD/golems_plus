@@ -627,9 +627,11 @@ public final class BuilderBuildService {
         // The warehouse stops picking, then safely drains REAL picker cargo.
         if(table.isBuilder()&&table.builderCancelShipment()
                 &&level.getGameTime()%20==0){
-            if(!BuilderWarehouseCoordinator.cancelShipment(level,table))
-                table.setProblem("Cancel requested: warehouse unreachable or "
-                        +"requires updated Caszual Additions cancellation support");
+            var cancellation=BuilderWarehouseCoordinator.cancelShipmentDetailed(level,table);
+            if(!cancellation.completed())
+                table.setProblem("Warehouse cancellation pending: "
+                        +BuilderWarehouseCoordinator.cancellationExplanation(
+                                cancellation.reason()));
         }
         if(table.isBuilder()&&level.getGameTime()%40==0)
             table.updateBuilderStagedStock(BuilderSupplyInventory.available(table));
