@@ -166,8 +166,18 @@ public final class BuilderVillagerMatrixStartGameTest {
                             +elevatedWorkers.size());
                     h.succeed();return;
                 }
+                // A teammate may have claimed the FINAL cell and be
+                // physically building/climbing its scaffold return-safe
+                // approach. That is ongoing work, not an idle crew stall.
+                // The absolute cap still detects a permanently stuck plan.
+                boolean activeAccess=crew.stream().anyMatch(mob->
+                        table.claimedStep(mob.getUUID())>=0
+                        &&(BuilderScaffoldPlanA.hasPlan(mob)
+                            ||BuilderScaffolding.isControllingMovement(mob)
+                            ||BuilderGrappleAccess.active(mob)));
                 if(h.getTick()>3600
-                        ||h.getTick()>800&&h.getTick()-lastChange[0]>850){
+                        ||h.getTick()>800&&h.getTick()-lastChange[0]>850
+                            &&!activeAccess){
                     StringBuilder error=new StringBuilder(
                             "Villager Matrix cold start stalled: placed="+placed
                             +"/26 after tick "+h.getTick()
