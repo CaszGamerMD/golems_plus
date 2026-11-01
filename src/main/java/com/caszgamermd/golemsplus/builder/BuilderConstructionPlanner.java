@@ -235,9 +235,9 @@ public final class BuilderConstructionPlanner {
             if((a>0)!=(b>0))return a>0?-1:1;
             var x=steps.get(left);
             var y=steps.get(right);
-            long da=BlockPos.containing(x.x(),x.y(),x.z()).distSqr(anchor);
-            long db=BlockPos.containing(y.x(),y.y(),y.z()).distSqr(anchor);
-            int distance=Long.compare(da,db);
+            double da=new BlockPos(x.x(),x.y(),x.z()).distSqr(anchor);
+            double db=new BlockPos(y.x(),y.y(),y.z()).distSqr(anchor);
+            int distance=Double.compare(da,db);
             if(distance!=0)return distance;
             if(a!=b)return Integer.compare(b,a);
             return Integer.compare(left,right);
