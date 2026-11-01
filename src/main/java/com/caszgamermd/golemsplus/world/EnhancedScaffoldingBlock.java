@@ -27,13 +27,13 @@ import net.minecraft.world.phys.BlockHitResult;
  */
 public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
     private static final int MAX_COMPONENT=32768;
-    private final MapCodec<EnhancedScaffoldingBlock> codec=MapCodec.unit(this);
+    private final MapCodec<ScaffoldingBlock> codec=MapCodec.unit(this);
 
     public EnhancedScaffoldingBlock(BlockBehaviour.Properties properties){
         super(properties);
     }
 
-    @Override public MapCodec<? extends Block> codec(){return codec;}
+    @Override public MapCodec<ScaffoldingBlock> codec(){return codec;}
 
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext context){
