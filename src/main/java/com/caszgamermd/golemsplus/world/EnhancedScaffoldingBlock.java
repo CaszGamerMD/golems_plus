@@ -33,7 +33,7 @@ public final class EnhancedScaffoldingBlock extends ScaffoldingBlock {
         super(properties);
     }
 
-    @Override protected MapCodec<? extends Block> codec(){return codec;}
+    @Override public MapCodec<? extends Block> codec(){return codec;}
 
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext context){
