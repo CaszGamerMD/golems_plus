@@ -1182,6 +1182,19 @@ public final class BuilderBuildService {
                     BuilderPlacementSpace.invalidateApproach(worker,pos);
                 }
             }
+            // Elevated cells without a supporting block below need a
+            // construction platform, not repeated grapple ascents to a
+            // non-existent work stance. An inventory-paid scaffold bridge
+            // gets first refusal when ordinary walking cannot reach it.
+            // A failed scaffold preflight still permits grappling below.
+            if(yDiff>0
+                    &&BuilderConstructionPlanner.preferScaffoldForUnsupportedWork(
+                            directOrdinaryWork,
+                            level.getBlockState(pos.below()).isAir())
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&scaffoldBlockedWork(level,worker,table,owner,pos,
+                            plan.steps()))
+                return;
             // A grapple can repeatedly select an unreachable high ledge.
             // After a genuine physical approach timeout, try a supported,
             // inventory-paid scaffold bridge rooted on this same build.
