@@ -363,6 +363,13 @@ public final class BuilderConstructionPlanner {
                 +" next=["+String.join("; ",examples)+"]";
     }
 
+    /** A Builder with no ordinary work stance must build physical footing
+     * under an unsupported placement before trying an optional grapple. */
+    static boolean preferScaffoldForUnsupportedWork(
+            boolean ordinaryWorkStance,boolean unsupportedBelow){
+        return !ordinaryWorkStance&&unsupportedBelow;
+    }
+
     /** Diagnose the exact first supported frontier obstruction with the
      * current world and trained route finder; never move or alter blocks.
      * This is for failure reports, not the 5-tick claim hot path.
@@ -564,27 +571,31 @@ public final class BuilderConstructionPlanner {
                 // support. The five-tick Builder task will execute a
                 // collision-checked sidestep before considering placement.
                 stance=worker.blockPosition();
+            // An elevated unsupported block needs construction footing.
+            // Prefer a real, item-paid scaffold platform if one can be
+            // built. A grapple is an access tool, not a replacement for a
+            // safe pose from which to PLACE the block. If a scaffold
+            // cannot be planned, ordinary grapple access stays available.
+            boolean unsupportedBelow=world.getBlockState(target.below()).isAir();
+            boolean preferPlatform=preferScaffoldForUnsupportedWork(
+                    stance!=null,unsupportedBelow);
+            boolean scaffold=preferPlatform
+                    &&BuilderScaffoldPlanA.canPlanWorkPose(
+                            world,worker,table,target,steps);
             boolean grapple=false;
-            if(stance==null
+            if(stance==null&&!scaffold
                     &&target.getY()-worker.blockPosition().getY()>0
                     &&worker.carriedCount(WorksiteContent.GRAPPLE_HOOK)>0
                     &&BuilderGrappleAccess.canPlanWorkAscent(world,worker,target))
                 grapple=true;
-            // Read-only scaffold preflight: a future work pose can be
-            // reached by a real paid tower/bridge, even if neither native
-            // A* nor a rope can currently get across an unfinished roof.
             boolean floating=BuilderScaffoldPlanA
                     .needsTemporaryWorkPlatform(world,target);
-            boolean scaffold=stance==null&&!grapple
-                    // An occupied same-layer roof can obstruct all walking
-                    // stances too. A real inventory-paid work bridge is
-                    // an access option, even when target sides are joined
-                    // to other blocks and the rise is only one block.
-                    &&(BuilderScaffoldPlanA.canPlanWorkPose(
-                            world,worker,table,target,steps)
+            if(stance==null&&!grapple&&!scaffold)
+                scaffold=BuilderScaffoldPlanA.canPlanWorkPose(
+                        world,worker,table,target,steps)
                         ||(target.getY()-worker.blockPosition().getY()>1
                             &&!floating&&BuilderScaffolding.canPlanAccess(
-                                    world,worker,table,target,steps)));
+                                    world,worker,table,target,steps));
             if(stance==null&&!grapple&&!scaffold)continue;
             boolean sky=stance==null
                     ?world.canSeeSky(target.above())
