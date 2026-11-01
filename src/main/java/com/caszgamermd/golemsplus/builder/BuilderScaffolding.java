@@ -3,6 +3,7 @@ package com.caszgamermd.golemsplus.builder;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -455,13 +456,13 @@ public final class BuilderScaffolding {
         if(exiting.containsKey(worker))return true;
         if(climbingNow(level,worker))return false;
         BlockPos feet=worker.blockPosition();
-        var owned=table.scaffoldPositions(worker.getUUID());
-        if(!owned.contains(feet)&&!owned.contains(feet.below()))return false;
+        if(!table.isTrackedScaffold(feet)
+                &&!table.isTrackedScaffold(feet.below()))return false;
         // A BOTTOM=true horizontal bridge can support a mob whose feet
         // are a fraction of a block INSIDE the scaffold while onGround is
         // still false. A collision-checked move to nearby real stone is
         // safer than forcing another climb through the same bridge.
-        boolean insideOwned=owned.contains(feet)
+        boolean insideOwned=table.isTrackedScaffold(feet)
                 &&level.getBlockState(feet).is(Blocks.SCAFFOLDING)
                 &&worker.getY()<feet.getY()+1.0;
         if(!worker.onGround()&&!insideOwned)return false;
@@ -519,15 +520,14 @@ public final class BuilderScaffolding {
         if(stepOffAtFootHeight(level,worker,table,target))return true;
         BlockPos feet=worker.blockPosition();
         BlockPos scaffold=feet.below();
-        var owned=table.scaffoldPositions(worker.getUUID());
         if(!level.getBlockState(scaffold).is(Blocks.SCAFFOLDING)
-                ||!owned.contains(scaffold)){
+                ||!table.isTrackedScaffold(scaffold)){
             // A one-high HORIZONTAL bridge is climb-through: its BOTTOM
             // shape can let the Builder settle INSIDE this exact cell.
             // It is still a physical owned bridge, not an absent tower.
             scaffold=feet;
             if(!level.getBlockState(scaffold).is(Blocks.SCAFFOLDING)
-                    ||!owned.contains(scaffold))return false;
+                    ||!table.isTrackedScaffold(scaffold))return false;
         }
         BlockPos topFeet=scaffold.above();
         BlockPos chosen=null;
@@ -1030,6 +1030,7 @@ public final class BuilderScaffolding {
         var positions=new java.util.ArrayList<>(table.scaffoldPositions(worker.getUUID()));
         for(BlockPos pos:positions){
             if(!level.hasChunkAt(pos)||pos.equals(floor))continue;
+            if(BuilderScaffoldPlanA.teammateUsesScaffold(table,worker,pos))continue;
             if(Math.abs(pos.getX()+.5-worker.getX())>=.9
                     ||Math.abs(pos.getZ()+.5-worker.getZ())>=.9
                     ||pos.getY()+1.0<=worker.getBoundingBox().minY-.1
@@ -1068,6 +1069,22 @@ public final class BuilderScaffolding {
             WorkerStationBlockEntity table,boolean force){
         var positions=new java.util.ArrayList<>(table.scaffoldPositions(worker.getUUID()));
         if(positions.isEmpty())return;
+        // A tower/bridge is shared physical infrastructure. Never pull
+        // another Builder's route (or occupied footing) out from below it,
+        // even when this owner has finished its own assignment or a forced
+        // cleanup has been requested. Try again after the loan ends.
+        for(BlockPos pos:positions){
+            if(BuilderScaffoldPlanA.teammateUsesScaffold(table,worker,pos))
+                return;
+            for(UUID teammate:table.builderWorkerIds()){
+                if(teammate.equals(worker.getUUID()))continue;
+                if(level.getEntity(teammate) instanceof BuilderGolem other
+                        &&other.isAlive()
+                        &&other.getBoundingBox().intersects(
+                                new net.minecraft.world.phys.AABB(pos)
+                                        .inflate(.15)))return;
+            }
+        }
         int minY=positions.stream().mapToInt(BlockPos::getY).min().orElse(0);
         if(!force){
             if(!worker.onGround()||worker.getY()>minY+2.1)return;

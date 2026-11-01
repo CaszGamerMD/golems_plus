@@ -88,6 +88,27 @@ public final class BuilderScaffoldPlanA {
     private static final int MAX_WORK_TOWER_DISTANCE=
             MAX_HORIZONTAL_SCAFFOLD_SPAN+2;
     private static final Map<BuilderGolem,Job> jobs=new WeakHashMap<>();
+    /** A teammate's route may use our paid shaft or bridge. The receipt
+     * never changes hands: prevent the owner from reclaiming a borrowed
+     * support until that physical route has ended. */
+    static boolean teammateUsesScaffold(WorkerStationBlockEntity table,
+            BuilderGolem owner,BlockPos scaffold){
+        for(var entry:jobs.entrySet()){
+            BuilderGolem other=entry.getKey();
+            Job route=entry.getValue();
+            if(other==owner||!other.isAlive()
+                    ||!route.planner.equals(table.getBlockPos()))continue;
+            if(routeUsesScaffold(scaffold,route.base,route.top,
+                    route.bridgePath))return true;
+        }
+        return false;
+    }
+    static boolean routeUsesScaffold(BlockPos at,BlockPos base,int top,
+            List<BlockPos> bridge){
+        return (at.getX()==base.getX()&&at.getZ()==base.getZ()
+                &&at.getY()>=base.getY()&&at.getY()<=top)
+                ||bridge.contains(at);
+    }
     // A single rejected base oscillated between two adjacent roof columns
     // forever. Retain each physically failed entry for a bounded window so
     // the next plan explores a DISTINCT safe support, not the last failure.
@@ -212,7 +233,7 @@ public final class BuilderScaffoldPlanA {
                     ||reserved.contains(p.above())
                     ||reserved.contains(p.above(2)))return false;
             if(world.getBlockState(p).is(Blocks.SCAFFOLDING)){
-                if(!table.scaffoldPositions(worker.getUUID()).contains(p)
+                if(!table.isTrackedScaffold(p)
                         ||world.getBlockState(p).getValue(
                                 net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE)
                                 >=MAX_HORIZONTAL_SCAFFOLD_SPAN+1)
@@ -301,7 +322,7 @@ public final class BuilderScaffoldPlanA {
             BlockPos p=base.atY(y);
             if(!world.hasChunkAt(p)||reserved.contains(p))return false;
             if(world.getBlockState(p).is(Blocks.SCAFFOLDING)){
-                if(!table.scaffoldPositions(worker.getUUID()).contains(p))
+                if(!table.isTrackedScaffold(p))
                     return false;
             }else if(!world.getBlockState(p).isAir())return false;
         }
@@ -611,8 +632,11 @@ public final class BuilderScaffoldPlanA {
     }
     private static boolean present(ServerLevel level,WorkerStationBlockEntity table,
             BuilderGolem worker,BlockPos at){
+        // A Planner's four Builders share one physical worksite. A scaffold
+        // installed and paid for by a teammate is valid footing, but its
+        // ownership receipt remains with the original Builder for refunds.
         return level.getBlockState(at).is(Blocks.SCAFFOLDING)
-                &&table.scaffoldPositions(worker.getUUID()).contains(at);
+                &&table.isTrackedScaffold(at);
     }
     /** Inspect actual owned blocks. Stale receipts do not make a missing
      * scaffold physically safe, even if a route was previously approved.
