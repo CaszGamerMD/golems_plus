@@ -640,6 +640,10 @@ public final class BuilderGrappleAccess {
     public static Result reachWork(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos target){
         if(active.containsKey(worker)||!worker.onGround())return Result.MOVING;
+        // An active paid scaffold owns this target's access/return route.
+        // Never attach a second controller while the Builder is traversing
+        // its bridge: an overlapping rope can strand BOTH controllers.
+        if(BuilderScaffoldPlanA.hasPlan(worker))return Result.NO_SAFE_ANCHOR;
         // Probe actual work poses before equipment. Never use an adjacent
         // target tile as evidence of valid work access.
         BlockPos pose=BuilderPlacementSpace.approachWithRules(level,worker,
@@ -724,6 +728,9 @@ public final class BuilderGrappleAccess {
     public static boolean rappelHome(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos goal){
         if(active.containsKey(worker))return true;
+        if(BuilderScaffoldPlanA.hasPlan(worker)
+                &&BuilderScaffoldPlanA.returnToGround(level,worker,table))
+            return true;
         if(!worker.onGround())return true;
         if(worker.blockPosition().getY()-goal.getY()<2)return false;
         if(!hasHook(worker)){
@@ -743,6 +750,12 @@ public final class BuilderGrappleAccess {
     public static boolean rappelToward(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos goal){
         if(active.containsKey(worker))return true;
+        // Returning from a high work bridge must retrace and descend
+        // its owned scaffold BEFORE considering a fresh grapple line.
+        // In particular Plan A WALK_FIRST is not safe to interrupt.
+        if(BuilderScaffoldPlanA.hasPlan(worker)
+                &&BuilderScaffoldPlanA.returnToGround(level,worker,table))
+            return true;
         if(continueLocalDrop(level,worker,goal))return true;
         int diff=worker.blockPosition().getY()-goal.getY();
         if(diff<1)return false; // ordinary depot pickup must still run
