@@ -1,0 +1,652 @@
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "minecraft:block/copper_block",
+    "frame": "minecraft:block/copper_block",
+    "edge": "minecraft:block/cut_copper",
+    "brace": "minecraft:block/exposed_copper"
+  },
+  "elements": [
+    {
+      "name": "copper upright",
+      "from": [
+        0.5,
+        0,
+        0.5
+      ],
+      "to": [
+        2,
+        16,
+        2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#frame"
+        },
+        "south": {
+          "texture": "#frame"
+        },
+        "east": {
+          "texture": "#frame"
+        },
+        "west": {
+          "texture": "#frame"
+        },
+        "up": {
+          "texture": "#frame"
+        },
+        "down": {
+          "texture": "#frame"
+        }
+      }
+    },
+    {
+      "name": "copper upright",
+      "from": [
+        0.5,
+        0,
+        14
+      ],
+      "to": [
+        2,
+        16,
+        15.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#frame"
+        },
+        "south": {
+          "texture": "#frame"
+        },
+        "east": {
+          "texture": "#frame"
+        },
+        "west": {
+          "texture": "#frame"
+        },
+        "up": {
+          "texture": "#frame"
+        },
+        "down": {
+          "texture": "#frame"
+        }
+      }
+    },
+    {
+      "name": "copper upright",
+      "from": [
+        14,
+        0,
+        0.5
+      ],
+      "to": [
+        15.5,
+        16,
+        2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#frame"
+        },
+        "south": {
+          "texture": "#frame"
+        },
+        "east": {
+          "texture": "#frame"
+        },
+        "west": {
+          "texture": "#frame"
+        },
+        "up": {
+          "texture": "#frame"
+        },
+        "down": {
+          "texture": "#frame"
+        }
+      }
+    },
+    {
+      "name": "copper upright",
+      "from": [
+        14,
+        0,
+        14
+      ],
+      "to": [
+        15.5,
+        16,
+        15.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#frame"
+        },
+        "south": {
+          "texture": "#frame"
+        },
+        "east": {
+          "texture": "#frame"
+        },
+        "west": {
+          "texture": "#frame"
+        },
+        "up": {
+          "texture": "#frame"
+        },
+        "down": {
+          "texture": "#frame"
+        }
+      }
+    },
+    {
+      "name": "east west copper rail",
+      "from": [
+        2,
+        0.5,
+        0.5
+      ],
+      "to": [
+        14,
+        1.5,
+        2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#edge"
+        },
+        "south": {
+          "texture": "#edge"
+        },
+        "east": {
+          "texture": "#edge"
+        },
+        "west": {
+          "texture": "#edge"
+        },
+        "up": {
+          "texture": "#edge"
+        },
+        "down": {
+          "texture": "#edge"
+        }
+      }
+    },
+    {
+      "name": "east west copper rail",
+      "from": [
+        2,
+        0.5,
+        14
+      ],
+      "to": [
+        14,
+        1.5,
+        15.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#edge"
+        },
+        "south": {
+          "texture": "#edge"
+        },
+        "east": {
+          "texture": "#edge"
+        },
+        "west": {
+          "texture": "#edge"
+        },
+        "up": {
+          "texture": "#edge"
+        },
+        "down": {
+          "texture": "#edge"
+        }
+      }
+    },
+    {
+      "name": "north south copper rail",
+      "from": [
+        0.5,
+        0.5,
+        2
+      ],
+      "to": [
+        2,
+        1.5,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#edge"
+        },
+        "south": {
+          "texture": "#edge"
+        },
+        "east": {
+          "texture": "#edge"
+        },
+        "west": {
+          "texture": "#edge"
+        },
+        "up": {
+          "texture": "#edge"
+        },
+        "down": {
+          "texture": "#edge"
+        }
+      }
+    },
+    {
+      "name": "north south copper rail",
+      "from": [
+        14,
+        0.5,
+        2
+      ],
+      "to": [
+        15.5,
+        1.5,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#edge"
+        },
+        "south": {
+          "texture": "#edge"
+        },
+        "east": {
+          "texture": "#edge"
+        },
+        "west": {
+          "texture": "#edge"
+        },
+        "up": {
+          "texture": "#edge"
+        },
+        "down": {
+          "texture": "#edge"
+        }
+      }
+    },
+    {
+      "name": "east west copper rail",
+      "from": [
+        2,
+        14.5,
+        0.5
+      ],
+      "to": [
+        14,
+        15.5,
+        2
+      ],
+      "faces": {
+        "north": {
+          "texture": "#edge"
+        },
+        "south": {
+          "texture": "#edge"
+        },
+        "east": {
+          "texture": "#edge"
+        },
+        "west": {
+          "texture": "#edge"
+        },
+        "up": {
+          "texture": "#edge"
+        },
+        "down": {
+          "texture": "#edge"
+        }
+      }
+    },
+    {
+      "name": "east west copper rail",
+      "from": [
+        2,
+        14.5,
+        14
+      ],
+      "to": [
+        14,
+        15.5,
+        15.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#edge"
+        },
+        "south": {
+          "texture": "#edge"
+        },
+        "east": {
+          "texture": "#edge"
+        },
+        "west": {
+          "texture": "#edge"
+        },
+        "up": {
+          "texture": "#edge"
+        },
+        "down": {
+          "texture": "#edge"
+        }
+      }
+    },
+    {
+      "name": "north south copper rail",
+      "from": [
+        0.5,
+        14.5,
+        2
+      ],
+      "to": [
+        2,
+        15.5,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#edge"
+        },
+        "south": {
+          "texture": "#edge"
+        },
+        "east": {
+          "texture": "#edge"
+        },
+        "west": {
+          "texture": "#edge"
+        },
+        "up": {
+          "texture": "#edge"
+        },
+        "down": {
+          "texture": "#edge"
+        }
+      }
+    },
+    {
+      "name": "north south copper rail",
+      "from": [
+        14,
+        14.5,
+        2
+      ],
+      "to": [
+        15.5,
+        15.5,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#edge"
+        },
+        "south": {
+          "texture": "#edge"
+        },
+        "east": {
+          "texture": "#edge"
+        },
+        "west": {
+          "texture": "#edge"
+        },
+        "up": {
+          "texture": "#edge"
+        },
+        "down": {
+          "texture": "#edge"
+        }
+      }
+    },
+    {
+      "name": "north diagonal copper brace",
+      "from": [
+        7.5,
+        -0.5,
+        0.7
+      ],
+      "to": [
+        8.5,
+        16.5,
+        1.7
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brace"
+        },
+        "south": {
+          "texture": "#brace"
+        },
+        "east": {
+          "texture": "#brace"
+        },
+        "west": {
+          "texture": "#brace"
+        },
+        "up": {
+          "texture": "#brace"
+        },
+        "down": {
+          "texture": "#brace"
+        }
+      },
+      "rotation": {
+        "origin": [
+          8,
+          8,
+          1.2
+        ],
+        "axis": "z",
+        "angle": 45,
+        "rescale": false
+      }
+    },
+    {
+      "name": "south diagonal copper brace",
+      "from": [
+        7.5,
+        -0.5,
+        14.3
+      ],
+      "to": [
+        8.5,
+        16.5,
+        15.3
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brace"
+        },
+        "south": {
+          "texture": "#brace"
+        },
+        "east": {
+          "texture": "#brace"
+        },
+        "west": {
+          "texture": "#brace"
+        },
+        "up": {
+          "texture": "#brace"
+        },
+        "down": {
+          "texture": "#brace"
+        }
+      },
+      "rotation": {
+        "origin": [
+          8,
+          8,
+          14.8
+        ],
+        "axis": "z",
+        "angle": -45,
+        "rescale": false
+      }
+    },
+    {
+      "name": "east diagonal copper brace",
+      "from": [
+        14.3,
+        -0.5,
+        7.5
+      ],
+      "to": [
+        15.3,
+        16.5,
+        8.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brace"
+        },
+        "south": {
+          "texture": "#brace"
+        },
+        "east": {
+          "texture": "#brace"
+        },
+        "west": {
+          "texture": "#brace"
+        },
+        "up": {
+          "texture": "#brace"
+        },
+        "down": {
+          "texture": "#brace"
+        }
+      },
+      "rotation": {
+        "origin": [
+          14.8,
+          8,
+          8
+        ],
+        "axis": "x",
+        "angle": 45,
+        "rescale": false
+      }
+    },
+    {
+      "name": "west diagonal copper brace",
+      "from": [
+        0.7,
+        -0.5,
+        7.5
+      ],
+      "to": [
+        1.7,
+        16.5,
+        8.5
+      ],
+      "faces": {
+        "north": {
+          "texture": "#brace"
+        },
+        "south": {
+          "texture": "#brace"
+        },
+        "east": {
+          "texture": "#brace"
+        },
+        "west": {
+          "texture": "#brace"
+        },
+        "up": {
+          "texture": "#brace"
+        },
+        "down": {
+          "texture": "#brace"
+        }
+      },
+      "rotation": {
+        "origin": [
+          1.2,
+          8,
+          8
+        ],
+        "axis": "x",
+        "angle": -45,
+        "rescale": false
+      }
+    }
+  ],
+  "display": {
+    "gui": {
+      "rotation": [
+        30,
+        225,
+        0
+      ],
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.68,
+        0.68,
+        0.68
+      ]
+    },
+    "ground": {
+      "scale": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    "fixed": {
+      "rotation": [
+        0,
+        180,
+        0
+      ],
+      "scale": [
+        0.65,
+        0.65,
+        0.65
+      ]
+    },
+    "thirdperson_righthand": {
+      "rotation": [
+        75,
+        45,
+        0
+      ],
+      "translation": [
+        0,
+        2.5,
+        0
+      ],
+      "scale": [
+        0.375,
+        0.375,
+        0.375
+      ]
+    },
+    "firstperson_righthand": {
+      "rotation": [
+        0,
+        45,
+        0
+      ],
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.45,
+        0.45,
+        0.45
+      ]
+    }
+  }
+}
