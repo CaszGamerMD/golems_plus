@@ -31,7 +31,7 @@ import net.minecraft.world.item.ItemStack;
  * cache keeps only presentation state when the player closes/reopens.
  */
 public final class BuilderPlannerScreen extends WorkerStationScreen {
-    private enum Page { JOB, PLACEMENTS, RULES }
+    private enum Page { JOB, PLACEMENTS, RULES, MATERIAL_EDIT }
     private enum Sort { ALPHABETICAL, VOLUME, LEFT }
     private record Memory(Page page,Sort sort,int scroll,int placementPage,
                           int jobPage,String search){}
@@ -89,7 +89,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
         clearWidgets();
         Memory saved=VIEW.get(key());
         if(saved!=null){
-            page=saved.page();sort=saved.sort();
+            page=saved.page()==Page.MATERIAL_EDIT?Page.JOB:saved.page();sort=saved.sort();
             scroll=saved.scroll();placementPage=saved.placementPage();
             jobPage=saved.jobPage();search=saved.search();
         }
@@ -191,7 +191,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
                     ruleText=table.builderMaterialRules()
                             .getOrDefault(ruleSource,"");
                     if(ruleText.equals("!"))ruleText="";
-                    show(Page.JOB);
+                    show(Page.MATERIAL_EDIT);
                     return true;
                 }
             }
@@ -268,6 +268,28 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             });
             return;
         }
+        if(page==Page.MATERIAL_EDIT){
+            int fieldWidth=Math.max(120,panelWidth-SIDE-46);
+            int y=Math.max(110,Math.min(170,panelHeight-144));
+            if(ruleSource!=null){
+                replacementInput=new EditBox(font,
+                        leftPos+SIDE+22,topPos+y,fieldWidth,20,
+                        Component.literal("Replacement block item ID"));
+                replacementInput.setMaxLength(90);
+                replacementInput.setValue(ruleText);
+                addRenderableWidget(replacementInput);
+                button("IGNORE ALL UNPLACED",SIDE+22,y+26,fieldWidth,
+                        ()->sendRule(1));
+                button("APPLY REPLACEMENT",SIDE+22,y+52,fieldWidth,
+                        ()->sendRule(2));
+                button("RESET TO ORIGINAL",SIDE+22,y+78,fieldWidth,
+                        ()->sendRule(0));
+                button("CANCEL",SIDE+22,y+104,fieldWidth,()->{
+                    ruleSource=null;show(Page.JOB);
+                });
+            }
+            return;
+        }
         if(page==Page.RULES){
             button("BACK TO MATERIALS",SIDE+15,91,175,()->{
                 scroll=0;show(Page.JOB);
@@ -285,7 +307,7 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
                             "IGNORED":target),70),SIDE+16,126+row*30,
                             panelWidth-SIDE-45,()->{
                         ruleSource=source;ruleText=target.equals("!")?"":target;
-                        show(Page.JOB);
+                        show(Page.MATERIAL_EDIT);
                     });
                 }
                 button("PREV",SIDE+16,panelHeight-43,85,()->{
@@ -391,21 +413,6 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             if(table!=null)send("builder_height_mode",
                     (table.builderHeightMode()+1)%3);
         });
-        if(ruleSource!=null){
-            int px=SIDE+20,py=panelHeight-252;
-            replacementInput=new EditBox(font,leftPos+px+12,topPos+py+43,
-                    Math.min(320,panelWidth-SIDE-75),18,
-                    Component.literal("New block item ID"));
-            replacementInput.setMaxLength(90);
-            replacementInput.setValue(ruleText);
-            addRenderableWidget(replacementInput);
-            button("IGNORE",px+12,py+73,80,()->sendRule(1));
-            button("REPLACE",px+98,py+73,83,()->sendRule(2));
-            button("RESET",px+187,py+73,78,()->sendRule(0));
-            button("X",Math.min(panelWidth-58,px+272),py+73,32,()->{
-                ruleSource=null;show(Page.JOB);
-            });
-        }
         button("CREW -",18,285,90,()->{
             if(table!=null)send("crew",Math.max(1,table.crewTarget()-1));
         });
@@ -514,6 +521,13 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
             g.text(font,t.builderMaterialStorage()==null?"NOT SELECTED":
                     t.builderMaterialStorage().toShortString(),18,388,TEXT,false);
         }
+        if(page==Page.MATERIAL_EDIT){
+            g.text(font,"EDIT MATERIAL",SIDE+18,80,GREEN,false);
+            g.text(font,ruleSource==null?"No material selected":
+                    shorten(ruleSource,Math.max(16,(panelWidth-SIDE-35)/6)),
+                    SIDE+18,96,WHITE,false);
+            return; // Render the editor's actual EditBox and Buttons normally.
+        }
         if(page==Page.RULES){
             g.text(font,"SAVED MATERIAL RULES - CLICK TO EDIT / RESET",
                     SIDE+15,80,TEXT,false);
@@ -576,15 +590,6 @@ public final class BuilderPlannerScreen extends WorkerStationScreen {
                 SIDE+16,panelHeight-128,YELLOW,false);
         else if(!notice.isBlank())g.text(font,shorten(notice,93),
                 SIDE+16,panelHeight-128,MUTED,false);
-        if(ruleSource!=null){
-            int px=SIDE+20,py=panelHeight-252;
-            g.fill(px,py,Math.min(panelWidth-18,px+365),py+106,0xff101b26);
-            g.fill(px+2,py+2,Math.min(panelWidth-20,px+363),py+30,0xff36506a);
-            g.text(font,"EDIT MATERIAL: "+shorten(ruleSource,38),
-                    px+11,py+11,WHITE,false);
-            g.text(font,"Replacement item ID (same remaining count):",
-                    px+12,py+33,MUTED,false);
-        }
     }
     private static String shorten(String s,int max){
         return s.length()<=max?s:s.substring(0,Math.max(0,max-1))+"…";
