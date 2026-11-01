@@ -59,6 +59,8 @@ public final class BuilderConstructionPlan {
             steps.add(new Step(world.x(),world.y(),world.z(),b.state(),item,ignored));
             if(item!=null)quantities.merge(item,1L,Long::sum);
         }
+        for(String id:java.util.List.copyOf(quantities.keySet()))
+            if(BuilderBlockResolver.reusableSupply(id))quantities.put(id,1L);
         return new Result(steps,quantities,unsupported);
     }
 }

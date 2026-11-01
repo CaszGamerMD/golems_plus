@@ -379,6 +379,8 @@ public final class BuilderBuildService {
     public static String primeWarehouse(ServerLevel level,
             WorkerStationBlockEntity table){
         if(!table.isBuilder()||table.activeOrder()==null)return "No active Builder job";
+        if(BuilderSupplyInventory.creativeSupply(table))
+            return "Creative Crate linked: unlimited Builder materials and tools. No warehouse scan required.";
         if(table.warehouse()==null)
             return "Manual supply mode: link a Rack Computer with a Warehouse Scanner to enable warehouse deliveries";
         try{
@@ -395,23 +397,18 @@ public final class BuilderBuildService {
                 return "Warehouse material request already active"
                         +(table.builderCancelShipment()
                             ?"; cancelling the previous unfiltered manifest":"");
-            var stock=BuilderSupplyInventory.available(table);
-            var warehouse=table.warehouse();
-            var pickable=warehouse==null?null:
-                    com.caszgamermd.golemsplus.warehouse.BuilderWarehousePort
-                        .stockSnapshot(level,new BlockPos(
-                                warehouse.x(),warehouse.y(),warehouse.z()),
-                                table.builderRemaining());
-            var materials=BuilderMaterialDemand.outstandingRemaining(
-                    table.builderRemaining(),stock,
-                    pickable==null?Map.of():pickable);
-            if(materials.isEmpty())
-                return "All remaining construction materials are already staged OnSite or with the crew";
-            if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan))
+            // queueMaterials owns the single OnSite + rack snapshot.
+            // Duplicating both scans here blocked the server at Start.
+            if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan)){
+                if(BuilderMaterialDemand.outstandingRemaining(
+                        table.builderRemaining(),
+                        BuilderSupplyInventory.available(table),Map.of()).isEmpty())
+                    return "All remaining construction materials are already staged OnSite or with the crew";
                 return table.problem().isBlank()?"Warehouse not ready":table.problem();
+            }
             if(table.supplyPtp().equals(BlockPos.ZERO))
                 return "Warehouse request saved; "+table.problem();
-            return "Warehouse preparing "+materials.size()
+            return "Warehouse preparing "+table.supplyManifest().size()
                     +" material types at PTP "+table.supplyPtp().toShortString()
                     +". One Builder Golem will collect the packed shulkers";
         }catch(Exception ex){
@@ -435,7 +432,8 @@ public final class BuilderBuildService {
         }
         if(table.isBuilder()&&level.getGameTime()%40==0)
             table.updateBuilderStagedStock(BuilderSupplyInventory.available(table));
-        if(table.isBuilder()&&level.getGameTime()%80==0){
+        if(table.isBuilder()&&!BuilderSupplyInventory.creativeSupply(table)
+                &&level.getGameTime()%80==0){
             var link=table.warehouse();
             if(link!=null&&level.dimension().identifier().toString().equals(link.dimension())){
                 BlockPos computer=new BlockPos(link.x(),link.y(),link.z());
@@ -464,7 +462,9 @@ public final class BuilderBuildService {
         // no order is active. Actual rack stock is prioritized, and the
         // full remaining demand is never silently dropped.
         if(table.isBuilder()&&table.activeOrder()!=null
-                &&table.warehouse()!=null&&table.supplyRequest()==null
+                &&table.warehouse()!=null
+                &&!BuilderSupplyInventory.creativeSupply(table)
+                &&table.supplyRequest()==null
                 &&!table.builderCancelShipment()
                 &&level.getGameTime()%80==0)
             primeWarehouse(level,table);
@@ -541,12 +541,8 @@ public final class BuilderBuildService {
             // in the on-site debris/materials chest.
             if(BuilderSupplyInventory.hasTools(worker)){
                 BlockPos depot=BuilderSupplyInventory.pouchReturnPos(table);
-                if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                        depot.getZ()+.5)>12){
-                    com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .routeTo(level,worker,depot,.83);
+                if(BuilderReturnService.approach(level,worker,depot,.83))
                     return;
-                }
                 if(!BuilderSupplyInventory.returnTools(worker,table)){
                     table.setProblem("Make room in OnSite Storage for returned mining tools");
                     return;
@@ -555,11 +551,8 @@ public final class BuilderBuildService {
             if(!worker.hasSupplyBox()&&!worker.isEmpty()){
                 BlockPos returnTo=BuilderSupplyInventory.pouchReturnPos(table);
                 if(level.hasChunkAt(returnTo)){
-                    if(worker.distanceToSqr(returnTo.getX()+.5,returnTo.getY()+.5,
-                            returnTo.getZ()+.5)>12)
-                        com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                .routeTo(level,worker,returnTo,.8);
-                    else BuilderSupplyInventory.returnPouch(table,worker);
+                    if(!BuilderReturnService.approach(level,worker,returnTo,.8))
+                        BuilderSupplyInventory.returnPouch(table,worker);
                 }
                 return;
             }
@@ -1285,9 +1278,10 @@ public final class BuilderBuildService {
             // lower half was already placed and paid for in the prior
             // layer. Keep refund logic for all ordinary materials.
             boolean freeHalf=step.requiredItem()==null;
-            BuilderSupplyInventory.Receipt payment=freeHalf?null:
+            boolean reusableFluid=BuilderBlockResolver.reusableSupply(step.requiredItem());
+            BuilderSupplyInventory.Receipt payment=freeHalf||reusableFluid?null:
                     BuilderSupplyInventory.consume(worker,state.item());
-            if(!freeHalf&&payment==null){
+            if(!freeHalf&&!reusableFluid&&payment==null){
                 table.waitForBuilderMaterial(worker.getUUID(),index,
                         level.getGameTime());
                 if(BuilderWarehouseCoordinator.request(level,worker,table,

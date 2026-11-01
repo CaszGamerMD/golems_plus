@@ -6,6 +6,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
+import com.caszgamermd.golemsplus.world.WorksiteContent;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.Rotation;
@@ -28,6 +29,8 @@ public final class BuilderBlockResolver {
         if(identifier==null||!BuiltInRegistries.BLOCK.containsKey(identifier))return null;
         Block block=BuiltInRegistries.BLOCK.getValue(identifier);
         Item item=block.asItem();
+        if(id.equals("minecraft:water"))item=WorksiteContent.INFINITE_WATER_BUCKET;
+        if(id.equals("minecraft:lava"))item=WorksiteContent.INFINITE_LAVA_BUCKET;
         // Wall signs have standing-sign inventory items, and can be
         // placed as blank physical signs. The test does not fake text NBT.
         boolean sign=id.endsWith("_sign")||id.endsWith("_hanging_sign");
@@ -45,7 +48,6 @@ public final class BuilderBlockResolver {
         // is placed after its lower support, without duplicating materials.
         if(id.endsWith("_bed")||id.endsWith("_tall_flower")
                 ||id.endsWith("_double_plant")||id.endsWith("_crop")
-                ||id.equals("minecraft:water")||id.equals("minecraft:lava")
                 ||id.contains("redstone_wire")||id.contains("piston")
                 ||id.contains("fire")||id.contains("portal"))
             return null;
@@ -63,6 +65,12 @@ public final class BuilderBlockResolver {
                     if(state==null)return null;
                 }
         }
+        // Only source fluids are schematic placements. Flowing levels must
+        // emerge from vanilla physics, not be issued as infinite bucket jobs.
+        if((id.equals("minecraft:water")||id.equals("minecraft:lava"))
+                &&state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL)
+                &&state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL)!=0)
+            return null;
         if(state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED)
                 &&state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED))
             return null;
@@ -78,6 +86,10 @@ public final class BuilderBlockResolver {
             case COUNTERCLOCKWISE_90->Rotation.COUNTERCLOCKWISE_90;
         };
         return new Resolved(state.mirror(m).rotate(r),item);
+    }
+    public static boolean reusableSupply(String itemId){
+        return "golems_plus:infinite_water_bucket".equals(itemId)
+                ||"golems_plus:infinite_lava_bucket".equals(itemId);
     }
     private static <T extends Comparable<T>> BlockState readProperty(
             BlockState state,Property<T> property,String text){

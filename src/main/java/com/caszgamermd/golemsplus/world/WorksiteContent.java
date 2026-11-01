@@ -40,6 +40,7 @@ public final class WorksiteContent {
     public static WorkerStationBlock BUILDER_TABLE, FISHING_STATION, TRADER_COUNTER, BEEKEEPER_STATION, COOKING_STATION;
     public static BeeToolboxBlock BEE_TOOLBOX;
     public static UnemployedCenterBlock UNEMPLOYED_CENTER;
+    public static CreativeCrateBlock CREATIVE_CRATE;
     public static MealCounterBlock MEAL_COUNTER;
     public static CookingKioskTopBlock COOKING_KIOSK_TOP;
     public static Item MEAL_COUNTER_ITEM;
@@ -47,7 +48,8 @@ public final class WorksiteContent {
     public static Item BUILDER_TABLE_ITEM, FISHING_STATION_ITEM, TRADER_COUNTER_ITEM, BEEKEEPER_STATION_ITEM, BEE_TOOLBOX_ITEM, COOKING_STATION_ITEM;
     public static BlockEntityType<BeeToolboxBlockEntity> BEE_TOOLBOX_ENTITY;
     public static BlockEntityType<UnemployedCenterBlockEntity> UNEMPLOYED_CENTER_ENTITY;
-    public static Item UNEMPLOYED_CENTER_ITEM;
+    public static BlockEntityType<CreativeCrateBlockEntity> CREATIVE_CRATE_ENTITY;
+    public static Item UNEMPLOYED_CENTER_ITEM,CREATIVE_CRATE_ITEM,INFINITE_WATER_BUCKET,INFINITE_LAVA_BUCKET;
     public static BlockEntityType<WorkerStationBlockEntity> STATION_ENTITY;
     public static MenuType<WorkerStationMenu> STATION_MENU;
     public static EntityType<TraderGolem> TRADER_GOLEM;
@@ -145,6 +147,28 @@ public final class WorksiteContent {
                 unemployedItemKey,new BlockItem(UNEMPLOYED_CENTER,
                         new Item.Properties().setId(unemployedItemKey)
                                 .useBlockDescriptionPrefix()));
+        ResourceKey<net.minecraft.world.level.block.Block> creativeCrateKey=
+                ResourceKey.create(Registries.BLOCK,GolemsPlus.id("creative_crate"));
+        CREATIVE_CRATE=Registry.register(BuiltInRegistries.BLOCK,creativeCrateKey,
+                new CreativeCrateBlock(BlockBehaviour.Properties
+                        .ofFullCopy(Blocks.BARREL).strength(2.5f)
+                        .setId(creativeCrateKey)));
+        ResourceKey<Item> creativeCrateItemKey=
+                ResourceKey.create(Registries.ITEM,GolemsPlus.id("creative_crate"));
+        CREATIVE_CRATE_ITEM=Registry.register(BuiltInRegistries.ITEM,
+                creativeCrateItemKey,new BlockItem(CREATIVE_CRATE,
+                        new Item.Properties().setId(creativeCrateItemKey)
+                                .useBlockDescriptionPrefix()));
+        ResourceKey<Item> infiniteWaterKey=
+                ResourceKey.create(Registries.ITEM,GolemsPlus.id("infinite_water_bucket"));
+        INFINITE_WATER_BUCKET=Registry.register(BuiltInRegistries.ITEM,
+                infiniteWaterKey,new InfiniteFluidBucketItem(Blocks.WATER,
+                        new Item.Properties().stacksTo(1).setId(infiniteWaterKey)));
+        ResourceKey<Item> infiniteLavaKey=
+                ResourceKey.create(Registries.ITEM,GolemsPlus.id("infinite_lava_bucket"));
+        INFINITE_LAVA_BUCKET=Registry.register(BuiltInRegistries.ITEM,
+                infiniteLavaKey,new InfiniteFluidBucketItem(Blocks.LAVA,
+                        new Item.Properties().stacksTo(1).setId(infiniteLavaKey)));
         BUILDER_TABLE_ITEM = blockItem("builder_table", BUILDER_TABLE);
         FISHING_STATION_ITEM = blockItem("fishing_station", FISHING_STATION);
         ResourceKey<Item> baitKey=ResourceKey.create(Registries.ITEM,GolemsPlus.id("fishing_bait"));
@@ -197,6 +221,10 @@ public final class WorksiteContent {
                 GolemsPlus.id("unemployed_center_entity"),
                 FabricBlockEntityTypeBuilder.create(UnemployedCenterBlockEntity::new,
                         UNEMPLOYED_CENTER).build());
+        CREATIVE_CRATE_ENTITY=Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE,
+                GolemsPlus.id("creative_crate_entity"),
+                FabricBlockEntityTypeBuilder.create(CreativeCrateBlockEntity::new,
+                        CREATIVE_CRATE).build());
         STATION_MENU=Registry.register(BuiltInRegistries.MENU,GolemsPlus.id("worker_station_menu"),
                 new ExtendedMenuType<>(
                         (menuId,inv,pos)->new WorkerStationMenu(menuId,inv,pos),
@@ -245,6 +273,9 @@ public final class WorksiteContent {
                             output.accept(BUILDER_TABLE_ITEM);
                             output.accept(ENHANCED_SCAFFOLDING_ITEM);
                             output.accept(UNEMPLOYED_CENTER_ITEM);
+                            output.accept(CREATIVE_CRATE_ITEM);
+                            output.accept(INFINITE_WATER_BUCKET);
+                            output.accept(INFINITE_LAVA_BUCKET);
                             output.accept(FISHING_STATION_ITEM);
                             output.accept(TRADER_COUNTER_ITEM);
                             output.accept(BEEKEEPER_STATION_ITEM);

@@ -18,6 +18,8 @@ public final class BuilderMaterialDemand {
             if(!step.ignorePlant()&&step.requiredItem()!=null
                     &&!step.requiredItem().isBlank())
                 result.merge(step.requiredItem(),1L,Long::sum);
+        for(String id:java.util.List.copyOf(result.keySet()))
+            if(BuilderBlockResolver.reusableSupply(id))result.put(id,1L);
         return result;
     }
     /** Reserve for the next three vertical Y-levels, bottom-up.
@@ -44,6 +46,7 @@ public final class BuilderMaterialDemand {
             if(!step.ignorePlant()&&id!=null&&!id.isBlank())
                 needed.merge(id,1,Integer::sum);
         }
+        needed.replaceAll((id,count)->BuilderBlockResolver.reusableSupply(id)?1:count);
         needed.replaceAll((id,count)->Math.min(4096,
                 Math.max(0,count-Math.max(0,onsite.getOrDefault(id,0)))));
         needed.values().removeIf(v->v<=0);
@@ -115,6 +118,7 @@ public final class BuilderMaterialDemand {
             if(!step.ignorePlant()&&needed.containsKey(id))
                 entireJob.merge(id,1,Integer::sum);
         }
+        needed.replaceAll((k,v)->BuilderBlockResolver.reusableSupply(k)?1:v);
         needed.replaceAll((k,v)->{
             int shortage=Math.max(0,entireJob.getOrDefault(k,0)
                     -Math.max(0,stocked.getOrDefault(k,0)));

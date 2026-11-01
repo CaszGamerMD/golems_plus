@@ -19,6 +19,57 @@ public final class BuilderReturnService {
             new java.util.WeakHashMap<>();
     private static final java.util.Map<WorkerStationBlockEntity,Long> searchAfter=
             new java.util.WeakHashMap<>();
+    private static final class Approach {
+        BlockPos target,stand;
+        long nextSearch;
+    }
+    private static final java.util.Map<BuilderGolem,Approach> approaches=
+            new java.util.WeakHashMap<>();
+    /** Reach a walkable tile NEXT TO the solid container, not its interior.
+     * Returns true while the worker is still outside pickup distance.
+     */
+    public static boolean approach(ServerLevel level,BuilderGolem worker,
+            BlockPos target,double speed){
+        if(target==null)return true;
+        if(worker.distanceToSqr(target.getX()+.5,target.getY()+.5,
+                target.getZ()+.5)<=10)return false;
+        Approach route=approaches.computeIfAbsent(worker,ignored->new Approach());
+        long now=level.getGameTime();
+        if(!target.equals(route.target)){
+            route.target=target.immutable();route.stand=null;route.nextSearch=0;
+        }
+        if(route.stand==null||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                .canStandOn(level,worker,route.stand)){
+            if(now<route.nextSearch)return true;
+            route.nextSearch=now+30;
+            java.util.List<BlockPos> possible=new java.util.ArrayList<>();
+            // Candidate feet positions around a solid depot, including
+            // one-step stairs. No fabricated platform or teleport.
+            for(int dy=-1;dy<=1;dy++)
+                for(int dx=-2;dx<=2;dx++)
+                    for(int dz=-2;dz<=2;dz++){
+                        if(dx==0&&dz==0||Math.abs(dx)==2&&Math.abs(dz)==2)
+                            continue;
+                        BlockPos feet=target.offset(dx,dy,dz);
+                        if(level.hasChunkAt(feet)
+                                &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                        .canStandOn(level,worker,feet))
+                            possible.add(feet);
+                    }
+            possible.sort(java.util.Comparator.comparingDouble(p->
+                    worker.distanceToSqr(p.getX()+.5,p.getY(),p.getZ()+.5)));
+            if(possible.size()>16)possible=possible.subList(0,16);
+            route.stand=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .selectExecutableStand(level,worker,possible);
+            if(route.stand==null)return true;
+        }
+        if(!com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+                level,worker,route.stand,speed)
+                &&now>=route.nextSearch){
+            route.stand=null;route.nextSearch=now+30;
+        }
+        return true;
+    }
     public static boolean tick(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
         if(!(table.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.COMPLETE
@@ -55,11 +106,7 @@ public final class BuilderReturnService {
             return false; // No bin: never delete the real golem.
         }
         BlockPos pos=closest.getBlockPos();
-        if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>10){
-            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
-                    level,worker,pos,.82);
-            return true;
-        }
+        if(approach(level,worker,pos,.82))return true;
         // The worker's named entity identity ends on recycling. The
         // Unemployed Center also normalizes items inserted manually.
         ItemStack stored=new ItemStack(WorksiteContent.BUILDER_WORKER_ITEM);

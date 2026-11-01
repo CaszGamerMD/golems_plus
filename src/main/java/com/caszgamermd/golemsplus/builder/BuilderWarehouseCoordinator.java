@@ -21,6 +21,7 @@ public final class BuilderWarehouseCoordinator {
      */
     public static boolean queueMaterials(ServerLevel level,
             WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps){
+        if(BuilderSupplyInventory.creativeSupply(table))return false;
         if(!table.isBuilder()||table.activeOrder()==null
                 ||table.warehouse()==null||table.supplyRequest()!=null
                 ||table.builderCursor()>=steps.size())return false;
@@ -327,6 +328,7 @@ public final class BuilderWarehouseCoordinator {
     public static boolean requestScaffolding(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,
             List<BuilderConstructionPlan.Step> steps){
+        if(BuilderSupplyInventory.creativeSupply(table))return false;
         if(table.warehouse()==null){
             table.setProblem("Place minecraft:scaffolding in the Planner to climb higher");
             return false;
@@ -361,6 +363,7 @@ public final class BuilderWarehouseCoordinator {
     public static boolean request(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,
             List<BuilderConstructionPlan.Step> steps){
+        if(BuilderSupplyInventory.creativeSupply(table))return false;
         if(table.warehouse()==null)return false;
         String currentDimension=level.dimension().identifier().toString();
         if(!currentDimension.equals(table.warehouse().dimension())){
