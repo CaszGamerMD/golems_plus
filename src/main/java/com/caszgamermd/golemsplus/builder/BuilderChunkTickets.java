@@ -22,8 +22,9 @@ import net.minecraft.world.level.ChunkPos;
  *
  * The Planner is the job's stable anchor; a small rolling set of tickets
  * follows each real Builder and the next target as the courier travels.
- * Inactive/paused/cancelled jobs release their complete ticket sets, and
- * removing the Planner also releases them. A 20-tick reconciliation avoids
+ * Inactive/cancelled jobs release their complete ticket sets. Paused jobs
+ * retain the crew's chunk tickets until the physical return and unloading
+ * have finished; removing the Planner also releases them. Reconciliation avoids
  * repeatedly touching chunk tickets every entity tick.
  */
 public final class BuilderChunkTickets {
@@ -71,7 +72,25 @@ public final class BuilderChunkTickets {
             if(counts.isEmpty())holders.remove(level);
         }else counts.put(center,owners-1);
     }
-    private static boolean running(WorkerStationBlockEntity table){
+    private static boolean pausedCrewStillReturning(ServerLevel level,
+            WorkerStationBlockEntity table){
+        BlockPos depot=table.builderUnloadingStorage();
+        if(depot==null)depot=table.getBlockPos();
+        for(UUID id:table.builderWorkerIds()){
+            if(!(level.getEntity(id) instanceof BuilderGolem worker))return true;
+            if(!worker.onGround()||worker.isNoGravity()
+                    ||BuilderGrappleAccess.active(worker)
+                    ||BuilderScaffolding.isControllingMovement(worker)
+                    ||BuilderScaffoldPlanA.hasPlan(worker)
+                    ||worker.hasSupplyBox()||!worker.isEmpty()
+                    ||worker.hasRecoveredDrops()
+                    ||worker.distanceToSqr(depot.getX()+.5,depot.getY(),
+                            depot.getZ()+.5)>10)return true;
+        }
+        return false;
+    }
+    private static boolean running(ServerLevel level,
+            WorkerStationBlockEntity table){
         if(!table.isBuilder())return false;
         // Keep the actual assigned crew simulated while they return real
         // inventory and walk to an Unemployed Center after job completion.
@@ -79,9 +98,10 @@ public final class BuilderChunkTickets {
         if((table.phase()==WorkerPhase.COMPLETE
                 ||table.builderRecallRequested())
                 &&!table.builderWorkerIds().isEmpty())return true;
-        return table.activeOrder()!=null
-                &&table.phase()!=WorkerPhase.PAUSED
-                &&table.phase()!=WorkerPhase.COMPLETE;
+        if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE)
+            return false;
+        return table.phase()!=WorkerPhase.PAUSED
+                ||pausedCrewStillReturning(level,table);
     }
     private static void add(Set<ChunkPos> chunks,BlockPos center,BlockPos reference){
         if(center==null||reference==null||chunks.size()>=24)return;
@@ -104,7 +124,7 @@ public final class BuilderChunkTickets {
      */
     public static void tick(ServerLevel level,WorkerStationBlockEntity table){
         if(level.getGameTime()%20!=0)return;
-        if(!running(table)){
+        if(!running(level,table)){
             release(level,table.getBlockPos());
             return;
         }
@@ -153,7 +173,7 @@ public final class BuilderChunkTickets {
         BlockPos home=worker.home();
         if(!level.hasChunkAt(home))return;
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)
-                ||!running(table)||!table.builderWorkerIds().contains(worker.getUUID())
+                ||!running(level,table)||!table.builderWorkerIds().contains(worker.getUUID())
                 ||table.owner()==null||!table.owner().equals(worker.owner()))return;
         table.rememberBuilderPosition(worker.getUUID(),worker.blockPosition());
     }
@@ -166,7 +186,7 @@ public final class BuilderChunkTickets {
         BlockPos home=worker.home();
         if(target==null||!level.hasChunkAt(home))return;
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)
-                ||!running(table)||!table.builderWorkerIds().contains(worker.getUUID())
+                ||!running(level,table)||!table.builderWorkerIds().contains(worker.getUUID())
                 ||table.owner()==null||!table.owner().equals(worker.owner()))return;
         Lease lease=world(level).computeIfAbsent(home.asLong(),ignored->new Lease());
         lease.destinations.put(worker.getUUID(),target.immutable());

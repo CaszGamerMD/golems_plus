@@ -779,6 +779,7 @@ public final class BuilderBuildService {
         // no order is active. Actual rack stock is prioritized, and the
         // full remaining demand is never silently dropped.
         if(table.isBuilder()&&table.activeOrder()!=null
+                &&table.phase()!=WorkerPhase.PAUSED
                 &&table.warehouse()!=null
                 &&!BuilderSupplyInventory.creativeSupply(table)
                 &&table.supplyRequest()==null
