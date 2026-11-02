@@ -1012,7 +1012,10 @@ public final class BuilderGrappleAccess {
                 else if(mob.getY()>r.landing.getY()+.035)
                     moved=steer(level,mob,x,r.landing.getY(),z,.14,true);
                 else if(solidTop(level,r.landing.below())
-                        &&headroom(level,r.landing)
+                        &&(headroom(level,r.landing)
+                            ||level.getBlockState(r.landing).getBlock()
+                                    instanceof BaseRailBlock
+                                &&level.getFluidState(r.landing).isEmpty())
                         &&level.noCollision(mob,mob.getBoundingBox()))
                     release(mob,r,"CLIMB RETREATED TO GROUND");
                 else moved=false;
