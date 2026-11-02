@@ -736,6 +736,27 @@ public final class BuilderSupplyInventory {
     }
 
     public enum ScaffoldLoad { READY, MOVING, MISSING }
+    /** An ascending rail temporarily needs a SECOND real rail at its
+     * raised endpoint. The helper rail is recovered after shaping, so one
+     * extra item can serve many slopes; never fabricate it at the target.
+     */
+    public static LoadStatus loadRailJig(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,Item rail,int required){
+        if(worker.carriedCount(rail)>=required)return LoadStatus.READY;
+        BlockPos depot=table.builderUnloadingStorage();
+        if(depot==null||selectedStorage(table)==null
+                ||!containsInSources(table,rail))return LoadStatus.MISSING;
+        if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
+                depot.getZ()+.5)>12
+                &&(BuilderScaffolding.descendForTravel(level,worker,table)
+                    ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
+            return LoadStatus.MOVING;
+        if(BuilderReturnService.approach(level,worker,depot,.82))
+            return LoadStatus.MOVING;
+        drawFromSources(table,worker,rail,required-worker.carriedCount(rail));
+        return worker.carriedCount(rail)>=required?
+                LoadStatus.READY:LoadStatus.MISSING;
+    }
     /** Fetch scaffolding with the same real chest/pouch contract as build
      * materials. No tower block can be purchased from a distant container.
      */

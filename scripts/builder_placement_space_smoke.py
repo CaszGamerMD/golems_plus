@@ -36,12 +36,14 @@ assert "return false;" in space[space.index("public static boolean ready("):]
 assert 'if(BuilderPlacementSpace.yieldTick(level,worker))return;' in build
 start=build.index("// Never place into any Builder's body.")
 payment=build.index("BuilderSupplyInventory.consume(worker,state.item())",start)
-placed=build.index("if(!level.setBlock(pos,toPlace,3))",payment)
+placed=build.index("boolean placed=level.setBlock(pos,toPlace,3);",payment)
 guard=build.index("if(!BuilderPlacementSpace.ready(level,worker,table,pos)){",start)
 assert start < guard < payment < placed
 assert "BlockState toPlace=bubble" in build
 assert "Blocks.WATER.defaultBlockState()" in build
 assert "if(bubble&&!BuilderPlacementState.matches(" in build
+assert "BuilderSupplyInventory.loadRailJig(" in build
+assert "BuilderPlacementSpace.ready(level,worker,table,raisedRail)" in build
 assert "return;" in build[guard:payment]
 assert "yielding.put(blocker,new Yield(target,destination," in space
 assert "getGameTime()+60" in space

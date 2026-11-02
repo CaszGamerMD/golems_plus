@@ -10,9 +10,43 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.BubbleColumnBlock;
+import net.minecraft.world.level.block.RailBlock;
+import net.minecraft.world.level.block.state.properties.RailShape;
 
 /** Both fluid tools are one reusable supply, and a placed crate is virtual. */
 public final class BuilderCreativeCrateFluidGameTest {
+    @GameTest(maxTicks=80,skyAccess=true)
+    public void ascendingRailHoldsSlopeAfterTemporaryUpperRailIsRemoved(GameTestHelper h){
+        // The elevated connector sits on a real solid block one Y higher.
+        h.setBlock(4,2,4,Blocks.STONE);
+        h.setBlock(5,3,4,Blocks.STONE);
+        h.setBlock(5,4,4,Blocks.RAIL); // temporary raised connection
+        h.setBlock(4,3,4,Blocks.RAIL.defaultBlockState()
+                .setValue(RailBlock.SHAPE,RailShape.ASCENDING_EAST));
+        var lower=h.absolutePos(new BlockPos(4,3,4));
+        var raised=h.absolutePos(new BlockPos(5,4,4));
+        if(!raised.equals(BuilderRailSlope.raisedEnd(lower,
+                Blocks.RAIL.defaultBlockState().setValue(
+                        RailBlock.SHAPE,RailShape.ASCENDING_EAST)))){
+            h.fail("Ascending east rail connector world position is wrong");return;
+        }
+        if(!h.getLevel().getBlockState(lower).is(Blocks.RAIL)){
+            h.fail("Temporary rail could not establish ascending connection");return;
+        }
+        h.setBlock(5,4,4,Blocks.AIR);
+        h.onEachTick(()->{
+            if(h.getTick()<12)return;
+            var lowerState=h.getLevel().getBlockState(lower);
+            if(!h.getLevel().getBlockState(raised).isAir()
+                    ||!lowerState.is(Blocks.RAIL)
+                    ||lowerState.getValue(RailBlock.SHAPE)!=RailShape.ASCENDING_EAST){
+                h.fail("Ascending rail lost its shape after temporary rail retrieval");
+                return;
+            }
+            h.succeed();
+        });
+    }
+
     @GameTest(maxTicks=80,skyAccess=true)
     public void creativeCrateAndReusableFluidDemand(GameTestHelper h){
         h.setBlock(2,2,2,WorksiteContent.CREATIVE_CRATE);
