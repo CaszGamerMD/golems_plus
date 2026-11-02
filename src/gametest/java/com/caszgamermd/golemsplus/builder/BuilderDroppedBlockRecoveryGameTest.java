@@ -27,6 +27,9 @@ public final class BuilderDroppedBlockRecoveryGameTest {
         var table=(WorkerStationBlockEntity)world.getBlockEntity(tablePos);
         var owner=h.makeMockServerPlayerInLevel();
         if(table==null||!table.claimIfUnowned(owner.getUUID())
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),
+                        "drop-collection-test.litematic","Cleanup",
+                        tablePos,0,0,8,0)
                 ||!table.setBuilderMaterialStorage(owner.getUUID(),onsite)){
             h.fail("Could not prepare OnSite drop storage");return;
         }
