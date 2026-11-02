@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "III",
+    "IAI",
+    "III"
+  ],
+  "key": {
+    "I": "minecraft:iron_ingot",
+    "A": "minecraft:apple"
+  },
+  "result": {
+    "id": "golems_plus:golem_snack_machine",
+    "count": 1
+  }
+}

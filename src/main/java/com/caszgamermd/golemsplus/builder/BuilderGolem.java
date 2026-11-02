@@ -265,6 +265,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
         super.addAdditionalSaveData(out);
+        com.caszgamermd.golemsplus.breakroom.GolemBreakService.saveRest(this,out);
         out.store("builder_home",BlockPos.CODEC,home);
         if(owner!=null)out.putString("builder_owner",owner.toString());
         if(!carriedSupplyBox.isEmpty())
@@ -280,6 +281,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     }
     @Override protected void readAdditionalSaveData(ValueInput in){
         super.readAdditionalSaveData(in);
+        com.caszgamermd.golemsplus.breakroom.GolemBreakService.loadRest(this,in);
         // Vanilla persists custom names; migrate old generic names, but keep
         // names given by players with a name tag unchanged.
         ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.BUILDER);

@@ -1,0 +1,20 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "golems_plus:block/golem_arcade",
+      "y": 0
+    },
+    "facing=east": {
+      "model": "golems_plus:block/golem_arcade",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "golems_plus:block/golem_arcade",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "golems_plus:block/golem_arcade",
+      "y": 270
+    }
+  }
+}

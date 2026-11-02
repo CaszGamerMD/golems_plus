@@ -14,6 +14,7 @@ public final class GolemsPlus implements ModInitializer {
         WorksiteContent.initialize();
         com.caszgamermd.golemsplus.world.GrappleLineVisuals.initialize();
         com.caszgamermd.golemsplus.world.PlayerGrappleController.initialize();
+        com.caszgamermd.golemsplus.breakroom.BreakRoomContent.initialize();
         com.caszgamermd.golemsplus.world.StationSettingsNetworking.initialize();
         com.caszgamermd.golemsplus.world.OutputChestSelection.initialize();
         com.caszgamermd.golemsplus.builder.BuilderUploadNetworking.initialize();

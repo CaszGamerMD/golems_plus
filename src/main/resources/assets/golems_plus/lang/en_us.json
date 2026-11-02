@@ -24,5 +24,9 @@
   "block.golems_plus.enhanced_scaffolding": "Enhanced Scaffolding",
   "block.golems_plus.creative_crate": "Creative Crate (Infinite Builder Supplies)",
   "item.golems_plus.infinite_water_bucket": "Infinite Water Bucket",
-  "item.golems_plus.infinite_lava_bucket": "Infinite Lava Bucket"
+  "item.golems_plus.infinite_lava_bucket": "Infinite Lava Bucket",
+  "block.golems_plus.break_room_chair": "Golem Break Room Chair",
+  "block.golems_plus.break_room_table": "Golem Break Room Table",
+  "block.golems_plus.golem_snack_machine": "Golem Snack Machine",
+  "block.golems_plus.golem_arcade": "Golem Arcade"
 }
