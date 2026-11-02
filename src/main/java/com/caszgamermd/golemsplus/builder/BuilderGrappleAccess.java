@@ -724,9 +724,9 @@ public final class BuilderGrappleAccess {
                 +route.landing.toShortString()+" support="+support.getBlock());
         return true;
     }
-    /** Rails are thin enough to stand on, but a rail inside a glass/stone
-     * pen is not an executable A* waypoint. When a Builder has PHYSICALLY
-     * stopped moving, climb the open shaft in its current rail tile to the
+    /** Rails or waterlogged floor blocks inside a glass/stone pen may
+     * leave a Builder with no executable A* waypoint. When a Builder has
+     * PHYSICALLY stopped moving, climb the open shaft in its current tile to the
      * solid top of an adjacent wall. This uses an owned real grapple hook,
      * a real anchor, the normal collision-tested rope controller, and no
      * teleport or temporary destruction of schematic rails/glass.
@@ -739,8 +739,17 @@ public final class BuilderGrappleAccess {
                 ||BuilderScaffoldPlanA.hasPlan(worker))return false;
         BlockPos feet=worker.blockPosition();
         BlockState floor=level.getBlockState(feet);
-        if(!(floor.getBlock() instanceof BaseRailBlock)
-                ||!level.getFluidState(feet).isEmpty()){
+        BlockPos below=feet.below();
+        BlockState support=level.getBlockState(below);
+        boolean rail=floor.getBlock() instanceof BaseRailBlock;
+        // In the Villager Matrix the worker is stood on waterlogged
+        // mangrove roots INSIDE a glass shaft. The roots support real
+        // feet, but no adjacent dry A* node exists. Waterlogging in the
+        // supporting block must not veto a collision-safe rope climb.
+        boolean wetSupport=!support.getFluidState().isEmpty()
+                &&solidTop(level,below)
+                &&floor.getCollisionShape(level,feet).isEmpty();
+        if(!rail&&!wetSupport){
             railPocketWatch.remove(worker);return false;
         }
         RailPocketWatch watch=railPocketWatch.computeIfAbsent(worker,k->{

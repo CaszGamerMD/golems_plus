@@ -486,10 +486,12 @@ public final class BuilderBuildService {
      */
     static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep,
             boolean roofNeedsRescue){
-        // A cleared zone is not the end of a crew job. Once all other
-        // active Builders have stopped making progress, volunteers at
-        // OnSite must be eligible to rescue unclaimed same-layer cells.
-        return ownZoneDone&&claimedStep<0&&!roofNeedsRescue;
+        // A COMPLETED zone is terminal for this Builder's build role.
+        // The old global six-second roof watchdog re-recruited finished
+        // workers to repeatedly enter inaccessible water/rail pockets.
+        // Active workers with later own-zone steps may still volunteer
+        // on stalled neighboring layers; completed workers stay OnSite.
+        return ownZoneDone&&claimedStep<0;
     }
     /** Retain the ordinary no-rescue policy for existing callers/tests. */
     static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep){

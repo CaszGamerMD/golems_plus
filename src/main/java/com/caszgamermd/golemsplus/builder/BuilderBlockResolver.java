@@ -57,9 +57,14 @@ public final class BuilderBlockResolver {
         // is placed after its lower support, without duplicating materials.
         if(id.endsWith("_bed")||id.endsWith("_tall_flower")
                 ||id.endsWith("_double_plant")||id.endsWith("_crop")
-                ||id.contains("redstone_wire")||id.contains("piston")
+                ||id.contains("redstone_wire")
                 ||id.contains("fire")||id.contains("portal"))
             return null;
+        // A normal/sticky piston is an ordinary one-item block while
+        // retracted. Its extended state and detached moving/head blocks
+        // are REDSTONE RESULTS and cannot be placed as inventory blocks.
+        if(id.equals("minecraft:piston_head")
+                ||id.equals("minecraft:moving_piston"))return null;
         BlockState state=block.defaultBlockState();
         if(open>=0){
             if(!encoded.endsWith("]"))return null;
@@ -79,6 +84,9 @@ public final class BuilderBlockResolver {
         if((id.equals("minecraft:water")||id.equals("minecraft:lava"))
                 &&state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL)
                 &&state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL)!=0)
+            return null;
+        if((id.equals("minecraft:piston")||id.equals("minecraft:sticky_piston"))
+                &&state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.EXTENDED))
             return null;
         Mirror m=switch(mirror){
             case NONE->Mirror.NONE;

@@ -28,8 +28,8 @@ final class BuilderFinishedRoofEvacuationTest {
                 "Own-layer Builder with work remaining can search from the roof");
         assertTrue(BuilderBuildService.shouldParkFinishedZone(true,-1,false),
                 "Completed zone should return OnSite while the crew is progressing");
-        assertFalse(BuilderBuildService.shouldParkFinishedZone(true,-1,true),
-                "A worker who has returned OnSite can rescue stalled neighboring zones");
+        assertTrue(BuilderBuildService.shouldParkFinishedZone(true,-1,true),
+                "A completed zone must not send its Builder back into a known trapped pocket");
         assertFalse(BuilderBuildService.shouldParkFinishedZone(true,19,true),
                 "A worker with a claimed rescue must keep its assignment");
     }

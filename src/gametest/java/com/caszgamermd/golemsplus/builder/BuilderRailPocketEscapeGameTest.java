@@ -7,6 +7,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 /** Physical rail-pocket rescue, including a sealed-shaft safety guard. */
 public final class BuilderRailPocketEscapeGameTest {
@@ -59,6 +60,40 @@ public final class BuilderRailPocketEscapeGameTest {
             if(h.getTick()>=260)
                 h.fail("Rail pocket escape stalled attached="+started[0]
                         +" feet="+g.position()+" rope="
+                        +BuilderGrappleAccess.debug(g));
+        });
+    }
+    @GameTest(maxTicks=300,skyAccess=true)
+    public void waterloggedRootsFloorAlsoEscapesOpenGlassPocket(GameTestHelper h){
+        ground(h);
+        glassPocket(h);
+        h.setBlock(3,1,3,Blocks.MANGROVE_ROOTS.defaultBlockState()
+                .setValue(BlockStateProperties.WATERLOGGED,true));
+        h.setBlock(3,2,3,Blocks.AIR);
+        BlockPos start=h.absolutePos(new BlockPos(3,2,3));
+        var g=worker(h,start);
+        final boolean[] attached={false};
+        h.onEachTick(()->{
+            if(h.getTick()<10)return;
+            if(!g.isAlive()){
+                h.fail("Waterlogged-root pocket Builder died");return;
+            }
+            if(h.getTick()%5==0&&!attached[0])
+                attached[0]=BuilderGrappleAccess.escapeRailPocket(
+                        h.getLevel(),g,h.absolutePos(new BlockPos(1,2,1)));
+            if(attached[0]&&!BuilderGrappleAccess.active(g)
+                    &&g.onGround()&&g.getY()>=start.getY()+2){
+                if(!h.getLevel().getBlockState(start.below())
+                        .is(Blocks.MANGROVE_ROOTS)){
+                    h.fail("Pocket escape changed waterlogged roots");return;
+                }
+                System.out.println("[ROOT POCKET ESCAPE] PASS "
+                        +g.blockPosition());
+                h.succeed();return;
+            }
+            if(h.getTick()>=260)
+                h.fail("Waterlogged root pocket exit stalled attached="
+                        +attached[0]+" feet="+g.position()+" rope="
                         +BuilderGrappleAccess.debug(g));
         });
     }

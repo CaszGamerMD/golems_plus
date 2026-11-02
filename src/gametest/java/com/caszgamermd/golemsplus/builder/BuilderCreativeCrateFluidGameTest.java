@@ -12,9 +12,45 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.BubbleColumnBlock;
 import net.minecraft.world.level.block.RailBlock;
 import net.minecraft.world.level.block.state.properties.RailShape;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.core.Direction;
 
 /** Both fluid tools are one reusable supply, and a placed crate is virtual. */
 public final class BuilderCreativeCrateFluidGameTest {
+    @GameTest(maxTicks=80,skyAccess=true)
+    public void retractedUpwardPistonPlacesAsOneRealBlock(GameTestHelper h){
+        var piston=BuilderBlockResolver.resolve(
+                "minecraft:piston[extended=false,facing=up]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        var sticky=BuilderBlockResolver.resolve(
+                "minecraft:sticky_piston[extended=false,facing=north]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        if(piston==null||sticky==null
+                ||piston.item()!=net.minecraft.world.item.Items.PISTON
+                ||sticky.item()!=net.minecraft.world.item.Items.STICKY_PISTON
+                ||piston.state().getValue(BlockStateProperties.FACING)!=Direction.UP
+                ||piston.state().getValue(BlockStateProperties.EXTENDED)
+                ||BuilderBlockResolver.resolve(
+                        "minecraft:piston[extended=true,facing=up]",
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE)!=null
+                ||BuilderBlockResolver.resolve("minecraft:piston_head",
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE)!=null){
+            h.fail("Retracted piston state was rejected or moving piston allowed");
+            return;
+        }
+        h.setBlock(3,2,3,Blocks.STONE);
+        h.getLevel().setBlock(h.absolutePos(new BlockPos(3,3,3)),
+                piston.state(),3);
+        h.onEachTick(()->{
+            if(h.getTick()<12)return;
+            if(!BuilderPlacementState.matches(h.getLevel().getBlockState(
+                    h.absolutePos(new BlockPos(3,3,3))),piston.state())){
+                h.fail("Upward-facing unextended piston did not survive placement");
+                return;
+            }
+            h.succeed();
+        });
+    }
     @GameTest(maxTicks=80,skyAccess=true)
     public void ascendingRailHoldsSlopeAfterTemporaryUpperRailIsRemoved(GameTestHelper h){
         // The elevated connector sits on a real solid block one Y higher.
