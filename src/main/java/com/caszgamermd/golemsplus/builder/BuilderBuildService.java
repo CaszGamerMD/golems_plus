@@ -42,7 +42,8 @@ public final class BuilderBuildService {
      * work is never repeated on each Builder tick or after a placement.
      */
     private record ScheduledZones(UUID job,Cache cache,List<UUID> roster,
-            BuilderZoneWorkPlan tasks){}
+            BuilderZoneWorkPlan tasks,Map<Integer,List<Integer>> layerSteps,
+            Map<Integer,List<UUID>> layerStaff){}
     private static final Map<WorkerStationBlockEntity,ScheduledZones>
             schedules=new WeakHashMap<>();
     /** The immutable job plan only needs its virtual skips reconciled once.
@@ -461,6 +462,8 @@ public final class BuilderBuildService {
             return false;
         if(BuilderGrappleAccess.rappelToward(level,worker,table,depot))
             return false;
+        if(BuilderGrappleAccess.escapeRailPocket(level,worker,depot))
+            return false;
         com.caszgamermd.golemsplus.worker.WorkerNavigation
                 .routeTo(level,worker,depot,.8);
         return false;
@@ -723,6 +726,11 @@ public final class BuilderBuildService {
         if(BuilderGrappleAccess.active(worker))return;
         if(BuilderScaffolding.isControllingMovement(worker))return;
         if(BuilderPlacementSpace.yieldTick(level,worker))return;
+        // A recovered stack owns a real, persisted delivery trip. A
+        // dropped-item collection route likewise must not be interrupted
+        // by an idle-layer park request on the next five-tick callback.
+        if(BuilderDroppedBlockRecovery.busy(worker)
+                &&BuilderDroppedBlockRecovery.tick(level,worker,table,null))return;
         // A returning Builder does NOT need an online owner, task scan,
         // warehouse manifest or rescue work to finish getting off the roof.
         // Run this BEFORE all such code and even before a new task is
@@ -890,11 +898,35 @@ public final class BuilderBuildService {
             int currentClaim=table.claimedStep(worker.getUUID());
             WorkerAction returnAction=workerActions.computeIfAbsent(
                     worker,k->new WorkerAction());
+            int layer=table.builderActiveLayer(plan.steps());
+            List<UUID> layerStaff=assigned.layerStaff().getOrDefault(
+                    layer,assigned.roster());
+            // Small Y slices need only one Builder per ten real blocks.
+            // The others stay at OnSite; any in-flight claim is finished
+            // safely rather than discarding its paid materials mid-step.
+            if(!layerStaff.contains(worker.getUUID())&&currentClaim<0
+                    &&!worker.hasSupplyBox()){
+                boolean parked=parkAtOnSite(level,worker,table);
+                returnAction.returningToSite=!parked;
+                if(parked)BuilderDroppedBlockRecovery.tick(
+                        level,worker,table,plan.zones());
+                return;
+            }
+            if(layerStaff.size()<assigned.roster().size()
+                    &&layerStaff.contains(worker.getUUID())){
+                // A compact layer cannot use the original multi-zone
+                // partition: the chosen small crew must see ALL its cells,
+                // including those originally assigned to parked workers.
+                zone=assigned.layerSteps().getOrDefault(layer,zone);
+            }
             boolean stalledRoof=roofNeedsHelp(level,table);
             if(shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim,
                     stalledRoof)){
                 activityForFinished(worker);
-                returnAction.returningToSite=!parkAtOnSite(level,worker,table);
+                boolean parked=parkAtOnSite(level,worker,table);
+                returnAction.returningToSite=!parked;
+                if(parked)BuilderDroppedBlockRecovery.tick(
+                        level,worker,table,plan.zones());
                 return;
             }
             // Unreachable frontier cells may now be served by owned,
@@ -905,7 +937,6 @@ public final class BuilderBuildService {
             // A currently claimed task is kept during physical travel;
             // failed tasks are explicitly deferred and then reselected.
             int index=table.claimedStep(worker.getUUID());
-            int layer=table.builderActiveLayer(plan.steps());
             boolean ownLayerClear=true;
             for(int idx:zone)
                 if(idx>=0&&idx<plan.steps().size()
@@ -976,7 +1007,10 @@ public final class BuilderBuildService {
             // A real cross-zone rescue is the only reason to stay active.
             if(shouldParkWaitingForLayer(
                     ownLayerClear,emergencyRoofAssist,index)){
-                returnAction.returningToSite=!parkAtOnSite(level,worker,table);
+                boolean parked=parkAtOnSite(level,worker,table);
+                returnAction.returningToSite=!parked;
+                if(parked)BuilderDroppedBlockRecovery.tick(
+                        level,worker,table,plan.zones());
                 return;
             }
             if(index<0||index>=plan.steps().size()
@@ -988,8 +1022,8 @@ public final class BuilderBuildService {
                 // continues every tick, and one blocked search cannot cause
                 // all Builders to launch A* probes in the same tick.
                 if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
-                        assigned.roster().indexOf(worker.getUUID()),
-                        assigned.roster().size()))return;
+                        layerStaff.indexOf(worker.getUUID()),
+                        layerStaff.size()))return;
                 var next=BuilderConstructionPlanner.choose(
                         level,worker,table,plan.steps(),zone);
                 index=next==null?-1:table.claimPreferredBuilderZoneStep(
@@ -1012,7 +1046,10 @@ public final class BuilderBuildService {
                 // no longer crowds the structure or freezes beside a stuck
                 // teammate. Roof assistance can reassign them from depot.
                 if(ownLayerClear){
-                    returnAction.returningToSite=!parkAtOnSite(level,worker,table);
+                    boolean parked=parkAtOnSite(level,worker,table);
+                    returnAction.returningToSite=!parked;
+                    if(parked)BuilderDroppedBlockRecovery.tick(
+                            level,worker,table,plan.zones());
                     return;
                 }
                 // This worker still has unfinished current-layer work, but
@@ -1309,7 +1346,9 @@ public final class BuilderBuildService {
                     &&!BuilderScaffolding.isControllingMovement(worker)){
                 activity.lastPerchEscapeTick=now;
                 if(BuilderGrappleAccess.escapePerch(
-                        level,worker,table,pos)){
+                        level,worker,table,pos)
+                        ||BuilderGrappleAccess.escapeRailPocket(
+                                level,worker,pos)){
                     activity.lastMovementTick=now;
                     activity.workTravelSince=now;
                     return;
@@ -1919,9 +1958,38 @@ public final class BuilderBuildService {
         // retiring a Builder. Only unfinished staging reservations change.
         var tasks=BuilderZoneWorkPlan.compile(cache.steps(),cache.zones(),
                 roster,table.builderHeightMode()==BuilderMaterialRules.FROM_Y_DOWN);
+        var layers=new java.util.HashMap<Integer,List<Integer>>();
+        var mutableLayers=new java.util.HashMap<Integer,
+                java.util.ArrayList<Integer>>();
+        for(int i=0;i<cache.steps().size();i++){
+            var step=cache.steps().get(i);
+            mutableLayers.computeIfAbsent(step.y(),unused->new java.util.ArrayList<>())
+                    .add(i);
+        }
+        mutableLayers.forEach((y,indices)->layers.put(y,List.copyOf(indices)));
+        // Count each zone cell once. Recounting the full job separately
+        // for every Y would make tall 100k-block schematics expensive.
+        var ownership=new java.util.HashMap<Integer,int[]>();
+        int crewSize=roster.size();
+        for(int w=0;w<roster.size();w++)
+            for(int i:tasks.steps(roster.get(w))){
+                var step=cache.steps().get(i);
+                if(!step.ignorePlant())ownership.computeIfAbsent(step.y(),
+                        unused->new int[crewSize])[w]++;
+            }
+        var staff=new java.util.HashMap<Integer,List<UUID>>();
+        for(var entry:layers.entrySet()){
+            int y=entry.getKey();
+            long physical=entry.getValue().stream()
+                    .filter(i->!cache.steps().get(i).ignorePlant()).count();
+            int[] own=ownership.getOrDefault(y,new int[roster.size()]);
+            // Includes a single worker for a purely virtual ignored Y.
+            staff.put(y,BuilderCrewSchedule.staffForLayer(roster,
+                    (int)physical,own));
+        }
         table.beginBuilderZonePlan();
         ScheduledZones result=new ScheduledZones(table.activeOrder(),cache,
-                List.copyOf(roster),tasks);
+                List.copyOf(roster),tasks,Map.copyOf(layers),Map.copyOf(staff));
         schedules.put(table,result);
         return result;
     }

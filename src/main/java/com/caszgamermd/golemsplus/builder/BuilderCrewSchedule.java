@@ -1,6 +1,9 @@
 package com.caszgamermd.golemsplus.builder;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.UUID;
 
 /**
  * Deterministic server-thread-only shared Builder queue.
@@ -8,6 +11,33 @@ import java.util.Collection;
  */
 public final class BuilderCrewSchedule {
     public record Progress(int cursor,long finishedAhead) {}
+    /** A layer gets one physical worker per ten schematic blocks, rounded
+     * up. The assigned crew is an upper bound, not an obligation to crowd
+     * a five-block platform with four Builders. */
+    public static int workersForLayer(int blocks,int crewSize){
+        if(blocks<=0||crewSize<=0)return 0;
+        return Math.min(crewSize,1+(blocks-1)/10);
+    }
+    /** Prefer workers whose original X/Z zones own the most of this
+     * layer. A stable roster-index tie breaker prevents golem churn.
+     * Restricted crews then share all layer cells rather than leaving
+     * parked teammates' original partitions inaccessible. */
+    public static List<UUID> staffForLayer(List<UUID> roster,
+            int physicalBlocks,int[] ownership){
+        if(roster.size()!=ownership.length)
+            throw new IllegalArgumentException("Layer ownership/crew mismatch");
+        int limit=workersForLayer(physicalBlocks,roster.size());
+        if(limit==0&&physicalBlocks==0&&!roster.isEmpty())limit=1;
+        var ranked=new ArrayList<Integer>();
+        for(int i=0;i<roster.size();i++)ranked.add(i);
+        ranked.sort((a,b)->{
+            int count=Integer.compare(ownership[b],ownership[a]);
+            return count!=0?count:Integer.compare(a,b);
+        });
+        var chosen=new ArrayList<UUID>();
+        for(int i=0;i<limit;i++)chosen.add(roster.get(ranked.get(i)));
+        return List.copyOf(chosen);
+    }
     /** Exactly one crew member may start a costly full frontier search in
      * each five-tick work window. Turns rotate; an inaccessible task cannot
      * monopolize planning time at the next layer transition. */

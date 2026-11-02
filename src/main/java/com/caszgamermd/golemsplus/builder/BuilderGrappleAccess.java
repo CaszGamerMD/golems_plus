@@ -14,6 +14,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.block.WallBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.phys.AABB;
@@ -69,6 +70,13 @@ public final class BuilderGrappleAccess {
         double topY(){return Double.isFinite(supportY)?supportY:anchor.getY()+1.0;}
     }
     private static final Map<BuilderGolem,Rope> active=new WeakHashMap<>();
+    private static final class RailPocketWatch {
+        double x,y,z;
+        long stationarySince;
+        long retryAfter;
+    }
+    private static final Map<BuilderGolem,RailPocketWatch> railPocketWatch=
+            new WeakHashMap<>();
     // A stable one-block step-down intermediate waypoint prevents an idle
     // Builder from grappling an upper roof simply because the faraway
     // OnSite chest is not EXACT-path-reachable in one A* search.
@@ -715,6 +723,69 @@ public final class BuilderGrappleAccess {
                 +worker.blockPosition().toShortString()+" -> "
                 +route.landing.toShortString()+" support="+support.getBlock());
         return true;
+    }
+    /** Rails are thin enough to stand on, but a rail inside a glass/stone
+     * pen is not an executable A* waypoint. When a Builder has PHYSICALLY
+     * stopped moving, climb the open shaft in its current rail tile to the
+     * solid top of an adjacent wall. This uses an owned real grapple hook,
+     * a real anchor, the normal collision-tested rope controller, and no
+     * teleport or temporary destruction of schematic rails/glass.
+     * Closed ceilings and water-filled shafts are intentionally rejected.
+     */
+    public static boolean escapeRailPocket(ServerLevel level,BuilderGolem worker,
+            BlockPos goal){
+        if(active.containsKey(worker))return true;
+        if(!worker.onGround()||BuilderScaffolding.isControllingMovement(worker)
+                ||BuilderScaffoldPlanA.hasPlan(worker))return false;
+        BlockPos feet=worker.blockPosition();
+        BlockState floor=level.getBlockState(feet);
+        if(!(floor.getBlock() instanceof BaseRailBlock)
+                ||!level.getFluidState(feet).isEmpty()){
+            railPocketWatch.remove(worker);return false;
+        }
+        RailPocketWatch watch=railPocketWatch.computeIfAbsent(worker,k->{
+            var value=new RailPocketWatch();
+            value.x=worker.getX();value.y=worker.getY();value.z=worker.getZ();
+            value.stationarySince=level.getGameTime();return value;
+        });
+        double dx=worker.getX()-watch.x,dy=worker.getY()-watch.y,
+                dz=worker.getZ()-watch.z;
+        if(dx*dx+dy*dy+dz*dz>.09){
+            watch.x=worker.getX();watch.y=worker.getY();watch.z=worker.getZ();
+            watch.stationarySince=level.getGameTime();return false;
+        }
+        long now=level.getGameTime();
+        if(now-watch.stationarySince<80||now<watch.retryAfter||!hasHook(worker))
+            return false;
+        watch.retryAfter=now+100;
+        // The rail occupies the feet tile, not the body/head clearance.
+        // Probe an air shaft above it and each cardinal wall top.
+        for(Direction towardWall:Direction.Plane.HORIZONTAL){
+            Direction side=towardWall.getOpposite();
+            for(int rise=1;rise<=4;rise++){
+                BlockPos anchor=feet.relative(towardWall).above(rise);
+                int top=anchor.getY()+1;
+                if(!solidTop(level,anchor)
+                        ||!headroom(level,anchor.above())
+                        ||rejected(level,worker,anchor,side))continue;
+                boolean shaft=true;
+                for(int y=feet.getY()+1;y<=top+1;y++)
+                    if(!empty(level,feet.atY(y))){shaft=false;break;}
+                if(!shaft||!level.noCollision(worker,worker.getBoundingBox()))
+                    continue;
+                Rope rope=new Rope(anchor,side,feet,goal,false,now);
+                // Start ON the physical rail; it is not a full air tile
+                // and must not be rejected by ordinary rope-entry A*.
+                rope.phase=Phase.CLIMB;
+                active.put(worker,rope);
+                WorkerNavigation.stop(worker);
+                System.out.println("[GRAPPLE RAIL POCKET] "
+                        +worker.getName().getString()+" feet="+feet
+                        +" climb to="+anchor.above());
+                return true;
+            }
+        }
+        return false;
     }
     /** Returns true while the hook owns descent or when a descent starts. */
     public static boolean rappelForTravel(ServerLevel level,

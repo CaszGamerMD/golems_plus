@@ -30,6 +30,66 @@ public final class BuilderGrappleRecoveryGameTest {
     public void fencePerchUsesPhysicalGrappleDescent(GameTestHelper h){
         escapePerchFixture(h,Blocks.OAK_FENCE);
     }
+    @GameTest(maxTicks=300,skyAccess=true)
+    public void trappedOnRailClimbsRealGlassWallWithoutBreakingRail(
+            GameTestHelper h){
+        ground(h);
+        BlockPos start=h.absolutePos(new BlockPos(3,2,3));
+        ServerLevel level=h.getLevel();
+        h.setBlock(3,2,3,Blocks.RAIL);
+        for(var dir:net.minecraft.core.Direction.Plane.HORIZONTAL){
+            BlockPos adjacent=start.relative(dir);
+            level.setBlock(adjacent,Blocks.GLASS.defaultBlockState(),3);
+            level.setBlock(adjacent.above(),Blocks.GLASS.defaultBlockState(),3);
+        }
+        var worker=golem(h,start);
+        final boolean[] started={false};
+        h.onEachTick(()->{
+            if(h.getTick()<10)return;
+            if(!worker.isAlive()){
+                h.fail("Rail-pocket Builder died");return;
+            }
+            if(h.getTick()%5==0&&!started[0])
+                started[0]=BuilderGrappleAccess.escapeRailPocket(
+                        level,worker,h.absolutePos(new BlockPos(1,2,1)));
+            if(started[0]&&!BuilderGrappleAccess.active(worker)
+                    &&worker.onGround()&&worker.getY()>=start.getY()+2){
+                if(!level.getBlockState(start).is(Blocks.RAIL)){
+                    h.fail("Rail pocket escape damaged original track");return;
+                }
+                System.out.println("[RAIL POCKET ESCAPE] PASS physical climb "
+                        +worker.blockPosition());
+                h.succeed();return;
+            }
+            if(h.getTick()>=260)
+                h.fail("Rail pocket escape stalled attached="+started[0]
+                        +" feet="+worker.position()+" rope="
+                        +BuilderGrappleAccess.debug(worker));
+        });
+    }
+    @GameTest(maxTicks=180,skyAccess=true)
+    public void roofedRailPocketNeverGrapplesThroughCeiling(GameTestHelper h){
+        ground(h);
+        BlockPos start=h.absolutePos(new BlockPos(3,2,3));
+        h.setBlock(3,2,3,Blocks.RAIL);
+        h.setBlock(3,4,3,Blocks.GLASS);
+        for(var dir:net.minecraft.core.Direction.Plane.HORIZONTAL){
+            BlockPos adjacent=start.relative(dir);
+            h.getLevel().setBlock(adjacent,
+                    Blocks.GLASS.defaultBlockState(),3);
+            h.getLevel().setBlock(adjacent.above(),
+                    Blocks.GLASS.defaultBlockState(),3);
+        }
+        var worker=golem(h,start);
+        h.onEachTick(()->{
+            if(h.getTick()<120)return;
+            if(BuilderGrappleAccess.escapeRailPocket(h.getLevel(),worker,start)
+                    ||BuilderGrappleAccess.active(worker)){
+                h.fail("Grapple went through closed glass ceiling");return;
+            }
+            h.succeed();
+        });
+    }
     @GameTest(maxTicks=260,skyAccess=true)
     public void wallPerchUsesPhysicalGrappleDescent(GameTestHelper h){
         escapePerchFixture(h,Blocks.COBBLESTONE_WALL);

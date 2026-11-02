@@ -38,6 +38,9 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     private BlockPos home=BlockPos.ZERO;
     private UUID owner;
     private ItemStack carriedSupplyBox=ItemStack.EMPTY;
+    // One real picked-up drop stack, held separately so construction
+    // materials and protected tools cannot accidentally consume it.
+    private ItemStack recoveredDrops=ItemStack.EMPTY;
     // Nine construction-material stacks and three RESERVED persistent tool
     // belt slots. Materials cannot take the tool slots, so a full build
     // order cannot displace the scaffold, reusable hook or future bucket.
@@ -91,6 +94,14 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         carriedSupplyBox=box.copyWithCount(1);
     }
     public void clearSupplyBox(){carriedSupplyBox=ItemStack.EMPTY;}
+    public boolean hasRecoveredDrops(){return !recoveredDrops.isEmpty();}
+    public ItemStack recoveredDrops(){return recoveredDrops.copy();}
+    public void holdRecoveredDrops(ItemStack stack){
+        if(hasRecoveredDrops()||stack.isEmpty())
+            throw new IllegalStateException("Builder drop cargo occupied");
+        recoveredDrops=stack.copy();
+    }
+    public void clearRecoveredDrops(){recoveredDrops=ItemStack.EMPTY;}
     /** On loss of the job block, drop exact held items instead of
      * discarding inventory-bearing workers and deleting their cargo.
      */
@@ -108,11 +119,17 @@ public final class BuilderGolem extends PathfinderMob implements Container {
                     getX(),getY(),getZ(),carriedSupplyBox.copy());
             carriedSupplyBox=ItemStack.EMPTY;
         }
+        if(!recoveredDrops.isEmpty()){
+            net.minecraft.world.Containers.dropItemStack(world,
+                    getX(),getY(),getZ(),recoveredDrops.copy());
+            recoveredDrops=ItemStack.EMPTY;
+        }
     }
     @Override public int getContainerSize(){return materials.size()+toolBelt.size();}
     @Override public boolean isEmpty(){
         return materials.stream().allMatch(ItemStack::isEmpty)
-                &&toolBelt.stream().allMatch(ItemStack::isEmpty);
+                &&toolBelt.stream().allMatch(ItemStack::isEmpty)
+                &&recoveredDrops.isEmpty();
     }
     @Override public ItemStack getItem(int i){
         return i>=0&&i<materials.size()?materials.get(i)
@@ -252,6 +269,8 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         if(owner!=null)out.putString("builder_owner",owner.toString());
         if(!carriedSupplyBox.isEmpty())
             out.store("builder_carried_shulker",ItemStack.CODEC,carriedSupplyBox);
+        if(!recoveredDrops.isEmpty())
+            out.store("builder_recovered_drops",ItemStack.CODEC,recoveredDrops);
         for(int i=0;i<materials.size();i++)
             if(!materials.get(i).isEmpty())
                 out.store("builder_material_"+i,ItemStack.CODEC,materials.get(i));
@@ -268,6 +287,8 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         try{owner=UUID.fromString(in.getStringOr("builder_owner",""));}
         catch(IllegalArgumentException ex){owner=null;}
         carriedSupplyBox=in.read("builder_carried_shulker",ItemStack.CODEC)
+                .orElse(ItemStack.EMPTY);
+        recoveredDrops=in.read("builder_recovered_drops",ItemStack.CODEC)
                 .orElse(ItemStack.EMPTY);
         for(int i=0;i<materials.size();i++)
             materials.set(i,in.read("builder_material_"+i,ItemStack.CODEC)
