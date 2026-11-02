@@ -191,32 +191,11 @@ public final class LitematicaPlacementClient {
     }
     private static byte[] captureVisibleHologram(Object placement,Path original)
             throws Exception{
-        Object box=optional(placement,"getEnclosingBox");
-        if(box==null)throw new IllegalArgumentException(
-                "No Litematica placement bounding box: enable all subregions");
-        // Modern Litematica returns malilib IntBoundingBox with public
-        // minX/minY/minZ/maxX/maxY/maxZ fields, not a SelectionBox.
-        // Older implementations expose getPos1/getPos2 instead.
-        BlockPos a,b;
-        try{
-            Class<?> type=box.getClass();
-            a=new BlockPos(type.getField("minX").getInt(box),
-                    type.getField("minY").getInt(box),
-                    type.getField("minZ").getInt(box));
-            b=new BlockPos(type.getField("maxX").getInt(box),
-                    type.getField("maxY").getInt(box),
-                    type.getField("maxZ").getInt(box));
-        }catch(NoSuchFieldException exception){
-            a=asPos(firstAvailable(box,"getPos1","getCorner1"));
-            b=asPos(firstAvailable(box,"getPos2","getCorner2"));
-        }
-        if(a==null||b==null)
-            throw new IllegalArgumentException("Cannot read hologram boundaries");
-        int minX=Math.min(a.getX(),b.getX()),maxX=Math.max(a.getX(),b.getX());
-        int minY=Math.min(a.getY(),b.getY()),maxY=Math.max(a.getY(),b.getY());
-        int minZ=Math.min(a.getZ(),b.getZ()),maxZ=Math.max(a.getZ(),b.getZ());
-        long volume=((long)maxX-minX+1)*((long)maxY-minY+1)
-                *((long)maxZ-minZ+1);
+        var bounds=LitematicaPlacementBounds.resolve(placement);
+        int minX=bounds.minX(),maxX=bounds.maxX();
+        int minY=bounds.minY(),maxY=bounds.maxY();
+        int minZ=bounds.minZ(),maxZ=bounds.maxZ();
+        long volume=bounds.volume();
         if(volume<1||volume>400_000)
             throw new IllegalArgumentException(
                     "Hologram bounding volume "+volume+" is too large for import");
