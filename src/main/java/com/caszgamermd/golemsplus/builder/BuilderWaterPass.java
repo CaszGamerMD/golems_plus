@@ -23,7 +23,12 @@ public final class BuilderWaterPass {
     }
     public static boolean isWaterStep(String encoded){
         return isWaterlogPass(encoded)||"minecraft:water".equals(encoded)
-                ||encoded!=null&&encoded.startsWith("minecraft:water[");
+                ||encoded!=null&&encoded.startsWith("minecraft:water[")
+                ||isBubbleColumn(encoded);
+    }
+    public static boolean isBubbleColumn(String encoded){
+        return "minecraft:bubble_column".equals(encoded)
+                ||encoded!=null&&encoded.startsWith("minecraft:bubble_column[");
     }
     public static boolean samePhase(String a,String b){
         return isWaterStep(a)==isWaterStep(b);

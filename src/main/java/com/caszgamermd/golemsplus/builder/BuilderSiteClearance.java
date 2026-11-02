@@ -112,6 +112,8 @@ public final class BuilderSiteClearance {
                     BuildSite.Rotation.values()[table.builderRotation()/90],
                     BuildSite.Mirror.values()[table.builderMirror()]):null;
             if(BuilderPlacementState.matches(existing,expected)
+                    ||BuilderWaterPass.isBubbleColumn(step.state())
+                        &&existing.is(Blocks.WATER)
                     ||dryExpected!=null&&BuilderPlacementState.matches(
                             existing,dryExpected.state())){
                 // A saved wall/stair shape may have recomputed when nearby

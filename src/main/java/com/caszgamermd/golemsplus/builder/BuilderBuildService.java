@@ -1115,6 +1115,7 @@ public final class BuilderBuildService {
                 return;
             }
             boolean waterlog=BuilderWaterPass.isWaterlogPass(step.encodedState());
+            boolean bubble=BuilderWaterPass.isBubbleColumn(step.encodedState());
             if(waterlog){
                 var dry=BuilderBlockResolver.resolve(
                         BuilderWaterPass.dryState(
@@ -1129,6 +1130,16 @@ public final class BuilderBuildService {
                     table.setProblem("Water pass waiting for dry block at "+pos);
                     return;
                 }
+            }
+            if(bubble&&existing.is(net.minecraft.world.level.block.Blocks.WATER)
+                    &&existing.getFluidState().isSource()){
+                // The Builder already supplied this source. Don't mine it
+                // or repeatedly place the same water block while vanilla
+                // propagates the upward/downward bubble from below.
+                table.waitForBuilderSupport(worker.getUUID(),index,
+                        level.getGameTime());
+                table.setProblem("Waiting for soul-sand/magma bubble propagation at "+pos);
+                return;
             }
             // The hook controller retains exclusive movement until
             // physically landed; do not issue an overlapping work route.
@@ -1187,7 +1198,9 @@ public final class BuilderBuildService {
                         +" (other Builders continuing this layer)");
                 return;
             }
-            if(!existing.isAir()&&!waterlog){
+            if(!existing.isAir()&&!waterlog
+                    &&!(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
+                            ||existing.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN)))){
                 // A player may add a block after the initial site-clear
                 // phase. Never destroy it until its planned replacement
                 // has support. This protects physical build progress.
@@ -1616,9 +1629,26 @@ public final class BuilderBuildService {
             // does not prevent burying entities in new solid blocks.
             // The real consumed stack is debited from either a loose slot
             // or its packed shulker box BEFORE the world changes.
-            if(!level.setBlock(pos,state.state(),3)){
+            // A bubble column is a PHYSICS RESULT, never an inventory
+            // placement. Put down source water and let its real supporting
+            // soul sand/magma (or column below) convert it naturally.
+            BlockState toPlace=bubble
+                    ?net.minecraft.world.level.block.Blocks.WATER.defaultBlockState()
+                    :state.state();
+            if(!level.setBlock(pos,toPlace,3)){
                 if(payment!=null)BuilderSupplyInventory.refund(table,payment);
                 table.setProblem("World rejected placement at "+pos);
+                return;
+            }
+            if(bubble&&!BuilderPlacementState.matches(
+                    level.getBlockState(pos),state.state())){
+                // Do not advance the global Y or replace an actual water
+                // block with a fake bubble column. Wait for the vanilla
+                // fluid/neighbor update; the bucket remains in the pouch.
+                table.waitForBuilderSupport(worker.getUUID(),index,
+                        level.getGameTime());
+                table.setProblem("Waiting for natural bubble column at "+pos
+                        +" (needs source water over soul sand/magma)");
                 return;
             }
             table.recordBuilderPlacement(step.requiredItem());

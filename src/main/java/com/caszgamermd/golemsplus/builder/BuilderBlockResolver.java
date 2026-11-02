@@ -36,6 +36,9 @@ public final class BuilderBlockResolver {
         Block block=BuiltInRegistries.BLOCK.getValue(identifier);
         Item item=block.asItem();
         if(id.equals("minecraft:water"))item=WorksiteContent.INFINITE_WATER_BUCKET;
+        // Bubble columns have no item. A Builder supplies SOURCE WATER;
+        // vanilla soul-sand/magma physics creates the requested column.
+        if(id.equals("minecraft:bubble_column"))item=WorksiteContent.INFINITE_WATER_BUCKET;
         if(id.equals("minecraft:lava"))item=WorksiteContent.INFINITE_LAVA_BUCKET;
         // Wall signs have standing-sign inventory items, and can be
         // placed as blank physical signs. The test does not fake text NBT.
