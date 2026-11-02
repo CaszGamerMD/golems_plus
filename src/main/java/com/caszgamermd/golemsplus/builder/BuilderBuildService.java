@@ -70,6 +70,15 @@ public final class BuilderBuildService {
         long lastPerchEscapeTick=-1000;
         long retreatUntil=-1;
         int lastFailedStep=-1;
+        // After returning to OnSite from a failed approach, take a real
+        // walking route to a different side of the build BEFORE selecting
+        // a new work stance. Never teleport or hold a claim while scouting.
+        boolean alternateSideRequested;
+        BlockPos alternateSideTarget;
+        long alternateSideStarted=-1;
+        int alternateSideAttempts;
+        BlockPos failedApproachFrom;
+        boolean pauseHandled;
         // Next-step prediction is read-only until the current block
         // is actually placed. Never claim two cells or move the worker
         // away from its current physical assignment.
@@ -106,6 +115,98 @@ public final class BuilderBuildService {
                 fastFollowup=false;
             }
         }
+    }
+    private record SiteFootprint(UUID job,Cache plan,int minX,int maxX,
+                                 int minZ,int maxZ){}
+    private static final Map<WorkerStationBlockEntity,SiteFootprint>
+            siteFootprints=new WeakHashMap<>();
+    private static SiteFootprint siteFootprint(WorkerStationBlockEntity table,
+            Cache plan){
+        SiteFootprint old=siteFootprints.get(table);
+        if(old!=null&&old.job().equals(table.activeOrder())&&old.plan()==plan)
+            return old;
+        int minX=Integer.MAX_VALUE,maxX=Integer.MIN_VALUE;
+        int minZ=Integer.MAX_VALUE,maxZ=Integer.MIN_VALUE;
+        for(var step:plan.steps()){
+            minX=Math.min(minX,step.x());maxX=Math.max(maxX,step.x());
+            minZ=Math.min(minZ,step.z());maxZ=Math.max(maxZ,step.z());
+        }
+        if(minX==Integer.MAX_VALUE){
+            minX=maxX=table.builderOrigin().getX();
+            minZ=maxZ=table.builderOrigin().getZ();
+        }
+        SiteFootprint result=new SiteFootprint(table.activeOrder(),plan,
+                minX,maxX,minZ,maxZ);
+        siteFootprints.put(table,result);
+        return result;
+    }
+    /** East, south, west, north. Other-side order is shared by all crew,
+     * but a different worker starts with a different perimeter approach.
+     * In particular, never send all four workers back to the failed side.
+     */
+    static int alternateSide(int failedSide,int crewIndex,int attempt){
+        int[] offsets={2,1,3};
+        return Math.floorMod(failedSide+offsets[Math.floorMod(
+                crewIndex+attempt,offsets.length)],4);
+    }
+    private static int sideOf(SiteFootprint site,BlockPos from){
+        double centerX=((double)site.minX()+site.maxX())/2;
+        double centerZ=((double)site.minZ()+site.maxZ())/2;
+        double dx=from.getX()-centerX,dz=from.getZ()-centerZ;
+        if(Math.abs(dx)>=Math.abs(dz))return dx>=0?0:2;
+        return dz>=0?1:3;
+    }
+    /** A safe ground waypoint OUTSIDE the schematic. A* must validate the
+     * entire real route there; after arrival all work poses are recalculated
+     * from the new side. The builder may detour away from its actual target.
+     */
+    private static BlockPos alternateStaging(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,Cache plan,
+            WorkerAction action){
+        SiteFootprint site=siteFootprint(table,plan);
+        BlockPos failed=action.failedApproachFrom==null
+                ?worker.blockPosition():action.failedApproachFrom;
+        int badSide=sideOf(site,failed);
+        int crew=Math.max(0,table.builderWorkerIds().indexOf(worker.getUUID()));
+        int spanX=Math.max(1,site.maxX()-site.minX());
+        int spanZ=Math.max(1,site.maxZ()-site.minZ());
+        int middleX=site.minX()+spanX/2,middleZ=site.minZ()+spanZ/2;
+        BlockPos depot=table.builderUnloadingStorage();
+        if(depot==null)depot=table.getBlockPos();
+        int baseY=depot.getY();
+        int[] yOffsets={1,0,2,-1,3,-2};
+        for(int sideTry=0;sideTry<3;sideTry++){
+            int side=alternateSide(badSide,crew,
+                    action.alternateSideAttempts+sideTry);
+            int span=(side%2==0?spanZ:spanX);
+            int quarter=Math.max(2,span/4);
+            int[] lateral={0,quarter,-quarter,2*quarter,-2*quarter};
+            for(int offset:lateral){
+                int x=switch(side){
+                    case 0 -> site.maxX()+3;
+                    case 2 -> site.minX()-3;
+                    default -> Math.max(site.minX()-2,
+                            Math.min(site.maxX()+2,middleX+offset));
+                };
+                int z=switch(side){
+                    case 1 -> site.maxZ()+3;
+                    case 3 -> site.minZ()-3;
+                    default -> Math.max(site.minZ()-2,
+                            Math.min(site.maxZ()+2,middleZ+offset));
+                };
+                for(int dy:yOffsets){
+                    BlockPos waypoint=new BlockPos(x,baseY+dy,z);
+                    if(!level.hasChunkAt(waypoint)
+                            ||worker.distanceToSqr(x+.5,baseY+dy,z+.5)<9
+                            ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                    .canStandOn(level,worker,waypoint))continue;
+                    if(com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .routeToExact(level,worker,waypoint,1.0))
+                        return waypoint;
+                }
+            }
+        }
+        return null;
     }
     /** Shared per-station handoff board: a failed cell is offered to a
      * different crew member before its previous owner can try again. */
@@ -722,6 +823,49 @@ public final class BuilderBuildService {
             table.setProblem("Unrecognized Builder Golem near workstation");
             return;
         }
+        // PAUSED is a recall order, not a freeze wherever the Builder
+        // happens to be. Let an in-flight rope/bridge land safely, then
+        // descend, walk to OnSite and empty every real inventory slot.
+        // This must precede dropped-item pickup, courier and work logic.
+        if(table.phase()==WorkerPhase.PAUSED){
+            WorkerAction paused=workerActions.computeIfAbsent(worker,
+                    unused->new WorkerAction());
+            if(!paused.pauseHandled){
+                paused.setStep(-1);
+                paused.retreatUntil=-1;
+                paused.returningToSite=false;
+                paused.alternateSideRequested=false;
+                paused.alternateSideTarget=null;
+                paused.alternateSideAttempts=0;
+                BuilderPlacementSpace.cancelYield(worker);
+                BuilderDroppedBlockRecovery.suspend(worker,table);
+                paused.pauseHandled=true;
+            }
+            if(BuilderGrappleAccess.active(worker)
+                    ||BuilderScaffolding.isControllingMovement(worker))return;
+            if(!parkAtOnSite(level,worker,table))return;
+            BuilderScaffolding.retrieve(level,worker,table,false);
+            if(worker.hasSupplyBox()){
+                if(!BuilderSupplyInventory.depositBox(table,worker.supplyBox())){
+                    table.setProblem("Paused: make room in OnSite for returned shulker cargo");
+                    return;
+                }
+                worker.clearSupplyBox();
+            }
+            if(!worker.isEmpty()&&!BuilderSupplyInventory.returnPouch(table,worker)){
+                table.setProblem("Paused: make room in OnSite to empty Builder pockets");
+                return;
+            }
+            if(!BuilderDroppedBlockRecovery.unloadRecoveredAtSite(worker,table)){
+                table.setProblem("Paused: make room in OnSite for recovered blocks");
+                return;
+            }
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+            worker.setNoGravity(false);
+            return;
+        }
+        WorkerAction previousAction=workerActions.get(worker);
+        if(previousAction!=null)previousAction.pauseHandled=false;
         // A teammate may need the block space currently occupied by this
         // Builder. Honor its short physical sidestep before resuming the
         // current 10-coordinate assignment or warehouse courier route.
@@ -817,11 +961,6 @@ public final class BuilderBuildService {
             if(level.getGameTime()<retreat.retreatUntil)return;
             retreat.retreatUntil=-1;
         }
-        if(table.phase()==WorkerPhase.PAUSED){
-            BuilderGrappleAccess.cancel(worker);
-            worker.getNavigation().stop();
-            worker.setNoGravity(false);return;
-        }
         // Plan B owns the rope maneuver exclusively until landing.
         if(BuilderGrappleAccess.active(worker))return;
         int membership=table.builderWorkerIds().indexOf(worker.getUUID());
@@ -841,6 +980,53 @@ public final class BuilderBuildService {
         }
         try{
             Cache plan=cache(table,worker);
+            WorkerAction alternate=workerActions.get(worker);
+            if(alternate!=null&&alternate.alternateSideRequested){
+                long now=level.getGameTime();
+                BlockPos waypoint=alternate.alternateSideTarget;
+                if(waypoint==null){
+                    waypoint=alternateStaging(level,worker,table,plan,alternate);
+                    alternate.alternateSideTarget=waypoint;
+                    alternate.alternateSideStarted=now;
+                    alternate.alternateSideAttempts++;
+                    if(waypoint!=null)
+                        System.out.println("[BUILDER ALT SIDE] "
+                                +worker.getName().getString()+" going to "
+                                +waypoint+" from "+alternate.failedApproachFrom
+                                +" to replan remaining work");
+                    else alternate.alternateSideRequested=false;
+                }
+                if(waypoint!=null){
+                    if(worker.onGround()&&worker.distanceToSqr(
+                            waypoint.getX()+.5,waypoint.getY(),
+                            waypoint.getZ()+.5)<4){
+                        alternate.alternateSideTarget=null;
+                        alternate.alternateSideRequested=false;
+                        alternate.workTravelSince=-1;
+                        alternate.lastMovementTick=-1;
+                        alternate.lastTargetProgressTick=-1;
+                        alternate.bestTargetDistance=Double.POSITIVE_INFINITY;
+                        alternate.setStep(-1);
+                        com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                        if(alternate.lastFailedStep>=0
+                                &&alternate.lastFailedStep<plan.steps().size()){
+                            var failed=plan.steps().get(alternate.lastFailedStep);
+                            BuilderPlacementSpace.invalidateApproach(worker,
+                                    new BlockPos(failed.x(),failed.y(),failed.z()));
+                        }
+                        System.out.println("[BUILDER ALT SIDE] "
+                                +worker.getName().getString()
+                                +" arrived; rebuilding approach search");
+                        return;
+                    }
+                    if(now-alternate.alternateSideStarted<240
+                            &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                    .routeToExact(level,worker,waypoint,1.0))return;
+                    alternate.alternateSideTarget=null;
+                    alternate.alternateSideRequested=false;
+                    com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                }
+            }
             // Display required physical placements without waiting for
             // site clearance. This is accounting only, never a completion.
             table.previewBuilderWork(plan.steps());
@@ -1081,6 +1267,10 @@ public final class BuilderBuildService {
                     // Keep the exact unfinished cells and current Y gate.
                     waiting.retreatUntil=level.getGameTime()+160;
                     waiting.frontierWaitSince=-1;
+                    if(waiting.alternateSideAttempts<3){
+                        waiting.failedApproachFrom=worker.blockPosition();
+                        waiting.alternateSideRequested=true;
+                    }
                     if(expensiveAscent)
                         System.out.println("[ROOF REPOSITION] "
                                 +worker.getName().getString()
@@ -1386,6 +1576,10 @@ public final class BuilderBuildService {
                         "320 ticks without target-distance progress");
                 activity.lastFailedStep=index;
                 activity.retreatUntil=now+100;
+                if(activity.alternateSideAttempts<3){
+                    activity.failedApproachFrom=worker.blockPosition();
+                    activity.alternateSideRequested=true;
+                }
                 publishHandoff(table,worker.getUUID(),index,now,
                         "circling without approaching work cell");
                 System.out.println("[BUILDER HANDOFF] worker="
@@ -1426,6 +1620,10 @@ public final class BuilderBuildService {
                         "180-tick stationary work approach; alternative access exhausted");
                 activity.lastFailedStep=index;
                 activity.retreatUntil=now+100;
+                if(activity.alternateSideAttempts<3){
+                    activity.failedApproachFrom=worker.blockPosition();
+                    activity.alternateSideRequested=true;
+                }
                 publishHandoff(table,worker.getUUID(),index,now,
                         "stationary after alternate scaffold and grapple");
                 System.out.println("[BUILDER HANDOFF] worker="+worker.getName().getString()

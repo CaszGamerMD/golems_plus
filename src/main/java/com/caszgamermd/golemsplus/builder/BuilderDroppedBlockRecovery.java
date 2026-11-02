@@ -36,6 +36,24 @@ public final class BuilderDroppedBlockRecovery {
         Task task=tasks.get(worker);
         return worker.hasRecoveredDrops()||task!=null&&task.target!=null;
     }
+    /** Stop a paused worker's item chase without despawning or consuming
+     * the item entity. Already collected cargo remains safe on the golem
+     * until its actual OnSite storage has room for it. */
+    public static void suspend(BuilderGolem worker,
+            WorkerStationBlockEntity table){
+        Task task=tasks.remove(worker);
+        if(task!=null)release(worker,table,task);
+    }
+    public static boolean unloadRecoveredAtSite(BuilderGolem worker,
+            WorkerStationBlockEntity table){
+        if(!worker.hasRecoveredDrops())return true;
+        var cargo=List.of(worker.recoveredDrops());
+        if(!BuilderSupplyInventory.storeDebris(table,cargo,false)
+                ||!BuilderSupplyInventory.storeDebris(table,cargo,true))
+            return false;
+        worker.clearRecoveredDrops();
+        return true;
+    }
     private static void release(BuilderGolem worker,
             WorkerStationBlockEntity table,Task task){
         if(task.target!=null){

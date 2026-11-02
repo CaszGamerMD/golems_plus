@@ -1721,6 +1721,19 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     public void setPhase(WorkerPhase next) {
         if (next==null) throw new IllegalArgumentException("Missing phase");
+        // Pausing suspends the current assignment, not the saved build.
+        // All incomplete steps (including half-filled ten-block batches)
+        // become claimable again on resume. Only finished indices and the
+        // real schematic cursor survive; no worker is stranded owning a
+        // cell that it abandoned to unload at OnSite.
+        if(isBuilder()&&next==WorkerPhase.PAUSED&&phase!=WorkerPhase.PAUSED){
+            builderClaims.clear();
+            builderClearClaims.clear();
+            builderClearClaimTick.clear();
+            builderWorkOrders.clear();
+            builderPreparedOrders.clear();
+            builderMissingRetries.clear();
+        }
         // Completion must also close the persisted job UUID: returning
         // workers cannot recycle while a phantom activeOrder survives.
         if(isBuilder()&&next==WorkerPhase.COMPLETE){
