@@ -81,6 +81,12 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
         state.hasRod=entity instanceof FisherGolem fisher&&fisher.hasRod();
         state.carryingFish=entity instanceof FisherGolem fisher&&fisher.hasCatch();
         state.seated=entity instanceof FisherGolem fisher&&fisher.seated();
+        state.breakRoomSeated=com.caszgamermd.golemsplus.breakroom.GolemBreakService.breakRoomSeated(entity);
+        state.breakRoomEating=com.caszgamermd.golemsplus.breakroom.GolemBreakService.eating(entity);
+        state.breakRoomPlayingArcade=com.caszgamermd.golemsplus.breakroom.GolemBreakService.playingArcade(entity);
+        itemModelResolver.updateForTopItem(state.breakRoomSnack,
+                com.caszgamermd.golemsplus.breakroom.GolemBreakService.snackForRender(entity),
+                ItemDisplayContext.FIXED,entity.level(),null,entity.getId());
         state.chairColor=entity instanceof FisherGolem fisher?fisher.chairColor():0;
         state.casting=entity instanceof FisherGolem fisher&&fisher.casting();
         state.reeling=entity instanceof FisherGolem fisher&&fisher.reeling();
@@ -89,6 +95,14 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
     @Override public void submit(ProfessionGolemRenderState state,PoseStack pose,
             SubmitNodeCollector collector,CameraRenderState camera){
         super.submit(state,pose,collector,camera);
+        if(!state.breakRoomSnack.isEmpty()){
+            pose.pushPose();
+            pose.mulPose(Axis.YP.rotationDegrees(180f-state.bodyRot));
+            pose.translate(.30,.78,-.34);
+            pose.scale(.27f,.27f,.27f);
+            state.breakRoomSnack.submit(pose,collector,state.lightCoords,OverlayTexture.NO_OVERLAY,0);
+            pose.popPose();
+        }
         if(!state.chefIngredient.isEmpty()){
             pose.pushPose();
             pose.mulPose(Axis.YP.rotationDegrees(180f-state.bodyRot));
