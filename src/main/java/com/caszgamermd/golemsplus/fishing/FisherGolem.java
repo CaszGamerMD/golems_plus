@@ -43,6 +43,8 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class FisherGolem extends PathfinderMob {
 
+    public static final EntityDataAccessor<Integer> BREAK_ROOM_STATE=
+            SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.INT);
     private static final EntityDataAccessor<Boolean> HAS_ROD=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> HAS_CATCH=
@@ -88,6 +90,7 @@ public final class FisherGolem extends PathfinderMob {
         b.define(CHAIR_COLOR,0);
         b.define(CASTING,false);b.define(REELING,false);
         b.define(CAST_TARGET,BlockPos.ZERO);
+        b.define(BREAK_ROOM_STATE,0);
     }
     @Override protected void registerGoals(){}
     public void assign(BlockPos at,UUID who){home=at.immutable();owner=who;
