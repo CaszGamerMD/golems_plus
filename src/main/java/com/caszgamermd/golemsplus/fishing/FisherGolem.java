@@ -43,8 +43,6 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class FisherGolem extends PathfinderMob {
 
-    public static final EntityDataAccessor<Integer> BREAK_ROOM_STATE=
-            SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.INT);
     private static final EntityDataAccessor<Boolean> HAS_ROD=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> HAS_CATCH=
@@ -59,6 +57,8 @@ public final class FisherGolem extends PathfinderMob {
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.INT);
     private static final EntityDataAccessor<BlockPos> CAST_TARGET=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BLOCK_POS);
+    public static final EntityDataAccessor<Integer> BREAK_ROOM_STATE=
+            SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.INT);
     private static final int POCKET_SLOTS=9,BAIT_LOAD=24;
     private static final DustParticleOptions LINE_COLOR=new DustParticleOptions(0x9caca7,.33f);
     private static final DustParticleOptions FLOAT_WHITE=new DustParticleOptions(0xe8e8dc,.9f);
