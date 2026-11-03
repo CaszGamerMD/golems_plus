@@ -11,7 +11,7 @@ import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import java.util.UUID;
 
 public final class GolemBreakGameTest {
-    @GameTest(maxTicks = 1000, skyAccess = true)
+    @GameTest(maxTicks = 1000, skyAccess = true, batch = "golem_break_room_arcade")
     public void idleBuilderPhysicallyVisitsArcadeAndRests(GameTestHelper h) {
         for (int x = 0; x < 8; x++)
             for (int z = 0; z < 8; z++)
@@ -52,7 +52,7 @@ public final class GolemBreakGameTest {
         });
     }
 
-    @GameTest(maxTicks = 1200, skyAccess = true)
+    @GameTest(maxTicks = 1200, skyAccess = true, batch = "golem_break_room_snacks")
     public void idleBuilderGetsSnackAndEatsSeatedAtChairAndTable(GameTestHelper h) {
         for (int x = 0; x < 8; x++)
             for (int z = 0; z < 8; z++)
@@ -95,7 +95,15 @@ public final class GolemBreakGameTest {
                 finishedSnack[0] = true;
             if (GolemBreakService.rested(worker)) {
                 if (!gotSnack[0] || !ateAtSeat[0] || !finishedSnack[0]) {
-                    h.fail("Snack machine -> chair/table eating sequence did not complete");
+                    h.fail("Snack machine -> chair/table eating sequence did not complete"
+                            + " gotSnack=" + gotSnack[0]
+                            + " ateAtSeat=" + ateAtSeat[0]
+                            + " finishedSnack=" + finishedSnack[0]
+                            + " seated=" + GolemBreakService.breakRoomSeated(worker)
+                            + " hasSnack=" + GolemBreakService.hasSnack(worker)
+                            + " eating=" + GolemBreakService.eating(worker)
+                            + " worker=" + worker.blockPosition()
+                            + " service={" + GolemBreakService.debugStatus(worker) + "}");
                     return;
                 }
                 h.succeed();
