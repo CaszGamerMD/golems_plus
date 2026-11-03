@@ -49,12 +49,12 @@ public final class FisherGolem extends PathfinderMob {
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> SEATED=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Integer> CHAIR_COLOR=
+            SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.INT);
     private static final EntityDataAccessor<Boolean> CASTING=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> REELING=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
-    private static final EntityDataAccessor<Integer> CHAIR_COLOR=
-            SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.INT);
     private static final EntityDataAccessor<BlockPos> CAST_TARGET=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BLOCK_POS);
     public static final EntityDataAccessor<Integer> BREAK_ROOM_STATE=
