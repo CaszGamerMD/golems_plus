@@ -31,7 +31,6 @@ public final class GolemBreakService {
     private static final int SYNC_EATING = 2;
     private static final int SYNC_HAS_SNACK = 4;
     private static final int SYNC_ARCADE = 8;
-    private static final int SYNC_SNACK_SHIFT = 4;
 
     private enum Visit { NONE, CHAIR, SNACK_MACHINE, EATING, ARCADE }
 
@@ -49,7 +48,8 @@ public final class GolemBreakService {
         int phaseTicks;
         int breakLength = 280;
         int arcadeNotes;
-        int snackKind = -1;
+        ItemStack snack = ItemStack.EMPTY;
+        BlockPos snackSource;
         boolean ready;
         boolean working;
     }
@@ -76,6 +76,24 @@ public final class GolemBreakService {
         if (mob instanceof ChefGolem) return ChefGolem.BREAK_ROOM_STATE;
         if (mob instanceof FisherGolem) return FisherGolem.BREAK_ROOM_STATE;
         return null;
+    }
+
+    private static EntityDataAccessor<ItemStack> snackAccessor(PathfinderMob mob) {
+        if (mob instanceof BuilderGolem) return BuilderGolem.BREAK_ROOM_SNACK;
+        if (mob instanceof BeekeeperGolem) return BeekeeperGolem.BREAK_ROOM_SNACK;
+        if (mob instanceof TraderGolem) return TraderGolem.BREAK_ROOM_SNACK;
+        if (mob instanceof ChefGolem) return ChefGolem.BREAK_ROOM_SNACK;
+        if (mob instanceof FisherGolem) return FisherGolem.BREAK_ROOM_SNACK;
+        return null;
+    }
+
+    private static void setSyncedSnack(PathfinderMob mob, ItemStack snack) {
+        EntityDataAccessor<ItemStack> key = snackAccessor(mob);
+        if (key == null) return;
+        ItemStack current = mob.getEntityData().get(key);
+        ItemStack visible = snack == null ? ItemStack.EMPTY : snack;
+        if (!ItemStack.matches(current, visible))
+            mob.getEntityData().set(key, visible.copy());
     }
 
     private static int syncedState(PathfinderMob mob) {
@@ -105,40 +123,28 @@ public final class GolemBreakService {
         return (syncedState(mob) & SYNC_HAS_SNACK) != 0;
     }
 
-    /** Render-only food item, encoded in the same synced state as the pose. */
+    /** The exact stack taken from the machine, synchronized for client rendering. */
     public static ItemStack snackForRender(PathfinderMob mob) {
-        int state = syncedState(mob);
-        if ((state & SYNC_HAS_SNACK) == 0) return ItemStack.EMPTY;
-        return snackStack((state >>> SYNC_SNACK_SHIFT) & 7);
-    }
-
-    private static ItemStack snackStack(int kind) {
-        return new ItemStack(switch (kind) {
-            case 1 -> Items.APPLE;
-            case 2 -> Items.BREAD;
-            case 3 -> Items.BAKED_POTATO;
-            case 4 -> Items.PUMPKIN_PIE;
-            default -> Items.COOKIE;
-        });
+        EntityDataAccessor<ItemStack> key = snackAccessor(mob);
+        return key == null ? ItemStack.EMPTY : mob.getEntityData().get(key).copy();
     }
 
     private static void publish(PathfinderMob mob, Rest rest, boolean atTarget) {
         if (rest == null || rest.visit == Visit.NONE) {
+            setSyncedSnack(mob, ItemStack.EMPTY);
             setSyncedState(mob, 0);
             return;
         }
         int value = 0;
         if (atTarget && (rest.visit == Visit.CHAIR || rest.visit == Visit.EATING))
             value |= SYNC_SEATED;
-        if (atTarget && rest.visit == Visit.EATING && rest.snackKind >= 0
+        if (atTarget && rest.visit == Visit.EATING && !rest.snack.isEmpty()
                 && rest.phaseTicks < 100)
             value |= SYNC_EATING;
-        if (rest.snackKind >= 0) {
-            value |= SYNC_HAS_SNACK;
-            value |= (rest.snackKind & 7) << SYNC_SNACK_SHIFT;
-        }
+        if (!rest.snack.isEmpty()) value |= SYNC_HAS_SNACK;
         if (atTarget && rest.visit == Visit.ARCADE)
             value |= SYNC_ARCADE;
+        setSyncedSnack(mob, rest.snack);
         setSyncedState(mob, value);
     }
 
@@ -156,6 +162,7 @@ public final class GolemBreakService {
                                 net.minecraft.world.level.storage.ValueInput in) {
         workers.computeIfAbsent(mob, ignored -> new Rest()).ready =
                 in.getBooleanOr("golems_plus_rested", false);
+        setSyncedSnack(mob, ItemStack.EMPTY);
         setSyncedState(mob, 0);
     }
 
@@ -175,7 +182,7 @@ public final class GolemBreakService {
                 + " table=" + rest.table
                 + " phaseTicks=" + rest.phaseTicks
                 + " restTicks=" + rest.rest
-                + " snackKind=" + rest.snackKind
+                + " snack=" + rest.snack
                 + " ready=" + rest.ready
                 + " working=" + rest.working
                 + " syncState=" + syncedState(mob);
@@ -218,6 +225,7 @@ public final class GolemBreakService {
                 rest.ready = false;
             }
             if (rest.visit != Visit.NONE) WorkerNavigation.stop(mob);
+            returnSnack(world, mob, rest);
             clearVisit(rest);
             rest.working = true;
             publish(mob, rest, false);
@@ -257,10 +265,15 @@ public final class GolemBreakService {
             case EATING -> {
                 faceChair(world, mob, rest.furniture, rest.table);
                 rest.phaseTicks += 5;
-                if (rest.snackKind >= 0 && rest.phaseTicks >= 100)
-                    rest.snackKind = -1;
-                else if (rest.snackKind >= 0 && rest.phaseTicks % 30 == 0)
+                if (!rest.snack.isEmpty() && rest.phaseTicks >= 100) {
+                    rest.snack = ItemStack.EMPTY;
+                    rest.snackSource = null;
+                } else if (!rest.snack.isEmpty() && rest.phaseTicks % 30 == 0) {
                     mob.swing(InteractionHand.MAIN_HAND);
+                    world.playSound(null, mob.getX(), mob.getY() + .75, mob.getZ(),
+                            SoundEvents.GENERIC_EAT, SoundSource.NEUTRAL, .38f,
+                            .92f + mob.getRandom().nextFloat() * .16f);
+                }
                 rest.rest += 5;
             }
             case SNACK_MACHINE -> {
@@ -271,7 +284,17 @@ public final class GolemBreakService {
                     world.playSound(null, rest.furniture.getX() + .5,
                             rest.furniture.getY() + .65, rest.furniture.getZ() + .5,
                             SoundEvents.NOTE_BLOCK_HAT, SoundSource.BLOCKS, .55f, .95f);
-                    rest.snackKind = mob.getRandom().nextInt(5);
+                    if (!(world.getBlockEntity(rest.furniture)
+                            instanceof SnackMachineBlockEntity machine)) {
+                        abandon(world, mob, rest);
+                        return;
+                    }
+                    rest.snack = machine.takeSnack();
+                    if (rest.snack.isEmpty()) {
+                        abandon(world, mob, rest);
+                        return;
+                    }
+                    rest.snackSource = rest.furniture;
                     rest.visit = Visit.EATING;
                     rest.furniture = rest.reservedChair;
                     rest.stand = rest.reservedChair;
@@ -329,7 +352,9 @@ public final class GolemBreakService {
 
         List<Candidate> snackChoices = new ArrayList<>();
         for (BlockPos machine : machines) {
-            if (reserved(rest, machine)) continue;
+            if (reserved(rest, machine)
+                    || !(world.getBlockEntity(machine) instanceof SnackMachineBlockEntity stock)
+                    || !stock.hasSnack()) continue;
             BlockPos approach = front(world, machine);
             if (!canUseMachineFromFront(world, mob, machine)) continue;
             for (Seat seat : seats) {
@@ -376,7 +401,8 @@ public final class GolemBreakService {
         rest.breakLength = 240 + mob.getRandom().nextInt(160);
         rest.nextArcadeSound = 0;
         rest.arcadeNotes = 0;
-        rest.snackKind = -1;
+        rest.snack = ItemStack.EMPTY;
+        rest.snackSource = null;
     }
 
     private static boolean reachable(ServerLevel world, PathfinderMob mob, BlockPos target) {
@@ -433,6 +459,8 @@ public final class GolemBreakService {
                     && world.getBlockState(rest.table).is(BreakRoomContent.TABLE);
             case SNACK_MACHINE -> world.getBlockState(rest.furniture)
                     .is(BreakRoomContent.SNACK_MACHINE)
+                    && world.getBlockEntity(rest.furniture) instanceof SnackMachineBlockEntity stock
+                    && stock.hasSnack()
                     && isFrontApproach(world, rest.furniture, rest.stand)
                     && rest.reservedChair != null
                     && world.getBlockState(rest.reservedChair).is(BreakRoomContent.CHAIR)
@@ -507,8 +535,25 @@ public final class GolemBreakService {
         publish(mob, rest, false);
     }
 
+    private static void returnSnack(ServerLevel world, PathfinderMob mob, Rest rest) {
+        if (rest.snack.isEmpty()) {
+            rest.snackSource = null;
+            return;
+        }
+        ItemStack leftover = rest.snack.copy();
+        if (rest.snackSource != null && world.hasChunkAt(rest.snackSource)
+                && world.getBlockEntity(rest.snackSource) instanceof SnackMachineBlockEntity machine)
+            machine.insert(leftover);
+        if (!leftover.isEmpty())
+            world.addFreshEntity(new net.minecraft.world.entity.item.ItemEntity(world,
+                    mob.getX(), mob.getY() + .25, mob.getZ(), leftover));
+        rest.snack = ItemStack.EMPTY;
+        rest.snackSource = null;
+    }
+
     private static void abandon(ServerLevel world, PathfinderMob mob, Rest rest) {
         WorkerNavigation.stop(mob);
+        returnSnack(world, mob, rest);
         clearVisit(rest);
         rest.chooseAt = world.getGameTime() + 100;
         publish(mob, rest, false);
@@ -522,7 +567,8 @@ public final class GolemBreakService {
         rest.table = null;
         rest.rest = 0;
         rest.phaseTicks = 0;
-        rest.snackKind = -1;
+        rest.snack = ItemStack.EMPTY;
+        rest.snackSource = null;
         rest.nextArcadeSound = 0;
         rest.arcadeNotes = 0;
     }
