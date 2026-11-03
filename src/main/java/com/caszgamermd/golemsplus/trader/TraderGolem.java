@@ -38,6 +38,8 @@ import net.minecraft.world.level.storage.ValueOutput;
  */
 public final class TraderGolem extends PathfinderMob {
 
+    public static final EntityDataAccessor<Integer> BREAK_ROOM_STATE=
+            SynchedEntityData.defineId(TraderGolem.class,EntityDataSerializers.INT);
     private static final EntityDataAccessor<Boolean> CASE_OPEN =
             SynchedEntityData.defineId(TraderGolem.class,EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<ItemStack> CASE_ITEM =
@@ -46,6 +48,7 @@ public final class TraderGolem extends PathfinderMob {
         super.defineSynchedData(builder);
         builder.define(CASE_OPEN,false);
         builder.define(CASE_ITEM,ItemStack.EMPTY);
+        builder.define(BREAK_ROOM_STATE,0);
     }
     public boolean presenting(){return getEntityData().get(CASE_OPEN);}
     private void openCase(boolean show){getEntityData().set(CASE_OPEN,show);}
