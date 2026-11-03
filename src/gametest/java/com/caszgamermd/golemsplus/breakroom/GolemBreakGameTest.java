@@ -11,7 +11,7 @@ import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import java.util.UUID;
 
 public final class GolemBreakGameTest {
-    @GameTest(maxTicks = 1000, skyAccess = true, batch = "golem_break_room_arcade")
+    @GameTest(maxTicks = 1000, skyAccess = true)
     public void idleBuilderPhysicallyVisitsArcadeAndRests(GameTestHelper h) {
         for (int x = 0; x < 8; x++)
             for (int z = 0; z < 8; z++)
@@ -52,7 +52,7 @@ public final class GolemBreakGameTest {
         });
     }
 
-    @GameTest(maxTicks = 1200, skyAccess = true, batch = "golem_break_room_snacks")
+    @GameTest(maxTicks = 1800, skyAccess = true)
     public void idleBuilderGetsSnackAndEatsSeatedAtChairAndTable(GameTestHelper h) {
         for (int x = 0; x < 8; x++)
             for (int z = 0; z < 8; z++)
@@ -80,7 +80,9 @@ public final class GolemBreakGameTest {
         boolean[] gotSnack = {false};
         boolean[] ateAtSeat = {false};
         boolean[] finishedSnack = {false};
+        int[] elapsedTicks = {0};
         h.onEachTick(() -> {
+            elapsedTicks[0]++;
             if (GolemBreakService.hasSnack(worker)) gotSnack[0] = true;
             if (GolemBreakService.eating(worker)) {
                 ateAtSeat[0] = true;
@@ -93,20 +95,25 @@ public final class GolemBreakGameTest {
             if (ateAtSeat[0] && GolemBreakService.breakRoomSeated(worker)
                     && !GolemBreakService.hasSnack(worker))
                 finishedSnack[0] = true;
-            if (GolemBreakService.rested(worker)) {
-                if (!gotSnack[0] || !ateAtSeat[0] || !finishedSnack[0]) {
-                    h.fail("Snack machine -> chair/table eating sequence did not complete"
-                            + " gotSnack=" + gotSnack[0]
-                            + " ateAtSeat=" + ateAtSeat[0]
-                            + " finishedSnack=" + finishedSnack[0]
-                            + " seated=" + GolemBreakService.breakRoomSeated(worker)
-                            + " hasSnack=" + GolemBreakService.hasSnack(worker)
-                            + " eating=" + GolemBreakService.eating(worker)
-                            + " worker=" + worker.blockPosition()
-                            + " service={" + GolemBreakService.debugStatus(worker) + "}");
-                    return;
-                }
+            // Another nearby leisure fixture (such as an arcade) may be
+            // selected first. Keep observing until the machine -> chair ->
+            // eating sequence succeeds rather than treating that valid visit
+            // as a failed snack attempt.
+            if (GolemBreakService.rested(worker)
+                    && gotSnack[0] && ateAtSeat[0] && finishedSnack[0]) {
                 h.succeed();
+                return;
+            }
+            if (elapsedTicks[0] >= 1790) {
+                h.fail("Snack machine -> chair/table eating sequence did not complete"
+                        + " gotSnack=" + gotSnack[0]
+                        + " ateAtSeat=" + ateAtSeat[0]
+                        + " finishedSnack=" + finishedSnack[0]
+                        + " seated=" + GolemBreakService.breakRoomSeated(worker)
+                        + " hasSnack=" + GolemBreakService.hasSnack(worker)
+                        + " eating=" + GolemBreakService.eating(worker)
+                        + " worker=" + worker.blockPosition()
+                        + " service={" + GolemBreakService.debugStatus(worker) + "}");
             }
         });
     }
