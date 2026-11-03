@@ -38,12 +38,12 @@ import net.minecraft.world.level.storage.ValueOutput;
  */
 public final class TraderGolem extends PathfinderMob {
 
-    public static final EntityDataAccessor<Integer> BREAK_ROOM_STATE=
-            SynchedEntityData.defineId(TraderGolem.class,EntityDataSerializers.INT);
     private static final EntityDataAccessor<Boolean> CASE_OPEN =
             SynchedEntityData.defineId(TraderGolem.class,EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<ItemStack> CASE_ITEM =
             SynchedEntityData.defineId(TraderGolem.class,EntityDataSerializers.ITEM_STACK);
+    public static final EntityDataAccessor<Integer> BREAK_ROOM_STATE=
+            SynchedEntityData.defineId(TraderGolem.class,EntityDataSerializers.INT);
     @Override protected void defineSynchedData(SynchedEntityData.Builder builder){
         super.defineSynchedData(builder);
         builder.define(CASE_OPEN,false);
