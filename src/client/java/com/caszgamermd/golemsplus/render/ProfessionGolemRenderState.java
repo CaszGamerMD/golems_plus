@@ -1,6 +1,7 @@
 package com.caszgamermd.golemsplus.render;
 
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
 
 /** Model-only runtime data; no server networking or new data trackers. */
 public final class ProfessionGolemRenderState extends LivingEntityRenderState {
@@ -14,6 +15,10 @@ public final class ProfessionGolemRenderState extends LivingEntityRenderState {
     public int chairColor;
     public boolean casting;
     public boolean reeling;
-    public final net.minecraft.client.renderer.item.ItemStackRenderState chefIngredient = new net.minecraft.client.renderer.item.ItemStackRenderState();
-    public final net.minecraft.client.renderer.item.ItemStackRenderState tradeItem = new net.minecraft.client.renderer.item.ItemStackRenderState();
+    public boolean breakRoomSeated;
+    public boolean breakRoomEating;
+    public boolean breakRoomPlayingArcade;
+    public final ItemStackRenderState breakRoomSnack = new ItemStackRenderState();
+    public final ItemStackRenderState chefIngredient = new ItemStackRenderState();
+    public final ItemStackRenderState tradeItem = new ItemStackRenderState();
 }
