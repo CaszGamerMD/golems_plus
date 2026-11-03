@@ -49,14 +49,16 @@ public final class FisherGolem extends PathfinderMob {
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> SEATED=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Integer> CHAIR_COLOR=
+            SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.INT);
     private static final EntityDataAccessor<Boolean> CASTING=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> REELING=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BOOLEAN);
-    private static final EntityDataAccessor<Integer> CHAIR_COLOR=
-            SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.INT);
     private static final EntityDataAccessor<BlockPos> CAST_TARGET=
             SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.BLOCK_POS);
+    public static final EntityDataAccessor<Integer> BREAK_ROOM_STATE=
+            SynchedEntityData.defineId(FisherGolem.class,EntityDataSerializers.INT);
     private static final int POCKET_SLOTS=9,BAIT_LOAD=24;
     private static final DustParticleOptions LINE_COLOR=new DustParticleOptions(0x9caca7,.33f);
     private static final DustParticleOptions FLOAT_WHITE=new DustParticleOptions(0xe8e8dc,.9f);
@@ -88,6 +90,7 @@ public final class FisherGolem extends PathfinderMob {
         b.define(CHAIR_COLOR,0);
         b.define(CASTING,false);b.define(REELING,false);
         b.define(CAST_TARGET,BlockPos.ZERO);
+        b.define(BREAK_ROOM_STATE,0);
     }
     @Override protected void registerGoals(){}
     public void assign(BlockPos at,UUID who){home=at.immutable();owner=who;

@@ -489,5 +489,18 @@ public final class ProfessionGolemModel
                 leftArm.xRot=-.55f-.12f*stir;
             }
         }
+
+        // Break Room sitting is shared by all professions and is independent
+        // of the Fisher's fishing-chair state above.
+        if(state.breakRoomSeated){
+            leftLeg.xRot=rightLeg.xRot=-1.25f;
+            leftArm.xRot=state.breakRoomEating?-1.55f:-.68f;
+            rightArm.xRot=-.38f;
+            leftArm.zRot=-.12f;
+            rightArm.zRot=.12f;
+        }else if(state.breakRoomPlayingArcade){
+            rightArm.xRot=-.92f+.18f*Mth.sin(state.ageInTicks*.65f);
+            rightArm.zRot=-.16f;
+        }
     }
 }

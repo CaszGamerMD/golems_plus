@@ -21,6 +21,14 @@ import net.minecraft.world.level.storage.ValueOutput;
 /** Small, fully suited, peaceful worker. Actual shears and harvest persist on the mob. */
 public final class BeekeeperGolem extends PathfinderMob {
 
+    public static final net.minecraft.network.syncher.EntityDataAccessor<Integer> BREAK_ROOM_STATE=
+            net.minecraft.network.syncher.SynchedEntityData.defineId(
+                    BeekeeperGolem.class,net.minecraft.network.syncher.EntityDataSerializers.INT);
+    @Override protected void defineSynchedData(net.minecraft.network.syncher.SynchedEntityData.Builder builder){
+        super.defineSynchedData(builder);
+        builder.define(BREAK_ROOM_STATE,0);
+    }
+
     private BlockPos home=BlockPos.ZERO, targetHive=BlockPos.ZERO;
     private UUID owner,mateA,mateB;
     private ItemStack breedFlowers=ItemStack.EMPTY;
