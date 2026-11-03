@@ -164,6 +164,23 @@ public final class GolemBreakService {
         return rest != null && rest.visit != Visit.NONE && !rest.working;
     }
 
+    /** Compact server-side diagnostic for GameTests and operator debugging. */
+    public static String debugStatus(PathfinderMob mob) {
+        Rest rest = workers.get(mob);
+        if (rest == null) return "untracked";
+        return "visit=" + rest.visit
+                + " furniture=" + rest.furniture
+                + " stand=" + rest.stand
+                + " reservedChair=" + rest.reservedChair
+                + " table=" + rest.table
+                + " phaseTicks=" + rest.phaseTicks
+                + " restTicks=" + rest.rest
+                + " snackKind=" + rest.snackKind
+                + " ready=" + rest.ready
+                + " working=" + rest.working
+                + " syncState=" + syncedState(mob);
+    }
+
     public static void initialize() {
         ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
             if (entity instanceof PathfinderMob mob && home(mob) != null)
