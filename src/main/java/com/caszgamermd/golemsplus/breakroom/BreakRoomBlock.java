@@ -44,7 +44,8 @@ public final class BreakRoomBlock extends HorizontalDirectionalBlock implements 
             return InteractionResult.PASS;
         if (!SnackMachineBlockEntity.isSnack(held)) return InteractionResult.TRY_WITH_EMPTY_HAND;
         if (level.isClientSide()) return InteractionResult.SUCCESS;
-        int inserted = machine.insert(held);
+        ItemStack offered = player.getAbilities().instabuild ? held.copy() : held;
+        int inserted = machine.insert(offered);
         player.sendSystemMessage(Component.literal(inserted == 0 ? "Snack machine is full."
                 : "Restocked snack machine: " + inserted + " item(s). Stock: "
                 + machine.totalItems() + "."));

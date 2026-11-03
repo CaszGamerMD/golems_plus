@@ -156,12 +156,25 @@ public final class GolemBreakService {
     public static void saveRest(PathfinderMob mob,
                                 net.minecraft.world.level.storage.ValueOutput out) {
         out.putBoolean("golems_plus_rested", rested(mob));
+        Rest rest = workers.get(mob);
+        if (rest != null) {
+            if (!rest.snack.isEmpty())
+                out.store("golems_plus_break_snack", ItemStack.CODEC, rest.snack);
+            if (rest.snackSource != null)
+                out.store("golems_plus_break_snack_source", BlockPos.CODEC, rest.snackSource);
+        }
     }
 
     public static void loadRest(PathfinderMob mob,
                                 net.minecraft.world.level.storage.ValueInput in) {
-        workers.computeIfAbsent(mob, ignored -> new Rest()).ready =
-                in.getBooleanOr("golems_plus_rested", false);
+        Rest rest = workers.computeIfAbsent(mob, ignored -> new Rest());
+        rest.ready = in.getBooleanOr("golems_plus_rested", false);
+        rest.snack = in.read("golems_plus_break_snack", ItemStack.CODEC)
+                .orElse(ItemStack.EMPTY);
+        rest.snackSource = in.read("golems_plus_break_snack_source", BlockPos.CODEC)
+                .orElse(null);
+        // Visit/navigation state is intentionally re-evaluated after reload.
+        // The next idle tick returns this saved stack to stock or drops it.
         setSyncedSnack(mob, ItemStack.EMPTY);
         setSyncedState(mob, 0);
     }
@@ -234,6 +247,7 @@ public final class GolemBreakService {
         rest.working = false;
 
         if (rest.visit == Visit.NONE) {
+            if (!rest.snack.isEmpty()) returnSnack(world, mob, rest);
             publish(mob, rest, false);
             if (now < rest.chooseAt) return;
             rest.chooseAt = now + 80 + mob.getRandom().nextInt(160);
