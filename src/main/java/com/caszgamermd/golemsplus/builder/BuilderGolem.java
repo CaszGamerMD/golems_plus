@@ -23,12 +23,12 @@ import net.minecraft.world.level.storage.ValueOutput;
 
 /** Physical construction courier. Every placement is checked server-side. */
 public final class BuilderGolem extends PathfinderMob implements Container {
-    public static final net.minecraft.network.syncher.EntityDataAccessor<Integer> BREAK_ROOM_STATE=
-            net.minecraft.network.syncher.SynchedEntityData.defineId(
-                    BuilderGolem.class,net.minecraft.network.syncher.EntityDataSerializers.INT);
     private static final net.minecraft.network.syncher.EntityDataAccessor<Boolean> COURIER=
             net.minecraft.network.syncher.SynchedEntityData.defineId(
                     BuilderGolem.class,net.minecraft.network.syncher.EntityDataSerializers.BOOLEAN);
+    public static final net.minecraft.network.syncher.EntityDataAccessor<Integer> BREAK_ROOM_STATE=
+            net.minecraft.network.syncher.SynchedEntityData.defineId(
+                    BuilderGolem.class,net.minecraft.network.syncher.EntityDataSerializers.INT);
     @Override protected void defineSynchedData(net.minecraft.network.syncher.SynchedEntityData.Builder builder){
         super.defineSynchedData(builder);
         builder.define(COURIER,false);
