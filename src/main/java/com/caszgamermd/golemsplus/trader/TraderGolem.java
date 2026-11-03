@@ -44,11 +44,14 @@ public final class TraderGolem extends PathfinderMob {
             SynchedEntityData.defineId(TraderGolem.class,EntityDataSerializers.ITEM_STACK);
     public static final EntityDataAccessor<Integer> BREAK_ROOM_STATE=
             SynchedEntityData.defineId(TraderGolem.class,EntityDataSerializers.INT);
+    public static final net.minecraft.network.syncher.EntityDataAccessor<net.minecraft.world.item.ItemStack> BREAK_ROOM_SNACK = net.minecraft.network.syncher.SynchedEntityData.defineId(TraderGolem.class, net.minecraft.network.syncher.EntityDataSerializers.ITEM_STACK);
     @Override protected void defineSynchedData(SynchedEntityData.Builder builder){
         super.defineSynchedData(builder);
         builder.define(CASE_OPEN,false);
         builder.define(CASE_ITEM,ItemStack.EMPTY);
         builder.define(BREAK_ROOM_STATE,0);
+
+        builder.define(BREAK_ROOM_SNACK,net.minecraft.world.item.ItemStack.EMPTY);
     }
     public boolean presenting(){return getEntityData().get(CASE_OPEN);}
     private void openCase(boolean show){getEntityData().set(CASE_OPEN,show);}

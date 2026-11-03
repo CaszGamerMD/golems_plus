@@ -98,7 +98,9 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
         if(!state.breakRoomSnack.isEmpty()){
             pose.pushPose();
             pose.mulPose(Axis.YP.rotationDegrees(180f-state.bodyRot));
-            pose.translate(.30,.78,-.34);
+            float bite=state.breakRoomEating
+                    ?(float)Math.sin(state.ageInTicks*.58f)*.035f:0f;
+            pose.translate(.30,.96+bite,-.48);
             pose.scale(.27f,.27f,.27f);
             state.breakRoomSnack.submit(pose,collector,state.lightCoords,OverlayTexture.NO_OVERLAY,0);
             pose.popPose();

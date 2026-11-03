@@ -29,10 +29,13 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     public static final net.minecraft.network.syncher.EntityDataAccessor<Integer> BREAK_ROOM_STATE=
             net.minecraft.network.syncher.SynchedEntityData.defineId(
                     BuilderGolem.class,net.minecraft.network.syncher.EntityDataSerializers.INT);
+    public static final net.minecraft.network.syncher.EntityDataAccessor<net.minecraft.world.item.ItemStack> BREAK_ROOM_SNACK = net.minecraft.network.syncher.SynchedEntityData.defineId(BuilderGolem.class, net.minecraft.network.syncher.EntityDataSerializers.ITEM_STACK);
     @Override protected void defineSynchedData(net.minecraft.network.syncher.SynchedEntityData.Builder builder){
         super.defineSynchedData(builder);
         builder.define(COURIER,false);
         builder.define(BREAK_ROOM_STATE,0);
+
+        builder.define(BREAK_ROOM_SNACK,net.minecraft.world.item.ItemStack.EMPTY);
     }
     public boolean deliveryRole(){return entityData.get(COURIER);}
     public void setDeliveryRole(boolean active){

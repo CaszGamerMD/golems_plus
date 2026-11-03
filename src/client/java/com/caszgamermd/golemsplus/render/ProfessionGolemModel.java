@@ -494,10 +494,13 @@ public final class ProfessionGolemModel
         // of the Fisher's fishing-chair state above.
         if(state.breakRoomSeated){
             leftLeg.xRot=rightLeg.xRot=-1.25f;
-            leftArm.xRot=state.breakRoomEating?-1.55f:-.68f;
+            float bite=Mth.sin(state.ageInTicks*.58f);
+            leftArm.xRot=state.breakRoomEating?-1.43f+.16f*bite:-.68f;
             rightArm.xRot=-.38f;
-            leftArm.zRot=-.12f;
+            leftArm.zRot=state.breakRoomEating?-.20f:-.12f;
             rightArm.zRot=.12f;
+            if(state.breakRoomEating)
+                head.xRot+=.035f+Math.max(0,bite)*.045f;
         }else if(state.breakRoomPlayingArcade){
             rightArm.xRot=-.92f+.18f*Mth.sin(state.ageInTicks*.65f);
             rightArm.zRot=-.16f;

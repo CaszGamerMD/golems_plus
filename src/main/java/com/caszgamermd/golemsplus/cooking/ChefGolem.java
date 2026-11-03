@@ -29,10 +29,13 @@ public final class ChefGolem extends PathfinderMob {
             SynchedEntityData.defineId(ChefGolem.class,EntityDataSerializers.INT);
     private static final EntityDataAccessor<net.minecraft.world.item.ItemStack> CARRYING=
             SynchedEntityData.defineId(ChefGolem.class,EntityDataSerializers.ITEM_STACK);
+    public static final net.minecraft.network.syncher.EntityDataAccessor<net.minecraft.world.item.ItemStack> BREAK_ROOM_SNACK = net.minecraft.network.syncher.SynchedEntityData.defineId(ChefGolem.class, net.minecraft.network.syncher.EntityDataSerializers.ITEM_STACK);
     @Override protected void defineSynchedData(SynchedEntityData.Builder b){
         super.defineSynchedData(b);
         b.define(PREPARING,false);
         b.define(BREAK_ROOM_STATE,0);
+
+        b.define(BREAK_ROOM_SNACK,net.minecraft.world.item.ItemStack.EMPTY);
         b.define(CARRYING,net.minecraft.world.item.ItemStack.EMPTY);
     }
     public boolean preparing(){return getEntityData().get(PREPARING);}
