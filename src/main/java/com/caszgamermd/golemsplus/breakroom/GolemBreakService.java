@@ -331,7 +331,7 @@ public final class GolemBreakService {
         for (BlockPos machine : machines) {
             if (reserved(rest, machine)) continue;
             BlockPos approach = front(world, machine);
-            if (!reachable(world, mob, approach)) continue;
+            if (!canUseMachineFromFront(world, mob, machine)) continue;
             for (Seat seat : seats) {
                 if (seat.table() == null || reserved(rest, seat.chair())
                         || reserved(rest, seat.table())
@@ -345,7 +345,7 @@ public final class GolemBreakService {
         for (BlockPos arcade : arcades) {
             if (reserved(rest, arcade)) continue;
             BlockPos approach = front(world, arcade);
-            if (reachable(world, mob, approach))
+            if (canUseMachineFromFront(world, mob, arcade))
                 arcadeChoices.add(new Candidate(Visit.ARCADE, arcade, approach, null, null));
         }
 
@@ -396,9 +396,30 @@ public final class GolemBreakService {
         return false;
     }
 
+    /**
+     * The sole legal interaction tile for a front-operated Break Room machine.
+     * Do not fall back to side/rear positions: if the front is obstructed or
+     * unreachable, the machine is unavailable for this visit.
+     */
     private static BlockPos front(ServerLevel world, BlockPos block) {
-        return block.relative(world.getBlockState(block)
-                .getValue(HorizontalDirectionalBlock.FACING));
+        BlockState state = world.getBlockState(block);
+        Direction facing = state.getValue(HorizontalDirectionalBlock.FACING);
+        return block.relative(facing);
+    }
+
+    private static boolean isFrontApproach(ServerLevel world, BlockPos machine,
+                                           BlockPos approach) {
+        return machine != null && approach != null
+                && world.hasChunkAt(machine) && world.hasChunkAt(approach)
+                && front(world, machine).equals(approach);
+    }
+
+    private static boolean canUseMachineFromFront(ServerLevel world, PathfinderMob mob,
+                                                  BlockPos machine) {
+        BlockPos approach = front(world, machine);
+        return world.hasChunkAt(approach)
+                && WorkerNavigation.canStandOn(world, mob, approach)
+                && WorkerNavigation.canReachExact(world, mob, approach);
     }
 
     private static boolean validVisit(ServerLevel world, Rest rest) {
@@ -412,11 +433,13 @@ public final class GolemBreakService {
                     && world.getBlockState(rest.table).is(BreakRoomContent.TABLE);
             case SNACK_MACHINE -> world.getBlockState(rest.furniture)
                     .is(BreakRoomContent.SNACK_MACHINE)
+                    && isFrontApproach(world, rest.furniture, rest.stand)
                     && rest.reservedChair != null
                     && world.getBlockState(rest.reservedChair).is(BreakRoomContent.CHAIR)
                     && rest.table != null && world.hasChunkAt(rest.table)
                     && world.getBlockState(rest.table).is(BreakRoomContent.TABLE);
-            case ARCADE -> world.getBlockState(rest.furniture).is(BreakRoomContent.ARCADE);
+            case ARCADE -> world.getBlockState(rest.furniture).is(BreakRoomContent.ARCADE)
+                    && isFrontApproach(world, rest.furniture, rest.stand);
             case NONE -> false;
         };
     }
