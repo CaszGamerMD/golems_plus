@@ -7,7 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
 import net.fabricmc.loader.api.FabricLoader;
@@ -48,7 +47,8 @@ public final class BuilderBuildService {
      */
     private record ScheduledZones(UUID job,Cache cache,List<UUID> roster,
             BuilderZoneWorkPlan tasks,Map<Integer,List<Integer>> layerSteps,
-            Map<Integer,List<UUID>> layerStaff){}
+            Map<Integer,List<UUID>> layerStaff,
+            BuilderWorkSpatialIndex spatialIndex){}
     private static final Map<WorkerStationBlockEntity,ScheduledZones>
             schedules=new WeakHashMap<>();
     /** The immutable job plan only needs its virtual skips reconciled once.
@@ -328,8 +328,8 @@ public final class BuilderBuildService {
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             int current,BlockPos target,long now){
         int layer=table.builderActiveLayer(steps);
-        Set<Integer> allowed=zoneMembership(zone);
-        List<Integer> nearby=spatialIndex(steps).nearby(
+        var allowed=zonePredicate(table,worker,steps,zone,layer);
+        List<Integer> nearby=spatialIndex(table,steps).nearby(
                 target,layer,6,allowed,32);
         var result=new java.util.ArrayList<Integer>(nearby.size());
         for(int idx:nearby){
@@ -351,28 +351,44 @@ public final class BuilderBuildService {
     private static BuilderConstructionPlanner.Choice chooseNearbyFirst(
             ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
-        List<Integer> nearby=spatialIndex(steps).nearby(
-                worker.blockPosition(),table.builderActiveLayer(steps),8,
-                zoneMembership(zone),32);
+        int layer=table.builderActiveLayer(steps);
+        List<Integer> nearby=spatialIndex(table,steps).nearby(
+                worker.blockPosition(),layer,8,
+                zonePredicate(table,worker,steps,zone,layer),32);
         if(nearby.isEmpty())return null;
         return BuilderConstructionPlanner.chooseNearby(
                 level,worker,table,steps,nearby);
     }
 
-    private static final Map<List<BuilderConstructionPlan.Step>,
-            BuilderWorkSpatialIndex> spatialIndexes=new WeakHashMap<>();
-    private static final Map<List<Integer>,java.util.Set<Integer>>
-            zoneMemberships=new WeakHashMap<>();
-
     private static BuilderWorkSpatialIndex spatialIndex(
+            WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps){
-        return spatialIndexes.computeIfAbsent(steps,
-                BuilderWorkSpatialIndex::create);
+        ScheduledZones scheduled=schedules.get(table);
+        if(scheduled!=null&&scheduled.cache().steps()==steps)
+            return scheduled.spatialIndex();
+        return BuilderWorkSpatialIndex.create(steps);
     }
 
-    private static java.util.Set<Integer> zoneMembership(List<Integer> zone){
-        return zoneMemberships.computeIfAbsent(zone,
-                indices->java.util.Set.copyOf(indices));
+    /** Fixed X/Z partition membership is O(1); do not hash or copy the
+     * (potentially 100k-entry) zone list on every five-tick work callback.
+     * The compact-layer shared list intentionally admits every same-layer
+     * coordinate, with claims filtered by the planner and claim authority.
+     */
+    private static java.util.function.IntPredicate zonePredicate(
+            WorkerStationBlockEntity table,BuilderGolem worker,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int layer){
+        ScheduledZones scheduled=schedules.get(table);
+        if(scheduled==null||scheduled.cache().steps()!=steps)
+            return zone::contains;
+        if(scheduled.layerSteps().get(layer)==zone)
+            return index->true;
+        int owner=scheduled.roster().indexOf(worker.getUUID());
+        int crew=scheduled.roster().size();
+        if(owner<0)return index->false;
+        BuilderZones.Layout footprint=scheduled.cache().zones();
+        return index->index>=0&&index<steps.size()
+                &&footprint.contains(steps.get(index),owner,crew);
     }
 
     /** Apply the small failure handoff board only during a full scan.
@@ -381,7 +397,7 @@ public final class BuilderBuildService {
      */
     private static List<Integer> unreservedZone(
             WorkerStationBlockEntity table,BuilderGolem worker,
-            List<Integer> zone,long now){
+            List<Integer> zone,long now,boolean sharedLayer){
         var board=handoffBoard.get(table);
         if(board==null||board.isEmpty())return zone;
         boolean hasOwnReservation=false;
@@ -391,11 +407,14 @@ public final class BuilderBuildService {
                 hasOwnReservation=true;break;
             }
         }
-        if(!hasOwnReservation)return zone;
+        if(!hasOwnReservation&&!sharedLayer)return zone;
         var available=new java.util.ArrayList<Integer>(zone.size());
-        for(int index:zone)
-            if(!reservedForTeammate(table,worker.getUUID(),index,now))
-                available.add(index);
+        for(int index:zone){
+            if(reservedForTeammate(table,worker.getUUID(),index,now))continue;
+            if(sharedLayer&&table.builderStepClaimedByOther(worker.getUUID(),index))
+                continue;
+            available.add(index);
+        }
         return List.copyOf(available);
     }
 
@@ -427,10 +446,9 @@ public final class BuilderBuildService {
         BlockPos pose=worker.blockPosition();
         int best=-1;
         double bestDistance=Double.POSITIVE_INFINITY;
-        Set<Integer> allowed=zoneMembership(zone);
-        List<Integer> local=spatialIndex(steps).nearby(
+        List<Integer> local=spatialIndex(table,steps).nearby(
                 new BlockPos(previous.x(),previous.y(),previous.z()),
-                layer,3,allowed,49);
+                layer,3,zonePredicate(table,worker,steps,zone,layer),49);
         for(int idx:local){
             if(idx==completed||idx<0||idx>=steps.size()
                     ||!table.builderStepInActivePhase(steps,idx)
@@ -1241,17 +1259,11 @@ public final class BuilderBuildService {
             // Monitoring already ran before the early finished-zone
             // return, so every crew member sees the SAME rescue window.
             if(emergencyRoofAssist){
-                var rescue=roofRescueZone(table,worker.getUUID(),
-                        plan.steps(),layer);
-                if(!rescue.isEmpty()){
-                    zone=rescue;
-                    if(level.getGameTime()%200==0)
-                        System.out.println("[ROOF ASSIST] "
-                                +worker.getName().getString()+" can serve "
-                                +rescue.size()+" unfinished Y="
-                                +(layer-table.builderOrigin().getY())
-                                +" cells outside its cleared layer zone");
-                }
+                // Reuse the already compiled active-layer list. Nearby
+                // selectors check live claims, and the serialized full
+                // fallback filters other workers' claims only when needed.
+                var rescue=assigned.layerSteps().getOrDefault(layer,List.of());
+                if(!rescue.isEmpty())zone=rescue;
             }
             // Keep the previously failing worker from immediately
             // reclaiming the same cell while another Builder is available.
@@ -1286,8 +1298,9 @@ public final class BuilderBuildService {
                     if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
                             layerStaff.indexOf(worker.getUUID()),
                             layerStaff.size()))return;
+                    boolean sharedLayer=assigned.layerSteps().get(layer)==zone;
                     List<Integer> scanZone=unreservedZone(
-                            table,worker,zone,level.getGameTime());
+                            table,worker,zone,level.getGameTime(),sharedLayer);
                     next=BuilderConstructionPlanner.choose(
                             level,worker,table,plan.steps(),scanZone);
                 }
@@ -2266,7 +2279,8 @@ public final class BuilderBuildService {
         }
         table.beginBuilderZonePlan();
         ScheduledZones result=new ScheduledZones(table.activeOrder(),cache,
-                List.copyOf(roster),tasks,Map.copyOf(layers),Map.copyOf(staff));
+                List.copyOf(roster),tasks,Map.copyOf(layers),Map.copyOf(staff),
+                BuilderWorkSpatialIndex.create(cache.steps()));
         schedules.put(table,result);
         return result;
     }
