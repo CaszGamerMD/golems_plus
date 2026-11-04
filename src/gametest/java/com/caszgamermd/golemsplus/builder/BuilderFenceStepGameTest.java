@@ -446,9 +446,14 @@ public final class BuilderFenceStepGameTest {
         BlockPos lower=h.absolutePos(new BlockPos(3,2,3));
         BlockPos upper=h.absolutePos(new BlockPos(4,3,3));
         BlockPos goal=h.absolutePos(new BlockPos(8,3,3));
+        double startFloor=WorkerNavigation.surveyFloorHeight(world,start);
+        if(!Double.isFinite(startFloor)){
+            h.fail("Scaffold collision shape did not expose a supported top");
+            return;
+        }
         var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
-        // Scaffolding's real top collision surface is seven-eighths high.
-        mob.setPos(start.getX()+.5,start.getY()+.875,start.getZ()+.5);
+        // Start at the exact top reported by the real collision shape.
+        mob.setPos(start.getX()+.5,startFloor,start.getZ()+.5);
         world.addFreshEntity(mob);
         boolean[] crossed={false,false,false};
         h.onEachTick(()->{
@@ -473,9 +478,12 @@ public final class BuilderFenceStepGameTest {
             }
             if(h.getTick()>=15&&h.getTick()%5==0)
                 WorkerNavigation.routeToExact(world,mob,goal,1.0);
-            if(mob.blockPosition().equals(scaffold))crossed[0]=true;
-            if(mob.blockPosition().equals(lower))crossed[1]=true;
-            if(mob.blockPosition().equals(upper))crossed[2]=true;
+            if(mob.blockPosition().getX()==scaffold.getX()
+                    &&mob.blockPosition().getZ()==scaffold.getZ())crossed[0]=true;
+            if(mob.blockPosition().getX()==lower.getX()
+                    &&mob.blockPosition().getZ()==lower.getZ())crossed[1]=true;
+            if(mob.blockPosition().getX()==upper.getX()
+                    &&mob.blockPosition().getZ()==upper.getZ())crossed[2]=true;
             if(mob.onGround()&&mob.distanceToSqr(
                     goal.getX()+.5,goal.getY(),goal.getZ()+.5)<.16){
                 if(!crossed[0]||!crossed[1]||!crossed[2]){
