@@ -5,16 +5,23 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BuilderCrewScheduleTest {
-    @Test void targetsFourPlacementsPerActiveWorkerUpToEight(){
-        assertEquals(0,BuilderCrewSchedule.workersForLayer(0,8));
+    @Test void staffsOneThroughFiveThenAddsOnePerThreePlacements(){
+        assertEquals(1,BuilderCrewSchedule.workersForLayer(0,8));
         assertEquals(1,BuilderCrewSchedule.workersForLayer(1,8));
-        assertEquals(1,BuilderCrewSchedule.workersForLayer(4,8));
-        assertEquals(2,BuilderCrewSchedule.workersForLayer(5,8));
-        assertEquals(4,BuilderCrewSchedule.workersForLayer(16,8));
-        assertEquals(7,BuilderCrewSchedule.workersForLayer(25,8));
-        assertEquals(8,BuilderCrewSchedule.workersForLayer(29,8));
+        assertEquals(1,BuilderCrewSchedule.workersForLayer(3,8));
+        assertEquals(1,BuilderCrewSchedule.workersForLayer(5,8));
+        assertEquals(2,BuilderCrewSchedule.workersForLayer(6,8));
+        assertEquals(2,BuilderCrewSchedule.workersForLayer(8,8));
+        assertEquals(3,BuilderCrewSchedule.workersForLayer(9,8));
+        assertEquals(3,BuilderCrewSchedule.workersForLayer(11,8));
+        assertEquals(4,BuilderCrewSchedule.workersForLayer(12,8));
+        assertEquals(4,BuilderCrewSchedule.workersForLayer(14,8));
+        assertEquals(5,BuilderCrewSchedule.workersForLayer(15,8));
+        assertEquals(6,BuilderCrewSchedule.workersForLayer(18,8));
+        assertEquals(7,BuilderCrewSchedule.workersForLayer(21,8));
+        assertEquals(8,BuilderCrewSchedule.workersForLayer(24,8));
         assertEquals(8,BuilderCrewSchedule.workersForLayer(100,8));
-        assertEquals(2,BuilderCrewSchedule.workersForLayer(5,2));
+        assertEquals(1,BuilderCrewSchedule.workersForLayer(5,2));
         assertEquals(0,BuilderCrewSchedule.workersForLayer(10,0));
     }
     @Test void tinyLayerSelectsOwnerWithMostCellsAndReusesWholeLayer(){
@@ -28,6 +35,9 @@ class BuilderCrewScheduleTest {
                 BuilderCrewSchedule.staffForLayer(crew,40,new int[]{10,10,10,10}));
         assertEquals(List.of(crew.get(0)),
                 BuilderCrewSchedule.staffForLayer(crew,0,new int[]{0,0,0,0}));
+        assertEquals(List.of(crew.get(0),crew.get(1)),
+                BuilderCrewSchedule.staffForLayer(crew,6,new int[]{6,0,0,0}),
+                "A single occupied X/Z zone can still use two Builders");
     }
     @Test void fourWorkersGetDistinctStepsAndRetireOutOfOrder(){
         int next0=BuilderCrewSchedule.next(0,6,0,List.of());

@@ -1349,8 +1349,10 @@ public final class WorkerNavigation {
             }else p.terrainStep=null;
         }
         boolean same=target.equals(p.requested);
+        boolean skippedWaypoint=same&&skipPassedWaypoints(mob,target,p);
         if(same&&!mob.getNavigation().isDone()
-                &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
+                &&p.stalled<STALL_TICKS&&p.unsafeChecks==0
+                &&!skippedWaypoint)return true;
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
             ground.setCanOpenDoors(true);
         // If the exact safe standing tile was reached on the previous
@@ -1415,6 +1417,53 @@ public final class WorkerNavigation {
         return route!=null&&cursor>=0&&cursor<route.size();
     }
 
+    /** Skip only route nodes the worker is physically standing on already. */
+    static int advanceCursorPastCurrentRouteNode(List<BlockPos> route,
+            int cursor,BlockPos current){
+        if(route==null||current==null||cursor<0||cursor>=route.size())
+            return cursor;
+        int end=Math.min(route.size(),cursor+12);
+        for(int i=end-1;i>=cursor;i--)
+            if(current.equals(route.get(i)))return i+1;
+        return cursor;
+    }
+
+    /** A worker closer to its requested goal than the stale waypoint has
+     * moved past it. Replan from the real position instead of walking back.
+     */
+    static boolean progressedPastWaypoint(BlockPos current,BlockPos target,
+            BlockPos waypoint){
+        return current!=null&&target!=null&&waypoint!=null
+                &&!current.equals(waypoint)
+                &&current.distSqr(target)<waypoint.distSqr(target);
+    }
+
+    private static boolean skipPassedWaypoints(PathfinderMob mob,
+            BlockPos target,Progress p){
+        if(p.weightedRoute.isEmpty())return false;
+        int next=advanceCursorPastCurrentRouteNode(
+                p.weightedRoute,p.routeCursor,mob.blockPosition());
+        boolean advanced=next>p.routeCursor;
+        if(advanced){
+            p.routeCursor=next;
+            p.approach=p.weightedRoute.get(next-1);
+        }
+        if(p.approach!=null&&progressedPastWaypoint(
+                mob.blockPosition(),target,p.approach)){
+            p.weightedRoute=List.of();
+            p.routeCursor=0;
+            p.approach=null;
+            advanced=true;
+        }
+        if(advanced){
+            mob.getNavigation().stop();
+            p.stalled=0;
+            p.unsafeChecks=0;
+            p.nextRoute=0;
+        }
+        return advanced;
+    }
+
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
                                   double speed){
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder){
@@ -1451,12 +1500,14 @@ public final class WorkerNavigation {
             p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
         }
         if(p.centering!=null&&tickExactCenter(level,mob))return true;
+        boolean skippedWaypoint=!changed&&skipPassedWaypoints(mob,target,p);
         updateDoorClearance(level,mob,p);
         if(p.openedDoor==null)openApproachDoor(level,mob,p);
         if(p.waitingDoor)return true;
         if(p.wait>0)return true;
         if(!changed&&!mob.getNavigation().isDone()
-                &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
+                &&p.stalled<STALL_TICKS&&p.unsafeChecks==0
+                &&!skippedWaypoint)return true;
         if(!changed&&mob.tickCount<p.nextRoute)return false; // retry scheduled, not a hard no-path
         // A temporary body-block or a closed door must not permanently
         // blacklist the only valid aisle. Expire bad waypoints after
