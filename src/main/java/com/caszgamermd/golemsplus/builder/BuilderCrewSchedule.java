@@ -28,7 +28,10 @@ public final class BuilderCrewSchedule {
             int physicalBlocks,int[] ownership){
         if(roster.size()!=ownership.length)
             throw new IllegalArgumentException("Layer ownership/crew mismatch");
-        int limit=workersForLayer(physicalBlocks,roster.size());
+        int occupiedZones=0;
+        for(int count:ownership)if(count>0)occupiedZones++;
+        int limit=Math.min(workersForLayer(physicalBlocks,roster.size()),
+                occupiedZones);
         if(limit==0&&physicalBlocks==0&&!roster.isEmpty())limit=1;
         var ranked=new ArrayList<Integer>();
         for(int i=0;i<roster.size();i++)ranked.add(i);
