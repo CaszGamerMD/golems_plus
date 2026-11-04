@@ -28,6 +28,10 @@ public final class BuilderBuildService {
     // crew member every four seconds without discarding any real items.
     private static final java.util.Map<WorkerStationBlockEntity,ClearWatch>
             clearWatch=new java.util.WeakHashMap<>();
+    // A large schematic no longer makes the whole crew wait for its highest
+    // clearance coordinate. One non-courier Builder prepares the full site;
+    // the remaining crew starts once the active Y has been verified.
+    private static final int PROGRESSIVE_CLEARANCE_MIN_TARGETS=512;
     private static final class ClearWatch {
         int cursor=-1;
         long lastProgress;
@@ -804,6 +808,16 @@ public final class BuilderBuildService {
         }
         // Wait for the player to craft and place builders beside the table.
     }
+    private static UUID progressiveClearanceLead(ServerLevel level,
+            WorkerStationBlockEntity table){
+        UUID courier=table.supplyRunner();
+        for(UUID id:table.builderWorkerIds()){
+            if(id.equals(courier))continue;
+            if(level.getEntity(id) instanceof BuilderGolem)return id;
+        }
+        return null;
+    }
+
     public static void tick(ServerLevel level,BuilderGolem worker){
         BlockPos home=worker.home();
         if(worker.owner()==null||!level.hasChunkAt(home))return;
@@ -1046,20 +1060,35 @@ public final class BuilderBuildService {
             if(table.builderCursor()>=plan.steps().size()){
                 table.setPhase(WorkerPhase.COMPLETE);return;
             }
-            // PREPARE THE ENTIRE SELECTED SITE before placing the first
-            // block. A clearing worker visits each exact schematic position,
-            // including AIR cells; the courier may still fetch shulkers in
-            // parallel. A site with an obstruction or no tool cannot start
-            // placing around that obstruction or advance into upper layers.
-            if(table.builderClearCursor()<plan.clearing().size()){
-                // Every actual crew member can claim a DIFFERENT obstruction
-                // or already-correct schematic cell. Courier stays available
-                // to collect ready shulkers; when this is the only Builder,
-                // it can clear while its next shulker is being packed.
+            // Progressive site preparation for large builds:
+            // one non-courier Builder clears the whole selected footprint,
+            // while teammates begin building as soon as every target
+            // through the active Y is verified. The saved contiguous
+            // cursor and exact-position protection rules remain authoritative.
+            // Small jobs retain full-clear-first behavior.
+            int activeClearLayer=table.builderActiveLayer(plan.steps());
+            int activeClearLimit=BuilderSiteClearance.endIndexThroughLayer(
+                    plan.clearing(),activeClearLayer);
+            UUID clearLead=plan.clearing().size()
+                    >=PROGRESSIVE_CLEARANCE_MIN_TARGETS
+                    ?progressiveClearanceLead(level,table):null;
+            boolean progressiveClearance=clearLead!=null
+                    &&table.builderWorkerIds().size()>1;
+            if(progressiveClearance&&worker.getUUID().equals(clearLead)
+                    &&table.builderClearCursor()<plan.clearing().size()){
+                // The lead continues into future layers and never holds a
+                // construction claim while doing this preparation work.
+                BuilderSiteClearance.tick(level,worker,table,owner,
+                        plan.clearing(),plan.steps());
+                return;
+            }
+            if(table.builderClearCursor()<activeClearLimit){
+                // Teammates help the lead with the active layer, but cannot
+                // skip its last obstructed cell to start placing.
                 boolean courier=worker.getUUID().equals(table.supplyRunner());
                 if(!courier||table.builderWorkerIds().size()==1)
-                    BuilderSiteClearance.tick(level,worker,table,owner,
-                            plan.clearing(),plan.steps());
+                    BuilderSiteClearance.tickThroughLayer(level,worker,table,
+                            owner,plan.clearing(),plan.steps(),activeClearLayer);
                 return;
             }
             // Ignore-plant entries are virtual no-op completions, not

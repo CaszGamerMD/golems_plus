@@ -44,5 +44,24 @@ class BuilderSiteClearanceTest {
         var targets=BuilderSiteClearance.targets(schematic,site);
         assertEquals(1,targets.size());
         assertEquals("minecraft:stone",targets.getFirst().state());
+    }    @Test void clearancePrefixStopsAfterRequestedYAndKeepsLaterLayersIndependent(){
+        var targets=List.of(
+                new BuilderSiteClearance.Target(new net.minecraft.core.BlockPos(0,64,0),"minecraft:air"),
+                new BuilderSiteClearance.Target(new net.minecraft.core.BlockPos(1,64,0),"minecraft:stone"),
+                new BuilderSiteClearance.Target(new net.minecraft.core.BlockPos(0,65,0),"minecraft:air"),
+                new BuilderSiteClearance.Target(new net.minecraft.core.BlockPos(0,66,0),"minecraft:stone"),
+                new BuilderSiteClearance.Target(new net.minecraft.core.BlockPos(1,66,0),"minecraft:air"));
+        assertEquals(0,BuilderSiteClearance.endIndexThroughLayer(targets,63));
+        assertEquals(2,BuilderSiteClearance.endIndexThroughLayer(targets,64));
+        assertEquals(3,BuilderSiteClearance.endIndexThroughLayer(targets,65));
+        assertEquals(5,BuilderSiteClearance.endIndexThroughLayer(targets,66));
+
+        // With the first two cells verified, Y=64 is build-ready even though
+        // three higher cells still need their own preparation pass.
+        int savedCursor=2;
+        assertTrue(savedCursor>=BuilderSiteClearance.endIndexThroughLayer(targets,64));
+        assertFalse(savedCursor>=targets.size());
+        assertFalse(savedCursor>=BuilderSiteClearance.endIndexThroughLayer(targets,65));
     }
+
 }

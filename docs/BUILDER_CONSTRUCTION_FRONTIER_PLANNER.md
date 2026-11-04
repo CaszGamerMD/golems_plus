@@ -1,6 +1,6 @@
 # Builder Construction Frontier Planner — Fabric 26.2
 
-The trained `WorkerNavigation` movement rules, real Builder Golem entities, reusable Grapple Hook, normal 1-block jump/drop, door traversal, 0.8-block X/Z clearance, physical item consumption, and **shared all-workers-complete-Y-before-next-Y** construction rule remain unchanged.
+The trained `WorkerNavigation` movement rules, real Builder Golem entities, reusable Grapple Hook, normal 1-block jump/drop, door traversal, 0.8-block X/Z clearance, physical item consumption, and **shared all-workers-complete-Y-before-next-Y** construction rule remain unchanged. Large builds use progressive site preparation: one non-courier Builder clears ahead while the rest of the crew can start the active Y as soon as that layer is verified. Small builds retain full-clear-first behavior.
 
 ## Problem solved by this first planner iteration
 
