@@ -5,7 +5,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.function.IntPredicate;
 import net.minecraft.core.BlockPos;
 
 /**
@@ -38,18 +38,19 @@ public final class BuilderWorkSpatialIndex {
      * Find assigned schematic cells in a horizontal square around focus.
      * The active layer is explicit because a Builder may stand below the
      * layer while starting a new task. Results are nearest-first and bounded.
+     * The predicate checks fixed rectangular-zone ownership in constant time.
      */
     public List<Integer> nearby(BlockPos focus, int layerY, int radius,
-            Set<Integer> allowed, int limit) {
-        if (focus == null || allowed == null || allowed.isEmpty()
-                || radius < 0 || limit <= 0) return List.of();
+            IntPredicate allowed, int limit) {
+        if (focus == null || allowed == null || radius < 0 || limit <= 0)
+            return List.of();
 
         List<Candidate> found = new ArrayList<>();
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
                 Integer index = byPosition.get(
                         new BlockPos(focus.getX() + dx, layerY, focus.getZ() + dz));
-                if (index != null && allowed.contains(index))
+                if (index != null && allowed.test(index))
                     found.add(new Candidate(index, dx * dx + dz * dz));
             }
         }
