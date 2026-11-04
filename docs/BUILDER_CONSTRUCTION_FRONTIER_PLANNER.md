@@ -44,3 +44,8 @@ When a Builder needs a new task, the service first takes a bounded nearest-first
 ## Smarter scaffold bridge routing
 
 Bent scaffold approaches use a bounded weighted cardinal route search. A physically valid scaffold already tracked by the Builder station is preferred over buying another block; unnecessary bends carry a small cost. The search still validates every proposed cell against the reserved schematic, headroom, ownership, and native six-block horizontal support rule. A support segment at distance six may be the terminal work footing, but is never treated as a parent for another extension.
+
+
+## Adjacent-first work selection
+
+A Builder now ranks unfinished cells by distance from its most recent real placement (or its current position before its first placement). Direct same-patch neighbors are tried first, then cells within three Manhattan steps, then farther work. Safe frontier connectivity breaks ties inside each locality band. High pocket-closure-risk placements remain deferred ahead of local preference, and every candidate still passes the existing real stance, support, line-of-sight, exit, and shared-layer checks. This encourages each Builder to finish a compact patch before crossing its zone.
