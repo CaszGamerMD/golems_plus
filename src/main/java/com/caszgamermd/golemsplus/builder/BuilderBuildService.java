@@ -50,6 +50,7 @@ public final class BuilderBuildService {
     private record ScheduledZones(UUID job,Cache cache,List<UUID> roster,
             BuilderZoneWorkPlan tasks,Map<Integer,List<Integer>> layerSteps,
             Map<Integer,List<UUID>> layerStaff,
+            Map<Integer,List<UUID>> layerZoneOwners,
             BuilderWorkSpatialIndex spatialIndex){}
     private static final Map<WorkerStationBlockEntity,ScheduledZones>
             schedules=new WeakHashMap<>();
@@ -1244,11 +1245,14 @@ public final class BuilderBuildService {
                         level,worker,table,plan.zones());
                 return;
             }
-            if(layerStaff.size()<assigned.roster().size()
-                    &&layerStaff.contains(worker.getUUID())){
-                // A compact layer cannot use the original multi-zone
-                // partition: the chosen small crew must see ALL its cells,
-                // including those originally assigned to parked workers.
+            if(layerStaff.contains(worker.getUUID())
+                    &&BuilderCrewSchedule.sharesLayerCells(layerStaff.size(),
+                            assigned.roster().size(),
+                            assigned.layerZoneOwners().getOrDefault(
+                                    layer,List.of()).contains(worker.getUUID()))){
+                // A reduced crew shares every cell in the active layer.
+                // Also let a fully staffed worker share if its original
+                // X/Z zone has no placements on this Y at all.
                 zone=assigned.layerSteps().getOrDefault(layer,zone);
             }
             boolean stalledRoof=roofNeedsHelp(level,table);
@@ -2325,11 +2329,16 @@ public final class BuilderBuildService {
                         unused->new int[crewSize])[w]++;
             }
         var staff=new java.util.HashMap<Integer,List<UUID>>();
+        var layerZoneOwners=new java.util.HashMap<Integer,List<UUID>>();
         for(var entry:layers.entrySet()){
             int y=entry.getKey();
             long physical=entry.getValue().stream()
                     .filter(i->!cache.steps().get(i).ignorePlant()).count();
             int[] own=ownership.getOrDefault(y,new int[roster.size()]);
+            var activeOwners=new java.util.ArrayList<UUID>();
+            for(int w=0;w<own.length;w++)
+                if(own[w]>0)activeOwners.add(roster.get(w));
+            layerZoneOwners.put(y,List.copyOf(activeOwners));
             // Includes a single worker for a purely virtual ignored Y.
             staff.put(y,BuilderCrewSchedule.staffForLayer(roster,
                     (int)physical,own));
@@ -2337,6 +2346,7 @@ public final class BuilderBuildService {
         table.beginBuilderZonePlan();
         ScheduledZones result=new ScheduledZones(table.activeOrder(),cache,
                 List.copyOf(roster),tasks,Map.copyOf(layers),Map.copyOf(staff),
+                Map.copyOf(layerZoneOwners),
                 BuilderWorkSpatialIndex.create(cache.steps()));
         schedules.put(table,result);
         return result;

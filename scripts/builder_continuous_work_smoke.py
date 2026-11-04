@@ -55,6 +55,9 @@ schedule = Path("src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewSch
 assert "blocks<=5?1:2+(blocks-6)/3" in schedule
 assert "despite the callbacks already being distributed" in schedule
 assert "When a layer needs multiple Builders, they may share even one" in schedule
+assert "static boolean sharesLayerCells(" in schedule
+assert "layerZoneOwners" in build
+assert "BuilderCrewSchedule.sharesLayerCells(" in build
 assert "alternateSideAttempts<3" not in build
 assert "alternateStagingHeights(worker.blockPosition().getY(),depotFeetY)" in build
 assert "TARGET_PROGRESS_STALL_TICKS=200" in build

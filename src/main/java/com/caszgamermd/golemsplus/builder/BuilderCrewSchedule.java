@@ -21,6 +21,13 @@ public final class BuilderCrewSchedule {
         int requested=blocks<=5?1:2+(blocks-6)/3;
         return Math.min(crewSize,requested);
     }
+    /** A selected worker must see the full layer if its own partition has
+     * no cells there, even when every crew member is selected.
+     */
+    static boolean sharesLayerCells(int staffedCount,int crewSize,
+            boolean ownsLayerCells){
+        return staffedCount<crewSize||!ownsLayerCells;
+    }
     /** Prefer workers whose original X/Z zones own the most of this
      * layer. A stable roster-index tie breaker prevents golem churn.
      * When a layer needs multiple Builders, they may share even one

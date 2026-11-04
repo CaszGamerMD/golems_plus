@@ -39,6 +39,14 @@ class BuilderCrewScheduleTest {
                 BuilderCrewSchedule.staffForLayer(crew,6,new int[]{6,0,0,0}),
                 "A single occupied X/Z zone can still use two Builders");
     }
+    @Test void fullCrewSharesLayerWhenSomeOriginalZonesAreEmpty(){
+        assertTrue(BuilderCrewSchedule.sharesLayerCells(8,8,false),
+                "A fully staffed layer must not strand workers with empty zones");
+        assertFalse(BuilderCrewSchedule.sharesLayerCells(8,8,true),
+                "Workers with their own layer cells keep their local partition");
+        assertTrue(BuilderCrewSchedule.sharesLayerCells(2,8,true),
+                "A reduced crew shares all cells even if each owns a zone");
+    }
     @Test void fourWorkersGetDistinctStepsAndRetireOutOfOrder(){
         int next0=BuilderCrewSchedule.next(0,6,0,List.of());
         int next1=BuilderCrewSchedule.next(0,6,0,List.of(next0));
