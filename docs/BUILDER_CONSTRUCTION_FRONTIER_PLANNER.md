@@ -1,6 +1,6 @@
 # Builder Construction Frontier Planner — Fabric 26.2
 
-The trained `WorkerNavigation` movement rules, real Builder Golem entities, reusable Grapple Hook, normal 1-block jump/drop, door traversal, 0.8-block X/Z clearance, physical item consumption, and **shared all-workers-complete-Y-before-next-Y** construction rule remain unchanged.
+The trained `WorkerNavigation` movement rules, real Builder Golem entities, reusable Grapple Hook, normal 1-block jump/drop, door traversal, 0.8-block X/Z clearance, physical item consumption, and **shared all-workers-complete-Y-before-next-Y** construction rule remain unchanged. Large builds use progressive site preparation: one non-courier Builder clears ahead while the rest of the crew can start the active Y as soon as that layer is verified. Small builds retain full-clear-first behavior.
 
 ## Problem solved by this first planner iteration
 
@@ -35,3 +35,7 @@ Full 3,537-block original dome with four real Golems is run separately on `test/
 ## Full-dome integration measurement (first iteration)
 
 The first 3,537-block physical dome pilot regressed to **63 blocks**, because changing staged frontier targets caused repeated OnSite supply return attempts. Fixed the inventory handoff to let a Builder use materials **actually carried in its persisted pouch** before considering restaging; the second pilot placed **404 blocks**. Neither was a complete dome, and both exposed an overly restrictive cardinal/same-height exit rule. The planner now also evaluates 8-direction walking, one-block jumping and one-block supported descent against the future block and the current world's swept collision shapes. [All 20 focused tests still pass](https://github.com/CaszGamerMD/golems_plus/actions/runs/40766893650). The revised 3,537-block pilot runs on `test/dome-frontier-planner-262`.
+
+## Faster initial task selection
+
+When a Builder needs a new task, the service first takes a bounded nearest-first sample of up to 32 ready cells from its assigned zone. The normal construction-aware selector validates this small set with cached work approaches, live collision checks, line-of-sight and safe-exit checks. If no sampled cell is executable, the existing rotating full-layer frontier search runs unchanged. This reduces repeated whole-layer contact/risk calculation and sorting on ordinary open builds without dropping blocked cells or changing the shared Y gate.

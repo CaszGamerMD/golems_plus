@@ -11,6 +11,12 @@ assert "activity.lookaheadEligible=nearbyLookaheadCandidates(" in build
 assert "List<Integer> eligible=activity.lookaheadEligible;" in build
 assert "PriorityQueue<Integer> nearest" in build
 assert "nearest.size()<32" in build
+assert "chooseNearbyFirst(" in build
+assert "BuilderConstructionPlanner.chooseNearby(" in build
+assert "return BuilderConstructionPlanner.choose(level,worker,table,steps,zone);" in build
+planner = Path("src/main/java/com/caszgamermd/golemsplus/builder/BuilderConstructionPlanner.java").read_text()
+assert "public static Choice chooseNearby(" in planner
+assert "ordinaryOnly&&stance==null" in planner
 assert "return List.copyOf(result)" in build
 assert "var choice=activity.lookaheadFor==completed?activity.lookahead:null;" in build
 assert "if(choice==null)choice=nearbyDirectFollowup(" in build

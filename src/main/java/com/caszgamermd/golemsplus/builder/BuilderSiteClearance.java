@@ -11,13 +11,13 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
-/** Physical, server-authorized site-preparation phase.
+/** Physical, server-authorized site preparation.
  *
- * The exact schematic positions, including explicitly recorded air spaces,
- * are cleared before ANY material is placed. Existing blocks that already
- * match the blueprint are preserved. Nothing outside a selected Litematica
- * region is touched; chests, protection, fluids and player structures with
- * inventories remain protected by BuilderClearance.
+ * Clearance targets are processed in ascending world Y. Large jobs can
+ * pipeline this work: one Builder may continue checking the full footprint
+ * while the rest of the crew starts construction as soon as the active Y
+ * layer has been positively verified. This preserves the shared height gate
+ * and the exact same protected-block rules.
  */
 public final class BuilderSiteClearance {
     public record Target(BlockPos pos,String state){}
@@ -46,19 +46,50 @@ public final class BuilderSiteClearance {
         return List.copyOf(result);
     }
 
-    /** Every assigned non-courier Builder can verify and clear distinct
-     * schematic cells. The Planning Table allocates per-worker claims, so
-     * the saved head cursor advances only over positively verified cells.
-     * There is no shared single cleaner and no ability to clear a cell
-     * another Builder already owns.
+    /** First index whose target is ABOVE the supplied Y. targets() sorts
+     * by Y, so this binary search is stable even for large schematic volumes.
+     * The saved clearance cursor remains global; later layers can be verified
+     * ahead without letting a Builder build through an uncleared active layer.
+     */
+    public static int endIndexThroughLayer(List<Target> plan,int maxY){
+        int low=0,high=plan.size();
+        while(low<high){
+            int mid=(low+high)>>>1;
+            if(plan.get(mid).pos().getY()<=maxY)low=mid+1;
+            else high=mid;
+        }
+        return low;
+    }
+
+    /** Full-footprint clearance, retained for small jobs and a dedicated
+     * clearance lead on large jobs.
      */
     public static boolean tick(ServerLevel world,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer owner,List<Target> plan,
             List<BuilderConstructionPlan.Step> construction){
+        return tickUntil(world,worker,table,owner,plan,construction,plan.size());
+    }
+
+    /** Clear only through the current construction layer. Other Builder
+     * members may start placing this Y while a dedicated lead works on
+     * higher layers. The contiguous saved cursor guarantees every lower
+     * coordinate and every cell through maxY has been verified first.
+     */
+    public static boolean tickThroughLayer(ServerLevel world,BuilderGolem worker,
+            WorkerStationBlockEntity table,ServerPlayer owner,List<Target> plan,
+            List<BuilderConstructionPlan.Step> construction,int maxY){
+        return tickUntil(world,worker,table,owner,plan,construction,
+                endIndexThroughLayer(plan,maxY));
+    }
+
+    private static boolean tickUntil(ServerLevel world,BuilderGolem worker,
+            WorkerStationBlockEntity table,ServerPlayer owner,List<Target> plan,
+            List<BuilderConstructionPlan.Step> construction,int limit){
+        if(table.builderClearCursor()>=limit)return true;
         int checks=0;
         while(checks++<MAX_CHECKS_PER_TICK){
-            int index=table.claimBuilderClear(worker.getUUID(),plan.size());
-            if(index<0)return table.builderClearCursor()>=plan.size();
+            int index=table.claimBuilderClear(worker.getUUID(),limit);
+            if(index<0)return table.builderClearCursor()>=limit;
             Target step=plan.get(index);
             if(step.state().equals("golems_plus:skip")){
                 table.completeBuilderClear(worker.getUUID(),index,false);
@@ -140,6 +171,6 @@ public final class BuilderSiteClearance {
                 table.completeBuilderClear(worker.getUUID(),index,true);
             return false; // Only one destructive action per worker tick.
         }
-        return table.builderClearCursor()>=plan.size();
+        return table.builderClearCursor()>=limit;
     }
 }
