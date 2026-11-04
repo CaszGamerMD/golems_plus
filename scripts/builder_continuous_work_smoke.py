@@ -47,7 +47,7 @@ assert "level.sendBlockUpdated(worldPosition,state,state,3);" in claim
 
 spatial = Path("src/main/java/com/caszgamermd/golemsplus/builder/BuilderWorkSpatialIndex.java").read_text()
 assert "byPosition.get(" in spatial
-assert "for(int dx=-radius;dx<=radius;dx++)" in spatial
+assert "for (int dx = -radius; dx <= radius; dx++)" in spatial
 assert "allowed.contains(index)" in spatial
 schedule = Path("src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewSchedule.java").read_text()
 assert "1+(blocks-1)/4" in schedule
