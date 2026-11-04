@@ -12,7 +12,8 @@ assert "List<Integer> eligible=activity.lookaheadEligible;" in build
 assert "chooseNearbyFirst(" in build
 assert "BuilderConstructionPlanner.chooseNearby(" in build
 assert "spatialIndex(steps).nearby(" in build
-assert "zoneMembership(zone)" in build
+assert "zonePredicate(table,worker,steps,zone,layer)" in build
+assert "BuilderWorkSpatialIndex.create(cache.steps())" in build
 assert "for(int idx:zone)" not in build.split("private static BuilderConstructionPlanner.Choice nearbyDirectFollowup(",1)[1].split("private static void handoffNext(",1)[0]
 assert "handoffCandidates" not in build
 assert "return BuilderConstructionPlanner.choose(level,worker,table,steps,zone);" not in build
@@ -48,7 +49,7 @@ assert "level.sendBlockUpdated(worldPosition,state,state,3);" in claim
 spatial = Path("src/main/java/com/caszgamermd/golemsplus/builder/BuilderWorkSpatialIndex.java").read_text()
 assert "byPosition.get(" in spatial
 assert "for (int dx = -radius; dx <= radius; dx++)" in spatial
-assert "allowed.contains(index)" in spatial
+assert "allowed.test(index)" in spatial
 schedule = Path("src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewSchedule.java").read_text()
 assert "1+(blocks-1)/4" in schedule
 
