@@ -315,24 +315,31 @@ public final class BuilderConstructionPlanner {
         int dz=Math.abs(candidate.getZ()-afterPlacement.getZ());
         return builtContacts+(dx+dz==1?1:0);
     }
+    // List.hashCode() walks every schematic step. Use identity lookups
+    // and a small fixed cache so each Builder does not re-hash a 100k-cell
+    // plan on every nearby selection. The cache is bounded across stations.
+    private static final int MAX_SCHEMATIC_STATE_CACHES=4;
     private static final Map<List<BuilderConstructionPlan.Step>,
-            Map<BlockPos,BlockState>> schematicStates=new WeakHashMap<>();
+            Map<BlockPos,BlockState>> schematicStates=
+                    new java.util.IdentityHashMap<>();
     private static Map<BlockPos,BlockState> schematicStates(
             List<BuilderConstructionPlan.Step> steps,
             BuildSite.Rotation rotation,BuildSite.Mirror mirror){
-        // Never cache by file path: the same placed schematic has different
-        // world coordinates after moving or rotating its placement.
-        return schematicStates.computeIfAbsent(steps,unused->{
-            Map<BlockPos,BlockState> expected=new java.util.HashMap<>();
-            for(var cell:steps){
-                if(cell.ignorePlant())continue;
-                var state=BuilderBlockResolver.resolve(
-                        cell.encodedState(),rotation,mirror);
-                if(state!=null)expected.put(
-                        new BlockPos(cell.x(),cell.y(),cell.z()),state.state());
-            }
-            return Map.copyOf(expected);
-        });
+        Map<BlockPos,BlockState> found=schematicStates.get(steps);
+        if(found!=null)return found;
+        Map<BlockPos,BlockState> expected=new java.util.HashMap<>();
+        for(var cell:steps){
+            if(cell.ignorePlant())continue;
+            var state=BuilderBlockResolver.resolve(
+                    cell.encodedState(),rotation,mirror);
+            if(state!=null)expected.put(
+                    new BlockPos(cell.x(),cell.y(),cell.z()),state.state());
+        }
+        Map<BlockPos,BlockState> result=Map.copyOf(expected);
+        if(schematicStates.size()>=MAX_SCHEMATIC_STATE_CACHES)
+            schematicStates.clear();
+        schematicStates.put(steps,result);
+        return result;
     }
     private static double score(BuilderGolem worker,BlockPos target,
             BlockPos stance,boolean sky,boolean grapple){
