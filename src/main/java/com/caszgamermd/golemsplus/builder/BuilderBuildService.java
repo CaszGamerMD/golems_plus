@@ -399,14 +399,14 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table,BuilderGolem worker,
             List<Integer> zone,long now,boolean sharedLayer){
         var board=handoffBoard.get(table);
-        if(board==null||board.isEmpty())return zone;
         boolean hasOwnReservation=false;
-        for(var entry:board.entrySet()){
-            Handoff record=entry.getValue();
-            if(record.until()>now&&record.failedWorker().equals(worker.getUUID())){
-                hasOwnReservation=true;break;
+        if(board!=null&&!board.isEmpty())
+            for(var entry:board.entrySet()){
+                Handoff record=entry.getValue();
+                if(record.until()>now&&record.failedWorker().equals(worker.getUUID())){
+                    hasOwnReservation=true;break;
+                }
             }
-        }
         if(!hasOwnReservation&&!sharedLayer)return zone;
         var available=new java.util.ArrayList<Integer>(zone.size());
         for(int index:zone){
