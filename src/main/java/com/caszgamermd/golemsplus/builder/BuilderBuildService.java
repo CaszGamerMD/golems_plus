@@ -354,6 +354,24 @@ public final class BuilderBuildService {
                 .thenComparingInt(Integer::intValue));
         return List.copyOf(result);
     }
+    /** Try the 32 closest ready tasks first. A nearby valid work pose
+     * avoids the full-layer contact/risk rebuild and sort on ordinary,
+     * open construction surfaces. If no sampled cell is executable, the
+     * existing rotating full-layer frontier search runs unchanged.
+     */
+    private static BuilderConstructionPlanner.Choice chooseNearbyFirst(
+            ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
+        List<Integer> nearby=nearbyLookaheadCandidates(table,worker,steps,zone,
+                -1,worker.blockPosition(),level.getGameTime());
+        if(!nearby.isEmpty()){
+            var quick=BuilderConstructionPlanner.chooseNearby(
+                    level,worker,table,steps,nearby);
+            if(quick!=null)return quick;
+        }
+        return BuilderConstructionPlanner.choose(level,worker,table,steps,zone);
+    }
+
     private static double stepDistanceSquared(
             BuilderConstructionPlan.Step step,BlockPos target){
         double dx=step.x()-target.getX(),dy=step.y()-target.getY(),
@@ -1242,7 +1260,7 @@ public final class BuilderBuildService {
                 if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
                         layerStaff.indexOf(worker.getUUID()),
                         layerStaff.size()))return;
-                var next=BuilderConstructionPlanner.choose(
+                var next=chooseNearbyFirst(
                         level,worker,table,plan.steps(),zone);
                 index=next==null?-1:table.claimPreferredBuilderZoneStep(
                         worker.getUUID(),zone,plan.steps(),next.index());
