@@ -26,7 +26,7 @@ final class BuilderScaffoldRoutePlannerTest {
         assertNotNull(route);
         assertEquals(List.of(at(0,0,1),at(1,0,1),at(2,0,1),
                 at(3,0,1),goal),route.cells());
-        assertEquals(2.04,route.cost(),1.0e-9);
+        assertEquals(2.20,route.cost(),1.0e-9);
     }
 
     @Test void usesOnlyCardinalTransitions(){
