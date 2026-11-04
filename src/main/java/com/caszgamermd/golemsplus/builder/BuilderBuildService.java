@@ -328,7 +328,8 @@ public final class BuilderBuildService {
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             int current,BlockPos target,long now){
         int layer=table.builderActiveLayer(steps);
-        var allowed=zonePredicate(table,worker,steps,zone,layer);
+        var allowed=quickTaskPredicate(
+                level,table,worker,steps,zone,layer);
         List<Integer> nearby=spatialIndex(table,steps).nearby(
                 target,layer,6,allowed,32);
         var result=new java.util.ArrayList<Integer>(nearby.size());
@@ -354,7 +355,7 @@ public final class BuilderBuildService {
         int layer=table.builderActiveLayer(steps);
         List<Integer> nearby=spatialIndex(table,steps).nearby(
                 worker.blockPosition(),layer,8,
-                zonePredicate(table,worker,steps,zone,layer),32);
+                quickTaskPredicate(level,table,worker,steps,zone,layer),32);
         if(nearby.isEmpty())return null;
         return BuilderConstructionPlanner.chooseNearby(
                 level,worker,table,steps,nearby);
@@ -367,6 +368,26 @@ public final class BuilderBuildService {
         if(scheduled!=null&&scheduled.cache().steps()==steps)
             return scheduled.spatialIndex();
         return BuilderWorkSpatialIndex.create(steps);
+    }
+
+    /** Fixed X/Z partition membership is O(1); do not hash or copy the
+     * (potentially 100k-entry) zone list on every five-tick work callback.
+     * The compact-layer shared list intentionally admits every same-layer
+     * coordinate, while this predicate removes live claims before limiting
+     * the local result set so shared workers do not keep colliding on a task.
+     */
+    private static java.util.function.IntPredicate quickTaskPredicate(
+            ServerLevel level,WorkerStationBlockEntity table,BuilderGolem worker,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int layer){
+        var inZone=zonePredicate(table,worker,steps,zone,layer);
+        long now=level.getGameTime();
+        return index->index>=0&&index<steps.size()
+                &&inZone.test(index)
+                &&table.builderStepInActivePhase(steps,index)
+                &&table.builderStepReadyForClaim(index)
+                &&!table.builderStepClaimedByOther(worker.getUUID(),index)
+                &&!reservedForTeammate(table,worker.getUUID(),index,now);
     }
 
     /** Fixed X/Z partition membership is O(1); do not hash or copy the
