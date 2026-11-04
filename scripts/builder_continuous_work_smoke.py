@@ -12,7 +12,8 @@ assert "List<Integer> eligible=activity.lookaheadEligible;" in build
 assert "chooseNearbyFirst(" in build
 assert "BuilderConstructionPlanner.chooseNearby(" in build
 assert "spatialIndex(table,steps).nearby(" in build
-assert "zonePredicate(table,worker,steps,zone,layer)" in build
+assert "quickTaskPredicate(level,table,worker,steps,zone,layer)" in build
+assert "!table.builderStepClaimedByOther(worker.getUUID(),index)" in build
 assert "BuilderWorkSpatialIndex.create(cache.steps())" in build
 assert "for(int idx:zone)" not in build.split("private static BuilderConstructionPlanner.Choice nearbyDirectFollowup(",1)[1].split("private static void handoffNext(",1)[0]
 assert "handoffCandidates" not in build
