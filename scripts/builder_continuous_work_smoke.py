@@ -9,13 +9,22 @@ assert "lookaheadEligibleLayer=Integer.MIN_VALUE" in build
 assert "activity.lookaheadEligibleLayer!=layer" in build
 assert "activity.lookaheadEligible=nearbyLookaheadCandidates(" in build
 assert "List<Integer> eligible=activity.lookaheadEligible;" in build
-assert "PriorityQueue<Integer> nearest" in build
-assert "nearest.size()<32" in build
 assert "chooseNearbyFirst(" in build
 assert "BuilderConstructionPlanner.chooseNearby(" in build
-assert "return BuilderConstructionPlanner.choose(level,worker,table,steps,zone);" in build
+assert "spatialIndex(table,steps).nearby(" in build
+assert "quickTaskPredicate(level,table,worker,steps,zone,layer)" in build
+assert "!table.builderStepClaimedByOther(worker.getUUID(),index)" in build
+assert "BuilderWorkSpatialIndex.create(cache.steps())" in build
+assert "for(int idx:zone)" not in build.split("private static BuilderConstructionPlanner.Choice nearbyDirectFollowup(",1)[1].split("private static void handoffNext(",1)[0]
+assert "handoffCandidates" not in build
+assert "return BuilderConstructionPlanner.choose(level,worker,table,steps,zone);" not in build
 planner = Path("src/main/java/com/caszgamermd/golemsplus/builder/BuilderConstructionPlanner.java").read_text()
 assert "public static Choice chooseNearby(" in planner
+assert "static int localWorkBand(" in planner
+assert "distance<=1?0:distance<=3?1:2" in planner
+assert "static int workSelectionPriority(" in planner
+assert "int priority=workSelectionPriority(step,anchor,touch,risk);" in planner
+assert "if(priority<bestPriority" in planner
 assert "ordinaryOnly&&stance==null" in planner
 assert "return List.copyOf(result)" in build
 assert "var choice=activity.lookaheadFor==completed?activity.lookahead:null;" in build
@@ -37,4 +46,12 @@ assert "sync();" not in claim
 assert "setChanged();" in claim
 assert "now-builderProgressNotifyTick>=20" in claim
 assert "level.sendBlockUpdated(worldPosition,state,state,3);" in claim
-print("Builder bounded lookahead + safe direct handoff + next-tick followup OK")
+
+spatial = Path("src/main/java/com/caszgamermd/golemsplus/builder/BuilderWorkSpatialIndex.java").read_text()
+assert "byPosition.get(" in spatial
+assert "for (int dx = -radius; dx <= radius; dx++)" in spatial
+assert "allowed.test(index)" in spatial
+schedule = Path("src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewSchedule.java").read_text()
+assert "1+(blocks-1)/4" in schedule
+
+print("Builder spatial locality + four-block crew staffing + staggered frontier OK")

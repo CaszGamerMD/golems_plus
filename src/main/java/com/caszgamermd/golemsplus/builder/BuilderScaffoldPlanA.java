@@ -280,37 +280,22 @@ public final class BuilderScaffoldPlanA {
             BlockPos target,BlockPos base,Set<BlockPos> goals,
             Set<BlockPos> reserved){
         BlockPos start=base.atY(target.getY()-1);
-        ArrayDeque<BlockPos> queue=new ArrayDeque<>();
-        Map<BlockPos,BlockPos> previous=new HashMap<>();
-        Map<BlockPos,Integer> length=new HashMap<>();
-        queue.add(start);
-        length.put(start,0);
-        while(!queue.isEmpty()){
-            BlockPos from=queue.removeFirst();
-            int depth=length.get(from);
-            if(goals.contains(from)){
-                List<BlockPos> result=new ArrayList<>();
-                for(BlockPos p=from;!p.equals(start);p=previous.get(p))
-                    result.add(p);
-                java.util.Collections.reverse(result);
-                return result.isEmpty()?null:result;
-            }
-            if(depth>=MAX_HORIZONTAL_SCAFFOLD_SPAN)continue;
-            for(Direction direction:Direction.Plane.HORIZONTAL){
-                BlockPos next=from.relative(direction);
-                if(length.containsKey(next)
-                        ||Math.abs(next.getX()-target.getX())
-                            >MAX_WORK_TOWER_DISTANCE
-                        ||Math.abs(next.getZ()-target.getZ())
-                            >MAX_WORK_TOWER_DISTANCE
-                        ||!bridgeCellClear(world,next,reserved,table,worker))
-                    continue;
-                previous.put(next,from);
-                length.put(next,depth+1);
-                queue.addLast(next);
-            }
-        }
-        return null;
+        var route=BuilderScaffoldRoutePlanner.find(start,goals,
+                MAX_HORIZONTAL_SCAFFOLD_SPAN,(from,next)->{
+                    if(Math.abs(next.getX()-target.getX())
+                                >MAX_WORK_TOWER_DISTANCE
+                            ||Math.abs(next.getZ()-target.getZ())
+                                >MAX_WORK_TOWER_DISTANCE)return false;
+                    // A scaffold at distance six can be a terminal footing,
+                    // but cannot support another horizontal extension.
+                    var parent=world.getBlockState(from);
+                    if(parent.is(Blocks.SCAFFOLDING)
+                            &&parent.getValue(
+                                    net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE)
+                                    >=MAX_HORIZONTAL_SCAFFOLD_SPAN)return false;
+                    return bridgeCellClear(world,next,reserved,table,worker);
+                },next->world.getBlockState(next).is(Blocks.SCAFFOLDING));
+        return route==null?null:route.cells();
     }
     private static boolean shaftClear(ServerLevel world,BlockPos base,int top,
             Set<BlockPos> reserved,WorkerStationBlockEntity table,

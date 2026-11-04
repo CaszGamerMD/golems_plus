@@ -11,12 +11,14 @@ import java.util.UUID;
  */
 public final class BuilderCrewSchedule {
     public record Progress(int cursor,long finishedAhead) {}
-    /** A layer gets one physical worker per ten schematic blocks, rounded
-     * up. The assigned crew is an upper bound, not an obligation to crowd
-     * a five-block platform with four Builders. */
+    /** Target roughly four physical placements per active Builder.
+     * This keeps a crew of up to eight productive on broad layers without
+     * parking most of the crew until a layer contains seventy blocks.
+     * Empty/sparse zones are still excluded by the ownership ranking.
+     */
     public static int workersForLayer(int blocks,int crewSize){
         if(blocks<=0||crewSize<=0)return 0;
-        return Math.min(crewSize,1+(blocks-1)/10);
+        return Math.min(crewSize,1+(blocks-1)/4);
     }
     /** Prefer workers whose original X/Z zones own the most of this
      * layer. A stable roster-index tie breaker prevents golem churn.
@@ -26,7 +28,10 @@ public final class BuilderCrewSchedule {
             int physicalBlocks,int[] ownership){
         if(roster.size()!=ownership.length)
             throw new IllegalArgumentException("Layer ownership/crew mismatch");
-        int limit=workersForLayer(physicalBlocks,roster.size());
+        int occupiedZones=0;
+        for(int count:ownership)if(count>0)occupiedZones++;
+        int limit=Math.min(workersForLayer(physicalBlocks,roster.size()),
+                occupiedZones);
         if(limit==0&&physicalBlocks==0&&!roster.isEmpty())limit=1;
         var ranked=new ArrayList<Integer>();
         for(int i=0;i<roster.size();i++)ranked.add(i);

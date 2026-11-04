@@ -5,24 +5,24 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BuilderCrewScheduleTest {
-    @Test void onlyOneWorkerPerTenLayerBlocksRoundedUp(){
-        assertEquals(0,BuilderCrewSchedule.workersForLayer(0,4));
-        assertEquals(1,BuilderCrewSchedule.workersForLayer(1,4));
-        assertEquals(1,BuilderCrewSchedule.workersForLayer(10,4));
-        assertEquals(2,BuilderCrewSchedule.workersForLayer(11,4));
-        assertEquals(2,BuilderCrewSchedule.workersForLayer(20,4));
-        assertEquals(3,BuilderCrewSchedule.workersForLayer(21,4));
-        assertEquals(4,BuilderCrewSchedule.workersForLayer(40,4));
-        assertEquals(4,BuilderCrewSchedule.workersForLayer(100,4));
-        assertEquals(2,BuilderCrewSchedule.workersForLayer(100,2));
+    @Test void targetsFourPlacementsPerActiveWorkerUpToEight(){
+        assertEquals(0,BuilderCrewSchedule.workersForLayer(0,8));
+        assertEquals(1,BuilderCrewSchedule.workersForLayer(1,8));
+        assertEquals(1,BuilderCrewSchedule.workersForLayer(4,8));
+        assertEquals(2,BuilderCrewSchedule.workersForLayer(5,8));
+        assertEquals(4,BuilderCrewSchedule.workersForLayer(16,8));
+        assertEquals(7,BuilderCrewSchedule.workersForLayer(25,8));
+        assertEquals(8,BuilderCrewSchedule.workersForLayer(29,8));
+        assertEquals(8,BuilderCrewSchedule.workersForLayer(100,8));
+        assertEquals(2,BuilderCrewSchedule.workersForLayer(5,2));
         assertEquals(0,BuilderCrewSchedule.workersForLayer(10,0));
     }
     @Test void tinyLayerSelectsOwnerWithMostCellsAndReusesWholeLayer(){
         var crew=List.of(new java.util.UUID(0,1),new java.util.UUID(0,2),
                 new java.util.UUID(0,3),new java.util.UUID(0,4));
-        assertEquals(List.of(crew.get(2)),
+        assertEquals(List.of(crew.get(2),crew.get(0),crew.get(1)),
                 BuilderCrewSchedule.staffForLayer(crew,9,new int[]{1,1,6,1}));
-        assertEquals(List.of(crew.get(1),crew.get(2)),
+        assertEquals(List.of(crew.get(1),crew.get(2),crew.get(3),crew.get(0)),
                 BuilderCrewSchedule.staffForLayer(crew,17,new int[]{1,7,7,2}));
         assertEquals(List.of(crew.get(0),crew.get(1),crew.get(2),crew.get(3)),
                 BuilderCrewSchedule.staffForLayer(crew,40,new int[]{10,10,10,10}));

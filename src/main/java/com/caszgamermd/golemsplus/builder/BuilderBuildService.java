@@ -47,7 +47,8 @@ public final class BuilderBuildService {
      */
     private record ScheduledZones(UUID job,Cache cache,List<UUID> roster,
             BuilderZoneWorkPlan tasks,Map<Integer,List<Integer>> layerSteps,
-            Map<Integer,List<UUID>> layerStaff){}
+            Map<Integer,List<UUID>> layerStaff,
+            BuilderWorkSpatialIndex spatialIndex){}
     private static final Map<WorkerStationBlockEntity,ScheduledZones>
             schedules=new WeakHashMap<>();
     /** The immutable job plan only needs its virtual skips reconciled once.
@@ -294,7 +295,7 @@ public final class BuilderBuildService {
         int layer=table.builderActiveLayer(steps);
         if(activity.lookaheadEligibleLayer!=layer){
             activity.lookaheadEligible=nearbyLookaheadCandidates(
-                    table,worker,steps,zone,current,target,now);
+                    level,table,worker,steps,zone,current,target,now);
             activity.lookaheadEligibleLayer=layer;
             activity.lookaheadScanned=0;
         }
@@ -323,35 +324,24 @@ public final class BuilderBuildService {
      * restrictions remain server-validated before the next placement.
      */
     private static List<Integer> nearbyLookaheadCandidates(
-            WorkerStationBlockEntity table,BuilderGolem worker,
+            ServerLevel level,WorkerStationBlockEntity table,BuilderGolem worker,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             int current,BlockPos target,long now){
-        java.util.PriorityQueue<Integer> nearest=new java.util.PriorityQueue<>(
-                (a,b)->{
-                    double da=stepDistanceSquared(steps.get(a),target);
-                    double db=stepDistanceSquared(steps.get(b),target);
-                    int order=Double.compare(db,da);
-                    return order!=0?order:Integer.compare(b,a);
-                });
         int layer=table.builderActiveLayer(steps);
-        for(int idx:zone){
+        var allowed=quickTaskPredicate(
+                level,table,worker,steps,zone,layer);
+        List<Integer> nearby=spatialIndex(table,steps).nearby(
+                target,layer,6,allowed,32);
+        var result=new java.util.ArrayList<Integer>(nearby.size());
+        for(int idx:nearby){
             if(idx==current||idx<0||idx>=steps.size()
                     ||!table.builderStepInActivePhase(steps,idx)
                     ||!table.builderStepReadyForClaim(idx)
                     ||table.builderStepClaimedByOther(worker.getUUID(),idx)
                     ||reservedForTeammate(table,worker.getUUID(),idx,now))
                 continue;
-            if(nearest.size()<32)nearest.add(idx);
-            else if(stepDistanceSquared(steps.get(idx),target)
-                    <stepDistanceSquared(steps.get(nearest.peek()),target)){
-                nearest.poll();
-                nearest.add(idx);
-            }
+            result.add(idx);
         }
-        var result=new java.util.ArrayList<>(nearest);
-        result.sort(java.util.Comparator
-                .comparingDouble((Integer i)->stepDistanceSquared(steps.get(i),target))
-                .thenComparingInt(Integer::intValue));
         return List.copyOf(result);
     }
     /** Try the 32 closest ready tasks first. A nearby valid work pose
@@ -362,22 +352,93 @@ public final class BuilderBuildService {
     private static BuilderConstructionPlanner.Choice chooseNearbyFirst(
             ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
-        List<Integer> nearby=nearbyLookaheadCandidates(table,worker,steps,zone,
-                -1,worker.blockPosition(),level.getGameTime());
-        if(!nearby.isEmpty()){
-            var quick=BuilderConstructionPlanner.chooseNearby(
-                    level,worker,table,steps,nearby);
-            if(quick!=null)return quick;
-        }
-        return BuilderConstructionPlanner.choose(level,worker,table,steps,zone);
+        int layer=table.builderActiveLayer(steps);
+        List<Integer> nearby=spatialIndex(table,steps).nearby(
+                worker.blockPosition(),layer,8,
+                quickTaskPredicate(level,table,worker,steps,zone,layer),32);
+        if(nearby.isEmpty())return null;
+        return BuilderConstructionPlanner.chooseNearby(
+                level,worker,table,steps,nearby);
     }
 
-    private static double stepDistanceSquared(
-            BuilderConstructionPlan.Step step,BlockPos target){
-        double dx=step.x()-target.getX(),dy=step.y()-target.getY(),
-                dz=step.z()-target.getZ();
-        return dx*dx+dy*dy+dz*dz;
+    private static BuilderWorkSpatialIndex spatialIndex(
+            WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps){
+        ScheduledZones scheduled=schedules.get(table);
+        if(scheduled!=null&&scheduled.cache().steps()==steps)
+            return scheduled.spatialIndex();
+        return BuilderWorkSpatialIndex.create(steps);
     }
+
+    /** Fixed X/Z partition membership is O(1); do not hash or copy the
+     * (potentially 100k-entry) zone list on every five-tick work callback.
+     * The compact-layer shared list intentionally admits every same-layer
+     * coordinate, while this predicate removes live claims before limiting
+     * the local result set so shared workers do not keep colliding on a task.
+     */
+    private static java.util.function.IntPredicate quickTaskPredicate(
+            ServerLevel level,WorkerStationBlockEntity table,BuilderGolem worker,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int layer){
+        var inZone=zonePredicate(table,worker,steps,zone,layer);
+        long now=level.getGameTime();
+        return index->index>=0&&index<steps.size()
+                &&inZone.test(index)
+                &&table.builderStepInActivePhase(steps,index)
+                &&table.builderStepReadyForClaim(index)
+                &&!table.builderStepClaimedByOther(worker.getUUID(),index)
+                &&!reservedForTeammate(table,worker.getUUID(),index,now);
+    }
+
+    /** Fixed X/Z partition membership is O(1); do not hash or copy the
+     * (potentially 100k-entry) zone list on every five-tick work callback.
+     * The compact-layer shared list intentionally admits every same-layer
+     * coordinate, with claims filtered by the planner and claim authority.
+     */
+    private static java.util.function.IntPredicate zonePredicate(
+            WorkerStationBlockEntity table,BuilderGolem worker,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
+            int layer){
+        ScheduledZones scheduled=schedules.get(table);
+        if(scheduled==null||scheduled.cache().steps()!=steps)
+            return zone::contains;
+        if(scheduled.layerSteps().get(layer)==zone)
+            return index->true;
+        int owner=scheduled.roster().indexOf(worker.getUUID());
+        int crew=scheduled.roster().size();
+        if(owner<0)return index->false;
+        BuilderZones.Layout footprint=scheduled.cache().zones();
+        return index->index>=0&&index<steps.size()
+                &&footprint.contains(steps.get(index),owner,crew);
+    }
+
+    /** Apply the small failure handoff board only during a full scan.
+     * In the common case there is no reservation for this worker, so the
+     * original immutable zone is reused without an O(zone-size) copy.
+     */
+    private static List<Integer> unreservedZone(
+            WorkerStationBlockEntity table,BuilderGolem worker,
+            List<Integer> zone,long now,boolean sharedLayer){
+        var board=handoffBoard.get(table);
+        boolean hasOwnReservation=false;
+        if(board!=null&&!board.isEmpty())
+            for(var entry:board.entrySet()){
+                Handoff record=entry.getValue();
+                if(record.until()>now&&record.failedWorker().equals(worker.getUUID())){
+                    hasOwnReservation=true;break;
+                }
+            }
+        if(!hasOwnReservation&&!sharedLayer)return zone;
+        var available=new java.util.ArrayList<Integer>(zone.size());
+        for(int index:zone){
+            if(reservedForTeammate(table,worker.getUUID(),index,now))continue;
+            if(sharedLayer&&table.builderStepClaimedByOther(worker.getUUID(),index))
+                continue;
+            available.add(index);
+        }
+        return List.copyOf(available);
+    }
+
     /** Called by the real entity tick exactly once following a successful
      * same-layer prevalidated handoff. Not a second planning pass.
      */
@@ -406,7 +467,10 @@ public final class BuilderBuildService {
         BlockPos pose=worker.blockPosition();
         int best=-1;
         double bestDistance=Double.POSITIVE_INFINITY;
-        for(int idx:zone){
+        List<Integer> local=spatialIndex(table,steps).nearby(
+                new BlockPos(previous.x(),previous.y(),previous.z()),
+                layer,3,zonePredicate(table,worker,steps,zone,layer),49);
+        for(int idx:local){
             if(idx==completed||idx<0||idx>=steps.size()
                     ||!table.builderStepInActivePhase(steps,idx)
                     ||!table.builderStepReadyForClaim(idx)
@@ -1216,28 +1280,17 @@ public final class BuilderBuildService {
             // Monitoring already ran before the early finished-zone
             // return, so every crew member sees the SAME rescue window.
             if(emergencyRoofAssist){
-                var rescue=roofRescueZone(table,worker.getUUID(),
-                        plan.steps(),layer);
-                if(!rescue.isEmpty()){
-                    zone=rescue;
-                    if(level.getGameTime()%200==0)
-                        System.out.println("[ROOF ASSIST] "
-                                +worker.getName().getString()+" can serve "
-                                +rescue.size()+" unfinished Y="
-                                +(layer-table.builderOrigin().getY())
-                                +" cells outside its cleared layer zone");
-                }
+                // Reuse the already compiled active-layer list. Nearby
+                // selectors check live claims, and the serialized full
+                // fallback filters other workers' claims only when needed.
+                var rescue=assigned.layerSteps().getOrDefault(layer,List.of());
+                if(!rescue.isEmpty())zone=rescue;
             }
             // Keep the previously failing worker from immediately
             // reclaiming the same cell while another Builder is available.
             long selectionTick=level.getGameTime();
             if(index>=0&&reservedForTeammate(table,worker.getUUID(),index,selectionTick))
                 index=-1;
-            var handoffCandidates=new java.util.ArrayList<Integer>();
-            for(int candidate:zone)
-                if(!reservedForTeammate(table,worker.getUUID(),candidate,selectionTick))
-                    handoffCandidates.add(candidate);
-            zone=handoffCandidates;
             // No unfinished cell in this worker's portion of the active Y:
             // go OnSite immediately, without burning a full search turn.
             // A real cross-zone rescue is the only reason to stay active.
@@ -1257,11 +1310,21 @@ public final class BuilderBuildService {
                 // five-tick work cadence. Their walking/path execution
                 // continues every tick, and one blocked search cannot cause
                 // all Builders to launch A* probes in the same tick.
-                if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
-                        layerStaff.indexOf(worker.getUUID()),
-                        layerStaff.size()))return;
+                // Every Builder gets a cheap, bounded local assignment
+                // attempt on its own staggered work tick. Only the expensive
+                // whole-zone frontier fallback is serialized across the crew.
                 var next=chooseNearbyFirst(
                         level,worker,table,plan.steps(),zone);
+                if(next==null){
+                    if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
+                            layerStaff.indexOf(worker.getUUID()),
+                            layerStaff.size()))return;
+                    boolean sharedLayer=assigned.layerSteps().get(layer)==zone;
+                    List<Integer> scanZone=unreservedZone(
+                            table,worker,zone,level.getGameTime(),sharedLayer);
+                    next=BuilderConstructionPlanner.choose(
+                            level,worker,table,plan.steps(),scanZone);
+                }
                 index=next==null?-1:table.claimPreferredBuilderZoneStep(
                         worker.getUUID(),zone,plan.steps(),next.index());
             }
@@ -2237,7 +2300,8 @@ public final class BuilderBuildService {
         }
         table.beginBuilderZonePlan();
         ScheduledZones result=new ScheduledZones(table.activeOrder(),cache,
-                List.copyOf(roster),tasks,Map.copyOf(layers),Map.copyOf(staff));
+                List.copyOf(roster),tasks,Map.copyOf(layers),Map.copyOf(staff),
+                BuilderWorkSpatialIndex.create(cache.steps()));
         schedules.put(table,result);
         return result;
     }

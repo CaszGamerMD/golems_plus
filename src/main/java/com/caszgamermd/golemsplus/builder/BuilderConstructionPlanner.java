@@ -260,6 +260,28 @@ public final class BuilderConstructionPlanner {
         double dz=(double)step.z()-anchor.getZ();
         return dx*dx+dy*dy+dz*dz;
     }
+    /** Rank the local build patch before general frontier connectivity.
+     * A directly adjacent block is the best next task; cells within three
+     * Manhattan steps keep the Builder working in the same compact area.
+     * Farther connected cells remain eligible, but cannot pull the Builder
+     * away while a nearby safe task is available.
+     */
+    static int localWorkBand(BuilderConstructionPlan.Step step,BlockPos anchor){
+        long distance=Math.abs((long)step.x()-anchor.getX())
+                +Math.abs((long)step.y()-anchor.getY())
+                +Math.abs((long)step.z()-anchor.getZ());
+        return distance<=1?0:distance<=3?1:2;
+    }
+    /** High pocket-closure risk remains a strong deferral. Otherwise, local
+     * adjacency wins first, then the established safe/connected frontier
+     * preference. This is ranking only; physical feasibility is unchanged.
+     */
+    static int workSelectionPriority(BuilderConstructionPlan.Step step,
+            BlockPos anchor,int contacts,int closureRisk){
+        int dangerousClosure=closureRisk>=2?100:0;
+        return dangerousClosure+localWorkBand(step,anchor)*10
+                +frontierTier(contacts,closureRisk);
+    }
     static void orderConnectedFront(List<Integer> pending,
             List<BuilderConstructionPlan.Step> steps,
             Map<Integer,Integer> contacts,Map<Integer,Integer> risks,
@@ -267,19 +289,15 @@ public final class BuilderConstructionPlanner {
         pending.sort((left,right)->{
             int a=contacts.getOrDefault(left,0);
             int b=contacts.getOrDefault(right,0);
-            int ta=frontierTier(a,risks.getOrDefault(left,0));
-            int tb=frontierTier(b,risks.getOrDefault(right,0));
-            if(ta!=tb)return Integer.compare(ta,tb);
-            // Within the same safe frontier tier, travel locality wins.
-            // Filling extra contacts is helpful, but making a Builder cross
-            // its zone to do so wastes much more walking than extending the
-            // nearest safe run after its previous physical placement.
-            var x=steps.get(left);
-            var y=steps.get(right);
-            // No temporary BlockPos allocations during hundreds of sort
-            // comparisons at every layer handoff.
-            double da=stepDistanceSquared(x,anchor);
-            double db=stepDistanceSquared(y,anchor);
+            int ra=risks.getOrDefault(left,0);
+            int rb=risks.getOrDefault(right,0);
+            int pa=workSelectionPriority(steps.get(left),anchor,a,ra);
+            int pb=workSelectionPriority(steps.get(right),anchor,b,rb);
+            if(pa!=pb)return Integer.compare(pa,pb);
+            // Within one locality band, prefer the physically shorter move.
+            // No temporary BlockPos allocations during sort comparisons.
+            double da=stepDistanceSquared(steps.get(left),anchor);
+            double db=stepDistanceSquared(steps.get(right),anchor);
             int distance=Double.compare(da,db);
             if(distance!=0)return distance;
             return a!=b?Integer.compare(b,a):Integer.compare(left,right);
@@ -297,24 +315,31 @@ public final class BuilderConstructionPlanner {
         int dz=Math.abs(candidate.getZ()-afterPlacement.getZ());
         return builtContacts+(dx+dz==1?1:0);
     }
+    // List.hashCode() walks every schematic step. Use identity lookups
+    // and a small fixed cache so each Builder does not re-hash a 100k-cell
+    // plan on every nearby selection. The cache is bounded across stations.
+    private static final int MAX_SCHEMATIC_STATE_CACHES=4;
     private static final Map<List<BuilderConstructionPlan.Step>,
-            Map<BlockPos,BlockState>> schematicStates=new WeakHashMap<>();
+            Map<BlockPos,BlockState>> schematicStates=
+                    new java.util.IdentityHashMap<>();
     private static Map<BlockPos,BlockState> schematicStates(
             List<BuilderConstructionPlan.Step> steps,
             BuildSite.Rotation rotation,BuildSite.Mirror mirror){
-        // Never cache by file path: the same placed schematic has different
-        // world coordinates after moving or rotating its placement.
-        return schematicStates.computeIfAbsent(steps,unused->{
-            Map<BlockPos,BlockState> expected=new java.util.HashMap<>();
-            for(var cell:steps){
-                if(cell.ignorePlant())continue;
-                var state=BuilderBlockResolver.resolve(
-                        cell.encodedState(),rotation,mirror);
-                if(state!=null)expected.put(
-                        new BlockPos(cell.x(),cell.y(),cell.z()),state.state());
-            }
-            return Map.copyOf(expected);
-        });
+        Map<BlockPos,BlockState> found=schematicStates.get(steps);
+        if(found!=null)return found;
+        Map<BlockPos,BlockState> expected=new java.util.HashMap<>();
+        for(var cell:steps){
+            if(cell.ignorePlant())continue;
+            var state=BuilderBlockResolver.resolve(
+                    cell.encodedState(),rotation,mirror);
+            if(state!=null)expected.put(
+                    new BlockPos(cell.x(),cell.y(),cell.z()),state.state());
+        }
+        Map<BlockPos,BlockState> result=Map.copyOf(expected);
+        if(schematicStates.size()>=MAX_SCHEMATIC_STATE_CACHES)
+            schematicStates.clear();
+        schematicStates.put(steps,result);
+        return result;
     }
     private static double score(BuilderGolem worker,BlockPos target,
             BlockPos stance,boolean sky,boolean grapple){
@@ -543,7 +568,7 @@ public final class BuilderConstructionPlanner {
         BlockPos anchor=last==null?worker.blockPosition():last;
         orderConnectedFront(pending,steps,contacts,closureRisks,anchor);
         Choice best=null;
-        int bestTier=Integer.MAX_VALUE;
+        int bestPriority=Integer.MAX_VALUE;
         int bestContact=0;
         double bestScore=Double.POSITIVE_INFINITY;
         SearchWindow previous=trackWindow?windows.get(worker):null;
@@ -634,7 +659,7 @@ public final class BuilderConstructionPlanner {
             // stances enter this comparison. If no connected work pose
             // exists, unconnected cells remain completely eligible.
             int risk=closureRisks.getOrDefault(idx,0);
-            int tier=frontierTier(touch,risk);
+            int priority=workSelectionPriority(step,anchor,touch,risk);
             double cost=score(worker,target,stance,sky,grapple)
                     // Greedy short-hop routing across the worker's valid,
                     // same-Y frontier, anchored to its last placed block.
@@ -645,8 +670,9 @@ public final class BuilderConstructionPlanner {
                             world,target,builtSchematic))
                     -touch*6+risk*250
                     +(scaffold?BuilderFrontierTuning.GRAPPLE_PENALTY*2:0);
-            if(tier<bestTier||tier==bestTier&&cost<bestScore){
-                bestTier=tier;
+            if(priority<bestPriority
+                    ||priority==bestPriority&&cost<bestScore){
+                bestPriority=priority;
                 bestContact=touch;
                 bestScore=cost;
                 best=new Choice(idx,stance,grapple,sky,examined);
