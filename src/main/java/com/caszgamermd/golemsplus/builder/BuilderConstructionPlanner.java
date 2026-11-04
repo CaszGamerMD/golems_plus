@@ -442,7 +442,7 @@ public final class BuilderConstructionPlanner {
     public static Choice chooseNearby(ServerLevel world,BuilderGolem worker,
             WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> nearby){
-        return select(world,worker,table,steps,nearby,false,0,MAX_EXAMINED,null,false);
+        return select(world,worker,table,steps,nearby,false,0,MAX_EXAMINED,null,false,true);
     }
     /** Speculatively evaluate only a small number of candidates while
      * the current A* route is ALREADY moving. This is not a claim,
@@ -476,7 +476,7 @@ public final class BuilderConstructionPlanner {
             WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             boolean lookahead){
-        return select(world,worker,table,steps,zone,lookahead,0,8,null,!lookahead);
+        return select(world,worker,table,steps,zone,lookahead,0,8,null,!lookahead,false);
     }
     private static Choice select(ServerLevel world,BuilderGolem worker,
             WorkerStationBlockEntity table,
@@ -484,14 +484,14 @@ public final class BuilderConstructionPlanner {
             boolean lookahead,int lookaheadOffset,int lookaheadBudget,
             BlockPos afterPlacement){
         return select(world,worker,table,steps,zone,lookahead,
-                lookaheadOffset,lookaheadBudget,afterPlacement,!lookahead);
+                lookaheadOffset,lookaheadBudget,afterPlacement,!lookahead,false);
     }
 
     private static Choice select(ServerLevel world,BuilderGolem worker,
             WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             boolean lookahead,int lookaheadOffset,int lookaheadBudget,
-            BlockPos afterPlacement,boolean trackWindow){
+            BlockPos afterPlacement,boolean trackWindow,boolean ordinaryOnly){
         int y=table.builderActiveLayer(steps);
         if(y==Integer.MAX_VALUE)return null;
         List<Integer> pending=new ArrayList<>();
@@ -591,6 +591,11 @@ public final class BuilderConstructionPlanner {
                 // support. The five-tick Builder task will execute a
                 // collision-checked sidestep before considering placement.
                 stance=worker.blockPosition();
+            // The quick initial pass is intentionally ground-route only.
+            // Leave paid scaffold and grapple preflights to the full
+            // frontier fallback, which can compare them against distant
+            // ordinary work instead of committing to a nearby tower.
+            if(ordinaryOnly&&stance==null)continue;
             // An elevated unsupported block needs construction footing.
             // Prefer a real, item-paid scaffold platform if one can be
             // built. A grapple is an access tool, not a replacement for a
