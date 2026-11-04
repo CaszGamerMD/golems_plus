@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
 import net.fabricmc.loader.api.FabricLoader;
@@ -326,13 +327,6 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table,BuilderGolem worker,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             int current,BlockPos target,long now){
-        java.util.PriorityQueue<Integer> nearest=new java.util.PriorityQueue<>(
-                (a,b)->{
-                    double da=stepDistanceSquared(steps.get(a),target);
-                    double db=stepDistanceSquared(steps.get(b),target);
-                    int order=Double.compare(db,da);
-                    return order!=0?order:Integer.compare(b,a);
-                });
         int layer=table.builderActiveLayer(steps);
         Set<Integer> allowed=zoneMembership(zone);
         List<Integer> nearby=spatialIndex(steps).nearby(
@@ -405,12 +399,6 @@ public final class BuilderBuildService {
         return List.copyOf(available);
     }
 
-    private static double stepDistanceSquared(
-            BuilderConstructionPlan.Step step,BlockPos target){
-        double dx=step.x()-target.getX(),dy=step.y()-target.getY(),
-                dz=step.z()-target.getZ();
-        return dx*dx+dy*dy+dz*dz;
-    }
     /** Called by the real entity tick exactly once following a successful
      * same-layer prevalidated handoff. Not a second planning pass.
      */
