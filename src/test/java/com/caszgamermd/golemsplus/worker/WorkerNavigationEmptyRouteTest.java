@@ -23,4 +23,26 @@ final class WorkerNavigationEmptyRouteTest {
         steps=List.of();
         assertFalse(WorkerNavigation.hasWaypoint(steps,0));
     }
+    @Test void skipsWaypointsAlreadyPassedOnThePlannedRoute(){
+        var route=List.of(new BlockPos(1,64,0),new BlockPos(2,64,0),
+                new BlockPos(3,64,0),new BlockPos(4,64,0),
+                new BlockPos(5,64,0));
+        assertEquals(4,WorkerNavigation.advanceCursorPastCurrentRouteNode(
+                route,1,new BlockPos(4,64,0)));
+        assertEquals(1,WorkerNavigation.advanceCursorPastCurrentRouteNode(
+                route,1,new BlockPos(2,64,1)),
+                "Being merely beside a waypoint is not enough to skip it");
+    }
+
+    @Test void recognizesProgressBeyondAStaleWaypointTowardTheGoal(){
+        BlockPos goal=new BlockPos(10,64,0);
+        BlockPos waypoint=new BlockPos(4,64,0);
+        assertTrue(WorkerNavigation.progressedPastWaypoint(
+                new BlockPos(7,64,0),goal,waypoint));
+        assertFalse(WorkerNavigation.progressedPastWaypoint(
+                new BlockPos(2,64,0),goal,waypoint));
+        assertFalse(WorkerNavigation.progressedPastWaypoint(
+                new BlockPos(4,64,2),goal,waypoint),
+                "A legitimate detour away from the goal is not a passed waypoint");
+    }
 }

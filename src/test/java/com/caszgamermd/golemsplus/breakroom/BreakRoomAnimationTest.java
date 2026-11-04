@@ -13,11 +13,14 @@ final class BreakRoomAnimationTest {
                 "The head should be still on the opposite side of the cycle");
     }
 
-    @Test void eatingHeadNodRepeatsAtTheBiteCadenceAndStaysSubtle() {
+    @Test void eatingHeadNodRepeatsEverySixSecondsAndStaysSubtle() {
         assertEquals(BreakRoomAnimation.eatingHeadNod(0.0f),
-                BreakRoomAnimation.eatingHeadNod(30.0f), 0.0001f,
-                "Each bite cycle is 30 ticks");
-        for (int tick = 0; tick < 30; tick++) {
+                BreakRoomAnimation.eatingHeadNod(120.0f), 0.0001f,
+                "The head nod repeats every 120 ticks");
+        assertEquals(0.0f,BreakRoomAnimation.eatingHeadNod(30.0f),0.0001f);
+        assertEquals(0.0f,BreakRoomAnimation.eatingHeadNod(60.0f),0.0001f);
+        assertEquals(0.0f,BreakRoomAnimation.eatingHeadNod(90.0f),0.0001f);
+        for (int tick = 0; tick < 120; tick++) {
             float nod = BreakRoomAnimation.eatingHeadNod(tick);
             assertTrue(nod >= 0.0f && nod <= 0.10f,
                     "Nod angle must stay small at tick " + tick + ": " + nod);

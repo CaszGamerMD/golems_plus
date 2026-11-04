@@ -52,10 +52,22 @@ assert "byPosition.get(" in spatial
 assert "for (int dx = -radius; dx <= radius; dx++)" in spatial
 assert "allowed.test(index)" in spatial
 schedule = Path("src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewSchedule.java").read_text()
-assert "1+(blocks-1)/4" in schedule
+assert "blocks<=5?1:2+(blocks-6)/3" in schedule
 assert "despite the callbacks already being distributed" in schedule
+assert "When a layer needs multiple Builders, they may share even one" in schedule
+assert "static boolean sharesLayerCells(" in schedule
+assert "layerZoneOwners" in build
+assert "BuilderCrewSchedule.sharesLayerCells(" in build
+assert "alternateSideAttempts<3" not in build
+assert "alternateStagingHeights(worker.blockPosition().getY(),depotFeetY)" in build
+assert "TARGET_PROGRESS_STALL_TICKS=200" in build
+assert "STATIONARY_STALL_TICKS=100" in build
 navigation = Path("src/main/java/com/caszgamermd/golemsplus/worker/WorkerNavigation.java").read_text()
+assert "advanceCursorPastCurrentRouteNode" in navigation
+assert "progressedPastWaypoint" in navigation
 assert "return state.is(Blocks.SCAFFOLDING)" in navigation
+animation = Path("src/main/java/com/caszgamermd/golemsplus/breakroom/BreakRoomAnimation.java").read_text()
+assert "BITE_CYCLE_TICKS = 120" in animation
 assert "nearbyLookaheadCandidates(\n                    level,table,worker" in build
 
-print("Builder spatial locality + eight-worker frontier cadence + scaffold footing OK")
+print("Builder spatial locality + tiered layer staffing + perimeter escape + waypoint pass-through + slow break nod OK")

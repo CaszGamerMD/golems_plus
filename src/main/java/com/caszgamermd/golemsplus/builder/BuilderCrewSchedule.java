@@ -11,28 +11,32 @@ import java.util.UUID;
  */
 public final class BuilderCrewSchedule {
     public record Progress(int cursor,long finishedAhead) {}
-    /** Target roughly four physical placements per active Builder.
-     * This keeps a crew of up to eight productive on broad layers without
-     * parking most of the crew until a layer contains seventy blocks.
-     * Empty/sparse zones are still excluded by the ownership ranking.
+    /**
+     * Keep small layers moving with one Builder, then add one Builder for
+     * every three placements after the first five:
+     * 0-5 => 1, 6-8 => 2, 9-11 => 3, and so on.
      */
     public static int workersForLayer(int blocks,int crewSize){
-        if(blocks<=0||crewSize<=0)return 0;
-        return Math.min(crewSize,1+(blocks-1)/4);
+        if(crewSize<=0)return 0;
+        int requested=blocks<=5?1:2+(blocks-6)/3;
+        return Math.min(crewSize,requested);
+    }
+    /** A selected worker must see the full layer if its own partition has
+     * no cells there, even when every crew member is selected.
+     */
+    static boolean sharesLayerCells(int staffedCount,int crewSize,
+            boolean ownsLayerCells){
+        return staffedCount<crewSize||!ownsLayerCells;
     }
     /** Prefer workers whose original X/Z zones own the most of this
      * layer. A stable roster-index tie breaker prevents golem churn.
-     * Restricted crews then share all layer cells rather than leaving
-     * parked teammates' original partitions inaccessible. */
+     * When a layer needs multiple Builders, they may share even one
+     * occupied original zone; the selected crew sees the whole layer. */
     public static List<UUID> staffForLayer(List<UUID> roster,
             int physicalBlocks,int[] ownership){
         if(roster.size()!=ownership.length)
             throw new IllegalArgumentException("Layer ownership/crew mismatch");
-        int occupiedZones=0;
-        for(int count:ownership)if(count>0)occupiedZones++;
-        int limit=Math.min(workersForLayer(physicalBlocks,roster.size()),
-                occupiedZones);
-        if(limit==0&&physicalBlocks==0&&!roster.isEmpty())limit=1;
+        int limit=workersForLayer(physicalBlocks,roster.size());
         var ranked=new ArrayList<Integer>();
         for(int i=0;i<roster.size();i++)ranked.add(i);
         ranked.sort((a,b)->{
