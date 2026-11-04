@@ -9,13 +9,11 @@ assert "lookaheadEligibleLayer=Integer.MIN_VALUE" in build
 assert "activity.lookaheadEligibleLayer!=layer" in build
 assert "activity.lookaheadEligible=nearbyLookaheadCandidates(" in build
 assert "List<Integer> eligible=activity.lookaheadEligible;" in build
-assert "PriorityQueue<Integer> nearest" in build
-assert "nearest.size()<32" in build
 assert "chooseNearbyFirst(" in build
 assert "BuilderConstructionPlanner.chooseNearby(" in build
-assert "BuilderWorkSpatialIndex.nearby" in build or ".nearby(" in build
-assert "zoneMemberships" in build
-assert "BuilderConstructionPlanner.choose(level,worker,table,steps,scanZone);" in build
+assert "spatialIndex(steps).nearby(" in build
+assert "zoneMembership(zone)" in build
+assert "for(int idx:zone)" not in build.split("private static BuilderConstructionPlanner.Choice nearbyDirectFollowup(",1)[1].split("private static void handoffNext(",1)[0]
 assert "handoffCandidates" not in build
 assert "return BuilderConstructionPlanner.choose(level,worker,table,steps,zone);" not in build
 planner = Path("src/main/java/com/caszgamermd/golemsplus/builder/BuilderConstructionPlanner.java").read_text()
