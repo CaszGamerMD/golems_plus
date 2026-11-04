@@ -43,12 +43,13 @@ public final class BuilderCrewSchedule {
         for(int i=0;i<limit;i++)chosen.add(roster.get(ranked.get(i)));
         return List.copyOf(chosen);
     }
-    /** Exactly one crew member may start a costly full frontier search in
-     * each five-tick work window. Turns rotate; an inaccessible task cannot
-     * monopolize planning time at the next layer transition. */
+    /** BuilderGolem staggers each worker's work callback by entity ID.
+     * Do not add a second crew-wide turn gate here: with eight workers it
+     * made each Builder wait up to 40 ticks (2 seconds) just to select its
+     * next frontier cell, despite the callbacks already being distributed
+     * across server ticks. */
     public static boolean frontierTurn(long gameTick,int rosterIndex,int crewSize){
-        return crewSize>0&&rosterIndex>=0&&rosterIndex<crewSize
-                &&Math.floorMod(Math.floorDiv(gameTick,5L),crewSize)==rosterIndex;
+        return crewSize>0&&rosterIndex>=0&&rosterIndex<crewSize;
     }
     private BuilderCrewSchedule(){}
 

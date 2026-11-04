@@ -47,21 +47,13 @@ class BuilderCrewScheduleTest {
         p=BuilderCrewSchedule.finish(p.cursor(),6,p.finishedAhead(),next3);
         assertEquals(4,p.cursor());
     }
-    @Test void frontierSearchesRotateAcrossWholeCrewWithoutColliding(){
+    @Test void everyStaggeredWorkerCanSelectItsOwnFrontierWithoutCrewDelay(){
         for(int crew=1;crew<=8;crew++){
-            int[] counts=new int[crew];
-            // Each worker runs once per five ticks; no one is starved.
-            for(long tick=4;tick<crew*5L;tick+=5){
-                int grants=0;
+            for(long tick=0;tick<crew*5L;tick++){
                 for(int worker=0;worker<crew;worker++)
-                    if(BuilderCrewSchedule.frontierTurn(tick,worker,crew)){
-                        counts[worker]++;
-                        grants++;
-                    }
-                assertEquals(1,grants,"Only one full frontier search per crew window");
+                    assertTrue(BuilderCrewSchedule.frontierTurn(tick,worker,crew),
+                            "The entity's existing five-tick stagger is the throttle");
             }
-            for(int worker=0;worker<crew;worker++)
-                assertEquals(1,counts[worker],"Every worker eventually thinks");
         }
         assertFalse(BuilderCrewSchedule.frontierTurn(10,-1,4));
         assertFalse(BuilderCrewSchedule.frontierTurn(10,4,4));

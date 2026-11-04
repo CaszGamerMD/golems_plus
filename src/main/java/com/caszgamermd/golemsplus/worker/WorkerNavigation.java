@@ -224,7 +224,8 @@ public final class WorkerNavigation {
         return Math.min(18,price);
     }
     private static boolean partialFloor(BlockState state){
-        return state.getBlock() instanceof StairBlock
+        return state.is(Blocks.SCAFFOLDING)
+                ||state.getBlock() instanceof StairBlock
                 ||state.getBlock() instanceof SlabBlock
                     &&state.getValue(SlabBlock.TYPE)!=SlabType.DOUBLE;
     }

@@ -427,4 +427,77 @@ public final class BuilderFenceStepGameTest {
         });
     }
 
+
+    @GameTest(maxTicks=360,skyAccess=true)
+    public void traversesScaffoldAndBothSlabPlacements(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<=8;x++)h.setBlock(x,1,3,Blocks.STONE);
+        h.setBlock(1,2,3,Blocks.SCAFFOLDING);
+        h.setBlock(2,2,3,Blocks.SCAFFOLDING);
+        h.setBlock(3,2,3,Blocks.STONE_SLAB.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.SlabBlock.TYPE,
+                        net.minecraft.world.level.block.state.properties.SlabType.BOTTOM));
+        h.setBlock(4,2,3,Blocks.STONE_SLAB.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.SlabBlock.TYPE,
+                        net.minecraft.world.level.block.state.properties.SlabType.TOP));
+        for(int x=5;x<=8;x++)h.setBlock(x,2,3,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(1,2,3));
+        BlockPos scaffold=h.absolutePos(new BlockPos(2,2,3));
+        BlockPos lower=h.absolutePos(new BlockPos(3,2,3));
+        BlockPos upper=h.absolutePos(new BlockPos(4,3,3));
+        BlockPos goal=h.absolutePos(new BlockPos(8,3,3));
+        double startFloor=WorkerNavigation.surveyFloorHeight(world,start);
+        if(!Double.isFinite(startFloor)){
+            h.fail("Scaffold collision shape did not expose a supported top");
+            return;
+        }
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        // Start at the exact top reported by the real collision shape.
+        mob.setPos(start.getX()+.5,startFloor,start.getZ()+.5);
+        world.addFreshEntity(mob);
+        boolean[] crossed={false,false,false};
+        h.onEachTick(()->{
+            if(!mob.isAlive()||mob.isNoGravity()){
+                h.fail("Scaffold/slab route lost normal physical movement");return;
+            }
+            if(h.getTick()==15){
+                if(!WorkerNavigation.canStandOn(world,mob,start)
+                        ||!WorkerNavigation.canStandOn(world,mob,scaffold)
+                        ||!WorkerNavigation.canStandOn(world,mob,lower)
+                        ||!WorkerNavigation.canStandOn(world,mob,upper)
+                        ||!WorkerNavigation.hasGroundRouteFrom(
+                                world,mob,start,java.util.List.of(goal))){
+                    h.fail("Scaffold or upper/lower slab rejected as a real "
+                            +"connected route: start="+WorkerNavigation.surveyFloorHeight(
+                                    world,start)+" scaffold="+WorkerNavigation.surveyFloorHeight(
+                                    world,scaffold)+" lower="+WorkerNavigation.surveyFloorHeight(
+                                    world,lower)+" upper="+WorkerNavigation.surveyFloorHeight(
+                                    world,upper)+" nav="+WorkerNavigation.debugStatus(mob));
+                    return;
+                }
+            }
+            if(h.getTick()>=15&&h.getTick()%5==0)
+                WorkerNavigation.routeToExact(world,mob,goal,1.0);
+            if(mob.blockPosition().getX()==scaffold.getX()
+                    &&mob.blockPosition().getZ()==scaffold.getZ())crossed[0]=true;
+            if(mob.blockPosition().getX()==lower.getX()
+                    &&mob.blockPosition().getZ()==lower.getZ())crossed[1]=true;
+            if(mob.blockPosition().getX()==upper.getX()
+                    &&mob.blockPosition().getZ()==upper.getZ())crossed[2]=true;
+            if(mob.onGround()&&mob.distanceToSqr(
+                    goal.getX()+.5,goal.getY(),goal.getZ()+.5)<.16){
+                if(!crossed[0]||!crossed[1]||!crossed[2]){
+                    h.fail("Reached goal without crossing scaffold/lower/upper "
+                            +"slab: "+java.util.Arrays.toString(crossed));return;
+                }
+                System.out.println("[SCAFFOLD SLAB ROUTE] PASS scaffold + "
+                        +"bottom/top slab traversal tick="+h.getTick());
+                h.succeed();return;
+            }
+            if(h.getTick()>320)
+                h.fail("Scaffold/slab route stalled at "+mob.position()
+                        +" "+WorkerNavigation.debugStatus(mob));
+        });
+    }
+
 }
