@@ -53,5 +53,9 @@ assert "for (int dx = -radius; dx <= radius; dx++)" in spatial
 assert "allowed.test(index)" in spatial
 schedule = Path("src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewSchedule.java").read_text()
 assert "1+(blocks-1)/4" in schedule
+assert "despite the callbacks already being distributed" in schedule
+navigation = Path("src/main/java/com/caszgamermd/golemsplus/worker/WorkerNavigation.java").read_text()
+assert "return state.is(Blocks.SCAFFOLDING)" in navigation
+assert "nearbyLookaheadCandidates(\n                    level,table,worker" in build
 
-print("Builder spatial locality + four-block crew staffing + staggered frontier OK")
+print("Builder spatial locality + eight-worker frontier cadence + scaffold footing OK")
