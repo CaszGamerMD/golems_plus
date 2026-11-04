@@ -39,3 +39,8 @@ The first 3,537-block physical dome pilot regressed to **63 blocks**, because ch
 ## Faster initial task selection
 
 When a Builder needs a new task, the service first takes a bounded nearest-first sample of up to 32 ready cells from its assigned zone. The normal construction-aware selector validates this small set with cached work approaches, live collision checks, line-of-sight and safe-exit checks. If no sampled cell is executable, the existing rotating full-layer frontier search runs unchanged. This reduces repeated whole-layer contact/risk calculation and sorting on ordinary open builds without dropping blocked cells or changing the shared Y gate.
+
+
+## Smarter scaffold bridge routing
+
+Bent scaffold approaches use a bounded weighted cardinal route search. A physically valid scaffold already tracked by the Builder station is preferred over buying another block; unnecessary bends carry a small cost. The search still validates every proposed cell against the reserved schematic, headroom, ownership, and native six-block horizontal support rule. A support segment at distance six may be the terminal work footing, but is never treated as a parent for another extension.
