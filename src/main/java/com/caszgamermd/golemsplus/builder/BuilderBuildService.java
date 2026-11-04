@@ -295,7 +295,7 @@ public final class BuilderBuildService {
         int layer=table.builderActiveLayer(steps);
         if(activity.lookaheadEligibleLayer!=layer){
             activity.lookaheadEligible=nearbyLookaheadCandidates(
-                    table,worker,steps,zone,current,target,now);
+                    level,table,worker,steps,zone,current,target,now);
             activity.lookaheadEligibleLayer=layer;
             activity.lookaheadScanned=0;
         }
@@ -324,7 +324,7 @@ public final class BuilderBuildService {
      * restrictions remain server-validated before the next placement.
      */
     private static List<Integer> nearbyLookaheadCandidates(
-            WorkerStationBlockEntity table,BuilderGolem worker,
+            ServerLevel level,WorkerStationBlockEntity table,BuilderGolem worker,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             int current,BlockPos target,long now){
         int layer=table.builderActiveLayer(steps);
