@@ -17,7 +17,7 @@ final class BuilderWorkSpatialIndexTest {
                 step(1,65,0),step(1,64,1));
         var index=BuilderWorkSpatialIndex.create(steps);
         assertEquals(List.of(4,2),index.nearby(
-                new BlockPos(0,64,0),64,2,Set.of(2,4),32));
+                new BlockPos(0,64,0),64,2,Set.of(2,4)::contains,32));
     }
 
     @Test void localResultsAreNearestFirstAndBounded(){
@@ -25,15 +25,15 @@ final class BuilderWorkSpatialIndexTest {
                 step(0,64,1),step(0,64,3));
         var index=BuilderWorkSpatialIndex.create(steps);
         assertEquals(List.of(1,3,2),index.nearby(
-                new BlockPos(0,64,0),64,3,Set.of(0,1,2,3,4),3));
+                new BlockPos(0,64,0),64,3,Set.of(0,1,2,3,4)::contains,3));
     }
 
     @Test void emptyOrOutOfRangeNeighborhoodDoesNotScanTheWholePlan(){
         var steps=List.of(step(40,64,40));
         var index=BuilderWorkSpatialIndex.create(steps);
         assertTrue(index.nearby(new BlockPos(0,64,0),64,4,
-                Set.of(0),32).isEmpty());
+                Set.of(0)::contains,32).isEmpty());
         assertTrue(index.nearby(new BlockPos(0,64,0),64,4,
-                Set.of(),32).isEmpty());
+                Set.<Integer>of()::contains,32).isEmpty());
     }
 }
