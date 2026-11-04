@@ -1,5 +1,7 @@
 package com.caszgamermd.golemsplus.render;
 
+import com.caszgamermd.golemsplus.breakroom.BreakRoomAnimation;
+
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.PartPose;
@@ -500,7 +502,7 @@ public final class ProfessionGolemModel
             leftArm.zRot=state.breakRoomEating?-.20f:-.12f;
             rightArm.zRot=.12f;
             if(state.breakRoomEating)
-                head.xRot+=.035f+Math.max(0,bite)*.045f;
+                head.xRot+=BreakRoomAnimation.eatingHeadNod(state.ageInTicks);
         }else if(state.breakRoomPlayingArcade){
             rightArm.xRot=-.92f+.18f*Mth.sin(state.ageInTicks*.65f);
             rightArm.zRot=-.16f;
