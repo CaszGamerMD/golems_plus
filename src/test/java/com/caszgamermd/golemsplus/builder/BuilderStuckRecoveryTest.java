@@ -16,6 +16,13 @@ final class BuilderStuckRecoveryTest {
                 BuilderBuildService.alternateStagingHeights(65,65));
     }
 
+    @Test void rallyPointMustBeConfiguredLoadedAndPhysicallyStandable(){
+        assertTrue(BuilderBuildService.canUseRallyPoint(true,true,true));
+        assertFalse(BuilderBuildService.canUseRallyPoint(false,true,true));
+        assertFalse(BuilderBuildService.canUseRallyPoint(true,false,true));
+        assertFalse(BuilderBuildService.canUseRallyPoint(true,true,false));
+    }
+
     @Test void repeatedRecoveryCyclesTryEverySideOtherThanTheFailedOne(){
         Set<Integer> tried=new HashSet<>();
         for(int attempt=0;attempt<3;attempt++){
