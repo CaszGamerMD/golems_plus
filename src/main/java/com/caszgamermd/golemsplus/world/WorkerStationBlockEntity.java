@@ -55,6 +55,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private BlockPos builderRetirementStorage;
     // Optional owner-selected safe regrouping point used only for Builder recovery.
     private BlockPos builderRallyPoint;
+    private UUID builderRallyOrder;
     private final java.util.Map<String,Long> builderRequired=new java.util.LinkedHashMap<>();
     private final java.util.Map<String,Long> builderRemaining=new java.util.LinkedHashMap<>();
     private final java.util.Map<String,Integer> builderWarehouseStock=new java.util.LinkedHashMap<>();
@@ -755,14 +756,15 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public int builderRotation() { return builderRotation; }
     public int builderMirror(){return builderMirror;}
     public BlockPos builderOrigin(){return builderOrigin;}
-    public BlockPos builderRallyPoint(){return builderRallyPoint;}
-    public boolean setBuilderRallyPoint(UUID actor,BlockPos point){
-        if(!isBuilder()||!canConfigure(actor)||point==null)return false;
-        builderRallyPoint=point.immutable();sync();return true;
+    public BlockPos builderRallyPoint(){
+        return activeOrder!=null&&activeOrder.equals(builderRallyOrder)
+                ?builderRallyPoint:null;
     }
-    public boolean clearBuilderRallyPoint(UUID actor){
-        if(!isBuilder()||!canConfigure(actor)||builderRallyPoint==null)return false;
-        builderRallyPoint=null;sync();return true;
+    public UUID builderRallyOrder(){return builderRallyOrder;}
+    public boolean setBuilderRallyPoint(UUID actor,UUID order,BlockPos point){
+        if(!isBuilder()||!canConfigure(actor)||order==null
+                ||!order.equals(activeOrder)||point==null)return false;
+        builderRallyPoint=point.immutable();builderRallyOrder=order;sync();return true;
     }
     public String placedSchematicName(){return placedSchematicName;}
     public int builderCursor(){return builderCursor;}
@@ -2064,6 +2066,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         out.putBoolean("builder_recall_requested",builderRecallRequested);
         if(builderRallyPoint!=null)
             out.store("builder_rally_point",BlockPos.CODEC,builderRallyPoint);
+        if(builderRallyOrder!=null)
+            out.putString("builder_rally_order",builderRallyOrder.toString());
         if(builderRetirementStorage!=null)
             out.store("builder_retirement_storage",BlockPos.CODEC,
                     builderRetirementStorage);
@@ -2373,6 +2377,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         crewTarget=Math.clamp(in.getIntOr("builder_crew_target",1),1,isBuilder()?8:4);
         builderRecallRequested=in.getBooleanOr("builder_recall_requested",false);
         builderRallyPoint=in.read("builder_rally_point",BlockPos.CODEC).orElse(null);
+        builderRallyOrder=uuid(in,"builder_rally_order");
         builderRetirementStorage=in.read("builder_retirement_storage",
                 BlockPos.CODEC).orElse(null);
         additionalBuilderWorkers.clear();
