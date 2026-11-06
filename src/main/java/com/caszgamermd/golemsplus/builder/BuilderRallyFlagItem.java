@@ -9,6 +9,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
@@ -75,7 +76,7 @@ public final class BuilderRallyFlagItem extends Item {
                 ||!level.getFluidState(target).isEmpty())
             return reject(player,"Invalid rally location: choose an empty, dry floor tile.");
 
-        var probe=WorksiteContent.BUILDER_GOLEM.create(level);
+        var probe=WorksiteContent.BUILDER_GOLEM.create(level,EntitySpawnReason.COMMAND);
         if(probe==null)return reject(player,"Could not validate Builder clearance here.");
         boolean safe;
         try{
@@ -108,7 +109,7 @@ public final class BuilderRallyFlagItem extends Item {
     }
 
     private static InteractionResult reject(Player player,String message){
-        player.displayClientMessage(Component.literal("[Builder] "+message),true);
+        player.sendSystemMessage(Component.literal("[Builder] "+message));
         return InteractionResult.FAIL;
     }
 }
