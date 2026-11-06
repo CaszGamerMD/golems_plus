@@ -447,6 +447,7 @@ public class WorkerStationScreen extends AbstractContainerScreen<WorkerStationMe
                 button("Preview materials",PANE,87,182,()->
                         send("builder_preview",0));
                 button("Warehouse supplies",PANE,151,182,()->send("builder_supplies",0));
+                button("Get Rally Flag",PANE,180,182,()->send("builder_rally_flag",0));
                 button("Pause",PANE,119,89,()->send("builder_pause",0));
                 button("Resume",PANE+92,119,90,()->send("builder_resume",0));
             }else{
