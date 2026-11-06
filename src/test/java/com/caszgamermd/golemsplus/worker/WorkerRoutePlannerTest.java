@@ -4,6 +4,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -201,5 +202,42 @@ final class WorkerRoutePlannerTest {
         assertNotNull(stats[0]);
         assertEquals(Set.of(start,a,b),stats[0].reachable());
         assertFalse(stats[0].budgetExhausted());
+    }
+
+    // ---- shared search budget (caps one request's total planner work) ----
+    @AfterEach void clearSharedBudget(){WorkerRoutePlanner.endSharedBudget();}
+    private static Set<BlockPos> openFloor(int size){
+        Set<BlockPos> floor=new HashSet<>();
+        for(int x=0;x<=size;x++)for(int z=0;z<=size;z++)floor.add(at(x,64,z));
+        return floor;
+    }
+    @Test void emptySharedBudgetRefusesToSearch(){
+        WorkerRoutePlanner.beginSharedBudget(0);
+        assertNull(find(at(0,64,0),List.of(at(24,64,24)),openFloor(30)));
+        assertEquals(0,WorkerRoutePlanner.endSharedBudget());
+    }
+    @Test void sharedBudgetTruncatesSearchAndDeductsExploredNodes(){
+        Set<BlockPos> floor=openFloor(30);
+        WorkerRoutePlanner.beginSharedBudget(15);
+        var cut=find(at(0,64,0),List.of(at(24,64,24)),floor);
+        assertTrue(cut==null||!cut.complete(),
+                "A 15-node allowance cannot finish a 24-block route");
+        assertEquals(0,WorkerRoutePlanner.endSharedBudget());
+        WorkerRoutePlanner.beginSharedBudget(5000);
+        var full=find(at(0,64,0),List.of(at(24,64,24)),floor);
+        int left=WorkerRoutePlanner.endSharedBudget();
+        assertNotNull(full);assertTrue(full.complete());
+        assertTrue(left<5000&&left>=0,"explored nodes must be deducted");
+        assertEquals(full.steps(),find(at(0,64,0),List.of(at(24,64,24)),floor).steps(),
+                "No active budget must behave exactly as before");
+    }
+    @Test void terrainPenaltyIsComputedOncePerCellPerSearch(){
+        Set<BlockPos> floor=openFloor(30);
+        java.util.Map<BlockPos,Integer> calls=new java.util.HashMap<>();
+        WorkerRoutePlanner.plan(at(0,64,0),List.of(at(24,64,24)),floor::contains,
+                BlockPos::getY,BlockPos.ZERO,p->{calls.merge(p,1,Integer::sum);return 0;});
+        assertFalse(calls.isEmpty());
+        assertTrue(calls.values().stream().allMatch(c->c==1),
+                "The same cell's penalty was recomputed for every incoming edge");
     }
 }

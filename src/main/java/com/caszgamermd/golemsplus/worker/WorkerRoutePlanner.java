@@ -32,6 +32,10 @@ import net.minecraft.core.Direction;
 public final class WorkerRoutePlanner {
     public static final int RADIUS=40;
     public static final int NODE_BUDGET=2800;
+    // A route longer than RADIUS only ever returns a short advancing leg,
+    // yet the old search flooded the full 2800-node budget before choosing
+    // it, on every leg. A smaller window finds the same kind of leg.
+    public static final int DISTANT_NODE_BUDGET=1400;
     // A bounded search can follow many legal one-block stair steps.
     // The old eight-block window made ground-to-Y9 impossible regardless
     // of connectivity. This changes search extent, never jump/drop size.
@@ -56,6 +60,20 @@ public final class WorkerRoutePlanner {
         }
     }
     private WorkerRoutePlanner(){}
+
+    // Optional shared node allowance for ONE logical routing request.
+    // A single request can otherwise run dozens of 2800-node searches
+    // (retries, alternate first steps, seed probes) inside one server tick.
+    // The server thread is single-threaded, so a plain static is safe.
+    // -1 means "no shared cap" (unit tests and legacy callers unchanged).
+    private static int sharedBudget=-1;
+    public static void beginSharedBudget(int nodes){sharedBudget=Math.max(0,nodes);}
+    /** @return nodes left unspent (MAX_VALUE if no budget was active). */
+    public static int endSharedBudget(){
+        int left=sharedBudget<0?Integer.MAX_VALUE:sharedBudget;
+        sharedBudget=-1;
+        return left;
+    }
 
     private static int heuristic(BlockPos at,List<BlockPos> goals){
         int best=Integer.MAX_VALUE;
@@ -126,6 +144,13 @@ public final class WorkerRoutePlanner {
         // evaluate it once rather than up to 12 times as neighbors overlap.
         Map<BlockPos,Boolean> validCache=new HashMap<>();
         Map<BlockPos,Double> heightCache=new HashMap<>();
+        // The terrain/crowd penalty also reads blocks and scans nearby
+        // workers. It was recomputed on EVERY edge (up to 24 per expanded
+        // cell) although each cell has exactly one answer per search.
+        Map<BlockPos,Double> penaltyCache=new HashMap<>();
+        int limit=distant?Math.min(NODE_BUDGET,DISTANT_NODE_BUDGET):NODE_BUDGET;
+        if(sharedBudget>=0)limit=Math.min(limit,sharedBudget);
+        if(limit<=0)return null;
         PriorityQueue<Node> queue=new PriorityQueue<>(
                 Comparator.comparingInt(Node::estimate)
                     .thenComparingInt(Node::travelled));
@@ -134,7 +159,7 @@ public final class WorkerRoutePlanner {
         BlockPos frontier=null,finish=null;
         int frontierScore=Integer.MAX_VALUE;
         int explored=0;
-        while(!queue.isEmpty()&&explored<NODE_BUDGET){
+        while(!queue.isEmpty()&&explored<limit){
             Node node=queue.poll();
             if(cost.getOrDefault(node.pos(),Integer.MAX_VALUE)!=node.travelled())
                 continue;
@@ -199,7 +224,8 @@ public final class WorkerRoutePlanner {
                         int oldZ=Integer.signum(current.getZ()-parent.getZ());
                         if(oldX!=dir[0]||oldZ!=dir[1])turn=TURN_COST;
                     }
-                    double extra=terrainPenalty.applyAsDouble(next);
+                    double extra=penaltyCache.computeIfAbsent(next,
+                            terrainPenalty::applyAsDouble);
                     if(!Double.isFinite(extra)||extra<0)continue;
                     // Prefer smooth moves and realistic open corridors,
                     // never raw straight-line guesses through walls.
@@ -215,8 +241,9 @@ public final class WorkerRoutePlanner {
                 }
             }
         }
+        if(sharedBudget>=0)sharedBudget=Math.max(0,sharedBudget-explored);
         if(observer!=null)observer.accept(new SearchStats(explored,queue.size(),
-                finish==null&&explored>=NODE_BUDGET&&!queue.isEmpty(),
+                finish==null&&explored>=limit&&!queue.isEmpty(),
                 Set.copyOf(cost.keySet())));
         boolean complete=finish!=null;
         if(!complete){
