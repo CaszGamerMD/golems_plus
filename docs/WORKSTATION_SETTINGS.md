@@ -163,3 +163,10 @@ Owners can set an optional regrouping destination for stuck Builder Golems:
 - Run `/golembuilder rally` to inspect the saved position, or `/golembuilder rally clear` to return to automatic perimeter recovery.
 
 When a Builder gives up on a blocked work approach, it first checks that the saved rally tile is in a loaded chunk, is physically standable for that Builder, and can be reached by the real collision-aware route planner. If any check fails, the existing current-height perimeter escape and OnSite fallback remain available. The rally point is persisted on the Planning Table and is not used for normal work travel or routine breaks.
+
+
+## Builder recovery rally flag
+
+Open the Builder Planning Table for a running job and choose **Get Rally Flag**. The issued flag is bound to that active job and station; a flag from an old or cancelled job cannot change a newer job's rally point.
+
+Place the flag on top of a floor block where a Builder can physically stand. The placement is rejected if the target is occupied, fluid-filled, outside the loaded/interactable area, or fails the Builder's actual collision-aware standing check. A successful placement leaves a visible, non-colliding flag marker and saves that exact feet tile as the active job's recovery rally point. Replacing the marker moves the rally point. No slash commands are needed.
