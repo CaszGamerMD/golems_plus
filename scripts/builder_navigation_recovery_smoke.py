@@ -40,6 +40,9 @@ assert "setBuilderRallyPoint(UUID actor,UUID order,BlockPos point)" in station
 assert 'Commands.literal("rally")' not in commands
 assert 'case "builder_rally_flag"' in network
 assert "builder_rally_flag" in flag
+assert "WorkerNavigation.canStandOn(level,probe,target)" in flag
+assert "activeOrder()" in flag and "dimension" in flag
+assert "Get Rally Flag" in (root.parent.parent.parent.parent.parent/"client/java/com/caszgamermd/golemsplus/world/WorkerStationScreen.java").read_text()
 assert "canUseRallyPoint(" in building
 assert "builderRallyPoint()" in building
 assert "routeToExact(level,worker,rally,1.0)" in building
