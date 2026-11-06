@@ -185,7 +185,9 @@ public final class BuilderBuildService {
             BuilderGolem worker,WorkerStationBlockEntity table,Cache plan,
             WorkerAction action){
         BlockPos rally=table.builderRallyPoint();
-        if(canUseRallyPoint(rally!=null,rally!=null&&level.hasChunkAt(rally),
+        if(canUseRallyPoint(rally!=null&&table.activeOrder()!=null
+                        &&table.activeOrder().equals(table.builderRallyOrder()),
+                rally!=null&&level.hasChunkAt(rally),
                 rally!=null&&com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .canStandOn(level,worker,rally))
                 &&com.caszgamermd.golemsplus.worker.WorkerNavigation
