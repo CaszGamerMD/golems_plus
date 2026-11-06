@@ -31,6 +31,15 @@ assert "cached.until()>now" in approaches
 assert "WorkerNavigation.canStandOn(level,worker,cached.destination())" in approaches
 assert "now+75" in approaches
 assert "public static boolean canStandOn(ServerLevel level" in navigation
+station=(root/"world/WorkerStationBlockEntity.java").read_text()
+commands=(root/"builder/BuilderCommands.java").read_text()
+assert "builder_rally_point" in station
+assert "setBuilderRallyPoint(UUID actor,BlockPos point)" in station
+assert "clearBuilderRallyPoint(UUID actor)" in station
+assert 'Commands.literal("rally")' in commands
+assert "canUseRallyPoint(" in building
+assert "builderRallyPoint()" in building
+assert "routeToExact(level,worker,rally,1.0)" in building
 assert "worker.distanceToSqr(landing.getX()+.5" in scaffolds
 assert "return Result.NOT_NEEDED;" in scaffolds
 assert "routeToExact(level,worker,landing,1.0)" in scaffolds
