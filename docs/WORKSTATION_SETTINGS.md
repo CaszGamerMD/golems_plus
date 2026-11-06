@@ -154,15 +154,6 @@ a chest other than the nearest one. Confirm the fisherman takes stored bait and
 delivers catches to that exact chest. Confirm out-of-range/non-chest clicks
 cannot change the link. Repeat selection for the Beekeeper station.
 
-## Builder recovery rally point
-
-Owners can set an optional regrouping destination for stuck Builder Golems:
-
-- Stand on the safe floor tile where you want the crew to regroup, near the owned Builder Planning Table.
-- Run `/golembuilder rally set` to save your current feet position.
-- Run `/golembuilder rally` to inspect the saved position, or `/golembuilder rally clear` to return to automatic perimeter recovery.
-
-When a Builder gives up on a blocked work approach, it first checks that the saved rally tile is in a loaded chunk, is physically standable for that Builder, and can be reached by the real collision-aware route planner. If any check fails, the existing current-height perimeter escape and OnSite fallback remain available. The rally point is persisted on the Planning Table and is not used for normal work travel or routine breaks.
 
 
 ## Builder recovery rally flag
