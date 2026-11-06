@@ -16,7 +16,7 @@ final class BuilderStuckRecoveryTest {
                 BuilderBuildService.alternateStagingHeights(65,65));
     }
 
-    @Test void rallyPointMustBeConfiguredLoadedAndPhysicallyStandable(){
+    @Test void rallyPointMustBeConfiguredForCurrentJobAndPhysicallyValid(){
         assertTrue(BuilderBuildService.canUseRallyPoint(true,true,true));
         assertFalse(BuilderBuildService.canUseRallyPoint(false,true,true));
         assertFalse(BuilderBuildService.canUseRallyPoint(true,false,true));
