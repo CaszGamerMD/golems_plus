@@ -34,7 +34,7 @@ assert "public static boolean canStandOn(ServerLevel level" in navigation
 station=(root/"world/WorkerStationBlockEntity.java").read_text()
 commands=(root/"builder/BuilderCommands.java").read_text()
 network=(root/"world/StationSettingsNetworking.java").read_text()
-flag=(root.parent/"builder/BuilderRallyFlagItem.java").read_text()
+flag=(root/"builder/BuilderRallyFlagItem.java").read_text()
 assert "builder_rally_point" in station and "builder_rally_order" in station
 assert "setBuilderRallyPoint(UUID actor,UUID order,BlockPos point)" in station
 assert 'Commands.literal("rally")' not in commands
