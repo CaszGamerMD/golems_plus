@@ -16,6 +16,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * All interactive job-block actions run on the server. A client cannot edit
@@ -196,6 +197,19 @@ public final class StationSettingsNetworking {
                     BuilderCommands.previewFromStation(player,table);
                     return;
                 }
+            }
+            case "builder_rally_flag" -> {
+                if(!table.isBuilder()||table.activeOrder()==null){
+                    reply(player,"Start a Builder job before requesting its rally flag.");
+                    return;
+                }
+                ItemStack flag=com.caszgamermd.golemsplus.builder.BuilderRallyFlagItem
+                        .forJob(table);
+                if(flag.isEmpty())return;
+                if(!player.getInventory().add(flag))
+                    player.drop(flag,false);
+                reply(player,"Issued a rally flag for the active Builder job. Place it on a safe, reachable floor tile.");
+                return;
             }
             case "builder_start" -> {
                 if(!table.isBuilder())return;

@@ -177,9 +177,22 @@ public final class BuilderBuildService {
      * have to descend through the structure before it can escape. If that
      * floor has no physical exit, retry from the OnSite floor.
      */
+    static boolean canUseRallyPoint(boolean configured,boolean loaded,
+            boolean standable){
+        return configured&&loaded&&standable;
+    }
     private static BlockPos alternateStaging(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,Cache plan,
             WorkerAction action){
+        BlockPos rally=table.builderRallyPoint();
+        if(canUseRallyPoint(rally!=null&&table.activeOrder()!=null
+                        &&table.activeOrder().equals(table.builderRallyOrder()),
+                rally!=null&&level.hasChunkAt(rally),
+                rally!=null&&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canStandOn(level,worker,rally))
+                &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeToExact(level,worker,rally,1.0))
+            return rally;
         SiteFootprint site=siteFootprint(table,plan);
         BlockPos failed=action.failedApproachFrom==null
                 ?worker.blockPosition():action.failedApproachFrom;

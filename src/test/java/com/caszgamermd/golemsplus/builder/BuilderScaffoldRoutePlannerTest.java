@@ -51,6 +51,12 @@ final class BuilderScaffoldRoutePlannerTest {
         assertEquals(5,allowed.cells().size());
     }
 
+    @Test void workTowersStayWithinFiveBlocksOfTheirBuildFace(){
+        assertEquals(5,BuilderScaffoldPlanA.MAX_WORK_TOWER_DISTANCE);
+        assertTrue(BuilderScaffoldPlanA.MAX_WORK_TOWER_DISTANCE
+                <BuilderScaffoldPlanA.MAX_HORIZONTAL_SCAFFOLD_SPAN+2);
+    }
+
     @Test void rejectsInvalidAndEmptyRequests(){
         assertNull(BuilderScaffoldRoutePlanner.find(
                 null,Set.of(at(1,0,0)),6,(a,b)->true,p->false));

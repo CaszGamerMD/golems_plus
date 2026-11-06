@@ -43,8 +43,11 @@ public final class BuilderCommands {
                 .then(Commands.literal("rotate")
                     .then(Commands.argument("degrees",com.mojang.brigadier.arguments.IntegerArgumentType.integer(0,270))
                         .executes(ctx->rotate(ctx.getSource().getPlayerOrException(),
-                                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx,"degrees")))))));
-    }
+                                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx,"degrees")))))
+                .then(Commands.literal("rotate")
+                    .then(Commands.argument("degrees",com.mojang.brigadier.arguments.IntegerArgumentType.integer(0,270))
+                        .executes(ctx->rotate(ctx.getSource().getPlayerOrException(),
+                                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx,"degrees")))))));    }
     private static WorkerStationBlockEntity nearest(ServerPlayer player){
         WorkerStationBlockEntity table=null;
         var center=player.blockPosition();

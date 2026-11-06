@@ -153,3 +153,11 @@ Playtest: place bait and a rod in the Coolers, mark a fishing waypoint and link
 a chest other than the nearest one. Confirm the fisherman takes stored bait and
 delivers catches to that exact chest. Confirm out-of-range/non-chest clicks
 cannot change the link. Repeat selection for the Beekeeper station.
+
+
+
+## Builder recovery rally flag
+
+Open the Builder Planning Table for a running job and choose **Get Rally Flag**. The issued flag is bound to that active job and station; a flag from an old or cancelled job cannot change a newer job's rally point.
+
+Place the flag on top of a floor block where a Builder can physically stand. The placement is rejected if the target is occupied, fluid-filled, outside the loaded/interactable area, or fails the Builder's actual collision-aware standing check. A successful placement leaves a visible, non-colliding flag marker and saves that exact feet tile as the active job's recovery rally point. Replacing the marker moves the rally point. No slash commands are needed.

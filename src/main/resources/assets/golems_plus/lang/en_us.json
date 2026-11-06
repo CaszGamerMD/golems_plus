@@ -19,6 +19,8 @@
   "block.golems_plus.meal_counter": "Meal Pickup Counter",
   "block.golems_plus.fishing_spot": "Fishing Waypoint Flag / Buoy",
   "item.golems_plus.fishing_spot_marker": "Fishing Spot Marker",
+  "item.golems_plus.builder_rally_flag": "Builder Rally Flag",
+  "block.golems_plus.builder_rally_flag": "Builder Rally Flag",
   "item.golems_plus.fishing_bait": "Fisherman's Bait",
   "item.golems_plus.grapple_hook": "Grapple Hook",
   "block.golems_plus.enhanced_scaffolding": "Enhanced Scaffolding",

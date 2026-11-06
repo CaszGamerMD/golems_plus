@@ -31,6 +31,21 @@ assert "cached.until()>now" in approaches
 assert "WorkerNavigation.canStandOn(level,worker,cached.destination())" in approaches
 assert "now+75" in approaches
 assert "public static boolean canStandOn(ServerLevel level" in navigation
+station=(root/"world/WorkerStationBlockEntity.java").read_text()
+commands=(root/"builder/BuilderCommands.java").read_text()
+network=(root/"world/StationSettingsNetworking.java").read_text()
+flag=(root/"builder/BuilderRallyFlagItem.java").read_text()
+assert "builder_rally_point" in station and "builder_rally_order" in station
+assert "setBuilderRallyPoint(UUID actor,UUID order,BlockPos point)" in station
+assert 'Commands.literal("rally")' not in commands
+assert 'case "builder_rally_flag"' in network
+assert "builder_rally_flag" in flag
+assert "WorkerNavigation.canStandOn(level,probe,target)" in flag
+assert "activeOrder()" in flag and "dimension" in flag
+assert "Get Rally Flag" in (root.parent.parent.parent.parent.parent/"client/java/com/caszgamermd/golemsplus/world/WorkerStationScreen.java").read_text()
+assert "canUseRallyPoint(" in building
+assert "builderRallyPoint()" in building
+assert "routeToExact(level,worker,rally,1.0)" in building
 assert "worker.distanceToSqr(landing.getX()+.5" in scaffolds
 assert "return Result.NOT_NEEDED;" in scaffolds
 assert "routeToExact(level,worker,landing,1.0)" in scaffolds
