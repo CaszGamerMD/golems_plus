@@ -82,11 +82,12 @@ public final class BuilderScaffoldPlanA {
     // horizontal blocks from its supporting tower. Distance seven falls.
     // The underside/bottom flag describes its shape, NOT an invalid span.
     static final int MAX_HORIZONTAL_SCAFFOLD_SPAN=6;
-    // The worker stands TWO blocks from a target. Those two final tiles
-    // are not scaffold bridge cells: a six-cell supported bridge can
-    // therefore start eight tiles away from the actual work block.
-    private static final int MAX_WORK_TOWER_DISTANCE=
-            MAX_HORIZONTAL_SCAFFOLD_SPAN+2;
+    // Keep temporary support close to the actual work face. The old
+    // eight-block allowance encouraged remote towers and long, fragile
+    // bridge walks; these routes are recovery access, not permanent
+    // elevated highways. A five-block maximum leaves room for a short
+    // bridge while keeping the Builder close enough to rejoin the build.
+    private static final int MAX_WORK_TOWER_DISTANCE=5;
     private static final Map<BuilderGolem,Job> jobs=new WeakHashMap<>();
     /** A teammate's route may use our paid shaft or bridge. The receipt
      * never changes hands: prevent the owner from reclaiming a borrowed
