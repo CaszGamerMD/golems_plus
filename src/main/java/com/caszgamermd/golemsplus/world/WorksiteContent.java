@@ -23,6 +23,8 @@ import com.caszgamermd.golemsplus.cooking.ChefGolem;
 import com.caszgamermd.golemsplus.fishing.FisherGolem;
 import com.caszgamermd.golemsplus.fishing.FishingSpotBlock;
 import com.caszgamermd.golemsplus.fishing.FishingSpotMarkerItem;
+import com.caszgamermd.golemsplus.builder.BuilderRallyFlagItem;
+import com.caszgamermd.golemsplus.builder.BuilderRallyFlagBlock;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -62,6 +64,8 @@ public final class WorksiteContent {
     // never physical Builder supplies or player-collectable rope.
     public static Item GRAPPLE_ROPE_SEGMENT,GRAPPLE_ROPE_LINK,GRAPPLE_ROPE_COIL;
     public static FishingSpotBlock FISHING_SPOT;
+    public static BuilderRallyFlagBlock BUILDER_RALLY_FLAG_BLOCK;
+    public static Item BUILDER_RALLY_FLAG_ITEM;
     public static EnhancedScaffoldingBlock ENHANCED_SCAFFOLDING;
     public static Item ENHANCED_SCAFFOLDING_ITEM;
     public static Item BUILDER_WORKER_ITEM, TRADER_WORKER_ITEM, BEEKEEPER_WORKER_ITEM, CHEF_WORKER_ITEM, FISHER_WORKER_ITEM;
@@ -109,6 +113,17 @@ public final class WorksiteContent {
                 scaffoldItemKey,new EnhancedScaffoldingItem(ENHANCED_SCAFFOLDING,
                         new Item.Properties().setId(scaffoldItemKey)
                                 .useBlockDescriptionPrefix()));
+        ResourceKey<net.minecraft.world.level.block.Block> rallyFlagKey=
+                ResourceKey.create(Registries.BLOCK,GolemsPlus.id("builder_rally_flag"));
+        BUILDER_RALLY_FLAG_BLOCK=Registry.register(BuiltInRegistries.BLOCK,
+                rallyFlagKey,new BuilderRallyFlagBlock(BlockBehaviour.Properties
+                        .ofFullCopy(Blocks.OAK_FENCE).noCollision().noOcclusion()
+                        .strength(.2f).setId(rallyFlagKey)));
+        ResourceKey<Item> rallyFlagItemKey=ResourceKey.create(Registries.ITEM,
+                GolemsPlus.id("builder_rally_flag"));
+        BUILDER_RALLY_FLAG_ITEM=Registry.register(BuiltInRegistries.ITEM,
+                rallyFlagItemKey,new BuilderRallyFlagItem(
+                        new Item.Properties().stacksTo(1).setId(rallyFlagItemKey)));
         BUILDER_TABLE = station("builder_table", WorkerSpecialty.BUILDER);
         FISHING_STATION = station("fishing_station", WorkerSpecialty.FISHING);
         TRADER_COUNTER = station("trader_counter", WorkerSpecialty.TRADER);
