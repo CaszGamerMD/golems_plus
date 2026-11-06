@@ -13,6 +13,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.context.UseOnContext;
+import com.caszgamermd.golemsplus.worker.WorkerNavigation;
 
 /** One-use marker item cryptographically scoped by station position and active job UUID. */
 public final class BuilderRallyFlagItem extends Item {
