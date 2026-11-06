@@ -33,10 +33,13 @@ assert "now+75" in approaches
 assert "public static boolean canStandOn(ServerLevel level" in navigation
 station=(root/"world/WorkerStationBlockEntity.java").read_text()
 commands=(root/"builder/BuilderCommands.java").read_text()
-assert "builder_rally_point" in station
-assert "setBuilderRallyPoint(UUID actor,BlockPos point)" in station
-assert "clearBuilderRallyPoint(UUID actor)" in station
-assert 'Commands.literal("rally")' in commands
+network=(root/"world/StationSettingsNetworking.java").read_text()
+flag=(root.parent/"builder/BuilderRallyFlagItem.java").read_text()
+assert "builder_rally_point" in station and "builder_rally_order" in station
+assert "setBuilderRallyPoint(UUID actor,UUID order,BlockPos point)" in station
+assert 'Commands.literal("rally")' not in commands
+assert 'case "builder_rally_flag"' in network
+assert "builder_rally_flag" in flag
 assert "canUseRallyPoint(" in building
 assert "builderRallyPoint()" in building
 assert "routeToExact(level,worker,rally,1.0)" in building
