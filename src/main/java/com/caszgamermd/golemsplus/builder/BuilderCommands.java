@@ -43,7 +43,11 @@ public final class BuilderCommands {
                 .then(Commands.literal("rotate")
                     .then(Commands.argument("degrees",com.mojang.brigadier.arguments.IntegerArgumentType.integer(0,270))
                         .executes(ctx->rotate(ctx.getSource().getPlayerOrException(),
-                                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx,"degrees")))))));
+                                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx,"degrees")))))
+                .then(Commands.literal("rally")
+                    .executes(ctx->showRally(ctx.getSource().getPlayerOrException()))
+                    .then(Commands.literal("set").executes(ctx->setRally(ctx.getSource().getPlayerOrException())))
+                    .then(Commands.literal("clear").executes(ctx->clearRally(ctx.getSource().getPlayerOrException()))))));
     }
     private static WorkerStationBlockEntity nearest(ServerPlayer player){
         WorkerStationBlockEntity table=null;
@@ -140,6 +144,41 @@ public final class BuilderCommands {
         player.sendSystemMessage(Component.literal("[Builder] "+
                 BuilderBuildService.primeWarehouse((net.minecraft.server.level.ServerLevel)
                         player.level(),table)));
+        return 1;
+    }
+    private static int showRally(ServerPlayer player){
+        var table=nearest(player);
+        if(table==null){player.sendSystemMessage(Component.literal(
+                "No owned Builder Planning Table found within 8 blocks."));return 0;}
+        var rally=table.builderRallyPoint();
+        player.sendSystemMessage(Component.literal(rally==null
+                ?"Builder rally point: not set (automatic perimeter escape)."
+                :"Builder rally point: "+rally.toShortString()));
+        return 1;
+    }
+    private static int setRally(ServerPlayer player){
+        var table=nearest(player);
+        if(table==null||!table.setBuilderRallyPoint(player.getUUID(),
+                player.blockPosition())){
+            player.sendSystemMessage(Component.literal(
+                    "Could not set rally point; stand near your owned Builder Planning Table."));
+            return 0;
+        }
+        player.sendSystemMessage(Component.literal("Builder rally point set to "
+                +player.blockPosition().toShortString()
+                +". Stuck Builders will try to route here before automatic perimeter recovery."));
+        return 1;
+    }
+    private static int clearRally(ServerPlayer player){
+        var table=nearest(player);
+        if(table==null){player.sendSystemMessage(Component.literal(
+                "No owned Builder Planning Table found within 8 blocks."));return 0;}
+        if(!table.clearBuilderRallyPoint(player.getUUID())){
+            player.sendSystemMessage(Component.literal("No Builder rally point is set."));
+            return 0;
+        }
+        player.sendSystemMessage(Component.literal(
+                "Builder rally point cleared; automatic perimeter recovery restored."));
         return 1;
     }
     private static int pause(ServerPlayer player){
