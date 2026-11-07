@@ -50,6 +50,20 @@ public final class WorkerNavigation {
     private static final int CHECK_TICKS=5;
     private static final int LOOK_AHEAD=4;
     private static final int MAX_DESTINATION_PATHS=16;
+    // Search allowance. One routing request (all of its retries, alternate
+    // first steps and seed probes) may spend at most REQUEST_NODE_BUDGET
+    // planner nodes, and ALL golems together at most TICK_NODE_BUDGET per
+    // server tick. Without this, several golems re-planning on the same tick
+    // (or one golem failing six times in a row) froze the server for a moment.
+    private static final int REQUEST_NODE_BUDGET=WorkerRoutePlanner.NODE_BUDGET*2;
+    private static final int TICK_NODE_BUDGET=WorkerRoutePlanner.NODE_BUDGET*2;
+    // How long a "can this golem reach X" answer stays valid while it stands still.
+    private static final int PROBE_TTL=20,STAND_TTL=10;
+    private static long planTick=Long.MIN_VALUE;
+    private static int planNodesUsed;
+    /** True when the LAST planExecutableRoute call was postponed because the
+     * shared per-tick allowance was spent. That is not "no route exists". */
+    private static boolean planDeferred;
     private WorkerNavigation(){}
 
     private static final class Progress {
@@ -61,6 +75,10 @@ public final class WorkerNavigation {
         int stalled,attempts,wait,doorAge,nextRoute;
         int unsafeChecks,avoidUntil;
         BlockPos lastBad;
+        // routeToExact had no throttle after a failed plan, so a blocked goal
+        // re-ran the whole multi-search planner on every Builder callback.
+        BlockPos failedExact;
+        int failedExactUntil;
         int detourFirstLegRetries;
         boolean narrowDoorway;
         // Per-door traffic reservation: one crossing at a time, but no
@@ -88,6 +106,21 @@ public final class WorkerNavigation {
         final Map<BlockPos,List<Vec3>> routes=new java.util.HashMap<>();
     }
     private static final Map<PathfinderMob,FractionalCache> fractionalCaches=
+            new WeakHashMap<>();
+    /** Short-lived answers to reachability probes for ONE golem. Builder code
+     * asks "can I reach X?" for up to 20 candidate tiles (each a full vanilla
+     * path plus a collision sweep) several times a second, even while the
+     * golem is simply standing still waiting. Answers are only reused while
+     * the golem stays on the same block and for a fraction of a second.
+     */
+    private static final class ProbeCache{
+        long reachTick=Long.MIN_VALUE;BlockPos reachAt;
+        final Map<BlockPos,Boolean> reach=new java.util.HashMap<>();
+        long standTick=Long.MIN_VALUE;BlockPos standAt;
+        final Map<List<BlockPos>,BlockPos> stands=new java.util.HashMap<>();
+        final Set<List<BlockPos>> noStand=new HashSet<>();
+    }
+    private static final Map<PathfinderMob,ProbeCache> probeCaches=
             new WeakHashMap<>();
     private static Progress state(PathfinderMob mob){
         return states.computeIfAbsent(mob,m->new Progress());
@@ -483,8 +516,19 @@ public final class WorkerNavigation {
         // produced its first navigation path for this real entity.
         if(mob.blockPosition().equals(target)
                 &&standingTile(level,mob,target))return true;
+        ProbeCache cache=probeCaches.computeIfAbsent(mob,m->new ProbeCache());
+        long now=level.getGameTime();
+        if(now-cache.reachTick>PROBE_TTL||!mob.blockPosition().equals(cache.reachAt)){
+            cache.reach.clear();
+            cache.reachTick=now;cache.reachAt=mob.blockPosition().immutable();
+        }
+        Boolean known=cache.reach.get(target);
+        if(known!=null)return known;
         Path path=mob.getNavigation().createPath(target,0);
-        return endsAtExactTile(level,path,target)&&safePath(level,mob,path,false);
+        boolean reachable=endsAtExactTile(level,path,target)
+                &&safePath(level,mob,path,false);
+        cache.reach.put(target.immutable(),reachable);
+        return reachable;
     }
     /**
      * Work-position preview uses the SAME terrain-weighted A* and the
@@ -500,20 +544,40 @@ public final class WorkerNavigation {
     public static BlockPos selectExecutableStand(ServerLevel level,
             PathfinderMob mob,List<BlockPos> candidates){
         if(candidates==null||candidates.isEmpty())return null;
+        // Answer repeat questions from a very short-lived per-golem cache
+        // BEFORE paying for the standability filter below.
+        ProbeCache cache=probeCaches.computeIfAbsent(mob,m->new ProbeCache());
+        long now=level.getGameTime();
+        if(now-cache.standTick>STAND_TTL||!mob.blockPosition().equals(cache.standAt)
+                ||cache.stands.size()+cache.noStand.size()>8){
+            cache.stands.clear();cache.noStand.clear();
+            cache.standTick=now;cache.standAt=mob.blockPosition().immutable();
+        }
+        if(cache.noStand.contains(candidates))return null;
+        BlockPos remembered=cache.stands.get(candidates);
+        if(remembered!=null)return remembered;
+        List<BlockPos> key=new ArrayList<>(candidates);
         List<BlockPos> goals=new ArrayList<>();
         for(BlockPos p:candidates)
             if(p!=null&&standingTile(level,mob,p))goals.add(p);
-        if(goals.isEmpty())return null;
+        if(goals.isEmpty()){cache.noStand.add(key);return null;}
         if(goals.contains(mob.blockPosition()))
             return mob.blockPosition().immutable();
         Progress progress=states.get(mob);
         // A blocked FIRST step does not mean the requested work pose is
         // unreachable. Search alternate physically executable openings.
+        // Not deferrable: callers read null as "unreachable" and would
+        // abandon a perfectly good work pose just because other golems
+        // used this tick's search allowance.
         WorkerRoutePlanner.Route route=planExecutableRoute(
-                level,mob,goals,progress==null?null:progress.lastBad,true);
-        if(route==null||route.steps().isEmpty())return null;
-        BlockPos reached=route.steps().get(route.steps().size()-1);
-        return goals.contains(reached)?reached.immutable():null;
+                level,mob,goals,progress==null?null:progress.lastBad,true,false);
+        BlockPos result=null;
+        if(route!=null&&!route.steps().isEmpty()){
+            BlockPos reached=route.steps().get(route.steps().size()-1);
+            if(goals.contains(reached))result=reached.immutable();
+        }
+        if(result==null)cache.noStand.add(key);else cache.stands.put(key,result);
+        return result;
     }
 
     private static WorkerRoutePlanner.Route planExactRoute(
@@ -647,6 +711,35 @@ public final class WorkerNavigation {
      * remain unchanged and no partial route is treated as an arrival.
      */
     private static WorkerRoutePlanner.Route planExecutableRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
+            BlockPos avoid,boolean requireComplete){
+        return planExecutableRoute(level,mob,goals,avoid,requireComplete,true);
+    }
+    /** Budgeted entry point. Spends at most REQUEST_NODE_BUDGET planner nodes
+     * and, when mayDefer, refuses to start once all golems have used this
+     * tick's TICK_NODE_BUDGET (see planDeferred). Returns null in that case.
+     */
+    private static WorkerRoutePlanner.Route planExecutableRoute(
+            ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
+            BlockPos avoid,boolean requireComplete,boolean mayDefer){
+        planDeferred=false;
+        long now=level.getGameTime();
+        if(now!=planTick){planTick=now;planNodesUsed=0;}
+        int allowance=REQUEST_NODE_BUDGET;
+        if(mayDefer){
+            allowance=Math.min(allowance,TICK_NODE_BUDGET-planNodesUsed);
+            if(allowance<=0){planDeferred=true;return null;}
+        }
+        WorkerRoutePlanner.beginSharedBudget(allowance);
+        try{
+            return planExecutableRouteUnbudgeted(
+                    level,mob,goals,avoid,requireComplete);
+        }finally{
+            int left=WorkerRoutePlanner.endSharedBudget();
+            planNodesUsed+=Math.max(0,allowance-left);
+        }
+    }
+    private static WorkerRoutePlanner.Route planExecutableRouteUnbudgeted(
             ServerLevel level,PathfinderMob mob,List<BlockPos> goals,
             BlockPos avoid,boolean requireComplete){
         Set<BlockPos> rejected=new HashSet<>();
@@ -1372,12 +1465,26 @@ public final class WorkerNavigation {
                     targetFloor,target.getZ()+.5)<.05*.05;
         }
         if(!standingTile(level,mob,target))return false;
+        // A failed exact plan used to be recomputed on every callback.
+        // Wait out the same retry delay ordinary routeTo() already uses.
+        if(target.equals(p.failedExact)&&mob.tickCount<p.failedExactUntil)
+            return false;
         // Exact destinations also use the ONE trained planner. A
         // native navigation path is used solely to physically execute
         // a short already-scored waypoint, not as an alternate AI.
         WorkerRoutePlanner.Route plan=planExecutableRoute(
                 level,mob,List.of(target),p.lastBad,true);
-        if(plan==null||plan.steps().isEmpty())return false;
+        // Search allowance spent by other golems this tick: report "still
+        // working on it" (same convention as the courtesy wait above), not
+        // a failure, and try again on the next callback.
+        if(planDeferred)return true;
+        if(plan==null||plan.steps().isEmpty()){
+            p.failedExact=target.immutable();
+            p.failedExactUntil=mob.tickCount+ROUTE_RETRY
+                    +Math.floorMod(mob.getId(),5);
+            return false;
+        }
+        p.failedExact=null;
         p.requested=target.immutable();
         if(!standingTile(level,mob,mob.blockPosition())
                 &&startCornerRecovery(level,mob,p,plan.steps().get(0),target))
@@ -1503,6 +1610,12 @@ public final class WorkerNavigation {
             }
             WorkerRoutePlanner.Route route=planExecutableRoute(
                     level,mob,goals,p.lastBad,false);
+            if(planDeferred){
+                // Postponed, not failed: no attempt is charged and the
+                // alternate-approach rotation (p.attempts) is untouched.
+                p.nextRoute=mob.tickCount+1+Math.floorMod(mob.getId(),3);
+                return false;
+            }
             // Never report an empty physical route as success solely
             // because the Builder is within placement range of target.
             // Storage, doorway and return-to-tower movements require
