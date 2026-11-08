@@ -1023,6 +1023,19 @@ public final class BuilderScaffoldPlanA {
         return present(level,table,worker,scaffold)
                 &&onScaffoldTop(level,worker,scaffold);
     }
+    /** A RETURN is a physical backtrack, not a new work platform.
+     * Horizontal scaffold can be climb-through: its real block remains
+     * directly under a Builder even if onGround() is false for one tick.
+     * Permit a near-motionless worker to progress across a paid return
+     * cell, but NEVER apply this weaker test to a forward BUILD/WALK or
+     * a missing scaffold. Those still require settled footing.
+     */
+    static boolean stablePaidReturnArrival(boolean returnPhase,
+            boolean atDestination,boolean paidScaffold,
+            boolean onGround,boolean noGravity,double verticalSpeed){
+        return returnPhase&&atDestination&&paidScaffold&&!noGravity
+                &&(onGround||Math.abs(verticalSpeed)<.10);
+    }
     /** A work-claim loop may stop calling reach() while its claimed
      * block waits on another worker. Run the orphan watchdog from EACH
      * entity tick, not only from an occasionally evaluated work step.
@@ -1297,8 +1310,19 @@ public final class BuilderScaffoldPlanA {
         worker.setShiftKeyDown(false);
         worker.setNoGravity(false);
         double tx=destination.getX()+.5,tz=destination.getZ()+.5;
-        if(close(worker,destination)
-                &&onOwnedScaffoldTop(level,worker,table,destination.below())){
+        boolean aligned=close(worker,destination);
+        boolean paidFooting=present(level,table,worker,destination.below());
+        boolean returning=j.phase==Phase.RETURN_FIRST
+                ||j.phase==Phase.RETURN_TOWER;
+        if(aligned&&(onOwnedScaffoldTop(
+                    level,worker,table,destination.below())
+                ||stablePaidReturnArrival(returning,aligned,paidFooting,
+                    worker.onGround(),worker.isNoGravity(),
+                    worker.getDeltaMovement().y))){
+            // The paid bridge or tower exists under the exact destination.
+            // We never credit progress in empty air or move without
+            // native Minecraft physics. Only return steps may settle
+            // with scaffold's transient onGround=false.
             Phase completed=j.phase;
             j.phase=switch(completed){
                 case WALK_FIRST->j.bridgeSpan==1
