@@ -1540,6 +1540,20 @@ public final class BuilderBuildService {
                 // dismantle the nearby scaffold to rebuild them.
                 return;
             }
+            if(BuilderWaterPass.isNaturalFlowingWater(step.encodedState())){
+                // A flowing level is NEVER placeable with a bucket, and
+                // setting its expected BlockState would invent water.
+                // Verify exact flow AFTER Minecraft updates real sources.
+                // If the fluid has not arrived, release this task for a
+                // later physical retry; retain the unbuilt source cell in
+                // the Planner and do not spend anything.
+                table.waitForBuilderSupport(worker.getUUID(),index,
+                        level.getGameTime());
+                table.setProblem("Waiting for natural flowing-water level at "
+                        +pos.toShortString()+" expected="+step.encodedState()
+                        +" actual="+existing);
+                return;
+            }
             boolean waterlog=BuilderWaterPass.isWaterlogPass(step.encodedState());
             boolean bubble=BuilderWaterPass.isBubbleColumn(step.encodedState());
             if(waterlog){
