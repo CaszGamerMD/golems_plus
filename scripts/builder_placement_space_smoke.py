@@ -12,7 +12,7 @@ assert "List<LivingEntity> others" in space
 assert "public static boolean yieldTick(" in space
 assert "WorkerNavigation.routeToExact(level,worker,hold.destination(),.9)" in space
 assert "WorkerNavigation.routeToExact(level,blocker,destination,.9)" in space
-assert "WorkerNavigation.canReachExact(level,worker,p)" in space
+assert "WorkerNavigation.selectExecutableStand(" in space
 navigation=(root.parent/"worker/WorkerNavigation.java").read_text()
 assert "public static boolean routeToExact(" in navigation
 assert "public static boolean canReachExact(" in navigation
