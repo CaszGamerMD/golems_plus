@@ -1148,17 +1148,17 @@ public final class BuilderScaffolding {
             }
         }
         candidates.sort(Comparator.comparingDouble(Site::score));
-        // Bound expensive path probes and select by physically reachable
-        // cost, not arbitrary (x,z) scan order. An inaccessible tower
-        // with cheap theoretical distance must never win.
-        int probed=0;
-        for(Site candidate:candidates){
-            if(++probed>20)break;
-            if(com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .canReachExact(level,worker,candidate.base()))
-                return candidate.base();
-        }
-        return null;
+        // A floating foundation's nearest twenty base cells can all be
+        // blocked by already completed walls while a FAR-side ground
+        // launch is still executable. Vanilla createPath on each base
+        // also rejects valid first-leg detours. Probe the entire bounded
+        // site set with ONE trained, collision-validated multi-goal A*;
+        // never pick a partial path or pretend an unreachable stand works.
+        java.util.List<BlockPos> goals=new java.util.ArrayList<>();
+        for(Site candidate:candidates)
+            goals.add(candidate.base());
+        return com.caszgamermd.golemsplus.worker.WorkerNavigation
+                .selectExecutableStand(level,worker,goals);
     }
     /** Free a grounded worker snagged in its own scaffold footprint.
      * Only remove tracked blocks intersecting its body, never the floor
