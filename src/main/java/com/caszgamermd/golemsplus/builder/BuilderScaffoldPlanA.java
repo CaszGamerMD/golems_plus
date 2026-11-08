@@ -1077,6 +1077,21 @@ public final class BuilderScaffoldPlanA {
         if(j==null)return false;
         j.bridgeTicks++;
         j.highest=Math.max(j.highest,worker.getY());
+        // DESCEND and DISMOUNT have NO horizontal bridge destination.
+        // Previously tickMotion fell through to destination==null and
+        // returned false every entity tick. Once a Builder's work claim
+        // completed, the slower work-service could stop visiting its
+        // Plan A job, leaving a COMPLETE worker trapped in DISMOUNT for
+        // thousands of ticks while other Builders piled into its tower.
+        // Service the REAL physical return from the entity tick instead,
+        // exactly as for RETURN_FIRST/WALK phases. The dedicated scaffold
+        // climbing and exit controllers retain priority in BuilderGolem.
+        if(j.phase==Phase.DESCEND||j.phase==Phase.DISMOUNT){
+            if(level.getBlockEntity(j.planner)
+                    instanceof WorkerStationBlockEntity returnTable)
+                return returnToGround(level,worker,returnTable);
+            return false;
+        }
         // A return may have been requested AFTER the Builder stepped off
         // the bridge onto real, solid roof footing. RETURN_FIRST formerly
         // insisted that the worker CLIMB BACK onto a now-obsolete paid
