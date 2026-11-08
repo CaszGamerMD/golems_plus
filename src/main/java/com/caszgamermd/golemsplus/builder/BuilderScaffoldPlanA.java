@@ -299,12 +299,31 @@ public final class BuilderScaffoldPlanA {
                 },next->world.getBlockState(next).is(Blocks.SCAFFOLDING));
         return route==null?null:route.cells();
     }
+    /** The Builder itself occupies TOP+1 and TOP+2 when standing on
+     * the scaffold lip. A later schematic cell in that headroom is a
+     * predictable return-route obstruction, even if the shaft itself
+     * (base through top) is currently clear. No paid access route may
+     * reserve a tile the real construction must fill while it is in use.
+     */
+    static boolean futureHeadroomClear(BlockPos base,int top,
+            Set<BlockPos> reserved){
+        return !reserved.contains(base.atY(top+1))
+                &&!reserved.contains(base.atY(top+2));
+    }
     private static boolean shaftClear(ServerLevel world,BlockPos base,int top,
             Set<BlockPos> reserved,WorkerStationBlockEntity table,
             BuilderGolem worker){
         if(base.getY()>top||!world.hasChunkAt(base.below())
                 ||!world.getBlockState(base.below()).isFaceSturdy(
-                        world,base.below(),Direction.UP))return false;
+                        world,base.below(),Direction.UP)
+                ||!futureHeadroomClear(base,top,reserved))return false;
+        // Check BOTH actual headroom cells, not only the nominal shaft.
+        // A roof block built since a previous access preflight can close
+        // the lip, and no physics-driven scaffold climb can pass through it.
+        BlockPos upper=base.atY(top+1);
+        if(!world.hasChunkAt(upper)||!world.hasChunkAt(upper.above())
+                ||!world.getBlockState(upper).isAir()
+                ||!world.getBlockState(upper.above()).isAir())return false;
         for(int y=base.getY();y<=top;y++){
             BlockPos p=base.atY(y);
             if(!world.hasChunkAt(p)||reserved.contains(p))return false;
