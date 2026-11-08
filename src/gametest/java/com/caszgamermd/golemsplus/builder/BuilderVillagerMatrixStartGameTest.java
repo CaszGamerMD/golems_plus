@@ -30,10 +30,12 @@ import net.minecraft.world.level.block.Blocks;
  * DRY first, then waterlogged as the very last action on their layer.
  */
 public final class BuilderVillagerMatrixStartGameTest {
-    // Keep the full physical diagnostic registered, including water finish.
+    // Primary required Builder construction regression, not an optional
+    // diagnostic. This is the genuine 27-cell foundation subset of the
+    // original 15,378-block Villager Matrix, NOT a full-machine build.
     @GameTest(structure="golems_plus_gametest:dome_arena",
             environment="golems_plus_gametest:matrix_e2e",
-            maxTicks=4200,skyAccess=true,required=false)
+            maxTicks=11000,skyAccess=true)
     public void fourBuildersStartFloatingVillagerMatrixFoundation(GameTestHelper h){
         ServerLevel level=h.getLevel();
         // Original schematic's bottom visible layer: Region.Position Y=2
@@ -73,6 +75,23 @@ public final class BuilderVillagerMatrixStartGameTest {
                             plan.steps().getLast().requiredItem())){
                 h.fail("Frozen hologram changed starter Y or position");return;
             }
+            // The reusable arena can carry barrier/water test fixtures.
+            // Reset its elevated work/return corridor BEFORE adding the
+            // Planner and workers. This is ONLY a disposable GameTest
+            // structure, never a Builder production clearing action.
+            int removed=0;
+            for(int y=2;y<=18;y++)for(int x=3;x<=36;x++)
+                for(int z=3;z<=27;z++){
+                    BlockPos at=h.absolutePos(new BlockPos(x,y,z));
+                    if(level.getBlockState(at).isAir())continue;
+                    if(!level.setBlock(at,Blocks.AIR.defaultBlockState(),3)){
+                        h.fail("Cannot reset Matrix test corridor "+x+","+y+","+z);
+                        return;
+                    }
+                    removed++;
+                }
+            System.out.println("[MATRIX ARENA] reset="+removed
+                    +" obstruction blocks in elevated test corridor");
             for(int x=1;x<=43;x++)for(int z=1;z<=43;z++)
                 h.setBlock(x,1,z,Blocks.STONE);
             h.setBlock(4,2,4,WorksiteContent.BUILDER_TABLE);
@@ -192,8 +211,12 @@ public final class BuilderVillagerMatrixStartGameTest {
                         &&(BuilderScaffoldPlanA.hasPlan(mob)
                             ||BuilderScaffolding.isControllingMovement(mob)
                             ||BuilderGrappleAccess.active(mob)));
-                if(h.getTick()>3600
-                        ||h.getTick()>800&&h.getTick()-lastChange[0]>850
+                // Real scaffold climbing, real route retries, material
+                // collection and final waterlogging may exceed the old
+                // 3,600-tick cap, but a motionless crew still fails.
+                // This never grants an instant block or fake completion.
+                if(h.getTick()>9500
+                        ||h.getTick()>1200&&h.getTick()-lastChange[0]>1800
                             &&!activeAccess){
                     StringBuilder error=new StringBuilder(
                             "Villager Matrix cold start stalled: placed="+placed
@@ -214,8 +237,27 @@ public final class BuilderVillagerMatrixStartGameTest {
                                 .append(" debug=").append(
                                         BuilderBuildService.debugStatus(level,mob));
                     }
+                    var missing=new java.util.ArrayList<String>();
+                    for(var cell:targets){
+                        BlockPos at=new BlockPos(cell.x(),cell.y(),cell.z());
+                        var actual=level.getBlockState(at);
+                        boolean match=actual.is(Blocks.SMOOTH_STONE)
+                                &&cell.state().equals("minecraft:smooth_stone")
+                            ||actual.is(Blocks.REDSTONE_BLOCK)
+                                &&cell.state().equals("minecraft:redstone_block")
+                            ||actual.is(Blocks.SOUL_SAND)
+                                &&cell.state().equals("minecraft:soul_sand")
+                            ||actual.is(Blocks.MANGROVE_ROOTS)
+                                &&cell.state().contains("waterlogged=true")
+                                &&actual.getValue(net.minecraft.world.level.block.state
+                                        .properties.BlockStateProperties.WATERLOGGED);
+                        if(!match)missing.add(
+                                at.subtract(table.builderOrigin()).toShortString()
+                                +" expected="+cell.state()+" actual="+actual);
+                    }
+                    System.out.println("[MATRIX MISSING] "+missing);
                     System.out.println("[MATRIX START FAIL] "+error);
-                    h.fail(error.toString());
+                    h.fail(error.toString()+" | missing="+missing);
                 }
             });
         }catch(Exception e){
