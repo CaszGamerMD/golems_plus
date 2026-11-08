@@ -52,6 +52,7 @@ public final class BuilderScaffoldPlanA {
         long lastProgress;
         int lastTick;
         int bridgeTicks,reclimbs,repairs;
+        int dismountBacktracks;
         String lastFailure="NONE";
         long lastRepairLog;
         double highest=-Double.MAX_VALUE;
@@ -1772,11 +1773,42 @@ public final class BuilderScaffoldPlanA {
             if(level.getGameTime()-j.lastProgress>220
                     &&level.getBlockState(below).is(Blocks.SCAFFOLDING)
                     &&table.isTrackedScaffold(below)){
+                // A completed teammate cannot block the whole Matrix by
+                // repeating RETURN_FIRST -> DESCEND -> DISMOUNT forever.
+                // Physically try a DIFFERENT adjacent solid-footing exit
+                // first, even when the cached original exit still appears
+                // standable but is obstructed by the finished construction.
                 BuilderScaffolding.abandonExitForBridgeReturn(level,worker);
+                if(escapeBlockedExit(level,worker,table,j)){
+                    j.lastProgress=level.getGameTime();
+                    return true;
+                }
+                // At most TWO passes over the SAME paid bridge. Beyond
+                // that, it isn't progress; hold actual scaffold footing
+                // and report the blocked landing instead of restarting
+                // another identical travel cycle. No forced drops,
+                // scaffold destruction, or fake floor tiles.
+                if(j.dismountBacktracks>=2){
+                    j.lastProgress=level.getGameTime();
+                    table.setProblem("Builder cannot find a safe scaffold "
+                            +"dismount from "+worker.blockPosition().toShortString()
+                            +" after two physical backtracks; original exit="
+                            +j.exit.toShortString());
+                    if(level.getGameTime()-j.lastRepairLog>=220){
+                        j.lastRepairLog=level.getGameTime();
+                        System.out.println("[PLAN A DISMOUNT BLOCKED] "
+                                +worker.blockPosition().toShortString()
+                                +" originalExit="+j.exit.toShortString()
+                                +" retries="+j.dismountBacktracks);
+                    }
+                    return true;
+                }
+                j.dismountBacktracks++;
                 j.returnStep=Math.max(1,j.bridgeStep-1);
                 j.phase=Phase.RETURN_FIRST;
                 j.lastProgress=level.getGameTime();
-                System.out.println("[PLAN A DISMOUNT RECOVERY] backtrack from "
+                System.out.println("[PLAN A DISMOUNT RECOVERY] backtrack "
+                        +j.dismountBacktracks+"/2 from "
                         +worker.blockPosition().toShortString()
                         +" over paid bridge to "+j.base.toShortString());
                 return true;
