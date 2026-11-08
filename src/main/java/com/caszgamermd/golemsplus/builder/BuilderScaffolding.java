@@ -118,6 +118,21 @@ public final class BuilderScaffolding {
         return sessions.containsKey(worker)||exiting.containsKey(worker)
                 ||BuilderScaffoldPlanA.controlsMotion(worker);
     }
+    /** A failed scaffold-lip dismount must not keep forcing its stale
+     * exit while Plan A physically walks BACK along a paid bridge.
+     * Only the EXIT controller is released; the scaffold and inventory
+     * ownership remain intact for the safe return.
+     */
+    static void abandonExitForBridgeReturn(ServerLevel level,BuilderGolem worker){
+        ExitRoute previous=exiting.remove(worker);
+        if(previous==null)return;
+        avoidedExits.put(worker,new AvoidExit(previous.ground(),
+                level.getGameTime()+240));
+        worker.getNavigation().stop();
+        System.out.println("[SCAFFOLD EXIT RECOVERY] release blocked landing "
+                +previous.ground().toShortString()
+                +" and retrace physical scaffold bridge");
+    }
     public static void cancel(BuilderGolem worker){
         BuilderScaffoldPlanA.cancel(worker);
         clearMotion(worker);
