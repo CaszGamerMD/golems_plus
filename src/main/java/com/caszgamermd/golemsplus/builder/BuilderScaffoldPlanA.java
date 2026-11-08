@@ -1064,6 +1064,46 @@ public final class BuilderScaffoldPlanA {
         if(j==null)return false;
         j.bridgeTicks++;
         j.highest=Math.max(j.highest,worker.getY());
+        // A return may have been requested AFTER the Builder stepped off
+        // the bridge onto real, solid roof footing. RETURN_FIRST formerly
+        // insisted that the worker CLIMB BACK onto a now-obsolete paid
+        // scaffold: if no owned scaffold existed directly under its feet,
+        // the controller returned true forever (4,852 ticks in Matrix).
+        // Release ONLY that stale controller after a real stall, leaving
+        // the worker grounded and free to choose a new route. Any paid
+        // scaffold is reclaimed only by normal support/teammate-safe rules.
+        if((j.phase==Phase.RETURN_FIRST||j.phase==Phase.RETURN_TOWER)
+                &&level.getGameTime()-j.lastProgress>140
+                &&worker.onGround()&&!worker.isNoGravity()
+                &&level.getBlockEntity(j.planner)
+                        instanceof WorkerStationBlockEntity returnTable){
+            BlockPos support=worker.blockPosition().below();
+            if(!level.getBlockState(support).is(Blocks.SCAFFOLDING)
+                    &&!returnTable.isTrackedScaffold(support)
+                    &&level.getBlockState(support).isFaceSturdy(
+                            level,support,Direction.UP)){
+                rejectEntry(level,worker,j.base);
+                jobs.remove(worker);
+                BuilderScaffolding.retrieve(level,worker,returnTable,false);
+                System.out.println("[PLAN A RETURN RESET] grounded on real "
+                        +"roof instead of obsolete bridge; base="
+                        +j.base.toShortString()+" worker="
+                        +worker.blockPosition().toShortString());
+                return false;
+            }
+            // When the worker is still INSIDE a paid bridge, first try
+            // a collision-checked side step onto real adjacent solid
+            // footing at its actual Y. This uses the existing 140-tick
+            // exit controller; it never teleports or destroys support.
+            if(BuilderScaffolding.stepOffAtFootHeight(
+                    level,worker,returnTable,j.base)){
+                j.phase=Phase.DISMOUNT;
+                j.lastProgress=level.getGameTime();
+                System.out.println("[PLAN A RETURN SIDE EXIT] left paid "
+                        +"bridge onto real ledge "+worker.blockPosition());
+                return true;
+            }
+        }
         // Recover a lost vertical controller while physically suspended in
         // the paid scaffold shaft. Never treat an airborne scaffold occupant
         // as a completed work stance, and never fake a position change.
