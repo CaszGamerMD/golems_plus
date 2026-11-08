@@ -32,6 +32,7 @@ import net.minecraft.world.level.block.Blocks;
 public final class BuilderVillagerMatrixStartGameTest {
     // Keep the full physical diagnostic registered, including water finish.
     @GameTest(structure="golems_plus_gametest:dome_arena",
+            environment="golems_plus_gametest:matrix_e2e",
             maxTicks=4200,skyAccess=true,required=false)
     public void fourBuildersStartFloatingVillagerMatrixFoundation(GameTestHelper h){
         ServerLevel level=h.getLevel();
