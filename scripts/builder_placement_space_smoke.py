@@ -51,7 +51,11 @@ assert "!level.getBlockState(hold.target()).isAir()" in space
 assert "hold.placingWorker()" in space
 assert "public static BlockPos approach(" in space
 assert "if(++attempted>16)break;" in space
-assert "p.distSqr(target)>=14" in space
+# Reach checks must use the same target-center height as physical placement.
+assert "private static final double STANCE_REACH_SQ=12.5;" in space
+assert "double dy=stance.getY()-(target.getY()+.5);" in space
+assert "||reachSq(p,target)>=STANCE_REACH_SQ" in space
+assert "&&reachSq(cached.destination(),target)<STANCE_REACH_SQ" in space
 # Every narrow aisle with usable straight ground must be considered, not
 # just diagonal tiles. Retain the blocked-entity and real-path safeguards.
 for direction in ("{radius,0}", "{-radius,0}", "{0,radius}", "{0,-radius}",
