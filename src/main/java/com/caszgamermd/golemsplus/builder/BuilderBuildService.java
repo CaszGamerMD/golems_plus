@@ -748,9 +748,8 @@ public final class BuilderBuildService {
                 &&BuilderPlacementSpace.horizontalClear(target,worker)
                 &&worker.distanceToSqr(target.getX()+.5,
                         target.getY()+.5,target.getZ()+.5)<14
-                &&BuilderConstructionPlanner.safeWorkStand(
-                        level,worker,target,worker.blockPosition(),
-                        step.encodedState())){
+                &&BuilderConstructionPlanner.safeStand(
+                        level,worker,target,worker.blockPosition())){
             // A worker may reach a legal roof stance while heading for
             // an optional paid tower. If the tower has not been erected,
             // release that obsolete approach and place from REAL footing;
