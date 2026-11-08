@@ -244,7 +244,36 @@ public final class BuilderScaffolding {
                         exit.ground().getY(),tz,1.0);
                 double vx=Math.max(-.15,Math.min(.15,(tx-worker.getX())*.28));
                 double vz=Math.max(-.15,Math.min(.15,(tz-worker.getZ())*.28));
-                if(level.noCollision(worker,worker.getBoundingBox().move(vx,0,vz))){
+                // Horizontal scaffolding is CLIMB-THROUGH. A worker
+                // physically resting inside its paid scaffold may
+                // ALREADY overlap that scaffold's collision shape.
+                // level.noCollision(proposedBox) then stays false for
+                // every tiny side step even when the destination is
+                // verified solid ground. The native Minecraft movement
+                // solver still checks all real walls/fences; asking it to
+                // move horizontally is NOT a teleport or collision hack.
+                // Bypass only this overly-strict preflight while the
+                // body actually intersects a tracked, PAID scaffold.
+                var proposed=worker.getBoundingBox().move(vx,0,vz);
+                BlockPos feet=worker.blockPosition();
+                boolean trackedFooting=false;
+                if(level.getBlockEntity(worker.home())
+                        instanceof WorkerStationBlockEntity table){
+                    for(BlockPos support:new BlockPos[]{feet,feet.below()}){
+                        if(table.isTrackedScaffold(support)
+                                &&level.getBlockState(support)
+                                        .is(Blocks.SCAFFOLDING)
+                                &&worker.getBoundingBox().intersects(
+                                        new net.minecraft.world.phys.AABB(support)
+                                                .inflate(0,.08,0))){
+                            trackedFooting=true;break;
+                        }
+                    }
+                }
+                boolean free=level.noCollision(worker,proposed);
+                if(exitMovePreflight(free,trackedFooting,
+                        com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .canStandOn(level,worker,exit.ground()))){
                     var velocity=worker.getDeltaMovement();
                     worker.setDeltaMovement(vx,Math.min(velocity.y,0),vz);
                 }
@@ -648,6 +677,15 @@ public final class BuilderScaffolding {
         return true;
     }
 
+    /** Only an actually owned, occupied scaffold may relax a false
+     * PRE-move collision flag. The destination must independently have
+     * verified solid footing. Minecraft's own physics remains final.
+     */
+    static boolean exitMovePreflight(boolean ordinaryCollisionFree,
+            boolean intersectingPaidScaffold,boolean standableDestination){
+        return standableDestination
+                &&(ordinaryCollisionFree||intersectingPaidScaffold);
+    }
     /** Return physically to a worker's own upper scaffold landing,
      * descend through its column, then step off onto nearby solid ground.
      * A valid return route is kept while the golem travels; ordinary A*
