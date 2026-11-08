@@ -87,6 +87,17 @@ public final class BuilderVillagerMatrixFullGameTest {
                 +" sha256="+BuilderVillagerMatrixFullFixture.SHA256
                 +" region=31x20x49 origin="+origin.toShortString()
                 +" fourAirGap=true blockEntityPayloadsNotRestored=40");
+        // This is a source-file geometry check, not a state repair.
+        // An extended piston can only create its head in its facing
+        // direction; a saved head BEHIND a base cannot be produced by
+        // vanilla extension, even if a redstone circuit is energized.
+        var pistonAudit=BuilderPistonAssemblyAudit.inspect(schematic);
+        System.out.println("[MATRIX FULL PISTON AUDIT] extended="
+                +pistonAudit.extended()+" forward="+pistonAudit.validForward()
+                +" reverse="+pistonAudit.reversed()
+                +" unmatched="+pistonAudit.unmatched()
+                +" heads="+pistonAudit.totalHeads()
+                +" examples="+pistonAudit.examples());
         // A real piston head/extended piston is a REDSTONE RESULT, not an
         // inventory item. Don't declare this full schematic buildable if
         // its states have not been taught to BuilderBlockResolver yet.
@@ -114,6 +125,15 @@ public final class BuilderVillagerMatrixFullGameTest {
                     +" unsupported state variants across "+affectedCells
                     +" real cells; resolve power/water/ignition before "
                     +"claiming a complete physical build");
+            return;
+        }
+        if(!pistonAudit.physicallyConsistent()){
+            helper.fail("Full Matrix piston snapshot inconsistent: "
+                    +pistonAudit.reversed()+" heads behind facing direction; "
+                    +pistonAudit.unmatched()+" heads missing. "
+                    +"Use the exact coordinates in [MATRIX FULL PISTON AUDIT]; "
+                    +"do not flip block states, manufacture piston heads, "
+                    +"or claim a physical completion");
             return;
         }
         // Isolate the entire 31x49 footprint and both sides of every
