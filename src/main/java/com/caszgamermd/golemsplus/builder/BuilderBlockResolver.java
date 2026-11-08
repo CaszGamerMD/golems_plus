@@ -89,9 +89,12 @@ public final class BuilderBlockResolver {
                     if(state==null)return null;
                 }
         }
-        // Only source fluids are schematic placements. Flowing levels must
-        // emerge from vanilla physics, not be issued as infinite bucket jobs.
-        if((id.equals("minecraft:water")||id.equals("minecraft:lava"))
+        // Flowing WATER has a readable expected world state but is not a
+        // bucket placement: BuilderConstructionPlan assigns no item and
+        // BuilderBuildService waits for actual fluid simulation. Lava
+        // still requires explicit support before non-source states can
+        // enter the construction plan. Never set a flowing block directly.
+        if(id.equals("minecraft:lava")
                 &&state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL)
                 &&state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL)!=0)
             return null;
