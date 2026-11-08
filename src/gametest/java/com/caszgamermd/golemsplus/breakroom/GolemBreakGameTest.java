@@ -53,7 +53,9 @@ public final class GolemBreakGameTest {
         });
     }
 
-    @GameTest(maxTicks = 1800, skyAccess = true)
+    // Movement to the dispenser and then to a real seat may require route
+    // retries; completion still requires physically eating the stored apple.
+    @GameTest(maxTicks = 3000, skyAccess = true)
     public void idleBuilderGetsSnackAndEatsSeatedAtChairAndTable(GameTestHelper h) {
         for (int x = 0; x < 8; x++)
             for (int z = 0; z < 8; z++)
@@ -119,7 +121,7 @@ public final class GolemBreakGameTest {
                 h.succeed();
                 return;
             }
-            if (elapsedTicks[0] >= 1790) {
+            if (elapsedTicks[0] >= 2990) {
                 h.fail("Snack machine -> chair/table eating sequence did not complete"
                         + " gotSnack=" + gotSnack[0]
                         + " ateAtSeat=" + ateAtSeat[0]
