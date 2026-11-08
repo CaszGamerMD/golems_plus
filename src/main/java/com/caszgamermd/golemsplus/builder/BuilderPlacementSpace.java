@@ -292,6 +292,11 @@ public final class BuilderPlacementSpace {
             if(destination!=null){
                 hold=new Yield(hold.target(),destination,hold.until(),hold.placingWorker(),false);
                 yielding.put(worker,hold);
+            }else{
+                // Nothing remains underfoot for a legal sidestep. Do not
+                // keep centering on the blocked tile for sixty ticks.
+                yielding.remove(worker);
+                return false;
             }
         }
         // Otherwise the worker must take a normal collision-safe A* path.
@@ -682,6 +687,15 @@ public final class BuilderPlacementSpace {
         }
         boolean found=true;
         for(BuilderGolem blocker:blockers){
+            // Never route a teammate away in the middle of an actual
+            // scaffold climb, dismount or suspended grapple. That would
+            // steal its physical controller and strand it above the build.
+            // Retry the yield as soon as its transit hands control back.
+            if(BuilderGrappleAccess.active(blocker)
+                    ||BuilderScaffolding.isControllingMovement(blocker)){
+                found=false;
+                continue;
+            }
             Yield old=yielding.get(blocker);
             if(old!=null&&old.target().equals(target)
                     &&old.until()>level.getGameTime())continue;
@@ -700,7 +714,13 @@ public final class BuilderPlacementSpace {
             }
             yielding.put(blocker,new Yield(target,destination,
                     level.getGameTime()+60,blocker==placing,precision));
-            WorkerNavigation.routeToExact(level,blocker,destination,.9);
+            if(precision){
+                // The entity-tick precision controller owns this motion.
+                // Sending native exact navigation to its CURRENT tile
+                // every five ticks repeatedly recenters it into the
+                // unfinished block and cancels the necessary sidestep.
+                WorkerNavigation.stop(blocker);
+            }else WorkerNavigation.routeToExact(level,blocker,destination,.9);
         }
         // An AIR cell is not being mined here. Before placing a new solid
         // schematic block into it, real golems occupying that space must
