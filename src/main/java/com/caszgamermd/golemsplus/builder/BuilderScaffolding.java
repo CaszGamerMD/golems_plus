@@ -686,6 +686,59 @@ public final class BuilderScaffolding {
         return standableDestination
                 &&(ordinaryCollisionFree||intersectingPaidScaffold);
     }
+    /** Escape a sealed horizontal paid bridge without returning to a
+     * shaft that the now-built schematic has blocked. Native crouch/climb
+     * lowers the Builder THROUGH the real tracked scaffold to one block
+     * below it; at that point it can safely fall <=2 more blocks onto
+     * actual verified solid ground. This cannot produce a 3+ block free
+     * drop, phase through construction, or synthesize a floor/teleport.
+     */
+    static boolean descendThroughPaidBridgeToGround(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table){
+        if(climbingNow(level,worker)||exiting.containsKey(worker)
+                ||worker.isNoGravity())return false;
+        BlockPos feet=worker.blockPosition();
+        BlockPos scaffold=level.getBlockState(feet.below())
+                .is(Blocks.SCAFFOLDING)?feet.below():feet;
+        if(!table.isTrackedScaffold(scaffold)
+                ||!level.getBlockState(scaffold).is(Blocks.SCAFFOLDING)
+                ||Math.abs(worker.getX()-(scaffold.getX()+.5))>.35
+                ||Math.abs(worker.getZ()-(scaffold.getZ()+.5))>.35
+                ||worker.getY()<scaffold.getY()-.12
+                ||worker.getY()>scaffold.getY()+1.25)return false;
+        // The controller lowers through the scaffold to Y=scaffoldY-1.
+        // Releasing there permits at most a TWO-block ordinary fall.
+        double loweredY=scaffold.getY()-1.0;
+        for(int drop=1;drop<=2;drop++){
+            BlockPos landing=scaffold.atY(scaffold.getY()-1-drop);
+            if(!level.hasChunkAt(landing)||!level.hasChunkAt(landing.below())
+                    ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                            .canStandOn(level,worker,landing))continue;
+            boolean columnClear=true;
+            for(int y=scaffold.getY()-1;y>=landing.getY();y--){
+                BlockPos at=scaffold.atY(y);
+                if(!level.hasChunkAt(at)
+                        ||!level.getBlockState(at).isAir()
+                        ||!level.getFluidState(at).isEmpty()){
+                    columnClear=false;break;
+                }
+            }
+            if(!columnClear)continue;
+            var landed=worker.getBoundingBox().move(
+                    scaffold.getX()+.5-worker.getX(),
+                    landing.getY()-worker.getY(),
+                    scaffold.getZ()+.5-worker.getZ());
+            if(!level.noCollision(worker,landed))continue;
+            begin(level,worker,scaffold,loweredY,true);
+            System.out.println("[SCAFFOLD BRIDGE DESCENT] lowering from "
+                    +worker.blockPosition().toShortString()
+                    +" through paid "+scaffold.toShortString()
+                    +" to real ground "+landing.toShortString()
+                    +" ordinaryFinalDrop="+drop);
+            return true;
+        }
+        return false;
+    }
     /** Return physically to a worker's own upper scaffold landing,
      * descend through its column, then step off onto nearby solid ground.
      * A valid return route is kept while the golem travels; ordinary A*
