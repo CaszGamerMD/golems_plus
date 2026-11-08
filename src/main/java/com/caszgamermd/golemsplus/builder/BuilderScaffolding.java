@@ -59,6 +59,17 @@ public final class BuilderScaffolding {
     private record ExitRoute(BlockPos ground,long expires){}
     private static final java.util.Map<BuilderGolem,ExitRoute> exiting=
             new java.util.WeakHashMap<>();
+    // Avoid repeating the exact same failed dismount forever. A tracked
+    // roof landing can become obstructed as neighboring cells are placed.
+    private record AvoidExit(BlockPos ground,long until){}
+    private static final java.util.Map<BuilderGolem,AvoidExit> avoidedExits=
+            new java.util.WeakHashMap<>();
+    private static boolean avoidedExit(ServerLevel level,BuilderGolem worker,
+                                       BlockPos ground){
+        AvoidExit bad=avoidedExits.get(worker);
+        return bad!=null&&bad.until()>level.getGameTime()
+                &&bad.ground().equals(ground);
+    }
     /** A job-specific, retained route UP and BACK DOWN. The exit must
      * exist BEFORE the first scaffold is purchased or built. Never
      * store a world-specific fixed path as the navigation algorithm.
@@ -112,6 +123,7 @@ public final class BuilderScaffolding {
         clearMotion(worker);
         returning.remove(worker);
         exiting.remove(worker);
+        avoidedExits.remove(worker);
         access.remove(worker);
     }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
@@ -181,6 +193,14 @@ public final class BuilderScaffolding {
             if(level.getGameTime()>exit.expires()
                     ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .canStandOn(level,worker,exit.ground())){
+                if(level.getGameTime()>exit.expires()){
+                    avoidedExits.put(worker,new AvoidExit(exit.ground(),
+                            level.getGameTime()+240));
+                    System.out.println("[SCAFFOLD EXIT] exhausted real exit "
+                            +exit.ground().toShortString()
+                            +" from "+worker.blockPosition().toShortString()
+                            +"; try a different grounded landing");
+                }
                 exiting.remove(worker);
             }else if(Math.abs(worker.getX()-exit.ground().getX()-.5)<.35
                     &&Math.abs(worker.getZ()-exit.ground().getZ()-.5)<.35
@@ -473,7 +493,8 @@ public final class BuilderScaffolding {
             for(int dy:new int[]{0,-1}){
                 BlockPos landing=feet.relative(side).offset(0,dy,0);
                 BlockPos floor=landing.below();
-                if(landing.getY()>worker.getY()+.2
+                if(avoidedExit(level,worker,landing)
+                        ||landing.getY()>worker.getY()+.2
                         ||worker.getY()-landing.getY()>1.3
                         ||level.getBlockState(floor).is(Blocks.SCAFFOLDING)
                         ||!level.getBlockState(floor).isFaceSturdy(
@@ -501,7 +522,8 @@ public final class BuilderScaffolding {
                                   BlockPos destination){
         double dx=worker.getX()-(destination.getX()+.5);
         double dz=worker.getZ()-(destination.getZ()+.5);
-        if(dx*dx+dz*dz>3.2
+        if(avoidedExit(level,worker,destination)
+                ||dx*dx+dz*dz>3.2
                 ||Math.abs(worker.getY()-destination.getY())>1.3
                 ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .canStandOn(level,worker,destination))return false;
@@ -539,7 +561,8 @@ public final class BuilderScaffolding {
                 BlockPos floor=landing.below();
                 // Only exit onto existing SOLID ground. Another scaffold
                 // (or a still-empty schematic cell) is not a safe ledge.
-                if(level.getBlockState(floor).is(Blocks.SCAFFOLDING)
+                if(avoidedExit(level,worker,landing)
+                        ||level.getBlockState(floor).is(Blocks.SCAFFOLDING)
                         ||!level.getBlockState(floor).isFaceSturdy(
                                 level,floor,Direction.UP)
                         ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
