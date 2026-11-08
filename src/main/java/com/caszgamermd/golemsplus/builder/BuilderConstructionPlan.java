@@ -55,7 +55,12 @@ public final class BuilderConstructionPlan {
             // half would request and spend twice the correct materials.
             boolean upperDoor=b.state().contains("_door[")
                     &&b.state().contains("half=upper");
-            String item=resolved==null||upperDoor||ignored?null:
+            // Both red-bed parts exist as distinct schematic cells, but
+            // one actual bed item builds the two-part assembly. Only the
+            // foot pays for the physical item; never double-charge it.
+            boolean headBed=b.state().contains("_bed[")
+                    &&b.state().contains("part=head");
+            String item=resolved==null||upperDoor||headBed||ignored?null:
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(resolved.item()).toString();
             // Retain the original coordinate index for existing saved job
             // cursors and disjoint ten-position work orders. Ignored plants
