@@ -51,13 +51,23 @@ public final class BuilderBlockResolver {
                 return null;
             item=BuiltInRegistries.ITEM.getValue(itemId);
         }
-        if(item==Items.AIR || block instanceof EntityBlock&&!sign)return null;
+        // Chests, hoppers, dispensers, droppers, comparators, and
+        // decorative heads are legitimate item-backed EntityBlocks.
+        // Placing the real block creates an EMPTY block entity. The
+        // Litematica importer deliberately does not restore tile-entity
+        // NBT, and this does NOT fake stored inventories or text.
+        // Reject only blocks with no obtainable placement item.
+        if(item==Items.AIR)return null;
         // Door halves are represented by two successive schematic cells.
         // Lower block consumes the single physical door item; upper half
         // is placed after its lower support, without duplicating materials.
-        if(id.endsWith("_bed")||id.endsWith("_tall_flower")
+        // Redstone dust and beds are real inventory items. Wiring
+        // power and connectivity are neighbor-derived (already handled
+        // in BuilderPlacementState); both halves of a bed are physical
+        // blocks but its item is consumed only for the foot.
+        // Fire/portals/crops remain generated or special-use results.
+        if(id.endsWith("_tall_flower")
                 ||id.endsWith("_double_plant")||id.endsWith("_crop")
-                ||id.contains("redstone_wire")
                 ||id.contains("fire")||id.contains("portal"))
             return null;
         // A normal/sticky piston is an ordinary one-item block while
