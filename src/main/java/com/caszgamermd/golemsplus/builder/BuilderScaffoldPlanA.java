@@ -1660,6 +1660,26 @@ public final class BuilderScaffoldPlanA {
                 BuilderScaffolding.retrieve(level,worker,table,false);
                 return false;
             }
+            // The Matrix foundation has one-wide, paid scaffold
+            // platforms. A blocked side dismount can stay in EXIT for
+            // thousands of ticks with no solid footing, while the
+            // previous grounded-only timeout never fires. If the worker
+            // is genuinely STILL SUPPORTED by an owned scaffold after
+            // 220 motionless ticks, safely walk back across its bridge,
+            // then descend the original shaft. Never phase through roof
+            // blocks, remove a supporting scaffold or teleport.
+            if(level.getGameTime()-j.lastProgress>220
+                    &&level.getBlockState(below).is(Blocks.SCAFFOLDING)
+                    &&table.isTrackedScaffold(below)){
+                BuilderScaffolding.abandonExitForBridgeReturn(level,worker);
+                j.returnStep=Math.max(1,j.bridgeStep-1);
+                j.phase=Phase.RETURN_FIRST;
+                j.lastProgress=level.getGameTime();
+                System.out.println("[PLAN A DISMOUNT RECOVERY] backtrack from "
+                        +worker.blockPosition().toShortString()
+                        +" over paid bridge to "+j.base.toShortString());
+                return true;
+            }
             if(worker.onGround()
                     &&clearOfOwnedScaffold
                     &&!level.getBlockState(below).is(Blocks.SCAFFOLDING)
