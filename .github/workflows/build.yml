@@ -34,11 +34,27 @@ jobs:
           python3 scripts/builder_zoned_workflow_smoke.py
       - name: Compile and run unit tests
         run: gradle --no-daemon clean test jar compileGametestJava
-      - name: Run Minecraft in-game construction checks
+      - name: Run required four-Builder Villager Matrix physical construction
         shell: bash
         run: |
+          # The 27-cell floating foundation is now the blocking Builder
+          # construction regression. The 3,493-cell Dome and wider
+          # navigation suites continue in independent diagnostic workflows.
+          # Never claim this proves the FULL 15,378-cell Matrix schematic.
+          python3 - <<'PYTEST'
+          import json
+          from pathlib import Path
+          path = Path('src/gametest/resources/fabric.mod.json')
+          data = json.loads(path.read_text())
+          data['entrypoints']['fabric-gametest'] = [
+              'com.caszgamermd.golemsplus.builder.BuilderVillagerMatrixStartGameTest'
+          ]
+          path.write_text(json.dumps(data, indent=2) + '\n')
+          PYTEST
           set -o pipefail
-          gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/main-release-gametest.log"
+          gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/main-matrix-gametest.log"
+          grep -E '\[MATRIX (ARENA|START|PROGRESS|MISSING)' "$RUNNER_TEMP/main-matrix-gametest.log" || true
+          grep -Fq '[MATRIX START PASS] 27' "$RUNNER_TEMP/main-matrix-gametest.log"
       - name: Preserve Minecraft GameTest logs and reports
         if: always()
         uses: actions/upload-artifact@v4
