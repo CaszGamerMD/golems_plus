@@ -66,7 +66,9 @@ public final class BuilderDomeConstructionGameTest {
                 +" dimensions=(39,39) absoluteGameTestOriginHidden");
         // A full size test structure is essential. The default 8x8
         // GameTest room causes invisible barrier-block path failures.
-        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+        // Cover the whole 39x39 footprint and its edge-work stances.
+        // The earlier 42 limit omitted the last five columns of footing.
+        for(int x=4;x<=47;x++)for(int z=4;z<=47;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
         helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
         helper.setBlock(5,2,7,Blocks.CHEST);
@@ -119,15 +121,19 @@ public final class BuilderDomeConstructionGameTest {
                 +" expected="+actualFile.toAbsolutePath());
             return;
         }
-        // Capture the actual starting site before the builders enter it.
-        // An unexpected GameTest block can block clearance even though the
-        // Litematica blueprint expects empty air at that location.
+        // The randomized GameTest world is not guaranteed to be empty.
+        // A preflight measurement caught 1,148 occupied schematic cells,
+        // including barrier blocks and flowing water. Those are correct
+        // no-break cases in production and must NEVER be force-cleared by
+        // Builder logic. Reset only this disposable physical test arena,
+        // before any Builder, block order or timer starts.
         int initiallyOccupied=0;
         StringBuilder preflight=new StringBuilder();
         BlockPos origin=table.builderOrigin();
         var actualSite=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
                 BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
-        for(var expected:BuilderSiteClearance.targets(schematic,actualSite)){
+        var initialTargets=BuilderSiteClearance.targets(schematic,actualSite);
+        for(var expected:initialTargets){
             var actual=level.getBlockState(expected.pos());
             if(actual.isAir())continue;
             initiallyOccupied++;
@@ -136,10 +142,23 @@ public final class BuilderDomeConstructionGameTest {
                         .append(expected.pos().subtract(origin).toShortString())
                         .append(" actual=").append(actual)
                         .append(" schematic=").append(expected.state()).append(']');
+            if(!level.setBlock(expected.pos(),Blocks.AIR.defaultBlockState(),3)){
+                helper.fail("Cannot reset dome GameTest arena at "
+                        +expected.pos().subtract(origin).toShortString()
+                        +" actual="+actual);
+                return;
+            }
         }
-        System.out.println("[DOME PREFLIGHT] occupied="+initiallyOccupied
-                +" targets="+(schematic.blocks().size()
-                        +schematic.airBlocks().size())+preflight);
+        int residual=0;
+        for(var expected:initialTargets)
+            if(!level.getBlockState(expected.pos()).isAir())residual++;
+        System.out.println("[DOME PREFLIGHT] cleaned="+initiallyOccupied
+                +" residual="+residual+" targets="+initialTargets.size()+preflight);
+        if(residual!=0){
+            helper.fail("Dome GameTest worksite is not empty after reset: "
+                    +residual+" obstructed blueprint cells");
+            return;
+        }
         // Genuine chest-only job; no fake warehouse connection.
         // Workers must walk to the real 27-slot OnSite crate to load.
         final List<BuilderGolem> crew=new ArrayList<>();
