@@ -158,15 +158,16 @@ public final class BuilderScaffolding {
     public static boolean tickMotion(ServerLevel level,BuilderGolem worker){
         ExitRoute exit=exiting.get(worker);
         if(exit!=null){
-            // A roof can change under a returning Builder. If it is
-            // already GROUNDED on a solid ledge two or more levels above
-            // the recorded scaffold exit, that old dismount would need
-            // to walk THROUGH the roof to reach its lower X/Z tile.
-            // Release only the stale route; the Builder stays on its
-            // actual safe footing and must choose another physical path.
+            // A Builder already standing on a SOLID roof cannot be
+            // steered through that roof to an obsolete lower exit.
+            // This also happens with a ONE-block elevation difference:
+            // the former 1.35 threshold allowed endless EXIT sessions
+            // with feet Y exactly one above the requested dismount.
+            // Keep active scaffold-lip dismounts; only release a route
+            // once real full-block footing supports the Builder.
             BlockPos actualSupport=worker.blockPosition().below();
             if(worker.onGround()
-                    &&worker.getY()>exit.ground().getY()+1.35
+                    &&worker.getY()>exit.ground().getY()+.45
                     &&!level.getBlockState(actualSupport).is(Blocks.SCAFFOLDING)
                     &&level.getBlockState(actualSupport).isFaceSturdy(
                             level,actualSupport,Direction.UP)){
