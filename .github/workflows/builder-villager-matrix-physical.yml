@@ -42,13 +42,22 @@ jobs:
           ]
           p.write_text(json.dumps(data,indent=2)+'\n')
           PYTEST
-          set -o pipefail
-          gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/villager-matrix.log"
-          grep -E '\[MATRIX (ARENA|START|PROGRESS|MISSING)' "$RUNNER_TEMP/villager-matrix.log" || true
-          if ! grep -Fq '[MATRIX START PASS] 27' "$RUNNER_TEMP/villager-matrix.log"; then
-            echo '::error::Matrix foundation incomplete or fewer than two Builders climbed; see Matrix diagnostics.'
-            exit 1
-          fi
+          set -euo pipefail
+          mkdir -p build/matrix-traces
+          # Different GameTest launches randomize builder positions/timing.
+          # An occasional 27/27 success must not hide frequent 24/27
+          # deadlocks. Require three independent, complete physical runs.
+          for attempt in 1 2 3; do
+            log="build/matrix-traces/physical-run-${attempt}.log"
+            echo "::group::Villager Matrix foundation physical run ${attempt}/3"
+            gradle --no-daemon runGameTest 2>&1 | tee "$log"
+            grep -E '\[MATRIX (ARENA|START|PROGRESS|MISSING)' "$log" || true
+            if ! grep -Fq '[MATRIX START PASS] 27' "$log"; then
+              echo "::error::Matrix foundation incomplete on physical run ${attempt}/3"
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
       - name: Save Matrix build trace and Minecraft GameTest reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -60,3 +69,4 @@ jobs:
             build/test-results/
             build/reports/
             build/run/gameTest/logs/
+            build/matrix-traces/
