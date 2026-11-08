@@ -1641,6 +1641,25 @@ public final class BuilderBuildService {
             BlockPos raisedRail=BuilderRailSlope.raisedEnd(pos,state.state());
             boolean reShapeRail=raisedRail!=null
                     &&existing.getBlock()==state.state().getBlock();
+            if(reShapeRail&&level.hasChunkAt(raisedRail)
+                    &&level.getBlockState(raisedRail).isAir()){
+                // The physical rail was already paid for and placed, but
+                // its requested slope collapsed when the temporary
+                // raised-end jig was recovered. Recreating that same jig
+                // every twelve ticks cannot preserve a permanent slope;
+                // it wastes movement/path planning while the true raised
+                // connection is still AIR. Hold the real rail in place
+                // and retry only when the neighboring support changes.
+                // Do NOT set a fictional ascending state or spend another
+                // rail item to hide the missing upper geometry.
+                table.waitForBuilderSupport(worker.getUUID(),index,
+                        level.getGameTime());
+                table.setProblem("Ascending rail needs permanent raised-end "
+                        +"connection at "+raisedRail.toShortString()
+                        +" for schematic rail "+pos.toShortString()
+                        +"; existing flat rail retained without new charge");
+                return;
+            }
             if(!existing.isAir()&&!waterlog&&!reShapeRail
                     &&!(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
                             ||existing.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN)))){
