@@ -1701,8 +1701,22 @@ public final class BuilderScaffoldPlanA {
         }
         if(j.phase==Phase.DESCEND){
             if(!refreshExit(level,worker,table,j)){
-                escapeBlockedExit(level,worker,table,j);
-                return true; // never descend to a sealed exit
+                if(escapeBlockedExit(level,worker,table,j))return true;
+                // The normal return shaft may have a blocked SIDE exit
+                // even though a real, tracked bridge cell is directly
+                // over safely reachable ground. The earlier bridge
+                // descent was only considered in RETURN_FIRST/TOWER,
+                // leaving a completed Builder stranded in DESCEND for
+                // thousands of ticks. Use the same physically verified
+                // lowering and <=2-block final fall here as well.
+                if(level.getGameTime()-j.lastProgress>120
+                        &&BuilderScaffolding.descendThroughPaidBridgeToGround(
+                                level,worker,table)){
+                    j.phase=Phase.DISMOUNT;
+                    j.lastProgress=level.getGameTime();
+                    return true;
+                }
+                return true; // never descend to an unverified landing
             }
             // A drop of up to two blocks to real solid ground is allowed.
             // Larger drops first descend farther through the paid shaft.
@@ -1856,7 +1870,13 @@ public final class BuilderScaffoldPlanA {
                 return false;
             }
             if(!refreshExit(level,worker,table,j)){
-                escapeBlockedExit(level,worker,table,j);
+                if(escapeBlockedExit(level,worker,table,j))return true;
+                if(level.getGameTime()-j.lastProgress>120
+                        &&BuilderScaffolding.descendThroughPaidBridgeToGround(
+                                level,worker,table)){
+                    j.lastProgress=level.getGameTime();
+                    return true;
+                }
                 return true;
             }
             if(!BuilderScaffolding.isControllingMovement(worker)
