@@ -60,10 +60,18 @@ public final class BuilderVillagerMatrixFullGameTest {
                     LitematicFileReader.Block::z).min().orElseThrow();
             int maxZ=schematic.blocks().stream().mapToInt(
                     LitematicFileReader.Block::z).max().orElseThrow();
-            if(minX!=0||maxX!=30||minY!=0||maxY!=19
-                    ||minZ!=0||maxZ!=48)
+            // The source REGION is 20 blocks high, but its highest
+            // two Y slices are empty air. Non-air bounds stop at Y=17.
+            // Verify BOTH the solid shape and the region's topmost AIR;
+            // do not shift/alter the imported hologram to invent blocks.
+            int topRegionY=schematic.airBlocks().stream()
+                    .mapToInt(LitematicFileReader.Block::y).max()
+                    .orElse(maxY);
+            if(minX!=0||maxX!=30||minY!=0||maxY!=17
+                    ||topRegionY!=19||minZ!=0||maxZ!=48)
                 throw new IllegalStateException("Signed Matrix region changed bounds: "
-                        +minX+","+minY+","+minZ+" to "+maxX+","+maxY+","+maxZ);
+                        +minX+","+minY+","+minZ+" to "+maxX+","+maxY+","+maxZ
+                        +" lastRegionY="+topRegionY);
             plan=BuilderConstructionPlan.create(schematic,new BuildSite(
                     origin.getX(),origin.getY(),origin.getZ(),
                     BuildSite.Rotation.NONE,BuildSite.Mirror.NONE));
