@@ -526,8 +526,8 @@ public final class BuilderBuildService {
                         &&worker.carriedCount(resolved.item())==0
                     ||!(BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,target)
-                        ||BuilderConstructionPlanner.safeStand(
-                                level,worker,target,pose)))continue;
+                        ||BuilderConstructionPlanner.safeWorkStand(
+                                level,worker,target,pose,step.encodedState())))continue;
             best=idx;
             bestDistance=locality;
         }
@@ -567,8 +567,8 @@ public final class BuilderBuildService {
         if(!BuilderPlacementState.matches(level.getBlockState(target),
                     state.state())&&!state.state().canSurvive(level,target))return;
         BlockPos stance=choice.stance();
-        if(stance!=null&&!BuilderConstructionPlanner.safeStand(
-                level,worker,target,stance))return;
+        if(stance!=null&&!BuilderConstructionPlanner.safeWorkStand(
+                level,worker,target,stance,step.encodedState()))return;
         if(table.claimPreferredBuilderZoneStep(worker.getUUID(),
                 zone,steps,next)!=next)return;
         activity.setStep(next);
@@ -578,8 +578,9 @@ public final class BuilderBuildService {
         activity.fastFollowup=true;
         if(stance!=null&&step.requiredItem()!=null
                 &&worker.carriedCount(state.item())>0
-                &&!BuilderConstructionPlanner.safeStand(
-                        level,worker,target,worker.blockPosition()))
+                &&!BuilderConstructionPlanner.safeWorkStand(
+                        level,worker,target,worker.blockPosition(),
+                        step.encodedState()))
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(
                     level,worker,stance,1.0);
     }
@@ -747,8 +748,9 @@ public final class BuilderBuildService {
                 &&BuilderPlacementSpace.horizontalClear(target,worker)
                 &&worker.distanceToSqr(target.getX()+.5,
                         target.getY()+.5,target.getZ()+.5)<14
-                &&BuilderConstructionPlanner.safeStand(
-                        level,worker,target,worker.blockPosition())){
+                &&BuilderConstructionPlanner.safeWorkStand(
+                        level,worker,target,worker.blockPosition(),
+                        step.encodedState())){
             // A worker may reach a legal roof stance while heading for
             // an optional paid tower. If the tower has not been erected,
             // release that obsolete approach and place from REAL footing;
@@ -1878,8 +1880,9 @@ public final class BuilderBuildService {
                     &&(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,pos)
-                        ||BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,worker.blockPosition()));
+                        ||BuilderConstructionPlanner.safeWorkStand(
+                                level,worker,pos,worker.blockPosition(),
+                                step.encodedState()));
             // Low dome walls and fence caps often sit two Y above a
             // grounded Builder. Its normal three-block hand reach may
             // already cover the target from a SIDE stance. Find that
@@ -1890,8 +1893,8 @@ public final class BuilderBuildService {
                     &&!BuilderScaffolding.isControllingMovement(worker)){
                 BlockPos walk=BuilderPlacementSpace.approachWithRules(
                         level,worker,pos,
-                        at->BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,at));
+                        at->BuilderConstructionPlanner.safeWorkStand(
+                                level,worker,pos,at,step.encodedState()));
                 if(walk!=null){
                     activity.phase=Action.MOVE_TO_WORK;
                     if(com.caszgamermd.golemsplus.worker.WorkerNavigation
@@ -1959,8 +1962,9 @@ public final class BuilderBuildService {
                     ||!(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,pos)
-                        ||BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,worker.blockPosition()))){
+                        ||BuilderConstructionPlanner.safeWorkStand(
+                                level,worker,pos,worker.blockPosition(),
+                                step.encodedState()))){
                 // Even when within arm's reach, a Builder must first
                 // occupy a PREVALIDATED work stance. This prevents the
                 // repeated old deadlock where it arrived next to an AIR
@@ -1968,8 +1972,8 @@ public final class BuilderBuildService {
                 activity.phase=Action.MOVE_TO_WORK;
                 BlockPos approach=BuilderPlacementSpace.approachWithRules(
                         level,worker,pos,
-                        at->BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,at));
+                        at->BuilderConstructionPlanner.safeWorkStand(
+                                level,worker,pos,at,step.encodedState()));
                 if(approach!=null){
                     boolean moving=com.caszgamermd.golemsplus.worker
                             .WorkerNavigation.routeToExact(
@@ -2054,8 +2058,9 @@ public final class BuilderBuildService {
                         level,worker,table,pos)
                     ||BuilderPlacementSpace.safeFractionalCapPose(
                             level,worker,pos)
-                    ||BuilderConstructionPlanner.safeStand(
-                        level,worker,pos,worker.blockPosition()))){
+                    ||BuilderConstructionPlanner.safeWorkStand(
+                                level,worker,pos,worker.blockPosition(),
+                                step.encodedState()))){
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
                 table.waitForBuilderAccess(worker.getUUID(),index,
                         level.getGameTime(),"lost safe pose or exit during approach");
