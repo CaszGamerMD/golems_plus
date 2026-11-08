@@ -71,6 +71,18 @@ navigation, work-stances, floating starts, and regression timing.
 A **107/107** lower-layer result NEVER satisfies, replaces, or bypasses
 the required **15,376/15,376** full-build acceptance.
 
+On the first true bottom-up physical Matrix run, the crew reached **52/107**
+cells with four living Builders, then stalled at source-local
+`(15,1,24)`: `powered_rail[shape=ascending_west,waterlogged=true]`.
+The requested raised-west connection is `(14,2,24)`, but the exact
+user schematic reserves that upper cell for an `iron_trapdoor`, not a
+rail. The paid temporary rail connector could make a slope momentarily,
+but removing it caused the real rail shape to collapse. The Builder now
+**defers further reshaping without consuming additional items** until
+a permanent raised connection exists. This does not invent an upper
+rail or silently change the user's blueprint. This is currently a
+separate cross-layer / physical-rail-geometry blocker.
+
 ### Block-entity caveat
 
 The original file includes 40 block-entity NBT records (e.g. container
