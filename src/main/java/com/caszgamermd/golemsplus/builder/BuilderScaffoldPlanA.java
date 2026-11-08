@@ -1091,6 +1091,28 @@ public final class BuilderScaffoldPlanA {
                         +worker.blockPosition().toShortString());
                 return false;
             }
+            // Sometimes the paid bridge's first span is only two
+            // blocks above its verified ground exit, but a completed
+            // schematic cube now obstructs the return to the old shaft.
+            // Permit the normal physics-driven dismount from the CURRENT
+            // stance to that real nearby landing. Only attempt a drop
+            // <=2 blocks with an actual standable floor and a short
+            // lateral distance; do not teleport or invent support.
+            double directDrop=worker.getY()-j.exit.getY();
+            double lateral=worker.distanceToSqr(
+                    j.exit.getX()+.5,worker.getY(),j.exit.getZ()+.5);
+            if(directDrop>=-.15&&directDrop<=2.05
+                    &&lateral<=3.0
+                    &&WorkerNavigation.canStandOn(level,worker,j.exit)
+                    &&BuilderScaffolding.dismountAtBase(
+                            level,worker,j.base,j.exit)){
+                j.phase=Phase.DISMOUNT;
+                j.lastProgress=level.getGameTime();
+                System.out.println("[PLAN A RETURN SHORT DROP] from "
+                        +worker.blockPosition().toShortString()+" to "
+                        +j.exit.toShortString()+" height="+directDrop);
+                return true;
+            }
             // When the worker is still INSIDE a paid bridge, first try
             // a collision-checked side step onto real adjacent solid
             // footing at its actual Y. This uses the existing 140-tick
