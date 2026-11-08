@@ -1,14 +1,16 @@
-name: Villager Matrix floating foundation - physical Builders
+name: Villager Matrix — required physical foundation / four Builder Golems
 on:
   push:
-    branches: [main]
+    branches: [main, feat/builder-rally-point-recovery]
     paths:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/**'
+      - 'src/main/java/com/caszgamermd/golemsplus/worker/**'
       - 'src/main/java/com/caszgamermd/golemsplus/world/WorkerStationBlockEntity.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixStartGameTest.java'
       - 'src/gametest/resources/**'
       - 'src/test/java/com/caszgamermd/golemsplus/builder/**'
       - '.github/workflows/builder-villager-matrix-physical.yml'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -25,9 +27,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
-      - name: Verify shared scaffold route ownership
-        run: gradle --no-daemon test --tests 'com.caszgamermd.golemsplus.builder.BuilderSharedScaffoldRouteTest'
-      - name: Run only the four-Builder floating Matrix foundation
+      - name: Verify all Builder unit tests before physical Matrix construction
+        run: gradle --no-daemon test compileGametestJava
+      - name: Build all 27 real Matrix foundation cells with four physical Builders
         shell: bash
         run: |
           python3 - <<'PYTEST'
@@ -42,7 +44,7 @@ jobs:
           PYTEST
           set -o pipefail
           gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/villager-matrix.log"
-          grep -E '\[MATRIX (START|PROGRESS)' "$RUNNER_TEMP/villager-matrix.log" || true
+          grep -E '\[MATRIX (ARENA|START|PROGRESS|MISSING)' "$RUNNER_TEMP/villager-matrix.log" || true
           if ! grep -Fq '[MATRIX START PASS] 27' "$RUNNER_TEMP/villager-matrix.log"; then
             echo '::error::Matrix foundation incomplete or fewer than two Builders climbed; see Matrix diagnostics.'
             exit 1
