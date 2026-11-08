@@ -62,9 +62,10 @@ remaining redstone / ignition mechanics can be reproduced.
 
 `builder-villager-matrix-lower-physical.yml` runs
 `BuilderVillagerMatrixLowerLayersGameTest` on the **original full checksum
-verified file** with the existing Planner's player-accessible height rule
-restricted to source Y=0–3. This covers 107 genuine non-air cells with four
-real Builders and a paid chest/scaffold supply. It is useful for
+verified file** using the NORMAL bottom-up full-job work order. It measures
+the first 107 genuine non-air cells at source Y=0–3 while four real Builders
+use a paid chest/scaffold supply. It does not change the imported schematic,
+skip the upper layers, or reverse construction order. It is useful for
 navigation, work-stances, floating starts, and regression timing.
 
 A **107/107** lower-layer result NEVER satisfies, replaces, or bypasses
