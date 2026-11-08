@@ -150,7 +150,7 @@ public final class BuilderVillagerMatrixFullGameTest {
         final long[] lastProgress={helper.getTick()};
         final int[] maxPlaced={0};
         helper.onEachTick(()->{
-            int tick=helper.getTick();
+            long tick=helper.getTick();
             if(tick%20!=0)return;
             restock(world,table,chestPos,crew,steps);
             if(tick%200!=0)return;
