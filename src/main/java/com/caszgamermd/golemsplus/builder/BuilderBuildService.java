@@ -305,6 +305,26 @@ public final class BuilderBuildService {
         }
         return extra;
     }
+    /** A layer's reduced original crew may be stalled while extra
+     * Builders are ALREADY safely waiting at OnSite. Assist only when
+     * there is a real, unclaimed active-layer task; never send workers
+     * from a scaffold, interrupt a claim, or abandon another layer.
+     */
+    static boolean standbyCanRescue(boolean assignedToLayer,
+            boolean stalled,boolean atOnSite,boolean readyTask){
+        return !assignedToLayer&&stalled&&atOnSite&&readyTask;
+    }
+    private static boolean rescueTaskAvailable(
+            WorkerStationBlockEntity table,BuilderGolem worker,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> layerSteps){
+        for(int idx:layerSteps)
+            if(idx>=0&&idx<steps.size()
+                    &&table.builderStepInActivePhase(steps,idx)
+                    &&table.builderStepReadyForClaim(idx)
+                    &&!table.builderStepClaimedByOther(worker.getUUID(),idx))
+                return true;
+        return false;
+    }
     /** Spend a small, bounded planning slice WHILE the worker walks.
      * No claim is made and the current route is not stopped. A blocked
      * or too-distant next target simply falls back to normal selection.
@@ -1278,11 +1298,22 @@ public final class BuilderBuildService {
             int layer=table.builderActiveLayer(plan.steps());
             List<UUID> layerStaff=assigned.layerStaff().getOrDefault(
                     layer,assigned.roster());
-            // Small Y slices use one Builder through five placements, then
-            // add another for each next group of three. Unselected workers
-            // stay at OnSite and finish any in-flight paid placement safely.
+            // The previous standby exit happened BEFORE checking the
+            // shared six-second roof stall. On a reduced-crew layer it
+            // therefore parked all three available teammates forever,
+            // even with unclaimed work waiting in the stuck builder's
+            // zone. Recruit from real OnSite footing when progress stops;
+            // keep the original reduced staffing during normal building.
+            boolean stalledRoof=roofNeedsHelp(level,table);
+            BlockPos rescueDepot=table.builderUnloadingStorage();
+            if(rescueDepot==null)rescueDepot=table.getBlockPos();
+            boolean standbyRescue=standbyCanRescue(
+                    layerStaff.contains(worker.getUUID()),stalledRoof,
+                    atOnSite(level,worker,rescueDepot),
+                    rescueTaskAvailable(table,worker,plan.steps(),
+                            assigned.layerSteps().getOrDefault(layer,List.of())));
             if(!layerStaff.contains(worker.getUUID())&&currentClaim<0
-                    &&!worker.hasSupplyBox()){
+                    &&!worker.hasSupplyBox()&&!standbyRescue){
                 boolean parked=parkAtOnSite(level,worker,table);
                 returnAction.returningToSite=!parked;
                 if(parked)BuilderDroppedBlockRecovery.tick(
@@ -1299,9 +1330,6 @@ public final class BuilderBuildService {
                 // X/Z zone has no placements on this Y at all.
                 zone=assigned.layerSteps().getOrDefault(layer,zone);
             }
-            boolean stalledRoof=roofNeedsHelp(level,table);
-            BlockPos rescueDepot=table.builderUnloadingStorage();
-            if(rescueDepot==null)rescueDepot=table.getBlockPos();
             boolean safelyAvailableForRescue=stalledRoof
                     &&atOnSite(level,worker,rescueDepot);
             if(shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim,
@@ -1358,7 +1386,7 @@ public final class BuilderBuildService {
                         teammateRequested=true;break;
                     }
                 }
-            boolean emergencyRoofAssist=ownLayerClear
+            boolean emergencyRoofAssist=(ownLayerClear||standbyRescue)
                     &&(teammateRequested||index>=0&&!zone.contains(index)
                         ||stalledRoof);
             // Monitoring already ran before the early finished-zone
@@ -1400,9 +1428,15 @@ public final class BuilderBuildService {
                 var next=chooseNearbyFirst(
                         level,worker,table,plan.steps(),zone);
                 if(next==null){
+                    // An OnSite standby helper is in the full roster,
+                    // not the reduced original layerStaff list. A -1
+                    // index silently denied it every serialized frontier
+                    // probe even after it was admitted as a rescuer.
+                    List<UUID> scanStaff=layerStaff.contains(worker.getUUID())
+                            ?layerStaff:assigned.roster();
                     if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
-                            layerStaff.indexOf(worker.getUUID()),
-                            layerStaff.size()))return;
+                            scanStaff.indexOf(worker.getUUID()),
+                            scanStaff.size()))return;
                     boolean sharedLayer=assigned.layerSteps().get(layer)==zone;
                     List<Integer> scanZone=unreservedZone(
                             table,worker,zone,level.getGameTime(),sharedLayer);
