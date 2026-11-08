@@ -50,7 +50,12 @@ assert "getGameTime()+60" in space
 assert "!level.getBlockState(hold.target()).isAir()" in space
 assert "hold.placingWorker()" in space
 assert "public static BlockPos approach(" in space
-assert "if(++attempted>16)break;" in space
+# Evacuation must use all physically viable perimeter exits through the same
+# trained executable A*, not drop viable far-side poses after 16 native probes.
+assert "WorkerNavigation.selectExecutableStand(" in space
+assert "level,worker,choices);" in space
+assert "level.getBlockCollisions(worker,shifted)" in space
+assert "World.noCollision includes entities" in space
 # Reach checks must use the same target-center height as physical placement.
 assert "private static final double STANCE_REACH_SQ=12.5;" in space
 assert "double dy=stance.getY()-(target.getY()+.5);" in space
