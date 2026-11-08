@@ -458,8 +458,9 @@ public final class BuilderScaffolding {
             // to take this ordinary one-block drop to dismount.
             for(int dy:new int[]{0,-1}){
                 BlockPos p=base.relative(side).offset(0,dy,0);
-                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .canStandOn(level,worker,p))continue;
+                if(avoidedExit(level,worker,p)
+                        ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .canStandOn(level,worker,p))continue;
                 double score=worker.distanceToSqr(p.getX()+.5,worker.getY(),
                         p.getZ()+.5)+Math.abs(dy)*2;
                 if(score<cost){cost=score;best=p;}
@@ -594,11 +595,17 @@ public final class BuilderScaffolding {
     static boolean dismountAtBase(ServerLevel level,BuilderGolem worker,
                                    BlockPos column,BlockPos preferred){
         AccessRoute planned=access.get(worker);
+        // The prior timeout records a specific failed physical landing.
+        // Do not immediately select that SAME target again from a cached
+        // Plan-A preferred exit: doing so reset the 140-tick watchdog on
+        // every dismount cycle and stranded Builders in EXIT forever.
         BlockPos exit=preferred!=null
+                &&!avoidedExit(level,worker,preferred)
                 &&com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .canStandOn(level,worker,preferred)
                 ?preferred:planned!=null
                 &&planned.base().equals(column)
+                &&!avoidedExit(level,worker,planned.groundExit())
                 &&com.caszgamermd.golemsplus.worker.WorkerNavigation
                         .canStandOn(level,worker,planned.groundExit())
                 ?planned.groundExit():exitGround(level,worker,column);
