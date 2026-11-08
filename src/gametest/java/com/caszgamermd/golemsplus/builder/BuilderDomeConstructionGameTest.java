@@ -119,6 +119,27 @@ public final class BuilderDomeConstructionGameTest {
                 +" expected="+actualFile.toAbsolutePath());
             return;
         }
+        // Capture the actual starting site before the builders enter it.
+        // An unexpected GameTest block can block clearance even though the
+        // Litematica blueprint expects empty air at that location.
+        int initiallyOccupied=0;
+        StringBuilder preflight=new StringBuilder();
+        BlockPos origin=table.builderOrigin();
+        var actualSite=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        for(var expected:BuilderSiteClearance.targets(schematic,actualSite)){
+            var actual=level.getBlockState(expected.pos());
+            if(actual.isAir())continue;
+            initiallyOccupied++;
+            if(initiallyOccupied<=12)
+                preflight.append(" [")
+                        .append(expected.pos().subtract(origin).toShortString())
+                        .append(" actual=").append(actual)
+                        .append(" schematic=").append(expected.state()).append(']');
+        }
+        System.out.println("[DOME PREFLIGHT] occupied="+initiallyOccupied
+                +" targets="+(schematic.blocks().size()
+                        +schematic.airBlocks().size())+preflight);
         // Genuine chest-only job; no fake warehouse connection.
         // Workers must walk to the real 27-slot OnSite crate to load.
         final List<BuilderGolem> crew=new ArrayList<>();
