@@ -1154,6 +1154,17 @@ public final class BuilderScaffoldPlanA {
                         +"bridge onto real ledge "+worker.blockPosition());
                 return true;
             }
+            // If a newly finished schematic block has sealed the
+            // original tower entrance, first lower through the REAL
+            // occupied bridge. Its column must be air down to a checked
+            // solid landing and the final unsupported drop is <=2 blocks.
+            // The vertical scaffold controller owns subsequent physics.
+            if(BuilderScaffolding.descendThroughPaidBridgeToGround(
+                    level,worker,returnTable)){
+                j.phase=Phase.DISMOUNT;
+                j.lastProgress=level.getGameTime();
+                return true;
+            }
         }
         // Recover a lost vertical controller while physically suspended in
         // the paid scaffold shaft. Never treat an airborne scaffold occupant
