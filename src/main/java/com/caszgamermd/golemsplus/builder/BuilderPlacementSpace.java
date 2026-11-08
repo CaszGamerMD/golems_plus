@@ -709,6 +709,20 @@ public final class BuilderPlacementSpace {
             if(destination!=null
                     &&destination.equals(target))destination=null;
             if(destination==null){
+                // The crowded floating Matrix has only one-tile scaffold
+                // lips. A teammate on a paid bridge may have NO legal
+                // same-height escape tile, yet it is perfectly able to
+                // physically retrace that bridge and descend. Ask the
+                // existing scaffold controller to return rather than
+                // reissuing impossible A* sidesteps forever. Do not steal
+                // motion from an active climb or force a teleport/drop.
+                if(BuilderScaffoldPlanA.hasPlan(blocker)
+                        &&BuilderScaffoldPlanA.returnToGround(
+                                level,blocker,table)){
+                    yielding.remove(blocker);
+                    table.setProblem("Builder returning from blocked "
+                            +"scaffold work stance at "+target.toShortString());
+                }
                 found=false;
                 continue;
             }
