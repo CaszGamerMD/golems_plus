@@ -330,10 +330,16 @@ public final class BuilderPlacementSpace {
         // overlaps from the layer below, not just avoid an AABB contact.
         if(at.equals(worker.blockPosition())
                 &&occupied(obstructed,worker))return false;
+        // A teammate occupying a prospective escape tile is temporary
+        // congestion, not a wall. World.noCollision includes entities and
+        // eliminated every side exit in crowded dome work zones. Validate
+        // permanent block collision here; the trained route scores crowds,
+        // and each physical move still obeys normal entity collision.
         if(edgeDistance(obstructed,at.getX()+.5,at.getZ()+.5)
                     <MIN_EDGE_CLEARANCE
                 ||shifted.intersects(volume(obstructed))
-                ||!level.noCollision(worker,shifted))return false;
+                ||level.getBlockCollisions(worker,shifted)
+                        .iterator().hasNext())return false;
         for(var other:yielding.entrySet())
             if(other.getKey()!=worker
                     &&other.getValue().destination().equals(at)
@@ -368,14 +374,14 @@ public final class BuilderPlacementSpace {
         }
         choices.sort(java.util.Comparator.comparingDouble(p->
                 p.distSqr(origin)+Math.abs(p.getY()-origin.getY())*2));
-        int attempted=0;
-        for(BlockPos p:choices){
-            if(++attempted>16)break; // bounded path work; try more than one aisle side
-            // Favor a physically reachable tile; don't assume an air
-            // candidate is reachable around walls/stairs/racks.
-            if(WorkerNavigation.canReachExact(level,worker,p))return p.immutable();
-        }
-        return null;
+        // The first sixteen nearest tiles can all be behind the same
+        // completed wall or occupied by the crew, while the opposite side
+        // remains reachable. Probe ALL bounded 8-direction / 4-radius
+        // candidates in one trained multi-goal route, rather than sixteen
+        // separate vanilla paths that may not be executable.
+        BlockPos chosen=WorkerNavigation.selectExecutableStand(
+                level,worker,choices);
+        return chosen==null?null:chosen.immutable();
     }
 
     /** Find an EXACT reachable work position within placement reach.
