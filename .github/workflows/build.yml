@@ -51,10 +51,15 @@ jobs:
           ]
           path.write_text(json.dumps(data, indent=2) + '\n')
           PYTEST
-          set -o pipefail
-          gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/main-matrix-gametest.log"
-          grep -E '\[MATRIX (ARENA|START|PROGRESS|MISSING)' "$RUNNER_TEMP/main-matrix-gametest.log" || true
-          grep -Fq '[MATRIX START PASS] 27' "$RUNNER_TEMP/main-matrix-gametest.log"
+          set -euo pipefail
+          mkdir -p build/matrix-traces
+          # One lucky simulation is not a reliable release criterion.
+          for attempt in 1 2; do
+            log="build/matrix-traces/release-run-${attempt}.log"
+            gradle --no-daemon runGameTest 2>&1 | tee "$log"
+            grep -E '\[MATRIX (ARENA|START|PROGRESS|MISSING)' "$log" || true
+            grep -Fq '[MATRIX START PASS] 27' "$log"
+          done
       - name: Preserve Minecraft GameTest logs and reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -64,6 +69,7 @@ jobs:
             build/gametest/
             build/reports/
             build/test-results/
+            build/matrix-traces/
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: success()
