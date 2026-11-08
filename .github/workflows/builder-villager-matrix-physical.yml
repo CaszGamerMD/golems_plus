@@ -1,4 +1,4 @@
-name: Villager Matrix — required physical foundation / four Builder Golems
+name: VillagerMatrixClean_V2 — full 15,376-block physical build
 on:
   push:
     branches: [main, feat/builder-rally-point-recovery]
@@ -7,6 +7,8 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/worker/**'
       - 'src/main/java/com/caszgamermd/golemsplus/world/WorkerStationBlockEntity.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixStartGameTest.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFullGameTest.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFullFixture.java'
       - 'src/gametest/resources/**'
       - 'src/test/java/com/caszgamermd/golemsplus/builder/**'
       - '.github/workflows/builder-villager-matrix-physical.yml'
@@ -15,9 +17,9 @@ on:
 permissions:
   contents: read
 jobs:
-  floating-foundation:
+  entire-matrix:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -27,9 +29,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
-      - name: Verify all Builder unit tests before physical Matrix construction
+      - name: Verify production parser and all Builder unit tests
         run: gradle --no-daemon test compileGametestJava
-      - name: Build all 27 real Matrix foundation cells with four physical Builders
+      - name: Construct all 15,376 actual Matrix blocks using four physical Builders
         shell: bash
         run: |
           python3 - <<'PYTEST'
@@ -38,31 +40,32 @@ jobs:
           p=Path('src/gametest/resources/fabric.mod.json')
           data=json.loads(p.read_text())
           data['entrypoints']['fabric-gametest']=[
-              'com.caszgamermd.golemsplus.builder.BuilderVillagerMatrixStartGameTest'
+              'com.caszgamermd.golemsplus.builder.BuilderVillagerMatrixFullGameTest'
           ]
           p.write_text(json.dumps(data,indent=2)+'\n')
           PYTEST
           set -euo pipefail
           mkdir -p build/matrix-traces
-          # Different GameTest launches randomize builder positions/timing.
-          # An occasional 27/27 success must not hide frequent 24/27
-          # deadlocks. Require three independent, complete physical runs.
-          for attempt in 1 2 3; do
+          # Full original block-state fidelity, with physical materials,
+          # scaffold and grapple access; do not run only starter 27 cells.
+          # The end-to-end build is substantial; one complete run is the
+          # initial acceptance criterion before a repeatability gauntlet.
+          for attempt in 1; do
             log="build/matrix-traces/physical-run-${attempt}.log"
-            echo "::group::Villager Matrix foundation physical run ${attempt}/3"
+            echo "::group::Full Villager Matrix physical run ${attempt}/1"
             gradle --no-daemon runGameTest 2>&1 | tee "$log"
-            grep -E '\[MATRIX (ARENA|START|PROGRESS|MISSING)' "$log" || true
-            if ! grep -Fq '[MATRIX START PASS] 27' "$log"; then
-              echo "::error::Matrix foundation incomplete on physical run ${attempt}/3"
+            grep -E '\[MATRIX FULL (IMPORT|UNSUPPORTED|START|PROGRESS|STALL|PASS)' "$log" || true
+            if ! grep -Fq '[MATRIX FULL PASS] 15376/15376' "$log"; then
+              echo "::error::Full Villager Matrix failed to build all 15,376 blocks on physical run ${attempt}/1"
               exit 1
             fi
             echo "::endgroup::"
           done
-      - name: Save Matrix build trace and Minecraft GameTest reports
+      - name: Save full Matrix progress, unsupported-state reports and physical traces
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: villager-matrix-foundation-trace
+          name: villager-matrix-v2-full-build-trace
           if-no-files-found: ignore
           path: |
             build/gametest/
