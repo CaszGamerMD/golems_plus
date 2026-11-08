@@ -702,12 +702,14 @@ public final class BuilderBuildService {
      */
     static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep,
             boolean roofNeedsRescue){
-        // A COMPLETED zone is terminal for this Builder's build role.
-        // The old global six-second roof watchdog re-recruited finished
-        // workers to repeatedly enter inaccessible water/rail pockets.
-        // Active workers with later own-zone steps may still volunteer
-        // on stalled neighboring layers; completed workers stay OnSite.
-        return ownZoneDone&&claimedStep<0;
+        // Completed-zone Builders must first physically return to OnSite.
+        // Once the shared work layer has stalled, a finished Builder who
+        // is ALREADY safely at OnSite can help the remaining zone from a
+        // fresh approach. The caller proves depot arrival before passing
+        // roofNeedsRescue; no worker is recruited mid-climb or mid-return.
+        // Otherwise a lone Builder deadlocked at an inaccessible fence
+        // can never receive help from the three parked teammates.
+        return ownZoneDone&&claimedStep<0&&!roofNeedsRescue;
     }
     /** Retain the ordinary no-rescue policy for existing callers/tests. */
     static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep){
@@ -1297,8 +1299,12 @@ public final class BuilderBuildService {
                 zone=assigned.layerSteps().getOrDefault(layer,zone);
             }
             boolean stalledRoof=roofNeedsHelp(level,table);
+            BlockPos rescueDepot=table.builderUnloadingStorage();
+            if(rescueDepot==null)rescueDepot=table.getBlockPos();
+            boolean safelyAvailableForRescue=stalledRoof
+                    &&atOnSite(level,worker,rescueDepot);
             if(shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim,
-                    stalledRoof)){
+                    safelyAvailableForRescue)){
                 activityForFinished(worker);
                 boolean parked=parkAtOnSite(level,worker,table);
                 returnAction.returningToSite=!parked;
