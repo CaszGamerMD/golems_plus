@@ -66,6 +66,28 @@ public final class BuilderDomeConstructionGameTest {
                 +" dimensions=(39,39) absoluteGameTestOriginHidden");
         // A full size test structure is essential. The default 8x8
         // GameTest room causes invisible barrier-block path failures.
+        // The structure template is empty, but the randomized Minecraft
+        // GameTest world can place barrier blocks or water around it. A
+        // blueprint-only reset left nearby water sources alive, which flowed
+        // back into the tested Y=0 cells and prevented ANY Builder placement.
+        // Prepare all 48x48x46 AIR cells in THIS disposable test structure,
+        // including above/around the schematic, before placing the Planner
+        // and workers. Never do this in player worlds.
+        int arenaRemoved=0;
+        for(int y=2;y<48;y++)
+            for(int x=0;x<48;x++)
+                for(int z=0;z<48;z++){
+                    BlockPos at=helper.absolutePos(new BlockPos(x,y,z));
+                    if(level.getBlockState(at).isAir())continue;
+                    if(!level.setBlock(at,Blocks.AIR.defaultBlockState(),3)){
+                        helper.fail("Could not initialize empty dome test arena "
+                                +x+","+y+","+z);
+                        return;
+                    }
+                    arenaRemoved++;
+                }
+        System.out.println("[DOME ARENA RESET] removed="+arenaRemoved
+                +" blocks from the reserved empty structure");
         // Cover the whole 39x39 footprint and its edge-work stances.
         // The earlier 42 limit omitted the last five columns of footing.
         for(int x=4;x<=47;x++)for(int z=4;z<=47;z++)
