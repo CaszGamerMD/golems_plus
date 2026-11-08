@@ -317,13 +317,23 @@ public final class BuilderDomeConstructionGameTest {
             needs.add(Items.IRON_PICKAXE);
             needs.add(Items.IRON_AXE);
             needs.add(Items.IRON_SHOVEL);
+            // A 27-slot test chest has a strict material palette budget.
+            // Claim requirements must win over future batch/lookahead
+            // supplies: formerly 4x full work orders could consume >27
+            // distinct slots BEFORE a claimed block was added. Then the
+            // test's "infinite" restocker never stocked its active item,
+            // falsely reporting pink glass missing forever.
+            for(BuilderGolem worker:crew){
+                int current=table.claimedStep(worker.getUUID());
+                if(current>=0&&current<steps.size())
+                    addItem(needs,steps.get(current));
+            }
             for(BuilderGolem worker:crew){
                 for(Integer n:table.builderWorkOrder(worker.getUUID())){
+                    if(needs.size()>=25)break;
                     if(n!=null&&n>=0&&n<steps.size())
                         addItem(needs,steps.get(n));
                 }
-                int current=table.claimedStep(worker.getUUID());
-                if(current>=0&&current<steps.size())addItem(needs,steps.get(current));
             }
             for(int i=Math.max(0,table.builderCursor());
                     i<Math.min(steps.size(),table.builderCursor()+48)
