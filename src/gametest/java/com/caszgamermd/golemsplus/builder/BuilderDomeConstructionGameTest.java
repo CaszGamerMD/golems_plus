@@ -317,6 +317,21 @@ public final class BuilderDomeConstructionGameTest {
             needs.add(Items.IRON_PICKAXE);
             needs.add(Items.IRON_AXE);
             needs.add(Items.IRON_SHOVEL);
+            // A worker can need an item while its step is in a temporary
+            // claim cooldown or while building a new batch. In that state
+            // claimedStep/workOrder omit the item, so the previous test-only
+            // restocker repeatedly refilled the WRONG palette and reported
+            // an artificial material shortage. Honor a real Planner
+            // "Builder needs namespace:item" request before prefetching.
+            String demand=table.problem();
+            if(demand.startsWith("Builder needs ")){
+                String value=demand.substring("Builder needs ".length());
+                int whitespace=value.indexOf(' ');
+                if(whitespace>=0)value=value.substring(0,whitespace);
+                Identifier requested=Identifier.tryParse(value);
+                if(requested!=null&&BuiltInRegistries.ITEM.containsKey(requested))
+                    needs.add(BuiltInRegistries.ITEM.getValue(requested));
+            }
             // A 27-slot test chest has a strict material palette budget.
             // Claim requirements must win over future batch/lookahead
             // supplies: formerly 4x full work orders could consume >27
