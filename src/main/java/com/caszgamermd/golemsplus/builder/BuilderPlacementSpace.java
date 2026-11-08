@@ -422,6 +422,20 @@ public final class BuilderPlacementSpace {
             java.util.function.Predicate<BlockPos> safe){
         return approachWithHeight(level,worker,target,sameHeight,safe,true);
     }
+    /** Reach from a stance to the target, measured the way placement is
+     * checked: feet position to the target's CENTER (+.5 in Y). Block-
+     * coordinate distance understates reach for stances below the target
+     * (dy=-2 adds 2.25, not 0), so such a stance could be chosen, then
+     * fail the real reach check on arrival and get re-picked elsewhere.
+     * Limit is under the 14 used at placement to leave route-stop slack.
+     */
+    private static final double STANCE_REACH_SQ=12.5;
+    private static double reachSq(BlockPos stance,BlockPos target){
+        double dx=stance.getX()-target.getX();
+        double dy=stance.getY()-(target.getY()+.5);
+        double dz=stance.getZ()-target.getZ();
+        return dx*dx+dy*dy+dz*dz;
+    }
     private static BlockPos approachWithHeight(ServerLevel level,
             BuilderGolem worker,BlockPos target,boolean sameHeight,
             java.util.function.Predicate<BlockPos> safe,boolean cacheResult){
@@ -432,7 +446,7 @@ public final class BuilderPlacementSpace {
                         ||cached.destination().getY()==target.getY()+1)
                 &&cached.until()>now
                 &&safe.test(cached.destination())
-                &&cached.destination().distSqr(target)<14
+                &&reachSq(cached.destination(),target)<STANCE_REACH_SQ
                 &&!(cached.destination().equals(worker.blockPosition())
                     &&worker.distanceToSqr(target.getX()+.5,
                             target.getY()+.5,target.getZ()+.5)>13.0)
@@ -454,7 +468,7 @@ public final class BuilderPlacementSpace {
                 if(!safe.test(p)
                         ||edgeDistance(target,p.getX()+.5,p.getZ()+.5)
                             <MIN_EDGE_CLEARANCE
-                        ||p.distSqr(target)>=14
+                        ||reachSq(p,target)>=STANCE_REACH_SQ
                         ||p.equals(worker.blockPosition())
                             &&worker.distanceToSqr(target.getX()+.5,
                                 target.getY()+.5,target.getZ()+.5)>13.0
@@ -487,8 +501,8 @@ public final class BuilderPlacementSpace {
                         // rather than inside newly enclosed dome pockets.
                         // It is a cost only, NEVER an access prohibition.
                         +(level.canSeeSky(p.above())?0:5.0)
-                        +p.distSqr(target)*1.20
-                        +Math.pow(Math.max(0,p.distSqr(target)-8),2)*3)
+                        +reachSq(p,target)*1.20
+                        +Math.pow(Math.max(0,reachSq(p,target)-8),2)*3)
                 .thenComparingInt(BlockPos::getX)
                 .thenComparingInt(BlockPos::getZ));
         // The feasible set is intrinsically bounded (7x7x2 poses).

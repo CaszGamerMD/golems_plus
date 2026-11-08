@@ -777,6 +777,34 @@ public final class BuilderBuildService {
         // physically before starting an ordinary placement approach.
         return BuilderScaffolding.stepOffTowardWork(level,worker,table,target);
     }
+    /** Scaffold up to rope range, then grapple. True while this tick is
+     * owned by the launch tower (building, climbing or waiting for
+     * scaffold); false once the Builder stands on the launch top, or when
+     * no launch tower applies, so normal access continues unchanged.
+     */
+    private static boolean grappleLaunchTower(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            ServerPlayer owner,BlockPos target){
+        if(BuilderGrappleAccess.active(worker)
+                ||BuilderScaffoldPlanA.hasPlan(worker))return false;
+        var plan=BuilderGrappleAccess.towerFor(level,worker,target);
+        if(plan==null)return false;
+        switch(BuilderScaffolding.reachGrappleLaunch(level,worker,table,
+                owner,plan)){
+            case CLIMBING:
+                return true;
+            case NEED_MATERIALS:
+                table.setProblem("Builder needs Scaffolding in OnSite Storage"
+                        +" for a grapple launch tower toward "
+                        +target.toShortString());
+                return true;
+            case NO_SAFE_TOWER:
+                BuilderGrappleAccess.forgetTower(worker);
+                return false;
+            default:
+                return false;
+        }
+    }
     /** Work positions can fail on a completely built roof at the SAME Y.
      * Give any Builder a paid, reversible scaffold approach without
      * requiring a floating target or a positive vertical Y difference.
@@ -1832,6 +1860,13 @@ public final class BuilderBuildService {
                     BuilderPlacementSpace.invalidateApproach(worker,pos);
                 }
             }
+            // No rope can start because the real floor under every
+            // candidate anchor column is deeper than rope range: raise
+            // the launch floor with a scaffold tower in that column, then
+            // let the ordinary rope planner take over from its top.
+            if(yDiff>1&&!directOrdinaryWork
+                    &&grappleLaunchTower(level,worker,table,owner,pos))
+                return;
             // Elevated cells without a supporting block below need a
             // construction platform, not repeated grapple ascents to a
             // non-existent work stance. An inventory-paid scaffold bridge

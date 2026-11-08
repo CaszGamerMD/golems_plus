@@ -929,6 +929,114 @@ public final class BuilderScaffolding {
         // evaluation will extend the SAME owned tower, not walk away.
         return top<wantedTop?Result.CLIMBING:Result.NOT_NEEDED;
     }
+    /** Build and climb a scaffold tower in a grapple rope column, up to
+     * the plan's launch height. Mirrors reach(): same physical, paid,
+     * tracked, staged tower, but the column and top come from the rope
+     * plan rather than from placement reach of the target.
+     * NOT_NEEDED means the Builder is standing on the launch top and the
+     * rope planner can take over. The rope itself, and the trip back
+     * down, are handled by BuilderGrappleAccess and descendForTravel().
+     */
+    public static Result reachGrappleLaunch(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            ServerPlayer player,BuilderGrappleAccess.TowerPlan plan){
+        BlockPos base=plan.base();
+        int wantedTop=plan.feetY()-1;
+        ClimbSession active=sessions.get(worker);
+        if(active!=null&&!active.descending()&&active.column().equals(base)
+                &&climbingNow(level,worker)
+                &&!ScaffoldVerticalRoute.reached(worker.getY(),active.stopY(),false)){
+            sessions.put(worker,new ClimbSession(base.immutable(),
+                    active.stopY(),false,level.getGameTime()+30));
+            return Result.CLIMBING;
+        }
+        if(avoided(level,worker,base))return Result.NO_SAFE_TOWER;
+        var existing=table.scaffoldPositions(worker.getUUID());
+        double bx=base.getX()+.5,bz=base.getZ()+.5;
+        double approachX=worker.getX()-bx,approachZ=worker.getZ()-bz;
+        if(approachX*approachX+approachZ*approachZ>1.20){
+            clearMotion(worker);
+            BlockPos approach=null;
+            if(level.getBlockState(base).is(Blocks.SCAFFOLDING)
+                    &&worker.getY()>base.getY()+1.2){
+                int high=existing.stream()
+                        .filter(at->at.getX()==base.getX()&&at.getZ()==base.getZ())
+                        .mapToInt(BlockPos::getY).max().orElse(base.getY());
+                approach=returnLanding(level,worker,new Tower(base,high));
+            }
+            if(approach==null){
+                Direction side=Math.abs(approachX)>=Math.abs(approachZ)
+                        ?(approachX>=0?Direction.EAST:Direction.WEST)
+                        :(approachZ>=0?Direction.SOUTH:Direction.NORTH);
+                approach=level.getBlockState(base).is(Blocks.SCAFFOLDING)
+                        ?base.relative(side).immutable():base;
+            }
+            boolean moving=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeToExact(level,worker,approach,1.0);
+            if(!moving)moving=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                    .routeTo(level,worker,approach,1.0);
+            if(!moving){
+                avoided.put(worker,new AvoidColumn(base.immutable(),
+                        level.getGameTime()+80));
+                return Result.NO_SAFE_TOWER;
+            }
+            return Result.CLIMBING;
+        }
+        int existingTop=existing.stream()
+                .filter(at->at.getX()==base.getX()&&at.getZ()==base.getZ()
+                        &&level.getBlockState(at).is(Blocks.SCAFFOLDING))
+                .mapToInt(BlockPos::getY).max().orElse(base.getY()-1);
+        int top=ScaffoldVerticalRoute.stageTop(base.getY(),existingTop,wantedTop);
+        if(top<base.getY())return Result.NOT_NEEDED;
+        int needed=0;
+        for(int y=base.getY();y<=top;y++){
+            var p=new BlockPos(base.getX(),y,base.getZ());
+            if(!level.hasChunkAt(p)||!level.mayInteract(player,p))
+                return Result.NO_SAFE_TOWER;
+            if(level.getBlockState(p).is(Blocks.SCAFFOLDING)){
+                if(!existing.contains(p)){
+                    avoided.put(worker,new AvoidColumn(base.immutable(),
+                            level.getGameTime()+120));
+                    return Result.NO_SAFE_TOWER;
+                }
+            }else if(level.getBlockState(p).isAir())needed++;
+            else{
+                avoided.put(worker,new AvoidColumn(base.immutable(),
+                        level.getGameTime()+120));
+                return Result.NO_SAFE_TOWER;
+            }
+        }
+        var load=BuilderSupplyInventory.loadScaffold(level,worker,table,needed);
+        if(load==BuilderSupplyInventory.ScaffoldLoad.MOVING)return Result.CLIMBING;
+        if(load==BuilderSupplyInventory.ScaffoldLoad.MISSING)
+            return Result.NEED_MATERIALS;
+        for(int y=base.getY();y<=top;y++){
+            var at=new BlockPos(base.getX(),y,base.getZ());
+            if(level.getBlockState(at).is(Blocks.SCAFFOLDING))continue;
+            if(!level.getBlockState(at.below()).isFaceSturdy(level,at.below(),Direction.UP)
+                    &&!level.getBlockState(at.below()).is(Blocks.SCAFFOLDING))
+                return Result.NO_SAFE_TOWER;
+            var receipt=BuilderSupplyInventory.consume(worker,Items.SCAFFOLDING);
+            if(receipt==null)return Result.NEED_MATERIALS;
+            if(!level.setBlock(at,Blocks.SCAFFOLDING.defaultBlockState(),3)){
+                BuilderSupplyInventory.refund(table,receipt);
+                return Result.NO_SAFE_TOWER;
+            }
+            if(!table.trackScaffold(worker.getUUID(),at)){
+                level.setBlock(at,Blocks.AIR.defaultBlockState(),3);
+                BuilderSupplyInventory.refund(table,receipt);
+                return Result.NO_SAFE_TOWER;
+            }
+        }
+        double dx=worker.getX()-bx,dz=worker.getZ()-bz;
+        if(dx*dx+dz*dz>1.5)return Result.CLIMBING;
+        if(worker.getY()<top+.82){
+            begin(level,worker,base,top+1.0,false);
+            return Result.CLIMBING;
+        }
+        clearMotion(worker);
+        return top<wantedTop?Result.CLIMBING:Result.NOT_NEEDED;
+    }
     /** Verify a real safe return endpoint before spending scaffold.
      * It is never enough to build a vertical column with no place to
      * step off on solid ground. Use the Builder's own collision shape.
