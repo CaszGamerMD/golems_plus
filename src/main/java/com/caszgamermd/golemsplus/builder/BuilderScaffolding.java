@@ -186,6 +186,12 @@ public final class BuilderScaffolding {
                 System.out.println("[SCAFFOLD EXIT] abandoned unreachable lower "
                         +exit.ground().toShortString()+" from grounded roof "
                         +worker.blockPosition().toShortString());
+                // This is just as much a failed physical exit as a
+                // 140-tick timeout. Remember the blocked lower landing so
+                // the next Planner call cannot immediately recreate the
+                // same EXIT command from its cached Plan-A preference.
+                avoidedExits.put(worker,new AvoidExit(exit.ground(),
+                        level.getGameTime()+240));
                 exiting.remove(worker);
                 BuilderScaffoldPlanA.cancel(worker);
                 return false;
