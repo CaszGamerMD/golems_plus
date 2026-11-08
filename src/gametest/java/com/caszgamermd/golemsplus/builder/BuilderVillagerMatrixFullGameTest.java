@@ -91,10 +91,29 @@ public final class BuilderVillagerMatrixFullGameTest {
         // inventory item. Don't declare this full schematic buildable if
         // its states have not been taught to BuilderBlockResolver yet.
         if(!plan.unsupported().isEmpty()){
+            // Report CELL counts, not just distinct palette strings.
+            // A single "piston_head" variant may represent hundreds of
+            // physical positions. Never classify these as finished work.
+            java.util.Map<String,Integer> missingByBlock=new java.util.TreeMap<>();
+            int affectedCells=0;
+            java.util.List<String> examples=new java.util.ArrayList<>();
+            for(var block:schematic.blocks()){
+                if(!plan.unsupported().contains(block.state()))continue;
+                affectedCells++;
+                String id=block.state().split("\\[",2)[0];
+                missingByBlock.merge(id,1,Integer::sum);
+                if(examples.size()<12)
+                    examples.add("("+block.x()+","+block.y()+","+block.z()
+                            +") "+block.state());
+            }
             System.out.println("[MATRIX FULL UNSUPPORTED] "+plan.unsupported());
+            System.out.println("[MATRIX FULL UNSUPPORTED CELLS] affected="
+                    +affectedCells+" categories="+missingByBlock
+                    +" exampleXYZ="+examples);
             helper.fail("Full Matrix has "+plan.unsupported().size()
-                    +" unsupported schematic states; resolve genuine rules "
-                    +"before claiming a complete physical build");
+                    +" unsupported state variants across "+affectedCells
+                    +" real cells; resolve power/water/ignition before "
+                    +"claiming a complete physical build");
             return;
         }
         // Isolate the entire 31x49 footprint and both sides of every
