@@ -21,9 +21,10 @@ import net.minecraft.world.level.block.Blocks;
 /**
  * PHYSICAL diagnostic, NOT a substitute for the required 15,376-cell test.
  * Load the original full, checksum-verified user schematic through its
- * production importer; apply the existing player-accessible height rule to
- * construct only the 107 real blocks in source Y=0..3, four blocks above
- * ground. No synthetic steps and no creative block placement.
+ * production importer. Start the normal LOW-TO-HIGH full Matrix job, then
+ * measure its first 107 real cells at source Y=0..3, four blocks above
+ * ground. Do not change the crew's build order, scope or Y gate merely to
+ * collect this early physical milestone. No synthetic placements.
  *
  * This proves a meaningful real Matrix worksite can proceed while the
  * separate full test correctly rejects invalid piston-head geometry.
@@ -92,14 +93,11 @@ public final class BuilderVillagerMatrixLowerLayersGameTest {
             return;
         }
         if(!table.setPlacedBuilderPlan(owner.getUUID(),name,
-                    "VillagerMatrixClean_V2 lower-four physical diagnostic",
+                    "VillagerMatrixClean_V2 full job / first 107 milestone",
                     origin,0,0,fullPlan.steps().size(),
                     fullPlan.unsupported().size())
-                ||!table.setBuilderMaterialStorage(owner.getUUID(),depot)
-                ||!table.setBuilderHeightMode(owner.getUUID(),
-                    BuilderMaterialRules.FROM_Y_DOWN)
-                ||!table.setBuilderStartY(owner.getUUID(),origin.getY()+3)){
-            h.fail("Could not configure original Matrix lower-four Y range");
+                ||!table.setBuilderMaterialStorage(owner.getUUID(),depot)){
+            h.fail("Could not configure original full Matrix job");
             return;
         }
         table.setBuilderMaterialsForFile(name,fullPlan.required());
@@ -135,8 +133,9 @@ public final class BuilderVillagerMatrixLowerLayersGameTest {
         if(!table.startPlacedBuilder(owner.getUUID())){
             h.fail("Could not start physical lower-layer Matrix job");return;
         }
-        System.out.println("[MATRIX LOWER START] 107 original non-air cells"
-                +" Y=0..3, source=full VillagerMatrixClean_V2, four real Builders");
+        System.out.println("[MATRIX LOWER START] 107 first non-air cells"
+                +" Y=0..3, source=full VillagerMatrixClean_V2,"
+                +" buildOrder=LOW_TO_HIGH, four real Builders");
         final int[] lastCount={0},lastClear={0};
         final long[] lastProgress={h.getTick()};
         h.onEachTick(()->{
