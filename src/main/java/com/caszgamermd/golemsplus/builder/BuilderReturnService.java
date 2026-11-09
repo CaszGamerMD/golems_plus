@@ -61,10 +61,10 @@ public final class BuilderReturnService {
         // Observe real physical displacement instead of accepting a
         // pathfinder's MOVING result indefinitely. A busy rope/scaffold
         // controller owns its motion; never interrupt that descent.
-        double dx=worker.getX()-route.lastX;
-        double dy=worker.getY()-route.lastY;
-        double dz=worker.getZ()-route.lastZ;
-        if(dx*dx+dy*dy+dz*dz>.25){
+        double movedX=worker.getX()-route.lastX;
+        double movedY=worker.getY()-route.lastY;
+        double movedZ=worker.getZ()-route.lastZ;
+        if(movedX*movedX+movedY*movedY+movedZ*movedZ>.25){
             route.lastMovementTick=now;
             route.lastX=worker.getX();
             route.lastY=worker.getY();
