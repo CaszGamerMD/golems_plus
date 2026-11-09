@@ -35,6 +35,11 @@ public final class BuilderBlockResolver {
         if(identifier==null||!BuiltInRegistries.BLOCK.containsKey(identifier))return null;
         Block block=BuiltInRegistries.BLOCK.getValue(identifier);
         Item item=block.asItem();
+        // Redstone wire is placed by the REDSTONE dust item, not by a
+        // conventional BlockItem. Its power and side connections are
+        // world-derived and already compared dynamically by
+        // BuilderPlacementState; support and physical item cost still apply.
+        if(id.equals("minecraft:redstone_wire"))item=Items.REDSTONE;
         if(id.equals("minecraft:water"))item=WorksiteContent.INFINITE_WATER_BUCKET;
         // Bubble columns have no item. A Builder supplies SOURCE WATER;
         // vanilla soul-sand/magma physics creates the requested column.
@@ -57,7 +62,6 @@ public final class BuilderBlockResolver {
         // is placed after its lower support, without duplicating materials.
         if(id.endsWith("_bed")||id.endsWith("_tall_flower")
                 ||id.endsWith("_double_plant")||id.endsWith("_crop")
-                ||id.contains("redstone_wire")
                 ||id.contains("fire")||id.contains("portal"))
             return null;
         // A normal/sticky piston is an ordinary one-item block while
