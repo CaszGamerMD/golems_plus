@@ -1708,11 +1708,30 @@ public final class BuilderBuildService {
                     &&level.getBlockState(raisedRail).isAir()
                     &&!state.state().getBlock().defaultBlockState()
                             .canSurvive(level,raisedRail)){
-                table.waitForBuilderSupport(worker.getUUID(),index,
-                        level.getGameTime());
-                table.setProblem("Rail shape "+state.state()
-                        +" requires real raised-end jig support at "
-                        +raisedRail.toShortString());
+                // The user's full Matrix has the non-placeable raised
+                // endpoint at (14,2,24) ABOVE another paid flat rail
+                // (14,1,24). A real vanilla GameTest proves the jig
+                // cannot stand on that rail; temporarily swapping it
+                // for stone and restoring the exact source rail breaks
+                // the intended ascending rail into AIR. Don't schedule
+                // the SAME doomed route every 40 ticks while the other
+                // seven Builders could be doing useful same-Y work.
+                boolean obstructedByRail=level.getBlockState(
+                        raisedRail.below()).getBlock()
+                        instanceof net.minecraft.world.level.block.BaseRailBlock;
+                String reason="raised-end connector at "
+                        +raisedRail.toShortString()+" has unsupported base "
+                        +level.getBlockState(raisedRail.below())
+                        +"; shape="+state.state();
+                if(obstructedByRail)
+                    table.waitForBuilderStructuralConflict(
+                            worker.getUUID(),index,level.getGameTime(),reason);
+                else
+                    table.waitForBuilderSupport(worker.getUUID(),index,
+                            level.getGameTime());
+                table.setProblem((obstructedByRail
+                        ?"Schematic rail geometry conflict: "
+                        :"Rail awaiting physical upper support: ")+reason);
                 return;
             }
             if(!existing.isAir()&&!waterlog&&!reShapeRail
