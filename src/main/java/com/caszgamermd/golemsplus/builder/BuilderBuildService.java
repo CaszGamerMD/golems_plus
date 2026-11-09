@@ -42,7 +42,8 @@ public final class BuilderBuildService {
                          List<BuilderConstructionPlan.Step> steps,
                          List<BuilderSiteClearance.Target> clearing,
                          boolean ignorePlants,int rulesRevision,
-                         BuilderZones.Layout zones){}
+                         BuilderZones.Layout zones,
+                         BuilderRailAssemblyAudit.Report railAudit){}
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
     /** One immutable COMPLETE job-zone plan per Planner/job/crew. Assignment
      * work is never repeated on each Builder tick or after a placement.
@@ -2281,6 +2282,12 @@ public final class BuilderBuildService {
      * Diagnostic state is derived directly from its individual task and
      * the live station. No per-tick global Planner message spam.
      */
+    private static String railSchematicWarning(Cache plan){
+        var audit=plan.railAudit();
+        return audit==null||!audit.hasConflicts()?""
+                :" | sourceRailConflicts="+audit.conflictingRaisedEndpoints()
+                +" first="+audit.examples().getFirst();
+    }
     public static String debugStatus(ServerLevel level,BuilderGolem worker){
         BlockPos home=worker.home();
         if(!level.hasChunkAt(home))return "Home Planner chunk unavailable";
@@ -2314,7 +2321,7 @@ public final class BuilderBuildService {
                             level,worker,table,plan.steps(),zone)
                     +" | scan="+BuilderConstructionPlanner.scanStatus(worker)
                     +" | claimTrace="+table.builderClaimDebug(worker.getUUID())
-                    +" | "+table.problem();
+                    +railSchematicWarning(plan)+" | "+table.problem();
             var current=plan.steps().get(index);
             BlockPos target=new BlockPos(current.x(),current.y(),current.z());
             BlockPos local=target.subtract(table.builderOrigin());
@@ -2337,7 +2344,8 @@ public final class BuilderBuildService {
                     +" | sneaking="+worker.isShiftKeyDown()
                     +" | climb="+BuilderScaffolding.debugClimb(worker)
                     +" | depot="+(table.builderUnloadingStorage()==null
-                            ?"unlinked":table.builderUnloadingStorage().toShortString());
+                            ?"unlinked":table.builderUnloadingStorage().toShortString())
+                    +railSchematicWarning(plan);
         }catch(Exception error){
             return "Builder inspection failed: "+error.getClass().getSimpleName()
                     +" "+error.getMessage();
@@ -2397,6 +2405,19 @@ public final class BuilderBuildService {
                         BuildSite.Mirror.values()[table.builderMirror()]);
         var original=BuilderConstructionPlan.create(schematic,site,
                 table.builderIgnorePlants());
+        // Validate immutable snapshot geometry once per job revision,
+        // never once per worker tick. This is READ ONLY; no source block
+        // is silently rotated/removed, no impossible cell is marked done.
+        var railAudit=BuilderRailAssemblyAudit.inspect(schematic);
+        if(railAudit.hasConflicts()){
+            System.err.println("[BUILDER SCHEMATIC RAIL CONFLICT] file="
+                    +table.builderFile()+" conflictingRaisedEnds="
+                    +railAudit.conflictingRaisedEndpoints()
+                    +" examples="+railAudit.examples());
+            table.setProblem("Schematic rail geometry conflict at "
+                    +railAudit.examples().getFirst()
+                    +"; cannot be corrected by repeating scaffold/rail jig");
+        }
         var steps=BuilderMaterialRules.apply(original.steps(),
                 table.builderMaterialRules(),table.builderStartY(),
                 table.builderHeightMode(),site.rotation(),site.mirror());
@@ -2435,7 +2456,7 @@ public final class BuilderBuildService {
         Cache next=new Cache(table.builderFile(),table.builderRotation(),
                 table.builderMirror(),origin,steps,List.copyOf(clearing),
                 table.builderIgnorePlants(),table.builderRuleRevision(),
-                BuilderZones.footprint(steps));
+                BuilderZones.footprint(steps),railAudit);
         cachedWarehousePlans.put(table,next);
         return next;
     }
