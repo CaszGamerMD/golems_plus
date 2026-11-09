@@ -156,10 +156,17 @@ public final class BuilderBuildService {
         if(Math.abs(dx)>=Math.abs(dz))return dx>=0?0:2;
         return dz>=0?1:3;
     }
-    /** A safe ground waypoint OUTSIDE the schematic. A* must validate the
-     * entire real route there; after arrival all work poses are recalculated
-     * from the new side. The builder may detour away from its actual target.
-     */
+    /** Prefer staying on the Builder's current elevation when escaping an
+     * obstructed roof; a physical route to the depot level is a fallback.
+     * These are feet elevations, so add one to a depot block's Y. */
+    static int[] alternateStagingHeights(int currentFeetY,int depotFeetY){
+        return currentFeetY==depotFeetY
+                ?new int[]{currentFeetY}:new int[]{currentFeetY,depotFeetY};
+    }
+    /** A reachable waypoint OUTSIDE the schematic. First try a same-height
+     * perimeter escape; never assume a trapped rooftop Builder can walk down
+     * to OnSite. Every candidate still requires verified standability and
+     * a physical route before we commit to it. */
     private static BlockPos alternateStaging(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,Cache plan,
             WorkerAction action){
@@ -173,36 +180,40 @@ public final class BuilderBuildService {
         int middleX=site.minX()+spanX/2,middleZ=site.minZ()+spanZ/2;
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null)depot=table.getBlockPos();
-        int baseY=depot.getY();
-        int[] yOffsets={1,0,2,-1,3,-2};
-        for(int sideTry=0;sideTry<3;sideTry++){
-            int side=alternateSide(badSide,crew,
-                    action.alternateSideAttempts+sideTry);
-            int span=(side%2==0?spanZ:spanX);
-            int quarter=Math.max(2,span/4);
-            int[] lateral={0,quarter,-quarter,2*quarter,-2*quarter};
-            for(int offset:lateral){
-                int x=switch(side){
-                    case 0 -> site.maxX()+3;
-                    case 2 -> site.minX()-3;
-                    default -> Math.max(site.minX()-2,
-                            Math.min(site.maxX()+2,middleX+offset));
-                };
-                int z=switch(side){
-                    case 1 -> site.maxZ()+3;
-                    case 3 -> site.minZ()-3;
-                    default -> Math.max(site.minZ()-2,
-                            Math.min(site.maxZ()+2,middleZ+offset));
-                };
-                for(int dy:yOffsets){
-                    BlockPos waypoint=new BlockPos(x,baseY+dy,z);
-                    if(!level.hasChunkAt(waypoint)
-                            ||worker.distanceToSqr(x+.5,baseY+dy,z+.5)<9
-                            ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                    .canStandOn(level,worker,waypoint))continue;
-                    if(com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .routeToExact(level,worker,waypoint,1.0))
-                        return waypoint;
+        int[] heights=alternateStagingHeights(worker.blockPosition().getY(),
+                depot.getY()+1);
+        int[] yOffsets={0,1,-1};
+        for(int baseY:heights){
+            for(int sideTry=0;sideTry<3;sideTry++){
+                int side=alternateSide(badSide,crew,
+                        action.alternateSideAttempts+sideTry);
+                int span=(side%2==0?spanZ:spanX);
+                int quarter=Math.max(2,span/4);
+                int[] lateral={0,quarter,-quarter,2*quarter,-2*quarter};
+                for(int offset:lateral){
+                    int x=switch(side){
+                        case 0 -> site.maxX()+3;
+                        case 2 -> site.minX()-3;
+                        default -> Math.max(site.minX()-2,
+                                Math.min(site.maxX()+2,middleX+offset));
+                    };
+                    int z=switch(side){
+                        case 1 -> site.maxZ()+3;
+                        case 3 -> site.minZ()-3;
+                        default -> Math.max(site.minZ()-2,
+                                Math.min(site.maxZ()+2,middleZ+offset));
+                    };
+                    for(int dy:yOffsets){
+                        int y=baseY+dy;
+                        BlockPos waypoint=new BlockPos(x,y,z);
+                        if(!level.hasChunkAt(waypoint)
+                                ||worker.distanceToSqr(x+.5,y,z+.5)<9
+                                ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                        .canStandOn(level,worker,waypoint))continue;
+                        if(com.caszgamermd.golemsplus.worker.WorkerNavigation
+                                .routeToExact(level,worker,waypoint,1.0))
+                            return waypoint;
+                    }
                 }
             }
         }
