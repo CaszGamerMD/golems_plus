@@ -49,6 +49,48 @@ public final class BuilderMatrixRailPhysicsGameTest {
         if(!placedUpper||!placedLower||!removedUpper){
             h.fail("Vanilla failed isolated rail placement/removal");return;
         }
+        if(!BuilderRailSlope.shapeMatches(after,expected)){
+            h.fail("Expected physical incline lost after removing paid jig: "
+                    +after);return;
+        }
+        if(!BuilderRailSlope.railStateDifference(after,expected)
+                .contains("redstone power")){
+            h.fail("Expected only a real redstone-power mismatch: "
+                    +BuilderRailSlope.railStateDifference(after,expected));
+            return;
+        }
+        // Confirm the actual user file's neighboring blocks separately
+        // from this controlled physics experiment, preserving every
+        // user's saved rail, fluid and redstone state unchanged.
+        try{
+            var source=LitematicFileReader.read(
+                    BuilderVillagerMatrixFullFixture.unpack());
+            var around=new java.util.ArrayList<String>();
+            String originalRail=null;
+            String raisedCell="minecraft:air";
+            for(var block:source.blocks()){
+                if(block.x()==15&&block.y()==1&&block.z()==24)
+                    originalRail=block.state();
+                if(block.x()==14&&block.y()==2&&block.z()==24)
+                    raisedCell=block.state();
+                if(Math.abs(block.x()-15)<=2
+                        &&Math.abs(block.y()-1)<=2
+                        &&Math.abs(block.z()-24)<=2
+                        &&around.size()<38)
+                    around.add("("+block.x()+","+block.y()+","
+                            +block.z()+")="+block.state());
+            }
+            System.out.println("[MATRIX RAIL NEIGHBORS] original="
+                    +originalRail+" raisedCell="+raisedCell
+                    +" nearbyNonAir="+around);
+            if(originalRail==null
+                    ||!originalRail.contains("shape=ascending_west"))
+                throw new IllegalStateException(
+                        "User's original Matrix rail state unexpectedly changed");
+        }catch(Exception e){
+            h.fail("Could not inspect exact Matrix rail neighbors: "+e);
+            return;
+        }
         // Report a factual, discrete physical outcome. The full build
         // must separately assert every final block state, not inherit
         // any success from this isolated diagnostic.
