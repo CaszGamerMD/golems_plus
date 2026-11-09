@@ -24,6 +24,15 @@ final class BuilderAlternateSideTest {
         }
     }
 
+    @Test void rooftopRecoveryTriesCurrentFeetElevationBeforeDepot(){
+        assertArrayEquals(new int[]{72,65},
+                BuilderBuildService.alternateStagingHeights(72,65));
+        assertArrayEquals(new int[]{65},
+                BuilderBuildService.alternateStagingHeights(65,65));
+        assertArrayEquals(new int[]{61,65},
+                BuilderBuildService.alternateStagingHeights(61,65));
+    }
+
     @Test void fourWorkersDoNotAllChooseTheSameSide(){
         java.util.Set<Integer> sides=new java.util.HashSet<>();
         for(int worker=0;worker<4;worker++)
