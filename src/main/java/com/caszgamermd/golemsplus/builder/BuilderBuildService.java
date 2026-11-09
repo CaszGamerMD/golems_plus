@@ -75,6 +75,10 @@ public final class BuilderBuildService {
         long lastPerchEscapeTick=-1000;
         long retreatUntil=-1;
         int lastFailedStep=-1;
+        // A dry rail lost to a vanilla neighbor update may be repaired for
+        // the water pass, using another real rail from OnSite. Never keep
+        // spending replacements on a physically impossible rail layout.
+        int wetRailRebuilds;
         // After returning to OnSite from a failed approach, take a real
         // walking route to a different side of the build BEFORE selecting
         // a new work stance. Never teleport or hold a claim while scouting.
@@ -122,6 +126,7 @@ public final class BuilderBuildService {
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
                 blockedSince=-1;workTravelSince=-1;
+                wetRailRebuilds=0;
                 bestTargetDistance=Double.POSITIVE_INFINITY;
                 lastTargetProgressTick=-1;
                 lastMovementTick=-1;lastPerchEscapeTick=-1000;
@@ -1382,30 +1387,36 @@ public final class BuilderBuildService {
             }
             boolean waterlog=BuilderWaterPass.isWaterlogPass(step.encodedState());
             boolean bubble=BuilderWaterPass.isBubbleColumn(step.encodedState());
+            BuilderBlockResolver.Resolved dryWaterlog=null;
+            boolean rebuildMissingWetRail=false;
             if(waterlog){
-                var dry=BuilderBlockResolver.resolve(
+                dryWaterlog=BuilderBlockResolver.resolve(
                         BuilderWaterPass.dryState(
                                 BuilderWaterPass.originalState(step.encodedState())),
                         BuildSite.Rotation.values()[table.builderRotation()/90],
                         BuildSite.Mirror.values()[table.builderMirror()]);
-                // An ascending rail was already physically paid for in
-                // the dry phase. Subsequent neighbor updates may flatten
-                // its shape before the water phase. Restore ONLY the
-                // existing same-type rail from a supported stance; never
-                // place a second rail or spend a water bucket as a jig.
-                if(dry!=null&&BuilderRailSlope.raisedEnd(pos,dry.state())!=null
-                        &&!BuilderPlacementState.matches(existing,dry.state())){
-                    if(BuilderRailSlope.restorePaidSlope(level,pos,dry.state()))
+                // If a paid rail was popped off by vanilla updates after
+                // its dry placement, the water step may rebuild it using
+                // a SECOND physically drawn rail. Do not repair other
+                // blocks or force an unsupported/un-survivable rail.
+                rebuildMissingWetRail=dryWaterlog!=null&&existing.isAir()
+                        &&BuilderRailSlope.raisedEnd(pos,dryWaterlog.state())!=null
+                        &&dryWaterlog.state().canSurvive(level,pos);
+                if(dryWaterlog!=null
+                        &&BuilderRailSlope.raisedEnd(pos,dryWaterlog.state())!=null
+                        &&!existing.isAir()
+                        &&!BuilderPlacementState.matches(existing,dryWaterlog.state())){
+                    if(BuilderRailSlope.restorePaidSlope(
+                            level,pos,dryWaterlog.state()))
                         existing=level.getBlockState(pos);
                 }
-                if(dry==null||!BuilderPlacementState.matches(existing,dry.state())){
-                    // Water goes INTO the already-built block. Never mine
-                    // that block merely to create the finishing fluid pass.
+                if(!rebuildMissingWetRail&&(dryWaterlog==null
+                        ||!BuilderPlacementState.matches(existing,dryWaterlog.state()))){
                     table.waitForBuilderSupport(worker.getUUID(),index,
                             level.getGameTime());
                     table.setProblem("Water pass waiting for dry block at "+pos
                             +" actual="+existing+" expected="
-                            +(dry==null?"unsupported":dry.state()));
+                            +(dryWaterlog==null?"unsupported":dryWaterlog.state()));
                     return;
                 }
             }
@@ -1942,6 +1953,28 @@ public final class BuilderBuildService {
                         return;
                 }
             }
+            // Repair stock must be carried to the construction position,
+            // not pulled remotely from OnSite. The original dry placement
+            // was paid for, and replacement also costs one real rail.
+            if(rebuildMissingWetRail){
+                if(activity.wetRailRebuilds>=2){
+                    table.waitForBuilderSupport(worker.getUUID(),index,
+                            level.getGameTime());
+                    table.setProblem("Ascending rail repeatedly popped at "+pos
+                            +" during water pass; inspect upper rail support");
+                    return;
+                }
+                if(worker.carriedCount(dryWaterlog.item())<1){
+                    var loading=BuilderSupplyInventory.loadRailJig(
+                            level,worker,table,dryWaterlog.item(),1);
+                    if(loading==BuilderSupplyInventory.LoadStatus.MOVING)return;
+                    if(loading==BuilderSupplyInventory.LoadStatus.MISSING){
+                        table.setProblem("Waterlogged rail repair needs one real "
+                                +dryWaterlog.item()+" in OnSite at "+pos);
+                        return;
+                    }
+                }
+            }
             BuilderSupplyInventory.Receipt payment=freeHalf||reusableFluid?null:
                     BuilderSupplyInventory.consume(worker,state.item());
             if(!freeHalf&&!reusableFluid&&payment==null){
@@ -1971,6 +2004,28 @@ public final class BuilderBuildService {
                     if(payment!=null)BuilderSupplyInventory.refund(table,payment);
                     table.setProblem("Could not physically set temporary raised rail at "
                             +raisedRail);
+                    return;
+                }
+            }
+            if(rebuildMissingWetRail){
+                BuilderSupplyInventory.Receipt repairPayment=
+                        BuilderSupplyInventory.consume(worker,dryWaterlog.item());
+                if(repairPayment==null){
+                    table.setProblem("Missing replacement paid rail at "+pos);
+                    return;
+                }
+                activity.wetRailRebuilds++;
+                if(!level.setBlock(pos,dryWaterlog.state(),3)){
+                    BuilderSupplyInventory.refund(table,repairPayment);
+                    table.setProblem("Could not physically rebuild dry rail at "+pos);
+                    return;
+                }
+                if(!BuilderRailSlope.restorePaidSlope(
+                        level,pos,dryWaterlog.state())){
+                    table.waitForBuilderSupport(worker.getUUID(),index,
+                            level.getGameTime());
+                    table.setProblem("Rebuilt rail immediately lost slope at "+pos
+                            +" after "+activity.wetRailRebuilds+" paid attempts");
                     return;
                 }
             }
