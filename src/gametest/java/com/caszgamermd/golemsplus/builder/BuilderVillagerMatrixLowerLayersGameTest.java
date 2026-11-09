@@ -42,6 +42,11 @@ public final class BuilderVillagerMatrixLowerLayersGameTest {
         try{
             source=BuilderVillagerMatrixFullFixture.unpack();
             schematic=LitematicFileReader.read(source);
+            var railAudit=BuilderRailAssemblyAudit.inspect(schematic);
+            System.out.println("[MATRIX LOWER SOURCE RAIL AUDIT] ascending="
+                    +railAudit.ascending()+" conflictingRaisedEnds="
+                    +railAudit.conflictingRaisedEndpoints()
+                    +" examples="+railAudit.examples());
             fullPlan=BuilderConstructionPlan.create(schematic,new BuildSite(
                     origin.getX(),origin.getY(),origin.getZ(),
                     BuildSite.Rotation.NONE,BuildSite.Mirror.NONE));
