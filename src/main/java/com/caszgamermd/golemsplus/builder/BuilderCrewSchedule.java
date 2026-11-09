@@ -19,6 +19,28 @@ public final class BuilderCrewSchedule {
         if(blocks<=0||crewSize<=0)return 0;
         return Math.min(crewSize,blocks<=5?1:2+(blocks-6)/3);
     }
+    /** Physical capacity of a compact layer. A 7x5 floating platform cannot
+     * safely host all eight workers even if it has 27 blocks to place.
+     * Allow one active Builder per roughly 3x3 accessible footprint area;
+     * broad floors still use the existing block-based eight-worker tiers.
+     * Width and depth describe this Y layer, not the full schematic. */
+    public static int workersForFootprint(int blocks,int crewSize,
+            int width,int depth){
+        int requested=workersForLayer(blocks,crewSize);
+        if(requested==0)return 0;
+        long area=(long)Math.max(1,width)*Math.max(1,depth);
+        int safeCapacity=(int)Math.min((long)crewSize,Math.max(1L,(area+8)/9));
+        return Math.min(requested,safeCapacity);
+    }
+    /** For a cramped Y layer use the SAME ranked zone owners but park
+     * surplus workers at OnSite; the selected workers share its cells. */
+    public static List<UUID> staffForFootprint(List<UUID> roster,
+            int physicalBlocks,int[] ownership,int width,int depth){
+        List<UUID> ranked=staffForLayer(roster,physicalBlocks,ownership);
+        if(physicalBlocks==0)return ranked;
+        int safe=workersForFootprint(physicalBlocks,roster.size(),width,depth);
+        return List.copyOf(ranked.subList(0,Math.min(safe,ranked.size())));
+    }
     /** Prefer workers whose original X/Z zones own the most of this
      * layer. A stable roster-index tie breaker prevents golem churn.
      * Restricted crews then share all layer cells rather than leaving
