@@ -841,6 +841,26 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderMissingRetries.put(step,tick+40);
         sync();
     }
+    /** A physically proven structural conflict is NOT an ordinary
+     * 40-tick support wait. The original Matrix contains a powered
+     * ascending rail whose raised-end jig has a second rail as its
+     * footing; vanilla physics flattens or breaks that exact assembly.
+     *
+     * Hold the real incomplete cell for 600 ticks, letting other
+     * Builders handle any runnable same-Y targets without burning
+     * movement/path searches on an identical failed geometry.
+     * The persisted bit is NEVER completed, the Y gate remains strict,
+     * and another attempt is allowed if the player changes the site.
+     */
+    public void waitForBuilderStructuralConflict(UUID worker,int step,
+            long tick,String reason){
+        if(builderClaims.getOrDefault(worker,-1)!=step)return;
+        builderClaims.remove(worker);
+        builderMissingRetries.put(step,tick+600);
+        builderClaimDebug.put(worker,"structural-conflict #"+step
+                +" retryAt="+(tick+600)+" "+reason);
+        sync();
+    }
     public UUID builderWorkerId(){return builderWorkerId;}
     public int crewTarget(){return crewTarget;}
     /**
