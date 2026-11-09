@@ -301,7 +301,8 @@ public final class BuilderSupplyInventory {
         if(depot==null||storage==null)return LoadStatus.MISSING;
         if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                 depot.getZ()+.5)>12
-                &&BuilderGrappleAccess.rappelForTravel(level,worker,table))
+                &&(BuilderScaffolding.descendForTravel(level,worker,table)
+                    ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
             return LoadStatus.MOVING;
         if(BuilderReturnService.approach(level,worker,depot,.83))
             return LoadStatus.MOVING;
@@ -467,7 +468,8 @@ public final class BuilderSupplyInventory {
             if(site==null||depot==null)return LoadStatus.MISSING;
             if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                     depot.getZ()+.5)>12
-                    &&BuilderGrappleAccess.rappelForTravel(level,worker,table))
+                    &&(BuilderScaffolding.descendForTravel(level,worker,table)
+                    ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
                 return LoadStatus.MOVING;
             if(BuilderReturnService.approach(level,worker,depot,.83))
                 return LoadStatus.MOVING;
@@ -506,7 +508,8 @@ public final class BuilderSupplyInventory {
                     continue;
                 if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
                         depot.getZ()+.5)>12
-                        &&BuilderGrappleAccess.rappelForTravel(level,worker,table))
+                        &&(BuilderScaffolding.descendForTravel(level,worker,table)
+                    ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
                     return LoadStatus.MOVING;
                 if(BuilderReturnService.approach(level,worker,depot,.83))
                     return LoadStatus.MOVING;
