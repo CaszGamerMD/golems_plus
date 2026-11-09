@@ -957,7 +957,10 @@ public final class BuilderBuildService {
         // OnSite before trying another assignment. Other crew members can
         // claim the released cell without waiting for this worker.
         WorkerAction retreat=workerActions.get(worker);
-        if(retreat!=null&&retreat.retreatUntil>0){
+        // A pending alternate-side rescue must be allowed to search from the
+        // current roof before the normal OnSite retreat forces a descent.
+        if(retreat!=null&&retreat.retreatUntil>0
+                &&!retreat.alternateSideRequested){
             BlockPos depot=table.builderUnloadingStorage();
             if(depot==null)depot=home;
             if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
@@ -1014,6 +1017,9 @@ public final class BuilderBuildService {
                             waypoint.getZ()+.5)<4){
                         alternate.alternateSideTarget=null;
                         alternate.alternateSideRequested=false;
+                        // Successful perimeter recovery replaces the forced
+                        // OnSite detour; rebuild work plans from this side.
+                        alternate.retreatUntil=-1;
                         alternate.workTravelSince=-1;
                         alternate.lastMovementTick=-1;
                         alternate.lastTargetProgressTick=-1;
