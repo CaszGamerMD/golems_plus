@@ -1388,12 +1388,24 @@ public final class BuilderBuildService {
                                 BuilderWaterPass.originalState(step.encodedState())),
                         BuildSite.Rotation.values()[table.builderRotation()/90],
                         BuildSite.Mirror.values()[table.builderMirror()]);
+                // An ascending rail was already physically paid for in
+                // the dry phase. Subsequent neighbor updates may flatten
+                // its shape before the water phase. Restore ONLY the
+                // existing same-type rail from a supported stance; never
+                // place a second rail or spend a water bucket as a jig.
+                if(dry!=null&&BuilderRailSlope.raisedEnd(pos,dry.state())!=null
+                        &&!BuilderPlacementState.matches(existing,dry.state())){
+                    if(BuilderRailSlope.restorePaidSlope(level,pos,dry.state()))
+                        existing=level.getBlockState(pos);
+                }
                 if(dry==null||!BuilderPlacementState.matches(existing,dry.state())){
                     // Water goes INTO the already-built block. Never mine
                     // that block merely to create the finishing fluid pass.
                     table.waitForBuilderSupport(worker.getUUID(),index,
                             level.getGameTime());
-                    table.setProblem("Water pass waiting for dry block at "+pos);
+                    table.setProblem("Water pass waiting for dry block at "+pos
+                            +" actual="+existing+" expected="
+                            +(dry==null?"unsupported":dry.state()));
                     return;
                 }
             }
