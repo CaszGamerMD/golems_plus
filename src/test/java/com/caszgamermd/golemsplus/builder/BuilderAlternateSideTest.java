@@ -33,6 +33,29 @@ final class BuilderAlternateSideTest {
                 BuilderBuildService.alternateStagingHeights(61,65));
     }
 
+    @Test void realPlacementResetsPerObstacleEscapeBudget(){
+        var activity=new BuilderBuildService.WorkerAction();
+        activity.alternateSideAttempts=3;
+        activity.alternateSideRequested=true;
+        activity.alternateSideTarget=new net.minecraft.core.BlockPos(10,75,10);
+        activity.alternateSideStarted=500;
+        activity.failedApproachFrom=new net.minecraft.core.BlockPos(9,75,9);
+        activity.lastFailedStep=42;
+        activity.retreatUntil=600;
+        // A new claim does NOT reset this budget for the same obstacle.
+        activity.setStep(43);
+        assertEquals(3,activity.alternateSideAttempts);
+        // An actual physical placement unlocks recovery for later cells.
+        activity.notePhysicalPlacement();
+        assertEquals(0,activity.alternateSideAttempts);
+        assertFalse(activity.alternateSideRequested);
+        assertNull(activity.alternateSideTarget);
+        assertEquals(-1,activity.alternateSideStarted);
+        assertNull(activity.failedApproachFrom);
+        assertEquals(-1,activity.lastFailedStep);
+        assertEquals(-1,activity.retreatUntil);
+    }
+
     @Test void fourWorkersDoNotAllChooseTheSameSide(){
         java.util.Set<Integer> sides=new java.util.HashSet<>();
         for(int worker=0;worker<4;worker++)
