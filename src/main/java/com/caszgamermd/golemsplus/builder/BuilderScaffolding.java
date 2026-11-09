@@ -401,9 +401,11 @@ public final class BuilderScaffolding {
         for(BlockPos pos:table.scaffoldPositions(towerOwner)){
             if(!level.hasChunkAt(pos)
                     ||!level.getBlockState(pos).is(Blocks.SCAFFOLDING))continue;
+            BlockPos depot=table.builderUnloadingStorage();
+            if(depot==null)depot=table.getBlockPos();
             if(!towerOwner.equals(worker.getUUID())
                     &&!borrowableReturnColumn(worker.blockPosition(),
-                            pos,table.builderUnloadingStorage()))continue;
+                            pos,depot))continue;
             long key=BlockPos.asLong(pos.getX(),0,pos.getZ());
             BlockPos former=bottoms.get(key);
             if(former==null||former.getY()>pos.getY())
