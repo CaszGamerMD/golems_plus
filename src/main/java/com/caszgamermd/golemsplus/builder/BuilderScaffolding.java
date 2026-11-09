@@ -388,11 +388,22 @@ public final class BuilderScaffolding {
     private record Tower(BlockPos base,int topY){}
     private static java.util.List<Tower> towers(ServerLevel level,
             WorkerStationBlockEntity table,BuilderGolem worker){
+        return towers(level,table,worker,worker.getUUID());
+    }
+    /** Read-only borrowed tower discovery. Its original owner retains ALL
+     * scaffold receipts and reclamation rights: other Builders may only
+     * descend a proven physical column, never retrieve its blocks. */
+    private static java.util.List<Tower> towers(ServerLevel level,
+            WorkerStationBlockEntity table,BuilderGolem worker,
+            java.util.UUID towerOwner){
         java.util.Map<Long,BlockPos> bottoms=new java.util.LinkedHashMap<>();
         java.util.Map<Long,Integer> tops=new java.util.HashMap<>();
-        for(BlockPos pos:table.scaffoldPositions(worker.getUUID())){
+        for(BlockPos pos:table.scaffoldPositions(towerOwner)){
             if(!level.hasChunkAt(pos)
                     ||!level.getBlockState(pos).is(Blocks.SCAFFOLDING))continue;
+            if(!towerOwner.equals(worker.getUUID())
+                    &&!borrowableReturnColumn(worker.blockPosition(),
+                            pos,table.builderUnloadingStorage()))continue;
             long key=BlockPos.asLong(pos.getX(),0,pos.getZ());
             BlockPos former=bottoms.get(key);
             if(former==null||former.getY()>pos.getY())
@@ -407,6 +418,18 @@ public final class BuilderScaffolding {
                         +Math.abs(worker.getY()-(t.topY()+1))*.5));
         return result;
     }
+    /** Only borrow a teammate's tower when it is local, the worker is
+     * actually elevated above OnSite, and the scaffold reaches the
+     * worker's height. A remote warehouse shaft cannot be selected. */
+    static boolean borrowableReturnColumn(BlockPos feet,BlockPos column,
+            BlockPos depot){
+        if(feet==null||column==null||depot==null
+                ||feet.getY()<=depot.getY()+1)return false;
+        return Math.abs(feet.getX()-column.getX())<=12
+                &&Math.abs(feet.getZ()-column.getZ())<=12
+                &&column.getY()<=feet.getY()+1;
+    }
+
     private static BlockPos returnLanding(ServerLevel level,BuilderGolem worker,
                                            Tower tower){
         java.util.List<BlockPos> choices=new java.util.ArrayList<>();
@@ -618,6 +641,31 @@ public final class BuilderScaffolding {
         }
         if(exiting.containsKey(worker))return true;
         var found=towers(level,table,worker);
+        // A builder can end its work on a SHARED scaffold tower or bridge
+        // built by a teammate. Previously only its own tracked receipt
+        // could be used for descent, so stocked workers on another
+        // worker's shaft repeatedly routed to the depot in midair.
+        // Preserve own towers first. Borrowed towers are added as safe
+        // alternatives without transferring their ownership.
+        if(worker.blockPosition().getY()>
+                (table.builderUnloadingStorage()==null
+                  ?table.getBlockPos().getY()+1
+                  :table.builderUnloadingStorage().getY()+1)){
+            java.util.Set<Long> columns=new java.util.HashSet<>();
+            for(Tower tower:found)
+                columns.add(BlockPos.asLong(tower.base().getX(),0,
+                        tower.base().getZ()));
+            for(java.util.UUID owner:table.builderWorkerIds()){
+                if(owner.equals(worker.getUUID()))continue;
+                for(Tower tower:towers(level,table,worker,owner)){
+                    long key=BlockPos.asLong(tower.base().getX(),0,
+                            tower.base().getZ());
+                    if(!columns.add(key))continue;
+                    if(tower.topY()+2<worker.getY())continue;
+                    found.add(tower);
+                }
+            }
+        }
         if(found.isEmpty()){
             returning.remove(worker);access.remove(worker);return false;
         }
