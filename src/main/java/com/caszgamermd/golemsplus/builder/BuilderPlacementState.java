@@ -4,6 +4,7 @@ import net.minecraft.world.level.block.FenceBlock;
 import net.minecraft.world.level.block.IronBarsBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.WallBlock;
+import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.Blocks;
@@ -53,6 +54,8 @@ public final class BuilderPlacementState {
                     ||(name.equals("snowy")
                         &&(id.equals("grass_block")||id.equals("mycelium")
                             ||id.equals("podzol")))
+                    ||(actual.getBlock() instanceof BaseRailBlock
+                        &&name.equals("powered"))
                     ||(actual.is(Blocks.REDSTONE_WIRE)
                         &&(name.equals("power")||name.equals("north")
                             ||name.equals("south")||name.equals("east")
