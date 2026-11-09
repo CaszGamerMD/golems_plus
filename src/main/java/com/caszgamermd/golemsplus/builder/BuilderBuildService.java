@@ -1674,25 +1674,44 @@ public final class BuilderBuildService {
                 return;
             }
             BlockPos raisedRail=BuilderRailSlope.raisedEnd(pos,state.state());
-            boolean reShapeRail=raisedRail!=null
+            boolean sameRail=raisedRail!=null
                     &&existing.getBlock()==state.state().getBlock();
-            if(reShapeRail&&level.hasChunkAt(raisedRail)
-                    &&level.getBlockState(raisedRail).isAir()){
-                // The physical rail was already paid for and placed, but
-                // its requested slope collapsed when the temporary
-                // raised-end jig was recovered. Recreating that same jig
-                // every twelve ticks cannot preserve a permanent slope;
-                // it wastes movement/path planning while the true raised
-                // connection is still AIR. Hold the real rail in place
-                // and retry only when the neighboring support changes.
-                // Do NOT set a fictional ascending state or spend another
-                // rail item to hide the missing upper geometry.
+            boolean railSlopeCorrect=sameRail
+                    &&BuilderRailSlope.shapeMatches(existing,state.state());
+            // Confirmed by a standalone vanilla GameTest: removing an
+            // elevated rail jig DID NOT flatten an ascending-west rail.
+            // Without a live power source, however, vanilla changed
+            // powered=true to false. The old code misdiagnosed this
+            // powered-only mismatch as a failed slope and repeatedly
+            // demanded a new upper connector. Keep the already-paid rail
+            // and wait for the actual redstone/water state to update.
+            // Never fake power by setting a block property directly.
+            if(railSlopeCorrect&&!waterlog
+                    &&!BuilderPlacementState.matches(
+                            existing,state.state())){
                 table.waitForBuilderSupport(worker.getUUID(),index,
                         level.getGameTime());
-                table.setProblem("Ascending rail needs permanent raised-end "
-                        +"connection at "+raisedRail.toShortString()
-                        +" for schematic rail "+pos.toShortString()
-                        +"; existing flat rail retained without new charge");
+                table.setProblem("Rail physically has correct slope at "
+                        +pos.toShortString()+"; waiting for "
+                        +BuilderRailSlope.railStateDifference(
+                                existing,state.state())
+                        +" from actual neighbor/fluid updates");
+                return;
+            }
+            boolean reShapeRail=sameRail&&!railSlopeCorrect;
+            // A paid flat rail may still be safely reshaped with ONE
+            // temporary raised-end rail, then the jig can be retrieved.
+            // Require genuine solid support for that physical upper jig;
+            // do not retry a non-survivable connector every 12 ticks.
+            if(reShapeRail&&level.hasChunkAt(raisedRail)
+                    &&level.getBlockState(raisedRail).isAir()
+                    &&!state.state().getBlock().defaultBlockState()
+                            .canSurvive(level,raisedRail)){
+                table.waitForBuilderSupport(worker.getUUID(),index,
+                        level.getGameTime());
+                table.setProblem("Rail shape "+state.state()
+                        +" requires real raised-end jig support at "
+                        +raisedRail.toShortString());
                 return;
             }
             if(!existing.isAir()&&!waterlog&&!reShapeRail
