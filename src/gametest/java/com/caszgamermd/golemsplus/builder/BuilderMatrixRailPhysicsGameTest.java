@@ -96,4 +96,56 @@ public final class BuilderMatrixRailPhysicsGameTest {
         // any success from this isolated diagnostic.
         h.succeed();
     }
+    /** Preserve the real Matrix power-chain cells: redstone block
+     * directly under rail x=13, waterlogged roots under rail x=14,
+     * and the requested ascending rail at x=15. Unlike the isolated
+     * jig test, this deliberately DOES NOT invent a stone support
+     * under the raised end. It asks vanilla physics what is possible.
+     */
+    @GameTest(structure="golems_plus_gametest:matrix_full_arena",
+            environment="golems_plus_gametest:matrix_full_e2e",
+            maxTicks=160,skyAccess=true)
+    public void originalMatrixPoweredRailPocketWithTrueSupportingBlocks(
+            GameTestHelper h){
+        ServerLevel world=h.getLevel();
+        BlockPos x15=h.absolutePos(new BlockPos(12,4,12));
+        BlockPos x14=x15.west(),x13=x15.west(2);
+        for(int y=2;y<=8;y++)for(int x=8;x<=15;x++)for(int z=9;z<=15;z++)
+            world.setBlock(h.absolutePos(new BlockPos(x,y,z)),
+                    Blocks.AIR.defaultBlockState(),3);
+        world.setBlock(x13.below(),Blocks.REDSTONE_BLOCK.defaultBlockState(),3);
+        world.setBlock(x14.below(),
+                Blocks.MANGROVE_ROOTS.defaultBlockState()
+                        .setValue(net.minecraft.world.level.block.state.properties
+                                .BlockStateProperties.WATERLOGGED,true),3);
+        world.setBlock(x15.below(),Blocks.SMOOTH_STONE.defaultBlockState(),3);
+        var flat=BuilderBlockResolver.resolve(
+                "minecraft:powered_rail[powered=true,shape=east_west,waterlogged=false]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE).state();
+        var ascending=BuilderBlockResolver.resolve(
+                "minecraft:powered_rail[powered=true,shape=ascending_west,waterlogged=false]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE).state();
+        world.setBlock(x13,flat,3);
+        world.setBlock(x14,flat,3);
+        BlockPos raised=BuilderRailSlope.raisedEnd(x15,ascending);
+        boolean realJigCanSurvive=flat.getBlock().defaultBlockState()
+                .canSurvive(world,raised);
+        world.setBlock(x15,ascending,3);
+        BlockState physical=world.getBlockState(x15);
+        System.out.println("[MATRIX RAIL ACTUAL POCKET] "
+                +"source=(15,1,24) raisedCell=iron_trapdoor"
+                +" actualRaisedFooting="+world.getBlockState(raised.below())
+                +" raisedJigCanSurvive="+realJigCanSurvive
+                +" x13="+world.getBlockState(x13)
+                +" x14="+world.getBlockState(x14)
+                +" x15="+physical
+                +" shapeMatches="+BuilderRailSlope.shapeMatches(
+                        physical,ascending)
+                +" difference="+BuilderRailSlope.railStateDifference(
+                        physical,ascending));
+        // Diagnostic only: a mismatching vanilla snapshot here is a
+        // REAL construction blocker, not permission to fabricate blocks
+        // or to mark the full Matrix job successful.
+        h.succeed();
+    }
 }
