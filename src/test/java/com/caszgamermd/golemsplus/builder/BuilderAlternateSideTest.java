@@ -56,6 +56,13 @@ final class BuilderAlternateSideTest {
         assertEquals(-1,activity.retreatUntil);
     }
 
+    @Test void watchdogAllowsLongDetoursButShortensStationaryWait(){
+        assertEquals(120,BuilderBuildService.STATIONARY_STALL_TICKS);
+        assertEquals(240,BuilderBuildService.TARGET_PROGRESS_STALL_TICKS);
+        assertTrue(BuilderBuildService.TARGET_PROGRESS_STALL_TICKS
+                >BuilderBuildService.STATIONARY_STALL_TICKS);
+    }
+
     @Test void fourWorkersDoNotAllChooseTheSameSide(){
         java.util.Set<Integer> sides=new java.util.HashSet<>();
         for(int worker=0;worker<4;worker++)
