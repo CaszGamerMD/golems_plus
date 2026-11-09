@@ -661,8 +661,24 @@ public final class BuilderScaffolding {
                     long key=BlockPos.asLong(tower.base().getX(),0,
                             tower.base().getZ());
                     if(!columns.add(key))continue;
-                    if(tower.topY()+2<worker.getY())continue;
-                    found.add(tower);
+                    // A one-cell horizontal bridge is not a descent
+                    // shaft. Require a real multi-block column, a viable
+                    // ground exit and no teammate currently climbing it.
+                    if(tower.topY()-tower.base().getY()<2
+                            ||tower.topY()+2<worker.getY()
+                            ||exitGround(level,worker,tower.base())==null)
+                        continue;
+                    boolean occupied=false;
+                    for(java.util.UUID teammateId:table.builderWorkerIds()){
+                        if(teammateId.equals(worker.getUUID()))continue;
+                        if(level.getEntity(teammateId) instanceof BuilderGolem teammate
+                                &&climbingNow(level,teammate)
+                                &&Math.abs(teammate.getX()-tower.base().getX()-.5)<1
+                                &&Math.abs(teammate.getZ()-tower.base().getZ()-.5)<1){
+                            occupied=true;break;
+                        }
+                    }
+                    if(!occupied)found.add(tower);
                 }
             }
         }
