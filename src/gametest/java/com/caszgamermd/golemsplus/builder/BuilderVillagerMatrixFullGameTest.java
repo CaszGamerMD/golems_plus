@@ -98,6 +98,20 @@ public final class BuilderVillagerMatrixFullGameTest {
                 +" unmatched="+pistonAudit.unmatched()
                 +" heads="+pistonAudit.totalHeads()
                 +" examples="+pistonAudit.examples());
+        // Separate SLOPE incompatibilities from missing power:
+        // verified physically on this exact user snapshot. A rail at
+        // (15,1,24) needs a raised-west rail at (14,2,24), but the final
+        // saved blocks there are an iron trapdoor and a flat powered rail
+        // below. The temporary jig works only while the footing is stone;
+        // restoring the actual rail breaks the incline in vanilla.
+        // Do not mark these cells completed by writing a fabricated state.
+        var railAudit=BuilderRailAssemblyAudit.inspect(schematic);
+        System.out.println("[MATRIX FULL RAIL AUDIT] ascending="
+                +railAudit.ascending()
+                +" conflictingRaisedEnds="+railAudit.conflictingRaisedEndpoints()
+                +" nonRailUpper="+railAudit.upperNonRail()
+                +" railFootings="+railAudit.railFootings()
+                +" examples="+railAudit.examples());
         // A real piston head/extended piston is a REDSTONE RESULT, not an
         // inventory item. Don't declare this full schematic buildable if
         // its states have not been taught to BuilderBlockResolver yet.
