@@ -70,6 +70,36 @@ public final class BuilderVillagerMatrixFullGameTest {
         }
     }
 
+    /** Real Minecraft block update check for a paid ascending rail whose
+     * raised neighbor cannot hold a temporary rail. No block is created
+     * by the slope correction; a real rail is staged on solid support. */
+    @GameTest(structure="golems_plus_gametest:matrix_arena",
+            maxTicks=80,skyAccess=true)
+    public void retainsPaidRailSlopeWithoutPermanentJig(GameTestHelper h){
+        ServerLevel level=h.getLevel();
+        BlockPos pos=h.absolutePos(new BlockPos(12,3,12));
+        h.setBlock(12,2,12,Blocks.SMOOTH_STONE);
+        var desired=BuilderBlockResolver.resolve(
+                "minecraft:powered_rail[powered=false,shape=ascending_west,waterlogged=false]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        if(desired==null){h.fail("Could not resolve powered rail slope");return;}
+        if(!level.setBlock(pos,Blocks.POWERED_RAIL.defaultBlockState(),3)
+                ||!BuilderRailSlope.restorePaidSlope(level,pos,desired.state())){
+            h.fail("Could not stabilize a physically present paid rail");return;
+        }
+        h.onEachTick(()->{
+            if(h.getTick()!=20)return;
+            if(!BuilderPlacementState.matches(level.getBlockState(pos),
+                    desired.state())){
+                h.fail("Paid ascending rail lost slope after world ticks: "
+                        +level.getBlockState(pos));return;
+            }
+            System.out.println("[MATRIX RAIL PASS] west ascending rail "
+                    +"retained without an unsupported raised jig");
+            h.succeed();
+        });
+    }
+
     @SuppressWarnings("removal")
     @GameTest(structure="golems_plus_gametest:matrix_arena",
             maxTicks=140000,skyAccess=true,required=false)
