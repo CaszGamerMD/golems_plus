@@ -19,6 +19,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.Container;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -138,6 +140,9 @@ public final class BuilderVillagerMatrixFullGameTest {
         var firstNeeds=baseStock();
         for(int i=0;i<Math.min(steps.size(),64);i++)
             if(firstNeeds.size()<26)addItem(firstNeeds,steps.get(i));
+        // One stack is not enough to kit eight workers at cold start.
+        // Reserve eight actual OnSite chest slots for scaffolding.
+        keepScaffoldingStock(level,supplyPos);
         BuilderInfiniteOnsiteSupply.restock(level,supplyPos,firstNeeds);
         var crew=new ArrayList<BuilderGolem>();
         for(int i=0;i<WORKERS;i++){
@@ -162,19 +167,20 @@ public final class BuilderVillagerMatrixFullGameTest {
             // 27 real chest slots cannot hold the entire machine palette.
             // Replenish relevant assignments only, without inserting items
             // directly into worker inventories or forcing any placements.
+            keepScaffoldingStock(level,supplyPos);
             Set<Item> needs=baseStock();
             for(var worker:crew){
                 for(Integer n:table.builderWorkOrder(worker.getUUID())){
-                    if(n!=null&&n>=0&&n<steps.size()&&needs.size()<26)
+                    if(n!=null&&n>=0&&n<steps.size()&&needs.size()<19)
                         addItem(needs,steps.get(n));
                 }
                 int claim=table.claimedStep(worker.getUUID());
-                if(claim>=0&&claim<steps.size()&&needs.size()<26)
+                if(claim>=0&&claim<steps.size()&&needs.size()<19)
                     addItem(needs,steps.get(claim));
             }
             for(int i=Math.max(0,table.builderCursor());
                     i<Math.min(steps.size(),table.builderCursor()+64)
-                            &&needs.size()<26;i++)
+                            &&needs.size()<19;i++)
                 addItem(needs,steps.get(i));
             BuilderInfiniteOnsiteSupply.restock(level,supplyPos,needs);
             if(tick%PROGRESS_PERIOD!=0)return;
@@ -227,6 +233,16 @@ public final class BuilderVillagerMatrixFullGameTest {
                 h.fail(failure.toString());
             }
         });
+    }
+
+    /** Test-only restock: eight physically stored scaffold stacks, one per
+     * concurrent Builder. The golems must still pick them up themselves.
+     * Other material types are capped to the chest's remaining 19 slots. */
+    private static void keepScaffoldingStock(ServerLevel level,BlockPos depot){
+        if(!(level.getBlockEntity(depot) instanceof Container chest))return;
+        for(int slot=0;slot<8;slot++)
+            chest.setItem(slot,new ItemStack(Items.SCAFFOLDING,64));
+        chest.setChanged();
     }
 
     private static Set<Item> baseStock(){
