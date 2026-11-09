@@ -5,6 +5,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Individual Builder completion must not depend on a teammate's roof work. */
 final class BuilderIndividualReturnTest {
+    @Test void stationaryDepotRoutingMustRetryButNotInterruptVerticalTools(){
+        assertFalse(BuilderReturnService.depotApproachStalled(119,false));
+        assertTrue(BuilderReturnService.depotApproachStalled(120,false));
+        assertTrue(BuilderReturnService.depotApproachStalled(600,false));
+        assertFalse(BuilderReturnService.depotApproachStalled(600,true),
+                "A physical scaffold or grapple controller must finish");
+    }
     @Test void finishedZoneWithoutLiveClaimReturnsBeforeRoofAssistance(){
         assertTrue(BuilderBuildService.shouldParkFinishedZone(true,-1),
                 "Builder with no remaining own coordinates should go OnSite");
