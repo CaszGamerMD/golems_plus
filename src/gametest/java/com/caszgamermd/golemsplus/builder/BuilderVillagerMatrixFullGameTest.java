@@ -61,6 +61,18 @@ public final class BuilderVillagerMatrixFullGameTest {
                 h.fail("Matrix coordinates are wrong: x="+minX+".."+maxX
                         +" z="+minZ+".."+maxZ);return;
             }
+            long dustBlocks=schematic.blocks().stream()
+                    .filter(b->b.state().startsWith("minecraft:redstone_wire["))
+                    .count();
+            var paidDust=BuilderBlockResolver.resolve(
+                    "minecraft:redstone_wire[east=side,north=none,power=12,south=side,west=none]",
+                    BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+            if(dustBlocks!=700||paidDust==null||paidDust.item()!=Items.REDSTONE){
+                h.fail("Redstone source/material regression: "+dustBlocks
+                        +" cells, resolver="+paidDust);return;
+            }
+            System.out.println("[MATRIX REDSTONE IMPORT PASS] "+dustBlocks
+                    +" redstone-wire cells use actual redstone dust");
             System.out.println("[MATRIX FULL IMPORT PASS] "+SOURCE_BLOCKS
                     +" source blocks, "+SOURCE_AIR
                     +" empty cells, full signed 31x20x49 region");
