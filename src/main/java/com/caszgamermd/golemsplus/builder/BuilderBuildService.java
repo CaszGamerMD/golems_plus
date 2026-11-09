@@ -22,6 +22,11 @@ import net.minecraft.world.level.block.state.BlockState;
  * existing structures, clone block entities or modify non-air blocks.
  */
 public final class BuilderBuildService {
+    // A stationary approach should not pause a crew for nine seconds;
+    // moving detours get more time before abandoning a claimed cell.
+    // Active scaffolding/grappling remains excluded from both watchdogs.
+    static final int STATIONARY_STALL_TICKS=120;
+    static final int TARGET_PROGRESS_STALL_TICKS=240;
     // Site clearing is one-at-a-time to preserve protected block checks,
     // but the selected cleaner cannot monopolize the cursor forever if
     // navigation is blocked. Hand the unchanged target to another loaded
@@ -60,7 +65,7 @@ public final class BuilderBuildService {
         int frontierWaitLayer=Integer.MIN_VALUE;
         long workTravelSince=-1;
         // Moving in circles is not progress toward the selected block.
-        // A generous 320-tick target-progress window allows real detours
+        // A bounded target-progress window allows real detours
         // but eventually hands off a claim that never gets closer.
         double bestTargetDistance=Double.POSITIVE_INFINITY;
         long lastTargetProgressTick=-1;
@@ -1588,7 +1593,7 @@ public final class BuilderBuildService {
             if(BuilderScaffoldPlanA.hasPlan(worker)
                     &&scaffoldWork(level,worker,table,owner,pos,plan.steps()))
                 return;
-            if(now-activity.lastTargetProgressTick>320
+            if(now-activity.lastTargetProgressTick>TARGET_PROGRESS_STALL_TICKS
                     &&!BuilderGrappleAccess.active(worker)
                     &&!BuilderScaffoldPlanA.hasPlan(worker)
                     &&!BuilderScaffolding.isControllingMovement(worker)){
@@ -1605,7 +1610,7 @@ public final class BuilderBuildService {
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                 table.waitForBuilderAccess(worker.getUUID(),index,now,
-                        "320 ticks without target-distance progress");
+                        TARGET_PROGRESS_STALL_TICKS+" ticks without target-distance progress");
                 activity.lastFailedStep=index;
                 activity.retreatUntil=now+100;
                 if(activity.alternateSideAttempts<3){
@@ -1621,7 +1626,7 @@ public final class BuilderBuildService {
                 activity.lastTargetProgressTick=now;
                 return;
             }
-            if(now-activity.lastMovementTick>180
+            if(now-activity.lastMovementTick>STATIONARY_STALL_TICKS
                     &&!BuilderGrappleAccess.active(worker)
                     &&!BuilderScaffoldPlanA.hasPlan(worker)
                     &&!BuilderScaffolding.isControllingMovement(worker)){
@@ -1649,7 +1654,7 @@ public final class BuilderBuildService {
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                 table.waitForBuilderAccess(worker.getUUID(),index,now,
-                        "180-tick stationary work approach; alternative access exhausted");
+                        STATIONARY_STALL_TICKS+"-tick stationary work approach; alternative access exhausted");
                 activity.lastFailedStep=index;
                 activity.retreatUntil=now+100;
                 if(activity.alternateSideAttempts<3){
@@ -1664,7 +1669,7 @@ public final class BuilderBuildService {
                 activity.lastMovementTick=now;
                 table.setProblem("Deferred stationary work approach "+pos);
                 System.out.println("[FRONTIER RETRY] deferred unchanged step="+index
-                        +" after 180 stationary ticks at "+worker.position());
+                        +" after "+STATIONARY_STALL_TICKS+" stationary ticks at "+worker.position());
                 return;
             }
             int yDiff=pos.getY()-worker.blockPosition().getY();
