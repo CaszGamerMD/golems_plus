@@ -31,6 +31,25 @@ class BuilderCrewScheduleTest {
         assertEquals(List.of(crew.get(0)),
                 BuilderCrewSchedule.staffForLayer(crew,0,new int[]{0,0,0,0}));
     }
+    @Test void compactFloatingFoundationDoesNotCrowdEightBuilders(){
+        // Exact floor geometry from VillagerMatrixClean_V2's first layer.
+        assertEquals(8,BuilderCrewSchedule.workersForLayer(27,8));
+        assertEquals(4,BuilderCrewSchedule.workersForFootprint(27,8,7,5));
+        assertEquals(4,BuilderCrewSchedule.workersForFootprint(28,8,7,5));
+        assertEquals(8,BuilderCrewSchedule.workersForFootprint(27,8,31,49));
+        assertEquals(8,BuilderCrewSchedule.workersForFootprint(40,8,12,12));
+        assertEquals(1,BuilderCrewSchedule.workersForFootprint(4,8,7,5));
+        assertEquals(2,BuilderCrewSchedule.workersForFootprint(7,8,7,5));
+        var crew=new java.util.ArrayList<java.util.UUID>();
+        for(int i=0;i<8;i++)crew.add(new java.util.UUID(0,i+1));
+        var staffed=BuilderCrewSchedule.staffForFootprint(crew,27,
+                new int[]{0,1,5,7,7,5,1,1},7,5);
+        assertEquals(4,staffed.size());
+        assertEquals(List.of(crew.get(3),crew.get(4),crew.get(2),crew.get(5)),staffed);
+        assertEquals(1,BuilderCrewSchedule.staffForFootprint(crew,0,
+                new int[]{0,0,0,0,0,0,0,0},1,1).size());
+    }
+
     @Test void fourWorkersGetDistinctStepsAndRetireOutOfOrder(){
         int next0=BuilderCrewSchedule.next(0,6,0,List.of());
         int next1=BuilderCrewSchedule.next(0,6,0,List.of(next0));
