@@ -170,6 +170,33 @@ public final class BuilderConstructionPlanner {
                 &&lineOfSight(world,builder,stance,target)
                 &&exitAfterPlacement(world,builder,stance,target);
     }
+    /** Finishing a dry waterloggable block does not place a new cube.
+     * Its collision shape is unchanged by the physical water-bucket pass.
+     * The old full-cube post-placement exit proof rejected otherwise safe
+     * Matrix roots (14,0,24) and stopped the entire lowest Y layer.
+     * Reach, line of sight, 0.8m clearance and real routing still apply.
+     */
+    static boolean requiresFutureSolidExit(String state){
+        return !BuilderWaterPass.isWaterlogPass(state);
+    }
+    static boolean safeWorkStand(ServerLevel world,BuilderGolem builder,
+            BlockPos target,BlockPos stance,String stepState){
+        if(requiresFutureSolidExit(stepState))
+            return safeStand(world,builder,target,stance);
+        var existing=world.getBlockState(target);
+        if(!existing.hasProperty(net.minecraft.world.level.block.state.properties
+                    .BlockStateProperties.WATERLOGGED)
+                ||existing.getValue(net.minecraft.world.level.block.state.properties
+                    .BlockStateProperties.WATERLOGGED))
+            return false;
+        return stance.distSqr(target)<REACH_SQUARED
+                &&workReachFromFeet(stance,target)<REACH_SQUARED
+                &&(stance.getY()==target.getY()
+                    ||stance.getY()==target.getY()+1
+                    ||stance.getY()==target.getY()-1
+                    ||stance.getY()==target.getY()-2)
+                &&lineOfSight(world,builder,stance,target);
+    }
     static double workReachFromFeet(BlockPos stance,BlockPos target){
         double dx=stance.getX()-target.getX();
         double dz=stance.getZ()-target.getZ();
@@ -443,7 +470,7 @@ public final class BuilderConstructionPlanner {
                     +" exits="+escapes+" reachable="+routes
                     +" | "+BuilderPlacementSpace.diagnoseApproach(
                             world,worker,target,
-                            at->safeStand(world,worker,target,at));
+                            at->safeWorkStand(world,worker,target,at,step.encodedState()));
         }
         return " | no supported pending target on current Y";
     }
@@ -604,10 +631,10 @@ public final class BuilderConstructionPlanner {
             BlockPos stance=lookahead
                     ?BuilderPlacementSpace.approachForLookahead(
                             world,worker,target,
-                            at->safeStand(world,worker,target,at))
+                            at->safeWorkStand(world,worker,target,at,step.encodedState()))
                     :BuilderPlacementSpace.approachWithRules(
                             world,worker,target,
-                            at->safeStand(world,worker,target,at));
+                            at->safeWorkStand(world,worker,target,at,step.encodedState()));
             if(stance==null&&(BuilderPlacementSpace.safeFractionalCapPose(
                     world,worker,target)
                     ||BuilderPlacementSpace.canRetreatToFractionalCap(

@@ -34,19 +34,34 @@ jobs:
           python3 scripts/builder_zoned_workflow_smoke.py
       - name: Compile and run unit tests
         run: gradle --no-daemon clean test jar compileGametestJava
-      - name: Run Minecraft in-game construction checks
+      - name: Run exact full VillagerMatrixClean_V2 physical construction
         shell: bash
         run: |
-          set +e
-          gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/main-release-gametest.log"
-          test_status=${PIPESTATUS[0]}
-          set -e
-          if [ "$test_status" -eq 0 ]; then exit 0; fi
-          if grep -Fq "1 required tests failed" "$RUNNER_TEMP/main-release-gametest.log" && grep -Fq "builder_dome_construction_game_test_constructs_exact_dome_with_real_builders failed" "$RUNNER_TEMP/main-release-gametest.log"; then
-            echo "::warning::The previously known dome GameTest stall remains; all other required physical tests passed."
-            exit 0
-          fi
-          exit "$test_status"
+          # Require the ORIGINAL 15,376-block November 8 Matrix schematic.
+          # The prior 27-cell foundation was a smoke test, not full coverage.
+          # Full Matrix completion blocks the patched JAR release.
+          # The Dome stays a separate diagnostic regression.
+          python3 - <<'PYTEST'
+          import json
+          from pathlib import Path
+          path = Path('src/gametest/resources/fabric.mod.json')
+          data = json.loads(path.read_text())
+          data['entrypoints']['fabric-gametest'] = [
+              'com.caszgamermd.golemsplus.builder.BuilderVillagerMatrixFullGameTest'
+          ]
+          path.write_text(json.dumps(data, indent=2) + '\n')
+          PYTEST
+          set -euo pipefail
+          mkdir -p build/matrix-traces
+          # Initially require ONE complete end-to-end construction, not
+          # repeatability of a starter foundation. Separate Matrix CI
+          # monitors the same full schematic and reports exact failures.
+          for attempt in 1; do
+            log="build/matrix-traces/release-run-${attempt}.log"
+            gradle --no-daemon runGameTest 2>&1 | tee "$log"
+            grep -E '\[MATRIX FULL (IMPORT|UNSUPPORTED|START|PROGRESS|STALL|PASS)' "$log" || true
+            grep -Fq '[MATRIX FULL PASS] 15376/15376' "$log"
+          done
       - name: Preserve Minecraft GameTest logs and reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -56,6 +71,7 @@ jobs:
             build/gametest/
             build/reports/
             build/test-results/
+            build/matrix-traces/
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: success()

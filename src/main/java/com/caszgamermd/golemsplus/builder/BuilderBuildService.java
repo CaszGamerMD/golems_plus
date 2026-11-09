@@ -42,7 +42,8 @@ public final class BuilderBuildService {
                          List<BuilderConstructionPlan.Step> steps,
                          List<BuilderSiteClearance.Target> clearing,
                          boolean ignorePlants,int rulesRevision,
-                         BuilderZones.Layout zones){}
+                         BuilderZones.Layout zones,
+                         BuilderRailAssemblyAudit.Report railAudit){}
     private static final Map<BuilderGolem,Cache> cached=new WeakHashMap<>();
     /** One immutable COMPLETE job-zone plan per Planner/job/crew. Assignment
      * work is never repeated on each Builder tick or after a placement.
@@ -177,9 +178,22 @@ public final class BuilderBuildService {
      * have to descend through the structure before it can escape. If that
      * floor has no physical exit, retry from the OnSite floor.
      */
+    static boolean canUseRallyPoint(boolean configured,boolean loaded,
+            boolean standable){
+        return configured&&loaded&&standable;
+    }
     private static BlockPos alternateStaging(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,Cache plan,
             WorkerAction action){
+        BlockPos rally=table.builderRallyPoint();
+        if(canUseRallyPoint(rally!=null&&table.activeOrder()!=null
+                        &&table.activeOrder().equals(table.builderRallyOrder()),
+                rally!=null&&level.hasChunkAt(rally),
+                rally!=null&&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .canStandOn(level,worker,rally))
+                &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeToExact(level,worker,rally,1.0))
+            return rally;
         SiteFootprint site=siteFootprint(table,plan);
         BlockPos failed=action.failedApproachFrom==null
                 ?worker.blockPosition():action.failedApproachFrom;
@@ -291,6 +305,26 @@ public final class BuilderBuildService {
                 extra.add(idx);
         }
         return extra;
+    }
+    /** A layer's reduced original crew may be stalled while extra
+     * Builders are ALREADY safely waiting at OnSite. Assist only when
+     * there is a real, unclaimed active-layer task; never send workers
+     * from a scaffold, interrupt a claim, or abandon another layer.
+     */
+    static boolean standbyCanRescue(boolean assignedToLayer,
+            boolean stalled,boolean atOnSite,boolean readyTask){
+        return !assignedToLayer&&stalled&&atOnSite&&readyTask;
+    }
+    private static boolean rescueTaskAvailable(
+            WorkerStationBlockEntity table,BuilderGolem worker,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> layerSteps){
+        for(int idx:layerSteps)
+            if(idx>=0&&idx<steps.size()
+                    &&table.builderStepInActivePhase(steps,idx)
+                    &&table.builderStepReadyForClaim(idx)
+                    &&!table.builderStepClaimedByOther(worker.getUUID(),idx))
+                return true;
+        return false;
     }
     /** Spend a small, bounded planning slice WHILE the worker walks.
      * No claim is made and the current route is not stopped. A blocked
@@ -513,8 +547,8 @@ public final class BuilderBuildService {
                         &&worker.carriedCount(resolved.item())==0
                     ||!(BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,target)
-                        ||BuilderConstructionPlanner.safeStand(
-                                level,worker,target,pose)))continue;
+                        ||BuilderConstructionPlanner.safeWorkStand(
+                                level,worker,target,pose,step.encodedState())))continue;
             best=idx;
             bestDistance=locality;
         }
@@ -554,8 +588,8 @@ public final class BuilderBuildService {
         if(!BuilderPlacementState.matches(level.getBlockState(target),
                     state.state())&&!state.state().canSurvive(level,target))return;
         BlockPos stance=choice.stance();
-        if(stance!=null&&!BuilderConstructionPlanner.safeStand(
-                level,worker,target,stance))return;
+        if(stance!=null&&!BuilderConstructionPlanner.safeWorkStand(
+                level,worker,target,stance,step.encodedState()))return;
         if(table.claimPreferredBuilderZoneStep(worker.getUUID(),
                 zone,steps,next)!=next)return;
         activity.setStep(next);
@@ -565,8 +599,9 @@ public final class BuilderBuildService {
         activity.fastFollowup=true;
         if(stance!=null&&step.requiredItem()!=null
                 &&worker.carriedCount(state.item())>0
-                &&!BuilderConstructionPlanner.safeStand(
-                        level,worker,target,worker.blockPosition()))
+                &&!BuilderConstructionPlanner.safeWorkStand(
+                        level,worker,target,worker.blockPosition(),
+                        step.encodedState()))
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(
                     level,worker,stance,1.0);
     }
@@ -689,12 +724,14 @@ public final class BuilderBuildService {
      */
     static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep,
             boolean roofNeedsRescue){
-        // A COMPLETED zone is terminal for this Builder's build role.
-        // The old global six-second roof watchdog re-recruited finished
-        // workers to repeatedly enter inaccessible water/rail pockets.
-        // Active workers with later own-zone steps may still volunteer
-        // on stalled neighboring layers; completed workers stay OnSite.
-        return ownZoneDone&&claimedStep<0;
+        // Completed-zone Builders must first physically return to OnSite.
+        // Once the shared work layer has stalled, a finished Builder who
+        // is ALREADY safely at OnSite can help the remaining zone from a
+        // fresh approach. The caller proves depot arrival before passing
+        // roofNeedsRescue; no worker is recruited mid-climb or mid-return.
+        // Otherwise a lone Builder deadlocked at an inaccessible fence
+        // can never receive help from the three parked teammates.
+        return ownZoneDone&&claimedStep<0&&!roofNeedsRescue;
     }
     /** Retain the ordinary no-rescue policy for existing callers/tests. */
     static boolean shouldParkFinishedZone(boolean ownZoneDone,int claimedStep){
@@ -763,6 +800,34 @@ public final class BuilderBuildService {
         // When the shaft opens onto a real roof surface, leave the top
         // physically before starting an ordinary placement approach.
         return BuilderScaffolding.stepOffTowardWork(level,worker,table,target);
+    }
+    /** Scaffold up to rope range, then grapple. True while this tick is
+     * owned by the launch tower (building, climbing or waiting for
+     * scaffold); false once the Builder stands on the launch top, or when
+     * no launch tower applies, so normal access continues unchanged.
+     */
+    private static boolean grappleLaunchTower(ServerLevel level,
+            BuilderGolem worker,WorkerStationBlockEntity table,
+            ServerPlayer owner,BlockPos target){
+        if(BuilderGrappleAccess.active(worker)
+                ||BuilderScaffoldPlanA.hasPlan(worker))return false;
+        var plan=BuilderGrappleAccess.towerFor(level,worker,target);
+        if(plan==null)return false;
+        switch(BuilderScaffolding.reachGrappleLaunch(level,worker,table,
+                owner,plan)){
+            case CLIMBING:
+                return true;
+            case NEED_MATERIALS:
+                table.setProblem("Builder needs Scaffolding in OnSite Storage"
+                        +" for a grapple launch tower toward "
+                        +target.toShortString());
+                return true;
+            case NO_SAFE_TOWER:
+                BuilderGrappleAccess.forgetTower(worker);
+                return false;
+            default:
+                return false;
+        }
     }
     /** Work positions can fail on a completely built roof at the SAME Y.
      * Give any Builder a paid, reversible scaffold approach without
@@ -1234,11 +1299,22 @@ public final class BuilderBuildService {
             int layer=table.builderActiveLayer(plan.steps());
             List<UUID> layerStaff=assigned.layerStaff().getOrDefault(
                     layer,assigned.roster());
-            // Small Y slices use one Builder through five placements, then
-            // add another for each next group of three. Unselected workers
-            // stay at OnSite and finish any in-flight paid placement safely.
+            // The previous standby exit happened BEFORE checking the
+            // shared six-second roof stall. On a reduced-crew layer it
+            // therefore parked all three available teammates forever,
+            // even with unclaimed work waiting in the stuck builder's
+            // zone. Recruit from real OnSite footing when progress stops;
+            // keep the original reduced staffing during normal building.
+            boolean stalledRoof=roofNeedsHelp(level,table);
+            BlockPos rescueDepot=table.builderUnloadingStorage();
+            if(rescueDepot==null)rescueDepot=table.getBlockPos();
+            boolean standbyRescue=standbyCanRescue(
+                    layerStaff.contains(worker.getUUID()),stalledRoof,
+                    atOnSite(level,worker,rescueDepot),
+                    rescueTaskAvailable(table,worker,plan.steps(),
+                            assigned.layerSteps().getOrDefault(layer,List.of())));
             if(!layerStaff.contains(worker.getUUID())&&currentClaim<0
-                    &&!worker.hasSupplyBox()){
+                    &&!worker.hasSupplyBox()&&!standbyRescue){
                 boolean parked=parkAtOnSite(level,worker,table);
                 returnAction.returningToSite=!parked;
                 if(parked)BuilderDroppedBlockRecovery.tick(
@@ -1255,9 +1331,10 @@ public final class BuilderBuildService {
                 // X/Z zone has no placements on this Y at all.
                 zone=assigned.layerSteps().getOrDefault(layer,zone);
             }
-            boolean stalledRoof=roofNeedsHelp(level,table);
+            boolean safelyAvailableForRescue=stalledRoof
+                    &&atOnSite(level,worker,rescueDepot);
             if(shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim,
-                    stalledRoof)){
+                    safelyAvailableForRescue)){
                 activityForFinished(worker);
                 boolean parked=parkAtOnSite(level,worker,table);
                 returnAction.returningToSite=!parked;
@@ -1310,7 +1387,7 @@ public final class BuilderBuildService {
                         teammateRequested=true;break;
                     }
                 }
-            boolean emergencyRoofAssist=ownLayerClear
+            boolean emergencyRoofAssist=(ownLayerClear||standbyRescue)
                     &&(teammateRequested||index>=0&&!zone.contains(index)
                         ||stalledRoof);
             // Monitoring already ran before the early finished-zone
@@ -1352,9 +1429,15 @@ public final class BuilderBuildService {
                 var next=chooseNearbyFirst(
                         level,worker,table,plan.steps(),zone);
                 if(next==null){
+                    // An OnSite standby helper is in the full roster,
+                    // not the reduced original layerStaff list. A -1
+                    // index silently denied it every serialized frontier
+                    // probe even after it was admitted as a rescuer.
+                    List<UUID> scanStaff=layerStaff.contains(worker.getUUID())
+                            ?layerStaff:assigned.roster();
                     if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
-                            layerStaff.indexOf(worker.getUUID()),
-                            layerStaff.size()))return;
+                            scanStaff.indexOf(worker.getUUID()),
+                            scanStaff.size()))return;
                     boolean sharedLayer=assigned.layerSteps().get(layer)==zone;
                     List<Integer> scanZone=unreservedZone(
                             table,worker,zone,level.getGameTime(),sharedLayer);
@@ -1493,6 +1576,20 @@ public final class BuilderBuildService {
                 // dismantle the nearby scaffold to rebuild them.
                 return;
             }
+            if(BuilderWaterPass.isNaturalFlowingWater(step.encodedState())){
+                // A flowing level is NEVER placeable with a bucket, and
+                // setting its expected BlockState would invent water.
+                // Verify exact flow AFTER Minecraft updates real sources.
+                // If the fluid has not arrived, release this task for a
+                // later physical retry; retain the unbuilt source cell in
+                // the Planner and do not spend anything.
+                table.waitForBuilderSupport(worker.getUUID(),index,
+                        level.getGameTime());
+                table.setProblem("Waiting for natural flowing-water level at "
+                        +pos.toShortString()+" expected="+step.encodedState()
+                        +" actual="+existing);
+                return;
+            }
             boolean waterlog=BuilderWaterPass.isWaterlogPass(step.encodedState());
             boolean bubble=BuilderWaterPass.isBubbleColumn(step.encodedState());
             if(waterlog){
@@ -1578,8 +1675,65 @@ public final class BuilderBuildService {
                 return;
             }
             BlockPos raisedRail=BuilderRailSlope.raisedEnd(pos,state.state());
-            boolean reShapeRail=raisedRail!=null
+            boolean sameRail=raisedRail!=null
                     &&existing.getBlock()==state.state().getBlock();
+            boolean railSlopeCorrect=sameRail
+                    &&BuilderRailSlope.shapeMatches(existing,state.state());
+            // Confirmed by a standalone vanilla GameTest: removing an
+            // elevated rail jig DID NOT flatten an ascending-west rail.
+            // Without a live power source, however, vanilla changed
+            // powered=true to false. The old code misdiagnosed this
+            // powered-only mismatch as a failed slope and repeatedly
+            // demanded a new upper connector. Keep the already-paid rail
+            // and wait for the actual redstone/water state to update.
+            // Never fake power by setting a block property directly.
+            if(railSlopeCorrect&&!waterlog
+                    &&!BuilderPlacementState.matches(
+                            existing,state.state())){
+                table.waitForBuilderSupport(worker.getUUID(),index,
+                        level.getGameTime());
+                table.setProblem("Rail physically has correct slope at "
+                        +pos.toShortString()+"; waiting for "
+                        +BuilderRailSlope.railStateDifference(
+                                existing,state.state())
+                        +" from actual neighbor/fluid updates");
+                return;
+            }
+            boolean reShapeRail=sameRail&&!railSlopeCorrect;
+            // A paid flat rail may still be safely reshaped with ONE
+            // temporary raised-end rail, then the jig can be retrieved.
+            // Require genuine solid support for that physical upper jig;
+            // do not retry a non-survivable connector every 12 ticks.
+            if(reShapeRail&&level.hasChunkAt(raisedRail)
+                    &&level.getBlockState(raisedRail).isAir()
+                    &&!state.state().getBlock().defaultBlockState()
+                            .canSurvive(level,raisedRail)){
+                // The user's full Matrix has the non-placeable raised
+                // endpoint at (14,2,24) ABOVE another paid flat rail
+                // (14,1,24). A real vanilla GameTest proves the jig
+                // cannot stand on that rail; temporarily swapping it
+                // for stone and restoring the exact source rail breaks
+                // the intended ascending rail into AIR. Don't schedule
+                // the SAME doomed route every 40 ticks while the other
+                // seven Builders could be doing useful same-Y work.
+                boolean obstructedByRail=level.getBlockState(
+                        raisedRail.below()).getBlock()
+                        instanceof net.minecraft.world.level.block.BaseRailBlock;
+                String reason="raised-end connector at "
+                        +raisedRail.toShortString()+" has unsupported base "
+                        +level.getBlockState(raisedRail.below())
+                        +"; shape="+state.state();
+                if(obstructedByRail)
+                    table.waitForBuilderStructuralConflict(
+                            worker.getUUID(),index,level.getGameTime(),reason);
+                else
+                    table.waitForBuilderSupport(worker.getUUID(),index,
+                            level.getGameTime());
+                table.setProblem((obstructedByRail
+                        ?"Schematic rail geometry conflict: "
+                        :"Rail awaiting physical upper support: ")+reason);
+                return;
+            }
             if(!existing.isAir()&&!waterlog&&!reShapeRail
                     &&!(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
                             ||existing.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN)))){
@@ -1798,8 +1952,9 @@ public final class BuilderBuildService {
                     &&(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,pos)
-                        ||BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,worker.blockPosition()));
+                        ||BuilderConstructionPlanner.safeWorkStand(
+                                level,worker,pos,worker.blockPosition(),
+                                step.encodedState()));
             // Low dome walls and fence caps often sit two Y above a
             // grounded Builder. Its normal three-block hand reach may
             // already cover the target from a SIDE stance. Find that
@@ -1810,8 +1965,8 @@ public final class BuilderBuildService {
                     &&!BuilderScaffolding.isControllingMovement(worker)){
                 BlockPos walk=BuilderPlacementSpace.approachWithRules(
                         level,worker,pos,
-                        at->BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,at));
+                        at->BuilderConstructionPlanner.safeWorkStand(
+                                level,worker,pos,at,step.encodedState()));
                 if(walk!=null){
                     activity.phase=Action.MOVE_TO_WORK;
                     if(com.caszgamermd.golemsplus.worker.WorkerNavigation
@@ -1819,6 +1974,13 @@ public final class BuilderBuildService {
                     BuilderPlacementSpace.invalidateApproach(worker,pos);
                 }
             }
+            // No rope can start because the real floor under every
+            // candidate anchor column is deeper than rope range: raise
+            // the launch floor with a scaffold tower in that column, then
+            // let the ordinary rope planner take over from its top.
+            if(yDiff>1&&!directOrdinaryWork
+                    &&grappleLaunchTower(level,worker,table,owner,pos))
+                return;
             // Elevated cells without a supporting block below need a
             // construction platform, not repeated grapple ascents to a
             // non-existent work stance. An inventory-paid scaffold bridge
@@ -1872,8 +2034,9 @@ public final class BuilderBuildService {
                     ||!(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,pos)
-                        ||BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,worker.blockPosition()))){
+                        ||BuilderConstructionPlanner.safeWorkStand(
+                                level,worker,pos,worker.blockPosition(),
+                                step.encodedState()))){
                 // Even when within arm's reach, a Builder must first
                 // occupy a PREVALIDATED work stance. This prevents the
                 // repeated old deadlock where it arrived next to an AIR
@@ -1881,8 +2044,8 @@ public final class BuilderBuildService {
                 activity.phase=Action.MOVE_TO_WORK;
                 BlockPos approach=BuilderPlacementSpace.approachWithRules(
                         level,worker,pos,
-                        at->BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,at));
+                        at->BuilderConstructionPlanner.safeWorkStand(
+                                level,worker,pos,at,step.encodedState()));
                 if(approach!=null){
                     boolean moving=com.caszgamermd.golemsplus.worker
                             .WorkerNavigation.routeToExact(
@@ -1967,8 +2130,9 @@ public final class BuilderBuildService {
                         level,worker,table,pos)
                     ||BuilderPlacementSpace.safeFractionalCapPose(
                             level,worker,pos)
-                    ||BuilderConstructionPlanner.safeStand(
-                        level,worker,pos,worker.blockPosition()))){
+                    ||BuilderConstructionPlanner.safeWorkStand(
+                                level,worker,pos,worker.blockPosition(),
+                                step.encodedState()))){
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
                 table.waitForBuilderAccess(worker.getUUID(),index,
                         level.getGameTime(),"lost safe pose or exit during approach");
@@ -2137,6 +2301,12 @@ public final class BuilderBuildService {
      * Diagnostic state is derived directly from its individual task and
      * the live station. No per-tick global Planner message spam.
      */
+    private static String railSchematicWarning(Cache plan){
+        var audit=plan.railAudit();
+        return audit==null||!audit.hasConflicts()?""
+                :" | sourceRailConflicts="+audit.conflictingRaisedEndpoints()
+                +" first="+audit.examples().getFirst();
+    }
     public static String debugStatus(ServerLevel level,BuilderGolem worker){
         BlockPos home=worker.home();
         if(!level.hasChunkAt(home))return "Home Planner chunk unavailable";
@@ -2170,7 +2340,7 @@ public final class BuilderBuildService {
                             level,worker,table,plan.steps(),zone)
                     +" | scan="+BuilderConstructionPlanner.scanStatus(worker)
                     +" | claimTrace="+table.builderClaimDebug(worker.getUUID())
-                    +" | "+table.problem();
+                    +railSchematicWarning(plan)+" | "+table.problem();
             var current=plan.steps().get(index);
             BlockPos target=new BlockPos(current.x(),current.y(),current.z());
             BlockPos local=target.subtract(table.builderOrigin());
@@ -2193,7 +2363,8 @@ public final class BuilderBuildService {
                     +" | sneaking="+worker.isShiftKeyDown()
                     +" | climb="+BuilderScaffolding.debugClimb(worker)
                     +" | depot="+(table.builderUnloadingStorage()==null
-                            ?"unlinked":table.builderUnloadingStorage().toShortString());
+                            ?"unlinked":table.builderUnloadingStorage().toShortString())
+                    +railSchematicWarning(plan);
         }catch(Exception error){
             return "Builder inspection failed: "+error.getClass().getSimpleName()
                     +" "+error.getMessage();
@@ -2253,6 +2424,19 @@ public final class BuilderBuildService {
                         BuildSite.Mirror.values()[table.builderMirror()]);
         var original=BuilderConstructionPlan.create(schematic,site,
                 table.builderIgnorePlants());
+        // Validate immutable snapshot geometry once per job revision,
+        // never once per worker tick. This is READ ONLY; no source block
+        // is silently rotated/removed, no impossible cell is marked done.
+        var railAudit=BuilderRailAssemblyAudit.inspect(schematic);
+        if(railAudit.hasConflicts()){
+            System.err.println("[BUILDER SCHEMATIC RAIL CONFLICT] file="
+                    +table.builderFile()+" conflictingRaisedEnds="
+                    +railAudit.conflictingRaisedEndpoints()
+                    +" examples="+railAudit.examples());
+            table.setProblem("Schematic rail geometry conflict at "
+                    +railAudit.examples().getFirst()
+                    +"; cannot be corrected by repeating scaffold/rail jig");
+        }
         var steps=BuilderMaterialRules.apply(original.steps(),
                 table.builderMaterialRules(),table.builderStartY(),
                 table.builderHeightMode(),site.rotation(),site.mirror());
@@ -2291,7 +2475,7 @@ public final class BuilderBuildService {
         Cache next=new Cache(table.builderFile(),table.builderRotation(),
                 table.builderMirror(),origin,steps,List.copyOf(clearing),
                 table.builderIgnorePlants(),table.builderRuleRevision(),
-                BuilderZones.footprint(steps));
+                BuilderZones.footprint(steps),railAudit);
         cachedWarehousePlans.put(table,next);
         return next;
     }

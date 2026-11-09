@@ -27,11 +27,19 @@ public final class BuilderClearance{
             table.setProblem("Cannot clear protected or unloaded construction block "+pos);
             return Result.BLOCKED;
         }
-        if(table.isTrackedScaffold(pos)||level.getBlockEntity(pos)!=null
-                ||!current.getFluidState().isEmpty()
-                ||current.is(Blocks.BEDROCK)
-                ||current.getDestroySpeed(level,pos)<0){
-            table.setProblem("Site obstruction requires player review: "+pos);
+        // Preserve protected work; report the exact material and reason
+        // rather than hiding the obstruction behind an anonymous coordinate.
+        boolean scaffold=table.isTrackedScaffold(pos);
+        boolean inventory=level.getBlockEntity(pos)!=null;
+        boolean fluid=!current.getFluidState().isEmpty();
+        boolean bedrock=current.is(Blocks.BEDROCK);
+        boolean unbreakable=current.getDestroySpeed(level,pos)<0;
+        if(scaffold||inventory||fluid||bedrock||unbreakable){
+            String reason=scaffold?"tracked Builder scaffold":
+                    inventory?"block entity / inventory":
+                    fluid?"fluid":bedrock?"bedrock":"unbreakable block";
+            table.setProblem("Site obstruction requires player review: "+pos
+                    +" actual="+current+" reason="+reason);
             return Result.BLOCKED;
         }
         // Thin snow (and snow blocks) are harmless construction debris.

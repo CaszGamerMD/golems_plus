@@ -26,6 +26,33 @@ public final class BuilderWaterPass {
                 ||encoded!=null&&encoded.startsWith("minecraft:water[")
                 ||isBubbleColumn(encoded);
     }
+    /** A non-source water state is a VANILLA fluid simulation result,
+     * not an item that a Builder can place. Wait for a nearby real source
+     * to propagate; never directly write a flowing water level to world.
+     */
+    public static boolean isNaturalFlowingWater(String encoded){
+        if(encoded==null||!encoded.startsWith("minecraft:water["))return false;
+        int at=encoded.indexOf("level=");
+        if(at<0)return false;
+        at+="level=".length();
+        int end=at;
+        while(end<encoded.length()
+                &&Character.isDigit(encoded.charAt(end)))end++;
+        if(end==at)return false;
+        try {
+            int level=Integer.parseInt(encoded.substring(at,end));
+            return level>0&&level<=15;
+        }catch(NumberFormatException ignored){
+            return false;
+        }
+    }
+    /** Preserve the dry phase, then provide actual source fluids, then
+     * accept simulated flowing cells after sources have had time to spread.
+     * The Planner still independently verifies each exact world state.
+     */
+    public static int layerOrder(String encoded){
+        return isNaturalFlowingWater(encoded)?2:isWaterStep(encoded)?1:0;
+    }
     public static boolean isBubbleColumn(String encoded){
         return "minecraft:bubble_column".equals(encoded)
                 ||encoded!=null&&encoded.startsWith("minecraft:bubble_column[");

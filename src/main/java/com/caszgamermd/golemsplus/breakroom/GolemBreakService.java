@@ -52,6 +52,12 @@ public final class GolemBreakService {
         BlockPos snackSource;
         boolean ready;
         boolean working;
+        // Route probes can fail transiently while other Builders move.
+        // Retry without abandoning a stocked machine at the first failed
+        // A* request. A genuinely blocked stand gets a brief cooldown.
+        int failedRoutes;
+        BlockPos unavailableStand;
+        long unavailableUntil;
     }
 
     private record Seat(BlockPos chair, BlockPos table) {}
@@ -263,13 +269,21 @@ public final class GolemBreakService {
 
         if (!atTarget(world, mob, rest.stand)) {
             if (!WorkerNavigation.routeToExact(world, mob, rest.stand, .65)) {
-                abandon(world, mob, rest);
+                if (++rest.failedRoutes >= 12) {
+                    // Do not endlessly recommit to a blocked front or chair.
+                    // A different seat remains available during cooldown.
+                    rest.unavailableStand = rest.stand;
+                    rest.unavailableUntil = now + 180;
+                    abandon(world, mob, rest);
+                } else publish(mob, rest, false);
                 return;
             }
+            rest.failedRoutes = 0;
             publish(mob, rest, false);
             return;
         }
 
+        rest.failedRoutes = 0;
         WorkerNavigation.stop(mob);
         switch (rest.visit) {
             case CHAIR -> {
@@ -315,6 +329,7 @@ public final class GolemBreakService {
                     rest.reservedChair = null;
                     rest.rest = 0;
                     rest.phaseTicks = 0;
+                    rest.failedRoutes = 0;
                     WorkerNavigation.stop(mob);
                 }
             }
@@ -370,10 +385,14 @@ public final class GolemBreakService {
                     || !(world.getBlockEntity(machine) instanceof SnackMachineBlockEntity stock)
                     || !stock.hasSnack()) continue;
             BlockPos approach = front(world, machine);
-            if (!canUseMachineFromFront(world, mob, machine)) continue;
+            if (approach.equals(rest.unavailableStand)
+                    && world.getGameTime() < rest.unavailableUntil
+                    || !canUseMachineFromFront(world, mob, machine)) continue;
             for (Seat seat : seats) {
                 if (seat.table() == null || reserved(rest, seat.chair())
                         || reserved(rest, seat.table())
+                        || seat.chair().equals(rest.unavailableStand)
+                            && world.getGameTime() < rest.unavailableUntil
                         || !reachable(world, mob, seat.chair())) continue;
                 snackChoices.add(new Candidate(Visit.SNACK_MACHINE, machine,
                         approach, seat.chair(), seat.table()));
@@ -391,7 +410,10 @@ public final class GolemBreakService {
         List<Candidate> chairChoices = new ArrayList<>();
         if (snackChoices.isEmpty()) {
             for (Seat seat : seats) {
-                if (reserved(rest, seat.chair()) || !reachable(world, mob, seat.chair())) continue;
+                if (reserved(rest, seat.chair())
+                        || seat.chair().equals(rest.unavailableStand)
+                            && world.getGameTime() < rest.unavailableUntil
+                        || !reachable(world, mob, seat.chair())) continue;
                 chairChoices.add(new Candidate(Visit.CHAIR, seat.chair(),
                         seat.chair(), null, seat.table()));
             }
@@ -401,7 +423,12 @@ public final class GolemBreakService {
         choices.addAll(snackChoices);
         choices.addAll(chairChoices);
         choices.addAll(arcadeChoices);
-        if (choices.isEmpty()) return;
+        if (choices.isEmpty()) {
+            // Congestion and short path-search budgets are temporary.
+            // Recheck the furniture soon rather than idling for 80-240 ticks.
+            rest.chooseAt = world.getGameTime() + 20;
+            return;
+        }
 
         Collections.shuffle(choices, new Random(mob.getRandom().nextLong()));
         Candidate selected = choices.get(0);
@@ -412,6 +439,7 @@ public final class GolemBreakService {
         rest.table = selected.table();
         rest.rest = 0;
         rest.phaseTicks = 0;
+        rest.failedRoutes = 0;
         rest.breakLength = 240 + mob.getRandom().nextInt(160);
         rest.nextArcadeSound = 0;
         rest.arcadeNotes = 0;
@@ -420,9 +448,12 @@ public final class GolemBreakService {
     }
 
     private static boolean reachable(ServerLevel world, PathfinderMob mob, BlockPos target) {
+        // Exact native path probes can reject a valid partial-block chair
+        // while the trained executor finds a real approach. It remains
+        // mandatory to stand on a proven collision-supported seat, and the
+        // actual visit invokes routeToExact with a bounded retry budget.
         return target != null && world.hasChunkAt(target)
-                && WorkerNavigation.canStandOn(world, mob, target)
-                && WorkerNavigation.canReachExact(world, mob, target);
+                && WorkerNavigation.canStandOn(world, mob, target);
     }
 
     private static boolean reserved(Rest current, BlockPos pos) {
@@ -457,9 +488,10 @@ public final class GolemBreakService {
     private static boolean canUseMachineFromFront(ServerLevel world, PathfinderMob mob,
                                                   BlockPos machine) {
         BlockPos approach = front(world, machine);
+        // Choose only the real FRONT tile; the actual navigation request
+        // must still prove its route before anyone can use the machine.
         return world.hasChunkAt(approach)
-                && WorkerNavigation.canStandOn(world, mob, approach)
-                && WorkerNavigation.canReachExact(world, mob, approach);
+                && WorkerNavigation.canStandOn(world, mob, approach);
     }
 
     private static boolean validVisit(ServerLevel world, Rest rest) {
@@ -581,6 +613,7 @@ public final class GolemBreakService {
         rest.table = null;
         rest.rest = 0;
         rest.phaseTicks = 0;
+        rest.failedRoutes = 0;
         rest.snack = ItemStack.EMPTY;
         rest.snackSource = null;
         rest.nextArcadeSound = 0;

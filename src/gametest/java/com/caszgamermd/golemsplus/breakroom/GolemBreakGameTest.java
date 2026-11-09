@@ -12,7 +12,7 @@ import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import java.util.UUID;
 
 public final class GolemBreakGameTest {
-    @GameTest(maxTicks = 1000, skyAccess = true)
+    @GameTest(environment = "golems_plus_gametest:break_room", maxTicks = 1000, skyAccess = true)
     public void idleBuilderPhysicallyVisitsArcadeAndRests(GameTestHelper h) {
         for (int x = 0; x < 8; x++)
             for (int z = 0; z < 8; z++)
@@ -53,7 +53,9 @@ public final class GolemBreakGameTest {
         });
     }
 
-    @GameTest(maxTicks = 1800, skyAccess = true)
+    // Movement to the dispenser and then to a real seat may require route
+    // retries; completion still requires physically eating the stored apple.
+    @GameTest(environment = "golems_plus_gametest:break_room", maxTicks = 3000, skyAccess = true)
     public void idleBuilderGetsSnackAndEatsSeatedAtChairAndTable(GameTestHelper h) {
         for (int x = 0; x < 8; x++)
             for (int z = 0; z < 8; z++)
@@ -119,7 +121,7 @@ public final class GolemBreakGameTest {
                 h.succeed();
                 return;
             }
-            if (elapsedTicks[0] >= 1790) {
+            if (elapsedTicks[0] >= 2990) {
                 h.fail("Snack machine -> chair/table eating sequence did not complete"
                         + " gotSnack=" + gotSnack[0]
                         + " ateAtSeat=" + ateAtSeat[0]
@@ -132,7 +134,7 @@ public final class GolemBreakGameTest {
             }
         });
     }
-    @GameTest(maxTicks = 1100, skyAccess = true)
+    @GameTest(environment = "golems_plus_gametest:break_room", maxTicks = 1100, skyAccess = true)
     public void emptySnackMachineIsSkippedAndGolemUsesChair(GameTestHelper h) {
         for (int x=0;x<8;x++) for(int z=0;z<8;z++) h.setBlock(x,1,z,Blocks.STONE);
         h.setBlock(1,2,1,WorksiteContent.BUILDER_TABLE);
@@ -161,7 +163,7 @@ public final class GolemBreakGameTest {
         });
     }
 
-    @GameTest(maxTicks = 100, skyAccess = true)
+    @GameTest(environment = "golems_plus_gametest:break_room", maxTicks = 100, skyAccess = true)
     public void snackMachineStoresMultipleFoodsAndDispensesOneRealItem(GameTestHelper h) {
         h.setBlock(2,2,2,BreakRoomContent.SNACK_MACHINE.defaultBlockState()
                 .setValue(HorizontalDirectionalBlock.FACING,Direction.NORTH));

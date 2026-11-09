@@ -29,7 +29,9 @@ import net.minecraft.world.level.block.Blocks;
  */
 public final class BuilderDomeConstructionGameTest {
     @SuppressWarnings("removal")
+    // Run separately from fixtures which can overwrite this worksite.
     @GameTest(structure="golems_plus_gametest:dome_arena",
+            environment="golems_plus_gametest:dome_e2e",
             maxTicks=90000,skyAccess=true)
     public void constructsExactDomeWithRealBuilders(GameTestHelper helper){
         ServerLevel level=helper.getLevel();
@@ -66,7 +68,31 @@ public final class BuilderDomeConstructionGameTest {
                 +" dimensions=(39,39) absoluteGameTestOriginHidden");
         // A full size test structure is essential. The default 8x8
         // GameTest room causes invisible barrier-block path failures.
-        for(int x=4;x<=42;x++)for(int z=4;z<=42;z++)
+        // The structure template is empty, but the randomized Minecraft
+        // GameTest world can place barrier blocks or water around it. A
+        // blueprint-only reset left nearby water sources alive, which flowed
+        // back into the tested Y=0 cells and prevented ANY Builder placement.
+        // Prepare all 48x48x46 AIR cells in THIS disposable test structure,
+        // including above/around the schematic, before placing the Planner
+        // and workers. Never do this in player worlds.
+        int arenaRemoved=0;
+        for(int y=2;y<48;y++)
+            for(int x=0;x<48;x++)
+                for(int z=0;z<48;z++){
+                    BlockPos at=helper.absolutePos(new BlockPos(x,y,z));
+                    if(level.getBlockState(at).isAir())continue;
+                    if(!level.setBlock(at,Blocks.AIR.defaultBlockState(),3)){
+                        helper.fail("Could not initialize empty dome test arena "
+                                +x+","+y+","+z);
+                        return;
+                    }
+                    arenaRemoved++;
+                }
+        System.out.println("[DOME ARENA RESET] removed="+arenaRemoved
+                +" blocks from the reserved empty structure");
+        // Cover the whole 39x39 footprint and its edge-work stances.
+        // The earlier 42 limit omitted the last five columns of footing.
+        for(int x=4;x<=47;x++)for(int z=4;z<=47;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
         helper.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
         helper.setBlock(5,2,7,Blocks.CHEST);
@@ -117,6 +143,44 @@ public final class BuilderDomeConstructionGameTest {
             helper.fail("Dome schematic failed immediate staging; "
                 +"input="+filename+" saved="+table.builderFile()
                 +" expected="+actualFile.toAbsolutePath());
+            return;
+        }
+        // The randomized GameTest world is not guaranteed to be empty.
+        // A preflight measurement caught 1,148 occupied schematic cells,
+        // including barrier blocks and flowing water. Those are correct
+        // no-break cases in production and must NEVER be force-cleared by
+        // Builder logic. Reset only this disposable physical test arena,
+        // before any Builder, block order or timer starts.
+        int initiallyOccupied=0;
+        StringBuilder preflight=new StringBuilder();
+        BlockPos origin=table.builderOrigin();
+        var actualSite=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        var initialTargets=BuilderSiteClearance.targets(schematic,actualSite);
+        for(var expected:initialTargets){
+            var actual=level.getBlockState(expected.pos());
+            if(actual.isAir())continue;
+            initiallyOccupied++;
+            if(initiallyOccupied<=12)
+                preflight.append(" [")
+                        .append(expected.pos().subtract(origin).toShortString())
+                        .append(" actual=").append(actual)
+                        .append(" schematic=").append(expected.state()).append(']');
+            if(!level.setBlock(expected.pos(),Blocks.AIR.defaultBlockState(),3)){
+                helper.fail("Cannot reset dome GameTest arena at "
+                        +expected.pos().subtract(origin).toShortString()
+                        +" actual="+actual);
+                return;
+            }
+        }
+        int residual=0;
+        for(var expected:initialTargets)
+            if(!level.getBlockState(expected.pos()).isAir())residual++;
+        System.out.println("[DOME PREFLIGHT] cleaned="+initiallyOccupied
+                +" residual="+residual+" targets="+initialTargets.size()+preflight);
+        if(residual!=0){
+            helper.fail("Dome GameTest worksite is not empty after reset: "
+                    +residual+" obstructed blueprint cells");
             return;
         }
         // Genuine chest-only job; no fake warehouse connection.
@@ -253,13 +317,38 @@ public final class BuilderDomeConstructionGameTest {
             needs.add(Items.IRON_PICKAXE);
             needs.add(Items.IRON_AXE);
             needs.add(Items.IRON_SHOVEL);
+            // A worker can need an item while its step is in a temporary
+            // claim cooldown or while building a new batch. In that state
+            // claimedStep/workOrder omit the item, so the previous test-only
+            // restocker repeatedly refilled the WRONG palette and reported
+            // an artificial material shortage. Honor a real Planner
+            // "Builder needs namespace:item" request before prefetching.
+            String demand=table.problem();
+            if(demand.startsWith("Builder needs ")){
+                String value=demand.substring("Builder needs ".length());
+                int whitespace=value.indexOf(' ');
+                if(whitespace>=0)value=value.substring(0,whitespace);
+                Identifier requested=Identifier.tryParse(value);
+                if(requested!=null&&BuiltInRegistries.ITEM.containsKey(requested))
+                    needs.add(BuiltInRegistries.ITEM.getValue(requested));
+            }
+            // A 27-slot test chest has a strict material palette budget.
+            // Claim requirements must win over future batch/lookahead
+            // supplies: formerly 4x full work orders could consume >27
+            // distinct slots BEFORE a claimed block was added. Then the
+            // test's "infinite" restocker never stocked its active item,
+            // falsely reporting pink glass missing forever.
+            for(BuilderGolem worker:crew){
+                int current=table.claimedStep(worker.getUUID());
+                if(current>=0&&current<steps.size())
+                    addItem(needs,steps.get(current));
+            }
             for(BuilderGolem worker:crew){
                 for(Integer n:table.builderWorkOrder(worker.getUUID())){
+                    if(needs.size()>=25)break;
                     if(n!=null&&n>=0&&n<steps.size())
                         addItem(needs,steps.get(n));
                 }
-                int current=table.claimedStep(worker.getUUID());
-                if(current>=0&&current<steps.size())addItem(needs,steps.get(current));
             }
             for(int i=Math.max(0,table.builderCursor());
                     i<Math.min(steps.size(),table.builderCursor()+48)

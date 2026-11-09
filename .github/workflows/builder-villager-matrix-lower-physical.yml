@@ -1,0 +1,60 @@
+name: Villager Matrix lower 4 layers — physical crew regression
+on:
+  push:
+    branches: [feat/builder-rally-point-recovery]
+    paths:
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/**'
+      - 'src/main/java/com/caszgamermd/golemsplus/worker/**'
+      - 'src/main/java/com/caszgamermd/golemsplus/world/WorkerStationBlockEntity.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixLowerLayersGameTest.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFullFixture.java'
+      - 'src/gametest/resources/golems_plus_matrix/**'
+      - '.github/workflows/builder-villager-matrix-lower-physical.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  lower-four:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Unit tests and GameTest compilation
+        run: gradle --no-daemon test compileGametestJava
+      - name: Test 107 actual lowest Matrix blocks using four real Builders
+        shell: bash
+        run: |
+          python3 - <<'PYTEST'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          data=json.loads(p.read_text())
+          data['entrypoints']['fabric-gametest']=[
+            'com.caszgamermd.golemsplus.builder.BuilderVillagerMatrixLowerLayersGameTest'
+          ]
+          p.write_text(json.dumps(data, indent=2)+'\n')
+          PYTEST
+          mkdir -p build/matrix-traces
+          set -o pipefail
+          gradle --no-daemon runGameTest 2>&1 | tee build/matrix-traces/lower-four.log
+          grep -E '\[MATRIX LOWER (START|PROGRESS|STALL|PASS)' build/matrix-traces/lower-four.log || true
+          grep -Fq '[MATRIX LOWER PASS] 107/107' build/matrix-traces/lower-four.log
+      - name: Save full-source lower-layer physical route trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: villager-matrix-v2-lower-four-route-trace
+          if-no-files-found: ignore
+          path: |
+            build/matrix-traces/
+            build/gametest/
+            build/test-results/
+            build/reports/
+            build/run/gameTest/logs/

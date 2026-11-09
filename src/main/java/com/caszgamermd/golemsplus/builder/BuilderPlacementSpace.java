@@ -292,6 +292,11 @@ public final class BuilderPlacementSpace {
             if(destination!=null){
                 hold=new Yield(hold.target(),destination,hold.until(),hold.placingWorker(),false);
                 yielding.put(worker,hold);
+            }else{
+                // Nothing remains underfoot for a legal sidestep. Do not
+                // keep centering on the blocked tile for sixty ticks.
+                yielding.remove(worker);
+                return false;
             }
         }
         // Otherwise the worker must take a normal collision-safe A* path.
@@ -330,10 +335,16 @@ public final class BuilderPlacementSpace {
         // overlaps from the layer below, not just avoid an AABB contact.
         if(at.equals(worker.blockPosition())
                 &&occupied(obstructed,worker))return false;
+        // A teammate occupying a prospective escape tile is temporary
+        // congestion, not a wall. World.noCollision includes entities and
+        // eliminated every side exit in crowded dome work zones. Validate
+        // permanent block collision here; the trained route scores crowds,
+        // and each physical move still obeys normal entity collision.
         if(edgeDistance(obstructed,at.getX()+.5,at.getZ()+.5)
                     <MIN_EDGE_CLEARANCE
                 ||shifted.intersects(volume(obstructed))
-                ||!level.noCollision(worker,shifted))return false;
+                ||level.getBlockCollisions(worker,shifted)
+                        .iterator().hasNext())return false;
         for(var other:yielding.entrySet())
             if(other.getKey()!=worker
                     &&other.getValue().destination().equals(at)
@@ -368,14 +379,14 @@ public final class BuilderPlacementSpace {
         }
         choices.sort(java.util.Comparator.comparingDouble(p->
                 p.distSqr(origin)+Math.abs(p.getY()-origin.getY())*2));
-        int attempted=0;
-        for(BlockPos p:choices){
-            if(++attempted>16)break; // bounded path work; try more than one aisle side
-            // Favor a physically reachable tile; don't assume an air
-            // candidate is reachable around walls/stairs/racks.
-            if(WorkerNavigation.canReachExact(level,worker,p))return p.immutable();
-        }
-        return null;
+        // The first sixteen nearest tiles can all be behind the same
+        // completed wall or occupied by the crew, while the opposite side
+        // remains reachable. Probe ALL bounded 8-direction / 4-radius
+        // candidates in one trained multi-goal route, rather than sixteen
+        // separate vanilla paths that may not be executable.
+        BlockPos chosen=WorkerNavigation.selectExecutableStand(
+                level,worker,choices);
+        return chosen==null?null:chosen.immutable();
     }
 
     /** Find an EXACT reachable work position within placement reach.
@@ -422,6 +433,20 @@ public final class BuilderPlacementSpace {
             java.util.function.Predicate<BlockPos> safe){
         return approachWithHeight(level,worker,target,sameHeight,safe,true);
     }
+    /** Reach from a stance to the target, measured the way placement is
+     * checked: feet position to the target's CENTER (+.5 in Y). Block-
+     * coordinate distance understates reach for stances below the target
+     * (dy=-2 adds 2.25, not 0), so such a stance could be chosen, then
+     * fail the real reach check on arrival and get re-picked elsewhere.
+     * Limit is under the 14 used at placement to leave route-stop slack.
+     */
+    private static final double STANCE_REACH_SQ=12.5;
+    private static double reachSq(BlockPos stance,BlockPos target){
+        double dx=stance.getX()-target.getX();
+        double dy=stance.getY()-(target.getY()+.5);
+        double dz=stance.getZ()-target.getZ();
+        return dx*dx+dy*dy+dz*dz;
+    }
     private static BlockPos approachWithHeight(ServerLevel level,
             BuilderGolem worker,BlockPos target,boolean sameHeight,
             java.util.function.Predicate<BlockPos> safe,boolean cacheResult){
@@ -432,7 +457,7 @@ public final class BuilderPlacementSpace {
                         ||cached.destination().getY()==target.getY()+1)
                 &&cached.until()>now
                 &&safe.test(cached.destination())
-                &&cached.destination().distSqr(target)<14
+                &&reachSq(cached.destination(),target)<STANCE_REACH_SQ
                 &&!(cached.destination().equals(worker.blockPosition())
                     &&worker.distanceToSqr(target.getX()+.5,
                             target.getY()+.5,target.getZ()+.5)>13.0)
@@ -454,7 +479,7 @@ public final class BuilderPlacementSpace {
                 if(!safe.test(p)
                         ||edgeDistance(target,p.getX()+.5,p.getZ()+.5)
                             <MIN_EDGE_CLEARANCE
-                        ||p.distSqr(target)>=14
+                        ||reachSq(p,target)>=STANCE_REACH_SQ
                         ||p.equals(worker.blockPosition())
                             &&worker.distanceToSqr(target.getX()+.5,
                                 target.getY()+.5,target.getZ()+.5)>13.0
@@ -487,8 +512,8 @@ public final class BuilderPlacementSpace {
                         // rather than inside newly enclosed dome pockets.
                         // It is a cost only, NEVER an access prohibition.
                         +(level.canSeeSky(p.above())?0:5.0)
-                        +p.distSqr(target)*1.20
-                        +Math.pow(Math.max(0,p.distSqr(target)-8),2)*3)
+                        +reachSq(p,target)*1.20
+                        +Math.pow(Math.max(0,reachSq(p,target)-8),2)*3)
                 .thenComparingInt(BlockPos::getX)
                 .thenComparingInt(BlockPos::getZ));
         // The feasible set is intrinsically bounded (7x7x2 poses).
@@ -662,6 +687,15 @@ public final class BuilderPlacementSpace {
         }
         boolean found=true;
         for(BuilderGolem blocker:blockers){
+            // Never route a teammate away in the middle of an actual
+            // scaffold climb, dismount or suspended grapple. That would
+            // steal its physical controller and strand it above the build.
+            // Retry the yield as soon as its transit hands control back.
+            if(BuilderGrappleAccess.active(blocker)
+                    ||BuilderScaffolding.isControllingMovement(blocker)){
+                found=false;
+                continue;
+            }
             Yield old=yielding.get(blocker);
             if(old!=null&&old.target().equals(target)
                     &&old.until()>level.getGameTime())continue;
@@ -675,12 +709,32 @@ public final class BuilderPlacementSpace {
             if(destination!=null
                     &&destination.equals(target))destination=null;
             if(destination==null){
+                // The crowded floating Matrix has only one-tile scaffold
+                // lips. A teammate on a paid bridge may have NO legal
+                // same-height escape tile, yet it is perfectly able to
+                // physically retrace that bridge and descend. Ask the
+                // existing scaffold controller to return rather than
+                // reissuing impossible A* sidesteps forever. Do not steal
+                // motion from an active climb or force a teleport/drop.
+                if(BuilderScaffoldPlanA.hasPlan(blocker)
+                        &&BuilderScaffoldPlanA.returnToGround(
+                                level,blocker,table)){
+                    yielding.remove(blocker);
+                    table.setProblem("Builder returning from blocked "
+                            +"scaffold work stance at "+target.toShortString());
+                }
                 found=false;
                 continue;
             }
             yielding.put(blocker,new Yield(target,destination,
                     level.getGameTime()+60,blocker==placing,precision));
-            WorkerNavigation.routeToExact(level,blocker,destination,.9);
+            if(precision){
+                // The entity-tick precision controller owns this motion.
+                // Sending native exact navigation to its CURRENT tile
+                // every five ticks repeatedly recenters it into the
+                // unfinished block and cancels the necessary sidestep.
+                WorkerNavigation.stop(blocker);
+            }else WorkerNavigation.routeToExact(level,blocker,destination,.9);
         }
         // An AIR cell is not being mined here. Before placing a new solid
         // schematic block into it, real golems occupying that space must

@@ -12,6 +12,7 @@ import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.FenceBlock;
 import net.minecraft.world.level.block.BaseRailBlock;
@@ -215,6 +216,28 @@ public final class BuilderGrappleAccess {
         return world.hasChunkAt(p)
                 &&world.getBlockState(p).isFaceSturdy(world,p,Direction.UP);
     }
+    /** Feet cell standing on the TOP block of a scaffold tower that this
+     * worker's own station tracks. Scaffolding is never "sturdy", so rope
+     * entry/landing rules accept it ONLY through this check. Foreign or
+     * untracked scaffolding is never a floor.
+     */
+    private static boolean ownedTowerTop(ServerLevel level,BuilderGolem worker,
+            BlockPos feet){
+        BlockPos top=feet.below();
+        if(!level.hasChunkAt(top)
+                ||!level.getBlockState(top).is(Blocks.SCAFFOLDING)
+                ||!(level.getBlockEntity(worker.home())
+                        instanceof WorkerStationBlockEntity table)
+                ||!table.scaffoldPositions(worker.getUUID()).contains(top))
+            return false;
+        return headroom(level,feet)
+                &&!level.getBlockState(feet).is(Blocks.SCAFFOLDING);
+    }
+    /** A rope floor: real sturdy ground, or the top of an owned tower. */
+    private static boolean floorBelow(ServerLevel level,BuilderGolem worker,
+            BlockPos feet){
+        return solidTop(level,feet.below())||ownedTowerTop(level,worker,feet);
+    }
     private static boolean anchorPresent(ServerLevel level,Rope rope){
         if(!Double.isFinite(rope.supportY))return solidTop(level,rope.anchor);
         var shape=level.getBlockState(rope.anchor).getCollisionShape(level,rope.anchor);
@@ -302,7 +325,7 @@ public final class BuilderGrappleAccess {
                     for(int ly=(int)Math.floor(y)-1;y-ly<=MAX_REACH;ly--){
                         BlockPos landing=column.atY(ly);
                         if(!headroom(level,landing))break;
-                        if(!solidTop(level,landing.below()))continue;
+                        if(!floorBelow(level,worker,landing))continue;
                         if(!lineClear(level,column,ly,(int)Math.ceil(y)))break;
                         Rope rope=new Rope(anchor,side,landing,goal,true,level.getGameTime());
                         rope.supportY=y;rope.upperX=worker.getX();rope.upperZ=worker.getZ();
@@ -370,7 +393,7 @@ public final class BuilderGrappleAccess {
         for(BlockPos anchor:solidAnchors(level,goal,radius)){
             for(Direction side:Direction.Plane.HORIZONTAL){
                 if(rejected(level,worker,anchor,side))continue;
-                BlockPos entry=ropeEntryFloor(level,anchor,side);
+                BlockPos entry=ropeEntryFloor(level,worker,anchor,side);
                 if(entry==null||!usable.computeIfAbsent(
                         anchor.above(),usableLanding::test))continue;
                 candidates.add(new Rope(anchor,side,entry,goal,false,
@@ -385,24 +408,39 @@ public final class BuilderGrappleAccess {
         // The entry may be BELOW the worker's current feet after a
         // normal walking detour. One trained multi-goal path chooses a
         // genuinely executable entry; no fixed-Y/native-only assumption.
-        BlockPos selected=WorkerNavigation.selectExecutableStand(level,worker,entries);
+        // A Builder already standing on its own tower top IS at the rope
+        // entry. The tower is not a walkable A* node, so do not require a
+        // trained route to a tile the worker is already occupying.
+        BlockPos selected=null;
+        BlockPos here=worker.blockPosition();
+        if(entries.contains(here)&&atTowerLanding(level,worker,here))
+            selected=here;
+        if(selected==null)
+            selected=WorkerNavigation.selectExecutableStand(level,worker,entries);
         if(selected==null)return null;
         for(Rope r:candidates)if(r.landing.equals(selected))return r;
         return null;
+    }
+    private static boolean atTowerLanding(ServerLevel level,BuilderGolem worker,
+            BlockPos landing){
+        return ownedTowerTop(level,worker,landing)
+                &&worker.blockPosition().equals(landing)
+                &&Math.abs(worker.getX()-landing.getX()-.5)<=.24
+                &&Math.abs(worker.getZ()-landing.getZ()-.5)<=.24;
     }
     /** First real floor below a clear rope column. A lower floor cannot
      * be used through the first obstruction. Each actual rope stays at
      * most 20 blocks long, independently of the worker's initial height.
      */
-    private static BlockPos ropeEntryFloor(ServerLevel level,BlockPos anchor,
-            Direction side){
+    private static BlockPos ropeEntryFloor(ServerLevel level,BuilderGolem worker,
+            BlockPos anchor,Direction side){
         int top=anchor.getY()+1;
         BlockPos column=anchor.relative(side);
         if(!headroom(level,column.atY(top)))return null;
         for(int y=top-1;y>=top-MAX_REACH;y--){
             BlockPos at=column.atY(y);
             if(!headroom(level,at))return null;
-            if(solidTop(level,at.below()))return top-y>=2?at:null;
+            if(floorBelow(level,worker,at))return top-y>=2?at:null;
         }
         return null;
     }
@@ -433,7 +471,7 @@ public final class BuilderGrappleAccess {
                         BlockPos landing=column.atY(landingY);
                         if(!empty(level,landing)||!empty(level,landing.above()))
                             break; // real wall, never descend through it
-                        if(!solidTop(level,landing.below()))continue;
+                        if(!floorBelow(level,worker,landing))continue;
                         if(!lineClear(level,column,landingY,topY))break;
                         candidates.add(new Rope(anchor,side,landing,goal,
                                 true,level.getGameTime()));
@@ -501,12 +539,10 @@ public final class BuilderGrappleAccess {
                 &&chooseAscent(level,worker,target)!=null;
     }
 
-    /** A construction ascent must end on terrain connected to a SAFE work
-     * pose. A sturdy anchor alone can be an isolated pedestal, or put the
-     * worker too close to its target to satisfy the 0.8m placement margin.
-     */
-    private static Rope chooseWorkAscent(ServerLevel level,BuilderGolem worker,
-            BlockPos target){
+    /** Safe, walkable work stances around a target (shared by the rope
+     * planner and the launch-tower planner). */
+    private static List<BlockPos> workPoses(ServerLevel level,
+            BuilderGolem worker,BlockPos target){
         List<BlockPos> poses=new ArrayList<>();
         for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
             for(int dy:new int[]{0,1}){
@@ -519,6 +555,15 @@ public final class BuilderGrappleAccess {
                                 level,worker,target,at))continue;
                 poses.add(at);
             }
+        return poses;
+    }
+    /** A construction ascent must end on terrain connected to a SAFE work
+     * pose. A sturdy anchor alone can be an isolated pedestal, or put the
+     * worker too close to its target to satisfy the 0.8m placement margin.
+     */
+    private static Rope chooseWorkAscent(ServerLevel level,BuilderGolem worker,
+            BlockPos target){
+        List<BlockPos> poses=workPoses(level,worker,target);
         if(poses.isEmpty())return null;
         // Walking first; then a direct rope; then up to four real ropes.
         // Every prospective landing must connect onward to a safe work
@@ -596,7 +641,7 @@ public final class BuilderGrappleAccess {
                 java.util.Set<BlockPos> walking){
             for(Direction side:Direction.Plane.HORIZONTAL){
                 if(rejected(level,worker,anchor,side))continue;
-                BlockPos entry=ropeEntryFloor(level,anchor,side);
+                BlockPos entry=ropeEntryFloor(level,worker,anchor,side);
                 if(entry!=null&&walking.contains(entry))return true;
             }
             return false;
@@ -625,6 +670,121 @@ public final class BuilderGrappleAccess {
         }
     }
 
+    // ---- Launch tower: scaffold up to rope range, then grapple --------
+    /** Set GOLEMS_GRAPPLE_TOWER=0 to disable the launch-tower assist. */
+    static final boolean TOWER_ENABLED=!"0".equals(
+            System.getenv("GOLEMS_GRAPPLE_TOWER"));
+    /** Upper bound on scaffold blocks a launch tower may use. */
+    static final int MAX_TOWER_BLOCKS=48;
+    /** Rope length used from a launch top; two under MAX_REACH for slack. */
+    private static final int TOWER_ROPE=MAX_REACH-2;
+    /** A scaffold tower standing in the rope column beside an anchor:
+     * cells base.y .. feetY-1 are scaffold; the Builder's feet end at
+     * feetY, TOWER_ROPE blocks under the anchor's top.
+     */
+    public record TowerPlan(BlockPos base,int feetY,BlockPos anchor,
+            Direction side){}
+    private record CachedTower(BlockPos target,TowerPlan plan,long until){}
+    private static final Map<BuilderGolem,CachedTower> towerPlans=
+            new WeakHashMap<>();
+    public static void forgetTower(BuilderGolem worker){
+        towerPlans.remove(worker);
+    }
+    /** Non-null ONLY when no ordinary rope reaches this target, because
+     * every candidate rope column has its real floor more than MAX_REACH
+     * below the anchor, and a tower in such a column would fix that.
+     * Cached briefly: the ordinary-rope probe runs trained A* previews.
+     */
+    public static TowerPlan towerFor(ServerLevel level,BuilderGolem worker,
+            BlockPos target){
+        if(!TOWER_ENABLED||!hasHook(worker)||active.containsKey(worker))
+            return null;
+        long now=level.getGameTime();
+        CachedTower cached=towerPlans.get(worker);
+        if(cached!=null&&cached.target().equals(target)
+                &&cached.until()>now)return cached.plan();
+        // An ordinary rope (including one starting on an existing tower
+        // top the worker already occupies) always wins over new scaffold.
+        TowerPlan plan=chooseWorkAscent(level,worker,target)!=null
+                ?null:planTower(level,worker,target);
+        towerPlans.put(worker,new CachedTower(target.immutable(),plan,
+                now+(plan==null?40:100)));
+        return plan;
+    }
+    private record TowerCandidate(TowerPlan plan,double score){}
+    private static TowerPlan planTower(ServerLevel level,BuilderGolem worker,
+            BlockPos target){
+        if(!(level.getBlockEntity(worker.home())
+                instanceof WorkerStationBlockEntity table))return null;
+        List<BlockPos> poses=workPoses(level,worker,target);
+        if(poses.isEmpty())return null;
+        var owned=table.scaffoldPositions(worker.getUUID());
+        Map<BlockPos,Boolean> usable=new java.util.HashMap<>();
+        List<TowerCandidate> found=new ArrayList<>();
+        for(int dy:new int[]{0,1}){
+            BlockPos goal=target.above(dy);
+            for(BlockPos anchor:solidAnchors(level,goal,4)){
+                int top=anchor.getY()+1;
+                for(Direction side:Direction.Plane.HORIZONTAL){
+                    if(rejected(level,worker,anchor,side))continue;
+                    BlockPos column=anchor.relative(side);
+                    if(!headroom(level,column.atY(top)))continue;
+                    // Real ground under the rope column, however deep.
+                    // Scaffold cells have no collision, so an existing
+                    // owned tower is scanned through to the ground.
+                    BlockPos ground=null;
+                    for(int y=top-1;y>=top-MAX_REACH-MAX_TOWER_BLOCKS;y--){
+                        BlockPos at=column.atY(y);
+                        if(!level.hasChunkAt(at)||!empty(level,at))break;
+                        if(solidTop(level,at.below())){ground=at;break;}
+                    }
+                    if(ground==null)continue;
+                    // Within MAX_REACH an ordinary rope already works.
+                    if(top-ground.getY()<=MAX_REACH)continue;
+                    int feetY=top-TOWER_ROPE;
+                    if(feetY-ground.getY()<1
+                            ||feetY-ground.getY()>MAX_TOWER_BLOCKS)continue;
+                    if(!lineClear(level,column,feetY,top))continue;
+                    int missing=0;
+                    boolean clear=true;
+                    for(int y=ground.getY();y<feetY;y++){
+                        BlockPos p=column.atY(y);
+                        BlockState state=level.getBlockState(p);
+                        if(state.isAir())missing++;
+                        else if(!(state.is(Blocks.SCAFFOLDING)
+                                &&owned.contains(p))){clear=false;break;}
+                    }
+                    if(!clear)continue;
+                    // The anchor top must connect onward to a work pose.
+                    if(!usable.computeIfAbsent(anchor.above(),
+                            top2->WorkerNavigation.hasGroundRouteFrom(
+                                    level,worker,top2,poses)))continue;
+                    double score=missing*3.0
+                            +worker.distanceToSqr(column.getX()+.5,
+                                    ground.getY(),column.getZ()+.5)*.05;
+                    found.add(new TowerCandidate(new TowerPlan(
+                            ground.immutable(),feetY,anchor.immutable(),side),
+                            score));
+                }
+            }
+        }
+        found.sort(Comparator.comparingDouble(TowerCandidate::score));
+        int checked=0;
+        for(TowerCandidate c:found){
+            if(checked++>=6)break;
+            BlockPos base=c.plan().base();
+            double dx=worker.getX()-(base.getX()+.5);
+            double dz=worker.getZ()-(base.getZ()+.5);
+            // Already in the column, an existing owned tower, or a ground
+            // base the trained walker can actually reach.
+            if(dx*dx+dz*dz<=1.5
+                    ||level.getBlockState(base).is(Blocks.SCAFFOLDING)
+                    ||WorkerNavigation.canReachExact(level,worker,base))
+                return c.plan();
+        }
+        return null;
+    }
+
     public static boolean canPlanWorkAscent(ServerLevel level,
             BuilderGolem worker,BlockPos target){
         return hasHook(worker)&&!active.containsKey(worker)
@@ -637,7 +797,8 @@ public final class BuilderGrappleAccess {
      */
     private static boolean startAscent(ServerLevel level,BuilderGolem worker,
             Rope route){
-        if(!WorkerNavigation.routeToExact(level,worker,route.landing,1.0)){
+        if(!atTowerLanding(level,worker,route.landing)
+                &&!WorkerNavigation.routeToExact(level,worker,route.landing,1.0)){
             reject(level,worker,route); // try a different physical face next time
             return false;
         }
@@ -1020,7 +1181,8 @@ public final class BuilderGrappleAccess {
                     moved=steer(level,mob,x,mob.getY(),z,.14,true);
                 else if(mob.getY()>r.landing.getY()+.035)
                     moved=steer(level,mob,x,r.landing.getY(),z,.14,true);
-                else if(solidTop(level,r.landing.below())
+                else if((solidTop(level,r.landing.below())
+                            ||ownedTowerTop(level,mob,r.landing))
                         &&(headroom(level,r.landing)
                             ||level.getBlockState(r.landing).getBlock()
                                     instanceof BaseRailBlock

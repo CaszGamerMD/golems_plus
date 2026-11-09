@@ -16,7 +16,12 @@ assert "&& !BuilderScaffoldPlanA.hasPlan(worker)" not in src or True
 assert src.index("if(returning!=null&&returning.returningToSite)") < src.index(
     "ServerPlayer owner=level.getServer().getPlayerList().getPlayer(worker.owner());")
 assert src.index("if(shouldEvacuateIdleLayer(true,index,") < src.index(
-    "boolean emergencyRoofAssist=ownLayerClear")
+    "boolean emergencyRoofAssist=(ownLayerClear||standbyRescue)")
+# Standby helpers must physically arrive at OnSite before being recruited.
+assert "standbyRescue=standbyCanRescue(" in src
+assert "atOnSite(level,worker,rescueDepot)" in src
+assert "&&!standbyRescue" in src
+assert "scanStaff.indexOf(worker.getUUID())" in src
 assert "if(h.getTick()%5!=0)return;" in physical
 assert "BuilderBuildService.parkAtOnSite(world,mob,table)" in physical
 assert "h.fail(\"Finished Builder camped on build" in physical

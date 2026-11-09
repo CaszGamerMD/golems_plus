@@ -12,7 +12,7 @@ assert "List<LivingEntity> others" in space
 assert "public static boolean yieldTick(" in space
 assert "WorkerNavigation.routeToExact(level,worker,hold.destination(),.9)" in space
 assert "WorkerNavigation.routeToExact(level,blocker,destination,.9)" in space
-assert "WorkerNavigation.canReachExact(level,worker,p)" in space
+assert "WorkerNavigation.selectExecutableStand(" in space
 navigation=(root.parent/"worker/WorkerNavigation.java").read_text()
 assert "public static boolean routeToExact(" in navigation
 assert "public static boolean canReachExact(" in navigation
@@ -50,8 +50,17 @@ assert "getGameTime()+60" in space
 assert "!level.getBlockState(hold.target()).isAir()" in space
 assert "hold.placingWorker()" in space
 assert "public static BlockPos approach(" in space
-assert "if(++attempted>16)break;" in space
-assert "p.distSqr(target)>=14" in space
+# Evacuation must use all physically viable perimeter exits through the same
+# trained executable A*, not drop viable far-side poses after 16 native probes.
+assert "WorkerNavigation.selectExecutableStand(" in space
+assert "level,worker,choices);" in space
+assert "level.getBlockCollisions(worker,shifted)" in space
+assert "World.noCollision includes entities" in space
+# Reach checks must use the same target-center height as physical placement.
+assert "private static final double STANCE_REACH_SQ=12.5;" in space
+assert "double dy=stance.getY()-(target.getY()+.5);" in space
+assert "||reachSq(p,target)>=STANCE_REACH_SQ" in space
+assert "&&reachSq(cached.destination(),target)<STANCE_REACH_SQ" in space
 # Every narrow aisle with usable straight ground must be considered, not
 # just diagonal tiles. Retain the blocked-entity and real-path safeguards.
 for direction in ("{radius,0}", "{-radius,0}", "{0,radius}", "{0,-radius}",

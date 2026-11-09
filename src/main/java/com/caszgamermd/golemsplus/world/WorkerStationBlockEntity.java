@@ -53,6 +53,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     // Keep the deleted job's physical chest available for unloading the
     // departing crew, even after its saved job entry is gone.
     private BlockPos builderRetirementStorage;
+    // Optional owner-selected safe regrouping point used only for Builder recovery.
+    private BlockPos builderRallyPoint;
+    private UUID builderRallyOrder;
     private final java.util.Map<String,Long> builderRequired=new java.util.LinkedHashMap<>();
     private final java.util.Map<String,Long> builderRemaining=new java.util.LinkedHashMap<>();
     private final java.util.Map<String,Integer> builderWarehouseStock=new java.util.LinkedHashMap<>();
@@ -753,6 +756,16 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public int builderRotation() { return builderRotation; }
     public int builderMirror(){return builderMirror;}
     public BlockPos builderOrigin(){return builderOrigin;}
+    public BlockPos builderRallyPoint(){
+        return activeOrder!=null&&activeOrder.equals(builderRallyOrder)
+                ?builderRallyPoint:null;
+    }
+    public UUID builderRallyOrder(){return builderRallyOrder;}
+    public boolean setBuilderRallyPoint(UUID actor,UUID order,BlockPos point){
+        if(!isBuilder()||!canConfigure(actor)||order==null
+                ||!order.equals(activeOrder)||point==null)return false;
+        builderRallyPoint=point.immutable();builderRallyOrder=order;sync();return true;
+    }
     public String placedSchematicName(){return placedSchematicName;}
     public int builderCursor(){return builderCursor;}
     public int builderClearCursor(){return builderClearCursor;}
@@ -826,6 +839,26 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(builderClaims.getOrDefault(worker,-1)!=step)return;
         builderClaims.remove(worker);
         builderMissingRetries.put(step,tick+40);
+        sync();
+    }
+    /** A physically proven structural conflict is NOT an ordinary
+     * 40-tick support wait. The original Matrix contains a powered
+     * ascending rail whose raised-end jig has a second rail as its
+     * footing; vanilla physics flattens or breaks that exact assembly.
+     *
+     * Hold the real incomplete cell for 600 ticks, letting other
+     * Builders handle any runnable same-Y targets without burning
+     * movement/path searches on an identical failed geometry.
+     * The persisted bit is NEVER completed, the Y gate remains strict,
+     * and another attempt is allowed if the player changes the site.
+     */
+    public void waitForBuilderStructuralConflict(UUID worker,int step,
+            long tick,String reason){
+        if(builderClaims.getOrDefault(worker,-1)!=step)return;
+        builderClaims.remove(worker);
+        builderMissingRetries.put(step,tick+600);
+        builderClaimDebug.put(worker,"structural-conflict #"+step
+                +" retryAt="+(tick+600)+" "+reason);
         sync();
     }
     public UUID builderWorkerId(){return builderWorkerId;}
@@ -2051,6 +2084,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
             out.putString("trader_extra_worker_"+n,additionalTraderWorkers.get(n).toString());
         out.putInt("builder_crew_target",crewTarget);
         out.putBoolean("builder_recall_requested",builderRecallRequested);
+        if(builderRallyPoint!=null)
+            out.store("builder_rally_point",BlockPos.CODEC,builderRallyPoint);
+        if(builderRallyOrder!=null)
+            out.putString("builder_rally_order",builderRallyOrder.toString());
         if(builderRetirementStorage!=null)
             out.store("builder_retirement_storage",BlockPos.CODEC,
                     builderRetirementStorage);
@@ -2359,6 +2396,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderWorkerId=uuid(in,"builder_worker");
         crewTarget=Math.clamp(in.getIntOr("builder_crew_target",1),1,isBuilder()?8:4);
         builderRecallRequested=in.getBooleanOr("builder_recall_requested",false);
+        builderRallyPoint=in.read("builder_rally_point",BlockPos.CODEC).orElse(null);
+        builderRallyOrder=uuid(in,"builder_rally_order");
         builderRetirementStorage=in.read("builder_retirement_storage",
                 BlockPos.CODEC).orElse(null);
         additionalBuilderWorkers.clear();
