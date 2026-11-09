@@ -320,5 +320,17 @@ public final class BuilderVillagerMatrixFullGameTest {
         if(name==null)return;
         Item item=BuiltInRegistries.ITEM.getValue(name);
         if(item!=null&&item!=Items.AIR)needs.add(item);
+        // Test-only stock for a VANILLA-POPPED rail on its later water pass.
+        // Builders pay for and retrieve the replacement in-world; the
+        // chest replenishment never silently inserts it in a worker pouch.
+        if(BuilderWaterPass.isWaterlogPass(step.encodedState())){
+            var dry=BuilderBlockResolver.resolve(
+                    BuilderWaterPass.dryState(
+                            BuilderWaterPass.originalState(step.encodedState())),
+                    BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+            if(dry!=null&&BuilderRailSlope.raisedEnd(
+                    BlockPos.ZERO,dry.state())!=null)
+                needs.add(dry.item());
+        }
     }
 }
