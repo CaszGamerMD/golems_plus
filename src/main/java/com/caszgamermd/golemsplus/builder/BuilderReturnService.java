@@ -54,6 +54,10 @@ public final class BuilderReturnService {
         }
         boolean mobilityActive=BuilderScaffolding.isControllingMovement(worker)
                 ||BuilderGrappleAccess.active(worker);
+        // An owned bridge, shaft, or rope is already executing a verified
+        // physical return. The ordinary depot selector must not replace
+        // its motion with a competing ground A* request.
+        if(mobilityActive)return true;
         // Observe real physical displacement instead of accepting a
         // pathfinder's MOVING result indefinitely. A busy rope/scaffold
         // controller owns its motion; never interrupt that descent.
