@@ -1464,8 +1464,12 @@ public final class BuilderBuildService {
                         +" (other Builders continuing this layer)");
                 return;
             }
-            BlockPos raisedRail=BuilderRailSlope.raisedEnd(pos,state.state());
-            boolean reShapeRail=raisedRail!=null
+            // Waterlogging must NOT hire a temporary rail using a water
+            // bucket as its spare-rail item. Only dry physical rails use
+            // the rail-jig material and connector workflow.
+            BlockPos raisedRail=waterlog?null:
+                    BuilderRailSlope.raisedEnd(pos,state.state());
+            boolean reShapeRail=!waterlog&&raisedRail!=null
                     &&existing.getBlock()==state.state().getBlock();
             if(!existing.isAir()&&!waterlog&&!reShapeRail
                     &&!(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
@@ -1978,8 +1982,12 @@ public final class BuilderBuildService {
                 table.setProblem("World rejected placement at "+pos);
                 return;
             }
-            if(raisedRail!=null&&!BuilderPlacementState.matches(
-                    level.getBlockState(pos),state.state())){
+            if(BuilderRailSlope.raisedEnd(pos,state.state())!=null
+                    &&!BuilderRailSlope.restorePaidSlope(level,pos,state.state())){
+                // A vanilla update may flatten the rail after a jig is
+                // recovered. A support-safe correction is attempted on
+                // the already paid, physical rail; if it still will not
+                // hold its state, defer instead of falsely finishing it.
                 table.waitForBuilderSupport(worker.getUUID(),index,
                         level.getGameTime());
                 table.setProblem("Ascending rail awaiting stable slope at "+pos);
