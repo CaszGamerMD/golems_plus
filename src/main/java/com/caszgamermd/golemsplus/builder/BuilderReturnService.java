@@ -20,8 +20,17 @@ public final class BuilderReturnService {
     private static final java.util.Map<WorkerStationBlockEntity,Long> searchAfter=
             new java.util.WeakHashMap<>();
     private static final class Approach {
-        BlockPos target,stand;
-        long nextSearch;
+        BlockPos target,stand,excludedStand;
+        long nextSearch,lastMovementTick;
+        double lastX=Double.NaN,lastY=Double.NaN,lastZ=Double.NaN;
+    }
+    /** A route that keeps returning MOVING without actually displacing a
+     * worker is not a valid forever-route. Don't abandon active scaffold,
+     * grapple, or door crossing: only a stationary ordinary depot approach
+     * is eligible for a fresh safe standing tile. */
+    static boolean depotApproachStalled(long ticksSinceMovement,
+            boolean verticalOrGrappleActive){
+        return !verticalOrGrappleActive&&ticksSinceMovement>=120;
     }
     private static final java.util.Map<BuilderGolem,Approach> approaches=
             new java.util.WeakHashMap<>();
@@ -37,6 +46,34 @@ public final class BuilderReturnService {
         long now=level.getGameTime();
         if(!target.equals(route.target)){
             route.target=target.immutable();route.stand=null;route.nextSearch=0;
+            route.excludedStand=null;
+            route.lastMovementTick=now;
+            route.lastX=worker.getX();
+            route.lastY=worker.getY();
+            route.lastZ=worker.getZ();
+        }
+        boolean mobilityActive=BuilderScaffolding.isControllingMovement(worker)
+                ||BuilderGrappleAccess.active(worker);
+        // Observe real physical displacement instead of accepting a
+        // pathfinder's MOVING result indefinitely. A busy rope/scaffold
+        // controller owns its motion; never interrupt that descent.
+        double dx=worker.getX()-route.lastX;
+        double dy=worker.getY()-route.lastY;
+        double dz=worker.getZ()-route.lastZ;
+        if(dx*dx+dy*dy+dz*dz>.25){
+            route.lastMovementTick=now;
+            route.lastX=worker.getX();
+            route.lastY=worker.getY();
+            route.lastZ=worker.getZ();
+        }
+        if(route.stand!=null
+                &&depotApproachStalled(now-route.lastMovementTick,mobilityActive)){
+            route.excludedStand=route.stand;
+            route.stand=null;route.nextSearch=0;
+            route.lastMovementTick=now;
+            // Only ordinary depot navigation is canceled. No item
+            // inventory or active vertical movement controller is touched.
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
         }
         if(route.stand==null||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                 .canStandOn(level,worker,route.stand)){
@@ -59,6 +96,14 @@ public final class BuilderReturnService {
             possible.sort(java.util.Comparator.comparingDouble(p->
                     worker.distanceToSqr(p.getX()+.5,p.getY(),p.getZ()+.5)));
             if(possible.size()>16)possible=possible.subList(0,16);
+            // A failed stand remains valid world geometry but may be
+            // blocked by crew/cargo. Try another actual reachable side
+            // rather than selecting the same obstructed tile forever.
+            if(route.excludedStand!=null&&possible.size()>1){
+                var alternatives=new java.util.ArrayList<>(possible);
+                alternatives.remove(route.excludedStand);
+                if(!alternatives.isEmpty())possible=alternatives;
+            }
             route.stand=com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .selectExecutableStand(level,worker,possible);
             if(route.stand==null)return true;
