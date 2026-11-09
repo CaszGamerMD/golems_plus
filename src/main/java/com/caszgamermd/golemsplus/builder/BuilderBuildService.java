@@ -2218,12 +2218,28 @@ public final class BuilderBuildService {
         var staff=new java.util.HashMap<Integer,List<UUID>>();
         for(var entry:layers.entrySet()){
             int y=entry.getKey();
-            long physical=entry.getValue().stream()
-                    .filter(i->!cache.steps().get(i).ignorePlant()).count();
+            int minX=Integer.MAX_VALUE,maxX=Integer.MIN_VALUE;
+            int minZ=Integer.MAX_VALUE,maxZ=Integer.MIN_VALUE;
+            int physical=0;
+            for(int index:entry.getValue()){
+                var step=cache.steps().get(index);
+                // A waterlogged cell is placed dry and filled afterward:
+                // two job steps but only one physical workspace cell.
+                if(step.ignorePlant()
+                        ||BuilderWaterPass.isWaterlogPass(step.encodedState()))
+                    continue;
+                physical++;
+                minX=Math.min(minX,step.x());maxX=Math.max(maxX,step.x());
+                minZ=Math.min(minZ,step.z());maxZ=Math.max(maxZ,step.z());
+            }
+            int width=physical==0?1:maxX-minX+1;
+            int depth=physical==0?1:maxZ-minZ+1;
             int[] own=ownership.getOrDefault(y,new int[roster.size()]);
-            // Includes a single worker for a purely virtual ignored Y.
-            staff.put(y,BuilderCrewSchedule.staffForLayer(roster,
-                    (int)physical,own));
+            // Narrow floors do not recruit eight workers to a seven-by-five
+            // platform. The remaining crew waits safely at OnSite while
+            // ranked zone owners share all current-layer placements.
+            staff.put(y,BuilderCrewSchedule.staffForFootprint(roster,
+                    physical,own,width,depth));
         }
         table.beginBuilderZonePlan();
         ScheduledZones result=new ScheduledZones(table.activeOrder(),cache,
