@@ -11,12 +11,13 @@ import java.util.UUID;
  */
 public final class BuilderCrewSchedule {
     public record Progress(int cursor,long finishedAhead) {}
-    /** A layer gets one physical worker per ten schematic blocks, rounded
-     * up. The assigned crew is an upper bound, not an obligation to crowd
-     * a five-block platform with four Builders. */
+    /** Keep tiny layers uncrowded while using the crew for useful work:
+     * 0-5 placements: one Builder; 6-8: two; then one more for each
+     * additional three placements, capped by the available crew.
+     * Ignored plants do not count as physical placements. */
     public static int workersForLayer(int blocks,int crewSize){
         if(blocks<=0||crewSize<=0)return 0;
-        return Math.min(crewSize,1+(blocks-1)/10);
+        return Math.min(crewSize,blocks<=5?1:2+(blocks-6)/3);
     }
     /** Prefer workers whose original X/Z zones own the most of this
      * layer. A stable roster-index tie breaker prevents golem churn.
