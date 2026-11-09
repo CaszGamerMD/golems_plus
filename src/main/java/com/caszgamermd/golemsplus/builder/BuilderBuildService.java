@@ -52,7 +52,7 @@ public final class BuilderBuildService {
     private static final Map<WorkerStationBlockEntity,ReconciledJob>
             reconciledJobs=new WeakHashMap<>();
     private enum Action { STAGE_MATERIALS, MOVE_TO_WORK, PLACE, COMPLETE }
-    private static final class WorkerAction {
+    static final class WorkerAction {
         int index=-1;
         Action phase=Action.STAGE_MATERIALS;
         long blockedSince=-1;
@@ -99,6 +99,20 @@ public final class BuilderBuildService {
         // Otherwise the six-second assist watchdog can keep a "finished"
         // teammate camping inside the next Builder's placement volume.
         boolean returningToSite;
+        /** Recoveries are bounded per obstruction, not for the entire job.
+         * One ACTUAL block placed means the golem has made fresh progress,
+         * so later roof cells deserve their own three alternate approaches.
+         * A mere successful detour does not reset this limit: it could
+         * otherwise send a blocked worker in circles indefinitely. */
+        void notePhysicalPlacement(){
+            alternateSideAttempts=0;
+            alternateSideRequested=false;
+            alternateSideTarget=null;
+            alternateSideStarted=-1;
+            failedApproachFrom=null;
+            lastFailedStep=-1;
+            retreatUntil=-1;
+        }
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
@@ -1980,6 +1994,7 @@ public final class BuilderBuildService {
             table.recordBuilderPlacement(step.requiredItem());
             table.completeBuilderStep(worker.getUUID(),index);
             BuilderConstructionPlanner.noteCompleted(worker,pos);
+            activity.notePhysicalPlacement();
             activity.phase=Action.COMPLETE;
             // Use the already-validated next task, if still safe and
             // claimable. No second full frontier search at this stop.
