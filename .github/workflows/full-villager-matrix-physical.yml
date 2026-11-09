@@ -4,6 +4,11 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/full-villager-matrix-physical.yml'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewSchedule.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBlockResolver.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/worker/WorkerNavigation.java'
+      - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderCrewScheduleTest.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFull*'
       - 'src/gametest/resources/golems_plus_matrix/**'
       - 'src/gametest/resources/data/golems_plus_gametest/gametest/structure/matrix_arena.snbt'
