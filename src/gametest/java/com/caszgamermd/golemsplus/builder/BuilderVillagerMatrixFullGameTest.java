@@ -99,6 +99,22 @@ public final class BuilderVillagerMatrixFullGameTest {
                 ||!BuilderRailSlope.restorePaidSlope(level,pos,desired.state())){
             h.fail("Could not stabilize a physically present paid rail");return;
         }
+        var energized=BuilderBlockResolver.resolve(
+                "minecraft:powered_rail[powered=true,shape=ascending_west,waterlogged=false]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        var waterlogged=BuilderBlockResolver.resolve(
+                "minecraft:powered_rail[powered=true,shape=ascending_west,waterlogged=true]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        if(energized==null||waterlogged==null
+                ||!BuilderPlacementState.matches(level.getBlockState(pos),
+                        energized.state())
+                ||BuilderPlacementState.matches(level.getBlockState(pos),
+                        waterlogged.state())
+                ||BuilderPlacementState.matches(
+                        Blocks.POWERED_RAIL.defaultBlockState(),desired.state())){
+            h.fail("Rail matching must ignore power, not slope or waterlogging");
+            return;
+        }
         h.onEachTick(()->{
             if(h.getTick()!=20)return;
             if(!BuilderPlacementState.matches(level.getBlockState(pos),
