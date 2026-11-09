@@ -71,17 +71,41 @@ navigation, work-stances, floating starts, and regression timing.
 A **107/107** lower-layer result NEVER satisfies, replaces, or bypasses
 the required **15,376/15,376** full-build acceptance.
 
-On the first true bottom-up physical Matrix run, the crew reached **52/107**
-cells with four living Builders, then stalled at source-local
-`(15,1,24)`: `powered_rail[shape=ascending_west,waterlogged=true]`.
-The requested raised-west connection is `(14,2,24)`, but the exact
-user schematic reserves that upper cell for an `iron_trapdoor`, not a
-rail. The paid temporary rail connector could make a slope momentarily,
-but removing it caused the real rail shape to collapse. The Builder now
-**defers further reshaping without consuming additional items** until
-a permanent raised connection exists. This does not invent an upper
-rail or silently change the user's blueprint. This is currently a
-separate cross-layer / physical-rail-geometry blocker.
+Lower-layer four-Builder runs have reached approximately **50–52/107**
+source cells, then stalled at source-local `(15,1,24)`:
+`minecraft:powered_rail[powered=true,shape=ascending_west,waterlogged=true]`.
+The original source requires an `iron_trapdoor` at its raised end
+`(14,2,24)`, a flat powered rail beneath that at `(14,1,24)`,
+and a redstone block at `(13,0,24)`.
+
+**The rail physics was measured in three separate bootstrapped vanilla
+GameTests** under `BuilderMatrixRailPhysicsGameTest`:
+
+1. In an isolated **idealized** test with a temporary raised-end rail
+   supported by **stone**, an ascending rail **keeps its slope** when
+   the jig is removed; without a redstone circuit it loses only
+   `powered=true`. This exposed an earlier incorrect diagnosis.
+2. In the **actual saved Matrix neighborhood**, the real redstone
+   block powers all three rails, but the target becomes
+   `powered=true,shape=east_west`. The raised jig **cannot survive**
+   on the flat rail at `(14,1,24)`.
+3. Even when a temporary **stone support** is used to create the incline
+   before restoring the exact neighboring rail, the target rail
+   **breaks to air** on restoration. There is currently no verified,
+   normal-Minecraft construction sequence for the exact saved states.
+
+A separate read-only `BuilderRailAssemblyAudit` finds **371 ascending
+rails**, **234 raised-end/rail-footing conflict patterns** in the exact
+full source. This is a candidate-problem count, **not a claim that all
+234 have been individually physically tested**. The Planner logs the
+locations and exposes them on Builder inspection; it does not discard
+blocks, overwrite the imported hologram, or invent powered states.
+
+The Builder now distinguishes a true rail-shape mismatch from redstone
+power and waterlogging. An already paid and correctly sloped rail is
+**not cleared or rebuilt** just because the redstone or water state is
+not yet physically correct. Full completion remains strict, including
+the uncorrected rail conflict.
 
 ### Block-entity caveat
 
@@ -97,6 +121,10 @@ before anyone claims a fully functional redstone machine clone.
 - `[MATRIX FULL UNSUPPORTED]`: exact unsupported state palette.
 - `[MATRIX FULL UNSUPPORTED CELLS]`: affected cell count and sample local XYZ.
 - `[MATRIX FULL PISTON AUDIT]`: 370 assembly pairs, forward/reversed counts and local XYZ.
+- `[MATRIX FULL RAIL AUDIT]`: 371 ascending rails; source-file raised-end and footing conflicts.
+- `[MATRIX RAIL PHYSICS]`: ideal temporary-jig slope/power after removal.
+- `[MATRIX RAIL ACTUAL POCKET]`: exact source redstone/flat-rail interaction.
+- `[MATRIX RAIL STAGED SUPPORT]`: temporary stone + rail restoration physical outcome.
 - `[MATRIX FULL PROGRESS]`: true world-state completion and current Y.
 - `[MATRIX LOWER PROGRESS]`: physical work on the original source Y=0–3.
 - `[MATRIX FULL STALL]`: worker coordinates and access diagnostics.
