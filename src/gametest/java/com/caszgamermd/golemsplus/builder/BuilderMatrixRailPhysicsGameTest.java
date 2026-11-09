@@ -148,4 +148,64 @@ public final class BuilderMatrixRailPhysicsGameTest {
         // or to mark the full Matrix job successful.
         h.succeed();
     }
+    /** Last physical attempt before calling the saved snapshot
+     * infeasible: first install a temporary sturdy x14,Y1 support,
+     * construct the ascending x15 rail using a true raised jig,
+     * retrieve the jig, then replace the temporary support with the
+     * EXACT x14,Y1 powered rail requested by the user.
+     */
+    @GameTest(structure="golems_plus_gametest:matrix_full_arena",
+            environment="golems_plus_gametest:matrix_full_e2e",
+            maxTicks=160,skyAccess=true)
+    public void stagedTemporarySupportThenRestoreExactNeighbor(
+            GameTestHelper h){
+        ServerLevel world=h.getLevel();
+        BlockPos x15=h.absolutePos(new BlockPos(12,4,12));
+        BlockPos x14=x15.west(),x13=x15.west(2);
+        for(int y=2;y<=8;y++)for(int x=8;x<=15;x++)for(int z=9;z<=15;z++)
+            world.setBlock(h.absolutePos(new BlockPos(x,y,z)),
+                    Blocks.AIR.defaultBlockState(),3);
+        world.setBlock(x13.below(),Blocks.REDSTONE_BLOCK.defaultBlockState(),3);
+        world.setBlock(x14.below(),
+                Blocks.MANGROVE_ROOTS.defaultBlockState().setValue(
+                        net.minecraft.world.level.block.state.properties
+                                .BlockStateProperties.WATERLOGGED,true),3);
+        world.setBlock(x15.below(),Blocks.SMOOTH_STONE.defaultBlockState(),3);
+        var flat=BuilderBlockResolver.resolve(
+                "minecraft:powered_rail[powered=true,shape=east_west,waterlogged=false]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE).state();
+        var ascending=BuilderBlockResolver.resolve(
+                "minecraft:powered_rail[powered=true,shape=ascending_west,waterlogged=false]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE).state();
+        world.setBlock(x13,flat,3);
+        world.setBlock(x14,Blocks.STONE.defaultBlockState(),3);
+        BlockPos upper=BuilderRailSlope.raisedEnd(x15,ascending);
+        boolean jigSurvives=flat.getBlock().defaultBlockState()
+                .canSurvive(world,upper);
+        boolean jigPlaced=world.setBlock(upper,
+                Blocks.POWERED_RAIL.defaultBlockState(),3);
+        world.setBlock(x15,ascending,3);
+        BlockState during=world.getBlockState(x15);
+        world.setBlock(upper,Blocks.AIR.defaultBlockState(),3);
+        BlockState withoutJig=world.getBlockState(x15);
+        world.setBlock(x14,Blocks.AIR.defaultBlockState(),3);
+        world.setBlock(x14,flat,3);
+        BlockState restored=world.getBlockState(x15);
+        System.out.println("[MATRIX RAIL STAGED SUPPORT] "
+                +"raisedJigSurvives="+jigSurvives+" jigPlaced="+jigPlaced
+                +" withJig="+during
+                +" afterJigRemoval="+withoutJig
+                +" afterActualRailRestored="+restored
+                +" finalShapeMatches="+BuilderRailSlope.shapeMatches(
+                        restored,ascending)
+                +" finalDifference="+BuilderRailSlope.railStateDifference(
+                        restored,ascending));
+        if(!jigSurvives||!jigPlaced){
+            h.fail("Real temporary solid support could not sustain the jig");
+            return;
+        }
+        // A failed final shape is evidence that the SOURCE requires
+        // editing, not permission to leave a temporary support in it.
+        h.succeed();
+    }
 }
