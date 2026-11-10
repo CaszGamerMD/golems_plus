@@ -1385,6 +1385,11 @@ public final class BuilderBuildService {
                 // dismantle the nearby scaffold to rebuild them.
                 return;
             }
+            // A wrong lever/repeater/comparator/gate click-setting is not
+            // a missing block. Retain the existing paid block and use
+            // its native Minecraft interaction when within safe reach.
+            boolean interactionCorrection=BuilderBlockInteractions
+                    .needsInteraction(existing,state.state());
             boolean waterlog=BuilderWaterPass.isWaterlogPass(step.encodedState());
             boolean bubble=BuilderWaterPass.isBubbleColumn(step.encodedState());
             BuilderBlockResolver.Resolved dryWaterlog=null;
@@ -1445,7 +1450,8 @@ public final class BuilderBuildService {
             // depot visit when a later item is actually missing.
             if(!table.builderOrderPrepared(worker.getUUID())
                     &&step.requiredItem()!=null
-                    &&worker.carriedCount(state.item())<=0){
+                    &&worker.carriedCount(state.item())<=0
+                    &&!interactionCorrection){
                 activity.phase=Action.STAGE_MATERIALS;
                 // An A* route from the TOP of a temporary scaffold to
                 // OnSite Storage can never discover the vertical descent.
@@ -1495,6 +1501,7 @@ public final class BuilderBuildService {
             boolean reShapeRail=!waterlog&&raisedRail!=null
                     &&existing.getBlock()==state.state().getBlock();
             if(!existing.isAir()&&!waterlog&&!reShapeRail
+                    &&!interactionCorrection
                     &&!(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
                             ||existing.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN)))){
                 // A player may add a block after the initial site-clear
@@ -1507,7 +1514,8 @@ public final class BuilderBuildService {
             // three-layer pouch, THEN walks to the construction site.
             // Never debit a remote chest while standing at the build.
             if(step.requiredItem()!=null
-                    &&worker.carriedCount(state.item())<=0){
+                    &&worker.carriedCount(state.item())<=0
+                    &&!interactionCorrection){
                 var loading=BuilderSupplyInventory.loadForLayerStatus(
                         level,worker,table,plan.steps(),index);
                 if(loading==BuilderSupplyInventory.LoadStatus.MOVING)
@@ -1919,6 +1927,24 @@ public final class BuilderBuildService {
             // layer. Keep refund logic for all ordinary materials.
             // An already-paid rail that lost its slope is reshaped in
             // place, without destroying it and charging for a second rail.
+            // A native right-click changes the state of a block that
+            // was already paid for; never debit or destroy it again.
+            if(interactionCorrection){
+                if(!BuilderBlockInteractions.interact(level,pos,state.state(),owner)){
+                    table.waitForBuilderSupport(worker.getUUID(),index,
+                            level.getGameTime());
+                    table.setProblem("Interactive state waiting at "+pos
+                            +" current="+level.getBlockState(pos)
+                            +" target="+state.state());
+                    return;
+                }
+                table.recordBuilderPlacement(step.requiredItem());
+                table.completeBuilderStep(worker.getUUID(),index);
+                BuilderConstructionPlanner.noteCompleted(worker,pos);
+                activity.notePhysicalPlacement();
+                activity.phase=Action.COMPLETE;
+                return;
+            }
             boolean freeHalf=step.requiredItem()==null||reShapeRail;
             boolean reusableFluid=BuilderBlockResolver.reusableSupply(step.requiredItem());
             BlockState railJigState=raisedRail==null?null:
@@ -2031,7 +2057,7 @@ public final class BuilderBuildService {
             }
             BlockState toPlace=bubble
                     ?net.minecraft.world.level.block.Blocks.WATER.defaultBlockState()
-                    :state.state();
+                    :BuilderBlockInteractions.placementState(state.state());
             boolean placed=level.setBlock(pos,toPlace,3);
             if(railJigPayment!=null){
                 // A temporary rail is paid for and physically retrieved;
@@ -2047,6 +2073,19 @@ public final class BuilderBuildService {
             if(!placed){
                 if(payment!=null)BuilderSupplyInventory.refund(table,payment);
                 table.setProblem("World rejected placement at "+pos);
+                return;
+            }
+            // Only after spending the physical block item and placing
+            // its neutral state may the Builder click its real controls.
+            // The resulting neighbor updates are genuine vanilla behavior.
+            if(BuilderBlockInteractions.needsInteraction(
+                    level.getBlockState(pos),state.state())
+                    &&!BuilderBlockInteractions.interact(level,pos,
+                            state.state(),owner)){
+                table.waitForBuilderSupport(worker.getUUID(),index,
+                        level.getGameTime());
+                table.setProblem("Placed block, awaiting real interaction at "
+                        +pos+" actual="+level.getBlockState(pos));
                 return;
             }
             if(BuilderRailSlope.raisedEnd(pos,state.state())!=null
