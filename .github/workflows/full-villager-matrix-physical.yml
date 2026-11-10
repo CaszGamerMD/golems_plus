@@ -7,6 +7,8 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewSchedule.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBlockResolver.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBlockInteractions.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderBlockInteractionsGameTest.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderPlacementState.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderRailSlope.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderSupplyInventory.java'
