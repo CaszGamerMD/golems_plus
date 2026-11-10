@@ -99,7 +99,17 @@ public final class BuilderRailTrafficGameTest {
                         +" pos="+worker.position()
                         +" route="+BuilderPlacementSpace.debugYield(level,worker)
                         +" blockers="+BuilderPlacementSpace.debugOccupants(
-                                level,table,target));
+                                level,table,target)
+                        +" stepXFree="+level.noCollision(worker,
+                                worker.getBoundingBox().move(.115,0,0))
+                        +" stepXBlocks="+level.getBlockCollisions(worker,
+                                worker.getBoundingBox().move(.115,0,0))
+                                .iterator().hasNext()
+                        +" stepZFree="+level.noCollision(worker,
+                                worker.getBoundingBox().move(0,0,.115))
+                        +" nearbyEntities="+level.getEntities(
+                                worker,worker.getBoundingBox().inflate(1,1,1))
+                                .size());
             }
             // This is a genuine physical .115-block-per-tick sidestep,
             // NOT a snap/teleport or a bogus route to the same tile.
