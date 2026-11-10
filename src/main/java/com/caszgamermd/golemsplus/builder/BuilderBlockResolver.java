@@ -9,6 +9,7 @@ import net.minecraft.world.item.Items;
 import com.caszgamermd.golemsplus.world.WorksiteContent;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.state.BlockState;
@@ -61,13 +62,17 @@ public final class BuilderBlockResolver {
         // construction plus a native right-click. Never exclude them
         // alongside inventory/NBT-bearing containers and machines.
         boolean vanillaComparator=id.equals("minecraft:comparator");
+        // A vanilla bed's block entity contains no external inventory or
+        // custom source NBT. It is one ordinary bed item, with the head
+        // created and validated as part of the same physical placement.
+        boolean vanillaBed=block instanceof BedBlock;
         if(item==Items.AIR || block instanceof EntityBlock
-                &&!sign&&!vanillaComparator)return null;
-        // Door halves are represented by two successive schematic cells.
-        // Lower block consumes the single physical door item; upper half
-        // is placed after its lower support, without duplicating materials.
-        if(id.endsWith("_bed")||id.endsWith("_tall_flower")
-                ||id.endsWith("_double_plant")||id.endsWith("_crop")
+                &&!sign&&!vanillaComparator&&!vanillaBed)return null;
+        // The constructor groups each valid double-plant, door and bed
+        // pair into one claimed item-backed job. Neither companion is a
+        // stand-alone material, and crops/fire/portals still require
+        // their own future world-interaction handlers.
+        if(id.endsWith("_crop")
                 ||id.contains("fire")||id.contains("portal"))
             return null;
         // A normal/sticky piston is an ordinary one-item block while
