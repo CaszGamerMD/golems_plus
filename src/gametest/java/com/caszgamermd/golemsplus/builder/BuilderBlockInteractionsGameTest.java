@@ -11,6 +11,57 @@ import net.minecraft.world.level.block.state.BlockState;
 /** The real server must execute native Minecraft right-click behavior:
  * this is NOT a test that fakes the requested state with setBlock. */
 public final class BuilderBlockInteractionsGameTest {
+    @GameTest(maxTicks=90,skyAccess=true)
+    public void realNoteTuningAndDaylightInversionSurviveNeighborTicks(
+            GameTestHelper h){
+        var level=h.getLevel();
+        var player=h.makeMockServerPlayerInLevel();
+        String[] targets={
+            "minecraft:note_block[instrument=harp,note=24,powered=false]",
+            "minecraft:daylight_detector[inverted=true,power=15]"
+        };
+        java.util.Map<BlockPos,BlockState> desired=new java.util.LinkedHashMap<>();
+        for(int i=0;i<targets.length;i++){
+            int x=3+i*4;
+            h.setBlock(x,1,4,Blocks.STONE);
+            BlockPos pos=h.absolutePos(new BlockPos(x,2,4));
+            var resolved=BuilderBlockResolver.resolve(targets[i],
+                    BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+            if(resolved==null){
+                h.fail("Cannot resolve real interactive target "+targets[i]);
+                return;
+            }
+            var neutral=BuilderBlockInteractions.placementState(resolved.state());
+            if(!level.setBlock(pos,neutral,3)
+                    ||!BuilderBlockInteractions.needsInteraction(
+                            level.getBlockState(pos),resolved.state())
+                    ||!BuilderBlockInteractions.interact(
+                            level,pos,resolved.state(),player)
+                    ||!BuilderPlacementState.matches(
+                            level.getBlockState(pos),resolved.state())){
+                h.fail("Real native clicks failed for "+targets[i]
+                        +" current="+level.getBlockState(pos));
+                return;
+            }
+            desired.put(pos,resolved.state());
+        }
+        h.onEachTick(()->{
+            if(h.getTick()!=20)return;
+            for(var cell:desired.entrySet()){
+                if(!BuilderPlacementState.matches(
+                        level.getBlockState(cell.getKey()),cell.getValue())){
+                    h.fail("Manual tuning not stable after neighbor ticks at "
+                            +cell.getKey()+" actual="
+                            +level.getBlockState(cell.getKey()));
+                    return;
+                }
+            }
+            System.out.println("[BUILDER ADVANCED INTERACTIONS PASS] 24"
+                    +" actual note-block tunes and daylight inversion");
+            h.succeed();
+        });
+    }
+
     @GameTest(maxTicks=80,skyAccess=true)
     public void nativeClicksProduceExactSchematicControlStates(GameTestHelper h){
         var level=h.getLevel();
