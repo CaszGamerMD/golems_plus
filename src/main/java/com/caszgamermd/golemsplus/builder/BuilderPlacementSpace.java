@@ -697,6 +697,18 @@ public final class BuilderPlacementSpace {
             if(destination!=null
                     &&destination.equals(target))destination=null;
             if(destination==null){
+                // A Builder trapped on a thin elevated scaffold/roof
+                // may have NO ordinary walkable escape tile. Use an
+                // existing, physically validated tool-route downward
+                // rather than keeping the construction target blocked.
+                // No teleport, forced push, free scaffold or material
+                // debit is permitted here. The active vertical controller
+                // has priority over ordinary job movement on later ticks.
+                if(BuilderScaffolding.descendForTravel(level,blocker,table)
+                        ||BuilderGrappleAccess.rappelForTravel(
+                                level,blocker,table)){
+                    continue;
+                }
                 found=false;
                 continue;
             }
