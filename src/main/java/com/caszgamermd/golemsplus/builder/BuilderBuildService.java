@@ -1530,6 +1530,22 @@ public final class BuilderBuildService {
                     BuilderRailSlope.raisedEnd(pos,state.state());
             boolean reShapeRail=!waterlog&&raisedRail!=null
                     &&existing.getBlock()==state.state().getBlock();
+            // Preflight BEFORE breaking anything, staging another
+            // material order or routing a worker to this slope. A same-Y
+            // rail underneath the proposed raised connector is NOT solid
+            // support. The work index remains pending for a real world
+            // dependency to be resolved, never silently skipped.
+            if(raisedRail!=null&&!BuilderRailSlope.hasRaisedEndSupport(
+                    level,pos,state.state())){
+                BlockPos support=raisedRail.below();
+                table.waitForBuilderSupport(worker.getUUID(),index,
+                        level.getGameTime());
+                table.setProblem("Ascending rail needs stable raised-end "
+                        +"foundation at "+support+" found="
+                        +level.getBlockState(support)
+                        +"; no rail item consumed or path restarted");
+                return;
+            }
             if(!existing.isAir()&&!waterlog&&!reShapeRail
                     &&!interactionCorrection&&!repairPartner
                     &&!(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
