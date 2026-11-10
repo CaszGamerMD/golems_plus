@@ -180,10 +180,32 @@ public final class BuilderConstructionPlanner {
             BlockPos target,BlockPos stance,String encodedState){
         String expectedBlock=BuilderWaterPass.originalState(encodedState)
                 .split("\\[",2)[0];
-        if(!BuilderWaterPass.isWaterlogPass(encodedState)
-                ||!net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(
+        boolean finishingDry=BuilderWaterPass.isWaterlogPass(encodedState)
+                &&net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(
                         world.getBlockState(target).getBlock())
-                        .toString().equals(expectedBlock))
+                        .toString().equals(expectedBlock);
+        // Actual vanilla rail / redstone-wire collision is EMPTY.
+        // Their new geometry cannot trap a Builder, so inventing a
+        // full-cube after-placement exit incorrectly rejects usable
+        // narrow ledges. Verify the genuine block shape, not just its ID.
+        // Keep this probe limited to these known walk-through blocks:
+        // avoid resolving arbitrary 15k-cell states for every A* pose.
+        boolean passableCircuit=expectedBlock.equals("minecraft:rail")
+                ||expectedBlock.equals("minecraft:powered_rail")
+                ||expectedBlock.equals("minecraft:activator_rail")
+                ||expectedBlock.equals("minecraft:detector_rail")
+                ||expectedBlock.equals("minecraft:redstone_wire");
+        boolean nonBlocking=false;
+        if(passableCircuit){
+            var physical=BuilderBlockResolver.resolve(
+                    BuilderWaterPass.dryState(
+                            BuilderWaterPass.originalState(encodedState)),
+                    BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+            nonBlocking=physical!=null
+                    &&!BuilderPlacementSpace.needsVacating(
+                            world,target,physical.state());
+        }
+        if(!finishingDry&&!nonBlocking)
             return safeStand(world,builder,target,stance);
         return !stance.equals(target)
                 &&stance.distSqr(target)<REACH_SQUARED
