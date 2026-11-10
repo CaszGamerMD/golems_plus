@@ -62,8 +62,11 @@ public final class BuilderPlacementState {
                             ||name.equals("west")))
                     ||(id.endsWith("_door")
                         &&(name.equals("powered")||name.equals("open")))
-                    ||((id.endsWith("_repeater")||id.endsWith("_comparator"))
-                        &&(name.equals("powered")||name.equals("locked")));
+                    ||((id.equals("repeater")||id.equals("comparator")
+                        ||id.endsWith("_repeater")||id.endsWith("_comparator"))
+                        &&(name.equals("powered")||name.equals("locked")))
+                    ||((id.endsWith("_trapdoor")||id.endsWith("_fence_gate"))
+                        &&name.equals("powered"));
             if(!dynamic)return false;
         }
         return true;
