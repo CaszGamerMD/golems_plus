@@ -1758,10 +1758,18 @@ public final class BuilderBuildService {
                     level,worker,table,pos);
             double workDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+            // Thin rails/wires occupy no future body collision. A
+            // grounded Builder with a safe hand pose should not walk
+            // several blocks farther just to satisfy a SOLID cube's
+            // 0.8m shoulder clearance for a walk-through circuit.
+            boolean bodyBlockingWork=BuilderPlacementSpace.needsVacating(
+                    level,pos,state.state());
+            boolean armClear=!bodyBlockingWork
+                    ||BuilderPlacementSpace.horizontalClear(pos,worker);
             boolean directOrdinaryWork=BuilderPlacementSpace.placementHeight(
                         pos,worker)
                     &&workDistance<14
-                    &&BuilderPlacementSpace.horizontalClear(pos,worker)
+                    &&armClear
                     &&(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,pos)
@@ -1836,12 +1844,13 @@ public final class BuilderBuildService {
             }
             if(!BuilderPlacementSpace.placementHeight(pos,worker)
                     ||workDistance>14
-                    ||!BuilderPlacementSpace.horizontalClear(pos,worker)
+                    ||!armClear
                     ||!(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,pos)
-                        ||BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,worker.blockPosition()))){
+                        ||BuilderConstructionPlanner.safeStandForStep(
+                                level,worker,pos,worker.blockPosition(),
+                                step.encodedState()))){
                 // Even when within arm's reach, a Builder must first
                 // occupy a PREVALIDATED work stance. This prevents the
                 // repeated old deadlock where it arrived next to an AIR
