@@ -125,6 +125,40 @@ public final class WorkerNavigation {
     private static Progress state(PathfinderMob mob){
         return states.computeIfAbsent(mob,m->new Progress());
     }
+    /** Publish only already-planned, real A* walking tiles. Other workers
+     * may predict congestion here; the planner can never infer terrain
+     * support, collision clearance or permission from this forecast.
+     * A six-tile horizon avoids stale long-term reservations as builders
+     * place blocks and continually reshape their walking surface.
+     */
+    private static void publishTrafficForecast(ServerLevel level,
+            PathfinderMob mob,Progress p){
+        if(p.requested==null){
+            WorkerTrafficForecast.release(level,mob.getUUID());
+            return;
+        }
+        BlockPos feet=mob.blockPosition();
+        List<BlockPos> upcoming=new ArrayList<>();
+        if(!p.weightedRoute.isEmpty()){
+            int nearest=0;
+            double distance=Double.POSITIVE_INFINITY;
+            // routeCursor points past an executing 1-3-node leg. Find
+            // the actual nearest point, not merely its next planned leg,
+            // so the current reserved corridor is not skipped.
+            int until=Math.min(p.weightedRoute.size(),p.routeCursor+3);
+            for(int i=0;i<until;i++){
+                double value=feet.distSqr(p.weightedRoute.get(i));
+                if(value<distance){distance=value;nearest=i;}
+            }
+            for(int i=nearest;i<Math.min(
+                    p.weightedRoute.size(),nearest+7);i++)
+                upcoming.add(p.weightedRoute.get(i));
+        }else if(p.approach!=null&&!p.approach.equals(feet))
+            upcoming.add(p.approach);
+        WorkerTrafficForecast.publish(level,mob.getUUID(),feet,
+                upcoming,level.getGameTime());
+    }
+
     /** Open wooden doors leave only 13/16 of a block of width. A .85
      * worker is physically too wide, so while it is *crossing a doorway*
      * its real collision box briefly narrows to .70. Away from a doorway
@@ -603,6 +637,11 @@ public final class WorkerNavigation {
             progress.lastBad=null;
         }
         List<Vec3> crowds=nearbyWorkers(level,mob);
+        // Predict short-term multi-worker route conflicts, not just
+        // nearby positions. Keep all reservations SOFT so a single-wide
+        // corridor can still be traversed when no bypass exists.
+        Map<BlockPos,Double> traffic=WorkerTrafficForecast.snapshot(
+                level,mob.getUUID(),level.getGameTime());
         BlockPos start=mob.blockPosition();
         // The occupied start may straddle a ledge or partial block. Its
         // actual grounded height is authoritative; other nodes must still
@@ -610,7 +649,8 @@ public final class WorkerNavigation {
         var route=WorkerRoutePlanner.plan(start,goals,
                 at->standingTile(level,mob,at),
                 at->at.equals(start)&&mob.onGround()?mob.getY():floorAt(level,at),avoid,
-                at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
+                at->trainedTerrainCost(level,at)+crowdCost(at,crowds)
+                        +traffic.getOrDefault(at,0.0),
                 observer,excluded);
         if(route==null&&mob.onGround()&&!mob.isNoGravity()){
             // Some narrow roof corners let the real 0.65-wide Builder
@@ -622,7 +662,8 @@ public final class WorkerNavigation {
                     at->standingTile(level,mob,at),
                     at->at.equals(start)&&mob.onGround()
                             ?mob.getY():floorAt(level,at),avoid,
-                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
+                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds)
+                        +traffic.getOrDefault(at,0.0),
                     observer,excluded,
                     (from,to)->physicallySweptDiagonal(level,mob,from,to));
         }
@@ -673,7 +714,8 @@ public final class WorkerNavigation {
             if(++validCandidates>12)break; // bound expensive route search
             var onward=WorkerRoutePlanner.plan(seed,goals,
                     at->standingTile(level,mob,at),at->floorAt(level,at),avoid,
-                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds),
+                    at->trainedTerrainCost(level,at)+crowdCost(at,crowds)
+                        +traffic.getOrDefault(at,0.0),
                     null,excluded);
             if(onward==null||!onward.complete())continue;
             List<BlockPos> steps=new ArrayList<>();
@@ -1728,7 +1770,10 @@ public final class WorkerNavigation {
 
     public static void stop(PathfinderMob mob){
         Progress p=state(mob);
-        if(mob.level() instanceof ServerLevel level)clearDoor(level,mob,p);
+        if(mob.level() instanceof ServerLevel level){
+            WorkerTrafficForecast.release(level,mob.getUUID());
+            clearDoor(level,mob,p);
+        }
         p.requested=null;p.approach=null;p.centering=null;p.terrainStep=null;
         p.cornerPath=List.of();p.cornerCursor=0;
         p.stalled=0;p.unsafeChecks=0;
@@ -1770,6 +1815,8 @@ public final class WorkerNavigation {
     /** Call every server tick, including when idle, to operate and close doors. */
     public static void tick(ServerLevel level,PathfinderMob mob){
         Progress p=state(mob);
+        if(mob.tickCount%CHECK_TICKS==0)
+            publishTrafficForecast(level,mob,p);
         if(!p.cornerPath.isEmpty()){
             tickCornerRecovery(level,mob,p);
             return;
