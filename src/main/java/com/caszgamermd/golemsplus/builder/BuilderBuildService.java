@@ -2044,6 +2044,26 @@ public final class BuilderBuildService {
             // not pulled remotely from OnSite. The original dry placement
             // was paid for, and replacement also costs one real rail.
             if(rebuildMissingWetRail){
+                // A rail which was popped by vanilla updates must not
+                // consume another paid rail if the raised endpoint has
+                // no physical support at all. The exact Matrix y=1 ramp
+                // has a same-height rail west of the target, with air
+                // above it; no upper connector survives there. Wait for
+                // genuine supporting world geometry rather than looping
+                // through two paid, instantly popped replacement items.
+                if(!BuilderRailSlope.hasRaisedEndSupport(
+                        level,pos,dryWaterlog.state())){
+                    BlockPos raised=BuilderRailSlope.raisedEnd(
+                            pos,dryWaterlog.state());
+                    BlockPos support=raised.below();
+                    table.waitForBuilderSupport(worker.getUUID(),index,
+                            level.getGameTime());
+                    table.setProblem("Ascending rail requires physical raised-end "
+                            +"support at "+support+" for "+raised
+                            +"; actual="+level.getBlockState(support)
+                            +"; cannot retry until support exists");
+                    return;
+                }
                 if(activity.wetRailRebuilds>=2){
                     table.waitForBuilderSupport(worker.getUUID(),index,
                             level.getGameTime());
