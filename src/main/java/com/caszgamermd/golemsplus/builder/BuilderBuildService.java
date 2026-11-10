@@ -1404,7 +1404,14 @@ public final class BuilderBuildService {
                 // its dry placement, the water step may rebuild it using
                 // a SECOND physically drawn rail. Do not repair other
                 // blocks or force an unsupported/un-survivable rail.
-                rebuildMissingWetRail=dryWaterlog!=null&&existing.isAir()
+                // A popped waterloggable rail can leave SOURCE WATER
+                // behind as well as air. Replacing a water source is
+                // allowed ONLY after this exact dry rail was already paid
+                // for; the replacement itself also consumes a real rail.
+                rebuildMissingWetRail=dryWaterlog!=null
+                        &&(existing.isAir()
+                            ||existing.is(net.minecraft.world.level.block.Blocks.WATER)
+                                &&existing.getFluidState().isSource())
                         &&BuilderRailSlope.raisedEnd(pos,dryWaterlog.state())!=null
                         &&dryWaterlog.state().canSurvive(level,pos);
                 if(dryWaterlog!=null
@@ -2041,7 +2048,9 @@ public final class BuilderBuildService {
                     return;
                 }
                 activity.wetRailRebuilds++;
-                if(!level.setBlock(pos,dryWaterlog.state(),3)){
+                if(!level.setBlock(pos,
+                        BuilderBlockInteractions.placementState(
+                                dryWaterlog.state()),3)){
                     BuilderSupplyInventory.refund(table,repairPayment);
                     table.setProblem("Could not physically rebuild dry rail at "+pos);
                     return;
