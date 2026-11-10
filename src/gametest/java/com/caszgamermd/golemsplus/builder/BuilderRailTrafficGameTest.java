@@ -83,6 +83,13 @@ public final class BuilderRailTrafficGameTest {
                 requested[0]=true;
             }
             if(!requested[0])return;
+            // Live builders retry their placement checks every five ticks.
+            // The first spawn tick can precede confirmed on-ground
+            // contact; an isolated one-shot ready() request is not the
+            // actual work-loop behavior.
+            if(h.getTick()>=10&&h.getTick()%5==0
+                    &&!BuilderPlacementSpace.horizontalClear(target,worker))
+                BuilderPlacementSpace.ready(level,worker,table,target);
             if(h.getTick()==8||h.getTick()==15){
                 System.out.println("[BUILDER YIELD DIAGNOSTIC] tick="
                         +h.getTick()+" ground="+worker.onGround()
