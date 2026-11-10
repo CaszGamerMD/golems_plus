@@ -2111,17 +2111,17 @@ public final class BuilderBuildService {
             BlockState toPlace=bubble
                     ?net.minecraft.world.level.block.Blocks.WATER.defaultBlockState()
                     :BuilderBlockInteractions.placementState(state.state());
-            // For real two-cell items, suppress early neighbor updates
-            // until both halves exist, as vanilla's double-high item does.
-            // Existing correct primary halves are not replaced or billed.
-            boolean placed=repairPartner
-                    ||level.setBlock(pos,toPlace,partner==null?3:2);
-            if(placed&&partnerPos!=null&&!partnerComplete){
-                placed=level.setBlock(partnerPos,
-                        BuilderBlockInteractions.placementState(
-                                partnerResolved.state()),3);
-                if(placed)level.updateNeighborsAt(pos,state.state().getBlock());
-            }
+            // A real multi-cell item is one transaction and one payment.
+            // The world may keep a placed lower/foot cell even if the
+            // companion temporarily fails; the receipt is NOT refunded
+            // in that case, so it cannot yield free duplicate materials.
+            var multiblockPlacement=BuilderMultiblock.place(
+                    level,pos,toPlace,partnerPos,
+                    partnerResolved==null?null:
+                            BuilderBlockInteractions.placementState(
+                                    partnerResolved.state()),
+                    repairPartner,partnerComplete);
+            boolean placed=multiblockPlacement.complete();
             if(railJigPayment!=null){
                 // A temporary rail is paid for and physically retrieved;
                 // never leave it where the next Y's schematic will build.
@@ -2134,8 +2134,11 @@ public final class BuilderBuildService {
                 BuilderSupplyInventory.refund(table,railJigPayment);
             }
             if(!placed){
-                if(payment!=null)BuilderSupplyInventory.refund(table,payment);
-                table.setProblem("World rejected placement at "+pos);
+                if(payment!=null&&!multiblockPlacement.primaryPlaced())
+                    BuilderSupplyInventory.refund(table,payment);
+                table.setProblem("World rejected complete multiblock placement at "+pos
+                        +" companion="+partnerPos
+                        +" primaryPlaced="+multiblockPlacement.primaryPlaced());
                 return;
             }
             if(partnerPos!=null
