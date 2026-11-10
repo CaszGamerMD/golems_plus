@@ -38,7 +38,11 @@ start=build.index("// Never place into any Builder's body.")
 payment=build.index("BuilderSupplyInventory.consume(worker,state.item())",start)
 placed=build.index("var multiblockPlacement=BuilderMultiblock.place(",payment)
 assert "BuilderMultiblock.place(" in build
-assert "BuilderPlacementSpace.ready(level,worker,table,partnerPos)" in build
+assert "BuilderPlacementSpace.readyForState(level,worker,table," in build
+assert "partnerPos,partnerResolved.state()" in build
+assert "BuilderPlacementSpace.needsVacating(" in build
+assert "!planned.getCollisionShape(level,target).isEmpty()" in space
+assert "BuilderPlacementSpace.readyForState" not in space[:space.index("public static boolean readyForState(")]
 guard=build.index("&& !BuilderPlacementSpace.ready(level,worker,table,pos)){",start) if "&& !BuilderPlacementSpace.ready(level,worker,table,pos)){" in build else build.index("&&!"+"BuilderPlacementSpace.ready(level,worker,table,pos)){",start)
 assert "boolean finishingExistingFluid=waterlog" in build
 assert "existing.getBlock()==state.state().getBlock()" in build
@@ -47,7 +51,9 @@ assert "BlockState toPlace=bubble" in build
 assert "Blocks.WATER.defaultBlockState()" in build
 assert "if(bubble&&!BuilderPlacementState.matches(" in build
 assert "BuilderSupplyInventory.loadRailJig(" in build
-assert "BuilderPlacementSpace.ready(level,worker,table,raisedRail)" in build
+assert "raisedRail,railJigState)" in build
+assert "if(!precision)" in space
+assert "WorkerNavigation.routeToExact(level,blocker,destination,.9)" in space
 assert "return;" in build[guard:payment]
 assert "yielding.put(blocker,new Yield(target,destination," in space
 assert "getGameTime()+60" in space
