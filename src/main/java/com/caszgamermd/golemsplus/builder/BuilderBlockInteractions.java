@@ -72,8 +72,22 @@ public final class BuilderBlockInteractions {
     /** Shape/orientation/attachment stay exact; click-settings start in
      * their normal unactivated state, with real items paid separately. */
     public static BlockState placementState(BlockState desired){
+        String id=BuiltInRegistries.BLOCK.getKey(desired.getBlock()).getPath();
+        BlockState neutral=desired;
+        // Live redstone energy is NOT a property a Builder can choose by
+        // holding a powered item. Start with an unpowered wire/rail/device
+        // and let real placed neighbors propagate signals afterward.
+        if(id.equals("redstone_wire")){
+            neutral=set(neutral,"power","0");
+            for(String side:new String[]{"north","south","east","west"})
+                neutral=set(neutral,side,"none");
+        }else if(id.equals("powered_rail")||id.equals("detector_rail")
+                ||id.equals("activator_rail")||id.equals("repeater")
+                ||id.equals("comparator")){
+            neutral=set(neutral,"powered","false");
+        }
         String key=manualProperty(desired);
-        return key==null?desired:set(desired,key,neutralValue(key));
+        return key==null?neutral:set(neutral,key,neutralValue(key));
     }
 
     /** True only when clicking can fix the current same-block mismatch
