@@ -23,4 +23,15 @@ final class WorkerNavigationEmptyRouteTest {
         steps=List.of();
         assertFalse(WorkerNavigation.hasWaypoint(steps,0));
     }
+    @Test void interruptedLegCannotSkipItsUnvisitedEndpoint(){
+        var a=new BlockPos(1,0,0);
+        var b=new BlockPos(2,0,0);
+        var c=new BlockPos(2,0,1);
+        var steps=List.of(a,b,c);
+        assertEquals(1,WorkerNavigation.unfinishedLegCursor(steps,2,b,false));
+        assertEquals(2,WorkerNavigation.unfinishedLegCursor(steps,2,b,true));
+        assertEquals(2,WorkerNavigation.unfinishedLegCursor(steps,3,c,false));
+        assertEquals(0,WorkerNavigation.unfinishedLegCursor(List.of(),0,b,false));
+        assertEquals(1,WorkerNavigation.unfinishedLegCursor(steps,1,c,false));
+    }
 }

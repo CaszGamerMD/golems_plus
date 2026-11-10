@@ -115,9 +115,11 @@ public final class BuilderConstructionPlanner {
             BlockPos stance,BlockPos target){
         var future=new net.minecraft.world.phys.AABB(target)
                 .inflate(.10,0,.10);
+        double fromFloor=WorkerNavigation.surveyFloorHeight(world,stance);
+        if(!Double.isFinite(fromFloor))return false;
         var base=builder.getBoundingBox().move(
                 stance.getX()+.5-builder.getX(),
-                stance.getY()-builder.getY(),
+                fromFloor-builder.getY(),
                 stance.getZ()+.5-builder.getZ());
         for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++){
             if(dx==0&&dz==0)continue;
@@ -125,6 +127,12 @@ public final class BuilderConstructionPlanner {
                 BlockPos dest=stance.offset(dx,dy,dz);
                 if(!WorkerNavigation.canStandOn(world,builder,dest))
                     continue;
+                double riseTo=WorkerNavigation.surveyFloorHeight(world,dest)
+                        -fromFloor;
+                // Use the same physical transitions as walking A*.
+                // A diagonal one-block jump is not an executable exit.
+                if(!Double.isFinite(riseTo)||Math.abs(riseTo)>1.01
+                        ||dx!=0&&dz!=0&&Math.abs(riseTo)>.6001)continue;
                 // Every candidate uses exactly the real 0.8m clearance,
                 // including when its feet stand above or below the new cube.
                 // The 0.8 m placement margin applies to the work pose,
@@ -138,10 +146,10 @@ public final class BuilderConstructionPlanner {
                     // A real jump rises BEFORE moving across the next
                     // block's solid face. A drop steps over the rim and
                     // then lowers. Plain walks interpolate both axes.
-                    double horizontal=dy>0?Math.max(0,2*t-1):
-                            dy<0?Math.min(1,2*t):t;
-                    double rise=dy>0?Math.min(1,2*t):
-                            dy<0?-Math.max(0,2*t-1):0;
+                    double horizontal=riseTo>.6001?Math.max(0,2*t-1):
+                            riseTo<-.6001?Math.min(1,2*t):t;
+                    double rise=riseTo>.6001?riseTo*Math.min(1,2*t):
+                            riseTo<-.6001?riseTo*Math.max(0,2*t-1):riseTo*t;
                     var moved=base.move(dx*horizontal,rise,dz*horizontal);
                     if(moved.intersects(future)
                             ||!world.noCollision(builder,moved)){

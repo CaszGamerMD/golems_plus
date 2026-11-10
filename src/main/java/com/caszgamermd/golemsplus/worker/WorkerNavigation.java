@@ -71,7 +71,7 @@ public final class WorkerNavigation {
         int terrainStepStarted;
         List<Vec3> cornerPath=List.of();
         int cornerCursor,cornerStarted;
-        Vec3 previous;
+        final WorkerProgressWatch progressWatch=new WorkerProgressWatch();
         int stalled,attempts,wait,doorAge,nextRoute;
         // Per-golem NAVIGATION metrics, independent of how many physical
         // schematic cells the Builder has placed. A claimed step or
@@ -1487,6 +1487,7 @@ public final class WorkerNavigation {
             }else p.terrainStep=null;
         }
         boolean same=target.equals(p.requested);
+        if(!same)p.progressWatch.reset();
         if(same&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
@@ -1569,6 +1570,14 @@ public final class WorkerNavigation {
         return route!=null&&cursor>=0&&cursor<route.size();
     }
 
+    static int unfinishedLegCursor(List<BlockPos> route,int cursor,
+            BlockPos approach,boolean arrived){
+        if(arrived||approach==null)return cursor;
+        for(int i=Math.min(cursor,route.size())-1;i>=0;i--)
+            if(approach.equals(route.get(i)))return i;
+        return cursor;
+    }
+
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
                                   double speed){
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder){
@@ -1599,6 +1608,7 @@ public final class WorkerNavigation {
         }
         boolean changed=!target.equals(p.requested);
         if(changed){
+            p.progressWatch.reset();
             p.centering=null;
             p.requested=target.immutable();p.approach=null;
             p.attempts=0;p.nextRoute=0;p.stalled=0;p.unsafeChecks=0;
@@ -1625,6 +1635,13 @@ public final class WorkerNavigation {
         // straight-line waypoints repeatedly chose the same dead end next
         // to a wall. Instead use one bounded lowest-cost search starting
         // from the actual Golem and validate every intermediate floor tile.
+        // Cursor advances when a leg is ISSUED, not when it arrives.
+        // Preserve its endpoint if native navigation ends a little short.
+        boolean arrived=p.approach==null||mob.distanceToSqr(
+                p.approach.getX()+.5,floorAt(level,p.approach),
+                p.approach.getZ()+.5)<.81;
+        p.routeCursor=unfinishedLegCursor(p.weightedRoute,
+                p.routeCursor,p.approach,arrived);
         if(p.routeCursor>=p.weightedRoute.size()){
             p.weightedRoute=List.of();
             p.routeCursor=0;
@@ -1789,6 +1806,7 @@ public final class WorkerNavigation {
         p.requested=null;p.approach=null;p.centering=null;p.terrainStep=null;
         p.cornerPath=List.of();p.cornerCursor=0;
         p.stalled=0;p.unsafeChecks=0;
+        p.progressWatch.reset();
         p.weightedRoute=List.of();p.routeCursor=0;p.lastBad=null;
         mob.getNavigation().stop();
         // Door clearance is reset during the next server navigation tick.
@@ -1830,10 +1848,12 @@ public final class WorkerNavigation {
         if(mob.tickCount%CHECK_TICKS==0)
             publishTrafficForecast(level,mob,p);
         if(!p.cornerPath.isEmpty()){
+            p.progressWatch.reset();
             tickCornerRecovery(level,mob,p);
             return;
         }
         if(p.terrainStep!=null){
+            p.progressWatch.reset();
             tickTerrainStep(level,mob,p);
             return;
         }
@@ -1843,18 +1863,26 @@ public final class WorkerNavigation {
         if(mob.tickCount%CHECK_TICKS!=0)return;
         updateDoorClearance(level,mob,p);
         if(doorTrafficTick(level,mob,p)){
-            p.previous=mob.position();
+            p.progressWatch.reset();
             p.stalled=0;
             return; // waiting workers keep their exact queued order
         }
-        if(p.previous==null)p.previous=mob.position();
-        if(mob.position().distanceToSqr(p.previous)>.018){
-            p.stalled=0;
-        }else if(p.requested!=null&&!mob.getNavigation().isDone()){
-            p.stalled+=CHECK_TICKS;
+        if(p.wait>0){
+            p.progressWatch.reset();
+            p.wait=Math.max(0,p.wait-CHECK_TICKS);return;
         }
-        p.previous=mob.position();
-        if(p.wait>0){p.wait=Math.max(0,p.wait-CHECK_TICKS);return;}
+        Path active=mob.getNavigation().getPath();
+        if(p.requested!=null&&!mob.getNavigation().isDone()
+                &&active!=null&&active.getNextNodeIndex()<active.getNodeCount()){
+            Node next=active.getNode(active.getNextNodeIndex());
+            double floor=floorAt(level,new BlockPos(next.x,next.y,next.z));
+            double distance=mob.position().distanceTo(new Vec3(
+                    next.x+.5,Double.isFinite(floor)?floor:next.y,next.z+.5));
+            p.stalled=p.progressWatch.sample(
+                    next.x,next.y,next.z,distance,CHECK_TICKS);
+        }else{
+            p.progressWatch.reset();p.stalled=0;
+        }
         // Check the next four waypoints every five ticks. When a player
         // places a block across the route, stop *before* walking into it;
         // the next job evaluation recalculates a path around that obstacle.
