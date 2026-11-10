@@ -89,6 +89,21 @@ final class BuilderMultiblockTest {
         assertTrue(wrong.steps().stream().allMatch(s->s.companion()==null));
         assertTrue(wrong.unsupported().size()>=1);
     }
+    @Test void frontierSeesBothPhysicalCellsEvenThoughTheJobIsSingle(){
+        var plan=plan(List.of(
+                block(0,1,0,DOOR_LOW),block(0,2,0,DOOR_HIGH),
+                block(2,1,2,BED_FOOT),block(3,1,2,BED_HEAD)),
+                new BuildSite(15,70,30,BuildSite.Rotation.NONE,
+                        BuildSite.Mirror.NONE));
+        assertEquals(2,plan.steps().size());
+        var physical=BuilderConstructionPlanner.schematicStates(
+                plan.steps(),BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        assertEquals(4,physical.size(),
+                "Frontier geometry must contain both halves of each paid item");
+        assertTrue(physical.containsKey(new net.minecraft.core.BlockPos(15,72,30)));
+        assertTrue(physical.containsKey(new net.minecraft.core.BlockPos(18,71,32)));
+    }
+
     @Test void occupiedBedIsStillOneObjectAndDoesNotGetMined(){
         assertTrue(BuilderMultiblock.matchingPair(BED_FOOT,
                 "minecraft:red_bed[facing=east,occupied=true,part=head]"));
