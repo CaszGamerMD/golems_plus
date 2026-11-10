@@ -128,6 +128,34 @@ public final class BuilderVillagerMatrixFullGameTest {
         });
     }
 
+    @GameTest(structure="golems_plus_gametest:matrix_arena",
+            maxTicks=80,skyAccess=true)
+    public void preventsPaidRailRebuildWhenRaisedEndHasNoSupport(GameTestHelper h){
+        var world=h.getLevel();
+        BlockPos pos=h.absolutePos(new BlockPos(12,3,12));
+        h.setBlock(12,2,12,Blocks.SMOOTH_STONE);
+        h.setBlock(11,2,12,Blocks.SMOOTH_STONE);
+        h.setBlock(11,3,12,Blocks.POWERED_RAIL);
+        var wanted=BuilderBlockResolver.resolve(
+                "minecraft:powered_rail[powered=false,shape=ascending_west,waterlogged=true]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        if(wanted==null){h.fail("Could not resolve wet ascending rail");return;}
+        if(BuilderRailSlope.hasRaisedEndSupport(world,pos,wanted.state())){
+            h.fail("A same-height rail falsely supports the raised connector");
+            return;
+        }
+        // A REAL upper connector would survive only after this same
+        // coordinate is physically supported. A paid replacement must not
+        // be consumed until that condition is actually satisfied.
+        h.setBlock(11,3,12,Blocks.SMOOTH_STONE);
+        if(!BuilderRailSlope.hasRaisedEndSupport(world,pos,wanted.state())){
+            h.fail("Solid west-end foundation was not recognized");return;
+        }
+        System.out.println("[MATRIX RAIL SUPPORT PASS] unsupported "
+                +"same-Y neighbor blocked paid rail retry; solid support accepted");
+        h.succeed();
+    }
+
     @SuppressWarnings("removal")
     @GameTest(structure="golems_plus_gametest:matrix_arena",
             maxTicks=140000,skyAccess=true,required=false)
