@@ -1936,7 +1936,13 @@ public final class BuilderBuildService {
             // body-clearance and the usual 0.8m placement margin.
             boolean finishingExistingFluid=waterlog
                     &&existing.getBlock()==state.state().getBlock();
-            if(!finishingExistingFluid
+            // Rail and wire geometry has no solid collision: even if a
+            // worker occupies that tile, the placed block cannot bury it.
+            // Bypass only the imaginary full-cube evacuation; ordinary
+            // work reach, inventory, support, and permission checks remain.
+            boolean blockingPlacement=BuilderPlacementSpace.needsVacating(
+                    level,pos,state.state());
+            if(!finishingExistingFluid&&blockingPlacement
                     &&!BuilderPlacementSpace.ready(level,worker,table,pos)){
                 // Waiting at an impossible collision envelope must not
                 // pin one target or one Y-level forever. Give genuine
@@ -1955,7 +1961,7 @@ public final class BuilderBuildService {
                 return;
             }
             activity.blockedSince=-1;
-            if(!finishingExistingFluid
+            if(!finishingExistingFluid&&blockingPlacement
                     &&!BuilderPlacementSpace.horizontalClear(pos,worker)){
                 // Defense-in-depth against a self-collision regression.
                 // Vertical separation NEVER waives the X/Z 0.8 margin.
@@ -2003,7 +2009,8 @@ public final class BuilderBuildService {
                             +"space at "+partnerPos+" found="+partnerExisting);
                     return;
                 }
-                if(!BuilderPlacementSpace.ready(level,worker,table,partnerPos))
+                if(!BuilderPlacementSpace.readyForState(level,worker,table,
+                        partnerPos,partnerResolved.state()))
                     return; // The entire future two-cell collision is safe.
             }
             boolean freeHalf=step.requiredItem()==null||reShapeRail||repairPartner;
@@ -2036,7 +2043,8 @@ public final class BuilderBuildService {
                             return;
                         }
                     }
-                    if(!BuilderPlacementSpace.ready(level,worker,table,raisedRail))
+                    if(!BuilderPlacementSpace.readyForState(level,worker,table,
+                            raisedRail,railJigState))
                         return;
                 }
             }
