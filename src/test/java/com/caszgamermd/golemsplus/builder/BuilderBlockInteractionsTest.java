@@ -2,11 +2,16 @@ package com.caszgamermd.golemsplus.builder;
 
 import net.minecraft.world.level.block.state.BlockState;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
+import net.minecraft.server.Bootstrap;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Manual schematic settings must use real clicks on already-paid blocks.
  * Facing, mounting, halves, and waterlogging never become free changes. */
 final class BuilderBlockInteractionsTest {
+    @BeforeAll static void bootstrapMinecraftRegistries(){
+        Bootstrap.bootStrap();
+    }
     private static BlockState state(String encoded){
         var result=BuilderBlockResolver.resolve(encoded,
                 BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
