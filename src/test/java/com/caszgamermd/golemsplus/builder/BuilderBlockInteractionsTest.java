@@ -84,6 +84,50 @@ final class BuilderBlockInteractionsTest {
                 BuilderBlockInteractions.placementState(comparator));
     }
 
+    @Test void noteTuningUsesRealClicksWhileInstrumentTracksSupport(){
+        var note=state("minecraft:note_block[instrument=harp,note=24,powered=false]");
+        var untuned=BuilderBlockInteractions.placementState(note);
+        assertEquals(state("minecraft:note_block[instrument=harp,note=0,powered=false]"),
+                untuned);
+        assertTrue(BuilderBlockInteractions.needsInteraction(untuned,note));
+        // Note sounds come from the actual supporting block, not the
+        // schematic item; tuning and facing remain exact.
+        var onStone=state("minecraft:note_block[instrument=basedrum,note=24,powered=true]");
+        assertTrue(BuilderPlacementState.matches(onStone,note));
+        assertFalse(BuilderPlacementState.matches(untuned,note));
+    }
+
+    @Test void daylightInversionIsManualButPowerComesFromTheSky(){
+        var desired=state("minecraft:daylight_detector[inverted=true,power=15]");
+        var neutral=BuilderBlockInteractions.placementState(desired);
+        assertEquals(state("minecraft:daylight_detector[inverted=false,power=15]"),
+                neutral);
+        assertTrue(BuilderBlockInteractions.needsInteraction(neutral,desired));
+        assertTrue(BuilderPlacementState.matches(
+                state("minecraft:daylight_detector[inverted=true,power=0]"),desired));
+        assertFalse(BuilderPlacementState.matches(neutral,desired));
+    }
+
+    @Test void redstoneOutputsUpdateFromRealNeighborsNotFakeItems(){
+        var lamp=state("minecraft:redstone_lamp[lit=true]");
+        assertEquals(state("minecraft:redstone_lamp[lit=false]"),
+                BuilderBlockInteractions.placementState(lamp));
+        assertTrue(BuilderPlacementState.matches(
+                state("minecraft:redstone_lamp[lit=false]"),lamp));
+        var observer=state("minecraft:observer[facing=north,powered=true]");
+        assertTrue(BuilderPlacementState.matches(
+                state("minecraft:observer[facing=north,powered=false]"),observer));
+        assertFalse(BuilderPlacementState.matches(
+                state("minecraft:observer[facing=south,powered=false]"),observer));
+        var hook=state("minecraft:tripwire_hook[facing=north,powered=true,attached=true]");
+        assertTrue(BuilderPlacementState.matches(
+                state("minecraft:tripwire_hook[facing=north,powered=false,attached=false]"),
+                hook));
+        assertFalse(BuilderPlacementState.matches(
+                state("minecraft:tripwire_hook[facing=east,powered=false,attached=false]"),
+                hook));
+    }
+
     @Test void nonInteractiveAndMomentaryBlocksAreNotFaked(){
         var stone=state("minecraft:stone");
         assertEquals(stone,BuilderBlockInteractions.placementState(stone));
