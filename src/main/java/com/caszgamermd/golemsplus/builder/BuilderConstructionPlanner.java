@@ -325,7 +325,7 @@ public final class BuilderConstructionPlanner {
     }
     private static final Map<List<BuilderConstructionPlan.Step>,
             Map<BlockPos,BlockState>> schematicStates=new WeakHashMap<>();
-    private static Map<BlockPos,BlockState> schematicStates(
+    static Map<BlockPos,BlockState> schematicStates(
             List<BuilderConstructionPlan.Step> steps,
             BuildSite.Rotation rotation,BuildSite.Mirror mirror){
         // Never cache by file path: the same placed schematic has different
@@ -338,6 +338,18 @@ public final class BuilderConstructionPlanner {
                         cell.encodedState(),rotation,mirror);
                 if(state!=null)expected.put(
                         new BlockPos(cell.x(),cell.y(),cell.z()),state.state());
+                // The secondary half is NOT another Builder claim, but it
+                // occupies a real schematic cell. Frontier connectivity,
+                // exposure and collision risk must see that geometry when
+                // ranking neighboring work on the current layer.
+                if(cell.companion()!=null){
+                    var partner=cell.companion();
+                    var resolved=BuilderBlockResolver.resolve(
+                            partner.encodedState(),rotation,mirror);
+                    if(resolved!=null)expected.put(
+                            BuilderMultiblock.position(partner),
+                            resolved.state());
+                }
             }
             return Map.copyOf(expected);
         });
