@@ -27,6 +27,19 @@ public final class BuilderRailTrafficGameTest {
             h.fail("Rail/wire versus solid/fluid collision policy is wrong");
             return;
         }
+        var worker=new BuilderGolem(
+                com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_GOLEM,
+                level);
+        worker.setPos(pos.getX()+.5,pos.getY(),pos.getZ()+.5);
+        level.addFreshEntity(worker);
+        // A golem standing in the target's empty collision volume is not
+        // an obstruction. A null table deliberately proves the old
+        // full-cube ready() path was NOT invoked for this rail.
+        if(!BuilderPlacementSpace.readyForState(
+                level,worker,null,pos,rail.state())){
+            h.fail("Non-colliding rail incorrectly requires vacating Builder");
+            return;
+        }
         if(!level.setBlock(pos,rail.state(),3)
                 ||level.getBlockState(pos).getBlock()!=Blocks.POWERED_RAIL){
             h.fail("Physically placed rail was rejected");return;
@@ -41,7 +54,8 @@ public final class BuilderRailTrafficGameTest {
         }
         h.onEachTick(()->{
             if(h.getTick()!=15)return;
-            if(level.getBlockState(pos).getBlock()!=Blocks.POWERED_RAIL){
+            if(!worker.isAlive()
+                    ||level.getBlockState(pos).getBlock()!=Blocks.POWERED_RAIL){
                 h.fail("Rail was lost after Minecraft neighbor ticks");return;
             }
             System.out.println("[BUILDER RAIL TRAFFIC PASS] walk-through "
