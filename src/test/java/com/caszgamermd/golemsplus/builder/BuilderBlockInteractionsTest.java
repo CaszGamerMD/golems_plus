@@ -4,12 +4,14 @@ import net.minecraft.world.level.block.state.BlockState;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
 import net.minecraft.server.Bootstrap;
+import net.minecraft.SharedConstants;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Manual schematic settings must use real clicks on already-paid blocks.
  * Facing, mounting, halves, and waterlogging never become free changes. */
 final class BuilderBlockInteractionsTest {
     @BeforeAll static void bootstrapMinecraftRegistries(){
+        SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
     }
     private static BlockState state(String encoded){
