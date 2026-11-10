@@ -111,8 +111,21 @@ public final class BuilderMaterialRules {
                     }
                 }
             }
+            // One grouped item keeps its secondary schematic geometry
+            // through ordinary material rules. Replacing the item with a
+            // different double-block rewrites BOTH states; replacing it
+            // with a single cube intentionally removes the second cell.
+            var companion=step.companion();
+            if(companion!=null&&rule!=null&&!rule.isBlank()&&!ignored){
+                String second=rewrittenState(companion.encodedState(),rule);
+                if(second!=null
+                        &&BuilderMultiblock.matchingPair(state,second))
+                    companion=new BuilderConstructionPlan.Companion(
+                            companion.x(),companion.y(),companion.z(),second);
+                else companion=null;
+            }
             result.add(new BuilderConstructionPlan.Step(step.x(),step.y(),
-                    step.z(),state,ignored?null:item,ignored));
+                    step.z(),state,ignored?null:item,ignored,companion));
         }
         // Any downward-only job starts at its uppermost included layer.
         // Settings cannot reorder a running job's saved index space.
