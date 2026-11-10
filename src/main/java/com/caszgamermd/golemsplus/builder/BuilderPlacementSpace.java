@@ -265,9 +265,17 @@ public final class BuilderPlacementSpace {
         if(step==null)return false;
         WorkerNavigation.stop(mob);
         mob.getMoveControl().setWantedPosition(mob.getX(),mob.getY(),mob.getZ(),0);
+        // Velocity can be overwritten later in this same tick by a mob
+        // movement control or idle AI. Apply ONE small, collision-checked
+        // physical entity move now (<=0.115m); this is not a teleport,
+        // setPos or noclip. The precisionStep probe already proved real
+        // ground and an unoccupied collision envelope at every increment.
+        double beforeX=mob.getX(),beforeZ=mob.getZ();
+        mob.move(net.minecraft.world.entity.MoverType.SELF,
+                new net.minecraft.world.phys.Vec3(step[0],0,step[1]));
         var velocity=mob.getDeltaMovement();
-        mob.setDeltaMovement(step[0],Math.min(0,velocity.y),step[1]);
-        return true;
+        mob.setDeltaMovement(0,Math.min(0,velocity.y),0);
+        return Math.abs(mob.getX()-beforeX)+Math.abs(mob.getZ()-beforeZ)>0.001;
     }
 
     /** Run before ANY ordinary Builder assignment/courier/navigation tick. */
