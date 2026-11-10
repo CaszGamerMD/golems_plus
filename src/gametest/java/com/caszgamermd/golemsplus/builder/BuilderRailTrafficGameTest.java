@@ -9,6 +9,35 @@ import net.minecraft.world.level.block.Blocks;
  * Golems are allowed to work within its empty collision volume; solid
  * blocks and active fluids still need full body clearance. */
 public final class BuilderRailTrafficGameTest {
+    @GameTest(maxTicks=70,skyAccess=true)
+    public void narrowLedgeAllowsNonCollidingRailWithoutFictionalExit(
+            GameTestHelper h){
+        var level=h.getLevel();
+        BlockPos target=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos stance=h.absolutePos(new BlockPos(5,2,4));
+        h.setBlock(4,1,4,Blocks.STONE);
+        h.setBlock(5,1,4,Blocks.STONE);
+        var worker=new BuilderGolem(
+                com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_GOLEM,
+                level);
+        worker.setPos(stance.getX()+.5,stance.getY(),stance.getZ()+.5);
+        level.addFreshEntity(worker);
+        if(!BuilderConstructionPlanner.safeStandForStep(
+                level,worker,target,stance,
+                "minecraft:powered_rail[powered=false,shape=east_west,waterlogged=false]")){
+            h.fail("Walk-through rail cannot be worked from physical narrow ledge");
+            return;
+        }
+        if(BuilderConstructionPlanner.safeStandForStep(
+                level,worker,target,stance,"minecraft:smooth_stone")){
+            h.fail("Solid cube incorrectly bypassed real post-placement escape");
+            return;
+        }
+        System.out.println("[BUILDER RAIL STANCE PASS] grounded rail access "
+                +"allowed; solid cube still requires a safe physical exit");
+        h.succeed();
+    }
+
     @GameTest(maxTicks=115,skyAccess=true)
     public void blockingBuilderMakesPhysicalPrecisionSidestep(GameTestHelper h){
         var level=h.getLevel();
