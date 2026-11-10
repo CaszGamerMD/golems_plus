@@ -39,7 +39,9 @@ payment=build.index("BuilderSupplyInventory.consume(worker,state.item())",start)
 placed=build.index("var multiblockPlacement=BuilderMultiblock.place(",payment)
 assert "BuilderMultiblock.place(" in build
 assert "BuilderPlacementSpace.ready(level,worker,table,partnerPos)" in build
-guard=build.index("if(!BuilderPlacementSpace.ready(level,worker,table,pos)){",start)
+guard=build.index("&& !BuilderPlacementSpace.ready(level,worker,table,pos)){",start) if "&& !BuilderPlacementSpace.ready(level,worker,table,pos)){" in build else build.index("&&!"+"BuilderPlacementSpace.ready(level,worker,table,pos)){",start)
+assert "boolean finishingExistingFluid=waterlog" in build
+assert "existing.getBlock()==state.state().getBlock()" in build
 assert start < guard < payment < placed
 assert "BlockState toPlace=bubble" in build
 assert "Blocks.WATER.defaultBlockState()" in build
