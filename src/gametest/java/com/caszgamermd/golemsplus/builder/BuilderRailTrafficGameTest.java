@@ -47,6 +47,14 @@ public final class BuilderRailTrafficGameTest {
                 requested[0]=true;
             }
             if(!requested[0])return;
+            if(h.getTick()==8||h.getTick()==15){
+                System.out.println("[BUILDER YIELD DIAGNOSTIC] tick="
+                        +h.getTick()+" ground="+worker.onGround()
+                        +" pos="+worker.position()
+                        +" route="+BuilderPlacementSpace.debugYield(level,worker)
+                        +" blockers="+BuilderPlacementSpace.debugOccupants(
+                                level,table,target));
+            }
             // This is a genuine physical .115-block-per-tick sidestep,
             // NOT a snap/teleport or a bogus route to the same tile.
             double displacement=Math.hypot(worker.getX()-oldX[0],
