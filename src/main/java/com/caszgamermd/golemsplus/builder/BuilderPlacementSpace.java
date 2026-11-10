@@ -641,6 +641,28 @@ public final class BuilderPlacementSpace {
         return String.join("; ",details);
     }
 
+    /** A real, non-fluid block with no collision does not bury a mob.
+     * Do not ask an eight-Builder crew to vacate a theoretical one-meter
+     * cube for walk-through rails, wires, flowers or small decorations.
+     * Solid blocks and fluid placements retain the ordinary evacuation
+     * and route/exit checks. This never makes terrain itself passable.
+     */
+    public static boolean needsVacating(ServerLevel level,BlockPos target,
+            BlockState planned){
+        return planned==null||!planned.getFluidState().isEmpty()
+                ||!planned.getCollisionShape(level,target).isEmpty();
+    }
+
+    /** Overload for a known intended material and physical collision.
+     * The regular ready(...) is deliberately unchanged for unspecified
+     * obstacles, so legacy callers never silently bypass safety.
+     */
+    public static boolean readyForState(ServerLevel level,BuilderGolem placing,
+            WorkerStationBlockEntity table,BlockPos target,BlockState planned){
+        return !needsVacating(level,target,planned)
+                ||ready(level,placing,table,target);
+    }
+
     /** @return true only when the future block volume is clear of workers. */
     public static boolean ready(ServerLevel level,BuilderGolem placing,
             WorkerStationBlockEntity table,BlockPos target){
@@ -680,7 +702,12 @@ public final class BuilderPlacementSpace {
             }
             yielding.put(blocker,new Yield(target,destination,
                     level.getGameTime()+60,blocker==placing,precision));
-            WorkerNavigation.routeToExact(level,blocker,destination,.9);
+            // A physical precision sidestep must NOT get an A* order to
+            // the same cell it is already standing in. Such a fake goal
+            // repeatedly stopped the per-tick lateral retreat and kept
+            // the target occupied indefinitely.
+            if(!precision)
+                WorkerNavigation.routeToExact(level,blocker,destination,.9);
         }
         // An AIR cell is not being mined here. Before placing a new solid
         // schematic block into it, real golems occupying that space must
