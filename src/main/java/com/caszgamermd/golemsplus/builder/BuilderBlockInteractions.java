@@ -29,13 +29,19 @@ public final class BuilderBlockInteractions {
         if(id.equals("lever"))return "powered";
         if(id.equals("repeater"))return "delay";
         if(id.equals("comparator"))return "mode";
-        if(id.endsWith("_fence_gate"))return "open";
+        if(id.endsWith("_fence_gate"))
+            return hasValue(state,"powered","true")?null:"open";
         // Iron trapdoors need a redstone signal, not a player's hand.
-        if(id.endsWith("_trapdoor")&&!id.equals("iron_trapdoor")
-                &&!id.equals("copper_trapdoor")
-                &&!id.endsWith("_copper_trapdoor"))
-            return "open";
+        // Copper and wood trapdoors are manually operable when unpowered.
+        if(id.endsWith("_trapdoor")&&!id.equals("iron_trapdoor"))
+            return hasValue(state,"powered","true")?null:"open";
         return null;
+    }
+
+    private static boolean hasValue(BlockState state,String key,String wanted){
+        return state.getValues().anyMatch(value->
+                value.property().getName().equals(key)
+                &&value.valueName().equals(wanted));
     }
 
     private static String neutralValue(String property){
