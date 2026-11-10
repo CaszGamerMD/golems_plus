@@ -62,12 +62,17 @@ public final class BuilderBlockResolver {
         // construction plus a native right-click. Never exclude them
         // alongside inventory/NBT-bearing containers and machines.
         boolean vanillaComparator=id.equals("minecraft:comparator");
+        // Vanilla daylight detectors store no player inventory or custom
+        // schematic NBT. One paid detector item is sufficient; toggling
+        // inverted mode is a separate right-click Builder action.
+        boolean vanillaDaylightDetector=id.equals("minecraft:daylight_detector");
         // A vanilla bed's block entity contains no external inventory or
         // custom source NBT. It is one ordinary bed item, with the head
         // created and validated as part of the same physical placement.
         boolean vanillaBed=block instanceof BedBlock;
         if(item==Items.AIR || block instanceof EntityBlock
-                &&!sign&&!vanillaComparator&&!vanillaBed)return null;
+                &&!sign&&!vanillaComparator&&!vanillaDaylightDetector
+                &&!vanillaBed)return null;
         // The constructor groups each valid double-plant, door and bed
         // pair into one claimed item-backed job. Neither companion is a
         // stand-alone material, and crops/fire/portals still require
