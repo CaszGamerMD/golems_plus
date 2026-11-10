@@ -702,9 +702,13 @@ public final class BuilderPlacementSpace {
             // center that still intersects the future placement cube.
             boolean precision=canPrecisionStep(level,blocker,target);
             BlockPos destination=precision?blocker.blockPosition():escape(level,blocker,target);
-            // An old stand candidate at the AIR target itself would have
-            // walked the blocker INTO the block it was supposed to clear.
-            if(destination!=null
+            // Ordinary A* must not route a blocker INTO the cell that
+            // another Builder is about to fill. A precision sidestep,
+            // however, deliberately starts and stays within the SAME
+            // integer block until the physical mob center clears its
+            // 0.8m placement margin. Never discard that valid movement
+            // merely because its starting BlockPos equals the target!
+            if(!precision&&destination!=null
                     &&destination.equals(target))destination=null;
             if(destination==null){
                 // A Builder trapped on a thin elevated scaffold/roof
