@@ -56,7 +56,13 @@ public final class BuilderBlockResolver {
                 return null;
             item=BuiltInRegistries.ITEM.getValue(itemId);
         }
-        if(item==Items.AIR || block instanceof EntityBlock&&!sign)return null;
+        // Vanilla comparators have a small runtime block entity, but
+        // their orientation and subtraction mode are ordinary paid-item
+        // construction plus a native right-click. Never exclude them
+        // alongside inventory/NBT-bearing containers and machines.
+        boolean vanillaComparator=id.equals("minecraft:comparator");
+        if(item==Items.AIR || block instanceof EntityBlock
+                &&!sign&&!vanillaComparator)return null;
         // Door halves are represented by two successive schematic cells.
         // Lower block consumes the single physical door item; upper half
         // is placed after its lower support, without duplicating materials.
