@@ -48,7 +48,7 @@ public final class BuilderMultiblock {
         if(id.endsWith("_bed"))return "foot".equals(properties.get("part"));
         if(id.endsWith("_door")&&!id.endsWith("_trapdoor"))
             return "lower".equals(properties.get("half"));
-        return plant(id)&&"lower".equals(properties.get("half"));
+        return "lower".equals(properties.get("half"))&&plant(id);
     }
 
     public static boolean isSecondary(String encoded){
@@ -57,7 +57,7 @@ public final class BuilderMultiblock {
         if(id.endsWith("_bed"))return "head".equals(properties.get("part"));
         if(id.endsWith("_door")&&!id.endsWith("_trapdoor"))
             return "upper".equals(properties.get("half"));
-        return plant(id)&&"upper".equals(properties.get("half"));
+        return "upper".equals(properties.get("half"))&&plant(id);
     }
 
     /** Schematic-local partner, BEFORE Litematica rotation and mirroring.
