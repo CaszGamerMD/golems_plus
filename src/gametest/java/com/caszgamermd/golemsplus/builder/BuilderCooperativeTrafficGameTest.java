@@ -42,7 +42,7 @@ public final class BuilderCooperativeTrafficGameTest {
         }
         final double[] lastX={workers[0].getX(),workers[1].getX()};
         final double[] lastZ={workers[0].getZ(),workers[1].getZ()};
-        final int[] lastActivity={0};
+        final long[] lastActivity={0};
         h.onEachTick(()->{
             int finished=0;
             for(int i=0;i<workers.length;i++){
