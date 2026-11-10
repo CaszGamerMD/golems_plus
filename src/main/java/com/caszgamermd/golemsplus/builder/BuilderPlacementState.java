@@ -62,6 +62,7 @@ public final class BuilderPlacementState {
                             ||name.equals("west")))
                     ||(id.endsWith("_door")
                         &&(name.equals("powered")||name.equals("open")))
+                    ||(id.endsWith("_bed")&&name.equals("occupied"))
                     ||((id.equals("repeater")||id.equals("comparator")
                         ||id.endsWith("_repeater")||id.endsWith("_comparator"))
                         &&(name.equals("powered")||name.equals("locked")))
