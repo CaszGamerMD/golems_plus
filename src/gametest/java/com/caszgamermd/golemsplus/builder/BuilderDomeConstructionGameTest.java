@@ -45,12 +45,22 @@ public final class BuilderDomeConstructionGameTest {
             var site=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
                     BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
             steps=BuilderConstructionPlan.create(schematic,site,true).steps();
-            if(steps.size()!=3537)
-                throw new IllegalStateException("Incorrect Dome blueprint count "+steps.size());
+            // Multi-cell objects now generate ONE work claim / one item;
+            // the source schematic still has every physical occupied cell.
+            // Never mistake fewer logical jobs for missing dome geometry.
+            long occupied=steps.stream().mapToLong(step->
+                    step.companion()==null?1:2).sum();
+            if(schematic.blocks().size()!=3537||occupied!=3537)
+                throw new IllegalStateException("Incorrect Dome source/physical "
+                        +"count "+schematic.blocks().size()+"/"+occupied
+                        +" logicalJobs="+steps.size());
         }catch(Exception e){helper.fail("Could not plan Dome "+e);return;}
-        final int requiredBlocks=(int)steps.stream()
-                .filter(step->!step.ignorePlant()).count();
-        final int ignoredPlants=steps.size()-requiredBlocks;
+        final int requiredBlocks=steps.stream()
+                .filter(step->!step.ignorePlant())
+                .mapToInt(step->step.companion()==null?1:2).sum();
+        final int ignoredPlants=steps.stream()
+                .filter(BuilderConstructionPlan.Step::ignorePlant)
+                .mapToInt(step->step.companion()==null?1:2).sum();
         if(requiredBlocks!=3493||ignoredPlants!=44){
             helper.fail("Dome vegetation count regression: required="
                     +requiredBlocks+" ignored="+ignoredPlants);return;
@@ -536,6 +546,16 @@ public final class BuilderDomeConstructionGameTest {
             if(BuilderPlacementState.matches(
                     level.getBlockState(new BlockPos(step.x(),step.y(),step.z())),
                     expected.state()))count++;
+            // The second half is a physical block, even though the Builder
+            // places and pays for the complete item as one logical step.
+            if(step.companion()!=null){
+                var partner=step.companion();
+                var state=BuilderBlockResolver.resolve(partner.encodedState(),
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(state!=null&&BuilderPlacementState.matches(
+                        level.getBlockState(BuilderMultiblock.position(partner)),
+                        state.state()))count++;
+            }
         }
         return count;
     }
