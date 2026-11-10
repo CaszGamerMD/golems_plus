@@ -261,6 +261,28 @@ public final class BuilderVillagerMatrixFullGameTest {
                     +" idleTicks="+(tick-lastProgress[0])
                     +" crewAlive="+crew.stream().filter(BuilderGolem::isAlive).count()
                     +" problem="+table.problem());
+            // A cursor alone cannot distinguish "rail was popped",
+            // "water replaced the dry block", "support is missing" or a
+            // genuine navigation failure. Observe all actual neighboring
+            // states before proposing another construction shortcut.
+            if(tick-lastProgress[0]>=800&&cursor>=0&&cursor<steps.size()){
+                var stalled=steps.get(cursor);
+                BlockPos at=new BlockPos(stalled.x(),stalled.y(),stalled.z());
+                var resolved=BuilderBlockResolver.resolve(
+                        stalled.encodedState(),BuildSite.Rotation.NONE,
+                        BuildSite.Mirror.NONE);
+                System.out.println("[MATRIX BLOCK DIAGNOSTIC] tick="+tick
+                        +" local="+at.subtract(origin)
+                        +" desired="+stalled.encodedState()
+                        +" actual="+level.getBlockState(at)
+                        +" below="+level.getBlockState(at.below())
+                        +" above="+level.getBlockState(at.above())
+                        +" west="+level.getBlockState(at.west())
+                        +" westUp="+level.getBlockState(at.west().above())
+                        +" supported="+(resolved!=null
+                            &&resolved.state().canSurvive(level,at))
+                        +" fluid="+level.getFluidState(at));
+            }
             if(table.phase()==WorkerPhase.COMPLETE){
                 if(correct!=SOURCE_BLOCKS){
                     h.fail("Full Matrix marked complete but "
