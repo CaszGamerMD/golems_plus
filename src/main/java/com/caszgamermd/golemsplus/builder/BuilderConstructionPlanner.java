@@ -178,8 +178,12 @@ public final class BuilderConstructionPlanner {
      */
     static boolean safeStandForStep(ServerLevel world,BuilderGolem builder,
             BlockPos target,BlockPos stance,String encodedState){
+        String expectedBlock=BuilderWaterPass.originalState(encodedState)
+                .split("\\[",2)[0];
         if(!BuilderWaterPass.isWaterlogPass(encodedState)
-                ||world.getBlockState(target).isAir())
+                ||!net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(
+                        world.getBlockState(target).getBlock())
+                        .toString().equals(expectedBlock))
             return safeStand(world,builder,target,stance);
         return !stance.equals(target)
                 &&stance.distSqr(target)<REACH_SQUARED
