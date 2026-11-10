@@ -100,6 +100,35 @@ public final class BuilderMultiblock {
         return new Cell(block.x(),block.y(),block.z());
     }
 
+    /** Place the complete physical object in one operation.
+     * Lower/foot is set first without premature neighbor updates; then
+     * upper/head is created and neighbors notified as a normal vanilla
+     * double-high item would do. The secondary block consumes NO item.
+     *
+     * The caller already checked permissions, physical work stance and
+     * companion collision. `primaryPlaced` prevents refunding a genuinely
+     * placed item if the second cell is momentarily obstructed.
+     */
+    public record Placement(boolean complete,boolean primaryPlaced) {}
+
+    public static Placement place(net.minecraft.server.level.ServerLevel level,
+            BlockPos primaryPos,net.minecraft.world.level.block.state.BlockState primary,
+            BlockPos companionPos,net.minecraft.world.level.block.state.BlockState secondary,
+            boolean primaryAlreadyCorrect,boolean companionAlreadyCorrect){
+        if(companionPos==null)
+            return new Placement(level.setBlock(primaryPos,primary,3),false);
+        boolean spent=false;
+        if(!primaryAlreadyCorrect){
+            if(!level.setBlock(primaryPos,primary,2))
+                return new Placement(false,false);
+            spent=true;
+        }
+        if(!companionAlreadyCorrect&&!level.setBlock(companionPos,secondary,3))
+            return new Placement(false,spent);
+        level.updateNeighborsAt(primaryPos,primary.getBlock());
+        return new Placement(true,spent);
+    }
+
     public static BlockPos position(BuilderConstructionPlan.Companion companion){
         return new BlockPos(companion.x(),companion.y(),companion.z());
     }
