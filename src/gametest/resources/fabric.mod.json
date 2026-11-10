@@ -21,6 +21,7 @@
       "com.caszgamermd.golemsplus.builder.BuilderMaterialRulesGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderBlockInteractionsGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderMultiblockGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderWaterFinishGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderRailPocketEscapeGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderDroppedBlockRecoveryGameTest",
       "com.caszgamermd.golemsplus.breakroom.GolemBreakGameTest"
