@@ -68,7 +68,11 @@ public final class BuilderRailTrafficGameTest {
             }
             if(h.getTick()>=90)
                 h.fail("Builder could not vacate solid placement via "
-                        +"physical precision sidestep: "+worker.position());
+                        +"physical precision sidestep: "+worker.position()
+                        +" ground="+worker.onGround()
+                        +" yield="+BuilderPlacementSpace.debugYield(level,worker)
+                        +" occupants="+BuilderPlacementSpace.debugOccupants(
+                                level,table,target));
         });
     }
 
