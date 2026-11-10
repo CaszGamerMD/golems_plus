@@ -2078,14 +2078,19 @@ public final class BuilderBuildService {
             // Only after spending the physical block item and placing
             // its neutral state may the Builder click its real controls.
             // The resulting neighbor updates are genuine vanilla behavior.
-            if(BuilderBlockInteractions.needsInteraction(
-                    level.getBlockState(pos),state.state())
+            if(BuilderBlockInteractions.hasManualControl(state.state())
+                    &&!BuilderPlacementState.matches(
+                            level.getBlockState(pos),state.state())
                     &&!BuilderBlockInteractions.interact(level,pos,
                             state.state(),owner)){
+                // The item has been paid for, but the actual click setting
+                // could not be reached. The next attempt uses the SAME
+                // physical block and does not charge its item again.
                 table.waitForBuilderSupport(worker.getUUID(),index,
                         level.getGameTime());
                 table.setProblem("Placed block, awaiting real interaction at "
-                        +pos+" actual="+level.getBlockState(pos));
+                        +pos+" actual="+level.getBlockState(pos)
+                        +" wanted="+state.state());
                 return;
             }
             if(BuilderRailSlope.raisedEnd(pos,state.state())!=null
