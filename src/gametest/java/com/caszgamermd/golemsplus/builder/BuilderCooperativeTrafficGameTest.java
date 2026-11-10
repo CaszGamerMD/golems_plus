@@ -62,6 +62,7 @@ public final class BuilderCooperativeTrafficGameTest {
                             +" at "+g.position()+" start="+starts[i]
                             +" alive="+g.isAlive()
                             +" removed="+g.isRemoved()
+                            +" removalReason="+g.getRemovalReason()
                             +" health="+g.getHealth()
                             +" grounded="+g.onGround()
                             +" noGravity="+g.isNoGravity()
