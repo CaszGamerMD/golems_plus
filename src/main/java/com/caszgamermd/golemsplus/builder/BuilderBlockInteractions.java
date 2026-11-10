@@ -89,6 +89,21 @@ public final class BuilderBlockInteractions {
             neutral=set(neutral,"power","0");
             for(String side:new String[]{"north","south","east","west"})
                 neutral=set(neutral,side,"none");
+        }else if(id.equals("note_block")){
+            // Instrument and power are determined by real supporting
+            // blocks and redstone. The note is subsequently tuned with
+            // real clicks, not copied from a fake schematic instrument.
+            neutral=desired.getBlock().defaultBlockState();
+        }else if(id.equals("daylight_detector")){
+            // Solar output is calculated on the actual world tick; only
+            // the user's inverted switch is changed by right-click.
+            neutral=set(neutral,"power","0");
+        }else if(id.equals("observer")||id.equals("tripwire_hook")
+                ||id.equals("tripwire")){
+            neutral=set(neutral,"powered","false");
+            neutral=set(neutral,"attached","false");
+        }else if(id.equals("target")){
+            neutral=set(neutral,"power","0");
         }else if(id.equals("redstone_lamp")){
             neutral=set(neutral,"lit","false");
         }else if(id.equals("redstone_torch")
