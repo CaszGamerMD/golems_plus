@@ -284,6 +284,27 @@ public final class BuilderSupplyInventory {
         }
         return false;
     }
+    /** Bring a real reusable water source to an elevated worksite BEFORE
+     * the dry floor is finished. Waterlogging and source-water actions on
+     * the current or very next Y are unavoidable near-term demands; a
+     * builder must not climb four blocks and then walk back down solely
+     * to fetch the finishing tool. This is a material selection policy,
+     * not a source of free buckets or remotely accessed stock.
+     */
+    static boolean hasNearTermWaterWork(
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,int y){
+        if(steps==null||zone==null)return false;
+        for(int index:zone){
+            if(index<0||index>=steps.size())continue;
+            var cell=steps.get(index);
+            if(cell.ignorePlant()||cell.requiredItem()==null
+                    ||!cell.requiredItem().equals(BuilderWaterPass.WATER_BUCKET))
+                continue;
+            if(cell.y()>=y-1&&cell.y()<=y+1)return true;
+        }
+        return false;
+    }
+
     /** Stage the exclusive ten-coordinate work order at its physical depot.
      * Near the roof, also carry a SMALL reserve of the worker's own final
      * cap materials and paid scaffolding. A long real ascent must not be
@@ -320,6 +341,12 @@ public final class BuilderSupplyInventory {
             if(next.requiredItem()!=null)
                 materials.merge(next.requiredItem(),1,Integer::sum);
         }
+        // The active ten-cell dry order may not yet contain its water
+        // phase, even though the very same elevated zone needs it next.
+        // Bring ONE inventory-backed reusable bucket at this depot visit
+        // instead of abandoning a hard-won scaffold tower afterward.
+        if(hasNearTermWaterWork(steps,zone,highest))
+            materials.put(BuilderWaterPass.WATER_BUCKET,1);
         // A reusable fluid source is one tool for the whole work order,
         // independent of how many fluid cells are assigned.
         for(String item:java.util.List.copyOf(materials.keySet()))
