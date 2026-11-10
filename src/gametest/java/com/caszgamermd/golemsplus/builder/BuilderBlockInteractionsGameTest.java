@@ -12,6 +12,50 @@ import net.minecraft.world.level.block.state.BlockState;
  * this is NOT a test that fakes the requested state with setBlock. */
 public final class BuilderBlockInteractionsGameTest {
     @GameTest(maxTicks=90,skyAccess=true)
+    public void lampOutputComesFromRealRedstoneNeighbor(GameTestHelper h){
+        var level=h.getLevel();
+        BlockPos pos=h.absolutePos(new BlockPos(4,2,4));
+        var wanted=BuilderBlockResolver.resolve(
+                "minecraft:redstone_lamp[lit=true]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        if(wanted==null){h.fail("Redstone lamp unresolved");return;}
+        var neutral=BuilderBlockInteractions.placementState(wanted.state());
+        if(!level.setBlock(pos,neutral,3)
+                ||level.getBlockState(pos).getValue(
+                        net.minecraft.world.level.block.state.properties
+                            .BlockStateProperties.LIT)){
+            h.fail("Builder incorrectly placed a pre-lit redstone lamp");
+            return;
+        }
+        h.onEachTick(()->{
+            if(h.getTick()==4)
+                h.setBlock(3,2,4,Blocks.REDSTONE_BLOCK);
+            if(h.getTick()==9){
+                if(!level.getBlockState(pos).getValue(
+                        net.minecraft.world.level.block.state.properties
+                            .BlockStateProperties.LIT)){
+                    h.fail("Real redstone power did not activate lamp");
+                    return;
+                }
+                h.setBlock(3,2,4,Blocks.AIR);
+            }
+            if(h.getTick()==25){
+                if(level.getBlockState(pos).getValue(
+                        net.minecraft.world.level.block.state.properties
+                            .BlockStateProperties.LIT)
+                        ||!BuilderPlacementState.matches(
+                                level.getBlockState(pos),wanted.state())){
+                    h.fail("Lamp output was not controlled by world updates");
+                    return;
+                }
+                System.out.println("[BUILDER PHYSICS PASS] physical redstone "
+                        +"source switched lamp on/off without fake output states");
+                h.succeed();
+            }
+        });
+    }
+
+    @GameTest(maxTicks=90,skyAccess=true)
     public void realNoteTuningAndDaylightInversionSurviveNeighborTicks(
             GameTestHelper h){
         var level=h.getLevel();
