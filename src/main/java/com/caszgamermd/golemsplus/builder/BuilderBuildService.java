@@ -1749,8 +1749,9 @@ public final class BuilderBuildService {
                     &&(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
                                 level,worker,pos)
-                        ||BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,worker.blockPosition()));
+                        ||BuilderConstructionPlanner.safeStandForStep(
+                                level,worker,pos,worker.blockPosition(),
+                                step.encodedState()));
             // Low dome walls and fence caps often sit two Y above a
             // grounded Builder. Its normal three-block hand reach may
             // already cover the target from a SIDE stance. Find that
@@ -1761,8 +1762,8 @@ public final class BuilderBuildService {
                     &&!BuilderScaffolding.isControllingMovement(worker)){
                 BlockPos walk=BuilderPlacementSpace.approachWithRules(
                         level,worker,pos,
-                        at->BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,at));
+                        at->BuilderConstructionPlanner.safeStandForStep(
+                                level,worker,pos,at,step.encodedState()));
                 if(walk!=null){
                     activity.phase=Action.MOVE_TO_WORK;
                     if(com.caszgamermd.golemsplus.worker.WorkerNavigation
@@ -1832,8 +1833,8 @@ public final class BuilderBuildService {
                 activity.phase=Action.MOVE_TO_WORK;
                 BlockPos approach=BuilderPlacementSpace.approachWithRules(
                         level,worker,pos,
-                        at->BuilderConstructionPlanner.safeStand(
-                                level,worker,pos,at));
+                        at->BuilderConstructionPlanner.safeStandForStep(
+                                level,worker,pos,at,step.encodedState()));
                 if(approach!=null){
                     boolean moving=com.caszgamermd.golemsplus.worker
                             .WorkerNavigation.routeToExact(
@@ -1918,8 +1919,9 @@ public final class BuilderBuildService {
                         level,worker,table,pos)
                     ||BuilderPlacementSpace.safeFractionalCapPose(
                             level,worker,pos)
-                    ||BuilderConstructionPlanner.safeStand(
-                        level,worker,pos,worker.blockPosition()))){
+                    ||BuilderConstructionPlanner.safeStandForStep(
+                        level,worker,pos,worker.blockPosition(),
+                        step.encodedState()))){
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
                 table.waitForBuilderAccess(worker.getUUID(),index,
                         level.getGameTime(),"lost safe pose or exit during approach");
@@ -1928,7 +1930,14 @@ public final class BuilderBuildService {
             }
             // Never place into any Builder's body. Check before spending
             // the item so waiting for a teammate to move consumes nothing.
-            if(!BuilderPlacementSpace.ready(level,worker,table,pos)){
+            // Filling a waterloggable block changes no solid collision
+            // geometry: do not make teammates vacate an imaginary cube.
+            // Rail repairs or fresh source water still require full
+            // body-clearance and the usual 0.8m placement margin.
+            boolean finishingExistingFluid=waterlog
+                    &&existing.getBlock()==state.state().getBlock();
+            if(!finishingExistingFluid
+                    &&!BuilderPlacementSpace.ready(level,worker,table,pos)){
                 // Waiting at an impossible collision envelope must not
                 // pin one target or one Y-level forever. Give genuine
                 // sidesteps 100 ticks, then preserve the unfinished index
@@ -1946,7 +1955,8 @@ public final class BuilderBuildService {
                 return;
             }
             activity.blockedSince=-1;
-            if(!BuilderPlacementSpace.horizontalClear(pos,worker)){
+            if(!finishingExistingFluid
+                    &&!BuilderPlacementSpace.horizontalClear(pos,worker)){
                 // Defense-in-depth against a self-collision regression.
                 // Vertical separation NEVER waives the X/Z 0.8 margin.
                 table.setProblem("Builder still within 0.8 X/Z of "+pos);
