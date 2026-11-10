@@ -1,6 +1,8 @@
 package com.caszgamermd.golemsplus.builder;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -8,10 +10,17 @@ import java.util.Set;
 
 /** Immutable verified plan from a file and exact placed Litematica anchor. */
 public final class BuilderConstructionPlan {
+    /** The second physical cell of a single item-backed object.
+     * This is verified as part of the primary step; it is never a job. */
+    public record Companion(int x,int y,int z,String encodedState) {}
     public record Step(int x,int y,int z,String encodedState,String requiredItem,
-            boolean ignorePlant){
+            boolean ignorePlant,Companion companion){
         public Step(int x,int y,int z,String encodedState,String requiredItem){
-            this(x,y,z,encodedState,requiredItem,false);
+            this(x,y,z,encodedState,requiredItem,false,null);
+        }
+        public Step(int x,int y,int z,String encodedState,String requiredItem,
+                boolean ignorePlant){
+            this(x,y,z,encodedState,requiredItem,ignorePlant,null);
         }
     }
     public record Result(List<Step> steps,Map<String,Long> required,
@@ -36,11 +45,31 @@ public final class BuilderConstructionPlan {
         // Builder's water source must wait until every dry cell is finished.
         var blocks=new ArrayList<>(schematic.blocks());
         blocks.sort(java.util.Comparator.comparingInt(LitematicFileReader.Block::y));
+        // Pair only exact, reciprocal parts in this imported schematic.
+        // A solitary upper half or incomplete primary is an unsupported
+        // object, never a free item or an invisible completed task.
+        var byCell=new HashMap<BuilderMultiblock.Cell,LitematicFileReader.Block>();
+        for(var b:blocks)byCell.put(BuilderMultiblock.cell(b),b);
+        var companions=new HashMap<BuilderMultiblock.Cell,LitematicFileReader.Block>();
+        var pairedSecondaries=new HashSet<BuilderMultiblock.Cell>();
         for(var b:blocks){
+            if(!BuilderMultiblock.isPrimary(b.state()))continue;
+            var where=BuilderMultiblock.companionCell(b);
+            var other=where==null?null:byCell.get(where);
+            if(other!=null&&BuilderMultiblock.matchingPair(b.state(),other.state())){
+                companions.put(BuilderMultiblock.cell(b),other);
+                pairedSecondaries.add(where);
+            }
+        }
+        for(var b:blocks){
+            if(pairedSecondaries.contains(BuilderMultiblock.cell(b)))continue;
+            boolean incompletePair=(BuilderMultiblock.isPrimary(b.state())
+                    ||BuilderMultiblock.isSecondary(b.state()))
+                    &&!companions.containsKey(BuilderMultiblock.cell(b));
             boolean ignored=ignorePlants&&BuilderVegetation.ignoreSchematicState(b.state());
             boolean waterlogged=!ignored&&BuilderWaterPass.isWaterlogged(b.state());
             String dry=waterlogged?BuilderWaterPass.dryState(b.state()):b.state();
-            var resolved=ignored?null:
+            var resolved=ignored||incompletePair?null:
                     BuilderBlockResolver.resolve(dry,site.rotation(),site.mirror());
             if(waterlogged&&BuilderBlockResolver.resolve(b.state(),
                     site.rotation(),site.mirror())==null)resolved=null;
@@ -50,17 +79,25 @@ public final class BuilderConstructionPlan {
             if(world.y()<-64||world.y()>511)
                 throw new IllegalArgumentException("Placement exceeds supported world height");
             if(resolved==null&&!ignored)unsupported.add(b.state());
-            // A door consumes ONE item for its lower half. Both door
-            // states are present in Litematica, so counting the upper
-            // half would request and spend twice the correct materials.
-            boolean upperDoor=b.state().contains("_door[")
-                    &&b.state().contains("half=upper");
-            String item=resolved==null||upperDoor||ignored?null:
+            String item=resolved==null||ignored?null:
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(resolved.item()).toString();
-            // Retain the original coordinate index for existing saved job
-            // cursors and disjoint ten-position work orders. Ignored plants
-            // require no placement, no tools and no warehouse materials.
-            steps.add(new Step(world.x(),world.y(),world.z(),dry,item,ignored));
+            Companion companion=null;
+            var other=companions.get(BuilderMultiblock.cell(b));
+            if(other!=null){
+                var second=site.locate(new BuilderMaterialPlan.Placement(
+                        other.x(),other.y(),other.z(),other.state(),null));
+                if(second.y()<-64||second.y()>511)
+                    throw new IllegalArgumentException("Multiblock partner outside world height");
+                companion=new Companion(second.x(),second.y(),second.z(),other.state());
+            }
+            // Incomplete objects are explicitly unsupported; never
+            // silently construct half a door/bed/plant and call it done.
+            String encoded=incompletePair&&!ignored
+                    ?"golems_plus:unpaired_multiblock|"+dry:dry;
+            // Each paired item creates ONE claim, ONE material demand and
+            // ONE completion entry; the companion is verified on placement.
+            steps.add(new Step(world.x(),world.y(),world.z(),
+                    encoded,item,ignored,companion));
             if(item!=null)quantities.merge(item,1L,Long::sum);
             if(waterlogged&&resolved!=null){
                 steps.add(new Step(world.x(),world.y(),world.z(),
