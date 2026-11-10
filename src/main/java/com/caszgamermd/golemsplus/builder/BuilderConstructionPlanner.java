@@ -170,6 +170,28 @@ public final class BuilderConstructionPlanner {
                 &&lineOfSight(world,builder,stance,target)
                 &&exitAfterPlacement(world,builder,stance,target);
     }
+    /** Waterlogging modifies a PREEXISTING block rather than creating
+     * new solid collision. Requiring an exit from a hypothetical fresh
+     * solid cube can reject valid elevated finishing poses. Require real
+     * footing, 3-block hand reach and unobstructed sight instead.
+     * All other work still obeys the normal placement/escape checks.
+     */
+    static boolean safeStandForStep(ServerLevel world,BuilderGolem builder,
+            BlockPos target,BlockPos stance,String encodedState){
+        if(!BuilderWaterPass.isWaterlogPass(encodedState)
+                ||world.getBlockState(target).isAir())
+            return safeStand(world,builder,target,stance);
+        return !stance.equals(target)
+                &&stance.distSqr(target)<REACH_SQUARED
+                &&workReachFromFeet(stance,target)<REACH_SQUARED
+                &&(stance.getY()==target.getY()
+                    ||stance.getY()==target.getY()+1
+                    ||stance.getY()==target.getY()-1
+                    ||stance.getY()==target.getY()-2)
+                &&WorkerNavigation.canStandOn(world,builder,stance)
+                &&lineOfSight(world,builder,stance,target);
+    }
+
     static double workReachFromFeet(BlockPos stance,BlockPos target){
         double dx=stance.getX()-target.getX();
         double dz=stance.getZ()-target.getZ();
@@ -418,7 +440,8 @@ public final class BuilderConstructionPlanner {
                     +" exits="+escapes+" reachable="+routes
                     +" | "+BuilderPlacementSpace.diagnoseApproach(
                             world,worker,target,
-                            at->safeStand(world,worker,target,at));
+                            at->safeStandForStep(world,worker,target,at,
+                                    step.encodedState()));
         }
         return " | no supported pending target on current Y";
     }
@@ -553,16 +576,35 @@ public final class BuilderConstructionPlanner {
                     BuildSite.Mirror.values()[table.builderMirror()]);
             if(state==null)continue;
             BlockState actual=world.getBlockState(target);
-            if(BuilderPlacementState.matches(actual,state.state()))
+            boolean primaryMatches=BuilderPlacementState.matches(
+                    actual,state.state());
+            var partner=step.companion();
+            boolean companionMatches=true;
+            if(partner!=null){
+                var pairedState=BuilderBlockResolver.resolve(
+                        partner.encodedState(),
+                        BuildSite.Rotation.values()[table.builderRotation()/90],
+                        BuildSite.Mirror.values()[table.builderMirror()]);
+                companionMatches=pairedState!=null
+                        &&world.hasChunkAt(BuilderMultiblock.position(partner))
+                        &&BuilderPlacementState.matches(
+                                world.getBlockState(BuilderMultiblock.position(partner)),
+                                pairedState.state());
+            }
+            // One grouped claim is finished only if BOTH real cells
+            // match; a preexisting foot/lower must not hide its partner.
+            if(primaryMatches&&companionMatches)
                 return new Choice(idx,null,false,true,examined);
             if(!state.state().canSurvive(world,target))continue;
             BlockPos stance=lookahead
                     ?BuilderPlacementSpace.approachForLookahead(
                             world,worker,target,
-                            at->safeStand(world,worker,target,at))
+                            at->safeStandForStep(world,worker,target,at,
+                                    step.encodedState()))
                     :BuilderPlacementSpace.approachWithRules(
                             world,worker,target,
-                            at->safeStand(world,worker,target,at));
+                            at->safeStandForStep(world,worker,target,at,
+                                    step.encodedState()));
             if(stance==null&&(BuilderPlacementSpace.safeFractionalCapPose(
                     world,worker,target)
                     ||BuilderPlacementSpace.canRetreatToFractionalCap(
