@@ -28,6 +28,9 @@ public final class BuilderMultiblockGameTest {
         );
         for(int x=1;x<=7;x++)for(int z=1;z<=6;z++)
             h.setBlock(x,2,z,Blocks.STONE);
+        // Sunflowers legitimately require dirt-like ground, unlike doors
+        // and beds. This physical test must not fake survival on stone.
+        h.setBlock(6,2,3,Blocks.DIRT);
         var anchor=h.absolutePos(BlockPos.ZERO);
         var site=new BuildSite(anchor.getX(),anchor.getY(),anchor.getZ(),
                 BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
