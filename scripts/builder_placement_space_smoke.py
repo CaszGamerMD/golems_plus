@@ -36,7 +36,9 @@ assert "return false;" in space[space.index("public static boolean ready("):]
 assert 'if(BuilderPlacementSpace.yieldTick(level,worker))return;' in build
 start=build.index("// Never place into any Builder's body.")
 payment=build.index("BuilderSupplyInventory.consume(worker,state.item())",start)
-placed=build.index("boolean placed=level.setBlock(pos,toPlace,3);",payment)
+placed=build.index("var multiblockPlacement=BuilderMultiblock.place(",payment)
+assert "BuilderMultiblock.place(" in build
+assert "BuilderPlacementSpace.ready(level,worker,table,partnerPos)" in build
 guard=build.index("if(!BuilderPlacementSpace.ready(level,worker,table,pos)){",start)
 assert start < guard < payment < placed
 assert "BlockState toPlace=bubble" in build
