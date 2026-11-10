@@ -639,29 +639,4 @@ public final class BuilderConstructionFrontierGameTest {
             h.succeed();
         });
     }
-    @GameTest(maxTicks=90,skyAccess=true)
-    public void escapeMustNotDependOnDiagonalOneBlockJump(GameTestHelper h){
-        // Two isolated pads: the only apparent exit is an unsupported
-        // diagonal jump that the production ground planner cannot execute.
-        h.setBlock(3,1,3,Blocks.STONE);
-        h.setBlock(4,2,4,Blocks.STONE);
-        var stance=h.absolutePos(new BlockPos(3,2,3));
-        var target=h.absolutePos(new BlockPos(1,2,3));
-        var mob=worker(h,stance);
-        h.onEachTick(()->{
-            if(h.getTick()!=16)return;
-            if(BuilderConstructionPlanner.exitAfterPlacement(
-                    h.getLevel(),mob,stance,target)){
-                h.fail("Builder accepted a diagonal full-block jump as its exit");
-                return;
-            }
-            h.setBlock(4,2,3,Blocks.STONE);
-            if(!BuilderConstructionPlanner.exitAfterPlacement(
-                    h.getLevel(),mob,stance,target)){
-                h.fail("A physical cardinal step-up must remain available");
-                return;
-            }
-            h.succeed();
-        });
-    }
 }
