@@ -616,6 +616,8 @@ public final class BuilderPlacementSpace {
         return "yieldTargetXYZ="+hold.target().subtract(schematicOrigin).toShortString()
                 +" escapeXYZ="+hold.destination().subtract(schematicOrigin).toShortString()
                 +" expiresIn="+Math.max(0,hold.until()-level.getGameTime())+"t"
+                +" precision="+hold.precision()
+                +" onGround="+worker.onGround()
                 +" stillTooClose="+occupied(hold.target(),worker)
                 +" escapeStandable="+WorkerNavigation.canStandOn(
                         level,worker,hold.destination());
