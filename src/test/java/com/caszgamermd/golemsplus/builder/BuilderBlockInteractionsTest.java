@@ -89,6 +89,10 @@ final class BuilderBlockInteractionsTest {
         var untuned=BuilderBlockInteractions.placementState(note);
         assertEquals(state("minecraft:note_block[instrument=harp,note=0,powered=false]"),
                 untuned);
+        // The source instrument is not physically selectable; it depends
+        // on the block under the placed note block.
+        var bassTarget=state("minecraft:note_block[instrument=basedrum,note=24,powered=true]");
+        assertEquals(untuned,BuilderBlockInteractions.placementState(bassTarget));
         assertTrue(BuilderBlockInteractions.needsInteraction(untuned,note));
         // Note sounds come from the actual supporting block, not the
         // schematic item; tuning and facing remain exact.
@@ -100,7 +104,7 @@ final class BuilderBlockInteractionsTest {
     @Test void daylightInversionIsManualButPowerComesFromTheSky(){
         var desired=state("minecraft:daylight_detector[inverted=true,power=15]");
         var neutral=BuilderBlockInteractions.placementState(desired);
-        assertEquals(state("minecraft:daylight_detector[inverted=false,power=15]"),
+        assertEquals(state("minecraft:daylight_detector[inverted=false,power=0]"),
                 neutral);
         assertTrue(BuilderBlockInteractions.needsInteraction(neutral,desired));
         assertTrue(BuilderPlacementState.matches(
@@ -126,6 +130,12 @@ final class BuilderBlockInteractionsTest {
         assertFalse(BuilderPlacementState.matches(
                 state("minecraft:tripwire_hook[facing=east,powered=false,attached=false]"),
                 hook));
+        var freshHook=BuilderBlockInteractions.placementState(hook);
+        assertEquals(state("minecraft:tripwire_hook[facing=north,powered=false,attached=false]"),
+                freshHook);
+        var target=state("minecraft:target[power=11]");
+        assertEquals(state("minecraft:target[power=0]"),
+                BuilderBlockInteractions.placementState(target));
     }
 
     @Test void nonInteractiveAndMomentaryBlocksAreNotFaked(){
