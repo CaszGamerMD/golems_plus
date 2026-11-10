@@ -22,6 +22,13 @@ public final class BuilderRailTrafficGameTest {
             h.fail("No Builder table for physical occupancy test");return;
         }
         var owner=h.makeMockServerPlayerInLevel();
+        // The mock GameTest player normally spawns near the template
+        // center, exactly where this Builder is supposed to step aside.
+        // Move the observer away so that the test probes a genuine
+        // single-Builder traffic problem, not an immovable human body.
+        BlockPos observer=h.absolutePos(new BlockPos(1,2,7));
+        owner.setPos(observer.getX()+.5,observer.getY(),
+                observer.getZ()+.5);
         if(!table.claimIfUnowned(owner.getUUID())
                 ||!table.setCrewTarget(owner.getUUID(),1)){
             h.fail("Could not prepare Builder crew");return;
