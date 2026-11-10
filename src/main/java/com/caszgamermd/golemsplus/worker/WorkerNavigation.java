@@ -73,6 +73,10 @@ public final class WorkerNavigation {
         int cornerCursor,cornerStarted;
         Vec3 previous;
         int stalled,attempts,wait,doorAge,nextRoute;
+        // Per-golem NAVIGATION metrics, independent of how many physical
+        // schematic cells the Builder has placed. A claimed step or
+        // repeated MOVING return is not proof of a successful footstep.
+        int planRequests,unreachablePlans,obstacleReplans,courtesyWaits;
         int unsafeChecks,avoidUntil;
         BlockPos lastBad;
         // routeToExact had no throttle after a failed plan, so a blocked goal
@@ -1514,6 +1518,7 @@ public final class WorkerNavigation {
         // Exact destinations also use the ONE trained planner. A
         // native navigation path is used solely to physically execute
         // a short already-scored waypoint, not as an alternate AI.
+        p.planRequests++;
         WorkerRoutePlanner.Route plan=planExecutableRoute(
                 level,mob,List.of(target),p.lastBad,true);
         // Search allowance spent by other golems this tick: report "still
@@ -1521,6 +1526,7 @@ public final class WorkerNavigation {
         // a failure, and try again on the next callback.
         if(planDeferred)return true;
         if(plan==null||plan.steps().isEmpty()){
+            p.unreachablePlans++;
             p.failedExact=target.immutable();
             p.failedExactUntil=mob.tickCount+ROUTE_RETRY
                     +Math.floorMod(mob.getId(),5);
@@ -1650,6 +1656,7 @@ public final class WorkerNavigation {
                     goals.add(candidate.feet());
                 }
             }
+            p.planRequests++;
             WorkerRoutePlanner.Route route=planExecutableRoute(
                     level,mob,goals,p.lastBad,false);
             if(planDeferred){
@@ -1663,6 +1670,7 @@ public final class WorkerNavigation {
             // Storage, doorway and return-to-tower movements require
             // reaching a valid walking tile.
             if(route==null||route.steps().isEmpty()){
+                p.unreachablePlans++;
                 p.attempts++;
                 p.nextRoute=mob.tickCount+ROUTE_RETRY+Math.floorMod(mob.getId(),5);
                 return false;
@@ -1745,6 +1753,10 @@ public final class WorkerNavigation {
         return "goal="+requested+" via="+destination
                 +" retry="+remaining+"t attempts="+p.attempts
                 +" stalled="+p.stalled+" unsafe="+p.unsafeChecks
+                +" planRequests="+p.planRequests
+                +" noPath="+p.unreachablePlans
+                +" forcedReplans="+p.obstacleReplans
+                +" trafficYields="+p.courtesyWaits
                 +" detourLegRetries="+p.detourFirstLegRetries
                 +(p.cornerPath.isEmpty()?"":" cornerRecovery="
                     +p.cornerCursor+"/"+p.cornerPath.size())
@@ -1850,6 +1862,7 @@ public final class WorkerNavigation {
             Path path=mob.getNavigation().getPath();
             boolean blocked=!safePath(level,mob,path,true);
             if(blocked||p.stalled>=STALL_TICKS){
+                p.obstacleReplans++;
                 p.unsafeChecks++;
                 p.attempts++;
                 Path old=mob.getNavigation().getPath();
@@ -1871,6 +1884,7 @@ public final class WorkerNavigation {
         }
         if(p.requested!=null&&!mob.getNavigation().isDone()
                 &&yieldToWorker(level,mob,p)){
+            p.courtesyWaits++;
             // Brief courtesy pause; preserve the trained plan. Traffic
             // is NOT a terrain failure, so there is no route mutation,
             // abandoned waypoint or new global search on every encounter.
