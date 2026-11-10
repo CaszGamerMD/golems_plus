@@ -32,6 +32,16 @@ public final class BuilderCooperativeTrafficGameTest {
             h.absolutePos(new BlockPos(11,2,4)),
             h.absolutePos(new BlockPos(3,2,4))
         };
+        // Minecraft's randomized GameTest origin may put the second
+        // worker across a chunk border. These deliberately UNASSIGNED
+        // test golems have no Planner-owned simulation ticket, so without
+        // an explicit arena ticket the engine can remove one at full
+        // health before it finishes walking.
+        BlockPos center=h.absolutePos(new BlockPos(7,2,4));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        center.getX()>>4,center.getZ()>>4),3);
         BuilderGolem[] workers=new BuilderGolem[2];
         boolean[] complete=new boolean[2];
         for(int i=0;i<2;i++){
