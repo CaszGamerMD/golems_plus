@@ -19,6 +19,7 @@
       "com.caszgamermd.golemsplus.builder.GrappleLineVisualGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderCreativeCrateFluidGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderMaterialRulesGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderBlockInteractionsGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderRailPocketEscapeGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderDroppedBlockRecoveryGameTest",
       "com.caszgamermd.golemsplus.breakroom.GolemBreakGameTest"
