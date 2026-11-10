@@ -50,6 +50,9 @@ public final class BuilderCooperativeTrafficGameTest {
                 if(!g.isAlive()||g.isNoGravity()||g.getY()<starts[i].getY()-.11){
                     h.fail("Crowd navigation lost physics worker="+i
                             +" at "+g.position()+" start="+starts[i]
+                            +" alive="+g.isAlive()
+                            +" removed="+g.isRemoved()
+                            +" health="+g.getHealth()
                             +" grounded="+g.onGround()
                             +" noGravity="+g.isNoGravity()
                             +" goal="+goals[i]
