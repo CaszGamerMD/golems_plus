@@ -69,6 +69,21 @@ final class BuilderBlockInteractionsTest {
                 iron));
     }
 
+    @Test void energyAndWireConnectionsBeginNeutralUntilWorldUpdates(){
+        var wire=state("minecraft:redstone_wire[east=side,north=up,power=12,south=side,west=none]");
+        var unpowered=BuilderBlockInteractions.placementState(wire);
+        assertEquals(state("minecraft:redstone_wire[east=none,north=none,power=0,south=none,west=none]"),
+                unpowered);
+        var rail=state("minecraft:powered_rail[powered=true,shape=ascending_west,waterlogged=false]");
+        assertEquals(state("minecraft:powered_rail[powered=false,shape=ascending_west,waterlogged=false]"),
+                BuilderBlockInteractions.placementState(rail));
+        // Don't accidentally reset a rail's precise slope or waterlog.
+        assertEquals(rail.getBlock(),BuilderBlockInteractions.placementState(rail).getBlock());
+        var comparator=state("minecraft:comparator[facing=north,mode=subtract,powered=true]");
+        assertEquals(state("minecraft:comparator[facing=north,mode=compare,powered=false]"),
+                BuilderBlockInteractions.placementState(comparator));
+    }
+
     @Test void nonInteractiveAndMomentaryBlocksAreNotFaked(){
         var stone=state("minecraft:stone");
         assertEquals(stone,BuilderBlockInteractions.placementState(stone));
