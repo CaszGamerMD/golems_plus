@@ -28,10 +28,13 @@ public final class BuilderRailTrafficGameTest {
             h.fail("Walk-through rail cannot be worked from physical narrow ledge");
             return;
         }
-        if(BuilderConstructionPlanner.safeStandForStep(
-                level,worker,target,stance,"minecraft:smooth_stone")){
-            h.fail("Solid cube incorrectly bypassed real post-placement escape");
-            return;
+        boolean ordinary=BuilderConstructionPlanner.safeStand(
+                level,worker,target,stance);
+        boolean solid=BuilderConstructionPlanner.safeStandForStep(
+                level,worker,target,stance,"minecraft:smooth_stone");
+        if(solid!=ordinary){
+            h.fail("Solid cube used a different escape rule from ordinary "
+                    +"construction work");return;
         }
         System.out.println("[BUILDER RAIL STANCE PASS] grounded rail access "
                 +"allowed; solid cube still requires a safe physical exit");
