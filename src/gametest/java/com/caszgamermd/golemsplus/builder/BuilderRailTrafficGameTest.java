@@ -194,4 +194,35 @@ public final class BuilderRailTrafficGameTest {
             h.succeed();
         });
     }
+    @GameTest(maxTicks=70,skyAccess=true)
+    public void paidSlopeRepairDoesNotRequireTemporaryConnectorSupport(
+            GameTestHelper h){
+        var world=h.getLevel();
+        BlockPos pos=h.absolutePos(new BlockPos(4,2,4));
+        h.setBlock(4,1,4,Blocks.STONE);
+        h.setBlock(3,1,4,Blocks.STONE);
+        h.setBlock(3,2,4,Blocks.POWERED_RAIL);
+        h.setBlock(4,2,4,Blocks.POWERED_RAIL);
+        var desired=BuilderBlockResolver.resolve(
+                "minecraft:powered_rail[powered=false,shape=ascending_west,waterlogged=false]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        if(desired==null){h.fail("Could not resolve paid slope");return;}
+        if(BuilderRailSlope.hasRaisedEndSupport(world,pos,desired.state())
+                ||!BuilderRailSlope.canReshapePaidSlope(world,pos,desired.state())
+                ||!BuilderRailSlope.restorePaidSlope(world,pos,desired.state())){
+            h.fail("An already present rail could not be corrected without a jig");
+            return;
+        }
+        // A missing rail must retain the ordinary paid placement/support
+        // checks. Never classify source water or a foreign block as paid.
+        h.setBlock(4,2,4,Blocks.AIR);
+        if(BuilderRailSlope.canReshapePaidSlope(world,pos,desired.state())){
+            h.fail("Missing rail was accepted as a free paid correction");return;
+        }
+        h.setBlock(4,2,4,Blocks.STONE);
+        if(BuilderRailSlope.canReshapePaidSlope(world,pos,desired.state())){
+            h.fail("Foreign block was accepted as a paid rail");return;
+        }
+        h.succeed();
+    }
 }

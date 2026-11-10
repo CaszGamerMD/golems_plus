@@ -57,6 +57,9 @@ public final class BuilderScaffoldPlanA {
         double highest=-Double.MAX_VALUE;
         double lastDistance=Double.POSITIVE_INFINITY;
         double closestApproach=Double.POSITIVE_INFINITY;
+        BlockPos returnWaypoint;
+        double bestReturnDistance=Double.POSITIVE_INFINITY;
+        long returnProgressAt,nextReturnRecovery;
         boolean fractionalSideEntry;
         Job(BlockPos target,BlockPos base,BlockPos exit,
                 BlockPos planner,List<BlockPos> bridgePath,
@@ -717,7 +720,7 @@ public final class BuilderScaffoldPlanA {
     }
     private static boolean escapeBlockedExit(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,Job j){
-        if(BuilderScaffolding.isControllingMovement(worker))return true;
+        if(BuilderScaffolding.hasPhysicalMotion(worker))return true;
         // If the old base is enclosed, use a nearby ALREADY solid upper
         // ledge, but only through the native collision-safe side-step.
         BlockPos feet=worker.blockPosition();
@@ -1214,6 +1217,44 @@ public final class BuilderScaffoldPlanA {
         if(destination==null)return false;
         if(!(level.getBlockEntity(j.planner)
                 instanceof WorkerStationBlockEntity table))return true;
+        if(j.phase==Phase.RETURN_FIRST||j.phase==Phase.RETURN_TOWER){
+            double remaining=worker.distanceToSqr(destination.getX()+.5,
+                    destination.getY(),destination.getZ()+.5);
+            if(!destination.equals(j.returnWaypoint)
+                    ||remaining<j.bestReturnDistance-.04){
+                j.returnWaypoint=destination.immutable();
+                j.bestReturnDistance=remaining;
+                j.returnProgressAt=level.getGameTime();
+                j.nextReturnRecovery=0;
+            }
+            if(level.getGameTime()-j.returnProgressAt>80
+                    &&level.getGameTime()>=j.nextReturnRecovery){
+                j.nextReturnRecovery=level.getGameTime()+40;
+                BlockPos floor=worker.blockPosition().below();
+                if(worker.onGround()&&!worker.isNoGravity()
+                        &&!level.getBlockState(floor).is(Blocks.SCAFFOLDING)
+                        &&level.getBlockState(floor).isFaceSturdy(
+                                level,floor,Direction.UP)
+                        &&WorkerNavigation.canStandOn(
+                                level,worker,worker.blockPosition())){
+                    // A new roof can leave us safely on solid ground
+                    // while the recorded return points through that roof.
+                    // Release the stale route, preserving paid scaffolds.
+                    rejectEntry(level,worker,j.base);
+                    jobs.remove(worker);
+                    WorkerNavigation.stop(worker);
+                    System.out.println("[PLAN A RETURN RESET] already on solid "
+                            +"footing at "+worker.blockPosition().toShortString());
+                    return false;
+                }
+                if(escapeBlockedExit(level,worker,table,j)){
+                    j.returnProgressAt=level.getGameTime();
+                    return true;
+                }
+                // No physical exit was proved. Stay on the paid bridge;
+                // a watchdog must never turn a stalled return into a fall.
+            }
+        }
         if(!present(level,table,worker,destination.below())){
             // A bridge that fell is not a walkable node. Recover the exact
             // paid missing step if the Builder still stands at its parent.

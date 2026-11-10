@@ -19,6 +19,17 @@ import net.minecraft.world.level.block.Blocks;
 public final class BuilderScaffoldConnectedWorkGameTest {
     @GameTest(maxTicks=1100,skyAccess=true)
     public void twoBuildersScaffoldAroundConnectedRoofAndReturn(GameTestHelper helper){
+        connectedRoofAndReturn(helper,false);
+    }
+
+    @GameTest(maxTicks=1100,skyAccess=true)
+    public void returnReleasesObsoleteBridgeAfterSolidRoofReplacesFooting(
+            GameTestHelper helper){
+        connectedRoofAndReturn(helper,true);
+    }
+
+    private static void connectedRoofAndReturn(GameTestHelper helper,
+            boolean replacedByRoof){
         ServerLevel level=helper.getLevel();
         for(int x=0;x<8;x++)for(int z=0;z<8;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
@@ -94,13 +105,33 @@ public final class BuilderScaffoldConnectedWorkGameTest {
                                 +BuilderScaffoldPlanA.status(mob));
                         return;
                     }
+                    if(replacedByRoof){
+                        // Construction replaces the occupied temporary
+                        // support with a solid roof and closes the old
+                        // return direction. Let real physics keep the
+                        // worker on its new footing; never move the mob.
+                        BlockPos footing=mob.blockPosition().below();
+                        level.setBlock(footing,Blocks.STONE.defaultBlockState(),3);
+                        for(BlockPos scaffold:table.scaffoldPositions(mob.getUUID())){
+                            if(scaffold.getY()==footing.getY()
+                                    &&!scaffold.equals(footing))
+                                level.setBlock(scaffold.above(),
+                                        Blocks.STONE.defaultBlockState(),3);
+                        }
+                    }
                     phases[i]=1;progress[i]=helper.getTick();
                 }else if(phases[i]==1){
                     if(helper.getTick()%5==0)
                         BuilderScaffoldPlanA.returnToGround(level,mob,table);
                     if(!BuilderScaffoldPlanA.hasPlan(mob)
                             &&mob.onGround()
-                            &&Math.abs(mob.getY()-towers[i].getY())<.3){
+                            &&(replacedByRoof
+                                ?level.getBlockState(mob.blockPosition().below())
+                                    .is(Blocks.STONE)
+                                :Math.abs(mob.getY()-towers[i].getY())<.3)){
+                        if(replacedByRoof&&mob.getY()<targets[i].getY()-.3){
+                            helper.fail("Worker fell off replacement roof");return;
+                        }
                         phases[i]=2;progress[i]=helper.getTick();
                     }
                 }

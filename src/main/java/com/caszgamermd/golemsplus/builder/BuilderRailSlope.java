@@ -38,6 +38,17 @@ public final class BuilderRailSlope {
                 ||desired.getBlock().defaultBlockState().canSurvive(world,raised);
     }
 
+    /** An existing paid slope can be corrected without constructing a
+     * raised connector. Its own support must still survive in the world.
+     * An air/fluid/different block is a new placement, never a free repair.
+     */
+    public static boolean canReshapePaidSlope(Level world,BlockPos pos,
+            BlockState desired){
+        return raisedEnd(pos,desired)!=null
+                &&world.getBlockState(pos).getBlock()==desired.getBlock()
+                &&desired.canSurvive(world,pos);
+    }
+
     /** The source schematic can encode an ascending rail whose elevated
      * neighbour is NOT another rail (for example the Matrix's iron
      * trapdoor). Vanilla rail updates may immediately flatten the paid rail

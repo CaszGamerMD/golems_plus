@@ -103,6 +103,12 @@ public final class BuilderScaffolding {
      * work/navigation decisions. Normal A* resumes automatically after
      * a verified arrival/dismount (or after a safe abort).
      */
+    /** Actual vertical/exit controller only. A Plan-A caller must not
+     * mistake its own bridge phase for a separate active escape controller.
+     */
+    static boolean hasPhysicalMotion(BuilderGolem worker){
+        return sessions.containsKey(worker)||exiting.containsKey(worker);
+    }
     public static boolean isControllingMovement(BuilderGolem worker){
         return sessions.containsKey(worker)||exiting.containsKey(worker)
                 ||BuilderScaffoldPlanA.controlsMotion(worker);

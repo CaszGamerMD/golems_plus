@@ -1465,6 +1465,8 @@ public final class BuilderBuildService {
                 table.setProblem("Waiting for soul-sand/magma bubble propagation at "+pos);
                 return;
             }
+            boolean reShapeRail=!waterlog&&BuilderRailSlope.canReshapePaidSlope(
+                    level,pos,state.state());
             // The hook controller retains exclusive movement until
             // physically landed; do not issue an overlapping work route.
             // Every real Builder goes to the chosen OnSite depot ONCE per
@@ -1481,7 +1483,7 @@ public final class BuilderBuildService {
             if(!table.builderOrderPrepared(worker.getUUID())
                     &&step.requiredItem()!=null
                     &&worker.carriedCount(state.item())<=0
-                    &&!interactionCorrection&&!repairPartner){
+                    &&!interactionCorrection&&!repairPartner&&!reShapeRail){
                 activity.phase=Action.STAGE_MATERIALS;
                 // An A* route from the TOP of a temporary scaffold to
                 // OnSite Storage can never discover the vertical descent.
@@ -1528,14 +1530,12 @@ public final class BuilderBuildService {
             // the rail-jig material and connector workflow.
             BlockPos raisedRail=waterlog?null:
                     BuilderRailSlope.raisedEnd(pos,state.state());
-            boolean reShapeRail=!waterlog&&raisedRail!=null
-                    &&existing.getBlock()==state.state().getBlock();
             // Preflight BEFORE breaking anything, staging another
             // material order or routing a worker to this slope. A same-Y
             // rail underneath the proposed raised connector is NOT solid
             // support. The work index remains pending for a real world
             // dependency to be resolved, never silently skipped.
-            if(raisedRail!=null&&!BuilderRailSlope.hasRaisedEndSupport(
+            if(raisedRail!=null&&!reShapeRail&&!BuilderRailSlope.hasRaisedEndSupport(
                     level,pos,state.state())){
                 BlockPos support=raisedRail.below();
                 table.waitForBuilderSupport(worker.getUUID(),index,
@@ -1561,7 +1561,7 @@ public final class BuilderBuildService {
             // Never debit a remote chest while standing at the build.
             if(step.requiredItem()!=null
                     &&worker.carriedCount(state.item())<=0
-                    &&!interactionCorrection&&!repairPartner){
+                    &&!interactionCorrection&&!repairPartner&&!reShapeRail){
                 var loading=BuilderSupplyInventory.loadForLayerStatus(
                         level,worker,table,plan.steps(),index);
                 if(loading==BuilderSupplyInventory.LoadStatus.MOVING)
@@ -2043,7 +2043,7 @@ public final class BuilderBuildService {
             BlockState railJigState=raisedRail==null?null:
                     state.state().getBlock().defaultBlockState();
             boolean railJig=false;
-            if(raisedRail!=null){
+            if(raisedRail!=null&&!reShapeRail){
                 if(!level.hasChunkAt(raisedRail)){
                     BuilderChunkTickets.destination(level,worker,raisedRail);
                     table.setProblem("Loading raised rail connector "+raisedRail);
