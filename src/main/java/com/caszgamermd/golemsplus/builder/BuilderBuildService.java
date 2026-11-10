@@ -1371,7 +1371,26 @@ public final class BuilderBuildService {
                 table.setProblem("Unsupported block state: "+step.encodedState());return;
             }
             BlockState existing=level.getBlockState(pos);
-            if(BuilderPlacementState.matches(existing,state.state())){
+            // A door, bed or double plant is a single saved work index.
+            // The partner's exact transformed palette is verified within
+            // this claim; it must never spawn another work order/item bill.
+            BuilderConstructionPlan.Companion partner=step.companion();
+            BlockPos partnerPos=partner==null?null:BuilderMultiblock.position(partner);
+            BuilderBlockResolver.Resolved partnerResolved=partner==null?null:
+                    BuilderBlockResolver.resolve(partner.encodedState(),
+                        BuildSite.Rotation.values()[table.builderRotation()/90],
+                        BuildSite.Mirror.values()[table.builderMirror()]);
+            if(partner!=null&&partnerResolved==null){
+                table.setProblem("Unsupported multiblock partner at "+partnerPos);
+                return;
+            }
+            BlockState partnerExisting=partnerPos==null?null:
+                    level.getBlockState(partnerPos);
+            boolean primaryComplete=BuilderPlacementState.matches(
+                    existing,state.state());
+            boolean partnerComplete=partner==null||BuilderPlacementState.matches(
+                    partnerExisting,partnerResolved.state());
+            if(primaryComplete&&partnerComplete){
                 // Auto-connected walls/fences/panes and stair corner shapes
                 // may differ from the saved palette after neighbouring
                 // blocks change. They ARE already built; never dismantle
@@ -1390,6 +1409,10 @@ public final class BuilderBuildService {
             // its native Minecraft interaction when within safe reach.
             boolean interactionCorrection=BuilderBlockInteractions
                     .needsInteraction(existing,state.state());
+            // Repairing a generated upper door/plant or bed head is not
+            // a second item purchase. The original lower/foot block is
+            // still present and can be used as the physical anchor.
+            boolean repairPartner=primaryComplete&&!partnerComplete;
             boolean waterlog=BuilderWaterPass.isWaterlogPass(step.encodedState());
             boolean bubble=BuilderWaterPass.isBubbleColumn(step.encodedState());
             BuilderBlockResolver.Resolved dryWaterlog=null;
@@ -1458,7 +1481,7 @@ public final class BuilderBuildService {
             if(!table.builderOrderPrepared(worker.getUUID())
                     &&step.requiredItem()!=null
                     &&worker.carriedCount(state.item())<=0
-                    &&!interactionCorrection){
+                    &&!interactionCorrection&&!repairPartner){
                 activity.phase=Action.STAGE_MATERIALS;
                 // An A* route from the TOP of a temporary scaffold to
                 // OnSite Storage can never discover the vertical descent.
@@ -1508,7 +1531,7 @@ public final class BuilderBuildService {
             boolean reShapeRail=!waterlog&&raisedRail!=null
                     &&existing.getBlock()==state.state().getBlock();
             if(!existing.isAir()&&!waterlog&&!reShapeRail
-                    &&!interactionCorrection
+                    &&!interactionCorrection&&!repairPartner
                     &&!(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
                             ||existing.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN)))){
                 // A player may add a block after the initial site-clear
@@ -1522,7 +1545,7 @@ public final class BuilderBuildService {
             // Never debit a remote chest while standing at the build.
             if(step.requiredItem()!=null
                     &&worker.carriedCount(state.item())<=0
-                    &&!interactionCorrection){
+                    &&!interactionCorrection&&!repairPartner){
                 var loading=BuilderSupplyInventory.loadForLayerStatus(
                         level,worker,table,plan.steps(),index);
                 if(loading==BuilderSupplyInventory.LoadStatus.MOVING)
@@ -1952,7 +1975,28 @@ public final class BuilderBuildService {
                 activity.phase=Action.COMPLETE;
                 return;
             }
-            boolean freeHalf=step.requiredItem()==null||reShapeRail;
+            if(partnerPos!=null&&!partnerComplete){
+                if(!level.hasChunkAt(partnerPos)){
+                    BuilderChunkTickets.destination(level,worker,partnerPos);
+                    table.setProblem("Loading multiblock partner at "+partnerPos);
+                    return;
+                }
+                if(!level.mayInteract(owner,partnerPos)
+                        ||!partnerExisting.isAir()
+                        ||table.isTrackedScaffold(partnerPos)
+                        ||level.getBlockEntity(partnerPos)!=null){
+                    // A companion is never permission to overwrite a
+                    // player's protected or occupied schematic cell.
+                    table.waitForBuilderSupport(worker.getUUID(),index,
+                            level.getGameTime());
+                    table.setProblem("Multiblock partner needs clear protected "
+                            +"space at "+partnerPos+" found="+partnerExisting);
+                    return;
+                }
+                if(!BuilderPlacementSpace.ready(level,worker,table,partnerPos))
+                    return; // The entire future two-cell collision is safe.
+            }
+            boolean freeHalf=step.requiredItem()==null||reShapeRail||repairPartner;
             boolean reusableFluid=BuilderBlockResolver.reusableSupply(step.requiredItem());
             BlockState railJigState=raisedRail==null?null:
                     state.state().getBlock().defaultBlockState();
@@ -2067,7 +2111,17 @@ public final class BuilderBuildService {
             BlockState toPlace=bubble
                     ?net.minecraft.world.level.block.Blocks.WATER.defaultBlockState()
                     :BuilderBlockInteractions.placementState(state.state());
-            boolean placed=level.setBlock(pos,toPlace,3);
+            // For real two-cell items, suppress early neighbor updates
+            // until both halves exist, as vanilla's double-high item does.
+            // Existing correct primary halves are not replaced or billed.
+            boolean placed=repairPartner
+                    ||level.setBlock(pos,toPlace,partner==null?3:2);
+            if(placed&&partnerPos!=null&&!partnerComplete){
+                placed=level.setBlock(partnerPos,
+                        BuilderBlockInteractions.placementState(
+                                partnerResolved.state()),3);
+                if(placed)level.updateNeighborsAt(pos,state.state().getBlock());
+            }
             if(railJigPayment!=null){
                 // A temporary rail is paid for and physically retrieved;
                 // never leave it where the next Y's schematic will build.
@@ -2082,6 +2136,21 @@ public final class BuilderBuildService {
             if(!placed){
                 if(payment!=null)BuilderSupplyInventory.refund(table,payment);
                 table.setProblem("World rejected placement at "+pos);
+                return;
+            }
+            if(partnerPos!=null
+                    &&(!BuilderPlacementState.matches(
+                            level.getBlockState(pos),state.state())
+                        ||!BuilderPlacementState.matches(
+                            level.getBlockState(partnerPos),
+                            partnerResolved.state()))){
+                // No second payment: on retry a valid primary half is
+                // retained, while the single grouped task stays pending.
+                table.waitForBuilderSupport(worker.getUUID(),index,
+                        level.getGameTime());
+                table.setProblem("Multiblock interaction not yet stable: "
+                        +pos+" -> "+level.getBlockState(pos)
+                        +" and "+partnerPos+" -> "+level.getBlockState(partnerPos));
                 return;
             }
             // Only after spending the physical block item and placing
