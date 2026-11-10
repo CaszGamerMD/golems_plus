@@ -91,6 +91,11 @@ public final class BuilderMultiblock {
             a.remove("powered");b.remove("powered");
             a.remove("open");b.remove("open");
         }
+        if(blockId(primary).endsWith("_bed")){
+            // Occupied is toggled when someone sleeps; it is not another
+            // bed item and does not split foot from head into two jobs.
+            a.remove("occupied");b.remove("occupied");
+        }
         return a.equals(b);
     }
 
