@@ -6,6 +6,8 @@ on:
       - '.github/workflows/full-villager-matrix-physical.yml'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewSchedule.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderSupplyInventory.java'
+      - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderWaterPassTest.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderConstructionPlanner.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderWaterFinishGameTest.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMultiblock.java'
