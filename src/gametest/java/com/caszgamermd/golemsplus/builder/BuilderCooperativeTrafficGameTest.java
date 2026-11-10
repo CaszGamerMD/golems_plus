@@ -49,7 +49,12 @@ public final class BuilderCooperativeTrafficGameTest {
                 BuilderGolem g=workers[i];
                 if(!g.isAlive()||g.isNoGravity()||g.getY()<starts[i].getY()-.11){
                     h.fail("Crowd navigation lost physics worker="+i
-                            +" at "+g.position());return;
+                            +" at "+g.position()+" start="+starts[i]
+                            +" grounded="+g.onGround()
+                            +" noGravity="+g.isNoGravity()
+                            +" goal="+goals[i]
+                            +" route="+WorkerNavigation.debugStatus(g));
+                    return;
                 }
                 if(g.onGround()&&g.distanceToSqr(goals[i].getX()+.5,
                         goals[i].getY(),goals[i].getZ()+.5)<.25)
