@@ -64,6 +64,11 @@ public final class BuilderBlockInteractions {
         return property==null?state:setValue(state,property,value);
     }
 
+    /** Whether the desired target has a stable player-click control. */
+    public static boolean hasManualControl(BlockState desired){
+        return manualProperty(desired)!=null;
+    }
+
     /** Shape/orientation/attachment stay exact; click-settings start in
      * their normal unactivated state, with real items paid separately. */
     public static BlockState placementState(BlockState desired){
