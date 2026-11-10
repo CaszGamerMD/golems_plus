@@ -25,6 +25,19 @@ public final class BuilderRailSlope {
         };
     }
 
+    /** Vanilla ascending rails need the raised-end connector to sit on
+     * physical support. A saved ascending-west shape next to a same-Y
+     * rail is NOT proof that the west raised endpoint can survive.
+     * Check before buying a replacement: a temporary raised rail is
+     * permitted only where a real matching rail could survive.
+     */
+    public static boolean hasRaisedEndSupport(Level world,BlockPos pos,
+            BlockState desired){
+        BlockPos raised=raisedEnd(pos,desired);
+        return raised==null
+                ||desired.getBlock().defaultBlockState().canSurvive(world,raised);
+    }
+
     /** The source schematic can encode an ascending rail whose elevated
      * neighbour is NOT another rail (for example the Matrix's iron
      * trapdoor). Vanilla rail updates may immediately flatten the paid rail
