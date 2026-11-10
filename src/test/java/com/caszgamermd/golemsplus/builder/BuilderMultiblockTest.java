@@ -89,6 +89,18 @@ final class BuilderMultiblockTest {
         assertTrue(wrong.steps().stream().allMatch(s->s.companion()==null));
         assertTrue(wrong.unsupported().size()>=1);
     }
+    @Test void occupiedBedIsStillOneObjectAndDoesNotGetMined(){
+        assertTrue(BuilderMultiblock.matchingPair(BED_FOOT,
+                "minecraft:red_bed[facing=east,occupied=true,part=head]"));
+        var foot=BuilderBlockResolver.resolve(BED_FOOT,
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        var occupied=BuilderBlockResolver.resolve(
+                "minecraft:red_bed[facing=east,occupied=true,part=foot]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        assertNotNull(foot);assertNotNull(occupied);
+        assertTrue(BuilderPlacementState.matches(occupied.state(),foot.state()));
+    }
+
     @Test void secondaryPartsCannotMatchUnrelatedFacingOrHinges(){
         assertFalse(BuilderMultiblock.matchingPair(DOOR_LOW,
                 "minecraft:oak_door[facing=south,half=upper,hinge=left,open=false,powered=false]"));
