@@ -36,6 +36,18 @@ public final class BuilderRailTrafficGameTest {
             h.fail("Solid cube used a different escape rule from ordinary "
                     +"construction work");return;
         }
+        boolean railBlocks=BuilderPlacementSpace.stepNeedsVacating(
+                level,target,Blocks.POWERED_RAIL.defaultBlockState(),false);
+        boolean stoneBlocks=BuilderPlacementSpace.stepNeedsVacating(
+                level,target,Blocks.SMOOTH_STONE.defaultBlockState(),false);
+        BlockPos railApproach=BuilderPlacementSpace.approachForStep(
+                level,worker,target,railBlocks,false,stance::equals);
+        BlockPos stoneApproach=BuilderPlacementSpace.approachForStep(
+                level,worker,target,stoneBlocks,false,stance::equals);
+        if(!stance.equals(railApproach)||stoneApproach!=null){
+            h.fail("The adjacent ledge must serve the rail and keep solid clearance");
+            return;
+        }
         System.out.println("[BUILDER RAIL STANCE PASS] grounded rail access "
                 +"allowed; solid cube still requires a safe physical exit");
         h.succeed();

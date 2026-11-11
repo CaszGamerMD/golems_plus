@@ -40,12 +40,11 @@ placed=build.index(":BuilderMultiblock.place(",payment)
 assert "BuilderMultiblock.place(" in build
 assert "BuilderPlacementSpace.readyForState(level,worker,table," in build
 assert "partnerPos,partnerResolved.state()" in build
-assert "BuilderPlacementSpace.needsVacating(" in build
+assert "BuilderPlacementSpace.stepNeedsVacating(" in build
 assert "!planned.getCollisionShape(level,target).isEmpty()" in space
 assert "BuilderPlacementSpace.readyForState" not in space[:space.index("public static boolean readyForState(")]
 guard=build.index("&& !BuilderPlacementSpace.ready(level,worker,table,pos)){",start) if "&& !BuilderPlacementSpace.ready(level,worker,table,pos)){" in build else build.index("&&!"+"BuilderPlacementSpace.ready(level,worker,table,pos)){",start)
-assert "boolean finishingExistingFluid=waterlog" in build
-assert "existing.getBlock()==state.state().getBlock()" in build
+assert "waterlog&&level.getBlockState(target).getBlock()==planned.getBlock()" in space
 assert start < guard < payment < placed
 assert "BlockState toPlace=bubble" in build
 assert "Blocks.WATER.defaultBlockState()" in build
@@ -72,7 +71,7 @@ assert "!path.canReach()" in navigation
 assert "boolean" not in space[space.index("private record Yield"):space.index("private static final Map")] or "placingWorker" in space
 assert "workDistance<14" in build
 assert "BuilderPlacementSpace.horizontalClear(pos,worker)" in build
-assert "BuilderPlacementSpace.approachWithRules(" in build
+assert "BuilderPlacementSpace.approachForStep(" in build
 assert "BuilderConstructionPlanner.safeStand(" in build
 table=(root.parent/"world/WorkerStationBlockEntity.java").read_text()
 supplies=(root/"BuilderSupplyInventory.java").read_text()

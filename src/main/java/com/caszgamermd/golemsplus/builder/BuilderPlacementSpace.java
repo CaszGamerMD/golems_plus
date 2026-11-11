@@ -422,22 +422,22 @@ public final class BuilderPlacementSpace {
         // The safeStand predicate still rejects any unsupported pose.
         return approachWithHeight(level,worker,target,false,safe);
     }
-    /** Read-only next-task preview. Do not overwrite the CURRENT work
-     * approach while the Builder is physically following that route.
-     */
-    static BlockPos approachForLookahead(ServerLevel level,
-            BuilderGolem worker,BlockPos target,
+    /** Search using the same placement envelope the work action will use.
+     * A lookahead leaves the active work approach cache alone. */
+    static BlockPos approachForStep(ServerLevel level,BuilderGolem worker,
+            BlockPos target,boolean bodyBlocking,boolean lookahead,
             java.util.function.Predicate<BlockPos> safe){
-        return approachWithHeight(level,worker,target,false,safe,false);
+        return approachWithHeight(level,worker,target,false,safe,!lookahead,bodyBlocking);
     }
     private static BlockPos approachWithHeight(ServerLevel level,
             BuilderGolem worker,BlockPos target,boolean sameHeight,
             java.util.function.Predicate<BlockPos> safe){
-        return approachWithHeight(level,worker,target,sameHeight,safe,true);
+        return approachWithHeight(level,worker,target,sameHeight,safe,true,true);
     }
     private static BlockPos approachWithHeight(ServerLevel level,
             BuilderGolem worker,BlockPos target,boolean sameHeight,
-            java.util.function.Predicate<BlockPos> safe,boolean cacheResult){
+            java.util.function.Predicate<BlockPos> safe,boolean cacheResult,
+            boolean bodyBlocking){
         long now=level.getGameTime();
         Approach cached=workApproaches.get(worker);
         if(cached!=null&&cached.target().equals(target)
@@ -445,6 +445,9 @@ public final class BuilderPlacementSpace {
                         ||cached.destination().getY()==target.getY()+1)
                 &&cached.until()>now
                 &&safe.test(cached.destination())
+                &&(!bodyBlocking||edgeDistance(target,
+                        cached.destination().getX()+.5,
+                        cached.destination().getZ()+.5)>=MIN_EDGE_CLEARANCE)
                 &&cached.destination().distSqr(target)<14
                 &&!(cached.destination().equals(worker.blockPosition())
                     &&worker.distanceToSqr(target.getX()+.5,
@@ -465,7 +468,7 @@ public final class BuilderPlacementSpace {
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos p=target.offset(dx,dy,dz);
                 if(!safe.test(p)
-                        ||edgeDistance(target,p.getX()+.5,p.getZ()+.5)
+                        ||bodyBlocking&&edgeDistance(target,p.getX()+.5,p.getZ()+.5)
                             <MIN_EDGE_CLEARANCE
                         ||p.distSqr(target)>=14
                         ||p.equals(worker.blockPosition())
@@ -483,7 +486,7 @@ public final class BuilderPlacementSpace {
                 // Do not reject the WHOLE work frontier because a teammate
                 // is currently standing at a future stance. Reject real
                 // blocks, including partial collision shapes, absolutely.
-                if(shifted.intersects(volume(target))
+                if(bodyBlocking&&shifted.intersects(volume(target))
                         ||!level.noCollision(worker,shifted)
                             &&level.getBlockCollisions(worker,shifted)
                                     .iterator().hasNext())continue;
@@ -666,6 +669,12 @@ public final class BuilderPlacementSpace {
             BlockState planned){
         return planned==null||!planned.getFluidState().isEmpty()
                 ||!planned.getCollisionShape(level,target).isEmpty();
+    }
+
+    static boolean stepNeedsVacating(ServerLevel level,BlockPos target,
+            BlockState planned,boolean waterlog){
+        return !(waterlog&&level.getBlockState(target).getBlock()==planned.getBlock())
+                &&needsVacating(level,target,planned);
     }
 
     /** Overload for a known intended material and physical collision.

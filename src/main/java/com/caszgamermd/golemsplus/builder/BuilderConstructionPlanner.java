@@ -665,15 +665,12 @@ public final class BuilderConstructionPlanner {
                         world,target,state.state())
                     &&!BuilderRailSlope.canStageFoundation(
                         world,target,state.state(),builtSchematic))continue;
-            BlockPos stance=lookahead
-                    ?BuilderPlacementSpace.approachForLookahead(
-                            world,worker,target,
-                            at->safeStandForStep(world,worker,target,at,
-                                    step.encodedState()))
-                    :BuilderPlacementSpace.approachWithRules(
-                            world,worker,target,
-                            at->safeStandForStep(world,worker,target,at,
-                                    step.encodedState()));
+            boolean bodyBlocking=BuilderPlacementSpace.stepNeedsVacating(
+                    world,target,state.state(),
+                    BuilderWaterPass.isWaterlogPass(step.encodedState()));
+            BlockPos stance=BuilderPlacementSpace.approachForStep(
+                    world,worker,target,bodyBlocking,lookahead,
+                    at->safeStandForStep(world,worker,target,at,step.encodedState()));
             if(stance==null&&(BuilderPlacementSpace.safeFractionalCapPose(
                     world,worker,target)
                     ||BuilderPlacementSpace.canRetreatToFractionalCap(
