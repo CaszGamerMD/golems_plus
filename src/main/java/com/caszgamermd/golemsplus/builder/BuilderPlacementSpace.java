@@ -365,8 +365,7 @@ public final class BuilderPlacementSpace {
         // Include straight aisle exits. The old corner-only scan tried
         // (radius,radius) diagonals and missed open cardinal paths along a
         // wall, leaving builders stalled despite clear floor two blocks away.
-        // Eight directions x three heights x three radii is bounded; only
-        // the best candidates below perform expensive navigation probes.
+        // Eight directions, three heights and four radii are bounded.
         for(int radius=1;radius<=4;radius++){
             int[][] offsets={
                     {radius,0},{-radius,0},{0,radius},{0,-radius},
@@ -381,14 +380,9 @@ public final class BuilderPlacementSpace {
         }
         choices.sort(java.util.Comparator.comparingDouble(p->
                 p.distSqr(origin)+Math.abs(p.getY()-origin.getY())*2));
-        int attempted=0;
-        for(BlockPos p:choices){
-            if(++attempted>16)break; // bounded path work; try more than one aisle side
-            // Favor a physically reachable tile; don't assume an air
-            // candidate is reachable around walls/stairs/racks.
-            if(WorkerNavigation.canReachExact(level,worker,p))return p.immutable();
-        }
-        return null;
+        // Use the same executable route search as routeToExact. A native
+        // path alone can nominate an exit that trained movement rejects.
+        return WorkerNavigation.selectExecutableStand(level,worker,choices);
     }
 
     /** Find an EXACT reachable work position within placement reach.

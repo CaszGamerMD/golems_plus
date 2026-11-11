@@ -12,7 +12,7 @@ assert "List<LivingEntity> others" in space
 assert "public static boolean yieldTick(" in space
 assert "WorkerNavigation.routeToExact(level,worker,hold.destination(),.9)" in space
 assert "WorkerNavigation.routeToExact(level,blocker,destination,.9)" in space
-assert "WorkerNavigation.canReachExact(level,worker,p)" in space
+assert "WorkerNavigation.selectExecutableStand(level,worker,choices)" in space
 navigation=(root.parent/"worker/WorkerNavigation.java").read_text()
 assert "public static boolean routeToExact(" in navigation
 assert "public static boolean canReachExact(" in navigation
@@ -59,7 +59,7 @@ assert "getGameTime()+60" in space
 assert "!level.getBlockState(hold.target()).isAir()" in space
 assert "hold.placingWorker()" in space
 assert "public static BlockPos approach(" in space
-assert "if(++attempted>16)break;" in space
+assert "radius<=4" in space
 assert "p.distSqr(target)>=14" in space
 # Every narrow aisle with usable straight ground must be considered, not
 # just diagonal tiles. Retain the blocked-entity and real-path safeguards.
