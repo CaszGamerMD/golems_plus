@@ -45,6 +45,8 @@ public final class BuilderRailPocketEscapeGameTest {
         if(!(level.getBlockEntity(h.absolutePos(new BlockPos(1,2,2)))
                     instanceof WorkerStationBlockEntity table)
                 ||!table.claimIfUnowned(owner.getUUID())
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),"placed-rail-pocket.gpb",
+                        "Rail pocket return",start,0,0,1,0)
                 ||!table.setBuilderMaterialStorage(owner.getUUID(),
                         h.absolutePos(new BlockPos(1,2,1)))){
             h.fail("Could not link OnSite Storage for rail-pocket return");
