@@ -17,7 +17,7 @@ public final class BuilderHorizontalBridgeExitGameTest {
      */
     @GameTest(maxTicks=350,skyAccess=true)
     public void sameHeightStoneExitFromHorizontalBridgeTop(GameTestHelper helper){
-        horizontalBridgeEqualHeightExit(helper,false,false);
+        horizontalBridgeEqualHeightExit(helper,false,false,false);
     }
 
     /** A BOTTOM=true horizontal bridge can let a real mob sink into the
@@ -25,18 +25,24 @@ public final class BuilderHorizontalBridgeExitGameTest {
      */
     @GameTest(maxTicks=350,skyAccess=true)
     public void sameHeightStoneExitFromInsideHorizontalBridge(GameTestHelper helper){
-        horizontalBridgeEqualHeightExit(helper,true,false);
+        horizontalBridgeEqualHeightExit(helper,true,false,false);
     }
 
     /** A Builder standing on a bridge must be able to walk sideways onto
      * a stone ledge one block lower, without starting another tower climb. */
     @GameTest(maxTicks=300,skyAccess=true)
     public void bridgeDismountsDirectlyToLowerStoneLedge(GameTestHelper helper){
-        horizontalBridgeEqualHeightExit(helper,false,true);
+        horizontalBridgeEqualHeightExit(helper,false,true,false);
+    }
+
+    @GameTest(maxTicks=300,skyAccess=true)
+    public void raisedLedgeDoesNotTakeControlOfBridgeExit(GameTestHelper helper){
+        horizontalBridgeEqualHeightExit(helper,false,false,true);
     }
 
     private static void horizontalBridgeEqualHeightExit(
-            GameTestHelper helper,boolean startInside,boolean lowerLedge){
+            GameTestHelper helper,boolean startInside,boolean lowerLedge,
+            boolean raisedFirst){
         ServerLevel level=helper.getLevel();
         for(int x=0;x<8;x++)for(int z=0;z<8;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
@@ -61,7 +67,8 @@ public final class BuilderHorizontalBridgeExitGameTest {
         level.setBlock(bridge,Blocks.SCAFFOLDING.defaultBlockState()
                 .setValue(net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE,1)
                 .setValue(net.minecraft.world.level.block.ScaffoldingBlock.BOTTOM,true),3);
-        level.setBlock(ledge,Blocks.STONE.defaultBlockState(),3);
+        BlockPos initialLedge=raisedFirst?ledge.above():ledge;
+        level.setBlock(initialLedge,Blocks.STONE.defaultBlockState(),3);
         BuilderGolem builder=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         builder.setPos(bridge.getX()+.5,
                 bridge.getY()+(startInside?.10:1.0),bridge.getZ()+.5);
@@ -77,7 +84,7 @@ public final class BuilderHorizontalBridgeExitGameTest {
             helper.fail("Could not track unsupported bridge");return;
         }
         if(!level.getBlockState(bridge).is(Blocks.SCAFFOLDING)
-                ||!level.getBlockState(ledge).is(Blocks.STONE)){
+                ||!level.getBlockState(initialLedge).is(Blocks.STONE)){
             helper.fail("Physical bridge/ledge fixture missing");return;
         }
         final long started=helper.getTick();
@@ -85,7 +92,16 @@ public final class BuilderHorizontalBridgeExitGameTest {
             // Let Minecraft settle the spawned body on its actual scaffold
             // support before asking it to navigate. The bug being tested
             // is a worker already stranded on a scaffold during a job.
-            if(lowerLedge&&helper.getTick()<10)return;
+            if((lowerLedge||raisedFirst)&&helper.getTick()<10)return;
+            if(raisedFirst&&helper.getTick()==10){
+                if(BuilderScaffolding.stepOffTowardWork(
+                        level,builder,table,initialLedge.above())){
+                    helper.fail("A one-block rise was accepted by the sideways exit controller");
+                    return;
+                }
+                level.setBlock(initialLedge,Blocks.AIR.defaultBlockState(),3);
+                level.setBlock(ledge,Blocks.STONE.defaultBlockState(),3);
+            }
             if(lowerLedge&&helper.getTick()==10)
                 System.out.println("[BRIDGE SETTLED] feet="+builder.position()
                         +" grounded="+builder.onGround());

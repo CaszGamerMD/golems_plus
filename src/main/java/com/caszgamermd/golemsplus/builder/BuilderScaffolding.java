@@ -1,5 +1,6 @@
 package com.caszgamermd.golemsplus.builder;
 
+import com.caszgamermd.golemsplus.worker.WorkerNavigation;
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import java.util.Comparator;
 import java.util.List;
@@ -510,13 +511,7 @@ public final class BuilderScaffolding {
                                 level,floor,Direction.UP)
                         ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                                 .canStandOn(level,worker,landing))continue;
-                double dx=landing.getX()+.5-worker.getX();
-                double dz=landing.getZ()+.5-worker.getZ();
-                boolean clear=true;
-                for(int i=1;i<=10;i++)
-                    if(!level.noCollision(worker,worker.getBoundingBox().move(
-                            dx*i/10.0,0,dz*i/10.0))){clear=false;break;}
-                if(!clear)continue;
+                if(!canCrossToPlatform(level,worker,landing,worker.getY()))continue;
                 double score=landing.distSqr(target)+Math.abs(dy)*3;
                 if(score<best){chosen=landing;best=score;}
             }
@@ -529,15 +524,32 @@ public final class BuilderScaffolding {
      */
     static boolean stepToPlatform(ServerLevel level,BuilderGolem worker,
                                   BlockPos destination){
-        double dx=worker.getX()-(destination.getX()+.5);
-        double dz=worker.getZ()-(destination.getZ()+.5);
-        if(dx*dx+dz*dz>3.2
-                ||Math.abs(worker.getY()-destination.getY())>1.3
-                ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .canStandOn(level,worker,destination))return false;
+        if(!canCrossToPlatform(level,worker,destination,worker.getY()))return false;
         clearMotion(worker);
         exiting.put(worker,new ExitRoute(destination.immutable(),
                 level.getGameTime()+140));
+        return true;
+    }
+
+    /** Check the motion the exit controller can actually execute. A valid
+     * standing tile alone says nothing about the block face in front of it.
+     */
+    private static boolean canCrossToPlatform(ServerLevel level,BuilderGolem worker,
+            BlockPos destination,double departureY){
+        double dx=destination.getX()+.5-worker.getX();
+        double dz=destination.getZ()+.5-worker.getZ();
+        if(dx*dx+dz*dz>3.2||!WorkerNavigation.canStandOn(level,worker,destination))
+            return false;
+        double floor=WorkerNavigation.surveyFloorHeight(level,destination);
+        double drop=departureY-floor;
+        if(!Double.isFinite(drop)||drop<-.2||drop>1.3)return false;
+        var body=worker.getBoundingBox().move(0,
+                Math.max(departureY,floor)-worker.getY(),0);
+        for(int i=1;i<=10;i++){
+            double progress=i/10.0;
+            if(!level.noCollision(worker,body.move(dx*progress,0,dz*progress)))
+                return false;
+        }
         return true;
     }
 
@@ -564,7 +576,7 @@ public final class BuilderScaffolding {
         BlockPos chosen=null;
         double best=Double.POSITIVE_INFINITY;
         for(Direction dir:Direction.Plane.HORIZONTAL){
-            for(int dy:new int[]{0,1,-1}){
+            for(int dy:new int[]{0,-1}){
                 BlockPos landing=topFeet.relative(dir).offset(0,dy,0);
                 BlockPos floor=landing.below();
                 // Only exit onto existing SOLID ground. Another scaffold
@@ -572,8 +584,8 @@ public final class BuilderScaffolding {
                 if(level.getBlockState(floor).is(Blocks.SCAFFOLDING)
                         ||!level.getBlockState(floor).isFaceSturdy(
                                 level,floor,Direction.UP)
-                        ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                .canStandOn(level,worker,landing))continue;
+                        ||!canCrossToPlatform(level,worker,landing,
+                                Math.max(worker.getY(),topFeet.getY())))continue;
                 double score=landing.distSqr(target)+Math.abs(dy)*3;
                 if(score<best){best=score;chosen=landing;}
             }
