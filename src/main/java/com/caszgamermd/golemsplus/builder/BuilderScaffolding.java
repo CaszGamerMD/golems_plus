@@ -255,11 +255,22 @@ public final class BuilderScaffolding {
                 BlockPos atHeight=new BlockPos(session.column().getX(),
                         worker.blockPosition().getY(),session.column().getZ());
                 BlockPos safe=exitGround(level,worker,atHeight);
-                if(safe!=null){
-                    clearMotion(worker);
-                    exiting.put(worker,new ExitRoute(safe,
-                            level.getGameTime()+140));
+                if(safe!=null&&stepToPlatform(level,worker,safe)){
                     return true;
+                }
+                // An adjacent roof tile can be near the tower without
+                // any way to enter its shaft. If the worker is still on
+                // verified walking ground, reject that entry and replan.
+                BlockPos feet=worker.blockPosition();
+                if(session.descending()&&worker.onGround()
+                        &&(feet.getX()!=atHeight.getX()||feet.getZ()!=atHeight.getZ())
+                        &&walkableExit(level,worker,feet)
+                        &&Math.abs(worker.getY()
+                                -WorkerNavigation.surveyFloorHeight(level,feet))<.12){
+                    avoided.put(worker,new AvoidColumn(session.column(),
+                            level.getGameTime()+120));
+                    clearMotion(worker);
+                    return false;
                 }
                 if(!session.descending()
                         &&worker.getY()>session.column().getY()+1.3){

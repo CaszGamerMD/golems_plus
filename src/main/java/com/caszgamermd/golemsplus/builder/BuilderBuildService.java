@@ -11,6 +11,8 @@ import java.util.UUID;
 import java.util.WeakHashMap;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -2265,6 +2267,8 @@ public final class BuilderBuildService {
             var current=plan.steps().get(index);
             BlockPos target=new BlockPos(current.x(),current.y(),current.z());
             BlockPos local=target.subtract(table.builderOrigin());
+            Identifier itemId=current.requiredItem()==null?null:
+                    Identifier.tryParse(current.requiredItem());
             return stage+" step "+index+" at "+target.toShortString()
                     +" | schematicXYZ="+local.toShortString()
                     +" | placeBlock="+current.encodedState()
@@ -2278,7 +2282,10 @@ public final class BuilderBuildService {
                     +" "+com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .debugStatus(worker)
                     +" | staged="+table.builderOrderPrepared(worker.getUUID())
-                    +" | stock="+(current.requiredItem()==null?"none":current.requiredItem())
+                    +" | stock="+(itemId==null?"none":itemId+" x"+
+                        worker.carriedCount(BuiltInRegistries.ITEM.getValue(itemId)))
+                    +" | footing="+level.getBlockState(worker.blockPosition().below())
+                    +" | feetBlock="+level.getBlockState(worker.blockPosition())
                     +" | tower="+table.scaffoldPositions(worker.getUUID()).size()
                     +" | gravity="+(!worker.isNoGravity())
                     +" | sneaking="+worker.isShiftKeyDown()

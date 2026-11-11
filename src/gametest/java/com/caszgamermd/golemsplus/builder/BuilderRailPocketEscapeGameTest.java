@@ -1,6 +1,7 @@
 package com.caszgamermd.golemsplus.builder;
 
 import com.caszgamermd.golemsplus.world.WorksiteContent;
+import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -38,6 +39,17 @@ public final class BuilderRailPocketEscapeGameTest {
         glassPocket(h);
         BlockPos start=h.absolutePos(new BlockPos(3,2,3));
         ServerLevel level=h.getLevel();
+        h.setBlock(1,2,1,Blocks.CHEST);
+        h.setBlock(1,2,2,WorksiteContent.BUILDER_TABLE);
+        var owner=h.makeMockServerPlayerInLevel();
+        if(!(level.getBlockEntity(h.absolutePos(new BlockPos(1,2,2)))
+                    instanceof WorkerStationBlockEntity table)
+                ||!table.claimIfUnowned(owner.getUUID())
+                ||!table.setBuilderMaterialStorage(owner.getUUID(),
+                        h.absolutePos(new BlockPos(1,2,1)))){
+            h.fail("Could not link OnSite Storage for rail-pocket return");
+            return;
+        }
         BuilderGolem g=worker(h,start);
         final boolean[] started={false};
         h.onEachTick(()->{
@@ -46,8 +58,7 @@ public final class BuilderRailPocketEscapeGameTest {
                 h.fail("Rail-pocket Builder died");return;
             }
             if(h.getTick()%5==0&&!started[0])
-                started[0]=BuilderGrappleAccess.escapeRailPocket(
-                        level,g,h.absolutePos(new BlockPos(1,2,1)));
+                started[0]=BuilderGrappleAccess.rappelForTravel(level,g,table);
             if(started[0]&&!BuilderGrappleAccess.active(g)
                     &&g.onGround()&&g.getY()>=start.getY()+2){
                 if(!level.getBlockState(start).is(Blocks.RAIL)){
