@@ -49,7 +49,7 @@ public final class BuilderGrappleAccess {
         GrappleLineVisuals.Line visibleLine;
         int stalledTicks;
         int recoveryTicks;
-        double lastX=Double.NaN,lastY=Double.NaN,lastZ=Double.NaN;
+        final BuilderRouteProgress progress=new BuilderRouteProgress(.04);
         Phase lastPhase;
         long lastWalkProgress;
         double walkX=Double.NaN,walkZ=Double.NaN;
@@ -969,18 +969,22 @@ public final class BuilderGrappleAccess {
             mob.setDeltaMovement(0,0,0);
             return true;
         }
-        // Compare ACTUAL world coordinates after the previous physics
-        // tick. A velocity command is NOT progress when collision stops it.
-        if(r.lastPhase!=r.phase){
-            r.stalledTicks=0;
-            r.lastPhase=r.phase;
-        }else if(Double.isFinite(r.lastX)){
-            double dx=mob.getX()-r.lastX,dy=mob.getY()-r.lastY,
-                    dz=mob.getZ()-r.lastZ;
-            if(dx*dx+dy*dy+dz*dz>.0016)r.stalledTicks=0;
-            else r.stalledTicks++;
+        // Only a new best distance to this phase's endpoint is progress.
+        // Oscillation and sideways pushes must not keep a failed rope alive.
+        double targetX=r.column.getX()+.5,targetZ=r.column.getZ()+.5;
+        double targetY=r.down?r.landing.getY():r.topY()+.22;
+        if(r.phase==Phase.STEP_ON_TOP){
+            targetX=r.upperX;targetZ=r.upperZ;targetY=r.topY()+.12;
+        }else if(r.phase==Phase.STEP_OFF){
+            targetY=r.topY();
         }
-        r.lastX=mob.getX();r.lastY=mob.getY();r.lastZ=mob.getZ();
+        double distance=Math.sqrt(Math.pow(mob.getX()-targetX,2)
+                +Math.pow(mob.getY()-targetY,2)+Math.pow(mob.getZ()-targetZ,2));
+        if(r.lastPhase!=r.phase){
+            r.progress.reset(distance);
+            r.lastPhase=r.phase;
+        }else r.progress.sample(distance);
+        r.stalledTicks=r.progress.stalledTicks();
         if((r.phase==Phase.CLIMB||r.phase==Phase.STEP_ON_TOP
                 ||r.phase==Phase.STEP_OFF||r.phase==Phase.RAPPEL)
                 &&r.stalledTicks>=STUCK_TICKS)
