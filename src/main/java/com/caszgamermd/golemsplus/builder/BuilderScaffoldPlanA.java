@@ -149,10 +149,9 @@ public final class BuilderScaffoldPlanA {
         Job j=jobs.get(worker);
         if(j==null||j.phase!=Phase.READY
                 ||worker.isNoGravity()||!worker.onGround()
-                ||Math.abs(worker.getY()-target.getY())>.18
-                // The scaffold occupies targetY-1. Compare HORIZONTAL
-                // reach to the actual work cube, not 3-D Manhattan
-                // distance, which includes the intentional Y offset.
+                ||Math.abs(worker.getY()-(j.top+1))>.18
+                // The scaffold supports the actual stance. Compare
+                // horizontal clearance to the block being placed.
                 ||Math.max(
                         Math.abs(j.bridge(j.bridgeSpan).getX()-target.getX()),
                         Math.abs(j.bridge(j.bridgeSpan).getZ()-target.getZ()))<2
@@ -206,7 +205,8 @@ public final class BuilderScaffoldPlanA {
         return j==null?"NONE":"PLAN_A "+j.phase+" tower="+j.base.toShortString()
                 +" bridge="+j.first().toShortString()+".."+j.bridge(j.bridgeSpan).toShortString()
                 +" step="+j.bridgeStep+"/"+j.bridgeSpan
-                +" targetY="+j.target.getY()+" exit="+j.exit.toShortString()
+                +" targetY="+j.target.getY()+" workY="+(j.top+1)
+                +" exit="+j.exit.toShortString()
                 +" ticks="+j.bridgeTicks+" reclimbs="+j.reclimbs
                 +" repairs="+j.repairs+" fault="+j.lastFailure
                 +" highest="+String.format(java.util.Locale.ROOT,"%.2f",j.highest);
@@ -266,12 +266,12 @@ public final class BuilderScaffoldPlanA {
      * or unsupported seven-distance scaffolding are permitted.
      */
     private static Set<BlockPos> workStanceGoals(ServerLevel world,
-            BuilderGolem worker,BlockPos target){
+            BuilderGolem worker,BlockPos target,int workY){
         Set<BlockPos> result=new HashSet<>();
         for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
             if(Math.max(Math.abs(dx),Math.abs(dz))<2
                     ||dx*dx+dz*dz>13)continue;
-            BlockPos stance=target.offset(dx,0,dz);
+            BlockPos stance=target.offset(dx,0,dz).atY(workY);
             if(BuilderConstructionPlanner.lineOfSight(
                     world,worker,stance,target))
                 result.add(stance.below());
@@ -280,9 +280,9 @@ public final class BuilderScaffoldPlanA {
     }
     private static List<BlockPos> bentBridge(ServerLevel world,
             BuilderGolem worker,WorkerStationBlockEntity table,
-            BlockPos target,BlockPos base,Set<BlockPos> goals,
+            BlockPos target,BlockPos base,int top,Set<BlockPos> goals,
             Set<BlockPos> reserved){
-        BlockPos start=base.atY(target.getY()-1);
+        BlockPos start=base.atY(top);
         ArrayDeque<BlockPos> queue=new ArrayDeque<>();
         Map<BlockPos,BlockPos> previous=new HashMap<>();
         Map<BlockPos,Integer> length=new HashMap<>();
@@ -339,6 +339,17 @@ public final class BuilderScaffoldPlanA {
             WorkerStationBlockEntity table,BlockPos target,
             List<BuilderConstructionPlan.Step> steps,boolean workPose){
         Set<BlockPos> reserved=future(level,steps);
+        Job job=chooseAtHeight(level,worker,table,target,workPose,
+                target.getY(),reserved);
+        // A completed wall or trench can seal every same-Y route.
+        // From one block higher the same target can be worked from
+        // above using the normal reach, clearance and return checks.
+        return job!=null||!workPose?job:chooseAtHeight(
+                level,worker,table,target,true,target.getY()+1,reserved);
+    }
+    private static Job chooseAtHeight(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos target,boolean workPose,
+            int workY,Set<BlockPos> reserved){
         Map<BlockPos,Long> rejected=failedEntries.get(worker);
         if(rejected!=null)
             rejected.entrySet().removeIf(entry->
@@ -346,7 +357,7 @@ public final class BuilderScaffoldPlanA {
         boolean isolated=needsTemporaryWorkPlatform(level,target);
         List<Job> options=new ArrayList<>();
         Set<BlockPos> workGoals=workPose?
-                workStanceGoals(level,worker,target):Set.of();
+                workStanceGoals(level,worker,target,workY):Set.of();
         List<BlockPos> towerSites=new ArrayList<>();
         for(Direction outward:Direction.Plane.HORIZONTAL)
             for(int distance=workPose?3:2;
@@ -381,25 +392,25 @@ public final class BuilderScaffoldPlanA {
             int span=workPose||isolated?distance-2:distance-1;
             boolean straightSight=!workPose||straight
                     &&BuilderConstructionPlanner.lineOfSight(level,worker,
-                            target.relative(outward,2),target);
+                            target.relative(outward,2).atY(workY),target);
             // Search real standing elevations ABOVE the worker as well
             // as below. Existing pillars, stairs, slabs and complete roof
             // blocks can put a Builder onto a reachable elevated ledge.
             // The exact ground-path preflight below must prove the route.
             for(int dy=-4;dy<=5;dy++){
                 BlockPos base=towerXZ.atY(worker.blockPosition().getY()-dy);
-                int top=target.getY()-1;
+                int top=workY-1;
                 if(rejected!=null&&level.getGameTime()<
                         rejected.getOrDefault(base,Long.MIN_VALUE))continue;
                 if(!shaftClear(level,base,top,reserved,table,worker))continue;
                 List<BlockPos> bridge=new ArrayList<>();
                 if(straight&&straightSight
-                        &&bridgeClear(level,base,inward,target.getY(),
+                        &&bridgeClear(level,base,inward,workY,
                         span,reserved,table,worker)){
                     for(int n=1;n<=span;n++)bridge.add(
                             base.relative(inward,n).atY(top));
                 }else if(workPose){
-                    bridge=bentBridge(level,worker,table,target,base,
+                    bridge=bentBridge(level,worker,table,target,base,top,
                             workGoals,reserved);
                     if(bridge==null)continue;
                 }else continue;
@@ -545,7 +556,7 @@ public final class BuilderScaffoldPlanA {
         int localShafts=0,localBridges=0,localExits=0;
         BlockPos nearestLocal=null;
         List<String> localExamples=new ArrayList<>();
-        Set<BlockPos> workGoals=workStanceGoals(level,worker,target);
+        Set<BlockPos> workGoals=workStanceGoals(level,worker,target,target.getY());
         BlockPos feet=worker.blockPosition();
         for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
             BlockPos xz=feet.offset(dx,0,dz);
@@ -554,7 +565,7 @@ public final class BuilderScaffoldPlanA {
                 if(!shaftClear(level,base,target.getY()-1,
                         reserved,table,worker))continue;
                 localShafts++;
-                if(bentBridge(level,worker,table,target,base,
+                if(bentBridge(level,worker,table,target,base,target.getY()-1,
                         workGoals,reserved)==null)continue;
                 localBridges++;
                 if(BuilderScaffolding.safeGroundExit(level,worker,
@@ -1225,7 +1236,7 @@ public final class BuilderScaffoldPlanA {
             case WALK_FIRST->j.first().above();
             case RETURN_FIRST->j.bridge(j.returnStep).above();
             case WALK_SECOND->j.second().above();
-            case RETURN_TOWER->j.base.atY(j.target.getY());
+            case RETURN_TOWER->j.base.atY(j.top+1);
             default->null;
         };
         if(destination==null)return false;
@@ -1498,7 +1509,7 @@ public final class BuilderScaffoldPlanA {
             case CLIMB -> {
                 if(releaseOrphanedClimb(level,worker,j))
                     return Result.NO_SAFE_ROUTE;
-                if(worker.getY()<j.target.getY()-.15){
+                if(worker.getY()<j.top+1.0-.15){
                     // Extend long shafts in real sixteen-block inventory
                     // stages, after physically finishing the prior climb.
                     if(!BuilderScaffolding.climbingNow(level,worker)
@@ -1509,7 +1520,6 @@ public final class BuilderScaffoldPlanA {
                     }
                     return Result.MOVING;
                 }
-                if(j.top>j.target.getY()-1)return Result.NO_SAFE_ROUTE;
                 if(!onOwnedScaffoldTop(level,worker,table,
                         j.base.atY(j.top)))return Result.MOVING;
                 j.phase=Phase.EXTEND_FIRST;

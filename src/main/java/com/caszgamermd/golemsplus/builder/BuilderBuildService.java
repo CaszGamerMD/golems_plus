@@ -1539,6 +1539,11 @@ public final class BuilderBuildService {
                         +support+" found="+level.getBlockState(support));
                 return;
             }
+            var railItem=state.state().getBlock().asItem();
+            boolean railJig=needsRailPlacement&&level.hasChunkAt(raisedRail)
+                    &&level.getBlockState(raisedRail).isAir()
+                    &&(temporaryRailFoundation
+                        ||BuilderRailSlope.hasRaisedEndSupport(level,pos,state.state()));
             if(!existing.isAir()&&!waterlog&&!reShapeRail
                     &&!interactionCorrection&&!repairPartner
                     &&!(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
@@ -1582,6 +1587,30 @@ public final class BuilderBuildService {
                         table.setProblem("Builder needs "+step.requiredItem()
                                 +" in OnSite Storage or a crew pouch");
                     return;
+                }
+            }
+            // Stage the complete rail kit before committing to a climb.
+            // Discovering a missing spare at the work pose sends the
+            // worker straight back down the route it just built.
+            if(railJig||rebuildMissingWetRail){
+                int needed=railJig&&!reShapeRail?2:1;
+                var extra=BuilderSupplyInventory.loadRailJig(
+                        level,worker,table,railItem,needed);
+                if(extra!=BuilderSupplyInventory.LoadStatus.READY){
+                    activity.phase=Action.STAGE_MATERIALS;
+                    if(extra==BuilderSupplyInventory.LoadStatus.MISSING)
+                        table.setProblem("Ascending rail needs a spare rail in OnSite Storage");
+                    return;
+                }
+                if(temporaryRailFoundation){
+                    var footing=BuilderSupplyInventory.loadRailJig(
+                            level,worker,table,net.minecraft.world.item.Items.COBBLESTONE,1);
+                    if(footing!=BuilderSupplyInventory.LoadStatus.READY){
+                        activity.phase=Action.STAGE_MATERIALS;
+                        if(footing==BuilderSupplyInventory.LoadStatus.MISSING)
+                            table.setProblem("Ascending rail jig needs one cobblestone in OnSite Storage");
+                        return;
+                    }
                 }
             }
             // PLAN B: physical Grapple Hook up to 20 blocks, never a
@@ -2029,11 +2058,6 @@ public final class BuilderBuildService {
             }
             boolean freeHalf=step.requiredItem()==null||reShapeRail||repairPartner;
             boolean reusableFluid=BuilderBlockResolver.reusableSupply(step.requiredItem());
-            boolean railJig=needsRailPlacement&&level.hasChunkAt(raisedRail)
-                    &&level.getBlockState(raisedRail).isAir()
-                    &&(temporaryRailFoundation
-                        ||BuilderRailSlope.hasRaisedEndSupport(level,pos,state.state()));
-            var railItem=state.state().getBlock().asItem();
             if(railJig){
                 if(!level.mayInteract(owner,raisedRail)
                         ||temporaryRailFoundation&&!level.mayInteract(owner,raisedRail.below())){
@@ -2041,32 +2065,10 @@ public final class BuilderBuildService {
                     table.setProblem("Temporary rail jig space is protected at "+raisedRail);
                     return;
                 }
-                int needed=reShapeRail?1:2;
-                var extra=BuilderSupplyInventory.loadRailJig(level,worker,table,railItem,needed);
-                if(extra!=BuilderSupplyInventory.LoadStatus.READY){
-                    if(extra==BuilderSupplyInventory.LoadStatus.MISSING)
-                        table.setProblem("Ascending rail needs one spare rail in OnSite Storage");
-                    return;
-                }
                 if(temporaryRailFoundation){
-                    var footing=BuilderSupplyInventory.loadRailJig(
-                            level,worker,table,net.minecraft.world.item.Items.COBBLESTONE,1);
-                    if(footing!=BuilderSupplyInventory.LoadStatus.READY){
-                        if(footing==BuilderSupplyInventory.LoadStatus.MISSING)
-                            table.setProblem("Ascending rail jig needs one cobblestone in OnSite Storage");
-                        return;
-                    }
                     if(!BuilderPlacementSpace.readyForState(level,worker,table,
                             raisedRail.below(),net.minecraft.world.level.block.Blocks.COBBLESTONE
                                     .defaultBlockState()))return;
-                }
-            }
-            if(rebuildMissingWetRail&&!railJig){
-                var extra=BuilderSupplyInventory.loadRailJig(level,worker,table,railItem,1);
-                if(extra!=BuilderSupplyInventory.LoadStatus.READY){
-                    if(extra==BuilderSupplyInventory.LoadStatus.MISSING)
-                        table.setProblem("Waterlogged rail repair needs a spare rail in OnSite Storage");
-                    return;
                 }
             }
             BuilderSupplyInventory.Receipt payment=freeHalf||reusableFluid?null:
