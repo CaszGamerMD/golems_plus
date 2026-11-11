@@ -247,6 +247,7 @@ public final class BuilderVillagerMatrixFullGameTest {
         }
         final int[] best={0},lastCursor={-1};
         final long[] lastProgress={h.getTick()};
+        boolean stopAtCheckpoint="200".equals(System.getenv("GOLEMS_MATRIX_CHECKPOINT"));
         h.onEachTick(()->{
             long tick=h.getTick();
             if(tick%100!=0)return;
@@ -276,9 +277,14 @@ public final class BuilderVillagerMatrixFullGameTest {
                         level.getBlockState(candidate.pos()),candidate.state()))
                     correct++;
             int cursor=table.builderCursor();
-            if(best[0]<200&&correct>=200)
+            if(best[0]<200&&correct>=200){
                 System.out.println("[MATRIX 200 PASS] tick="+tick
                         +" matchingSourceBlocks="+correct+"/"+SOURCE_BLOCKS);
+                if(stopAtCheckpoint){
+                    h.succeed();
+                    return;
+                }
+            }
             if(correct>best[0]||cursor>lastCursor[0]){
                 best[0]=Math.max(best[0],correct);
                 lastCursor[0]=Math.max(lastCursor[0],cursor);

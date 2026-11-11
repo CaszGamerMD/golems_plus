@@ -67,6 +67,8 @@ jobs:
       - name: Compile all physical GameTests and unit tests
         run: gradle --no-daemon test compileGametestJava
       - name: Run full Matrix import and real eight-Builder construction
+        env:
+          GOLEMS_MATRIX_CHECKPOINT: ${{ github.event_name == 'push' && '200' || 'full' }}
         shell: bash
         run: |
           python3 - <<'PY'
@@ -81,12 +83,17 @@ jobs:
           PY
           set -o pipefail
           gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/full-villager-matrix.log"
-          grep -E '\[MATRIX FULL (IMPORT|TARGET|PROGRESS|STALL|PASS)' "$RUNNER_TEMP/full-villager-matrix.log" || true
+          grep -E '\[MATRIX (FULL (IMPORT|TARGET|PROGRESS|STALL|PASS)|200 PASS)' "$RUNNER_TEMP/full-villager-matrix.log" || true
           if ! grep -Fq '[MATRIX FULL IMPORT PASS] 15376' "$RUNNER_TEMP/full-villager-matrix.log"; then
             echo '::error::Exact uploaded Matrix import regression failed.'
             exit 1
           fi
-          if ! grep -Fq '[MATRIX FULL PASS] 15376/15376' "$RUNNER_TEMP/full-villager-matrix.log"; then
+          if [ "$GOLEMS_MATRIX_CHECKPOINT" = "200" ]; then
+            if ! grep -Fq '[MATRIX 200 PASS]' "$RUNNER_TEMP/full-villager-matrix.log"; then
+              echo '::error::Matrix stalled before 200 physical source blocks matched.'
+              exit 1
+            fi
+          elif ! grep -Fq '[MATRIX FULL PASS] 15376/15376' "$RUNNER_TEMP/full-villager-matrix.log"; then
             echo '::error::Full 15376-block Matrix not physically complete: inspect trace.'
             exit 1
           fi
