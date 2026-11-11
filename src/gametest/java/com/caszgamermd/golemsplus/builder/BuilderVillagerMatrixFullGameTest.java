@@ -297,7 +297,9 @@ public final class BuilderVillagerMatrixFullGameTest {
         var movement=crew.stream()
                 .map(worker->new MatrixMovementWindow(MOTION_SAMPLE_TICKS,STALL_TICKS))
                 .toList();
-        h.onEachTick(()->{
+        // onEachTick eagerly allocates one callback for every maxTicks value.
+        // A sequence keeps one repeating event for this open-ended assessment.
+        h.startSequence().thenExecuteFor(1_000_000_000,()->{
             long tick=h.getTick();
             boolean jobChanged=lastWork[0]!=table.builderWorkDone()
                     ||lastClearing[0]!=table.builderClearCursor();
