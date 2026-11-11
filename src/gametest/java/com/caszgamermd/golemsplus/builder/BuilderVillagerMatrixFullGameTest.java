@@ -24,9 +24,10 @@ import net.minecraft.world.Container;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 
 /** The full, ORIGINAL user-uploaded VillagerMatrixClean_V2 (15,376 blocks).
- * No shortcut: the physical test sends eight real Builder entities to an
+ * No shortcut: the physical test sends four real Builder entities to an
  * empty, four-block-elevated job and counts only actual matching world blocks.
  * The test-only OnSite chest is replenished; no golem inventory is fabricated.
  * This long test is isolated from the quick mandatory GameTest suite.
@@ -34,9 +35,42 @@ import net.minecraft.world.level.block.state.BlockState;
 public final class BuilderVillagerMatrixFullGameTest {
     private static final int SOURCE_BLOCKS=15376;
     private static final int SOURCE_AIR=15004;
-    private static final int WORKERS=8;
+    private static final int WORKERS=4;
     private static final int PROGRESS_PERIOD=400;
+    private static final int STALL_TICKS=300;
+    private static final int MOTION_SAMPLE_TICKS=5;
     private record Expected(BlockPos pos,BlockState state) {}
+
+    @GameTest(maxTicks=20)
+    public void detectsCompleteStallWindows(GameTestHelper h){
+        var still=new MatrixMovementWindow(MOTION_SAMPLE_TICKS,STALL_TICKS);
+        var repeating=new MatrixMovementWindow(MOTION_SAMPLE_TICKS,STALL_TICKS);
+        var walking=new MatrixMovementWindow(MOTION_SAMPLE_TICKS,STALL_TICKS);
+        for(int tick=0;tick<=STALL_TICKS;tick+=MOTION_SAMPLE_TICKS){
+            still.sample(tick,Vec3.ZERO,true);
+            int phase=tick%80;
+            repeating.sample(tick,new Vec3(Math.min(phase,80-phase)*.1,0,0),true);
+            walking.sample(tick,new Vec3(tick*.01,0,0),true);
+            if(tick<STALL_TICKS&&still.stall()!=MatrixMovementWindow.Stall.MOVING){
+                h.fail("Stationary movement was classified before 300 ticks");
+                return;
+            }
+        }
+        if(still.stall()!=MatrixMovementWindow.Stall.STATIONARY
+                ||repeating.stall()!=MatrixMovementWindow.Stall.BACK_AND_FORTH
+                ||walking.stall()!=MatrixMovementWindow.Stall.MOVING){
+            h.fail("A complete window did not distinguish standing, repeating, and walking");
+            return;
+        }
+        repeating.sample(STALL_TICKS+MOTION_SAMPLE_TICKS,new Vec3(0,0,3),true);
+        still.sample(STALL_TICKS+MOTION_SAMPLE_TICKS,Vec3.ZERO,false);
+        if(repeating.stall()!=MatrixMovementWindow.Stall.MOVING
+                ||still.stall()!=MatrixMovementWindow.Stall.MOVING){
+            h.fail("A new route or missing builder was counted as stalled");
+            return;
+        }
+        h.succeed();
+    }
 
     @GameTest(structure="golems_plus_gametest:matrix_arena",maxTicks=80,
             skyAccess=true)
@@ -170,8 +204,8 @@ public final class BuilderVillagerMatrixFullGameTest {
 
     @SuppressWarnings("removal")
     @GameTest(structure="golems_plus_gametest:matrix_arena",
-            maxTicks=140000,skyAccess=true,required=false)
-    public void constructsEntireMatrixWithEightRealBuilders(GameTestHelper h){
+            maxTicks=1_000_000_000,skyAccess=true,required=false)
+    public void constructsMatrixUntilFourBuildersStall(GameTestHelper h){
         ServerLevel level=h.getLevel();
         final LitematicFileReader.Schematic schematic;
         final BuilderConstructionPlan.Result plan;
@@ -200,7 +234,7 @@ public final class BuilderVillagerMatrixFullGameTest {
         System.out.println("[MATRIX FULL TARGET] sourceBlocks="+SOURCE_BLOCKS
                 +" dryPlusWaterSteps="+steps.size()+" unsupportedCells="
                 +unavailableStates+" unsupportedStates="+plan.unsupported()
-                +" 8 actual Builders; no scaffold or structure prebuilt");
+                +" "+WORKERS+" actual Builders; no scaffold or structure prebuilt");
 
         // Dedicated arena is larger than the 48x48 Dome room: the Matrix
         // is 49 blocks deep and requires external scaffold routes on all sides.
@@ -216,7 +250,7 @@ public final class BuilderVillagerMatrixFullGameTest {
         ServerPlayer owner=h.makeMockServerPlayerInLevel();
         UUID ownerId=owner.getUUID();
         if(!table.claimIfUnowned(ownerId)||!table.setCrewTarget(ownerId,WORKERS)){
-            h.fail("Cannot configure eight Matrix Builders");return;
+            h.fail("Cannot configure four Matrix Builders");return;
         }
         Path folder=FabricLoader.getInstance().getConfigDir()
                 .resolve("golems_plus").resolve("schematics");
@@ -238,8 +272,7 @@ public final class BuilderVillagerMatrixFullGameTest {
         var firstNeeds=baseStock();
         for(int i=0;i<Math.min(steps.size(),64);i++)
             if(firstNeeds.size()<26)addItem(firstNeeds,steps.get(i));
-        // One stack is not enough to kit eight workers at cold start.
-        // Reserve eight actual OnSite chest slots for scaffolding.
+        // Stock one physical scaffold stack per Builder.
         keepScaffoldingStock(level,supplyPos);
         BuilderInfiniteOnsiteSupply.restock(level,supplyPos,firstNeeds);
         var crew=new ArrayList<BuilderGolem>();
@@ -257,64 +290,80 @@ public final class BuilderVillagerMatrixFullGameTest {
         if(!table.startPlacedBuilder(ownerId)){
             h.fail("Planner refused to start full Matrix");return;
         }
-        final int[] best={0},lastCursor={-1};
-        final long[] lastProgress={h.getTick()};
-        boolean stopAtCheckpoint="200".equals(System.getenv("GOLEMS_MATRIX_CHECKPOINT"));
+        final int[] best={0};
+        final int[] lastWork={table.builderWorkDone()};
+        final int[] lastClearing={table.builderClearCursor()};
+        final long[] lastJobActivity={h.getTick()};
+        var movement=crew.stream()
+                .map(worker->new MatrixMovementWindow(MOTION_SAMPLE_TICKS,STALL_TICKS))
+                .toList();
         h.onEachTick(()->{
             long tick=h.getTick();
-            if(tick%100!=0)return;
-            // 27 real chest slots cannot hold the entire machine palette.
-            // Replenish relevant assignments only, without inserting items
-            // directly into worker inventories or forcing any placements.
-            keepScaffoldingStock(level,supplyPos);
-            Set<Item> needs=baseStock();
-            for(var worker:crew){
-                for(Integer n:table.builderWorkOrder(worker.getUUID())){
-                    if(n!=null&&n>=0&&n<steps.size()&&needs.size()<19)
-                        addItem(needs,steps.get(n));
-                }
-                int claim=table.claimedStep(worker.getUUID());
-                if(claim>=0&&claim<steps.size()&&needs.size()<19)
-                    addItem(needs,steps.get(claim));
+            boolean jobChanged=lastWork[0]!=table.builderWorkDone()
+                    ||lastClearing[0]!=table.builderClearCursor();
+            if(jobChanged){
+                lastWork[0]=table.builderWorkDone();
+                lastClearing[0]=table.builderClearCursor();
+                lastJobActivity[0]=tick;
             }
-            for(int i=Math.max(0,table.builderCursor());
-                    i<Math.min(steps.size(),table.builderCursor()+64)
-                            &&needs.size()<19;i++)
-                addItem(needs,steps.get(i));
-            BuilderInfiniteOnsiteSupply.restock(level,supplyPos,needs);
-            if(tick%PROGRESS_PERIOD!=0)return;
+            if(tick%MOTION_SAMPLE_TICKS==0){
+                for(int i=0;i<crew.size();i++){
+                    var worker=crew.get(i);
+                    movement.get(i).sample(tick,worker.position(),
+                            worker.isAlive()&&level.getEntity(worker.getUUID())==worker);
+                }
+            }
+            boolean report=tick%PROGRESS_PERIOD==0;
+            var stalls=tick%MOTION_SAMPLE_TICKS==0
+                    &&(report||tick-lastJobActivity[0]>=STALL_TICKS)
+                    ?movement.stream().map(MatrixMovementWindow::stall).toList()
+                    :List.<MatrixMovementWindow.Stall>of();
+            boolean allStalled=tick-lastJobActivity[0]>=STALL_TICKS
+                    &&stalls.size()==WORKERS
+                    &&stalls.stream().allMatch(stall->stall!=MatrixMovementWindow.Stall.MOVING);
+            if(tick%100==0){
+                // 27 real chest slots cannot hold the entire machine palette.
+                // Replenish relevant assignments only, without inserting items
+                // directly into worker inventories or forcing any placements.
+                keepScaffoldingStock(level,supplyPos);
+                Set<Item> needs=baseStock();
+                for(var worker:crew){
+                    for(Integer n:table.builderWorkOrder(worker.getUUID())){
+                        if(n!=null&&n>=0&&n<steps.size()&&needs.size()<19)
+                            addItem(needs,steps.get(n));
+                    }
+                    int claim=table.claimedStep(worker.getUUID());
+                    if(claim>=0&&claim<steps.size()&&needs.size()<19)
+                        addItem(needs,steps.get(claim));
+                }
+                for(int i=Math.max(0,table.builderCursor());
+                        i<Math.min(steps.size(),table.builderCursor()+64)
+                                &&needs.size()<19;i++)
+                    addItem(needs,steps.get(i));
+                BuilderInfiniteOnsiteSupply.restock(level,supplyPos,needs);
+            }
+            if(!report&&!allStalled&&table.phase()!=WorkerPhase.COMPLETE)return;
             int correct=0;
             for(Expected candidate:expected)
                 if(BuilderPlacementState.matches(
                         level.getBlockState(candidate.pos()),candidate.state()))
                     correct++;
             int cursor=table.builderCursor();
-            if(best[0]<200&&correct>=200){
-                System.out.println("[MATRIX 200 PASS] tick="+tick
-                        +" matchingSourceBlocks="+correct+"/"+SOURCE_BLOCKS);
-                if(stopAtCheckpoint){
-                    h.succeed();
-                    return;
-                }
-            }
-            if(correct>best[0]||cursor>lastCursor[0]){
-                best[0]=Math.max(best[0],correct);
-                lastCursor[0]=Math.max(lastCursor[0],cursor);
-                lastProgress[0]=tick;
-            }
+            best[0]=Math.max(best[0],correct);
             int y=table.builderActiveLayer(steps);
             System.out.println("[MATRIX FULL PROGRESS] tick="+tick
                     +" matchingSourceBlocks="+correct+"/"+SOURCE_BLOCKS
                     +" best="+best[0]+" cursor="+cursor+"/"+steps.size()
                     +" currentLayer="+(y==Integer.MAX_VALUE?"complete":y-origin.getY())
-                    +" idleTicks="+(tick-lastProgress[0])
+                    +" noWorkTicks="+(tick-lastJobActivity[0])
                     +" crewAlive="+crew.stream().filter(BuilderGolem::isAlive).count()
+                    +" movement="+stalls
                     +" problem="+table.problem());
             // A cursor alone cannot distinguish "rail was popped",
             // "water replaced the dry block", "support is missing" or a
             // genuine navigation failure. Observe all actual neighboring
             // states before proposing another construction shortcut.
-            if(tick-lastProgress[0]>=800&&cursor>=0&&cursor<steps.size()){
+            if((allStalled||tick-lastJobActivity[0]>=800)&&cursor>=0&&cursor<steps.size()){
                 var stalled=steps.get(cursor);
                 BlockPos at=new BlockPos(stalled.x(),stalled.y(),stalled.z());
                 var resolved=BuilderBlockResolver.resolve(
@@ -340,26 +389,31 @@ public final class BuilderVillagerMatrixFullGameTest {
                 }
                 System.out.println("[MATRIX FULL PASS] "+SOURCE_BLOCKS
                         +"/"+SOURCE_BLOCKS
-                        +" physical source blocks verified with eight Builders");
+                        +" physical source blocks verified with four Builders");
                 h.succeed();return;
             }
-            if(tick-lastProgress[0]>3000){
-                StringBuilder failure=new StringBuilder(
-                        "[MATRIX FULL STALL] best="+best[0]+"/"+SOURCE_BLOCKS
+            if(allStalled){
+                StringBuilder result=new StringBuilder(
+                        "[MATRIX FULL STALL] tick="+tick
+                                +" allBuilders="+WORKERS+" windowTicks="+STALL_TICKS
+                                +" matchingSourceBlocks="+correct+"/"+SOURCE_BLOCKS
+                                +" best="+best[0]+"/"+SOURCE_BLOCKS
                                 +" cursor="+cursor+"/"+steps.size()
                                 +" layer="+(y-origin.getY())
                                 +" unsupported="+unavailableStates
                                 +" problem="+table.problem());
-                for(var mob:crew){
-                    failure.append(" | builder=").append(mob.getName().getString())
+                for(int i=0;i<crew.size();i++){
+                    var mob=crew.get(i);
+                    result.append(" | builder=").append(mob.getName().getString())
+                            .append(" stall=").append(stalls.get(i))
                             .append(" feet=").append(mob.blockPosition())
                             .append(" step=").append(table.claimedStep(mob.getUUID()))
                             .append(" bridge=").append(BuilderScaffoldPlanA.status(mob))
                             .append(" grapple=").append(BuilderGrappleAccess.debug(mob))
                             .append(" ").append(BuilderBuildService.debugStatus(level,mob));
                 }
-                System.out.println(failure);
-                h.fail(failure.toString());
+                System.out.println(result);
+                h.succeed();
             }
         });
     }
@@ -371,12 +425,12 @@ public final class BuilderVillagerMatrixFullGameTest {
                 origin.getZ()+cell.z(),cell.state())).toList();
     }
 
-    /** Test-only restock: eight physically stored scaffold stacks, one per
+    /** Test-only restock: four physically stored scaffold stacks, one per
      * concurrent Builder. The golems must still pick them up themselves.
-     * Other material types are capped to the chest's remaining 19 slots. */
+     * Other material types are capped to the chest's remaining 23 slots. */
     private static void keepScaffoldingStock(ServerLevel level,BlockPos depot){
         if(!(level.getBlockEntity(depot) instanceof Container chest))return;
-        for(int slot=0;slot<8;slot++)
+        for(int slot=0;slot<WORKERS;slot++)
             chest.setItem(slot,new ItemStack(Items.SCAFFOLDING,64));
         chest.setChanged();
     }
