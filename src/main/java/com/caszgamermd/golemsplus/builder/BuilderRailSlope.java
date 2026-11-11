@@ -92,8 +92,8 @@ public final class BuilderRailSlope {
     }
 
     /** Place an ordinary flat rail beside a real raised connector and let
-     * Minecraft form the slope. Restore the jig cells without notifying
-     * the shaped rail that its temporary neighbor has been removed.
+     * Minecraft form the slope. Lift the formed rail while recovering the
+     * jig, then reseat that same paid state without reshaping it.
      */
     static boolean placeWithJig(Level world,BlockPos pos,BlockState desired,
             boolean temporaryFoundation){
@@ -102,10 +102,9 @@ public final class BuilderRailSlope {
         BlockPos footing=raised.below();
         BlockState previousFooting=world.getBlockState(footing);
         BlockState previousRail=world.getBlockState(pos);
-        // Moving the jig out of the work area must not trigger a rail's
-        // ordinary break notification or drop the supported ramp.
-        int quiet=Block.UPDATE_CLIENTS|Block.UPDATE_KNOWN_SHAPE|Block.UPDATE_MOVE_BY_PISTON;
-        boolean shaped=false;
+        int quiet=Block.UPDATE_CLIENTS|Block.UPDATE_KNOWN_SHAPE
+                |Block.UPDATE_MOVE_BY_PISTON|Block.UPDATE_SKIP_ON_PLACE;
+        BlockState formed=null;
         try{
             if(temporaryFoundation
                     &&!world.setBlock(footing,Blocks.COBBLESTONE.defaultBlockState(),quiet))
@@ -126,24 +125,22 @@ public final class BuilderRailSlope {
                 }
             }
             world.setBlock(pos,flat,Block.UPDATE_ALL);
-            shaped=BuilderPlacementState.matches(world.getBlockState(pos),desired);
-            if(!shaped)
-                System.out.println("[RAIL JIG] Target did not slope while connector was present: "
-                        +world.getBlockState(pos)+" connector="+world.getBlockState(raised));
+            BlockState candidate=world.getBlockState(pos);
+            if(BuilderPlacementState.matches(candidate,desired))formed=candidate;
         }finally{
+            // Rail removal has its own neighbor callbacks even with
+            // UPDATE_NEIGHBORS disabled. Keep the paid rail in hand
+            // during those callbacks so the temporary geometry cannot
+            // cause it to drop a second item or flatten the slope.
+            if(world.getBlockState(pos).getBlock()==desired.getBlock())
+                world.setBlock(pos,Blocks.AIR.defaultBlockState(),quiet);
             if(!world.getBlockState(raised).isAir())
                 world.setBlock(raised,Blocks.AIR.defaultBlockState(),quiet);
             if(temporaryFoundation)
                 world.setBlock(footing,previousFooting,quiet);
-            if(!shaped||!BuilderPlacementState.matches(world.getBlockState(pos),desired)){
-                if(shaped)
-                    System.out.println("[RAIL JIG] Target changed during jig removal: "
-                            +world.getBlockState(pos));
-                world.setBlock(pos,previousRail,quiet);
-                shaped=false;
-            }
+            world.setBlock(pos,formed==null?previousRail:formed,quiet);
         }
-        return shaped;
+        return formed!=null&&BuilderPlacementState.matches(world.getBlockState(pos),desired);
     }
 
     private static <T extends Comparable<T>> BlockState withValue(
