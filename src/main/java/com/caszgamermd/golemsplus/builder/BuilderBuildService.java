@@ -78,7 +78,6 @@ public final class BuilderBuildService {
         // A dry rail lost to a vanilla neighbor update may be repaired for
         // the water pass, using another real rail from OnSite. Never keep
         // spending replacements on a physically impossible rail layout.
-        int wetRailRebuilds;
         // After returning to OnSite from a failed approach, take a real
         // walking route to a different side of the build BEFORE selecting
         // a new work stance. Never teleport or hold a claim while scouting.
@@ -126,8 +125,7 @@ public final class BuilderBuildService {
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
                 blockedSince=-1;workTravelSince=-1;
-                wetRailRebuilds=0;
-                bestTargetDistance=Double.POSITIVE_INFINITY;
+                    bestTargetDistance=Double.POSITIVE_INFINITY;
                 lastTargetProgressTick=-1;
                 lastMovementTick=-1;lastPerchEscapeTick=-1000;
                 lastWorkX=Double.NaN;
@@ -1525,25 +1523,20 @@ public final class BuilderBuildService {
                         +" (other Builders continuing this layer)");
                 return;
             }
-            // Waterlogging must NOT hire a temporary rail using a water
-            // bucket as its spare-rail item. Only dry physical rails use
-            // the rail-jig material and connector workflow.
-            BlockPos raisedRail=waterlog?null:
-                    BuilderRailSlope.raisedEnd(pos,state.state());
-            // Preflight BEFORE breaking anything, staging another
-            // material order or routing a worker to this slope. A same-Y
-            // rail underneath the proposed raised connector is NOT solid
-            // support. The work index remains pending for a real world
-            // dependency to be resolved, never silently skipped.
-            if(raisedRail!=null&&!reShapeRail&&!BuilderRailSlope.hasRaisedEndSupport(
-                    level,pos,state.state())){
+            BlockPos raisedRail=BuilderRailSlope.raisedEnd(pos,state.state());
+            boolean needsRailPlacement=raisedRail!=null&&(!waterlog||rebuildMissingWetRail);
+            boolean temporaryRailFoundation=needsRailPlacement
+                    &&!BuilderRailSlope.hasRaisedEndSupport(level,pos,state.state())
+                    &&BuilderRailSlope.canStageFoundation(level,pos,state.state(),
+                        BuilderConstructionPlanner.schematicStates(plan.steps(),
+                            BuildSite.Rotation.values()[table.builderRotation()/90],
+                            BuildSite.Mirror.values()[table.builderMirror()]));
+            if(needsRailPlacement&&!reShapeRail&&!temporaryRailFoundation
+                    &&!BuilderRailSlope.hasRaisedEndSupport(level,pos,state.state())){
                 BlockPos support=raisedRail.below();
-                table.waitForBuilderSupport(worker.getUUID(),index,
-                        level.getGameTime());
-                table.setProblem("Ascending rail needs stable raised-end "
-                        +"foundation at "+support+" found="
-                        +level.getBlockState(support)
-                        +"; no rail item consumed or path restarted");
+                table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
+                table.setProblem("Ascending rail needs a place for temporary footing at "
+                        +support+" found="+level.getBlockState(support));
                 return;
             }
             if(!existing.isAir()&&!waterlog&&!reShapeRail
@@ -2040,79 +2033,44 @@ public final class BuilderBuildService {
             }
             boolean freeHalf=step.requiredItem()==null||reShapeRail||repairPartner;
             boolean reusableFluid=BuilderBlockResolver.reusableSupply(step.requiredItem());
-            BlockState railJigState=raisedRail==null?null:
-                    state.state().getBlock().defaultBlockState();
-            boolean railJig=false;
-            if(raisedRail!=null&&!reShapeRail){
-                if(!level.hasChunkAt(raisedRail)){
-                    BuilderChunkTickets.destination(level,worker,raisedRail);
-                    table.setProblem("Loading raised rail connector "+raisedRail);
+            boolean railJig=needsRailPlacement&&level.hasChunkAt(raisedRail)
+                    &&level.getBlockState(raisedRail).isAir()
+                    &&(temporaryRailFoundation
+                        ||BuilderRailSlope.hasRaisedEndSupport(level,pos,state.state()));
+            var railItem=state.state().getBlock().asItem();
+            if(railJig){
+                if(!level.mayInteract(owner,raisedRail)
+                        ||temporaryRailFoundation&&!level.mayInteract(owner,raisedRail.below())){
+                    table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
+                    table.setProblem("Temporary rail jig space is protected at "+raisedRail);
                     return;
                 }
-                // Never replace an existing schematic/player block. If a
-                // real raised rail already connects, there is no need for
-                // a temporary jig at that coordinate.
-                railJig=level.getBlockState(raisedRail).isAir()
-                        &&level.mayInteract(owner,raisedRail)
-                        &&railJigState.canSurvive(level,raisedRail);
-                if(railJig){
-                    int needed=reShapeRail?1:2;
-                    if(worker.carriedCount(state.item())<needed){
-                        var extra=BuilderSupplyInventory.loadRailJig(
-                                level,worker,table,state.item(),needed);
-                        if(extra==BuilderSupplyInventory.LoadStatus.MOVING)return;
-                        if(extra==BuilderSupplyInventory.LoadStatus.MISSING){
-                            table.setProblem("Ascending rail needs one spare "
-                                    +step.requiredItem()+" at OnSite Storage for "
-                                    +raisedRail);
-                            return;
-                        }
+                int needed=reShapeRail?1:2;
+                var extra=BuilderSupplyInventory.loadRailJig(level,worker,table,railItem,needed);
+                if(extra!=BuilderSupplyInventory.LoadStatus.READY){
+                    if(extra==BuilderSupplyInventory.LoadStatus.MISSING)
+                        table.setProblem("Ascending rail needs one spare rail in OnSite Storage");
+                    return;
+                }
+                if(temporaryRailFoundation){
+                    var footing=BuilderSupplyInventory.loadRailJig(
+                            level,worker,table,net.minecraft.world.item.Items.COBBLESTONE,1);
+                    if(footing!=BuilderSupplyInventory.LoadStatus.READY){
+                        if(footing==BuilderSupplyInventory.LoadStatus.MISSING)
+                            table.setProblem("Ascending rail jig needs one cobblestone in OnSite Storage");
+                        return;
                     }
                     if(!BuilderPlacementSpace.readyForState(level,worker,table,
-                            raisedRail,railJigState))
-                        return;
+                            raisedRail.below(),net.minecraft.world.level.block.Blocks.COBBLESTONE
+                                    .defaultBlockState()))return;
                 }
             }
-            // Repair stock must be carried to the construction position,
-            // not pulled remotely from OnSite. The original dry placement
-            // was paid for, and replacement also costs one real rail.
-            if(rebuildMissingWetRail){
-                // A rail which was popped by vanilla updates must not
-                // consume another paid rail if the raised endpoint has
-                // no physical support at all. The exact Matrix y=1 ramp
-                // has a same-height rail west of the target, with air
-                // above it; no upper connector survives there. Wait for
-                // genuine supporting world geometry rather than looping
-                // through two paid, instantly popped replacement items.
-                if(!BuilderRailSlope.hasRaisedEndSupport(
-                        level,pos,dryWaterlog.state())){
-                    BlockPos raised=BuilderRailSlope.raisedEnd(
-                            pos,dryWaterlog.state());
-                    BlockPos support=raised.below();
-                    table.waitForBuilderSupport(worker.getUUID(),index,
-                            level.getGameTime());
-                    table.setProblem("Ascending rail requires physical raised-end "
-                            +"support at "+support+" for "+raised
-                            +"; actual="+level.getBlockState(support)
-                            +"; cannot retry until support exists");
+            if(rebuildMissingWetRail&&!railJig){
+                var extra=BuilderSupplyInventory.loadRailJig(level,worker,table,railItem,1);
+                if(extra!=BuilderSupplyInventory.LoadStatus.READY){
+                    if(extra==BuilderSupplyInventory.LoadStatus.MISSING)
+                        table.setProblem("Waterlogged rail repair needs a spare rail in OnSite Storage");
                     return;
-                }
-                if(activity.wetRailRebuilds>=2){
-                    table.waitForBuilderSupport(worker.getUUID(),index,
-                            level.getGameTime());
-                    table.setProblem("Ascending rail repeatedly popped at "+pos
-                            +" during water pass; inspect upper rail support");
-                    return;
-                }
-                if(worker.carriedCount(dryWaterlog.item())<1){
-                    var loading=BuilderSupplyInventory.loadRailJig(
-                            level,worker,table,dryWaterlog.item(),1);
-                    if(loading==BuilderSupplyInventory.LoadStatus.MOVING)return;
-                    if(loading==BuilderSupplyInventory.LoadStatus.MISSING){
-                        table.setProblem("Waterlogged rail repair needs one real "
-                                +dryWaterlog.item()+" in OnSite at "+pos);
-                        return;
-                    }
                 }
             }
             BuilderSupplyInventory.Receipt payment=freeHalf||reusableFluid?null:
@@ -2134,40 +2092,34 @@ public final class BuilderBuildService {
             // A bubble column is a PHYSICS RESULT, never an inventory
             // placement. Put down source water and let its real supporting
             // soul sand/magma (or column below) convert it naturally.
-            BuilderSupplyInventory.Receipt railJigPayment=null;
-            if(railJig){
-                railJigPayment=BuilderSupplyInventory.consume(worker,state.item());
-                if(railJigPayment==null
-                        ||!level.setBlock(raisedRail,railJigState,3)){
-                    if(railJigPayment!=null)
-                        BuilderSupplyInventory.refund(table,railJigPayment);
+            boolean railPlaced=false;
+            if(railJig||rebuildMissingWetRail){
+                var replacement=rebuildMissingWetRail
+                        ?BuilderSupplyInventory.consume(worker,railItem):null;
+                var spare=railJig?BuilderSupplyInventory.consume(worker,railItem):null;
+                var footing=temporaryRailFoundation
+                        ?BuilderSupplyInventory.consume(worker,net.minecraft.world.item.Items.COBBLESTONE)
+                        :null;
+                boolean paid=(!rebuildMissingWetRail||replacement!=null)
+                        &&(!railJig||spare!=null)
+                        &&(!temporaryRailFoundation||footing!=null);
+                if(paid){
+                    railPlaced=railJig
+                            ?BuilderRailSlope.placeWithJig(level,pos,state.state(),temporaryRailFoundation)
+                            :level.setBlock(pos,BuilderBlockInteractions.placementState(state.state()),3)
+                                &&BuilderRailSlope.restorePaidSlope(level,pos,state.state());
+                    if(!railJig&&!railPlaced)
+                        level.setBlock(pos,existing,2);
+                }
+                // Refund in reverse order because the target and connector
+                // can come from the same inventory slot or shulker.
+                if(footing!=null)BuilderSupplyInventory.refund(table,footing);
+                if(spare!=null)BuilderSupplyInventory.refund(table,spare);
+                if(!railPlaced){
+                    if(replacement!=null)BuilderSupplyInventory.refund(table,replacement);
                     if(payment!=null)BuilderSupplyInventory.refund(table,payment);
-                    table.setProblem("Could not physically set temporary raised rail at "
-                            +raisedRail);
-                    return;
-                }
-            }
-            if(rebuildMissingWetRail){
-                BuilderSupplyInventory.Receipt repairPayment=
-                        BuilderSupplyInventory.consume(worker,dryWaterlog.item());
-                if(repairPayment==null){
-                    table.setProblem("Missing replacement paid rail at "+pos);
-                    return;
-                }
-                activity.wetRailRebuilds++;
-                if(!level.setBlock(pos,
-                        BuilderBlockInteractions.placementState(
-                                dryWaterlog.state()),3)){
-                    BuilderSupplyInventory.refund(table,repairPayment);
-                    table.setProblem("Could not physically rebuild dry rail at "+pos);
-                    return;
-                }
-                if(!BuilderRailSlope.restorePaidSlope(
-                        level,pos,dryWaterlog.state())){
-                    table.waitForBuilderSupport(worker.getUUID(),index,
-                            level.getGameTime());
-                    table.setProblem("Rebuilt rail immediately lost slope at "+pos
-                            +" after "+activity.wetRailRebuilds+" paid attempts");
+                    table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
+                    table.setProblem("Temporary rail did not produce a stable slope at "+pos);
                     return;
                 }
             }
@@ -2178,24 +2130,15 @@ public final class BuilderBuildService {
             // The world may keep a placed lower/foot cell even if the
             // companion temporarily fails; the receipt is NOT refunded
             // in that case, so it cannot yield free duplicate materials.
-            var multiblockPlacement=BuilderMultiblock.place(
+            var multiblockPlacement=railPlaced
+                    ?new BuilderMultiblock.Placement(true,true)
+                    :BuilderMultiblock.place(
                     level,pos,toPlace,partnerPos,
                     partnerResolved==null?null:
                             BuilderBlockInteractions.placementState(
                                     partnerResolved.state()),
                     repairPartner,partnerComplete);
             boolean placed=multiblockPlacement.complete();
-            if(railJigPayment!=null){
-                // A temporary rail is paid for and physically retrieved;
-                // never leave it where the next Y's schematic will build.
-                if(level.getBlockState(raisedRail).getBlock()!=railJigState.getBlock()
-                        ||!level.setBlock(raisedRail,
-                                net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),3)){
-                    table.setProblem("Temporary rail needs recovery at "+raisedRail);
-                    return;
-                }
-                BuilderSupplyInventory.refund(table,railJigPayment);
-            }
             if(!placed){
                 if(payment!=null&&!multiblockPlacement.primaryPlaced())
                     BuilderSupplyInventory.refund(table,payment);

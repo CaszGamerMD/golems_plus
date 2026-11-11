@@ -356,6 +356,7 @@ public final class BuilderVillagerMatrixFullGameTest {
     private static Set<Item> baseStock(){
         Set<Item> needs=new LinkedHashSet<>();
         needs.add(Items.SCAFFOLDING);
+        needs.add(Items.COBBLESTONE);
         needs.add(WorksiteContent.GRAPPLE_HOOK);
         needs.add(Items.BUCKET);
         needs.add(WorksiteContent.INFINITE_WATER_BUCKET);

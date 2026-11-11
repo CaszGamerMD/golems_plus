@@ -3,6 +3,10 @@ package com.caszgamermd.golemsplus.builder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.properties.Property;
+import java.util.Map;
 import net.minecraft.world.level.block.state.BlockState;
 
 /** Temporary raised rail endpoint for vanilla ascending rail connections.
@@ -67,6 +71,73 @@ public final class BuilderRailSlope {
         if(BuilderPlacementState.matches(actual,desired))return true;
         if(!world.setBlock(pos,desired,2))return false;
         return BuilderPlacementState.matches(world.getBlockState(pos),desired);
+    }
+
+    /** A job can temporarily lift its own flat track to make room for
+     * the jig footing. Other blocks and unrelated track stay untouched.
+     */
+    static boolean canStageFoundation(Level world,BlockPos pos,BlockState desired,
+            Map<BlockPos,BlockState> planned){
+        BlockPos raised=raisedEnd(pos,desired);
+        if(raised==null||!world.hasChunkAt(raised)
+                ||!world.getBlockState(raised).isAir())return false;
+        BlockPos footing=raised.below();
+        BlockState existing=world.getBlockState(footing);
+        BlockState expected=planned.get(footing);
+        return existing.isAir()
+                ||expected!=null&&existing.getBlock() instanceof BaseRailBlock
+                    &&raisedEnd(footing,existing)==null
+                    &&existing.getFluidState().isEmpty()
+                    &&BuilderPlacementState.matches(existing,expected);
+    }
+
+    /** Place an ordinary flat rail beside a real raised connector and let
+     * Minecraft form the slope. Restore the jig cells without notifying
+     * the shaped rail that its temporary neighbor has been removed.
+     */
+    static boolean placeWithJig(Level world,BlockPos pos,BlockState desired,
+            boolean temporaryFoundation){
+        BlockPos raised=raisedEnd(pos,desired);
+        if(raised==null||!world.getBlockState(raised).isAir())return false;
+        BlockPos footing=raised.below();
+        BlockState previousFooting=world.getBlockState(footing);
+        BlockState previousRail=world.getBlockState(pos);
+        int quiet=Block.UPDATE_CLIENTS|Block.UPDATE_KNOWN_SHAPE;
+        boolean shaped=false;
+        try{
+            if(temporaryFoundation
+                    &&!world.setBlock(footing,Blocks.COBBLESTONE.defaultBlockState(),quiet))
+                return false;
+            BlockState connector=desired.getBlock().defaultBlockState();
+            if(!connector.canSurvive(world,raised)
+                    ||!world.setBlock(raised,connector,Block.UPDATE_ALL))return false;
+            BlockState flat=BuilderBlockInteractions.placementState(desired);
+            for(var property:flat.getProperties()){
+                if(property.getName().equals("shape")){
+                    String axis=raised.getX()==pos.getX()?"north_south":"east_west";
+                    flat=withValue(flat,property,axis);
+                    break;
+                }
+            }
+            world.setBlock(pos,flat,Block.UPDATE_ALL);
+            shaped=BuilderPlacementState.matches(world.getBlockState(pos),desired);
+        }finally{
+            if(!world.getBlockState(raised).isAir())
+                world.setBlock(raised,Blocks.AIR.defaultBlockState(),quiet);
+            if(temporaryFoundation)
+                world.setBlock(footing,previousFooting,quiet);
+            if(!shaped||!BuilderPlacementState.matches(world.getBlockState(pos),desired)){
+                world.setBlock(pos,previousRail,quiet);
+                shaped=false;
+            }
+        }
+        return shaped;
+    }
+
+    private static <T extends Comparable<T>> BlockState withValue(
+            BlockState state,Property<T> property,String name){
+        return property.getValue(name).map(value->state.setValue(property,value))
+                .orElse(state);
     }
 
     public static boolean needsExtraStock(String encoded){

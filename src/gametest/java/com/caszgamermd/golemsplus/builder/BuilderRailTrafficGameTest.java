@@ -266,6 +266,37 @@ public final class BuilderRailTrafficGameTest {
         }
         h.succeed();
     }
+    @GameTest(maxTicks=50,skyAccess=true)
+    public void temporaryRaisedRailShapesMatrixRampAndRestoresTrack(GameTestHelper h){
+        var world=h.getLevel();
+        h.setBlock(3,1,4,Blocks.STONE);
+        h.setBlock(4,1,4,Blocks.STONE);
+        h.setBlock(3,2,4,Blocks.POWERED_RAIL);
+        BlockPos target=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos west=target.west();
+        var savedTrack=world.getBlockState(west);
+        var desired=BuilderBlockResolver.resolve(
+                "minecraft:powered_rail[powered=false,shape=ascending_west,waterlogged=false]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        if(desired==null||!BuilderRailSlope.canStageFoundation(
+                world,target,desired.state(),java.util.Map.of(west,savedTrack))
+                ||!BuilderRailSlope.placeWithJig(world,target,desired.state(),true)){
+            h.fail("Temporary raised rail did not physically shape the target");
+            return;
+        }
+        h.onEachTick(()->{
+            if(h.getTick()!=20)return;
+            if(!BuilderPlacementState.matches(world.getBlockState(target),desired.state())
+                    ||!world.getBlockState(west).equals(savedTrack)
+                    ||!world.getBlockState(west.above()).isAir()){
+                h.fail("Ramp changed or jig remained after cleanup");
+                return;
+            }
+            System.out.println("[MATRIX RAIL JIG PASS] slope formed and spare rail removed");
+            h.succeed();
+        });
+    }
+
     @GameTest(maxTicks=70,skyAccess=true)
     public void reachablePaidRailCorrectionRemainsEligibleForAssignment(
             GameTestHelper h){

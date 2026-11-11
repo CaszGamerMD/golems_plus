@@ -425,6 +425,10 @@ public final class BuilderConstructionPlanner {
                     !BuilderRailSlope.canReshapePaidSlope(world,p,expected.state())
                         &&!BuilderRailSlope.hasRaisedEndSupport(
                             world,p,expected.state())
+                        &&!BuilderRailSlope.canStageFoundation(world,p,expected.state(),
+                            schematicStates(steps,
+                                BuildSite.Rotation.values()[table.builderRotation()/90],
+                                BuildSite.Mirror.values()[table.builderMirror()]))
                         ?"ascending rail requires actual raised-end support "
                             +BuilderRailSlope.raisedEnd(p,expected.state()).below()
                             +" (currently "
@@ -658,7 +662,9 @@ public final class BuilderConstructionPlanner {
             // Once a support really exists the rail becomes eligible.
             if(!BuilderRailSlope.canReshapePaidSlope(world,target,state.state())
                     &&!BuilderRailSlope.hasRaisedEndSupport(
-                        world,target,state.state()))continue;
+                        world,target,state.state())
+                    &&!BuilderRailSlope.canStageFoundation(
+                        world,target,state.state(),builtSchematic))continue;
             BlockPos stance=lookahead
                     ?BuilderPlacementSpace.approachForLookahead(
                             world,worker,target,
