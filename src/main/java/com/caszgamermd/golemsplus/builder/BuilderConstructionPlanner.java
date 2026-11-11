@@ -422,7 +422,8 @@ public final class BuilderConstructionPlanner {
                     expected==null?"unsupported block state":
                     !expected.state().canSurvive(world,p)
                         ?"missing physical support":
-                    !BuilderRailSlope.hasRaisedEndSupport(
+                    !BuilderRailSlope.canReshapePaidSlope(world,p,expected.state())
+                        &&!BuilderRailSlope.hasRaisedEndSupport(
                             world,p,expected.state())
                         ?"ascending rail requires actual raised-end support "
                             +BuilderRailSlope.raisedEnd(p,expected.state()).below()
@@ -655,8 +656,9 @@ public final class BuilderConstructionPlanner {
             // materials or claim an unreachable slope whose physics
             // cannot survive; continue searching other work this Y.
             // Once a support really exists the rail becomes eligible.
-            if(!BuilderRailSlope.hasRaisedEndSupport(
-                    world,target,state.state()))continue;
+            if(!BuilderRailSlope.canReshapePaidSlope(world,target,state.state())
+                    &&!BuilderRailSlope.hasRaisedEndSupport(
+                        world,target,state.state()))continue;
             BlockPos stance=lookahead
                     ?BuilderPlacementSpace.approachForLookahead(
                             world,worker,target,

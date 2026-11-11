@@ -225,4 +225,56 @@ public final class BuilderRailTrafficGameTest {
         }
         h.succeed();
     }
+    @GameTest(maxTicks=70,skyAccess=true)
+    public void reachablePaidRailCorrectionRemainsEligibleForAssignment(
+            GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        h.setBlock(0,2,0,
+                com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_TABLE);
+        h.setBlock(3,2,4,Blocks.POWERED_RAIL);
+        h.setBlock(4,2,4,Blocks.POWERED_RAIL);
+        var table=(com.caszgamermd.golemsplus.world.WorkerStationBlockEntity)
+                world.getBlockEntity(h.absolutePos(new BlockPos(0,2,0)));
+        var owner=h.makeMockServerPlayerInLevel();
+        BlockPos observer=h.absolutePos(new BlockPos(0,2,7));
+        owner.setPos(observer.getX()+.5,observer.getY(),observer.getZ()+.5);
+        var worker=new BuilderGolem(
+                com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_GOLEM,world);
+        BlockPos stance=h.absolutePos(new BlockPos(6,2,4));
+        worker.setPos(stance.getX()+.5,stance.getY(),stance.getZ()+.5);
+        world.addFreshEntity(worker);
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setCrewTarget(owner.getUUID(),1)
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),
+                    "paid-rail-frontier.litematic","Paid rail",table.getBlockPos(),
+                    0,0,1,0)
+                ||!table.registerBuilderWorker(worker.getUUID())
+                ||!table.startPlacedBuilder(owner.getUUID())){
+            h.fail("Could not prepare real rail frontier");return;
+        }
+        BlockPos target=h.absolutePos(new BlockPos(4,2,4));
+        var steps=java.util.List.of(new BuilderConstructionPlan.Step(
+                target.getX(),target.getY(),target.getZ(),
+                "minecraft:powered_rail[powered=false,shape=ascending_west,waterlogged=false]",
+                "minecraft:powered_rail"));
+        h.onEachTick(()->{
+            if(h.getTick()!=16)return;
+            var choice=BuilderConstructionPlanner.choose(
+                    world,worker,table,steps,java.util.List.of(0));
+            if(choice==null||choice.index()!=0||choice.stance()==null){
+                h.fail("Reachable paid rail was rejected by frontier: "+choice);
+                return;
+            }
+            h.setBlock(4,2,4,Blocks.AIR);
+            if(BuilderConstructionPlanner.choose(world,worker,table,
+                    steps,java.util.List.of(0))!=null){
+                h.fail("Fresh rail bypassed its missing connector support");return;
+            }
+            System.out.println("[PAID RAIL FRONTIER PASS] reachable correction "
+                    +"selected; fresh unsupported placement still rejected");
+            h.succeed();
+        });
+    }
 }
