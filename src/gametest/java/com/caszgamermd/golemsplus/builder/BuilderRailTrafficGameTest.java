@@ -249,7 +249,7 @@ public final class BuilderRailTrafficGameTest {
         if(!table.claimIfUnowned(owner.getUUID())
                 ||!table.setCrewTarget(owner.getUUID(),1)
                 ||!table.setPlacedBuilderPlan(owner.getUUID(),
-                    "paid-rail-frontier.litematic","Paid rail",table.getBlockPos(),
+                    "placed-paid-rail-frontier.litematic","Paid rail",table.getBlockPos(),
                     0,0,1,0)
                 ||!table.setBuilderMaterialStorage(owner.getUUID(),
                     h.absolutePos(new BlockPos(1,2,0)))
