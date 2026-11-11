@@ -1615,6 +1615,7 @@ public final class BuilderScaffoldPlanA {
             jobs.remove(worker);
             return false;
         }
+
         if(j.phase==Phase.READY||j.phase==Phase.WALK_SECOND){
             // Retrace every real bridge cell before descending the
             // reserved shaft; never jump from the far end to the base.
@@ -1784,4 +1785,59 @@ public final class BuilderScaffoldPlanA {
         }
         return true;
     }
+    /** Recover the return route when the paid bridge outlives its work plan. */
+    static boolean recoverBridgeReturn(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table){
+        if(jobs.containsKey(worker)||BuilderScaffolding.hasPhysicalMotion(worker))
+            return false;
+        BlockPos feet=worker.blockPosition();
+        BlockPos start=present(level,table,worker,feet)?feet:feet.below();
+        if(!present(level,table,worker,start)||!structurallySupported(level,start))
+            return false;
+        var distanceProperty=net.minecraft.world.level.block.ScaffoldingBlock.DISTANCE;
+        if(level.getBlockState(start).getValue(distanceProperty)==0)return false;
+        var queue=new ArrayDeque<BlockPos>();
+        var previous=new HashMap<BlockPos,BlockPos>();
+        queue.add(start);
+        previous.put(start,start);
+        while(!queue.isEmpty()){
+            BlockPos cell=queue.removeFirst();
+            int distance=level.getBlockState(cell).getValue(distanceProperty);
+            if(distance==0){
+                BlockPos base=cell;
+                while(level.hasChunkAt(base.below())
+                        &&present(level,table,worker,base.below()))
+                    base=base.below();
+                if(!level.getBlockState(base.below()).isFaceSturdy(
+                        level,base.below(),Direction.UP))continue;
+                BlockPos exit=BuilderScaffolding.safeGroundExit(
+                        level,worker,base,Set.of());
+                if(exit==null)continue;
+                var bridge=new ArrayList<BlockPos>();
+                for(BlockPos next=previous.get(cell);;next=previous.get(next)){
+                    bridge.add(next);
+                    if(next.equals(start))break;
+                }
+                Job job=new Job(feet,base,exit,table.getBlockPos(),bridge,
+                        Set.of(),cell.getY(),level.getGameTime());
+                job.returnStep=bridge.size()-1;
+                job.phase=job.returnStep>0?Phase.RETURN_FIRST:Phase.RETURN_TOWER;
+                jobs.put(worker,job);
+                WorkerNavigation.stop(worker);
+                System.out.println("[PLAN A RETURN RECOVERED] paid bridge from "
+                        +start.toShortString()+" to "+base.toShortString());
+                return true;
+            }
+            for(Direction side:Direction.Plane.HORIZONTAL){
+                BlockPos next=cell.relative(side);
+                if(previous.containsKey(next)||!present(level,table,worker,next)
+                        ||level.getBlockState(next).getValue(distanceProperty)>=distance
+                        ||!bridgeCellClear(level,next,Set.of(),table,worker))continue;
+                previous.put(next,cell);
+                queue.addLast(next);
+            }
+        }
+        return false;
+    }
+
 }

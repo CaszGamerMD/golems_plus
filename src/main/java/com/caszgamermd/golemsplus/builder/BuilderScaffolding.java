@@ -662,6 +662,7 @@ public final class BuilderScaffolding {
         // Return across a physical Plan-A bridge BEFORE descending the
         // column. Native A* cannot safely cross untracked scaffold air.
         if(BuilderScaffoldPlanA.returnToGround(level,worker,table))return true;
+        if(BuilderScaffoldPlanA.recoverBridgeReturn(level,worker,table))return true;
         // A long tower may require more than 30 ticks of descent.
         // Renew the permit while this worker's material/lower-floor task
         // still requests descent, without restarting the physics session.

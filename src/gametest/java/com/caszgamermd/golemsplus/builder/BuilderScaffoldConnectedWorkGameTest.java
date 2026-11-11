@@ -17,24 +17,34 @@ import net.minecraft.world.level.block.Blocks;
  * No flying, block-center shortcut, prebuilt scaffold or creative placing.
  */
 public final class BuilderScaffoldConnectedWorkGameTest {
+    private enum ReturnCase { ORDINARY, REPLACED_FOOTING, NEW_TARGET, LOST_PLAN }
+
     @GameTest(maxTicks=1100,skyAccess=true)
     public void twoBuildersScaffoldAroundConnectedRoofAndReturn(GameTestHelper helper){
-        connectedRoofAndReturn(helper,false,false);
+        connectedRoofAndReturn(helper,ReturnCase.ORDINARY);
     }
 
     @GameTest(maxTicks=1100,skyAccess=true)
     public void returnReleasesObsoleteBridgeAfterSolidRoofReplacesFooting(
             GameTestHelper helper){
-        connectedRoofAndReturn(helper,true,false);
+        connectedRoofAndReturn(helper,ReturnCase.REPLACED_FOOTING);
     }
 
     @GameTest(maxTicks=1100,skyAccess=true)
     public void bridgeTooCloseToNewWorkReturnsSafely(GameTestHelper helper){
-        connectedRoofAndReturn(helper,false,true);
+        connectedRoofAndReturn(helper,ReturnCase.NEW_TARGET);
+    }
+
+    @GameTest(maxTicks=1100,skyAccess=true)
+    public void paidBridgeReturnsAfterWorkPlanIsLost(GameTestHelper helper){
+        connectedRoofAndReturn(helper,ReturnCase.LOST_PLAN);
     }
 
     private static void connectedRoofAndReturn(GameTestHelper helper,
-            boolean replacedByRoof,boolean changeTarget){
+            ReturnCase scenario){
+        boolean replacedByRoof=scenario==ReturnCase.REPLACED_FOOTING;
+        boolean changeTarget=scenario==ReturnCase.NEW_TARGET;
+        boolean lostPlan=scenario==ReturnCase.LOST_PLAN;
         ServerLevel level=helper.getLevel();
         for(int x=0;x<8;x++)for(int z=0;z<8;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
@@ -119,6 +129,14 @@ public final class BuilderScaffoldConnectedWorkGameTest {
                             return;
                         }
                     }
+                    if(lostPlan){
+                        BuilderScaffoldPlanA.cancel(mob);
+                        if(!BuilderScaffolding.descendForTravel(level,mob,table)
+                                ||!BuilderScaffoldPlanA.hasPlan(mob)){
+                            helper.fail("Paid scaffold bridge did not recover its return");
+                            return;
+                        }
+                    }
                     if(replacedByRoof){
                         // Construction replaces the occupied temporary
                         // support with a solid roof and closes the old
@@ -137,7 +155,7 @@ public final class BuilderScaffoldConnectedWorkGameTest {
                 }else if(phases[i]==1){
                     // The new claim started the return. Give the entity
                     // controller no further task callbacks for that case.
-                    if(!changeTarget&&helper.getTick()%5==0)
+                    if(!changeTarget&&!lostPlan&&helper.getTick()%5==0)
                         BuilderScaffoldPlanA.returnToGround(level,mob,table);
                     if(!BuilderScaffoldPlanA.hasPlan(mob)
                             &&mob.onGround()
@@ -155,6 +173,8 @@ public final class BuilderScaffoldConnectedWorkGameTest {
             if(phases[0]==2&&phases[1]==2){
                 if(changeTarget)System.out.println(
                         "[PLAN A RETURN PASS] both Builders dismounted without work callbacks");
+                if(lostPlan)System.out.println(
+                        "[PLAN A RETURN RECOVERY PASS] both Builders walked their paid bridge back");
                 helper.succeed();
             }
         });
