@@ -21,7 +21,7 @@
     "timestamp": "2026-11-06T04:15:13.933891+00:00",
     "verified": true
   },
-  "last_session": "2026-11-11T01:06:02.260655+00:00",
+  "last_session": "2026-11-11T02:02:21.781166+00:00",
   "last_session_cycles": 1,
   "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
   "state_branch": "training/dome-autotune-state-262",
@@ -860,28 +860,6 @@
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"6\",\"GOLEMS_DOME_SCAN_LIMIT\":\"96\",\"GOLEMS_DOME_SKY_PENALTY\":\"6\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}"
   ],
   "trials": [
-    {
-      "active_y": 30,
-      "complete": false,
-      "cycle": 3,
-      "diagnosis": "grapple_access",
-      "duration_seconds": 173.6,
-      "log": "build/dome-autotune/cycle-3.log",
-      "peak_tick": 78000,
-      "real_blocks": 3423,
-      "return_code": 1,
-      "settings": {
-        "GOLEMS_DOME_FEASIBLE_LIMIT": "3",
-        "GOLEMS_DOME_GRAPPLE_PENALTY": "12",
-        "GOLEMS_DOME_SCAN_LIMIT": "96",
-        "GOLEMS_DOME_SKY_PENALTY": "0",
-        "GOLEMS_DOME_TARGET_WEIGHT": "1.1"
-      },
-      "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
-      "stall_tick": 80120,
-      "timestamp": "2026-11-07T06:55:00.058733+00:00",
-      "verified": true
-    },
     {
       "active_y": 30,
       "complete": false,
@@ -6358,6 +6336,28 @@
       "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
       "stall_tick": 59800,
       "timestamp": "2026-11-11T01:06:02.255452+00:00",
+      "verified": true
+    },
+    {
+      "active_y": 30,
+      "complete": false,
+      "cycle": 1,
+      "diagnosis": "trained_path_search",
+      "duration_seconds": 217.8,
+      "log": "build/dome-autotune/cycle-1.log",
+      "peak_tick": 54400,
+      "real_blocks": 3422,
+      "return_code": 1,
+      "settings": {
+        "GOLEMS_DOME_FEASIBLE_LIMIT": "12",
+        "GOLEMS_DOME_GRAPPLE_PENALTY": "6",
+        "GOLEMS_DOME_SCAN_LIMIT": "96",
+        "GOLEMS_DOME_SKY_PENALTY": "18",
+        "GOLEMS_DOME_TARGET_WEIGHT": "1.75"
+      },
+      "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
+      "stall_tick": 56620,
+      "timestamp": "2026-11-11T02:02:21.775858+00:00",
       "verified": true
     }
   ]
