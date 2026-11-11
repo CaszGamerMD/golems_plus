@@ -21,7 +21,7 @@
     "timestamp": "2026-11-06T04:15:13.933891+00:00",
     "verified": true
   },
-  "last_session": "2026-11-11T09:34:17.985292+00:00",
+  "last_session": "2026-11-11T10:31:24.617287+00:00",
   "last_session_cycles": 1,
   "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
   "state_branch": "training/dome-autotune-state-262",
@@ -860,28 +860,6 @@
     "{\"GOLEMS_DOME_FEASIBLE_LIMIT\":\"8\",\"GOLEMS_DOME_GRAPPLE_PENALTY\":\"6\",\"GOLEMS_DOME_SCAN_LIMIT\":\"96\",\"GOLEMS_DOME_SKY_PENALTY\":\"6\",\"GOLEMS_DOME_TARGET_WEIGHT\":\"1.75\"}"
   ],
   "trials": [
-    {
-      "active_y": 30,
-      "complete": false,
-      "cycle": 2,
-      "diagnosis": "trained_path_search",
-      "duration_seconds": 182.1,
-      "log": "build/dome-autotune/cycle-2.log",
-      "peak_tick": 62000,
-      "real_blocks": 3427,
-      "return_code": 1,
-      "settings": {
-        "GOLEMS_DOME_FEASIBLE_LIMIT": "8",
-        "GOLEMS_DOME_GRAPPLE_PENALTY": "36",
-        "GOLEMS_DOME_SCAN_LIMIT": "96",
-        "GOLEMS_DOME_SKY_PENALTY": "6",
-        "GOLEMS_DOME_TARGET_WEIGHT": "0.25"
-      },
-      "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
-      "stall_tick": 64340,
-      "timestamp": "2026-11-07T09:12:04.302711+00:00",
-      "verified": true
-    },
     {
       "active_y": 30,
       "complete": false,
@@ -6358,6 +6336,28 @@
       "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
       "stall_tick": 56980,
       "timestamp": "2026-11-11T09:34:17.977507+00:00",
+      "verified": true
+    },
+    {
+      "active_y": 30,
+      "complete": false,
+      "cycle": 1,
+      "diagnosis": "trained_path_search",
+      "duration_seconds": 256.7,
+      "log": "build/dome-autotune/cycle-1.log",
+      "peak_tick": 57200,
+      "real_blocks": 3423,
+      "return_code": 1,
+      "settings": {
+        "GOLEMS_DOME_FEASIBLE_LIMIT": "12",
+        "GOLEMS_DOME_GRAPPLE_PENALTY": "6",
+        "GOLEMS_DOME_SCAN_LIMIT": "96",
+        "GOLEMS_DOME_SKY_PENALTY": "18",
+        "GOLEMS_DOME_TARGET_WEIGHT": "1.75"
+      },
+      "source_sha": "9039699f8a97c5773f49a672528374ccacc437c1",
+      "stall_tick": 59420,
+      "timestamp": "2026-11-11T10:31:24.610358+00:00",
       "verified": true
     }
   ]
