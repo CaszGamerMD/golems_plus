@@ -197,7 +197,7 @@ public final class BuilderScaffoldPlanA {
     public static boolean controlsMotion(BuilderGolem worker){
         Job j=jobs.get(worker);
         return j!=null&&switch(j.phase){
-            case WALK_FIRST,WALK_SECOND,RETURN_FIRST,RETURN_TOWER->true;
+            case WALK_FIRST,WALK_SECOND,RETURN_FIRST,RETURN_TOWER,DESCEND,DISMOUNT->true;
             default->false;
         };
     }
@@ -1207,6 +1207,14 @@ public final class BuilderScaffoldPlanA {
                 return true;
             }
         }
+        if(j.phase==Phase.DESCEND||j.phase==Phase.DISMOUNT){
+            // Complete the return even if the Builder's claim expired or
+            // its next task can be handled without a scaffold. The physical
+            // climb/exit controller runs first in BuilderGolem.tick.
+            if(!(level.getBlockEntity(j.planner)
+                    instanceof WorkerStationBlockEntity table))return true;
+            return worker.tickCount%5!=0||returnToGround(level,worker,table);
+        }
         BlockPos destination=switch(j.phase){
             case WALK_FIRST->j.first().above();
             case RETURN_FIRST->j.bridge(j.returnStep).above();
@@ -1737,7 +1745,7 @@ public final class BuilderScaffoldPlanA {
                 escapeBlockedExit(level,worker,table,j);
                 return true;
             }
-            if(!BuilderScaffolding.isControllingMovement(worker)
+            if(!BuilderScaffolding.hasPhysicalMotion(worker)
                     &&!BuilderScaffolding.dismountAtBase(
                             level,worker,j.base,j.exit)){
                 // The physical two-block side drop was obstructed.

@@ -135,7 +135,9 @@ public final class BuilderScaffoldConnectedWorkGameTest {
                     }
                     phases[i]=1;progress[i]=helper.getTick();
                 }else if(phases[i]==1){
-                    if(helper.getTick()%5==0)
+                    // The new claim started the return. Give the entity
+                    // controller no further task callbacks for that case.
+                    if(!changeTarget&&helper.getTick()%5==0)
                         BuilderScaffoldPlanA.returnToGround(level,mob,table);
                     if(!BuilderScaffoldPlanA.hasPlan(mob)
                             &&mob.onGround()
@@ -150,7 +152,11 @@ public final class BuilderScaffoldConnectedWorkGameTest {
                     }
                 }
             }
-            if(phases[0]==2&&phases[1]==2)helper.succeed();
+            if(phases[0]==2&&phases[1]==2){
+                if(changeTarget)System.out.println(
+                        "[PLAN A RETURN PASS] both Builders dismounted without work callbacks");
+                helper.succeed();
+            }
         });
     }
 }
