@@ -99,7 +99,6 @@ public final class BuilderReturnService {
                     }
             possible.sort(java.util.Comparator.comparingDouble(p->
                     worker.distanceToSqr(p.getX()+.5,p.getY(),p.getZ()+.5)));
-            if(possible.size()>16)possible=possible.subList(0,16);
             // A failed stand remains valid world geometry but may be
             // blocked by crew/cargo. Try another actual reachable side
             // rather than selecting the same obstructed tile forever.
@@ -112,7 +111,7 @@ public final class BuilderReturnService {
                     .selectExecutableStand(level,worker,possible);
             if(route.stand==null)return true;
         }
-        if(!com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
+        if(!com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(
                 level,worker,route.stand,speed)
                 &&now>=route.nextSearch){
             route.stand=null;route.nextSearch=now+30;

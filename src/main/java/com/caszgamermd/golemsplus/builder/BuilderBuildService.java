@@ -74,6 +74,8 @@ public final class BuilderBuildService {
         // Track actual displacement, not repeated navigation requests.
         double lastWorkX=Double.NaN,lastWorkY=Double.NaN,lastWorkZ=Double.NaN;
         long lastMovementTick=-1;
+        long supplyProgressTick=-1;
+        double bestSupplyDistance=Double.POSITIVE_INFINITY;
         long lastPerchEscapeTick=-1000;
         long retreatUntil=-1;
         int lastFailedStep=-1;
@@ -130,6 +132,7 @@ public final class BuilderBuildService {
                     bestTargetDistance=Double.POSITIVE_INFINITY;
                 lastTargetProgressTick=-1;
                 lastMovementTick=-1;lastPerchEscapeTick=-1000;
+                supplyProgressTick=-1;bestSupplyDistance=Double.POSITIVE_INFINITY;
                 lastWorkX=Double.NaN;
                 lookahead=null;lookaheadZone=List.of();
                 lookaheadEligible=List.of();
@@ -252,6 +255,29 @@ public final class BuilderBuildService {
             UUID worker,int index,long now,String reason){
         handoffBoard.computeIfAbsent(table,k->new java.util.HashMap<>())
                 .put(index,new Handoff(worker,now+1200,reason));
+    }
+    /** A stationary worker on an unreachable supply route must release
+     * its placement so an available teammate can collect the material. */
+    private static void watchSupplyTrip(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,WorkerAction activity,int index){
+        BlockPos depot=table.builderUnloadingStorage();
+        if(depot==null||table.builderWorkerIds().size()<2)return;
+        double distance=worker.distanceToSqr(depot.getX()+.5,
+                depot.getY()+.5,depot.getZ()+.5);
+        long now=level.getGameTime();
+        if(activity.supplyProgressTick<0||distance<activity.bestSupplyDistance-1){
+            activity.supplyProgressTick=now;
+            activity.bestSupplyDistance=distance;
+        }
+        if(distance<=12||now-activity.supplyProgressTick<=TARGET_PROGRESS_STALL_TICKS
+                ||BuilderScaffolding.isControllingMovement(worker)
+                ||BuilderGrappleAccess.active(worker))return;
+        String reason="no physical progress toward OnSite Storage";
+        table.waitForBuilderAccess(worker.getUUID(),index,now,reason);
+        publishHandoff(table,worker.getUUID(),index,now,reason);
+        activity.returningToSite=true;
+        activity.supplyProgressTick=-1;
+        table.setProblem("Builder handed off placement "+index+" after blocked supply return");
     }
     private static boolean reservedForTeammate(WorkerStationBlockEntity table,
             UUID worker,int index,long now){
@@ -1485,14 +1511,12 @@ public final class BuilderBuildService {
                     &&worker.carriedCount(state.item())<=0
                     &&!interactionCorrection&&!repairPartner&&!reShapeRail){
                 activity.phase=Action.STAGE_MATERIALS;
-                // An A* route from the TOP of a temporary scaffold to
-                // OnSite Storage can never discover the vertical descent.
-                if(BuilderScaffolding.descendForTravel(level,worker,table)
-                        ||BuilderGrappleAccess.rappelForTravel(level,worker,table))
-                    return;
                 var prep=BuilderSupplyInventory.prepareWorkOrder(
                         level,worker,table,plan.steps(),zone);
-                if(prep==BuilderSupplyInventory.LoadStatus.MOVING)return;
+                if(prep==BuilderSupplyInventory.LoadStatus.MOVING){
+                    watchSupplyTrip(level,worker,table,activity,index);
+                    return;
+                }
                 if(prep==BuilderSupplyInventory.LoadStatus.MISSING){
                     table.setProblem("Builder work order waiting for reachable "
                             +"OnSite Storage (material staging not complete)");
@@ -1564,8 +1588,11 @@ public final class BuilderBuildService {
                     &&!interactionCorrection&&!repairPartner&&!reShapeRail){
                 var loading=BuilderSupplyInventory.loadForLayerStatus(
                         level,worker,table,plan.steps(),index);
-                if(loading==BuilderSupplyInventory.LoadStatus.MOVING)
-                    return; // KEEP this step while walking to real stock.
+                if(loading==BuilderSupplyInventory.LoadStatus.MOVING){
+                    activity.phase=Action.STAGE_MATERIALS;
+                    watchSupplyTrip(level,worker,table,activity,index);
+                    return;
+                }
                 if(loading==BuilderSupplyInventory.LoadStatus.MISSING){
                     // Only release for another worker when material is truly
                     // unavailable to this worker. Releasing while moving
@@ -1600,6 +1627,8 @@ public final class BuilderBuildService {
                         level,worker,table,railItem,needed);
                 if(extra!=BuilderSupplyInventory.LoadStatus.READY){
                     activity.phase=Action.STAGE_MATERIALS;
+                    if(extra==BuilderSupplyInventory.LoadStatus.MOVING)
+                        watchSupplyTrip(level,worker,table,activity,index);
                     if(extra==BuilderSupplyInventory.LoadStatus.MISSING)
                         table.setProblem("Ascending rail needs a spare rail in OnSite Storage");
                     return;
@@ -1609,12 +1638,15 @@ public final class BuilderBuildService {
                             level,worker,table,net.minecraft.world.item.Items.COBBLESTONE,1);
                     if(footing!=BuilderSupplyInventory.LoadStatus.READY){
                         activity.phase=Action.STAGE_MATERIALS;
+                        if(footing==BuilderSupplyInventory.LoadStatus.MOVING)
+                            watchSupplyTrip(level,worker,table,activity,index);
                         if(footing==BuilderSupplyInventory.LoadStatus.MISSING)
                             table.setProblem("Ascending rail jig needs one cobblestone in OnSite Storage");
                         return;
                     }
                 }
             }
+            activity.supplyProgressTick=-1;
             // PLAN B: physical Grapple Hook up to 20 blocks, never a
             // scaffold/flying/teleport fallback. Ordinary slopes use A*.
             // A released rope leaves feet slightly above the ledge until
