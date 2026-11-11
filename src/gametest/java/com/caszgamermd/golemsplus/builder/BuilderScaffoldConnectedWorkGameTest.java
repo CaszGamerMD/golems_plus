@@ -19,17 +19,22 @@ import net.minecraft.world.level.block.Blocks;
 public final class BuilderScaffoldConnectedWorkGameTest {
     @GameTest(maxTicks=1100,skyAccess=true)
     public void twoBuildersScaffoldAroundConnectedRoofAndReturn(GameTestHelper helper){
-        connectedRoofAndReturn(helper,false);
+        connectedRoofAndReturn(helper,false,false);
     }
 
     @GameTest(maxTicks=1100,skyAccess=true)
     public void returnReleasesObsoleteBridgeAfterSolidRoofReplacesFooting(
             GameTestHelper helper){
-        connectedRoofAndReturn(helper,true);
+        connectedRoofAndReturn(helper,true,false);
+    }
+
+    @GameTest(maxTicks=1100,skyAccess=true)
+    public void bridgeTooCloseToNewWorkReturnsSafely(GameTestHelper helper){
+        connectedRoofAndReturn(helper,false,true);
     }
 
     private static void connectedRoofAndReturn(GameTestHelper helper,
-            boolean replacedByRoof){
+            boolean replacedByRoof,boolean changeTarget){
         ServerLevel level=helper.getLevel();
         for(int x=0;x<8;x++)for(int z=0;z<8;z++)
             helper.setBlock(x,1,z,Blocks.STONE);
@@ -104,6 +109,15 @@ public final class BuilderScaffoldConnectedWorkGameTest {
                                 +" at "+mob.position()+" plan="
                                 +BuilderScaffoldPlanA.status(mob));
                         return;
+                    }
+                    if(changeTarget){
+                        BlockPos tooClose=mob.blockPosition().east();
+                        if(BuilderScaffoldPlanA.reachWorkPose(level,mob,table,
+                                owner,tooClose,List.of())
+                                ==BuilderScaffoldPlanA.Result.READY){
+                            helper.fail("Bridge accepted a new target inside the edge margin");
+                            return;
+                        }
                     }
                     if(replacedByRoof){
                         // Construction replaces the occupied temporary

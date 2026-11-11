@@ -147,7 +147,7 @@ public final class BuilderScaffoldPlanA {
     public static boolean safeTemporaryWorkPose(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos target){
         Job j=jobs.get(worker);
-        if(j==null||j.phase!=Phase.READY||!j.target.equals(target)
+        if(j==null||j.phase!=Phase.READY
                 ||worker.isNoGravity()||!worker.onGround()
                 ||Math.abs(worker.getY()-target.getY())>.18
                 // The scaffold occupies targetY-1. Compare HORIZONTAL
@@ -170,8 +170,8 @@ public final class BuilderScaffoldPlanA {
                         target.getY()+.5,target.getZ()+.5)<14
                 &&onOwnedScaffoldTop(level,worker,table,
                         j.bridge(j.bridgeSpan))
-                &&BuilderConstructionPlanner.lineOfSight(
-                        level,worker,worker.blockPosition(),target);
+                &&BuilderConstructionPlanner.lineOfSightFrom(
+                        level,worker,worker.getEyePosition(),target);
     }
     /** Non-mutating frontier proof: a reachable paid bridge position
      * with reserved return route exists; actual work validates it again.
@@ -1377,10 +1377,10 @@ public final class BuilderScaffoldPlanA {
             boolean workPose){
         Job j=jobs.get(worker);
         if(j!=null&&!j.target.equals(target)){
-            // A completed horizontal bridge can meet a real roof walkway
-            // at the same height. Check that physical side exit BEFORE
-            // reusing the bridge for another nearby work cell; otherwise
-            // the old READY shortcut masks the ledge indefinitely.
+            // A paid bridge can serve another block only when the actual
+            // landing is a safe work stance for that new block.
+            if(workPose&&safeTemporaryWorkPose(level,worker,table,target))
+                return Result.READY;
             if((j.phase==Phase.READY||j.phase==Phase.WALK_SECOND
                     ||j.phase==Phase.DISMOUNT)
                     &&BuilderScaffolding.stepOffTowardWork(
@@ -1388,12 +1388,6 @@ public final class BuilderScaffoldPlanA {
                 j.phase=Phase.DISMOUNT;
                 return Result.MOVING;
             }
-            if(worker.blockPosition().getY()==target.getY()
-                    &&worker.distanceToSqr(target.getX()+.5,
-                            target.getY()+.5,target.getZ()+.5)<=4
-                    &&j.phase==Phase.READY
-                    &&onOwnedScaffoldTop(level,worker,table,
-                            j.bridge(j.bridgeSpan)))return Result.READY;
             if(returnToGround(level,worker,table))return Result.MOVING;
             j=null;
         }
@@ -1559,6 +1553,18 @@ public final class BuilderScaffoldPlanA {
                             +" feetY="+worker.getY()
                             +" grounded="+worker.onGround());
                     return Result.MOVING;
+                }
+                if(workPose&&!safeTemporaryWorkPose(level,worker,table,target)){
+                    // Construction can close the sight line or remove part
+                    // of a bridge after the route has already been planned.
+                    // Preserve the actual return route and try a new entry.
+                    rejectEntry(level,worker,j.base);
+                    if(BuilderScaffolding.stepOffAtFootHeight(level,worker,table,target)){
+                        j.phase=Phase.DISMOUNT;
+                        return Result.MOVING;
+                    }
+                    return returnToGround(level,worker,table)
+                            ?Result.MOVING:Result.NO_SAFE_ROUTE;
                 }
                 return Result.READY;
             }
