@@ -297,6 +297,94 @@ public final class BuilderRailTrafficGameTest {
         });
     }
 
+    @GameTest(maxTicks=450,skyAccess=true)
+    public void builderPaysForRampAndRecoversJig(GameTestHelper h)
+            throws java.io.IOException{
+        var level=h.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        h.setBlock(0,2,0,
+                com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_TABLE);
+        h.setBlock(1,2,0,Blocks.CHEST);
+        BlockPos home=h.absolutePos(new BlockPos(0,2,0));
+        BlockPos depot=h.absolutePos(new BlockPos(1,2,0));
+        BlockPos target=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos west=target.west();
+        String flat="minecraft:powered_rail[powered=false,shape=east_west,waterlogged=false]";
+        String slope="minecraft:powered_rail[powered=false,shape=ascending_west,waterlogged=false]";
+        var flatState=BuilderBlockResolver.resolve(flat,BuildSite.Rotation.NONE,
+                BuildSite.Mirror.NONE).state();
+        var slopeState=BuilderBlockResolver.resolve(slope,BuildSite.Rotation.NONE,
+                BuildSite.Mirror.NONE).state();
+        level.setBlock(west,flatState,net.minecraft.world.level.block.Block.UPDATE_CLIENTS
+                |net.minecraft.world.level.block.Block.UPDATE_KNOWN_SHAPE
+                |net.minecraft.world.level.block.Block.UPDATE_SKIP_ON_PLACE);
+        var cells=java.util.List.of(
+                new LitematicFileReader.Block(west.getX(),west.getY(),west.getZ(),flat),
+                new LitematicFileReader.Block(target.getX(),target.getY(),target.getZ(),slope));
+        byte[] bytes=BuilderPlacementSnapshot.encode("Physical ramp job",cells,java.util.List.of());
+        var plan=BuilderConstructionPlan.create(BuilderPlacementSnapshot.decode(bytes),
+                BuilderPlacementSnapshot.worldSpaceSite());
+        var folder=net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
+                .resolve("golems_plus").resolve("schematics");
+        java.nio.file.Files.createDirectories(folder);
+        String filename="placed-gametest-physical-ramp.gpb";
+        java.nio.file.Files.write(folder.resolve(filename),bytes);
+        var table=(com.caszgamermd.golemsplus.world.WorkerStationBlockEntity)
+                level.getBlockEntity(home);
+        var chest=(net.minecraft.world.Container)level.getBlockEntity(depot);
+        var rail=net.minecraft.world.item.Items.POWERED_RAIL;
+        var cobble=net.minecraft.world.item.Items.COBBLESTONE;
+        chest.setItem(0,new net.minecraft.world.item.ItemStack(rail,2));
+        chest.setItem(1,new net.minecraft.world.item.ItemStack(cobble,1));
+        var owner=h.makeMockServerPlayerInLevel();
+        BlockPos observer=h.absolutePos(new BlockPos(0,2,7));
+        owner.setPos(observer.getX()+.5,observer.getY(),observer.getZ()+.5);
+        var worker=new BuilderGolem(
+                com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_GOLEM,level);
+        BlockPos start=h.absolutePos(new BlockPos(3,2,1));
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        worker.assign(home,owner.getUUID());
+        level.addFreshEntity(worker);
+        if(!table.claimIfUnowned(owner.getUUID())||!table.setCrewTarget(owner.getUUID(),1)
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),filename,"Physical ramp job",
+                    home,0,0,plan.steps().size(),0)
+                ||!table.setBuilderMaterialStorage(owner.getUUID(),depot)
+                ||!table.registerBuilderWorker(worker.getUUID())){
+            h.fail("Ramp job setup failed");
+            return;
+        }
+        table.setBuilderMaterialsForFile(filename,plan.required());
+        if(!table.startPlacedBuilder(owner.getUUID())){
+            h.fail("Ramp job refused to start");
+            return;
+        }
+        h.onEachTick(()->{
+            if(h.getTick()==440){
+                h.fail("Ramp job did not complete: "+table.problem());
+                return;
+            }
+            if(table.phase()!=com.caszgamermd.golemsplus.worker.WorkerPhase.COMPLETE)return;
+            int remainingRails=worker.carriedCount(rail);
+            int remainingCobble=worker.carriedCount(cobble);
+            for(int slot=0;slot<chest.getContainerSize();slot++){
+                var stack=chest.getItem(slot);
+                if(stack.is(rail))remainingRails+=stack.getCount();
+                if(stack.is(cobble))remainingCobble+=stack.getCount();
+            }
+            if(!BuilderPlacementState.matches(level.getBlockState(target),slopeState)
+                    ||!level.getBlockState(west).equals(flatState)
+                    ||!level.getBlockState(west.above()).isAir()
+                    ||remainingRails!=1||remainingCobble!=1){
+                h.fail("Ramp job failed shape, cleanup, or payment: rails="
+                        +remainingRails+" cobble="+remainingCobble);
+                return;
+            }
+            System.out.println("[BUILDER RAIL JIG JOB PASS] one paid ramp and recovered jig");
+            h.succeed();
+        });
+    }
+
     @GameTest(maxTicks=70,skyAccess=true)
     public void reachablePaidRailCorrectionRemainsEligibleForAssignment(
             GameTestHelper h){
