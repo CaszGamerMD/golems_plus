@@ -2333,7 +2333,7 @@ public final class BuilderBuildService {
             throw new IllegalArgumentException("Saved schematic missing");
         boolean frozen=BuilderPlacementSnapshot.isSnapshot(file);
         var schematic=frozen?BuilderPlacementSnapshot.read(file)
-                :LitematicFileReader.read(file);
+                :LitematicFileReader.readLegacyPlacement(file);
         var origin=table.builderOrigin();
         // Snapshot cells are already ABSOLUTE world positions from the
         // selected Litematica ghost. A second transform is forbidden.

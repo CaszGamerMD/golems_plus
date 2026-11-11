@@ -52,18 +52,22 @@ class LitematicFileReaderTest {
         return file;
     }
     @Test void decodesMultiRegionAndNegativeDirections()throws IOException{
-        var schem=LitematicFileReader.read(write(false));
+        var file=write(false);
+        var schem=LitematicFileReader.read(file);
         assertEquals("Sample",schem.name());
         assertEquals(4,schem.blocks().size());
         assertEquals(2,schem.stateCounts().get("minecraft:stone"));
-        assertEquals(10,schem.blocks().get(2).x());
-        assertEquals(9,schem.blocks().get(3).x());
+        assertEquals(9,schem.blocks().get(2).x());
+        assertEquals(10,schem.blocks().get(3).x());
+        var legacy=LitematicFileReader.readLegacyPlacement(file);
+        assertEquals(10,legacy.blocks().get(2).x());
+        assertEquals(9,legacy.blocks().get(3).x());
         var site=new BuildSite(100,64,200,BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
         var plan=BuilderSchematicAnalysis.analyze(schem,site,
                 id->id.equals("minecraft:stone")?"minecraft:stone":null);
         assertEquals(2,plan.materials().get("minecraft:stone"));
         assertFalse(plan.ready());
-        assertEquals(110,plan.positions().get(2).x());
+        assertEquals(109,plan.positions().get(2).x());
     }
     @Test void failsOnWrongHeader()throws IOException {
         var file=directory.resolve("wrong.litematic");

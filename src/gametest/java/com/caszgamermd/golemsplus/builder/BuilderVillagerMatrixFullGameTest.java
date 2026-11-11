@@ -61,6 +61,18 @@ public final class BuilderVillagerMatrixFullGameTest {
                 h.fail("Matrix coordinates are wrong: x="+minX+".."+maxX
                         +" z="+minZ+".."+maxZ);return;
             }
+            boolean eastHook=bounds.stream().anyMatch(b->
+                    b.x()==14&&b.y()==3&&b.z()==24
+                    &&b.state().startsWith("minecraft:tripwire_hook[")
+                    &&b.state().contains("facing=east"));
+            boolean westHook=bounds.stream().anyMatch(b->
+                    b.x()==16&&b.y()==3&&b.z()==24
+                    &&b.state().startsWith("minecraft:tripwire_hook[")
+                    &&b.state().contains("facing=west"));
+            if(!eastHook||!westHook){
+                h.fail("Signed Matrix region put tripwire hooks on the wrong sides");
+                return;
+            }
             long dustBlocks=schematic.blocks().stream()
                     .filter(b->b.state().startsWith("minecraft:redstone_wire["))
                     .count();
@@ -161,13 +173,12 @@ public final class BuilderVillagerMatrixFullGameTest {
             maxTicks=140000,skyAccess=true,required=false)
     public void constructsEntireMatrixWithEightRealBuilders(GameTestHelper h){
         ServerLevel level=h.getLevel();
-        final Path source;
         final LitematicFileReader.Schematic schematic;
         final BuilderConstructionPlan.Result plan;
         final BlockPos origin=h.absolutePos(new BlockPos(10,6,10));
         try{
-            source=BuilderVillagerMatrixFullFixture.unpack();
-            schematic=LitematicFileReader.read(source);
+            schematic=LitematicFileReader.read(
+                    BuilderVillagerMatrixFullFixture.unpack());
             if(schematic.blocks().size()!=SOURCE_BLOCKS
                     ||schematic.airBlocks().size()!=SOURCE_AIR)
                 throw new IllegalStateException("Unexpected schematic block count");
@@ -209,11 +220,12 @@ public final class BuilderVillagerMatrixFullGameTest {
         }
         Path folder=FabricLoader.getInstance().getConfigDir()
                 .resolve("golems_plus").resolve("schematics");
-        String name="placed-gametest-matrix-clean-v2.litematic";
+        String name="placed-gametest-matrix-clean-v2.gpb";
         try{
             Files.createDirectories(folder);
-            Files.copy(source,folder.resolve(name),
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.write(folder.resolve(name),BuilderPlacementSnapshot.encode(
+                    schematic.name(),absoluteCells(schematic.blocks(),origin),
+                    absoluteCells(schematic.airBlocks(),origin)));
         }catch(Exception e){h.fail("Cannot stage exact Matrix file: "+e);return;}
         if(!table.setPlacedBuilderPlan(ownerId,name,schematic.name(),origin,
                     0,0,steps.size(),plan.unsupported().size())
@@ -350,6 +362,13 @@ public final class BuilderVillagerMatrixFullGameTest {
                 h.fail(failure.toString());
             }
         });
+    }
+
+    private static List<LitematicFileReader.Block> absoluteCells(
+            List<LitematicFileReader.Block> cells,BlockPos origin){
+        return cells.stream().map(cell->new LitematicFileReader.Block(
+                origin.getX()+cell.x(),origin.getY()+cell.y(),
+                origin.getZ()+cell.z(),cell.state())).toList();
     }
 
     /** Test-only restock: eight physically stored scaffold stacks, one per

@@ -99,9 +99,13 @@ public final class BuilderCommands {
         try{
             Path folder=FabricLoader.getInstance().getConfigDir()
                     .resolve("golems_plus").resolve("schematics");
-            var schematic=LitematicFileReader.read(folder.resolve(table.builderFile()));
+            Path file=folder.resolve(table.builderFile());
+            boolean frozen=BuilderPlacementSnapshot.isSnapshot(file);
+            var schematic=frozen?BuilderPlacementSnapshot.read(file)
+                    :LitematicFileReader.readLegacyPlacement(file);
             var origin=table.builderOrigin();
-            var site=new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
+            var site=frozen?BuilderPlacementSnapshot.worldSpaceSite()
+                    :new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
                     BuildSite.Rotation.values()[table.builderRotation()/90],
                     BuildSite.Mirror.values()[table.builderMirror()]);
             var plan=BuilderConstructionPlan.create(schematic,site,

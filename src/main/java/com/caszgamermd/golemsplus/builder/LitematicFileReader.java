@@ -39,6 +39,15 @@ public final class LitematicFileReader {
     private LitematicFileReader(){}
 
     public static Schematic read(Path path) throws IOException {
+        return read(path,false);
+    }
+
+    /** Legacy raw-file jobs persist indices into the original layout. */
+    static Schematic readLegacyPlacement(Path path)throws IOException {
+        return read(path,true);
+    }
+
+    private static Schematic read(Path path,boolean legacyPlacement)throws IOException {
         if(!Files.isRegularFile(path)||Files.size(path)>MAX_FILE_BYTES)
             throw new IOException("Missing or oversized schematic");
         byte[] bytes;
@@ -69,6 +78,12 @@ public final class LitematicFileReader {
                 int width=(int)Math.abs((long)sx);
                 int height=(int)Math.abs((long)sy);
                 int depth=(int)Math.abs((long)sz);
+                // A signed size locates the selection's other corner.
+                // The packed palette always advances from the minimum
+                // corner, including on axes selected in reverse.
+                long minX=(long)px+Math.min(0L,(long)sx+1);
+                long minY=(long)py+Math.min(0L,(long)sy+1);
+                long minZ=(long)pz+Math.min(0L,(long)sz+1);
                 if(!(region.get("BlockStatePalette") instanceof List<?> paletteRaw)
                         ||paletteRaw.isEmpty()||paletteRaw.size()>65_536)
                     throw new IOException("Missing block palette");
@@ -107,9 +122,9 @@ public final class LitematicFileReader {
                     boolean air=Set.of("minecraft:air","minecraft:cave_air",
                             "minecraft:void_air").contains(plain);
                     int x=i%width,z=(i/width)%depth,y=i/(width*depth);
-                    long bx=(long)px+(sx<0?-x:x);
-                    long by=(long)py+(sy<0?-y:y);
-                    long bz=(long)pz+(sz<0?-z:z);
+                    long bx=legacyPlacement?(long)px+(sx<0?-x:x):minX+x;
+                    long by=legacyPlacement?(long)py+(sy<0?-y:y):minY+y;
+                    long bz=legacyPlacement?(long)pz+(sz<0?-z:z):minZ+z;
                     if(bx<Integer.MIN_VALUE||bx>Integer.MAX_VALUE||
                             by<Integer.MIN_VALUE||by>Integer.MAX_VALUE||
                             bz<Integer.MIN_VALUE||bz>Integer.MAX_VALUE)
