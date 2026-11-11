@@ -706,6 +706,12 @@ public final class BuilderScaffoldPlanA {
             if(level.getBlockState(p).isAir())unfinished.add(p);
         BlockPos safe=BuilderScaffolding.safeGroundExit(
                 level,worker,j.base,unfinished);
+        // During an active return, a future placement is still real air.
+        // Use it for the brief evacuation if the reserved exits closed.
+        // The work loop still checks physical occupancy before placement.
+        if(safe==null)
+            safe=BuilderScaffolding.safeGroundExit(
+                    level,worker,j.base,Set.of(j.target));
         if(safe!=null){
             BlockPos previous=j.exit;
             j.exit=safe;
@@ -1621,37 +1627,34 @@ public final class BuilderScaffoldPlanA {
         }
         if(j.phase==Phase.RETURN_FIRST||j.phase==Phase.RETURN_TOWER)
             return true;
-        if(j.phase==Phase.CLIMB){
-            if(!refreshExit(level,worker,table,j)){
-                escapeBlockedExit(level,worker,table,j);
-                return true;
-            }
-            // A real Builder can drop TWO blocks onto verified ground.
-            // Stop at the tower lip unless the exit is still farther below.
-            double safeStop=Math.min(j.base.getY()+1.0,
-                    j.exit.getY()+2.0);
-            if(worker.getY()>safeStop+.16)
-                BuilderScaffolding.begin(level,worker,j.base,
-                        safeStop,true);
-            j.phase=Phase.DESCEND;
-            return true;
-        }
+        if(j.phase==Phase.CLIMB)j.phase=Phase.DESCEND;
         if(j.phase==Phase.DESCEND){
             if(!refreshExit(level,worker,table,j)){
-                escapeBlockedExit(level,worker,table,j);
-                return true; // never descend to a sealed exit
+                if(escapeBlockedExit(level,worker,table,j))return true;
+                // If the side exits closed, finish lowering within the
+                // paid shaft onto its real foundation. The grounded
+                // dismount can recover its own snag without dropping.
+                double dx=worker.getX()-j.base.getX()-.5;
+                double dz=worker.getZ()-j.base.getZ()-.5;
+                if(dx*dx+dz*dz>.16||!present(level,table,worker,j.base)
+                        ||!level.getBlockState(j.base.below()).isFaceSturdy(
+                                level,j.base.below(),Direction.UP))return true;
+                if(worker.getY()>j.base.getY()+.16){
+                    BuilderScaffolding.begin(level,worker,j.base,j.base.getY(),true);
+                    return true;
+                }
+                j.phase=Phase.DISMOUNT;
+            }else{
+                // A drop of up to two blocks to real solid ground is allowed.
+                // Larger drops first descend farther through the paid shaft.
+                double safeStop=Math.min(j.base.getY()+1.0,
+                        j.exit.getY()+2.0);
+                if(worker.getY()>safeStop+.16){
+                    BuilderScaffolding.begin(level,worker,j.base,safeStop,true);
+                    return true;
+                }
+                j.phase=Phase.DISMOUNT;
             }
-            // A drop of up to two blocks to real solid ground is allowed.
-            // Larger drops first descend farther through the paid shaft.
-            double safeStop=Math.min(j.base.getY()+1.0,
-                    j.exit.getY()+2.0);
-            if(worker.getY()>safeStop+.16){
-                if(!BuilderScaffolding.climbingNow(level,worker))
-                    BuilderScaffolding.begin(level,worker,j.base,
-                            safeStop,true);
-                return true;
-            }
-            j.phase=Phase.DISMOUNT;
         }
         if(j.phase==Phase.DISMOUNT){
             // Never release a high grounded worker merely because its
