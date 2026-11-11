@@ -140,6 +140,47 @@ public final class BuilderRailTrafficGameTest {
         });
     }
 
+    @GameTest(maxTicks=40,skyAccess=true)
+    public void teammateOnUpperLedgeDoesNotBlockPlacementBelow(GameTestHelper h){
+        var level=h.getLevel();
+        h.setBlock(1,2,1,
+                com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_TABLE);
+        h.setBlock(3,2,4,Blocks.STONE);
+        var table=(com.caszgamermd.golemsplus.world.WorkerStationBlockEntity)
+                level.getBlockEntity(h.absolutePos(new BlockPos(1,2,1)));
+        var owner=h.makeMockServerPlayerInLevel();
+        BlockPos observer=h.absolutePos(new BlockPos(1,2,7));
+        owner.setPos(observer.getX()+.5,observer.getY(),observer.getZ()+.5);
+        BlockPos target=h.absolutePos(new BlockPos(4,2,4));
+        var teammate=new BuilderGolem(
+                com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_GOLEM,level);
+        teammate.setPos(target.getX()-.5,target.getY()+1,target.getZ()+.5);
+        level.addFreshEntity(teammate);
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.registerBuilderWorker(teammate.getUUID())){
+            h.fail("Cannot register teammate on upper ledge");
+            return;
+        }
+        var placing=new BuilderGolem(
+                com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_GOLEM,level);
+        h.onEachTick(()->{
+            if(h.getTick()!=10)return;
+            if(!teammate.onGround()||BuilderPlacementSpace.horizontalClear(target,teammate)){
+                h.fail("Teammate did not settle within the horizontal clearance margin");
+                return;
+            }
+            if(!BuilderPlacementSpace.ready(level,placing,table,target)){
+                h.fail("A vertically clear teammate blocked the lower placement");
+                return;
+            }
+            if(BuilderPlacementSpace.ready(level,teammate,table,target)){
+                h.fail("The placing Builder lost its downward clearance check");
+                return;
+            }
+            h.succeed();
+        });
+    }
+
     @GameTest(maxTicks=80,skyAccess=true)
     public void railPlacementDoesNotEvacuateAnUnobstructedBuilder(GameTestHelper h){
         var level=h.getLevel();

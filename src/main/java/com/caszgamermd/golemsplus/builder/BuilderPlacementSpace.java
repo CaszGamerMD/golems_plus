@@ -175,11 +175,16 @@ public final class BuilderPlacementSpace {
         Yield hold=yielding.get(worker);
         return hold!=null&&hold.target().equals(target)&&hold.precision();
     }
-    private static boolean occupied(BlockPos target,BuilderGolem worker){
+    private static boolean occupied(BlockPos target,BuilderGolem worker,
+            boolean placingWorker){
         if(!worker.isAlive())return false;
         boolean overlapsHeight=worker.getBoundingBox().maxY>target.getY()
                 &&worker.getBoundingBox().minY<target.getY()+1;
-        boolean aboveWork=worker.blockPosition().getY()==target.getY()+1;
+        // The placing worker needs room for its downward approach. A
+        // teammate already on the roof above the cube can stay there
+        // when its body is vertically clear of the placement.
+        boolean aboveWork=placingWorker
+                &&worker.blockPosition().getY()==target.getY()+1;
         return overlapsHeight && worker.getBoundingBox().intersects(volume(target))
                 ||(overlapsHeight||aboveWork)&&!horizontalClear(target,worker);
     }
@@ -260,7 +265,7 @@ public final class BuilderPlacementSpace {
      */
     public static boolean tickPrecisionYield(ServerLevel level,BuilderGolem mob){
         Yield hold=yielding.get(mob);
-        if(hold==null||!hold.precision()||!occupied(hold.target(),mob))return false;
+        if(hold==null||!hold.precision()||!occupied(hold.target(),mob,hold.placingWorker()))return false;
         double[] step=precisionStep(level,mob,hold.target());
         if(step==null)return false;
         WorkerNavigation.stop(mob);
@@ -283,7 +288,7 @@ public final class BuilderPlacementSpace {
         Yield hold=yielding.get(worker);
         if(hold==null)return false;
         if(!worker.isAlive()||level.getGameTime()>=hold.until()
-                ||!occupied(hold.target(),worker)
+                ||!occupied(hold.target(),worker,hold.placingWorker())
                     &&(hold.placingWorker()
                         ||!level.getBlockState(hold.target()).isAir())){
             // Once the placement exists, its physical collision prevents
@@ -294,7 +299,7 @@ public final class BuilderPlacementSpace {
         }
         // The last fraction of a block is a continuous physics-controlled
         // precision move; an exact tile-center path would stop too close.
-        if(occupied(hold.target(),worker)&&hold.precision()){
+        if(occupied(hold.target(),worker,hold.placingWorker())&&hold.precision()){
             if(canPrecisionStep(level,worker,hold.target()))return true;
             BlockPos destination=escape(level,worker,hold.target());
             if(destination!=null){
@@ -303,7 +308,7 @@ public final class BuilderPlacementSpace {
             }
         }
         // Otherwise the worker must take a normal collision-safe A* path.
-        if(occupied(hold.target(),worker)
+        if(occupied(hold.target(),worker,hold.placingWorker())
                 ||worker.distanceToSqr(hold.destination().getX()+.5,
                         hold.destination().getY(),hold.destination().getZ()+.5)>2.25)
             WorkerNavigation.routeToExact(level,worker,hold.destination(),.9);
@@ -337,7 +342,7 @@ public final class BuilderPlacementSpace {
         // Candidate centers must clear 0.8m in X/Z even if the body
         // overlaps from the layer below, not just avoid an AABB contact.
         if(at.equals(worker.blockPosition())
-                &&occupied(obstructed,worker))return false;
+                &&occupied(obstructed,worker,true))return false;
         if(edgeDistance(obstructed,at.getX()+.5,at.getZ()+.5)
                     <MIN_EDGE_CLEARANCE
                 ||shifted.intersects(volume(obstructed))
@@ -618,7 +623,7 @@ public final class BuilderPlacementSpace {
                 +" expiresIn="+Math.max(0,hold.until()-level.getGameTime())+"t"
                 +" precision="+hold.precision()
                 +" onGround="+worker.onGround()
-                +" stillTooClose="+occupied(hold.target(),worker)
+                +" stillTooClose="+occupied(hold.target(),worker,hold.placingWorker())
                 +" escapeStandable="+WorkerNavigation.canStandOn(
                         level,worker,hold.destination());
     }
@@ -636,7 +641,7 @@ public final class BuilderPlacementSpace {
         List<BuilderGolem> blocking=level.getEntitiesOfClass(
                 BuilderGolem.class,volume(target).inflate(1,1,1),
                 g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID())
-                        &&occupied(target,g));
+                        &&occupied(target,g,false));
         if(blocking.isEmpty())return "none";
         List<String> details=new ArrayList<>();
         for(BuilderGolem g:blocking)
@@ -680,7 +685,7 @@ public final class BuilderPlacementSpace {
         List<BuilderGolem> blockers=level.getEntitiesOfClass(
                 BuilderGolem.class,area.inflate(1,1,1),
                 g->g.isAlive()&&table.builderWorkerIds().contains(g.getUUID())
-                        &&occupied(target,g));
+                        &&occupied(target,g,g==placing));
         if(blockers.isEmpty()){
             // A player/other mob must also never be suffocated by placement.
             List<LivingEntity> others=level.getEntitiesOfClass(
