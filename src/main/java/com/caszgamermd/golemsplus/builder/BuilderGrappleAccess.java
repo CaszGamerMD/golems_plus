@@ -800,7 +800,11 @@ public final class BuilderGrappleAccess {
     public static boolean rappelForTravel(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table){
         BlockPos goal=table.builderUnloadingStorage();
-        return goal!=null&&rappelToward(level,worker,table,goal);
+        // Material pickups leave the same rail pockets as a parked or
+        // completed worker. Keep the timed physical escape available
+        // even while the depot destination is repeatedly unreachable.
+        return goal!=null&&(escapeRailPocket(level,worker,goal)
+                ||rappelToward(level,worker,table,goal));
     }
     /** Completed workers prioritize a safe grapple descent over a long
      * ground detour; if no legal anchor exists, normal routing remains.
@@ -851,9 +855,10 @@ public final class BuilderGrappleAccess {
         if(diff==1){
             if(tryGroundRoute(level,worker,goal,false))
                 return false; // caller may continue ordinary A* to OnSite
-            if(tryLocalOneBlockDrop(level,worker,goal))
-                return true; // existing normal A* owns the intermediate step
         }
+        // A verified intermediate drop is useful even when the depot
+        // itself is several more blocks down or on the far side.
+        if(tryLocalOneBlockDrop(level,worker,goal))return true;
         if(!hasHook(worker)){
             var load=BuilderSupplyInventory.loadGrapple(level,worker,table);
             return load!=BuilderSupplyInventory.LoadStatus.MISSING;

@@ -454,10 +454,7 @@ public final class BuilderScaffolding {
             }
         choices.sort(Comparator.comparingDouble(p->
                 p.distSqr(worker.blockPosition())));
-        for(BlockPos p:choices)
-            if(com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .canReachExact(level,worker,p))return p;
-        return null;
+        return WorkerNavigation.selectExecutableStand(level,worker,choices);
     }
     private static BlockPos exitGround(ServerLevel level,BuilderGolem worker,
                                         BlockPos base){
