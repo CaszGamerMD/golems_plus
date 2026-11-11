@@ -469,14 +469,21 @@ public final class BuilderScaffolding {
             // to take this ordinary one-block drop to dismount.
             for(int dy:new int[]{0,-1}){
                 BlockPos p=base.relative(side).offset(0,dy,0);
-                if(!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .canStandOn(level,worker,p))continue;
+                if(!walkableExit(level,worker,p))continue;
                 double score=worker.distanceToSqr(p.getX()+.5,worker.getY(),
                         p.getZ()+.5)+Math.abs(dy)*2;
                 if(score<cost){cost=score;best=p;}
             }
         }
         return best;
+    }
+
+    /** An exit hands movement back to ground navigation. A scaffold
+     * cell or lip can support a body but still requires scaffold motion. */
+    static boolean walkableExit(ServerLevel level,BuilderGolem worker,BlockPos at){
+        return !level.getBlockState(at).is(Blocks.SCAFFOLDING)
+                &&!level.getBlockState(at.below()).is(Blocks.SCAFFOLDING)
+                &&WorkerNavigation.canStandOn(level,worker,at);
     }
     /** Step sideways off a one-cell horizontal bridge at the worker's
      * ACTUAL feet elevation. A climb-through bridge may leave its feet
@@ -614,12 +621,10 @@ public final class BuilderScaffolding {
                                    BlockPos column,BlockPos preferred){
         AccessRoute planned=access.get(worker);
         BlockPos exit=preferred!=null
-                &&com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .canStandOn(level,worker,preferred)
+                &&walkableExit(level,worker,preferred)
                 ?preferred:planned!=null
                 &&planned.base().equals(column)
-                &&com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .canStandOn(level,worker,planned.groundExit())
+                &&walkableExit(level,worker,planned.groundExit())
                 ?planned.groundExit():exitGround(level,worker,column);
         if(exit==null)return false;
         // A Builder may safely fall TWO blocks from the scaffold lip
@@ -1027,8 +1032,7 @@ public final class BuilderScaffolding {
                 BlockPos p=base.relative(side).offset(0,dy,0);
                 if(future.contains(p)||future.contains(p.above())
                         ||p.getY()<base.getY()-1
-                        ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                                .canStandOn(level,worker,p))continue;
+                        ||!walkableExit(level,worker,p))continue;
                 double candidate=worker.distanceToSqr(
                         p.getX()+.5,base.getY(),p.getZ()+.5)
                         +Math.abs(dy)*2.0;

@@ -700,7 +700,7 @@ public final class BuilderScaffoldPlanA {
      */
     private static boolean refreshExit(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,Job j){
-        if(WorkerNavigation.canStandOn(level,worker,j.exit))return true;
+        if(BuilderScaffolding.walkableExit(level,worker,j.exit))return true;
         Set<BlockPos> unfinished=new HashSet<>();
         for(BlockPos p:j.reserved)
             if(level.getBlockState(p).isAir())unfinished.add(p);
@@ -1677,7 +1677,8 @@ public final class BuilderScaffoldPlanA {
                 // is overhead, not underneath the grounded worker.
                 // Blocking dismount based only on X/Z strands a builder
                 // forever beneath its own safe return bridge.
-                if(Math.abs(scaffold.getX()+.5-worker.getX())<.9
+                if(level.getBlockState(scaffold).is(Blocks.SCAFFOLDING)
+                        &&Math.abs(scaffold.getX()+.5-worker.getX())<.9
                         &&Math.abs(scaffold.getZ()+.5-worker.getZ())<.9
                         &&scaffold.getY()+1.0>worker.getBoundingBox().minY-.1
                         &&scaffold.getY()<worker.getBoundingBox().maxY+.1){
@@ -1729,15 +1730,17 @@ public final class BuilderScaffoldPlanA {
                 BuilderScaffolding.retrieve(level,worker,table,false);
                 return false;
             }
-            if(worker.onGround()
-                    &&clearOfOwnedScaffold
-                    &&!level.getBlockState(below).is(Blocks.SCAFFOLDING)
-                    &&level.getBlockState(below).isFaceSturdy(
-                            level,below,Direction.UP)){
-                if(worker.getY()<j.base.getY()-.35)
+            BlockPos feet=worker.blockPosition();
+            double floor=WorkerNavigation.surveyFloorHeight(level,feet);
+            if(worker.onGround()&&!worker.isNoGravity()&&clearOfOwnedScaffold
+                    &&Math.abs(worker.getY()-floor)<.12
+                    &&BuilderScaffolding.walkableExit(level,worker,feet)){
+                if(worker.getY()<j.base.getY()-.35){
+                    rejectEntry(level,worker,j.base);
                     System.out.println("[PLAN A DISMOUNT] released stale tower "
                             +j.base.toShortString()+" from lower real footing "
-                            +worker.blockPosition().toShortString());
+                            +feet.toShortString());
+                }
                 jobs.remove(worker);
                 return false;
             }

@@ -276,6 +276,9 @@ public final class BuilderVillagerMatrixFullGameTest {
                         level.getBlockState(candidate.pos()),candidate.state()))
                     correct++;
             int cursor=table.builderCursor();
+            if(best[0]<200&&correct>=200)
+                System.out.println("[MATRIX 200 PASS] tick="+tick
+                        +" matchingSourceBlocks="+correct+"/"+SOURCE_BLOCKS);
             if(correct>best[0]||cursor>lastCursor[0]){
                 best[0]=Math.max(best[0],correct);
                 lastCursor[0]=Math.max(lastCursor[0],cursor);
