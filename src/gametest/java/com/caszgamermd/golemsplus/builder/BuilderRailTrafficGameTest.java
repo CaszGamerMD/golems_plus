@@ -233,6 +233,7 @@ public final class BuilderRailTrafficGameTest {
             h.setBlock(x,1,z,Blocks.STONE);
         h.setBlock(0,2,0,
                 com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_TABLE);
+        h.setBlock(1,2,0,Blocks.CHEST);
         h.setBlock(3,2,4,Blocks.POWERED_RAIL);
         h.setBlock(4,2,4,Blocks.POWERED_RAIL);
         var table=(com.caszgamermd.golemsplus.world.WorkerStationBlockEntity)
@@ -250,6 +251,8 @@ public final class BuilderRailTrafficGameTest {
                 ||!table.setPlacedBuilderPlan(owner.getUUID(),
                     "paid-rail-frontier.litematic","Paid rail",table.getBlockPos(),
                     0,0,1,0)
+                ||!table.setBuilderMaterialStorage(owner.getUUID(),
+                    h.absolutePos(new BlockPos(1,2,0)))
                 ||!table.registerBuilderWorker(worker.getUUID())
                 ||!table.startPlacedBuilder(owner.getUUID())){
             h.fail("Could not prepare real rail frontier");return;
