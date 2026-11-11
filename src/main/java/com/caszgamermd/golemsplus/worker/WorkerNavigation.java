@@ -304,11 +304,16 @@ public final class WorkerNavigation {
         VoxelShape footing=level.getBlockState(below).getCollisionShape(level,below);
         BlockState state=level.getBlockState(feet);
         VoxelShape inside=state.getCollisionShape(level,feet);
-        // A stair or lower slab itself supplies the support surface;
-        // vanilla can legitimately report its own Y as the path node.
-        if(partialFloor(state)&&!inside.isEmpty()){
-            double top=feet.getY()+inside.max(Direction.Axis.Y);
-            return top;
+        // Integer feet coordinates can lie INSIDE a supporting block:
+        // soul sand/mud stand at Y+.875, farmland/path at Y+.9375.
+        // Their own collision surface is the floor even with air below.
+        // Do not mistake the .6m STEP limit for a limit on floor height.
+        // Full cubes and tall barriers remain blocked; the caller checks
+        // the complete body at this actual surface before admitting it.
+        if(!inside.isEmpty()){
+            double height=inside.max(Direction.Axis.Y);
+            if(partialFloor(state)||height>0&&height<.9999)
+                return feet.getY()+height;
         }
         if(footing.isEmpty()){
             // Native ground paths round a fence/wall top UP to their

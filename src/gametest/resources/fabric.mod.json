@@ -26,7 +26,8 @@
       "com.caszgamermd.golemsplus.builder.BuilderRailPocketEscapeGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderDroppedBlockRecoveryGameTest",
       "com.caszgamermd.golemsplus.breakroom.GolemBreakGameTest",
-      "com.caszgamermd.golemsplus.builder.BuilderEscapeTransitionGameTest"
+      "com.caszgamermd.golemsplus.builder.BuilderEscapeTransitionGameTest",
+      "com.caszgamermd.golemsplus.builder.BuilderLoweredFloorNavigationGameTest"
     ]
   }
 }
