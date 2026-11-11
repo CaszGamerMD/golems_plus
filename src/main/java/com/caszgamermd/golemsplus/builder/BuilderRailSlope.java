@@ -102,12 +102,18 @@ public final class BuilderRailSlope {
         BlockPos footing=raised.below();
         BlockState previousFooting=world.getBlockState(footing);
         BlockState previousRail=world.getBlockState(pos);
-        int quiet=Block.UPDATE_CLIENTS|Block.UPDATE_KNOWN_SHAPE;
+        // Moving the jig out of the work area must not trigger a rail's
+        // ordinary break notification or drop the supported ramp.
+        int quiet=Block.UPDATE_CLIENTS|Block.UPDATE_KNOWN_SHAPE|Block.UPDATE_MOVE_BY_PISTON;
         boolean shaped=false;
         try{
             if(temporaryFoundation
                     &&!world.setBlock(footing,Blocks.COBBLESTONE.defaultBlockState(),quiet))
                 return false;
+            // Force a fresh placement callback even when correcting a
+            // rail of the same type already present in the target cell.
+            if(previousRail.getBlock()==desired.getBlock())
+                world.setBlock(pos,Blocks.AIR.defaultBlockState(),quiet);
             BlockState connector=desired.getBlock().defaultBlockState();
             if(!connector.canSurvive(world,raised)
                     ||!world.setBlock(raised,connector,Block.UPDATE_ALL))return false;
@@ -121,12 +127,18 @@ public final class BuilderRailSlope {
             }
             world.setBlock(pos,flat,Block.UPDATE_ALL);
             shaped=BuilderPlacementState.matches(world.getBlockState(pos),desired);
+            if(!shaped)
+                System.out.println("[RAIL JIG] Target did not slope while connector was present: "
+                        +world.getBlockState(pos)+" connector="+world.getBlockState(raised));
         }finally{
             if(!world.getBlockState(raised).isAir())
                 world.setBlock(raised,Blocks.AIR.defaultBlockState(),quiet);
             if(temporaryFoundation)
                 world.setBlock(footing,previousFooting,quiet);
             if(!shaped||!BuilderPlacementState.matches(world.getBlockState(pos),desired)){
+                if(shaped)
+                    System.out.println("[RAIL JIG] Target changed during jig removal: "
+                            +world.getBlockState(pos));
                 world.setBlock(pos,previousRail,quiet);
                 shaped=false;
             }
