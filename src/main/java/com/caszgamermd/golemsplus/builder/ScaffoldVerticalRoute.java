@@ -20,7 +20,10 @@ public final class ScaffoldVerticalRoute {
         return (int)Math.min(wantedTop,Math.min(Integer.MAX_VALUE,next));
     }
     public static boolean reached(double feetY,double stopY,boolean down){
-        return down?feetY<=stopY+.10:feetY>=stopY-.10;
+        // An ascending body is still inside the climb-through scaffold
+        // below the top face. Releasing it there makes gravity pull it
+        // back into the column instead of settling it onto the landing.
+        return down ? feetY <= stopY + .10 : feetY >= stopY;
     }
     /** Recognize feet on the bottom scaffold at baseY+1 as still
      * needing a dismount even though no vertical descent remains.

@@ -125,7 +125,7 @@ public final class BuilderScaffolding {
         ClimbSession session=sessions.get(worker);
         if(session==null||session.descending()
                 ||!climbingNow(level,worker))return false;
-        if(worker.getY()>=session.stopY()-.10)return false;
+        if(ScaffoldVerticalRoute.reached(worker.getY(),session.stopY(),false))return false;
         sessions.put(worker,new ClimbSession(session.column(),
                 session.stopY(),false,level.getGameTime()+30));
         return true;

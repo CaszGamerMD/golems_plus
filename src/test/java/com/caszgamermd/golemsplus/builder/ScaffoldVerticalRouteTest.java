@@ -27,7 +27,8 @@ final class ScaffoldVerticalRouteTest {
     }
     @Test void neverStopsOneBlockTooHighOrLow(){
         assertFalse(ScaffoldVerticalRoute.reached(72,73,false));
-        assertTrue(ScaffoldVerticalRoute.reached(72.94,73,false));
+        assertFalse(ScaffoldVerticalRoute.reached(72.94,73,false));
+        assertTrue(ScaffoldVerticalRoute.reached(73,73,false));
         assertFalse(ScaffoldVerticalRoute.reached(65,64,true));
         assertTrue(ScaffoldVerticalRoute.reached(64.09,64,true));
     }
