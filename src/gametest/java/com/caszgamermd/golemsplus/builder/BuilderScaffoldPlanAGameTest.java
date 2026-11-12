@@ -18,6 +18,44 @@ import net.minecraft.world.level.block.Blocks;
  * physically walks onto the bridge at work Y, then returns and descends.
  */
 public final class BuilderScaffoldPlanAGameTest {
+    @GameTest(maxTicks=30,skyAccess=true)
+    public void scaffoldPickupPaysForAStackAndAcceptsLimitedStock(GameTestHelper h){
+        h.setBlock(1,1,1,Blocks.STONE);
+        h.setBlock(1,2,1,WorksiteContent.BUILDER_TABLE);
+        h.setBlock(2,1,1,Blocks.STONE);
+        h.setBlock(2,2,1,Blocks.CHEST);
+        var level=h.getLevel();
+        var home=h.absolutePos(new BlockPos(1,2,1));
+        var depot=h.absolutePos(new BlockPos(2,2,1));
+        var table=(WorkerStationBlockEntity)level.getBlockEntity(home);
+        var owner=h.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),"placed-scaffold-stock.gpb",
+                    "Scaffold stock",home,0,0,1,0)
+                ||!table.setBuilderMaterialStorage(owner.getUUID(),depot)){
+            h.fail("Cannot configure scaffold stock fixture");return;
+        }
+        var chest=(net.minecraft.world.Container)level.getBlockEntity(depot);
+        chest.setItem(0,new ItemStack(Items.SCAFFOLDING,64));
+        var mob=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        mob.setPos(depot.getX()+.5,depot.getY(),depot.getZ()+1.5);
+        if(BuilderSupplyInventory.loadScaffold(level,mob,table,8)
+                !=BuilderSupplyInventory.ScaffoldLoad.READY
+                ||mob.carriedCount(Items.SCAFFOLDING)!=64
+                ||!chest.getItem(0).isEmpty()){
+            h.fail("Scaffold refill must transfer exactly one paid stack");return;
+        }
+        var other=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        other.setPos(mob.getX(),mob.getY(),mob.getZ());
+        chest.setItem(0,new ItemStack(Items.SCAFFOLDING,8));
+        if(BuilderSupplyInventory.loadScaffold(level,other,table,8)
+                !=BuilderSupplyInventory.ScaffoldLoad.READY
+                ||other.carriedCount(Items.SCAFFOLDING)!=8
+                ||!chest.getItem(0).isEmpty()){
+            h.fail("Limited stock must still satisfy a small route");return;
+        }
+        h.succeed();
+    }
     @GameTest(maxTicks=900,skyAccess=true)
     public void buildsThreeAwayThenBridgesAtExactWorkHeightAndReturns(
             GameTestHelper helper){

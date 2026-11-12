@@ -981,6 +981,11 @@ public final class BuilderScaffoldPlanA {
             if(!level.getBlockState(p).isAir())return Result.NO_SAFE_ROUTE;
             count++;
         }
+        // Stage the bridge as well as this shaft segment before climbing.
+        // Otherwise the last tower block empties the belt and the first
+        // bridge extension sends the worker straight back to the depot.
+        for(BlockPos bridge:j.bridgePath)
+            if(!present(level,table,worker,bridge))count++;
         var load=BuilderSupplyInventory.loadScaffold(
                 level,worker,table,count);
         if(load==BuilderSupplyInventory.ScaffoldLoad.MOVING)return Result.MOVING;

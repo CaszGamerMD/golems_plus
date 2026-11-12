@@ -805,7 +805,9 @@ public final class BuilderSupplyInventory {
             return ScaffoldLoad.MOVING;
         if(BuilderReturnService.approach(level,worker,pos,.82))
             return ScaffoldLoad.MOVING;
-        drawFromSources(table,worker,item,required-worker.carriedCount(item));
+        // Refill the reusable tool-belt stack during an actual depot visit.
+        // Limited stock still satisfies a smaller route when possible.
+        drawFromSources(table,worker,item,Math.max(required,64)-worker.carriedCount(item));
         return worker.carriedCount(item)>=required?
                 ScaffoldLoad.READY:ScaffoldLoad.MISSING;
     }
