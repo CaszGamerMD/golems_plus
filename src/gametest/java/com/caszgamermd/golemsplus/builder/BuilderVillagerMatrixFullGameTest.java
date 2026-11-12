@@ -278,6 +278,12 @@ public final class BuilderVillagerMatrixFullGameTest {
         }
         System.out.println("[MATRIX FULL DEPOT] foundationDistance="
                 +Math.sqrt(distanceSquared));
+        // Keep the depot, crew and all build chunks ticking in this arena.
+        BlockPos arenaCenter=h.absolutePos(new BlockPos(32,2,36));
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        arenaCenter.getX()>>4,arenaCenter.getZ()>>4),4);
         h.setBlock(16,2,32,WorksiteContent.BUILDER_TABLE);
         h.setBlock(17,2,32,Blocks.CHEST);
         if(!(level.getBlockEntity(plannerPos) instanceof WorkerStationBlockEntity table)){
