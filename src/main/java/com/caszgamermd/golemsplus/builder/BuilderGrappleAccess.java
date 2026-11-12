@@ -775,7 +775,7 @@ public final class BuilderGrappleAccess {
         // Probe an air shaft above it and each cardinal wall top.
         for(Direction towardWall:Direction.Plane.HORIZONTAL){
             Direction side=towardWall.getOpposite();
-            for(int rise=1;rise<=4;rise++){
+            for(int rise=0;rise<=4;rise++){
                 BlockPos anchor=feet.relative(towardWall).above(rise);
                 int top=anchor.getY()+1;
                 if(!solidTop(level,anchor)
