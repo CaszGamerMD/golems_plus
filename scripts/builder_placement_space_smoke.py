@@ -60,7 +60,7 @@ assert "!level.getBlockState(hold.target()).isAir()" in space
 assert "hold.placingWorker()" in space
 assert "public static BlockPos approach(" in space
 assert "radius<=4" in space
-assert "p.distSqr(target)>BuilderConstructionPlanner.REACH_SQUARED" in space
+assert "p.distSqr(target)>=BuilderConstructionPlanner.WORK_STANCE_DISTANCE_SQUARED" in space
 # Every narrow aisle with usable straight ground must be considered, not
 # just diagonal tiles. Retain the blocked-entity and real-path safeguards.
 for direction in ("{radius,0}", "{-radius,0}", "{0,radius}", "{0,-radius}",

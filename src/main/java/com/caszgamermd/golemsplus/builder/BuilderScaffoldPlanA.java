@@ -265,12 +265,12 @@ public final class BuilderScaffoldPlanA {
      */
     private static Set<BlockPos> workStanceGoals(BlockPos target,int workY){
         Set<BlockPos> result=new HashSet<>();
-        for(int dx=-BuilderConstructionPlanner.REACH;dx<=BuilderConstructionPlanner.REACH;dx++)
-            for(int dz=-BuilderConstructionPlanner.REACH;dz<=BuilderConstructionPlanner.REACH;dz++){
+        for(int dx=-BuilderConstructionPlanner.WORK_STANCE_RADIUS;dx<=BuilderConstructionPlanner.WORK_STANCE_RADIUS;dx++)
+            for(int dz=-BuilderConstructionPlanner.WORK_STANCE_RADIUS;dz<=BuilderConstructionPlanner.WORK_STANCE_RADIUS;dz++){
             if(Math.max(Math.abs(dx),Math.abs(dz))<2)continue;
             BlockPos stance=target.offset(dx,0,dz).atY(workY);
             if(BuilderConstructionPlanner.workReachFromFeet(stance,target)
-                    <=BuilderConstructionPlanner.REACH_SQUARED)
+                    <BuilderConstructionPlanner.WORK_STANCE_DISTANCE_SQUARED)
                 result.add(stance.below());
         }
         return result;

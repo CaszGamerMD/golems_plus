@@ -68,6 +68,10 @@ public final class BuilderConstructionPlanner {
         // failing) approaches, so a blocked strip cannot starve others.
         windows.remove(worker);
     }
+    // Work poses are planned locally. The hand can use its longer reach
+    // from an already verified position without widening movement goals.
+    static final int WORK_STANCE_RADIUS = 3;
+    static final int WORK_STANCE_DISTANCE_SQUARED = 14;
     static final int REACH = 5;
     static final int REACH_SQUARED = REACH * REACH;
 
@@ -466,11 +470,11 @@ public final class BuilderConstructionPlanner {
             if(state==null||!state.state().canSurvive(world,target))
                 continue;
             int feasible=0,feet=0,escapes=0,routes=0,probes=0;
-            for(int dx=-REACH;dx<=REACH;dx++)
-            for(int dz=-REACH;dz<=REACH;dz++)
+            for(int dx=-WORK_STANCE_RADIUS;dx<=WORK_STANCE_RADIUS;dx++)
+            for(int dz=-WORK_STANCE_RADIUS;dz<=WORK_STANCE_RADIUS;dz++)
                 for(int dy:new int[]{0,1,-1,-2}){
                     BlockPos at=target.offset(dx,dy,dz);
-                    if(at.equals(target)||at.distSqr(target)>REACH_SQUARED)
+                    if(at.equals(target)||at.distSqr(target)>=WORK_STANCE_DISTANCE_SQUARED)
                         continue;
                     double px=at.getX()+.5,pz=at.getZ()+.5;
                     double ex=Math.max(0,Math.max(target.getX()-px,

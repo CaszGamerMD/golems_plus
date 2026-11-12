@@ -436,7 +436,7 @@ public final class BuilderPlacementSpace {
                 &&(!bodyBlocking||edgeDistance(target,
                         cached.destination().getX()+.5,
                         cached.destination().getZ()+.5)>=MIN_EDGE_CLEARANCE)
-                &&cached.destination().distSqr(target)<=BuilderConstructionPlanner.REACH_SQUARED
+                &&cached.destination().distSqr(target)<BuilderConstructionPlanner.WORK_STANCE_DISTANCE_SQUARED
                 &&!(cached.destination().equals(worker.blockPosition())
                     &&worker.distanceToSqr(target.getX()+.5,
                             target.getY()+.5,target.getZ()+.5)>BuilderConstructionPlanner.REACH_SQUARED)
@@ -447,15 +447,15 @@ public final class BuilderPlacementSpace {
             rejected.remove(worker);bad=null;
         }
         List<BlockPos> candidates=new ArrayList<>();
-        for(int dx=-BuilderConstructionPlanner.REACH;dx<=BuilderConstructionPlanner.REACH;dx++)
-            for(int dz=-BuilderConstructionPlanner.REACH;dz<=BuilderConstructionPlanner.REACH;dz++)
+        for(int dx=-BuilderConstructionPlanner.WORK_STANCE_RADIUS;dx<=BuilderConstructionPlanner.WORK_STANCE_RADIUS;dx++)
+            for(int dz=-BuilderConstructionPlanner.WORK_STANCE_RADIUS;dz<=BuilderConstructionPlanner.WORK_STANCE_RADIUS;dz++)
             for(int dy:sameHeight?new int[]{0,1}:new int[]{0,1,-1,2,-2}){
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos p=target.offset(dx,dy,dz);
                 if(!safe.test(p)
                         ||bodyBlocking&&edgeDistance(target,p.getX()+.5,p.getZ()+.5)
                             <MIN_EDGE_CLEARANCE
-                        ||p.distSqr(target)>BuilderConstructionPlanner.REACH_SQUARED
+                        ||p.distSqr(target)>=BuilderConstructionPlanner.WORK_STANCE_DISTANCE_SQUARED
                         ||p.equals(worker.blockPosition())
                             &&worker.distanceToSqr(target.getX()+.5,
                                 target.getY()+.5,target.getZ()+.5)>BuilderConstructionPlanner.REACH_SQUARED
@@ -492,7 +492,7 @@ public final class BuilderPlacementSpace {
                         +Math.pow(Math.max(0,p.distSqr(target)-8),2)*3)
                 .thenComparingInt(BlockPos::getX)
                 .thenComparingInt(BlockPos::getZ));
-        // The feasible set is intrinsically bounded (7x7x2 poses).
+        // The local search is bounded independently of placement reach.
         // Cutting off at 40 NEAREST candidates discarded reachable
         // far-side stances when nearby poses were separated by a wall.
         // Never label a frontier unreachable until EVERY physically
@@ -525,8 +525,8 @@ public final class BuilderPlacementSpace {
         List<BlockPos> executableCandidates=new ArrayList<>();
         Rejected bad=rejected.get(worker);
         boolean liveBad=bad!=null&&bad.until()>level.getGameTime();
-        for(int dx=-BuilderConstructionPlanner.REACH;dx<=BuilderConstructionPlanner.REACH;dx++)
-            for(int dz=-BuilderConstructionPlanner.REACH;dz<=BuilderConstructionPlanner.REACH;dz++)
+        for(int dx=-BuilderConstructionPlanner.WORK_STANCE_RADIUS;dx<=BuilderConstructionPlanner.WORK_STANCE_RADIUS;dx++)
+            for(int dz=-BuilderConstructionPlanner.WORK_STANCE_RADIUS;dz<=BuilderConstructionPlanner.WORK_STANCE_RADIUS;dz++)
             for(int dy:new int[]{0,1,-1,-2}){
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos at=target.offset(dx,dy,dz);
@@ -534,7 +534,7 @@ public final class BuilderPlacementSpace {
                 safeCount++;
                 if(edgeDistance(target,at.getX()+.5,
                         at.getZ()+.5)<MIN_EDGE_CLEARANCE
-                        ||at.distSqr(target)>BuilderConstructionPlanner.REACH_SQUARED)continue;
+                        ||at.distSqr(target)>=BuilderConstructionPlanner.WORK_STANCE_DISTANCE_SQUARED)continue;
                 marginCount++;
                 if(!WorkerNavigation.canStandOn(level,worker,at))continue;
                 groundedCount++;
