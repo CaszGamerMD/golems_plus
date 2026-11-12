@@ -60,7 +60,7 @@ assert "!level.getBlockState(hold.target()).isAir()" in space
 assert "hold.placingWorker()" in space
 assert "public static BlockPos approach(" in space
 assert "radius<=4" in space
-assert "p.distSqr(target)>=14" in space
+assert "p.distSqr(target)>BuilderConstructionPlanner.REACH_SQUARED" in space
 # Every narrow aisle with usable straight ground must be considered, not
 # just diagonal tiles. Retain the blocked-entity and real-path safeguards.
 for direction in ("{radius,0}", "{-radius,0}", "{0,radius}", "{0,-radius}",
@@ -69,7 +69,7 @@ for direction in ("{radius,0}", "{-radius,0}", "{0,radius}", "{0,-radius}",
     assert direction in space, f"missing safe sidestep direction: {direction}"
 assert "!path.canReach()" in navigation
 assert "boolean" not in space[space.index("private record Yield"):space.index("private static final Map")] or "placingWorker" in space
-assert "workDistance<14" in build
+assert "workDistance<=BuilderConstructionPlanner.REACH_SQUARED" in build
 assert "BuilderPlacementSpace.horizontalClear(pos,worker)" in build
 assert "BuilderPlacementSpace.approachForStep(" in build
 assert "BuilderConstructionPlanner.safeStand(" in build

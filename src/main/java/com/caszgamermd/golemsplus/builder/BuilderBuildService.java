@@ -461,7 +461,7 @@ public final class BuilderBuildService {
                     ||!BuilderPlacementSpace.placementHeight(target,worker)
                     ||!BuilderPlacementSpace.horizontalClear(target,worker)
                     ||worker.distanceToSqr(target.getX()+.5,
-                            target.getY()+.5,target.getZ()+.5)>=14)continue;
+                            target.getY()+.5,target.getZ()+.5)>BuilderConstructionPlanner.REACH_SQUARED)continue;
             var resolved=BuilderBlockResolver.resolve(step.encodedState(),
                     BuildSite.Rotation.values()[table.builderRotation()/90],
                     BuildSite.Mirror.values()[table.builderMirror()]);
@@ -690,7 +690,7 @@ public final class BuilderBuildService {
                 &&BuilderPlacementSpace.placementHeight(target,worker)
                 &&BuilderPlacementSpace.horizontalClear(target,worker)
                 &&worker.distanceToSqr(target.getX()+.5,
-                        target.getY()+.5,target.getZ()+.5)<14
+                        target.getY()+.5,target.getZ()+.5)<=BuilderConstructionPlanner.REACH_SQUARED
                 &&BuilderConstructionPlanner.safeStand(
                         level,worker,target,worker.blockPosition())){
             // A worker may reach a legal roof stance while heading for
@@ -1824,7 +1824,7 @@ public final class BuilderBuildService {
                     ||BuilderPlacementSpace.horizontalClear(pos,worker);
             boolean directOrdinaryWork=BuilderPlacementSpace.placementHeight(
                         pos,worker)
-                    &&workDistance<14
+                    &&workDistance<=BuilderConstructionPlanner.REACH_SQUARED
                     &&armClear
                     &&(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
@@ -1833,7 +1833,7 @@ public final class BuilderBuildService {
                                 level,worker,pos,worker.blockPosition(),
                                 step.encodedState()));
             // Low dome walls and fence caps often sit two Y above a
-            // grounded Builder. Its normal three-block hand reach may
+            // grounded Builder. Its five-block reach may
             // already cover the target from a SIDE stance. Find that
             // safe, walkable position before spending time on a rope or
             // scaffold tower. A trained route can walk backward first.
@@ -1899,7 +1899,7 @@ public final class BuilderBuildService {
                 if(access==BuilderGrappleAccess.Result.MOVING)return;
             }
             if(!BuilderPlacementSpace.placementHeight(pos,worker)
-                    ||workDistance>14
+                    ||workDistance>BuilderConstructionPlanner.REACH_SQUARED
                     ||!armClear
                     ||!(temporaryWorkPose
                         ||BuilderPlacementSpace.safeFractionalCapPose(
@@ -1965,7 +1965,7 @@ public final class BuilderBuildService {
                     table.waitForBuilderAccess(worker.getUUID(),index,
                             level.getGameTime(),"no Y+1 validated reachable work approach");
                     table.setProblem("FRONTIER: no safe Y+1 work stance at "
-                            +pos+" (line of sight / exit / clearance)");
+                            +pos+" (exit / clearance)");
                     return;
                 }
                 // Larger downward changes still require collision-safe

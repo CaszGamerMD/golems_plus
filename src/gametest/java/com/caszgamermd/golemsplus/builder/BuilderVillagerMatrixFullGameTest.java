@@ -41,6 +41,27 @@ public final class BuilderVillagerMatrixFullGameTest {
     private static final int MOTION_SAMPLE_TICKS=5;
     private record Expected(BlockPos pos,BlockState state) {}
 
+    @GameTest(structure="golems_plus_gametest:matrix_arena",maxTicks=20)
+    public void acceptsFiveBlockWorkPoseThroughSolidWall(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=1;x<=9;x++)for(int z=1;z<=5;z++)
+            h.setBlock(x,1,z,Blocks.STONE);
+        for(int y=2;y<=4;y++)for(int z=1;z<=5;z++)
+            h.setBlock(4,y,z,Blocks.STONE);
+        var stance=h.absolutePos(new BlockPos(2,2,3));
+        var target=h.absolutePos(new BlockPos(6,3,5));
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(stance.getX()+.5,stance.getY(),stance.getZ()+.5);
+        if(BuilderConstructionPlanner.lineOfSight(level,worker,stance,target)
+                ||!BuilderConstructionPlanner.safeStand(level,worker,target,stance)
+                ||BuilderConstructionPlanner.safeStand(
+                        level,worker,target.east(),stance)){
+            h.fail("Wall should block sight while only the in-range pose is accepted");
+            return;
+        }
+        h.succeed();
+    }
+
     @GameTest(maxTicks=20)
     public void detectsCompleteStallWindows(GameTestHelper h){
         var still=new MatrixMovementWindow(MOTION_SAMPLE_TICKS,STALL_TICKS);

@@ -11,16 +11,16 @@ import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.level.ClipContext;
 
 /**
  * Construction-aware frontier selection, not a replacement for trained A*.
  *
  * A claimed block must have an actual, reachable grounded work pose with
- * safe headroom, 0.8m horizontal margin, clear line of sight, and a
+ * safe headroom, 0.8m horizontal margin, and a
  * walkable escape after the proposed block is placed. A real anchored hook
  * may provide access to a higher pose, but never invents walking or flight.
  *
@@ -68,13 +68,10 @@ public final class BuilderConstructionPlanner {
         // failing) approaches, so a blocked strip cannot starve others.
         windows.remove(worker);
     }
-    private static final int REACH_SQUARED=14;
+    static final int REACH = 5;
+    static final int REACH_SQUARED = REACH * REACH;
 
-    /** Ray from a real Builder's eye at the planned stance to the block
-     * center or face centers. Solid walls are never transparent just because A* could
-     * reach a nearby standing tile. The target block itself may be
-     * incorrect non-air and is allowed to be the final hit.
-     */
+    /** Diagnostic ray check for the physical route surveys. */
     static boolean lineOfSight(ServerLevel world,BuilderGolem builder,
             BlockPos stance,BlockPos target){
         Vec3 eye=new Vec3(stance.getX()+.5,
@@ -163,25 +160,24 @@ public final class BuilderConstructionPlanner {
     }
     static boolean safeStand(ServerLevel world,BuilderGolem builder,
             BlockPos target,BlockPos stance){
-        return stance.distSqr(target)<REACH_SQUARED
+        return stance.distSqr(target)<=REACH_SQUARED
                 // A target's interaction point is HALF A BLOCK ABOVE
                 // its integer Y, whereas the Builder's feet are at the
                 // stance Y. From Y-2, a three-tile horizontal offset is
                 // sqrt(3^2+2.5^2) away, NOT sqrt(3^2+2^2). The loose
                 // integer preview repeatedly chose a Y31 dome-cap pose
                 // that actual placement could never reach.
-                &&workReachFromFeet(stance,target)<REACH_SQUARED
+                &&workReachFromFeet(stance,target)<=REACH_SQUARED
                 &&(stance.getY()==target.getY()
                         ||stance.getY()==target.getY()+1
                         ||stance.getY()==target.getY()-1
                         ||stance.getY()==target.getY()-2)
-                &&lineOfSight(world,builder,stance,target)
                 &&exitAfterPlacement(world,builder,stance,target);
     }
     /** Waterlogging modifies a PREEXISTING block rather than creating
      * new solid collision. Requiring an exit from a hypothetical fresh
      * solid cube can reject valid elevated finishing poses. Require real
-     * footing, 3-block hand reach and unobstructed sight instead.
+     * footing, five-block reach instead.
      * All other work still obeys the normal placement/escape checks.
      */
     static boolean safeStandForStep(ServerLevel world,BuilderGolem builder,
@@ -216,14 +212,13 @@ public final class BuilderConstructionPlanner {
         if(!finishingDry&&!nonBlocking)
             return safeStand(world,builder,target,stance);
         return !stance.equals(target)
-                &&stance.distSqr(target)<REACH_SQUARED
-                &&workReachFromFeet(stance,target)<REACH_SQUARED
+                &&stance.distSqr(target)<=REACH_SQUARED
+                &&workReachFromFeet(stance,target)<=REACH_SQUARED
                 &&(stance.getY()==target.getY()
                     ||stance.getY()==target.getY()+1
                     ||stance.getY()==target.getY()-1
                     ||stance.getY()==target.getY()-2)
-                &&WorkerNavigation.canStandOn(world,builder,stance)
-                &&lineOfSight(world,builder,stance,target);
+                &&WorkerNavigation.canStandOn(world,builder,stance);
     }
 
     static double workReachFromFeet(BlockPos stance,BlockPos target){
@@ -470,11 +465,12 @@ public final class BuilderConstructionPlanner {
                     BuildSite.Mirror.values()[table.builderMirror()]);
             if(state==null||!state.state().canSurvive(world,target))
                 continue;
-            int feasible=0,feet=0,sight=0,escapes=0,routes=0,probes=0;
-            for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+            int feasible=0,feet=0,escapes=0,routes=0,probes=0;
+            for(int dx=-REACH;dx<=REACH;dx++)
+            for(int dz=-REACH;dz<=REACH;dz++)
                 for(int dy:new int[]{0,1,-1,-2}){
                     BlockPos at=target.offset(dx,dy,dz);
-                    if(at.equals(target)||at.distSqr(target)>=REACH_SQUARED)
+                    if(at.equals(target)||at.distSqr(target)>REACH_SQUARED)
                         continue;
                     double px=at.getX()+.5,pz=at.getZ()+.5;
                     double ex=Math.max(0,Math.max(target.getX()-px,
@@ -485,8 +481,6 @@ public final class BuilderConstructionPlanner {
                     feasible++;
                     if(!WorkerNavigation.canStandOn(world,worker,at))continue;
                     feet++;
-                    if(!lineOfSight(world,worker,at,target))continue;
-                    sight++;
                     if(!exitAfterPlacement(world,worker,at,target))continue;
                     escapes++;
                     if(probes++<8&&WorkerNavigation.canReachExact(
@@ -494,7 +488,7 @@ public final class BuilderConstructionPlanner {
                 }
             return " | firstSupported #"+idx+" localXYZ="
                     +target.subtract(table.builderOrigin()).toShortString()
-                    +" poses="+feasible+" standable="+feet+" LOS="+sight
+                    +" poses="+feasible+" standable="+feet
                     +" exits="+escapes+" reachable="+routes
                     +" | "+BuilderPlacementSpace.diagnoseApproach(
                             world,worker,target,

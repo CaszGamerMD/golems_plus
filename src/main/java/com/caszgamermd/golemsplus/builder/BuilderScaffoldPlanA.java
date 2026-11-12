@@ -166,11 +166,9 @@ public final class BuilderScaffoldPlanA {
                 &&BuilderPlacementSpace.placementHeight(target,worker)
                 &&BuilderPlacementSpace.horizontalClear(target,worker)
                 &&worker.distanceToSqr(target.getX()+.5,
-                        target.getY()+.5,target.getZ()+.5)<14
+                        target.getY()+.5,target.getZ()+.5)<=BuilderConstructionPlanner.REACH_SQUARED
                 &&onOwnedScaffoldTop(level,worker,table,
-                        j.bridge(j.bridgeSpan))
-                &&BuilderConstructionPlanner.lineOfSightFrom(
-                        level,worker,worker.getEyePosition(),target);
+                        j.bridge(j.bridgeSpan));
     }
     /** Non-mutating frontier proof: a reachable paid bridge position
      * with reserved return route exists; actual work validates it again.
@@ -265,15 +263,14 @@ public final class BuilderScaffoldPlanA {
      * the required .8m edge clearance. No diagonal jumps, floating blocks,
      * or unsupported seven-distance scaffolding are permitted.
      */
-    private static Set<BlockPos> workStanceGoals(ServerLevel world,
-            BuilderGolem worker,BlockPos target,int workY){
+    private static Set<BlockPos> workStanceGoals(BlockPos target,int workY){
         Set<BlockPos> result=new HashSet<>();
-        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
-            if(Math.max(Math.abs(dx),Math.abs(dz))<2
-                    ||dx*dx+dz*dz>13)continue;
+        for(int dx=-BuilderConstructionPlanner.REACH;dx<=BuilderConstructionPlanner.REACH;dx++)
+            for(int dz=-BuilderConstructionPlanner.REACH;dz<=BuilderConstructionPlanner.REACH;dz++){
+            if(Math.max(Math.abs(dx),Math.abs(dz))<2)continue;
             BlockPos stance=target.offset(dx,0,dz).atY(workY);
-            if(BuilderConstructionPlanner.lineOfSight(
-                    world,worker,stance,target))
+            if(BuilderConstructionPlanner.workReachFromFeet(stance,target)
+                    <=BuilderConstructionPlanner.REACH_SQUARED)
                 result.add(stance.below());
         }
         return result;
@@ -357,7 +354,7 @@ public final class BuilderScaffoldPlanA {
         boolean isolated=needsTemporaryWorkPlatform(level,target);
         List<Job> options=new ArrayList<>();
         Set<BlockPos> workGoals=workPose?
-                workStanceGoals(level,worker,target,workY):Set.of();
+                workStanceGoals(target,workY):Set.of();
         List<BlockPos> towerSites=new ArrayList<>();
         for(Direction outward:Direction.Plane.HORIZONTAL)
             for(int distance=workPose?3:2;
@@ -390,9 +387,6 @@ public final class BuilderScaffoldPlanA {
             int distance=Math.abs(dx)+Math.abs(dz);
             if((isolated||workPose)&&distance<3)continue;
             int span=workPose||isolated?distance-2:distance-1;
-            boolean straightSight=!workPose||straight
-                    &&BuilderConstructionPlanner.lineOfSight(level,worker,
-                            target.relative(outward,2).atY(workY),target);
             // Search real standing elevations ABOVE the worker as well
             // as below. Existing pillars, stairs, slabs and complete roof
             // blocks can put a Builder onto a reachable elevated ledge.
@@ -404,7 +398,7 @@ public final class BuilderScaffoldPlanA {
                         rejected.getOrDefault(base,Long.MIN_VALUE))continue;
                 if(!shaftClear(level,base,top,reserved,table,worker))continue;
                 List<BlockPos> bridge=new ArrayList<>();
-                if(straight&&straightSight
+                if(straight
                         &&bridgeClear(level,base,inward,workY,
                         span,reserved,table,worker)){
                     for(int n=1;n<=span;n++)bridge.add(
@@ -556,7 +550,7 @@ public final class BuilderScaffoldPlanA {
         int localShafts=0,localBridges=0,localExits=0;
         BlockPos nearestLocal=null;
         List<String> localExamples=new ArrayList<>();
-        Set<BlockPos> workGoals=workStanceGoals(level,worker,target,target.getY());
+        Set<BlockPos> workGoals=workStanceGoals(target,target.getY());
         BlockPos feet=worker.blockPosition();
         for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
             BlockPos xz=feet.offset(dx,0,dz);
@@ -584,8 +578,6 @@ public final class BuilderScaffoldPlanA {
                             .atY(worker.blockPosition().getY()-dy);
                     int top=target.getY()-1;
                     int span=distance-2;
-                    if(!BuilderConstructionPlanner.lineOfSight(level,worker,
-                            target.relative(outward,2),target))continue;
                     if(!shaftClear(level,base,top,reserved,table,worker)){
                         if(outward==Direction.WEST&&distance==6&&dy==0)
                             example="west6 shaft support="+level.getBlockState(base.below())

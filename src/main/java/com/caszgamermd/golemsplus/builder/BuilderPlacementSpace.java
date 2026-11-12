@@ -106,11 +106,11 @@ public final class BuilderPlacementSpace {
                 &&Math.abs(worker.getY()-feetBlockY-.5)<.13
                 &&level.getBlockState(target).isAir()
                 &&worker.distanceToSqr(target.getX()+.5,
-                        target.getY()+.5,target.getZ()+.5)<14
+                        target.getY()+.5,target.getZ()+.5)<=BuilderConstructionPlanner.REACH_SQUARED
                 &&supportedFractional(level,worker,0,0);
     }
-    /** The current REAL half-height cap pose has full hand clearance,
-     * visible target and a supported physical retreat AFTER placement.
+    /** The current REAL half-height cap pose has full hand clearance
+     * and a supported physical retreat AFTER placement.
      * No fictional tile-center exit is required for an entity already
      * standing safely on its narrow wall-top collision geometry.
      */
@@ -118,10 +118,7 @@ public final class BuilderPlacementSpace {
             BuilderGolem worker,BlockPos target){
         if(!fractionalCapStart(level,worker,target)
                 ||!horizontalClear(target,worker)
-                ||worker.getBoundingBox().intersects(volume(target))
-                ||!BuilderConstructionPlanner.lineOfSightFrom(level,worker,
-                        new net.minecraft.world.phys.Vec3(worker.getX(),
-                                worker.getEyeY(),worker.getZ()),target))return false;
+                ||worker.getBoundingBox().intersects(volume(target)))return false;
         double fromX=worker.getX()-target.getX()-.5;
         double fromZ=worker.getZ()-target.getZ()-.5;
         double magnitude=Math.hypot(fromX,fromZ);
@@ -156,10 +153,7 @@ public final class BuilderPlacementSpace {
                             .intersects(volume(target))
                         ||!supportedFractional(level,worker,
                                 dx+axis[0]*.07,dz+axis[1]*.07))break;
-                var eye=new net.minecraft.world.phys.Vec3(x+dx,
-                        worker.getEyeY(),z+dz);
-                if(BuilderConstructionPlanner.lineOfSightFrom(
-                        level,worker,eye,target))return true;
+                return true;
             }
         }
         return false;
@@ -442,10 +436,10 @@ public final class BuilderPlacementSpace {
                 &&(!bodyBlocking||edgeDistance(target,
                         cached.destination().getX()+.5,
                         cached.destination().getZ()+.5)>=MIN_EDGE_CLEARANCE)
-                &&cached.destination().distSqr(target)<14
+                &&cached.destination().distSqr(target)<=BuilderConstructionPlanner.REACH_SQUARED
                 &&!(cached.destination().equals(worker.blockPosition())
                     &&worker.distanceToSqr(target.getX()+.5,
-                            target.getY()+.5,target.getZ()+.5)>13.0)
+                            target.getY()+.5,target.getZ()+.5)>BuilderConstructionPlanner.REACH_SQUARED)
                 &&WorkerNavigation.canStandOn(level,worker,cached.destination()))
             return cached.destination();
         Rejected bad=rejected.get(worker);
@@ -453,21 +447,18 @@ public final class BuilderPlacementSpace {
             rejected.remove(worker);bad=null;
         }
         List<BlockPos> candidates=new ArrayList<>();
-        // Physical work reach is a 14-squared sphere, not a flat
-        // 3x3 rectangle. In a layered Dome, useful upper ledges may be
-        // two blocks above/below the target even if same-level floor is
-        // sealed by completed walls. Do not insist on a jump or teleport.
-        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+        for(int dx=-BuilderConstructionPlanner.REACH;dx<=BuilderConstructionPlanner.REACH;dx++)
+            for(int dz=-BuilderConstructionPlanner.REACH;dz<=BuilderConstructionPlanner.REACH;dz++)
             for(int dy:sameHeight?new int[]{0,1}:new int[]{0,1,-1,2,-2}){
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos p=target.offset(dx,dy,dz);
                 if(!safe.test(p)
                         ||bodyBlocking&&edgeDistance(target,p.getX()+.5,p.getZ()+.5)
                             <MIN_EDGE_CLEARANCE
-                        ||p.distSqr(target)>=14
+                        ||p.distSqr(target)>BuilderConstructionPlanner.REACH_SQUARED
                         ||p.equals(worker.blockPosition())
                             &&worker.distanceToSqr(target.getX()+.5,
-                                target.getY()+.5,target.getZ()+.5)>13.0
+                                target.getY()+.5,target.getZ()+.5)>BuilderConstructionPlanner.REACH_SQUARED
                         ||!WorkerNavigation.canStandOn(level,worker,p)
                         ||bad!=null&&bad.target().equals(target)
                             &&bad.destination().equals(p))continue;
@@ -534,7 +525,8 @@ public final class BuilderPlacementSpace {
         List<BlockPos> executableCandidates=new ArrayList<>();
         Rejected bad=rejected.get(worker);
         boolean liveBad=bad!=null&&bad.until()>level.getGameTime();
-        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+        for(int dx=-BuilderConstructionPlanner.REACH;dx<=BuilderConstructionPlanner.REACH;dx++)
+            for(int dz=-BuilderConstructionPlanner.REACH;dz<=BuilderConstructionPlanner.REACH;dz++)
             for(int dy:new int[]{0,1,-1,-2}){
                 if(dx==0&&dz==0&&dy==0)continue;
                 BlockPos at=target.offset(dx,dy,dz);
@@ -542,7 +534,7 @@ public final class BuilderPlacementSpace {
                 safeCount++;
                 if(edgeDistance(target,at.getX()+.5,
                         at.getZ()+.5)<MIN_EDGE_CLEARANCE
-                        ||at.distSqr(target)>=14)continue;
+                        ||at.distSqr(target)>BuilderConstructionPlanner.REACH_SQUARED)continue;
                 marginCount++;
                 if(!WorkerNavigation.canStandOn(level,worker,at))continue;
                 groundedCount++;
