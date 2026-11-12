@@ -261,10 +261,25 @@ public final class BuilderVillagerMatrixFullGameTest {
         // is 49 blocks deep and requires external scaffold routes on all sides.
         for(int x=1;x<=62;x++)for(int z=1;z<=70;z++)
             h.setBlock(x,1,z,Blocks.STONE);
-        h.setBlock(4,2,7,WorksiteContent.BUILDER_TABLE);
-        h.setBlock(5,2,7,Blocks.CHEST);
-        BlockPos plannerPos=h.absolutePos(new BlockPos(4,2,7));
-        BlockPos supplyPos=h.absolutePos(new BlockPos(5,2,7));
+        // The wider upper layers extend far beyond the starter foundation.
+        // Measure depot proximity to occupied cells on the first build layer.
+        BlockPos plannerPos=h.absolutePos(new BlockPos(16,2,32));
+        BlockPos supplyPos=h.absolutePos(new BlockPos(17,2,32));
+        int foundationY=schematic.blocks().stream()
+                .mapToInt(LitematicFileReader.Block::y).min().orElseThrow();
+        double distanceSquared=schematic.blocks().stream()
+                .filter(cell->cell.y()==foundationY)
+                .mapToDouble(cell->origin.offset(cell.x(),cell.y(),cell.z())
+                        .distSqr(supplyPos))
+                .min().orElseThrow();
+        if(distanceSquared>100){
+            h.fail("OnSite Storage must be within 10 blocks of the foundation");
+            return;
+        }
+        System.out.println("[MATRIX FULL DEPOT] foundationDistance="
+                +Math.sqrt(distanceSquared));
+        h.setBlock(16,2,32,WorksiteContent.BUILDER_TABLE);
+        h.setBlock(17,2,32,Blocks.CHEST);
         if(!(level.getBlockEntity(plannerPos) instanceof WorkerStationBlockEntity table)){
             h.fail("Missing full Matrix Planner");return;
         }
@@ -299,7 +314,7 @@ public final class BuilderVillagerMatrixFullGameTest {
         var crew=new ArrayList<BuilderGolem>();
         for(int i=0;i<WORKERS;i++){
             BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-            BlockPos from=h.absolutePos(new BlockPos(6+i%4,2,4+i/4));
+            BlockPos from=h.absolutePos(new BlockPos(16+i%4,2,29+i/4));
             worker.setPos(from.getX()+.5,from.getY(),from.getZ()+.5);
             worker.assign(plannerPos,ownerId);
             level.addFreshEntity(worker);
