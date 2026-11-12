@@ -110,6 +110,34 @@ public final class BuilderRailPocketEscapeGameTest {
                         +BuilderGrappleAccess.debug(g));
         });
     }
+    @GameTest(maxTicks=400,skyAccess=true)
+    public void bobbingAboveSoulSandEscapesOpenWaterPocket(GameTestHelper h){
+        ground(h);
+        glassPocket(h);
+        h.setBlock(3,1,3,Blocks.SOUL_SAND);
+        h.setBlock(3,2,3,Blocks.WATER);
+        BlockPos start=h.absolutePos(new BlockPos(3,2,3));
+        var g=worker(h,start);
+        final boolean[] attached={false};
+        h.onEachTick(()->{
+            if(h.getTick()<10)return;
+            if(h.getTick()%5==0&&!attached[0])
+                attached[0]=BuilderGrappleAccess.escapeRailPocket(
+                        h.getLevel(),g,h.absolutePos(new BlockPos(1,2,1)));
+            if(attached[0]&&!BuilderGrappleAccess.active(g)
+                    &&g.onGround()&&g.getY()>=start.getY()+2){
+                if(!h.getLevel().getBlockState(start.below()).is(Blocks.SOUL_SAND)
+                        ||h.getLevel().getFluidState(start).isEmpty()){
+                    h.fail("Water escape changed the schematic");return;
+                }
+                System.out.println("[WATER POCKET ESCAPE] PASS "+g.position());
+                h.succeed();return;
+            }
+            if(h.getTick()>=360)h.fail("Water pocket exit stalled attached="
+                    +attached[0]+" feet="+g.position()+" rope="
+                    +BuilderGrappleAccess.debug(g));
+        });
+    }
     @GameTest(maxTicks=180,skyAccess=true)
     public void roofedRailPocketNeverGrapplesThroughCeiling(GameTestHelper h){
         ground(h);

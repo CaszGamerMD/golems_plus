@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.FenceBlock;
@@ -706,7 +707,7 @@ public final class BuilderGrappleAccess {
     public static boolean escapePerch(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos goal){
         if(active.containsKey(worker))return true;
-        if(!worker.onGround()||BuilderScaffolding.isControllingMovement(worker)
+        if((!worker.onGround()&&!worker.isInWater())||BuilderScaffolding.isControllingMovement(worker)
                 ||BuilderScaffoldPlanA.hasPlan(worker))return false;
         BlockPos under=worker.blockPosition().below();
         BlockState support=level.getBlockState(under);
@@ -735,13 +736,16 @@ public final class BuilderGrappleAccess {
     public static boolean escapeRailPocket(ServerLevel level,BuilderGolem worker,
             BlockPos goal){
         if(active.containsKey(worker))return true;
-        if(!worker.onGround()||BuilderScaffolding.isControllingMovement(worker)
+        if((!worker.onGround()&&!worker.isInWater())||BuilderScaffolding.isControllingMovement(worker)
                 ||BuilderScaffoldPlanA.hasPlan(worker))return false;
         BlockPos feet=worker.blockPosition();
         BlockState floor=level.getBlockState(feet);
         BlockPos below=feet.below();
         BlockState support=level.getBlockState(below);
         boolean rail=floor.getBlock() instanceof BaseRailBlock;
+        boolean shallowWater=level.getFluidState(feet).is(FluidTags.WATER)
+                &&!support.getCollisionShape(level,below).isEmpty()
+                &&floor.getCollisionShape(level,feet).isEmpty();
         // In the Villager Matrix the worker is stood on waterlogged
         // mangrove roots INSIDE a glass shaft. The roots support real
         // feet, but no adjacent dry A* node exists. Waterlogging in the
@@ -749,7 +753,7 @@ public final class BuilderGrappleAccess {
         boolean wetSupport=!support.getFluidState().isEmpty()
                 &&solidTop(level,below)
                 &&floor.getCollisionShape(level,feet).isEmpty();
-        if(!rail&&!wetSupport){
+        if(!rail&&!wetSupport&&!shallowWater){
             railPocketWatch.remove(worker);return false;
         }
         RailPocketWatch watch=railPocketWatch.computeIfAbsent(worker,k->{
@@ -759,7 +763,7 @@ public final class BuilderGrappleAccess {
         });
         double dx=worker.getX()-watch.x,dy=worker.getY()-watch.y,
                 dz=worker.getZ()-watch.z;
-        if(dx*dx+dy*dy+dz*dz>.09){
+        if(dx*dx+dz*dz>.09||(!shallowWater&&dy*dy>.09)){
             watch.x=worker.getX();watch.y=worker.getY();watch.z=worker.getZ();
             watch.stationarySince=level.getGameTime();return false;
         }
