@@ -978,8 +978,16 @@ public final class BuilderScaffoldPlanA {
         // bridge extension sends the worker straight back to the depot.
         for(BlockPos bridge:j.bridgePath)
             if(!present(level,table,worker,bridge))count++;
+        // A grounded pickup must keep this build plan while walking to
+        // the depot. The descent entry point clears a ground-level BUILD
+        // plan, which lets the next work tick send the worker back again.
+        BlockPos depot=table.builderUnloadingStorage();
+        boolean groundPickup=depot!=null&&worker.onGround()
+                &&worker.getY()<=j.base.getY()+.2
+                &&worker.getY()<=depot.getY()+.25
+                &&!BuilderScaffolding.isControllingMovement(worker);
         var load=BuilderSupplyInventory.loadScaffold(
-                level,worker,table,count);
+                level,worker,table,count,groundPickup);
         if(load==BuilderSupplyInventory.ScaffoldLoad.MOVING)return Result.MOVING;
         if(load==BuilderSupplyInventory.ScaffoldLoad.MISSING)
             return Result.NEED_MATERIALS;

@@ -792,13 +792,17 @@ public final class BuilderSupplyInventory {
      */
     public static ScaffoldLoad loadScaffold(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,int required){
+        return loadScaffold(level,worker,table,required,false);
+    }
+    static ScaffoldLoad loadScaffold(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,int required,boolean groundPickup){
         Item item=net.minecraft.world.item.Items.SCAFFOLDING;
         if(worker.carriedCount(item)>=required)return ScaffoldLoad.READY;
         Container site=selectedStorage(table);
         Container source=site!=null&&containsInSources(table,item)?site:null;
         if(source==null)return ScaffoldLoad.MISSING;
         BlockPos pos=table.builderUnloadingStorage();
-        if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,
+        if(!groundPickup&&worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,
                 pos.getZ()+.5)>12
                 &&(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
