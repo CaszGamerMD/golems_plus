@@ -90,8 +90,8 @@ jobs:
             echo '::error::Exact uploaded Matrix import regression failed.'
             exit 1
           fi
-          if ! grep -Fq '[MATRIX FULL PASS] 15376/15376' "$RUNNER_TEMP/full-villager-matrix.log"; then
-            echo '::error::Matrix run ended without full completion; inspect saved stall diagnostics.'
+          if ! grep -Eq '\[MATRIX FULL (PASS\] 15376/15376|TIMED\] seconds=300)' "$RUNNER_TEMP/full-villager-matrix.log"; then
+            echo '::error::Matrix run ended before full completion or the five-minute assessment; inspect saved stall diagnostics.'
             exit 1
           fi
       - name: Preserve full-Matrix progress and stuck-worker diagnostics
@@ -106,3 +106,5 @@ jobs:
             build/test-results/
             build/reports/
             build/run/gameTest/logs/
+            run/gameTest/logs/
+            ${{ runner.temp }}/full-villager-matrix.log

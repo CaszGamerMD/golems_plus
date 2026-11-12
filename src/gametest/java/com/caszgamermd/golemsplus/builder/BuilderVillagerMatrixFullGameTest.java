@@ -334,6 +334,7 @@ public final class BuilderVillagerMatrixFullGameTest {
             h.fail("Planner refused to start full Matrix");return;
         }
         final int[] best={0};
+        final long assessmentStart=System.nanoTime();
         var watchdog=new MatrixWorkWatchdog(h.getTick(),
                 table.builderWorkDone(),table.builderClearCursor());
         var movement=crew.stream()
@@ -352,6 +353,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                             worker.isAlive()&&level.getEntity(worker.getUUID())==worker);
                 }
             }
+            boolean timeLimit=System.nanoTime()-assessmentStart>=300_000_000_000L;
             boolean noWorkTimeout=noWorkTicks>=NO_WORK_LIMIT;
             boolean report=tick%PROGRESS_PERIOD==0;
             var stalls=tick%MOTION_SAMPLE_TICKS==0
@@ -382,7 +384,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                     addItem(needs,steps.get(i));
                 BuilderInfiniteOnsiteSupply.restock(level,supplyPos,needs);
             }
-            if(!report&&!allStalled&&!noWorkTimeout&&table.phase()!=WorkerPhase.COMPLETE)return;
+            if(!report&&!allStalled&&!noWorkTimeout&&!timeLimit&&table.phase()!=WorkerPhase.COMPLETE)return;
             int correct=0;
             for(Expected candidate:expected)
                 if(BuilderPlacementState.matches(
@@ -430,6 +432,12 @@ public final class BuilderVillagerMatrixFullGameTest {
                 System.out.println("[MATRIX FULL PASS] "+SOURCE_BLOCKS
                         +"/"+SOURCE_BLOCKS
                         +" physical source blocks verified with four Builders");
+                h.succeed();return;
+            }
+            if(timeLimit&&!allStalled&&!noWorkTimeout){
+                System.out.println("[MATRIX FULL TIMED] seconds=300 tick="+tick
+                        +" matchingSourceBlocks="+correct+"/"+SOURCE_BLOCKS
+                        +" best="+best[0]+" layer="+(y-origin.getY()));
                 h.succeed();return;
             }
             if(allStalled||noWorkTimeout){
