@@ -38,6 +38,7 @@ public final class BuilderVillagerMatrixFullGameTest {
     private static final int WORKERS=4;
     private static final int PROGRESS_PERIOD=400;
     private static final int STALL_TICKS=300;
+    private static final int NO_WORK_LIMIT=1200;
     private static final int MOTION_SAMPLE_TICKS=5;
     private record Expected(BlockPos pos,BlockState state) {}
 
@@ -333,9 +334,8 @@ public final class BuilderVillagerMatrixFullGameTest {
             h.fail("Planner refused to start full Matrix");return;
         }
         final int[] best={0};
-        final int[] lastWork={table.builderWorkDone()};
-        final int[] lastClearing={table.builderClearCursor()};
-        final long[] lastJobActivity={h.getTick()};
+        var watchdog=new MatrixWorkWatchdog(h.getTick(),
+                table.builderWorkDone(),table.builderClearCursor());
         var movement=crew.stream()
                 .map(worker->new MatrixMovementWindow(MOTION_SAMPLE_TICKS,STALL_TICKS))
                 .toList();
@@ -343,13 +343,8 @@ public final class BuilderVillagerMatrixFullGameTest {
         // A sequence keeps one repeating event for this open-ended assessment.
         h.startSequence().thenExecuteFor(1_000_000_000,()->{
             long tick=h.getTick();
-            boolean jobChanged=lastWork[0]!=table.builderWorkDone()
-                    ||lastClearing[0]!=table.builderClearCursor();
-            if(jobChanged){
-                lastWork[0]=table.builderWorkDone();
-                lastClearing[0]=table.builderClearCursor();
-                lastJobActivity[0]=tick;
-            }
+            long noWorkTicks=watchdog.sample(tick,
+                    table.builderWorkDone(),table.builderClearCursor());
             if(tick%MOTION_SAMPLE_TICKS==0){
                 for(int i=0;i<crew.size();i++){
                     var worker=crew.get(i);
@@ -357,12 +352,13 @@ public final class BuilderVillagerMatrixFullGameTest {
                             worker.isAlive()&&level.getEntity(worker.getUUID())==worker);
                 }
             }
+            boolean noWorkTimeout=noWorkTicks>=NO_WORK_LIMIT;
             boolean report=tick%PROGRESS_PERIOD==0;
             var stalls=tick%MOTION_SAMPLE_TICKS==0
-                    &&(report||tick-lastJobActivity[0]>=STALL_TICKS)
+                    &&(report||noWorkTicks>=STALL_TICKS)
                     ?movement.stream().map(MatrixMovementWindow::stall).toList()
                     :List.<MatrixMovementWindow.Stall>of();
-            boolean allStalled=tick-lastJobActivity[0]>=STALL_TICKS
+            boolean allStalled=noWorkTicks>=STALL_TICKS
                     &&stalls.size()==WORKERS
                     &&stalls.stream().allMatch(stall->stall!=MatrixMovementWindow.Stall.MOVING);
             if(tick%100==0){
@@ -386,7 +382,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                     addItem(needs,steps.get(i));
                 BuilderInfiniteOnsiteSupply.restock(level,supplyPos,needs);
             }
-            if(!report&&!allStalled&&table.phase()!=WorkerPhase.COMPLETE)return;
+            if(!report&&!allStalled&&!noWorkTimeout&&table.phase()!=WorkerPhase.COMPLETE)return;
             int correct=0;
             for(Expected candidate:expected)
                 if(BuilderPlacementState.matches(
@@ -399,7 +395,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                     +" matchingSourceBlocks="+correct+"/"+SOURCE_BLOCKS
                     +" best="+best[0]+" cursor="+cursor+"/"+steps.size()
                     +" currentLayer="+(y==Integer.MAX_VALUE?"complete":y-origin.getY())
-                    +" noWorkTicks="+(tick-lastJobActivity[0])
+                    +" noWorkTicks="+(noWorkTicks)
                     +" crewAlive="+crew.stream().filter(BuilderGolem::isAlive).count()
                     +" movement="+stalls
                     +" problem="+table.problem());
@@ -407,7 +403,7 @@ public final class BuilderVillagerMatrixFullGameTest {
             // "water replaced the dry block", "support is missing" or a
             // genuine navigation failure. Observe all actual neighboring
             // states before proposing another construction shortcut.
-            if((allStalled||tick-lastJobActivity[0]>=800)&&cursor>=0&&cursor<steps.size()){
+            if((allStalled||noWorkTicks>=800)&&cursor>=0&&cursor<steps.size()){
                 var stalled=steps.get(cursor);
                 BlockPos at=new BlockPos(stalled.x(),stalled.y(),stalled.z());
                 var resolved=BuilderBlockResolver.resolve(
@@ -436,9 +432,11 @@ public final class BuilderVillagerMatrixFullGameTest {
                         +" physical source blocks verified with four Builders");
                 h.succeed();return;
             }
-            if(allStalled){
+            if(allStalled||noWorkTimeout){
                 StringBuilder result=new StringBuilder(
                         "[MATRIX FULL STALL] tick="+tick
+                                +" reason="+(allStalled?"ALL_BUILDERS_STALLED":"NO_WORK_PROGRESS")
+                                +" noWorkTicks="+(noWorkTicks)
                                 +" allBuilders="+WORKERS+" windowTicks="+STALL_TICKS
                                 +" matchingSourceBlocks="+correct+"/"+SOURCE_BLOCKS
                                 +" best="+best[0]+"/"+SOURCE_BLOCKS
@@ -449,7 +447,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                 for(int i=0;i<crew.size();i++){
                     var mob=crew.get(i);
                     result.append(" | builder=").append(mob.getName().getString())
-                            .append(" stall=").append(stalls.get(i))
+                            .append(" stall=").append(movement.get(i).stall())
                             .append(" feet=").append(mob.blockPosition())
                             .append(" step=").append(table.claimedStep(mob.getUUID()))
                             .append(" bridge=").append(BuilderScaffoldPlanA.status(mob))
@@ -457,7 +455,10 @@ public final class BuilderVillagerMatrixFullGameTest {
                             .append(" ").append(BuilderBuildService.debugStatus(level,mob));
                 }
                 System.out.println(result);
-                h.succeed();
+                h.fail("Matrix assessment stopped: "+(allStalled
+                        ?"all four builders stalled for 300 ticks"
+                        :"no new work for "+NO_WORK_LIMIT+" ticks")
+                        +"; best="+best[0]+"/"+SOURCE_BLOCKS);
             }
         });
     }

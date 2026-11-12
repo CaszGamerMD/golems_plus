@@ -30,6 +30,7 @@ on:
       - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderCrewScheduleTest.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFull*'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/MatrixMovementWindow.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/MatrixWorkWatchdog.java'
       - 'src/gametest/resources/golems_plus_matrix/**'
       - 'src/gametest/resources/data/golems_plus_gametest/gametest/structure/matrix_arena.snbt'
   workflow_dispatch:
@@ -40,7 +41,7 @@ permissions:
 jobs:
   full-matrix:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -50,6 +51,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
+      - name: Verify no-progress watchdog
+        run: python3 scripts/test_matrix_work_watchdog.py
       - name: Verify all four segments are the original user schematic
         run: |
           python3 - <<'PY'
@@ -87,8 +90,8 @@ jobs:
             echo '::error::Exact uploaded Matrix import regression failed.'
             exit 1
           fi
-          if ! grep -Eq '\[MATRIX FULL (STALL\] tick=[0-9]+ allBuilders=4 windowTicks=300 |PASS\] 15376/15376)' "$RUNNER_TEMP/full-villager-matrix.log"; then
-            echo '::error::Matrix run ended without a verified four-builder stall or full completion.'
+          if ! grep -Fq '[MATRIX FULL PASS] 15376/15376' "$RUNNER_TEMP/full-villager-matrix.log"; then
+            echo '::error::Matrix run ended without full completion; inspect saved stall diagnostics.'
             exit 1
           fi
       - name: Preserve full-Matrix progress and stuck-worker diagnostics

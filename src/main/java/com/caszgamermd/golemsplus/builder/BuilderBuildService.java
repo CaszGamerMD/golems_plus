@@ -2031,6 +2031,14 @@ public final class BuilderBuildService {
                     BuilderPlacementSpace.cancelYield(worker);
                     table.waitForBuilderAccess(worker.getUUID(),index,
                             level.getGameTime(),"100-tick placement body-occupancy timeout");
+                    BuilderPlacementSpace.invalidateApproach(worker,pos);
+                    com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+                    activity.lastFailedStep=index;
+                    activity.retreatUntil=level.getGameTime()+100;
+                    if(activity.alternateSideAttempts<3){
+                        activity.failedApproachFrom=worker.blockPosition();
+                        activity.alternateSideRequested=true;
+                    }
                     table.setProblem("Deferred block "+pos
                             +" until a safe 0.8m placement stance is reachable");
                     activity.blockedSince=-1;

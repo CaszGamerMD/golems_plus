@@ -695,8 +695,9 @@ public final class BuilderPlacementSpace {
         boolean found=true;
         for(BuilderGolem blocker:blockers){
             Yield old=yielding.get(blocker);
-            if(old!=null&&old.target().equals(target)
-                    &&old.until()>level.getGameTime())continue;
+            // A competing placer must not redirect an active escape.
+            // Its own placement remains blocked until this worker is clear.
+            if(old!=null&&old.until()>level.getGameTime())continue;
             // When standing adjacent on real ground, do a precise
             // horizontal edge-clearance move instead of targeting a tile
             // center that still intersects the future placement cube.
