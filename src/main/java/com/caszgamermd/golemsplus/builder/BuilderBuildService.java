@@ -1351,17 +1351,17 @@ public final class BuilderBuildService {
             }
             var activity=action(worker,index);
             activity.frontierWaitSince=-1;
-            var step=plan.steps().get(index);
+            var claimedStep=plan.steps().get(index);
             int activeLayer=table.builderActiveLayer(plan.steps());
-            if(step.y()!=activeLayer
+            if(claimedStep.y()!=activeLayer
                     ||!table.builderStepInActivePhase(plan.steps(),index)){
                 // Defensive execution guard: even a stale claim from a
                 // previous build version must not break the Y-layer rule.
                 table.setProblem("Builder waiting for completion of Y="+activeLayer
-                        +" before Y="+step.y());
+                        +" before Y="+claimedStep.y());
                 return;
             }
-            if(step.ignorePlant()){
+            if(claimedStep.ignorePlant()){
                 // The position stays in the saved indexed work order, but
                 // the requested crop/flower is never placed or debited.
                 // Site clearance already ran normally for this coordinate.
@@ -1372,23 +1372,46 @@ public final class BuilderBuildService {
             // Read the actual world first. Already-correct positions are
             // NO-OP assignments, not an excuse to walk all the way back to
             // OnSite for materials that will never be consumed.
-            BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
-            if(Math.abs((long)pos.getX()-home.getX())>256||
-                    Math.abs((long)pos.getZ()-home.getZ())>256){
+            BlockPos column=new BlockPos(claimedStep.x(),claimedStep.y(),claimedStep.z());
+            if(Math.abs((long)column.getX()-home.getX())>256||
+                    Math.abs((long)column.getZ()-home.getZ())>256){
                 table.setProblem("Build extends beyond 256-block Builder range");
                 return;
             }
             // Load the current layer's next target before stopping on an
             // unloaded schematic chunk. The same ticket is reclaimed as
             // the real Builder advances to the next target.
-            BuilderChunkTickets.destination(level,worker,pos);
-            if(!level.hasChunkAt(pos)){
-                table.setProblem("Loading construction chunk "+pos.toShortString());
+            BuilderChunkTickets.destination(level,worker,column);
+            if(!level.hasChunkAt(column)){
+                table.setProblem("Loading construction chunk "+column.toShortString());
                 return;
             }
-            if(!level.mayInteract(owner,pos)){
+            if(!level.mayInteract(owner,column)){
                 table.setProblem("Owner cannot modify this location");return;
             }
+            var effectiveStep=claimedStep;
+            if(BuilderWaterPass.isBubbleColumn(claimedStep.encodedState())){
+                var effective=BuilderWaterPass.bubbleAction(level,column,claimedStep,
+                        BuilderConstructionPlanner.schematicStates(plan.steps(),
+                            BuildSite.Rotation.values()[table.builderRotation()/90],
+                            BuildSite.Mirror.values()[table.builderMirror()]));
+                if(effective==null){
+                    table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
+                    table.setProblem("Bubble column needs compatible support at "+column.below()
+                            +" found="+level.getBlockState(column.below()));
+                    return;
+                }
+                if(effective!=claimedStep){
+                    if(!level.mayInteract(owner,column.below())){
+                        table.setProblem("Bubble column base is protected at "+column.below());
+                        return;
+                    }
+                    effectiveStep=effective;
+                }
+            }
+            final var step=effectiveStep;
+            final boolean repairingBubbleBase=step!=claimedStep;
+            final BlockPos pos=repairingBubbleBase?column.below():column;
             var state=BuilderBlockResolver.resolve(step.encodedState(),
                     BuildSite.Rotation.values()[table.builderRotation()/90],
                     BuildSite.Mirror.values()[table.builderMirror()]);
@@ -1482,6 +1505,7 @@ public final class BuilderBuildService {
             }
             if(bubble&&existing.is(net.minecraft.world.level.block.Blocks.WATER)
                     &&existing.getFluidState().isSource()){
+                level.scheduleTick(pos.below(),level.getBlockState(pos.below()).getBlock(),1);
                 // The Builder already supplied this source. Don't mine it
                 // or repeatedly place the same water block while vanilla
                 // propagates the upward/downward bubble from below.
@@ -1570,7 +1594,7 @@ public final class BuilderBuildService {
                     &&(temporaryRailFoundation
                         ||BuilderRailSlope.hasRaisedEndSupport(level,pos,state.state()));
             if(!existing.isAir()&&!waterlog&&!reShapeRail
-                    &&!interactionCorrection&&!repairPartner
+                    &&!interactionCorrection&&!repairPartner&&!repairingBubbleBase
                     &&!(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
                             ||existing.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN)))){
                 // A player may add a block after the initial site-clear
@@ -1586,7 +1610,7 @@ public final class BuilderBuildService {
                     &&worker.carriedCount(state.item())<=0
                     &&!interactionCorrection&&!repairPartner&&!reShapeRail){
                 var loading=BuilderSupplyInventory.loadForLayerStatus(
-                        level,worker,table,plan.steps(),index);
+                        level,worker,table,step,index);
                 if(loading==BuilderSupplyInventory.LoadStatus.MOVING){
                     activity.phase=Action.STAGE_MATERIALS;
                     watchSupplyTrip(level,worker,table,activity,index);
@@ -1644,6 +1668,10 @@ public final class BuilderBuildService {
                         return;
                     }
                 }
+            }
+            if(repairingBubbleBase&&!existing.isAir()){
+                BuilderClearance.clear(level,worker,table,owner,pos,existing);
+                return;
             }
             activity.supplyProgressTick=-1;
             // PLAN B: physical Grapple Hook up to 20 blocks, never a
@@ -2230,6 +2258,12 @@ public final class BuilderBuildService {
                 table.setProblem("Ascending rail awaiting stable slope at "+pos);
                 return;
             }
+            if(repairingBubbleBase){
+                BuilderConstructionPlanner.noteCompleted(worker,pos);
+                activity.notePhysicalPlacement();
+                return;
+            }
+            if(bubble)level.scheduleTick(pos.below(),level.getBlockState(pos.below()).getBlock(),1);
             if(bubble&&!BuilderPlacementState.matches(
                     level.getBlockState(pos),state.state())){
                 // Do not advance the global Y or replace an actual water

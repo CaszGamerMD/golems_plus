@@ -618,8 +618,13 @@ public final class BuilderConstructionPlanner {
         for(int attempt=0;attempt<count;attempt++){
             int idx=pending.get((offset+attempt)%pending.size());
             examined++;
-            var step=steps.get(idx);
-            BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+            var plannedStep=steps.get(idx);
+            BlockPos plannedTarget=new BlockPos(plannedStep.x(),plannedStep.y(),plannedStep.z());
+            if(!world.hasChunkAt(plannedTarget))continue;
+            var step=BuilderWaterPass.bubbleAction(world,plannedTarget,plannedStep,builtSchematic);
+            if(step==null)continue;
+            boolean repairingBubbleBase=step!=plannedStep;
+            BlockPos target=repairingBubbleBase?plannedTarget.below():plannedTarget;
             if(!world.hasChunkAt(target))continue;
             // Already matching cells and ignored plants are NO-OP work:
             // the normal build service will confirm them in the world
@@ -649,7 +654,11 @@ public final class BuilderConstructionPlanner {
             }
             // One grouped claim is finished only if BOTH real cells
             // match; a preexisting foot/lower must not hide its partner.
-            if(primaryMatches&&companionMatches)
+            if(!repairingBubbleBase&&primaryMatches&&companionMatches)
+                return new Choice(idx,null,false,true,examined);
+            if(BuilderWaterPass.isBubbleColumn(step.encodedState())
+                    &&actual.is(net.minecraft.world.level.block.Blocks.WATER)
+                    &&actual.getFluidState().isSource())
                 return new Choice(idx,null,false,true,examined);
             if(!state.state().canSurvive(world,target))continue;
             // An ascending rail needs a REAL supporting surface below

@@ -47,4 +47,34 @@ public final class BuilderWaterFinishGameTest {
             h.succeed();
         });
     }
+
+    @GameTest(maxTicks=60,skyAccess=true)
+    public void bubbleColumnRepairsWrongBaseAndWaitsForNaturalFlow(GameTestHelper h){
+        var level=h.getLevel();
+        BlockPos column=h.absolutePos(new BlockPos(4,3,4));
+        BlockPos base=column.below();
+        var step=new BuilderConstructionPlan.Step(column.getX(),column.getY(),column.getZ(),
+                "minecraft:bubble_column[drag=false]",BuilderWaterPass.WATER_BUCKET);
+        var planned=java.util.Map.of(base,Blocks.SOUL_SAND.defaultBlockState());
+        level.setBlock(base,Blocks.MAGMA_BLOCK.defaultBlockState(),3);
+        var repair=BuilderWaterPass.bubbleAction(level,column,step,planned);
+        if(repair==null||repair.y()!=base.getY()||!"minecraft:soul_sand".equals(repair.requiredItem())){
+            h.fail("Upward column did not request a paid soul sand repair");return;
+        }
+        if(BuilderWaterPass.bubbleAction(level,column,step,java.util.Map.of(
+                base,Blocks.STONE.defaultBlockState()))!=null){
+            h.fail("Bubble column attempted to replace a conflicting schematic block");return;
+        }
+        level.setBlock(base,Blocks.SOUL_SAND.defaultBlockState(),3);
+        if(BuilderWaterPass.bubbleAction(level,column,step,planned)!=step){
+            h.fail("Correct base did not release the source water action");return;
+        }
+        level.setBlock(column,Blocks.WATER.defaultBlockState(),3);
+        level.scheduleTick(base,Blocks.SOUL_SAND,1);
+        h.onEachTick(()->{
+            var actual=level.getBlockState(column);
+            if(actual.is(Blocks.BUBBLE_COLUMN)&&!actual.getValue(
+                    net.minecraft.world.level.block.BubbleColumnBlock.DRAG_DOWN))h.succeed();
+        });
+    }
 }

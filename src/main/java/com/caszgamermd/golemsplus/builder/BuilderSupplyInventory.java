@@ -467,7 +467,11 @@ public final class BuilderSupplyInventory {
             WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,
             int index){
         if(index<0||index>=steps.size())return LoadStatus.MISSING;
-        var current=steps.get(index);
+        return loadForLayerStatus(level,worker,table,steps.get(index),index);
+    }
+
+    static LoadStatus loadForLayerStatus(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BuilderConstructionPlan.Step current,int index){
         var id=net.minecraft.resources.Identifier.tryParse(current.requiredItem()==null?
                 "":current.requiredItem());
         if(id==null||!BuiltInRegistries.ITEM.containsKey(id))return LoadStatus.MISSING;
