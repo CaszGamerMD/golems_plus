@@ -110,6 +110,39 @@ public final class BuilderRailPocketEscapeGameTest {
                         +BuilderGrappleAccess.debug(g));
         });
     }
+    @GameTest(maxTicks=300,skyAccess=true)
+    public void dryStoneFloorAlsoEscapesOpenGlassPocket(GameTestHelper h){
+        ground(h);
+        glassPocket(h);
+        h.setBlock(3,1,3,Blocks.SMOOTH_STONE);
+        h.setBlock(3,2,3,Blocks.AIR);
+        BlockPos start=h.absolutePos(new BlockPos(3,2,3));
+        var g=worker(h,start);
+        final boolean[] attached={false};
+        h.onEachTick(()->{
+            if(h.getTick()<10)return;
+            if(!g.isAlive()){
+                h.fail("Dry stone pocket Builder died");return;
+            }
+            if(h.getTick()%5==0&&!attached[0])
+                attached[0]=BuilderGrappleAccess.escapeRailPocket(
+                        h.getLevel(),g,h.absolutePos(new BlockPos(1,2,1)));
+            if(attached[0]&&!BuilderGrappleAccess.active(g)
+                    &&g.onGround()&&g.getY()>=start.getY()+2){
+                if(!h.getLevel().getBlockState(start.below())
+                        .is(Blocks.SMOOTH_STONE)){
+                    h.fail("Pocket escape changed dry stone");return;
+                }
+                System.out.println("[DRY POCKET ESCAPE] PASS "
+                        +g.blockPosition());
+                h.succeed();return;
+            }
+            if(h.getTick()>=260)
+                h.fail("Dry stone pocket exit stalled attached="
+                        +attached[0]+" feet="+g.position()+" rope="
+                        +BuilderGrappleAccess.debug(g));
+        });
+    }
     @GameTest(maxTicks=400,skyAccess=true)
     public void bobbingAboveSoulSandEscapesOpenWaterPocket(GameTestHelper h){
         ground(h);

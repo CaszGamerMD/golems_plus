@@ -753,7 +753,10 @@ public final class BuilderGrappleAccess {
         boolean wetSupport=!support.getFluidState().isEmpty()
                 &&solidTop(level,below)
                 &&floor.getCollisionShape(level,feet).isEmpty();
-        if(!rail&&!wetSupport&&!shallowWater){
+        boolean dryPocket=worker.onGround()
+                &&floor.getCollisionShape(level,feet).isEmpty()
+                &&solidTop(level,below);
+        if(!rail&&!wetSupport&&!shallowWater&&!dryPocket){
             railPocketWatch.remove(worker);return false;
         }
         RailPocketWatch watch=railPocketWatch.computeIfAbsent(worker,k->{
@@ -763,7 +766,8 @@ public final class BuilderGrappleAccess {
         });
         double dx=worker.getX()-watch.x,dy=worker.getY()-watch.y,
                 dz=worker.getZ()-watch.z;
-        if(dx*dx+dz*dz>.09||(!shallowWater&&dy*dy>.09)){
+        // A short shuffle within the same confined tile is not an exit.
+        if(dx*dx+dz*dz>1.0||(!shallowWater&&dy*dy>.09)){
             watch.x=worker.getX();watch.y=worker.getY();watch.z=worker.getZ();
             watch.stationarySince=level.getGameTime();return false;
         }
