@@ -260,6 +260,8 @@ public final class BuilderSupplyInventory {
     }
     private static int drawFromSources(WorkerStationBlockEntity table,
                                        BuilderGolem worker,Item item,int amount){
+        if(!BuilderReturnService.withinStorageReach(worker,
+                table.builderUnloadingStorage()))return 0;
         int remaining=amount;
         for(Container source:sources(table)){
             if(remaining<=0)break;
@@ -320,8 +322,7 @@ public final class BuilderSupplyInventory {
         BlockPos depot=table.builderUnloadingStorage();
         Container storage=selectedStorage(table);
         if(depot==null||storage==null)return LoadStatus.MISSING;
-        if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                depot.getZ()+.5)>12
+        if(!BuilderReturnService.withinStorageReach(worker,depot)
                 &&(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
             return LoadStatus.MOVING;
@@ -493,8 +494,7 @@ public final class BuilderSupplyInventory {
             BlockPos depot=table.builderUnloadingStorage();
             Container site=selectedStorage(table);
             if(site==null||depot==null)return LoadStatus.MISSING;
-            if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                    depot.getZ()+.5)>12
+            if(!BuilderReturnService.withinStorageReach(worker,depot)
                     &&(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
                 return LoadStatus.MOVING;
@@ -533,8 +533,7 @@ public final class BuilderSupplyInventory {
                         row.getValue()-worker.carriedCount(requested)));
                 if(needed==0||!containsInSources(table,requested))
                     continue;
-                if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                        depot.getZ()+.5)>12
+                if(!BuilderReturnService.withinStorageReach(worker,depot)
                         &&(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
                     return LoadStatus.MOVING;
@@ -717,6 +716,8 @@ public final class BuilderSupplyInventory {
     }
     public static boolean returnTools(BuilderGolem worker,
             WorkerStationBlockEntity table){
+        if(!BuilderReturnService.withinStorageReach(worker,
+                table.builderUnloadingStorage()))return false;
         Container site=selectedStorage(table);
         if(site==null)return false;
         boolean all=true;
@@ -776,8 +777,7 @@ public final class BuilderSupplyInventory {
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null||selectedStorage(table)==null
                 ||!containsInSources(table,rail))return LoadStatus.MISSING;
-        if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                depot.getZ()+.5)>12
+        if(!BuilderReturnService.withinStorageReach(worker,depot)
                 &&(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
             return LoadStatus.MOVING;
@@ -802,8 +802,7 @@ public final class BuilderSupplyInventory {
         Container source=site!=null&&containsInSources(table,item)?site:null;
         if(source==null)return ScaffoldLoad.MISSING;
         BlockPos pos=table.builderUnloadingStorage();
-        if(!groundPickup&&worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,
-                pos.getZ()+.5)>12
+        if(!groundPickup&&!BuilderReturnService.withinStorageReach(worker,pos)
                 &&(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
             return ScaffoldLoad.MOVING;
@@ -858,6 +857,8 @@ public final class BuilderSupplyInventory {
      * slot is full, remaining materials stay saved on the Golem.
      */
     public static boolean returnPouch(WorkerStationBlockEntity table,BuilderGolem worker){
+        if(!BuilderReturnService.withinStorageReach(worker,
+                table.builderUnloadingStorage()))return false;
         Container target=selectedStorage(table);
         if(target==null)return false;
         int count=target.getContainerSize();

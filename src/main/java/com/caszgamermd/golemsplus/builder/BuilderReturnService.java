@@ -34,14 +34,29 @@ public final class BuilderReturnService {
     }
     private static final java.util.Map<BuilderGolem,Approach> approaches=
             new java.util.WeakHashMap<>();
+    /** Storage reach is independent of the five-block construction reach.
+     * Measure from feet to the closest point of the storage block volume. */
+    static boolean withinStorageReach(double x,double y,double z,BlockPos target){
+        if(target==null)return false;
+        double dx=Math.max(0,Math.max(target.getX()-x,x-target.getX()-1));
+        double dy=Math.max(0,Math.max(target.getY()-y,y-target.getY()-1));
+        double dz=Math.max(0,Math.max(target.getZ()-z,z-target.getZ()-1));
+        return dx*dx+dy*dy+dz*dz<=1.0;
+    }
+    public static boolean withinStorageReach(BuilderGolem worker,BlockPos target){
+        return withinStorageReach(worker.getX(),worker.getY(),worker.getZ(),target);
+    }
     /** Reach a walkable tile NEXT TO the solid container, not its interior.
      * Returns true while the worker is still outside pickup distance.
      */
     public static boolean approach(ServerLevel level,BuilderGolem worker,
             BlockPos target,double speed){
         if(target==null)return true;
-        if(worker.distanceToSqr(target.getX()+.5,target.getY()+.5,
-                target.getZ()+.5)<=10)return false;
+        if(withinStorageReach(worker,target)){
+            approaches.remove(worker);
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+            return false;
+        }
         Approach route=approaches.computeIfAbsent(worker,ignored->new Approach());
         long now=level.getGameTime();
         if(!target.equals(route.target)){
@@ -92,7 +107,8 @@ public final class BuilderReturnService {
                         if(dx==0&&dz==0||Math.abs(dx)==2&&Math.abs(dz)==2)
                             continue;
                         BlockPos feet=target.offset(dx,dy,dz);
-                        if(level.hasChunkAt(feet)
+                        if(withinStorageReach(feet.getX()+.5,feet.getY(),feet.getZ()+.5,target)
+                                &&level.hasChunkAt(feet)
                                 &&com.caszgamermd.golemsplus.worker.WorkerNavigation
                                         .canStandOn(level,worker,feet))
                             possible.add(feet);

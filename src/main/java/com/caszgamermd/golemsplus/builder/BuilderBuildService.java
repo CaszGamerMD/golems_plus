@@ -269,7 +269,7 @@ public final class BuilderBuildService {
             activity.supplyProgressTick=now;
             activity.bestSupplyDistance=distance;
         }
-        if(distance<=12||now-activity.supplyProgressTick<=TARGET_PROGRESS_STALL_TICKS
+        if(BuilderReturnService.withinStorageReach(worker,depot)||now-activity.supplyProgressTick<=TARGET_PROGRESS_STALL_TICKS
                 ||BuilderScaffolding.isControllingMovement(worker)
                 ||BuilderGrappleAccess.active(worker))return;
         String reason="no physical progress toward OnSite Storage";
@@ -595,8 +595,7 @@ public final class BuilderBuildService {
                 &&!BuilderGrappleAccess.active(worker)
                 &&!level.getBlockState(worker.blockPosition().below())
                         .is(net.minecraft.world.level.block.Blocks.SCAFFOLDING)
-                &&worker.distanceToSqr(depot.getX()+.5,depot.getY(),
-                        depot.getZ()+.5)<=10.0;
+                &&BuilderReturnService.withinStorageReach(worker,depot);
     }
     /** Return while never issuing an ordinary A* command over an active
      * owned scaffold bridge. Descend that real tower, then optionally
