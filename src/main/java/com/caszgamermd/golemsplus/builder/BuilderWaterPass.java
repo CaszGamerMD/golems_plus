@@ -63,6 +63,7 @@ public final class BuilderWaterPass {
     }
 
     public static boolean samePhase(String a,String b){
-        return isWaterStep(a)==isWaterStep(b);
+        return BuilderPistonWork.verification(a)==BuilderPistonWork.verification(b)
+                &&isWaterStep(a)==isWaterStep(b);
     }
 }

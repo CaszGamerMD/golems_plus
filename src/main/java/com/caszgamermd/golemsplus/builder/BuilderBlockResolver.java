@@ -23,6 +23,16 @@ public final class BuilderBlockResolver {
     private BuilderBlockResolver(){}
     public record Resolved(BlockState state,Item item){}
     public static Resolved resolve(String encoded,BuildSite.Rotation rotation,BuildSite.Mirror mirror){
+        return resolveInternal(encoded,rotation,mirror,false);
+    }
+    /** Read-only schematic comparison. Derived piston states have no item placement. */
+    public static net.minecraft.world.level.block.state.BlockState expectedState(
+            String encoded,BuildSite.Rotation rotation,BuildSite.Mirror mirror){
+        var resolved=resolveInternal(encoded,rotation,mirror,true);
+        return resolved==null?null:resolved.state();
+    }
+    private static Resolved resolveInternal(String encoded,BuildSite.Rotation rotation,
+            BuildSite.Mirror mirror,boolean expectedOnly){
         if(encoded==null||encoded.isBlank())return null;
         if(BuilderWaterPass.isWaterlogPass(encoded)){
             String original=BuilderWaterPass.originalState(encoded);
@@ -70,7 +80,8 @@ public final class BuilderBlockResolver {
         // custom source NBT. It is one ordinary bed item, with the head
         // created and validated as part of the same physical placement.
         boolean vanillaBed=block instanceof BedBlock;
-        if(item==Items.AIR || block instanceof EntityBlock
+        if((item==Items.AIR && !(expectedOnly&&id.equals("minecraft:piston_head")))
+                || block instanceof EntityBlock
                 &&!sign&&!vanillaComparator&&!vanillaDaylightDetector
                 &&!vanillaBed)return null;
         // The constructor groups each valid double-plant, door and bed
@@ -83,7 +94,7 @@ public final class BuilderBlockResolver {
         // A normal/sticky piston is an ordinary one-item block while
         // retracted. Its extended state and detached moving/head blocks
         // are REDSTONE RESULTS and cannot be placed as inventory blocks.
-        if(id.equals("minecraft:piston_head")
+        if(id.equals("minecraft:piston_head")&&!expectedOnly
                 ||id.equals("minecraft:moving_piston"))return null;
         BlockState state=block.defaultBlockState();
         if(open>=0){
@@ -105,7 +116,7 @@ public final class BuilderBlockResolver {
                 &&state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL)
                 &&state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL)!=0)
             return null;
-        if((id.equals("minecraft:piston")||id.equals("minecraft:sticky_piston"))
+        if(!expectedOnly&&(id.equals("minecraft:piston")||id.equals("minecraft:sticky_piston"))
                 &&state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.EXTENDED))
             return null;
         Mirror m=switch(mirror){

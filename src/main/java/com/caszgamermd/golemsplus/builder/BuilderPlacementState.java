@@ -50,7 +50,9 @@ public final class BuilderPlacementState {
             if(actual.getValue(property).equals(schematic.getValue(property)))
                 continue;
             String name=property.getName();
-            boolean dynamic=(id.endsWith("_leaves")&&name.equals("distance"))
+            boolean dynamic=((actual.is(Blocks.PISTON)||actual.is(Blocks.STICKY_PISTON))
+                        &&name.equals("extended"))
+                    ||(id.endsWith("_leaves")&&name.equals("distance"))
                     ||(name.equals("snowy")
                         &&(id.equals("grass_block")||id.equals("mycelium")
                             ||id.equals("podzol")))

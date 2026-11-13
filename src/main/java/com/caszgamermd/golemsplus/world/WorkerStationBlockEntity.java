@@ -1084,11 +1084,35 @@ public final class WorkerStationBlockEntity extends BlockEntity
      * material step keeps its entire layer active until actually done.
      * This does not restrict safe walking/grappling between heights.
      */
+    // Derived heads stay pending at the original index, but physical
+    // construction proceeds until the circuit can be verified.
+    private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> activeScanPlan;
+    private UUID activeScanJob;
+    private int activeScanCursor=-1,activeScanIndex=-1;
+    public int builderActiveStepIndex(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(steps==null||builderCursor<0||builderCursor>=steps.size())return -1;
+        if(!com.caszgamermd.golemsplus.builder.BuilderPistonWork.verification(
+                steps.get(builderCursor).encodedState()))return builderCursor;
+        boolean same=activeScanPlan==steps&&java.util.Objects.equals(activeScanJob,activeOrder)
+                &&activeScanCursor==builderCursor;
+        if(same&&activeScanIndex>=builderCursor&&activeScanIndex<steps.size()
+                &&!builderFinishedSteps.contains(activeScanIndex))return activeScanIndex;
+        int start=same&&activeScanIndex>builderCursor?activeScanIndex+1:builderCursor;
+        activeScanPlan=steps;activeScanJob=activeOrder;activeScanCursor=builderCursor;
+        for(int i=start;i<steps.size();i++){
+            if(!builderFinishedSteps.contains(i)
+                    &&!com.caszgamermd.golemsplus.builder.BuilderPistonWork.verification(
+                        steps.get(i).encodedState())){
+                activeScanIndex=i;return i;
+            }
+        }
+        activeScanIndex=builderCursor;return builderCursor;
+    }
     public int builderActiveLayer(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
-        if(steps==null||builderCursor<0||builderCursor>=steps.size())
-            return Integer.MAX_VALUE;
-        return steps.get(builderCursor).y();
+        int active=builderActiveStepIndex(steps);
+        return active<0?Integer.MAX_VALUE:steps.get(active).y();
     }
 
     /** The first unfinished index also gates water within its Y layer.
@@ -1097,11 +1121,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean builderStepInActivePhase(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
             int index){
-        return steps!=null&&builderCursor>=0&&builderCursor<steps.size()
-                &&index>=builderCursor&&index<steps.size()
-                &&steps.get(index).y()==steps.get(builderCursor).y()
+        int active=builderActiveStepIndex(steps);
+        return active>=0&&index>=builderCursor&&index<steps.size()
+                &&steps.get(index).y()==steps.get(active).y()
                 &&com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
-                        steps.get(index).encodedState(),steps.get(builderCursor).encodedState());
+                        steps.get(index).encodedState(),steps.get(active).encodedState());
     }
 
     /** Each Builder owns its X/Z zone. ALL workers must finish ALL

@@ -151,4 +151,39 @@ public final class BuilderCreativeCrateFluidGameTest {
             if(h.getTick()>60)h.fail("Source water above soul sand did not form a bubble column");
         });
     }
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void extendedPistonRequiresRealPowerAndPreservesPlanIndices(GameTestHelper h){
+        String baseState="minecraft:sticky_piston[extended=true,facing=east]";
+        String headState="minecraft:piston_head[facing=east,short=false,type=sticky]";
+        var schematic=new LitematicFileReader.Schematic("Piston commissioning",List.of(
+                new LitematicFileReader.Block(0,0,0,baseState),
+                new LitematicFileReader.Block(1,0,0,headState),
+                new LitematicFileReader.Block(0,1,0,"minecraft:redstone_block")),Map.of());
+        var plan=BuilderConstructionPlan.create(schematic,new BuildSite(0,64,0,
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE));
+        if(plan.steps().size()!=3||!plan.unsupported().isEmpty()
+                ||!plan.steps().get(0).encodedState().contains("extended=false")
+                ||!BuilderPistonWork.verification(plan.steps().get(1).encodedState())
+                ||plan.steps().get(1).requiredItem()!=null
+                ||plan.required().getOrDefault("minecraft:sticky_piston",0L)!=1L){
+            h.fail("Piston plan must retain one paid base and one pending verification");return;
+        }
+        BlockPos base=h.absolutePos(new BlockPos(3,3,3));
+        BlockPos head=h.absolutePos(new BlockPos(4,3,3));
+        var world=h.getLevel();
+        h.setBlock(3,3,3,Blocks.STICKY_PISTON.defaultBlockState()
+                .setValue(BlockStateProperties.FACING,Direction.EAST));
+        if(BuilderPistonWork.matches(world,head,headState,BuildSite.Rotation.NONE,BuildSite.Mirror.NONE)){
+            h.fail("Unpowered piston verification was falsely completed");return;
+        }
+        h.setBlock(3,4,3,Blocks.REDSTONE_BLOCK);
+        h.onEachTick(()->{
+            if(h.getTick()<5)return;
+            if(BuilderPistonWork.matches(world,head,headState,BuildSite.Rotation.NONE,BuildSite.Mirror.NONE)){
+                System.out.println("[PISTON COMMISSION PASS] vanilla power generated exact head");
+                h.succeed();
+            }else if(h.getTick()>80)h.fail("Real redstone did not generate matching piston head");
+        });
+    }
+
 }

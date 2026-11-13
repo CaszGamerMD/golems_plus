@@ -418,6 +418,8 @@ public final class BuilderConstructionPlanner {
             String reason=step.ignorePlant()
                     ?"ignored vegetation: no physical support required":
                     !world.hasChunkAt(p)?"chunk unloaded":
+                    BuilderPistonWork.verification(step.encodedState())
+                        ?"waiting for real powered piston extension":
                     expected==null?"unsupported block state":
                     !expected.state().canSurvive(world,p)
                         ?"missing physical support":
@@ -621,6 +623,13 @@ public final class BuilderConstructionPlanner {
             var plannedStep=steps.get(idx);
             BlockPos plannedTarget=new BlockPos(plannedStep.x(),plannedStep.y(),plannedStep.z());
             if(!world.hasChunkAt(plannedTarget))continue;
+            if(BuilderPistonWork.verification(plannedStep.encodedState())){
+                if(BuilderPistonWork.matches(world,plannedTarget,plannedStep.encodedState(),
+                        BuildSite.Rotation.values()[table.builderRotation()/90],
+                        BuildSite.Mirror.values()[table.builderMirror()]))
+                    return new Choice(idx,null,false,true,examined);
+                continue;
+            }
             var step=BuilderWaterPass.bubbleAction(world,plannedTarget,plannedStep,builtSchematic);
             if(step==null)continue;
             boolean repairingBubbleBase=step!=plannedStep;

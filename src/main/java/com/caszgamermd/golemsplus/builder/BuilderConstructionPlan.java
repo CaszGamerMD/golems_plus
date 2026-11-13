@@ -50,6 +50,17 @@ public final class BuilderConstructionPlan {
         // object, never a free item or an invisible completed task.
         var byCell=new HashMap<BuilderMultiblock.Cell,LitematicFileReader.Block>();
         for(var b:blocks)byCell.put(BuilderMultiblock.cell(b),b);
+        // Valid piston pairs retain both original indexed cells. Place
+        // the paid base retracted, verify the head after the circuit exists.
+        var pistonHeads=new HashSet<BuilderMultiblock.Cell>();
+        var pistonBases=new HashSet<BuilderMultiblock.Cell>();
+        for(var b:blocks){
+            var head=BuilderPistonWork.pairedHead(b,byCell);
+            if(head!=null){
+                pistonBases.add(BuilderMultiblock.cell(b));
+                pistonHeads.add(BuilderMultiblock.cell(head));
+            }
+        }
         var companions=new HashMap<BuilderMultiblock.Cell,LitematicFileReader.Block>();
         var pairedSecondaries=new HashSet<BuilderMultiblock.Cell>();
         for(var b:blocks){
@@ -69,6 +80,8 @@ public final class BuilderConstructionPlan {
             boolean ignored=ignorePlants&&BuilderVegetation.ignoreSchematicState(b.state());
             boolean waterlogged=!ignored&&BuilderWaterPass.isWaterlogged(b.state());
             String dry=waterlogged?BuilderWaterPass.dryState(b.state()):b.state();
+            boolean verifyPiston=pistonHeads.contains(BuilderMultiblock.cell(b));
+            if(pistonBases.contains(BuilderMultiblock.cell(b)))dry=BuilderPistonWork.neutral(dry);
             var resolved=ignored||incompletePair?null:
                     BuilderBlockResolver.resolve(dry,site.rotation(),site.mirror());
             if(waterlogged&&BuilderBlockResolver.resolve(b.state(),
@@ -78,7 +91,7 @@ public final class BuilderConstructionPlan {
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(resolved.item()).toString()));
             if(world.y()<-64||world.y()>511)
                 throw new IllegalArgumentException("Placement exceeds supported world height");
-            if(resolved==null&&!ignored)unsupported.add(b.state());
+            if(resolved==null&&!ignored&&!verifyPiston)unsupported.add(b.state());
             String item=resolved==null||ignored?null:
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(resolved.item()).toString();
             Companion companion=null;
@@ -92,8 +105,8 @@ public final class BuilderConstructionPlan {
             }
             // Incomplete objects are explicitly unsupported; never
             // silently construct half a door/bed/plant and call it done.
-            String encoded=incompletePair&&!ignored
-                    ?"golems_plus:unpaired_multiblock|"+dry:dry;
+            String encoded=verifyPiston?BuilderPistonWork.verificationStep(dry):
+                    incompletePair&&!ignored?"golems_plus:unpaired_multiblock|"+dry:dry;
             // Each paired item creates ONE claim, ONE material demand and
             // ONE completion entry; the companion is verified on placement.
             steps.add(new Step(world.x(),world.y(),world.z(),

@@ -1408,6 +1408,18 @@ public final class BuilderBuildService {
             if(!level.mayInteract(owner,column)){
                 table.setProblem("Owner cannot modify this location");return;
             }
+            if(BuilderPistonWork.verification(claimedStep.encodedState())){
+                if(BuilderPistonWork.matches(level,column,claimedStep.encodedState(),
+                        BuildSite.Rotation.values()[table.builderRotation()/90],
+                        BuildSite.Mirror.values()[table.builderMirror()])){
+                    table.completeBuilderStep(worker.getUUID(),index);
+                    activity.phase=Action.COMPLETE;
+                }else{
+                    table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
+                    table.setProblem("Redstone commissioning: waiting for real piston head at "+column);
+                }
+                return;
+            }
             var effectiveStep=claimedStep;
             if(BuilderWaterPass.isBubbleColumn(claimedStep.encodedState())){
                 var effective=BuilderWaterPass.bubbleAction(level,column,claimedStep,

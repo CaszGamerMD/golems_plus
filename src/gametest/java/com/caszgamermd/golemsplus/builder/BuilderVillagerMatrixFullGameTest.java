@@ -246,11 +246,11 @@ public final class BuilderVillagerMatrixFullGameTest {
         final List<Expected> expected=new ArrayList<>(SOURCE_BLOCKS);
         int unresolved=0;
         for(var cell:schematic.blocks()){
-            var resolved=BuilderBlockResolver.resolve(cell.state(),
+            var desired=BuilderBlockResolver.expectedState(cell.state(),
                     BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
-            if(resolved==null){unresolved++;continue;}
+            if(desired==null){unresolved++;continue;}
             expected.add(new Expected(origin.offset(cell.x(),cell.y(),cell.z()),
-                    resolved.state()));
+                    desired));
         }
         final int unavailableStates=unresolved;
         System.out.println("[MATRIX FULL TARGET] sourceBlocks="+SOURCE_BLOCKS
@@ -387,7 +387,7 @@ public final class BuilderVillagerMatrixFullGameTest {
             if(!report&&!allStalled&&!noWorkTimeout&&!timeLimit&&table.phase()!=WorkerPhase.COMPLETE)return;
             int correct=0;
             for(Expected candidate:expected)
-                if(BuilderPlacementState.matches(
+                if(BuilderPistonWork.sourceMatches(
                         level.getBlockState(candidate.pos()),candidate.state()))
                     correct++;
             int cursor=table.builderCursor();
@@ -406,7 +406,8 @@ public final class BuilderVillagerMatrixFullGameTest {
             // genuine navigation failure. Observe all actual neighboring
             // states before proposing another construction shortcut.
             if((allStalled||noWorkTicks>=800)&&cursor>=0&&cursor<steps.size()){
-                var stalled=steps.get(cursor);
+                int activeIndex=table.builderActiveStepIndex(steps);
+                var stalled=steps.get(activeIndex<0?cursor:activeIndex);
                 BlockPos at=new BlockPos(stalled.x(),stalled.y(),stalled.z());
                 var resolved=BuilderBlockResolver.resolve(
                         stalled.encodedState(),BuildSite.Rotation.NONE,

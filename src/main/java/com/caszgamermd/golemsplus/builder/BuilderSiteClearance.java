@@ -93,9 +93,19 @@ public final class BuilderSiteClearance {
             boolean ignoredPlant=table.builderIgnorePlants()
                     &&BuilderVegetation.ignoreSchematicState(step.state());
             if(!ignoredPlant&&!step.state().equals("minecraft:air")){
-                var resolved=BuilderBlockResolver.resolve(step.state(),
+                String raw=BuilderPistonWork.original(step.state());
+                var resolved=BuilderBlockResolver.resolve(BuilderPistonWork.neutral(raw),
                         BuildSite.Rotation.values()[table.builderRotation()/90],
                         BuildSite.Mirror.values()[table.builderMirror()]);
+                if(resolved==null&&BuilderMultiblock.blockId(raw).equals("minecraft:piston_head")){
+                    var physical=BuilderBlockResolver.expectedState(raw,
+                            BuildSite.Rotation.values()[table.builderRotation()/90],
+                            BuildSite.Mirror.values()[table.builderMirror()]);
+                    if(physical!=null&&existing.equals(physical)){
+                        table.completeBuilderClear(worker.getUUID(),index,false);
+                        continue;
+                    }
+                }
                 if(resolved==null){
                     // Never destroy an obstruction we cannot subsequently
                     // rebuild. Report the precise state, retaining its
