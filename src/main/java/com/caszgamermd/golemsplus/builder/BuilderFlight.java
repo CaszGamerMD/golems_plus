@@ -357,6 +357,37 @@ public final class BuilderFlight {
         return false;
     }
 
+    /** Recover from an obsolete bridge without falling or destroying it.
+     * The powered leg must finish on a genuine non-scaffold floor inside
+     * the original horizontal envelope. A lower landing may be anywhere
+     * in the world height, as with an ordinary propeller descent. */
+    static boolean exitStalledScaffold(ServerLevel level,BuilderGolem worker){
+        if(!enabled(worker)||active(worker)||BuilderGrappleAccess.active(worker)
+                ||BuilderScaffolding.climbingNow(level,worker))return false;
+        Vec3 anchor=worker.position();
+        BlockPos here=worker.blockPosition();
+        var landings=new ArrayList<BlockPos>();
+        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+            BlockPos column=here.offset(dx,0,dz);
+            if(!inEnvelope(anchor,feet(column)))continue;
+            for(int y=here.getY()+3;y>level.getMinY();y--){
+                BlockPos at=column.atY(y);
+                if(!level.hasChunkAt(at))break;
+                if(!WorkerNavigation.canStandOn(level,worker,at))continue;
+                BlockPos floor=at.below();
+                if(level.getBlockState(floor).is(net.minecraft.world.level.block.Blocks.SCAFFOLDING)
+                        ||level.getBlockState(at).is(net.minecraft.world.level.block.Blocks.SCAFFOLDING)
+                        ||!level.getBlockState(floor).isFaceSturdy(level,floor,Direction.UP)
+                        ||Math.abs(WorkerNavigation.surveyFloorHeight(level,at)-at.getY())>.1)continue;
+                if(!path(level,worker,anchor,feet(at),anchor).isEmpty())landings.add(at);
+                break; // no route through a real solid floor
+            }
+        }
+        landings.sort(Comparator.comparingDouble(at->feet(at).distanceToSqr(anchor)));
+        for(BlockPos landing:landings)if(request(level,worker,landing))return true;
+        return false;
+    }
+
     /** A rail/glass/wet-root pocket may have no horizontal route at all.
      * Lift in its open shaft, then land on a REAL nearby upper surface
      * with an onward ground path. No temporary block, anchor or teleport. */

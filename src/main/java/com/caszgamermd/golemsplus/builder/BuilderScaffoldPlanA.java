@@ -60,6 +60,10 @@ public final class BuilderScaffoldPlanA {
         BlockPos returnWaypoint;
         double bestReturnDistance=Double.POSITIVE_INFINITY;
         long returnProgressAt,nextReturnRecovery;
+        // Repeated bridge phase changes are not physical progress.
+        long mobilityProgressAt=-1,nextPoweredRecovery;
+        double mobilityBest=Double.POSITIVE_INFINITY;
+        BlockPos mobilityGoal;
         boolean fractionalSideEntry;
         Job(BlockPos target,BlockPos base,BlockPos exit,
                 BlockPos planner,List<BlockPos> bridgePath,
@@ -1122,6 +1126,39 @@ public final class BuilderScaffoldPlanA {
         // solid surface must not be pulled back by an obsolete READY or
         // WALK bridge leg. Keep ownership of the physical materials.
         if(releaseDetachedPlan(level,worker))return false;
+        // A READY bridge or a walking bridge can keep oscillating long
+        // after its claim is released. A propeller may take over only
+        // after a verified physical flight to solid ground exists.
+        if(BuilderFlight.enabled(worker)
+                &&(j.phase==Phase.READY||j.phase==Phase.WALK_FIRST
+                    ||j.phase==Phase.WALK_SECOND||j.phase==Phase.RETURN_FIRST
+                    ||j.phase==Phase.RETURN_TOWER)){
+            long now=level.getGameTime();
+            BlockPos goal=switch(j.phase){
+                case WALK_FIRST->j.first().above();
+                case WALK_SECOND->j.second().above();
+                case RETURN_FIRST->j.bridge(Math.max(1,j.returnStep)).above();
+                case RETURN_TOWER->j.base.atY(j.top+1);
+                default->j.bridge(j.bridgeSpan).above();
+            };
+            double distance=worker.distanceToSqr(goal.getX()+.5,goal.getY(),goal.getZ()+.5);
+            if(j.mobilityProgressAt<0||!goal.equals(j.mobilityGoal)){
+                j.mobilityGoal=goal;j.mobilityBest=distance;j.mobilityProgressAt=now;
+            }else if(distance<j.mobilityBest-.04){
+                j.mobilityBest=distance;j.mobilityProgressAt=now;
+            }
+            boolean idle=level.getBlockEntity(j.planner) instanceof WorkerStationBlockEntity table
+                    &&table.claimedStep(worker.getUUID())<0;
+            if(now>=j.nextPoweredRecovery
+                    &&(idle&&now-j.lastProgress>100||now-j.mobilityProgressAt>160)){
+                j.nextPoweredRecovery=now+40;
+                if(BuilderFlight.exitStalledScaffold(level,worker)){
+                    System.out.println("[PLAN A POWERED EXIT] "+worker.getName().getString()
+                            +" left stale bridge at "+worker.position());
+                    return true;
+                }
+            }
+        }
         // Recover a lost vertical controller while physically suspended in
         // the paid scaffold shaft. Never treat an airborne scaffold occupant
         // as a completed work stance, and never fake a position change.

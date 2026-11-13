@@ -242,7 +242,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         // Never retain the old no-gravity state after switching jobs,
         // unloading, leaving a tower, or reloading an entity from disk.
         if(level() instanceof ServerLevel server
-                &&!flying
+                &&!flying&&!BuilderFlight.active(this)
                 &&(isNoGravity()||isShiftKeyDown())
                 &&!BuilderGrappleAccess.active(this)
                 &&!BuilderScaffolding.isControllingMovement(this)){
