@@ -194,9 +194,14 @@ public final class BuilderFlight {
                 ||level.getGameTime()<terrainRetry.getOrDefault(worker,Long.MIN_VALUE))return false;
         terrainRetry.put(worker,level.getGameTime()+20);
         if(WorkerNavigation.selectExecutableStand(level,worker,goals)!=null)return false;
+        return requestTerrain(level,worker,goals);
+    }
+    // Explicit low-flight execution, separate from the walk-first policy.
+    // Also used by physical GameTests to exercise terrain physics even
+    // when the ordinary planner could walk across the fixture.
+    static boolean requestTerrain(ServerLevel level,BuilderGolem worker,List<BlockPos> goals){
         TerrainPlan plan=terrainPlan(level,worker,goals);
-        if(plan==null)return false;
-        return startTerrain(worker,plan);
+        return plan!=null&&startTerrain(worker,plan);
     }
     static boolean terrainWork(ServerLevel level,BuilderGolem worker,BlockPos target,
             java.util.function.Predicate<BlockPos> safeStand){

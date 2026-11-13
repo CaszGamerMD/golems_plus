@@ -290,4 +290,42 @@ public final class BuilderPropellerGameTest {
             }
         });
     }
+
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=300,skyAccess=true)
+    public void lowTerrainHoverCrossesUnevenGroundAndLands(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=8;x<=16;x++)for(int z=10;z<=14;z++){
+            h.setBlock(x,2,z,Blocks.STONE);
+            for(int y=3;y<=8;y++)h.setBlock(x,y,z,Blocks.AIR);
+            if(x==11||x==13)h.setBlock(x,3,z,Blocks.STONE_SLAB);
+            if(x==12)h.setBlock(x,3,z,Blocks.STONE);
+        }
+        BlockPos start=h.absolutePos(new BlockPos(10,3,12));
+        BlockPos goal=h.absolutePos(new BlockPos(14,3,12));
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(worker);
+        Vec3[] previous={worker.position()};
+        boolean[] powered={false};
+        h.onEachTick(()->{
+            if(!worker.isAlive()||worker.position().distanceTo(previous[0])>.45){
+                h.fail("Low hover lost the worker or skipped physical movement");return;
+            }
+            previous[0]=worker.position();
+            if(h.getTick()==5&&!BuilderFlight.requestTerrain(world,worker,java.util.List.of(goal))){
+                h.fail("No supported low hover route across uneven ground");return;
+            }
+            if(h.getTick()<=5)return;
+            if(worker.propellerSpinning())powered[0]=true;
+            if(worker.getY()>start.getY()+2.025){
+                h.fail("Terrain hover climbed more than one block above the highest ground");return;
+            }
+            if(!BuilderFlight.active(worker)&&worker.onGround()
+                    &&worker.position().distanceToSqr(Vec3.atBottomCenterOf(goal))<.04){
+                if(!powered[0]){h.fail("No physical powered terrain travel");return;}
+                System.out.println("[LOW TERRAIN HOVER PASS] four-block uneven route and grounded landing");
+                h.succeed();
+            }
+        });
+    }
 }
