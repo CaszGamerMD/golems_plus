@@ -120,12 +120,42 @@ public final class BuilderFlight {
         return path.isEmpty() ? null : BlockPos.containing(path.getLast());
     }
     public static boolean request(ServerLevel level, BuilderGolem worker, BlockPos goal) {
-        if (goal == null || !enabled(worker) || !inEnvelope(origin(worker), feet(goal))) return false;
+        if (goal == null || !enabled(worker)) return false;
+        return requestPosition(level,worker,goal,feet(goal));
+    }
+    /** Land at the actual collision-checked point inside a supported tile.
+     * A nominal two-metre center-to-center leg may be 2.025m from the
+     * physical walking endpoint. Trim the landing point, NOT the envelope. */
+    static boolean requestSupportedLanding(ServerLevel level,BuilderGolem worker,BlockPos goal){
+        if(goal==null||!enabled(worker)||!WorkerNavigation.canStandOn(level,worker,goal)
+                ||Math.abs(WorkerNavigation.surveyFloorHeight(level,goal)-goal.getY())>.1)return false;
+        Vec3 center=feet(goal),anchor=origin(worker);
+        double dx=center.x-anchor.x,dz=center.z-anchor.z;
+        double length=Math.hypot(dx,dz);
+        Vec3 landing=center;
+        if(length>HORIZONTAL_LIMIT){
+            if(length>HORIZONTAL_LIMIT+.16)return false;
+            double scale=(HORIZONTAL_LIMIT-.005)/length;
+            landing=new Vec3(anchor.x+dx*scale,center.y,anchor.z+dz*scale);
+            if(!BlockPos.containing(landing).equals(goal))return false;
+            // Fractional landing is only legal on a full stable floor,
+            // not on a narrow fence, stair lip or unsupported corner.
+            var floor=goal.below();
+            if(!level.getBlockState(floor).isFaceSturdy(level,floor,Direction.UP)
+                    ||!clear(level,worker,landing))return false;
+        }
+        return requestPosition(level,worker,goal,landing);
+    }
+    private static boolean requestPosition(ServerLevel level,BuilderGolem worker,BlockPos goal,Vec3 destination){
+        if(!inEnvelope(origin(worker),destination))return false;
         Flight flight = flights.get(worker);
         if (flight != null && goal.equals(flight.goal) && moving(worker)) return true;
         if (flight != null && goal.equals(flight.goal) && level.getGameTime() < flight.retryAt) return false;
         BuilderChunkTickets.destination(level, worker, goal);
-        List<Vec3> path = search(level, worker, List.of(goal));
+        List<Vec3> path = path(level,worker,worker.position(),destination,origin(worker));
+        if(flight!=null&&flight.lastFailedDestination!=null
+                &&level.getGameTime()<flight.failedUntil
+                &&destination.distanceToSqr(flight.lastFailedDestination)<.04)return false;
         if (path.isEmpty()) {
             if (flight != null) {
                 flight.goal = goal.immutable();
@@ -329,8 +359,12 @@ public final class BuilderFlight {
         RoofAccess plan=roofPlan(level,worker,target,bodyBlocking);
         if(plan==null)return false;
         if(worker.position().distanceToSqr(feet(plan.launch()))<.04){
-            roofAccess.remove(worker);
-            return request(level,worker,plan.landing());
+            if(requestSupportedLanding(level,worker,plan.landing())){
+                roofAccess.remove(worker);return true;
+            }
+            // Keep a valid walking plan if takeoff was rejected. The
+            // physical endpoint can still improve on the next tick.
+            return WorkerNavigation.routeToExact(level,worker,plan.launch(),1.0);
         }
         return WorkerNavigation.routeToExact(level,worker,plan.launch(),1.0);
     }
@@ -487,8 +521,10 @@ public final class BuilderFlight {
                 &&WorkerNavigation.canStandOn(level,worker,saved.launch())
                 &&WorkerNavigation.canStandOn(level,worker,saved.landing())){
             if(worker.position().distanceToSqr(feet(saved.launch()))<.04){
-                descents.remove(worker);
-                return request(level,worker,saved.landing());
+                if(requestSupportedLanding(level,worker,saved.landing())){
+                    descents.remove(worker);return true;
+                }
+                return WorkerNavigation.routeToExact(level,worker,saved.launch(),1.0);
             }
             return WorkerNavigation.routeToExact(level,worker,saved.launch(),1.0);
         }
