@@ -186,8 +186,12 @@ public final class BuilderFlight {
         }
         boolean moving = moving(worker);
         worker.setPropellerSpinning(moving || !worker.onGround());
-        if (!moving && worker.onGround()) {
+        double floor = WorkerNavigation.surveyFloorHeight(level, worker.blockPosition());
+        if (!moving && (worker.onGround() || (Double.isFinite(floor)
+                && Math.abs(worker.getY() - floor) < .15))) {
             worker.setNoGravity(false);
+            worker.setPropellerSpinning(false);
+            flights.remove(worker);
             return false;
         }
         worker.setNoGravity(true);

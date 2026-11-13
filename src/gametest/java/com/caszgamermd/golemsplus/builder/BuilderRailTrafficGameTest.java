@@ -20,6 +20,8 @@ public final class BuilderRailTrafficGameTest {
         var worker=new BuilderGolem(
                 com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_GOLEM,
                 level);
+        // This regression specifically checks grounded narrow-ledge rules.
+        worker.setPropellerEnabled(false);
         worker.setPos(stance.getX()+.5,stance.getY(),stance.getZ()+.5);
         level.addFreshEntity(worker);
         if(!BuilderConstructionPlanner.safeStandForStep(
@@ -416,6 +418,8 @@ public final class BuilderRailTrafficGameTest {
         var worker=new BuilderGolem(
                 com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_GOLEM,world);
         BlockPos stance=h.absolutePos(new BlockPos(6,2,4));
+        // This regression specifically checks grounded narrow-ledge rules.
+        worker.setPropellerEnabled(false);
         worker.setPos(stance.getX()+.5,stance.getY(),stance.getZ()+.5);
         world.addFreshEntity(worker);
         if(!table.claimIfUnowned(owner.getUUID())
