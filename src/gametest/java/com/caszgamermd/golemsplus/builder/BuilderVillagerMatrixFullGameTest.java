@@ -236,8 +236,11 @@ public final class BuilderVillagerMatrixFullGameTest {
             schematic=LitematicFileReader.read(
                     BuilderVillagerMatrixFullFixture.unpack());
             if(schematic.blocks().size()!=SOURCE_BLOCKS
-                    ||schematic.airBlocks().size()!=SOURCE_AIR)
-                throw new IllegalStateException("Unexpected schematic block count");
+                    ||schematic.airBlocks().size()!=SOURCE_AIR
+                    ||!schematic.name().equals("VillagerMatrixClean_V2"))
+                throw new IllegalStateException("Unexpected schematic block count or name");
+            System.out.println("[MATRIX FULL IMPORT PASS] "+SOURCE_BLOCKS
+                    +" source blocks, "+SOURCE_AIR+" air cells; original fixture");
             plan=BuilderConstructionPlan.create(schematic,
                     new BuildSite(origin.getX(),origin.getY(),origin.getZ(),
                             BuildSite.Rotation.NONE,BuildSite.Mirror.NONE),false);

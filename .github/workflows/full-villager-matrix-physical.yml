@@ -32,6 +32,7 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/worker/WorkerNavigation.java'
       - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderCrewScheduleTest.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFull*'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixAssessmentGameTest.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/MatrixMovementWindow.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/MatrixWorkWatchdog.java'
       - 'src/gametest/resources/golems_plus_matrix/**'
@@ -82,8 +83,7 @@ jobs:
           path=Path('src/gametest/resources/fabric.mod.json')
           data=json.loads(path.read_text())
           data['entrypoints']['fabric-gametest']=[
-              'com.caszgamermd.golemsplus.builder.BuilderVillagerMatrixFullGameTest',
-              'com.caszgamermd.golemsplus.builder.BuilderPropellerGameTest'
+              'com.caszgamermd.golemsplus.builder.BuilderVillagerMatrixAssessmentGameTest'
           ]
           path.write_text(json.dumps(data,indent=2)+'\n')
           PY
