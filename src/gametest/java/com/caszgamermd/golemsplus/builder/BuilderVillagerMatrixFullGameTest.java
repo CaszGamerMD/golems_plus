@@ -386,20 +386,36 @@ public final class BuilderVillagerMatrixFullGameTest {
                 // directly into worker inventories or forcing any placements.
                 keepScaffoldingStock(level,supplyPos);
                 Set<Item> needs=baseStock();
+                // Current claims MUST fit before speculative work-order
+                // materials. The previous 19-type cap could evict the
+                // actual repeater a worker was trying to retrieve.
                 for(var worker:crew){
-                    for(Integer n:table.builderWorkOrder(worker.getUUID())){
-                        if(n!=null&&n>=0&&n<steps.size()&&needs.size()<19)
-                            addItem(needs,steps.get(n));
-                    }
                     int claim=table.claimedStep(worker.getUUID());
-                    if(claim>=0&&claim<steps.size()&&needs.size()<19)
-                        addItem(needs,steps.get(claim));
+                    if(claim>=0&&claim<steps.size())addItem(needs,steps.get(claim));
                 }
                 int activeStep=table.builderActiveStepIndex(steps);
-                for(int i=Math.max(0,activeStep);
-                        i<Math.min(steps.size(),activeStep+64)
-                                &&needs.size()<19;i++)
-                    addItem(needs,steps.get(i));
+                int layer=table.builderActiveLayer(steps);
+                // Rotate through the unfinished active layer so unclaimed
+                // rare materials can become available as well. Never change
+                // the schematic or the actual worker inventories.
+                if(activeStep>=0){
+                    int end=activeStep;
+                    while(end<steps.size()&&steps.get(end).y()==layer)end++;
+                    int count=end-activeStep;
+                    for(int k=0;k<count&&needs.size()<23;k++){
+                        int i=activeStep+Math.floorMod((int)(tick/100)+k,count);
+                        if(!table.builderStepCompletedForMaterials(i)
+                                &&table.builderStepInActivePhase(steps,i))
+                            addItem(needs,steps.get(i));
+                    }
+                }
+                for(var worker:crew){
+                    for(Integer n:table.builderWorkOrder(worker.getUUID())){
+                        if(n!=null&&n>=0&&n<steps.size()&&needs.size()<23
+                                &&!table.builderStepCompletedForMaterials(n))
+                            addItem(needs,steps.get(n));
+                    }
+                }
                 BuilderInfiniteOnsiteSupply.restock(level,supplyPos,needs);
             }
             if(!report&&!allStalled&&!noWorkTimeout&&!timeLimit&&table.phase()!=WorkerPhase.COMPLETE)return;
@@ -517,6 +533,7 @@ public final class BuilderVillagerMatrixFullGameTest {
         needs.add(Items.IRON_PICKAXE);
         needs.add(Items.IRON_AXE);
         needs.add(Items.IRON_SHOVEL);
+        needs.add(Items.FLINT_AND_STEEL);
         return needs;
     }
     private static void addItem(Set<Item> needs,BuilderConstructionPlan.Step step){
