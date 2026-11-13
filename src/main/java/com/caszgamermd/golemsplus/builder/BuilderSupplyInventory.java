@@ -337,9 +337,23 @@ public final class BuilderSupplyInventory {
         // Stage the actual claim before speculative neighbors. The
         // active work order can contain a large mixed-material palette.
         int claim=table.claimedStep(worker.getUUID());
+        String claimedRail=null;
         if(claim>=0&&claim<steps.size()){
             var first=steps.get(claim);
             if(first.requiredItem()!=null)materials.putIfAbsent(first.requiredItem(),0);
+            // Reserve the auxiliary kit BEFORE speculative construction
+            // varieties. The connector and support are reused, not
+            // charged as permanent schematic cells.
+            if(BuilderRailSlope.needsExtraStock(first.encodedState())){
+                var resolved=BuilderBlockResolver.resolve(first.encodedState(),
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(resolved!=null){
+                    claimedRail=BuiltInRegistries.ITEM.getKey(
+                            resolved.state().getBlock().asItem()).toString();
+                    materials.putIfAbsent(claimedRail,0);
+                    materials.putIfAbsent("minecraft:cobblestone",1);
+                }
+            }
         }
         int highest=worker.blockPosition().getY();
         for(int index:indices){
@@ -351,6 +365,8 @@ public final class BuilderSupplyInventory {
         }
         if(claim>=0&&claim<steps.size()&&steps.get(claim).requiredItem()!=null)
             materials.computeIfPresent(steps.get(claim).requiredItem(),(id,n)->Math.max(1,n));
+        if(claimedRail!=null)
+            materials.put(claimedRail,Math.max(2,materials.getOrDefault(claimedRail,0)+1));
         // The active ten-cell dry order may not yet contain its water
         // phase, even though the very same elevated zone needs it next.
         // Bring ONE inventory-backed reusable bucket at this depot visit
@@ -363,6 +379,7 @@ public final class BuilderSupplyInventory {
         // roof descent / ascent every handful of blocks. Do not add
         // extra material types or stock for a future construction layer.
         Map<String,Integer> activeDemand=new LinkedHashMap<>();
+        boolean layerHasSlopes=false;
         if(zone!=null){
             int layer=table.builderActiveLayer(steps);
             for(int idx:zone){
@@ -373,8 +390,12 @@ public final class BuilderSupplyInventory {
                         ||cell.ignorePlant()||table.builderStepCompletedForMaterials(idx)
                         ||!table.builderStepInActivePhase(steps,idx))continue;
                 activeDemand.merge(item,1,Integer::sum);
+                if(BuilderRailSlope.needsExtraStock(cell.encodedState()))layerHasSlopes=true;
             }
         }
+        // Keep the reusable footing through other work on this layer.
+        if(layerHasSlopes&&worker.carriedCount(net.minecraft.world.item.Items.COBBLESTONE)>0)
+            materials.merge("minecraft:cobblestone",1,Math::max);
         // Preserve useful already-carried stock on this Y before unloading.
         // Fill at most eight of nine material slots with optional varieties;
         // the ninth remains available for a rare next claim. Required batch
@@ -636,8 +657,17 @@ public final class BuilderSupplyInventory {
                     &&material.equals(steps.get(idx).requiredItem()))needed++;
         }
         int claim=table.claimedStep(donor.getUUID());
-        if(claim>=0&&claim<steps.size()&&material.equals(steps.get(claim).requiredItem()))
-            needed=Math.max(1,needed);
+        if(claim>=0&&claim<steps.size()){
+            var step=steps.get(claim);
+            if(material.equals(step.requiredItem()))needed=Math.max(1,needed);
+            if(BuilderRailSlope.needsExtraStock(step.encodedState())){
+                if(material.equals("minecraft:cobblestone"))needed=Math.max(1,needed);
+                var resolved=BuilderBlockResolver.resolve(step.encodedState(),
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(resolved!=null&&resolved.state().getBlock().asItem()==target)
+                    needed=Math.max(2,needed+1);
+            }
+        }
         return BuilderBlockResolver.reusableSupply(material)?Math.min(1,needed):needed;
     }
     // Preserve a donor's current work order and only transfer material across
@@ -910,19 +940,100 @@ public final class BuilderSupplyInventory {
      */
     public static LoadStatus loadRailJig(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,Item rail,int required){
-        if(worker.carriedCount(rail)>=required)return LoadStatus.READY;
+        return loadRailKit(level,worker,table,rail,required,false,null);
+    }
+
+    /** Stage the whole real kit atomically at the depot. Never evict
+     * the required rail to make room for its support, or vice versa. */
+    static LoadStatus loadRailKit(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,Item rail,int required,
+            boolean foundation,List<BuilderConstructionPlan.Step> steps){
+        Item cobble=net.minecraft.world.item.Items.COBBLESTONE;
+        var kit=new LinkedHashMap<Item,Integer>();
+        kit.put(rail,required);
+        if(foundation)kit.merge(cobble,1,Math::max);
+        // A wet-rail repair must not displace the reusable water source.
+        java.util.Set<Item> protectedItems=new java.util.HashSet<>(kit.keySet());
+        protectedItems.add(com.caszgamermd.golemsplus.world.WorksiteContent.INFINITE_WATER_BUCKET);
+        boolean ready=kit.entrySet().stream().allMatch(e->worker.carriedCount(e.getKey())>=e.getValue());
+        if(ready)return LoadStatus.READY;
+        for(var row:kit.entrySet()){
+            int missing=row.getValue()-worker.carriedCount(row.getKey());
+            if(missing>0)borrowNearby(level,worker,table,row.getKey(),steps,missing);
+        }
+        if(kit.entrySet().stream().allMatch(e->worker.carriedCount(e.getKey())>=e.getValue()))
+            return LoadStatus.READY;
         BlockPos depot=table.builderUnloadingStorage();
-        if(depot==null||selectedStorage(table)==null
-                ||!containsInSources(table,rail))return LoadStatus.MISSING;
+        if(depot==null||selectedStorage(table)==null)return LoadStatus.MISSING;
         if(!BuilderReturnService.withinStorageReach(worker,depot)
                 &&!BuilderFlight.enabled(worker)&&(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
             return LoadStatus.MOVING;
-        if(BuilderReturnService.approach(level,worker,depot,.82))
-            return LoadStatus.MOVING;
-        drawFromSources(table,worker,rail,required-worker.carriedCount(rail));
-        return worker.carriedCount(rail)>=required?
-                LoadStatus.READY:LoadStatus.MISSING;
+        if(BuilderReturnService.approach(level,worker,depot,.82))return LoadStatus.MOVING;
+        for(var row:kit.entrySet()){
+            Item item=row.getKey();
+            int missing=row.getValue()-worker.carriedCount(item);
+            if(missing<=0)continue;
+            drawFromSources(table,worker,item,missing);
+            if(worker.carriedCount(item)>=row.getValue())continue;
+            // All nine pockets may already hold full stacks. Reclaim a
+            // lower-priority pocket; even a completely full depot can
+            // exchange a whole real source stack with that pocket.
+            if(room(worker,new ItemStack(item))<=0){
+                if(!makeRailKitRoom(table,worker,item,protectedItems))continue;
+                drawFromSources(table,worker,item,row.getValue()-worker.carriedCount(item));
+            }
+        }
+        return kit.entrySet().stream().allMatch(e->worker.carriedCount(e.getKey())>=e.getValue())
+                ?LoadStatus.READY:LoadStatus.MISSING;
+    }
+
+    private static boolean makeRailKitRoom(WorkerStationBlockEntity table,
+            BuilderGolem worker,Item needed,java.util.Set<Item> protectedItems){
+        if(!BuilderReturnService.withinStorageReach(worker,table.builderUnloadingStorage()))
+            return false;
+        if(!containsInSources(table,needed))return false;
+        for(int slot=BuilderGolem.SCAFFOLD_BELT_SLOT-1;slot>=0;slot--){
+            ItemStack old=worker.getItem(slot);
+            if(old.isEmpty()||protectedItems.contains(old.getItem()))continue;
+            for(Container source:sources(table)){
+                // Creative supply is infinite but must not void actual
+                // inventory. Only use normal finite exchange below.
+                if(source instanceof CreativeCrateBlockEntity)continue;
+                int left=storeSurplus(source,old,old.getCount());
+                worker.setItem(slot,old.copyWithCount(left));
+                if(left==0)return true;
+                old=worker.getItem(slot);
+            }
+            for(Container source:sources(table)){
+                if(source instanceof CreativeCrateBlockEntity)continue;
+                for(int i=0;i<source.getContainerSize();i++){
+                    ItemStack stock=source.getItem(i);
+                    if(stock.is(needed)&&source.canPlaceItem(i,old)
+                            &&stock.getCount()<=worker.slotCapacity(slot,stock)){
+                        source.setItem(i,old.copy());worker.setItem(slot,stock);
+                        source.setChanged();return true;
+                    }
+                    // A delivered shulker can be just as full as the
+                    // chest. Swap its actual nested stack, preserving
+                    // both components and all counts.
+                    if(!stock.is(ItemTags.SHULKER_BOXES)||!stock.has(DataComponents.CONTAINER))
+                        continue;
+                    var nested=contents(stock);
+                    for(int n=0;n<nested.size();n++){
+                        ItemStack inside=nested.get(n);
+                        if(!inside.is(needed)||inside.getCount()>worker.slotCapacity(slot,inside)
+                                ||old.is(ItemTags.SHULKER_BOXES))continue;
+                        nested.set(n,old.copy());
+                        ItemStack box=stock.copy();
+                        box.set(DataComponents.CONTAINER,ItemContainerContents.fromItems(nested));
+                        source.setItem(i,box);worker.setItem(slot,inside);
+                        source.setChanged();return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
     /** Fetch scaffolding with the same real chest/pouch contract as build
      * materials. No tower block can be purchased from a distant container.
