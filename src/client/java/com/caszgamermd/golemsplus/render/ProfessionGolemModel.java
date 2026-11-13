@@ -92,9 +92,9 @@ public final class ProfessionGolemModel
                         .texOffs(0,0).addBox(-5,-6,-3.5f,10,11,7,
                                 new net.minecraft.client.model.geom.builders.CubeDeformation(.13f)),PartPose.ZERO);
                 head.addOrReplaceChild("propeller",CubeListBuilder.create()
-                        .texOffs(86,52).addBox(-1,-2,-1,2,3,2)
-                        .texOffs(86,52).addBox(-8,-2.5f,-1,16,1,2)
-                        .texOffs(86,52).addBox(-1,-2.5f,-8,2,1,16),
+                        .texOffs(7,0).addBox(-1,-2,-1,2,3,2)
+                        .texOffs(42,41).addBox(-8,-2.5f,-1,16,1,2)
+                        .texOffs(42,34).addBox(-1,-2.5f,-8,2,1,16),
                         PartPose.offset(0,-7,0));
                 // Raised hard-hat bowl, brow brim, rear flap and center rib.
                 head.addOrReplaceChild("helmet_crown",CubeListBuilder.create()
