@@ -586,6 +586,10 @@ public final class WorkerNavigation {
      */
     public static BlockPos selectExecutableStand(ServerLevel level,
             PathfinderMob mob,List<BlockPos> candidates){
+        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&com.caszgamermd.golemsplus.builder.BuilderFlight.enabled(builder)
+                &&!com.caszgamermd.golemsplus.builder.BuilderGrappleAccess.active(builder))
+            return com.caszgamermd.golemsplus.builder.BuilderFlight.select(level,builder,candidates);
         if(candidates==null||candidates.isEmpty())return null;
         // Answer repeat questions from a very short-lived per-golem cache
         // BEFORE paying for the standability filter below.
@@ -1460,6 +1464,10 @@ public final class WorkerNavigation {
     }
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
+        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&com.caszgamermd.golemsplus.builder.BuilderFlight.enabled(builder)
+                &&!com.caszgamermd.golemsplus.builder.BuilderGrappleAccess.active(builder))
+            return com.caszgamermd.golemsplus.builder.BuilderFlight.request(level,builder,target);
         Progress progress=state(mob);
         if(progress.centering!=null){
             if(target!=null&&target.equals(progress.requested)
@@ -1585,6 +1593,10 @@ public final class WorkerNavigation {
 
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
                                   double speed){
+        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&com.caszgamermd.golemsplus.builder.BuilderFlight.enabled(builder)
+                &&!com.caszgamermd.golemsplus.builder.BuilderGrappleAccess.active(builder))
+            return com.caszgamermd.golemsplus.builder.BuilderFlight.toward(level,builder,target);
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder){
             com.caszgamermd.golemsplus.builder.BuilderChunkTickets
                     .destination(level,builder,target);

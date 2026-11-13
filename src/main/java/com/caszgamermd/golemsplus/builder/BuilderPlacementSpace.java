@@ -62,6 +62,7 @@ public final class BuilderPlacementSpace {
      * cannot license an out-of-reach target or unlock a schematic layer.
      */
     public static boolean placementHeight(BlockPos target,BuilderGolem worker){
+        if(BuilderFlight.enabled(worker))return true;
         int feetY=worker.blockPosition().getY();
         return feetY==target.getY()
                 ||worker.onGround()&&!worker.isNoGravity()
@@ -351,6 +352,7 @@ public final class BuilderPlacementSpace {
 
     private static BlockPos escape(ServerLevel level,BuilderGolem worker,
             BlockPos target){
+        if(BuilderFlight.enabled(worker))return BuilderFlight.workPose(level,worker,target);
         BlockPos origin=worker.blockPosition();
         List<BlockPos> choices=new ArrayList<>();
         // Probe a compact, predictable set of cardinal/diagonal safe
@@ -415,6 +417,7 @@ public final class BuilderPlacementSpace {
     static BlockPos approachForStep(ServerLevel level,BuilderGolem worker,
             BlockPos target,boolean bodyBlocking,boolean lookahead,
             java.util.function.Predicate<BlockPos> safe){
+        if(BuilderFlight.enabled(worker))return BuilderFlight.workPose(level,worker,target);
         return approachWithHeight(level,worker,target,false,safe,!lookahead,bodyBlocking);
     }
     private static BlockPos approachWithHeight(ServerLevel level,
@@ -701,7 +704,7 @@ public final class BuilderPlacementSpace {
             // When standing adjacent on real ground, do a precise
             // horizontal edge-clearance move instead of targeting a tile
             // center that still intersects the future placement cube.
-            boolean precision=canPrecisionStep(level,blocker,target);
+            boolean precision=!BuilderFlight.enabled(blocker)&&canPrecisionStep(level,blocker,target);
             BlockPos destination=precision?blocker.blockPosition():escape(level,blocker,target);
             // Ordinary A* must not route a blocker INTO the cell that
             // another Builder is about to fill. A precision sidestep,

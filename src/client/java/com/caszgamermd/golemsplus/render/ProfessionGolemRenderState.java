@@ -6,6 +6,7 @@ import net.minecraft.client.renderer.item.ItemStackRenderState;
 /** Model-only runtime data; no server networking or new data trackers. */
 public final class ProfessionGolemRenderState extends LivingEntityRenderState {
     public boolean carrying;
+    public boolean propellerSpinning;
     public boolean courier;
     public boolean working;
     public boolean presenting;

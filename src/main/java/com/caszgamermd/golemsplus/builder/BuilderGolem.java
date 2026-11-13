@@ -32,8 +32,17 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     @Override protected void defineSynchedData(net.minecraft.network.syncher.SynchedEntityData.Builder builder){
         super.defineSynchedData(builder);
         builder.define(COURIER,false);
+        builder.define(PROPELLER,false);
         builder.define(BREAK_ROOM_STATE,0);
     }
+    private static final net.minecraft.network.syncher.EntityDataAccessor<Boolean> PROPELLER=
+            net.minecraft.network.syncher.SynchedEntityData.defineId(
+                    BuilderGolem.class,net.minecraft.network.syncher.EntityDataSerializers.BOOLEAN);
+    private boolean propellerEnabled=true;
+    public boolean propellerEnabled(){return propellerEnabled;}
+    public void setPropellerEnabled(boolean enabled){propellerEnabled=enabled;}
+    public boolean propellerSpinning(){return entityData.get(PROPELLER);}
+    public void setPropellerSpinning(boolean spinning){entityData.set(PROPELLER,spinning);}
     public boolean deliveryRole(){return entityData.get(COURIER);}
     public void setDeliveryRole(boolean active){
         if(deliveryRole()!=active)entityData.set(COURIER,active);
@@ -214,23 +223,26 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         // exists. Previously Plan A WALK_FIRST could preempt a grapple
         // in RETURN_TO_TOP forever, trapping the Builder on the dome.
         // Rope attachment walking still permits ordinary A* to run.
+        boolean flying=level() instanceof ServerLevel flightWorld
+                &&!BuilderGrappleAccess.active(this)&&BuilderFlight.tick(flightWorld,this);
         boolean ropeActive=BuilderGrappleAccess.active(this);
         boolean grappling=level() instanceof ServerLevel grappleWorld
                 &&BuilderGrappleAccess.tickMotion(grappleWorld,this);
-        boolean scaffolding=!ropeActive
+        boolean scaffolding=!BuilderFlight.enabled(this)&&!flying&&!ropeActive
                 &&level() instanceof ServerLevel scaffoldWorld
                 &&(BuilderScaffolding.tickMotion(scaffoldWorld,this)
                     ||BuilderScaffoldPlanA.tickMotion(scaffoldWorld,this));
-        boolean precisionYield=!ropeActive&&!scaffolding
+        boolean precisionYield=!flying&&!ropeActive&&!scaffolding
                 &&level() instanceof ServerLevel precisionWorld
                 &&BuilderPlacementSpace.tickPrecisionYield(precisionWorld,this);
-        boolean centering=!ropeActive&&!scaffolding&&!precisionYield
+        boolean centering=!flying&&!ropeActive&&!scaffolding&&!precisionYield
                 &&level() instanceof ServerLevel centerWorld
                 &&com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .tickExactCenter(centerWorld,this);
         // Never retain the old no-gravity state after switching jobs,
         // unloading, leaving a tower, or reloading an entity from disk.
         if(level() instanceof ServerLevel server
+                &&!flying
                 &&(isNoGravity()||isShiftKeyDown())
                 &&!BuilderGrappleAccess.active(this)
                 &&!BuilderScaffolding.isControllingMovement(this)){
@@ -251,7 +263,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         if(level() instanceof ServerLevel server){
             BuilderChunkTickets.track(server,this);
             // Scaffold/rope physics owns vertical travel; A* owns walking.
-            if(!scaffolding&&!grappling&&!precisionYield&&!centering)
+            if(!flying&&!scaffolding&&!grappling&&!precisionYield&&!centering)
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.tick(server,this);
         }
         // Each Builder evaluates its own long-lived task state four times
@@ -270,6 +282,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     @Override protected void addAdditionalSaveData(ValueOutput out){
         super.addAdditionalSaveData(out);
         com.caszgamermd.golemsplus.breakroom.GolemBreakService.saveRest(this,out);
+        out.putBoolean("builder_propeller",propellerEnabled);
         out.store("builder_home",BlockPos.CODEC,home);
         if(owner!=null)out.putString("builder_owner",owner.toString());
         if(!carriedSupplyBox.isEmpty())
@@ -289,6 +302,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         // Vanilla persists custom names; migrate old generic names, but keep
         // names given by players with a name tag unchanged.
         ProfessionGolemNames.ensureNamed(this,ProfessionGolemNamePool.Profession.BUILDER);
+        propellerEnabled=in.getBooleanOr("builder_propeller",true);
         home=in.read("builder_home",BlockPos.CODEC).orElse(BlockPos.ZERO);
         try{owner=UUID.fromString(in.getStringOr("builder_owner",""));}
         catch(IllegalArgumentException ex){owner=null;}

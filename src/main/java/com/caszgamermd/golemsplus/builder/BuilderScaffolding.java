@@ -659,6 +659,7 @@ public final class BuilderScaffolding {
      */
     public static boolean descendForTravel(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
+        if(BuilderFlight.enabled(worker))return false;
         // Return across a physical Plan-A bridge BEFORE descending the
         // column. Native A* cannot safely cross untracked scaffold air.
         if(BuilderScaffoldPlanA.returnToGround(level,worker,table))return true;

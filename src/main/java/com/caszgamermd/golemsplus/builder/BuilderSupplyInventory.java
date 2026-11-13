@@ -323,7 +323,7 @@ public final class BuilderSupplyInventory {
         Container storage=selectedStorage(table);
         if(depot==null||storage==null)return LoadStatus.MISSING;
         if(!BuilderReturnService.withinStorageReach(worker,depot)
-                &&(BuilderScaffolding.descendForTravel(level,worker,table)
+                &&!BuilderFlight.enabled(worker)&&(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
             return LoadStatus.MOVING;
         if(BuilderReturnService.approach(level,worker,depot,.83))
@@ -499,7 +499,7 @@ public final class BuilderSupplyInventory {
             Container site=selectedStorage(table);
             if(site==null||depot==null)return LoadStatus.MISSING;
             if(!BuilderReturnService.withinStorageReach(worker,depot)
-                    &&(BuilderScaffolding.descendForTravel(level,worker,table)
+                    &&!BuilderFlight.enabled(worker)&&(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
                 return LoadStatus.MOVING;
             if(BuilderReturnService.approach(level,worker,depot,.83))
@@ -538,7 +538,7 @@ public final class BuilderSupplyInventory {
                 if(needed==0||!containsInSources(table,requested))
                     continue;
                 if(!BuilderReturnService.withinStorageReach(worker,depot)
-                        &&(BuilderScaffolding.descendForTravel(level,worker,table)
+                        &&!BuilderFlight.enabled(worker)&&(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
                     return LoadStatus.MOVING;
                 if(BuilderReturnService.approach(level,worker,depot,.83))
@@ -782,7 +782,7 @@ public final class BuilderSupplyInventory {
         if(depot==null||selectedStorage(table)==null
                 ||!containsInSources(table,rail))return LoadStatus.MISSING;
         if(!BuilderReturnService.withinStorageReach(worker,depot)
-                &&(BuilderScaffolding.descendForTravel(level,worker,table)
+                &&!BuilderFlight.enabled(worker)&&(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
             return LoadStatus.MOVING;
         if(BuilderReturnService.approach(level,worker,depot,.82))
@@ -807,7 +807,7 @@ public final class BuilderSupplyInventory {
         if(source==null)return ScaffoldLoad.MISSING;
         BlockPos pos=table.builderUnloadingStorage();
         if(!groundPickup&&!BuilderReturnService.withinStorageReach(worker,pos)
-                &&(BuilderScaffolding.descendForTravel(level,worker,table)
+                &&!BuilderFlight.enabled(worker)&&(BuilderScaffolding.descendForTravel(level,worker,table)
                     ||BuilderGrappleAccess.rappelForTravel(level,worker,table)))
             return ScaffoldLoad.MOVING;
         if(BuilderReturnService.approach(level,worker,pos,.82))

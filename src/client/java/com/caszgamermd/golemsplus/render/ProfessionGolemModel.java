@@ -25,11 +25,13 @@ public final class ProfessionGolemModel
     private final ModelPart courierScalp,courierShirt;
     private final ModelPart traderClosed,traderOpen,fisherRod,fisherFish,foldingChair;
     private final Profession profession;
+    private final ModelPart propeller;
 
     public ProfessionGolemModel(ModelPart root,Profession profession){
         super(root);
         this.profession=profession;
         head=root.getChild("head");
+        propeller=profession==Profession.BUILDER?head.getChild("propeller"):null;
         leftArm=root.getChild("left_arm");
         rightArm=root.getChild("right_arm");
         leftLeg=root.getChild("left_leg");
@@ -89,6 +91,11 @@ public final class ProfessionGolemModel
                 torso.addOrReplaceChild("dirty_shirt",CubeListBuilder.create()
                         .texOffs(0,0).addBox(-5,-6,-3.5f,10,11,7,
                                 new net.minecraft.client.model.geom.builders.CubeDeformation(.13f)),PartPose.ZERO);
+                head.addOrReplaceChild("propeller",CubeListBuilder.create()
+                        .texOffs(86,52).addBox(-1,-2,-1,2,3,2)
+                        .texOffs(86,52).addBox(-8,-2.5f,-1,16,1,2)
+                        .texOffs(86,52).addBox(-1,-2.5f,-8,2,1,16),
+                        PartPose.offset(0,-7,0));
                 // Raised hard-hat bowl, brow brim, rear flap and center rib.
                 head.addOrReplaceChild("helmet_crown",CubeListBuilder.create()
                         .texOffs(75,24).addBox(-4.7f,-7.2f,-3.8f,9.4f,4,7.6f),
@@ -440,6 +447,7 @@ public final class ProfessionGolemModel
         rightArm.xRot=leftLeg.xRot*.52f;
         leftArm.zRot=rightArm.zRot=0;
         if(profession==Profession.BUILDER){
+            propeller.yRot=state.ageInTicks*(state.propellerSpinning?1.4f:.04f);
             for(ModelPart part:safetyGear)part.visible=!state.courier;
             courierScalp.visible=state.courier;
             courierShirt.visible=state.courier;

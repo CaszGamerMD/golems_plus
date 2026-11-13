@@ -807,6 +807,7 @@ public final class BuilderGrappleAccess {
     /** Returns true while the hook owns descent or when a descent starts. */
     public static boolean rappelForTravel(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table){
+        if(BuilderFlight.enabled(worker))return false;
         BlockPos goal=table.builderUnloadingStorage();
         // Material pickups leave the same rail pockets as a parked or
         // completed worker. Keep the timed physical escape available

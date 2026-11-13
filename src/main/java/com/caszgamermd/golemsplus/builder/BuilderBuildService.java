@@ -608,6 +608,11 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table){
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null)depot=table.getBlockPos();
+        if(BuilderFlight.enabled(worker)){
+            if(BuilderReturnService.approach(level,worker,depot,.8))return false;
+            BuilderFlight.stop(worker);
+            return true;
+        }
         if(atOnSite(level,worker,depot)){
             com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
             return true;
@@ -864,6 +869,7 @@ public final class BuilderBuildService {
         // Wait for the player to craft and place builders beside the table.
     }
     public static void tick(ServerLevel level,BuilderGolem worker){
+        if(BuilderFlight.enabled(worker)&&BuilderFlight.moving(worker))return;
         BlockPos home=worker.home();
         if(worker.owner()==null||!level.hasChunkAt(home))return;
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)
@@ -1673,6 +1679,17 @@ public final class BuilderBuildService {
                 return;
             }
             activity.supplyProgressTick=-1;
+            boolean bodyBlockingWork=BuilderPlacementSpace.stepNeedsVacating(
+                    level,pos,state.state(),waterlog);
+            if(BuilderFlight.enabled(worker)){
+                if(!BuilderFlight.safeWorkPose(level,worker,pos,worker.position())){
+                    BlockPos flightPose=BuilderFlight.workPose(level,worker,pos);
+                    if(flightPose==null||!BuilderFlight.request(level,worker,flightPose))
+                        table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),
+                                "no clear propeller flight to work position");
+                    return;
+                }
+            }else{
             // PLAN B: physical Grapple Hook up to 20 blocks, never a
             // scaffold/flying/teleport fallback. Ordinary slopes use A*.
             // A released rope leaves feet slightly above the ledge until
@@ -1844,8 +1861,7 @@ public final class BuilderBuildService {
             // grounded Builder with a safe hand pose should not walk
             // several blocks farther just to satisfy a SOLID cube's
             // 0.8m shoulder clearance for a walk-through circuit.
-            boolean bodyBlockingWork=BuilderPlacementSpace.stepNeedsVacating(
-                    level,pos,state.state(),waterlog);
+
             boolean armClear=!bodyBlockingWork
                     ||BuilderPlacementSpace.horizontalClear(pos,worker);
             boolean directOrdinaryWork=BuilderPlacementSpace.placementHeight(
@@ -2011,6 +2027,7 @@ public final class BuilderBuildService {
             // A Builder may place from its assigned layer or from one
             // grounded block ABOVE that layer. This changes only its
             // physical feet height, never the crew-wide Y work gate.
+            }
             activity.phase=Action.PLACE;
             // Travel and placement are mutually exclusive for THIS worker:
             // stop the previous A* path and horizontal momentum before a
@@ -2022,7 +2039,9 @@ public final class BuilderBuildService {
             // Re-evaluate the real work pose immediately before spending
             // any item: a teammate or a new schematic block may have
             // invalidated the cached approach while this worker walked.
-            if(!(BuilderScaffoldPlanA.safeTemporaryWorkPose(
+            if(!(BuilderFlight.enabled(worker)
+                        &&BuilderFlight.safeWorkPose(level,worker,pos,worker.position())
+                    ||BuilderScaffoldPlanA.safeTemporaryWorkPose(
                         level,worker,table,pos)
                     ||BuilderPlacementSpace.safeFractionalCapPose(
                             level,worker,pos)
