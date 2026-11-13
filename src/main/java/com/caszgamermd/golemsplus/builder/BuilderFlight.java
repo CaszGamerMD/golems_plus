@@ -243,8 +243,8 @@ public final class BuilderFlight {
         if(distance<r.bestDistance-.04){r.bestDistance=distance;r.lastProgress=level.getGameTime();}
         return level.getGameTime()-r.lastProgress<=90;
     }
-    private record RoofRetry(BlockPos target,long until){}
-    private static final Map<BuilderGolem,RoofRetry> roofRetry=new WeakHashMap<>();
+    private static final Map<BuilderGolem,Map<BlockPos,Long>> roofRetry=new WeakHashMap<>();
+    private static final Map<BuilderGolem,Long> roofSearchBudget=new WeakHashMap<>();
     /** Find an actual walk-lift-walk route around a completed roof, not
      * a vertical flight through it. Both grounded legs are checked before
      * selecting a takeoff, and the airborne leg keeps the same 2m limit. */
@@ -257,9 +257,15 @@ public final class BuilderFlight {
                 &&roofAccessProgress(level,worker,target)
                 &&WorkerNavigation.canStandOn(level,worker,saved.launch())
                 &&WorkerNavigation.canStandOn(level,worker,saved.landing()))return saved;
-        RoofRetry retry=roofRetry.get(worker);
-        if(retry!=null&&retry.target().equals(target)&&now<retry.until())return null;
-        roofRetry.put(worker,new RoofRetry(target.immutable(),now+40));
+        // A full perimeter search is a rare finishing-work fallback.
+        // Distinct targets keep independent retry times, but a worker
+        // cannot trigger dozens of expensive roof probes in one tick.
+        var retries=roofRetry.computeIfAbsent(worker,k->new HashMap<>());
+        retries.entrySet().removeIf(e->e.getValue()<=now);
+        if(now<roofSearchBudget.getOrDefault(worker,0L)
+                ||now<retries.getOrDefault(target,0L))return null;
+        roofSearchBudget.put(worker,now+10);
+        retries.put(target.immutable(),now+40);
         var work=new ArrayList<BlockPos>();
         for(int dy=-1;dy<=3;dy++)for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
             BlockPos at=target.offset(dx,dy,dz);
@@ -301,7 +307,7 @@ public final class BuilderFlight {
                             ||!WorkerNavigation.canStandOn(level,worker,launch)
                             ||Math.abs(WorkerNavigation.surveyFloorHeight(level,launch)-launch.getY())>.1
                             ||path(level,worker,feet(launch),feet(landing),feet(launch)).isEmpty())continue;
-                    if(++probes>24)break roofSearch;
+                    if(++probes>12)break roofSearch;
                     if(!WorkerNavigation.hasGroundRouteFrom(level,worker,landing,work))continue;
                     launches.add(launch);byLaunch.put(launch,landing);
                 }

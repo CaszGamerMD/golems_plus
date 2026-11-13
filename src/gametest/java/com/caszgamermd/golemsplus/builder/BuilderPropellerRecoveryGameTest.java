@@ -171,4 +171,44 @@ public final class BuilderPropellerRecoveryGameTest {
         });
     }
 
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=600,skyAccess=true)
+    public void groundBuilderWalksAroundRoofAndFliesToFinishingLayer(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=3;x<=24;x++)for(int z=3;z<=24;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=10;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        for(int x=8;x<=19;x++)for(int z=7;z<=19;z++)h.setBlock(x,6,z,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(13,2,13));
+        BlockPos target=h.absolutePos(new BlockPos(13,7,13));
+        level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);level.addFreshEntity(worker);
+        boolean[] walked={false},flew={false};
+        Vec3[] anchor={null};
+        h.onEachTick(()->{
+            if(h.getTick()<5)return;
+            if(!BuilderFlight.active(worker)&&worker.onGround()
+                    &&worker.getY()<start.getY()+.2&&worker.position().distanceToSqr(Vec3.atBottomCenterOf(start))>9)
+                walked[0]=true;
+            if(BuilderFlight.active(worker)){
+                if(anchor[0]==null)anchor[0]=worker.position();
+                flew[0]=true;
+                double dx=worker.getX()-anchor[0].x,dz=worker.getZ()-anchor[0].z;
+                if(dx*dx+dz*dz>4.01){h.fail("Roof access exceeded local flight envelope");return;}
+            }
+            if(flew[0]&&!BuilderFlight.active(worker)&&worker.onGround()
+                    &&worker.getY()>=target.getY()-.1){
+                if(!walked[0]){h.fail("Roof access did not walk around obstruction");return;}
+                if(!level.getBlockState(target.below()).is(Blocks.STONE)){
+                    h.fail("Roof was altered during flight");return;
+                }
+                System.out.println("[ROOF ASCENT PASS] real walk and local lift tick="+h.getTick());h.succeed();return;
+            }
+            if(h.getTick()%5==0&&!BuilderFlight.active(worker))
+                BuilderFlight.approachRoofWork(level,worker,target,true);
+            if(h.getTick()==590)h.fail("Roof ascent stalled feet="+worker.position()+" walked="+walked[0]+" flew="+flew[0]);
+        });
+    }
+
 }
