@@ -626,24 +626,31 @@ public final class BuilderSupplyInventory {
         // stack only when the crew are close enough to hand it over.
         return borrowFromCrew(level,worker,table,target,steps);
     }
-    // Preserve a donor's current claim and only transfer material across
+    private static int donorReserved(WorkerStationBlockEntity table,BuilderGolem donor,
+            Item target,List<BuilderConstructionPlan.Step> steps){
+        if(steps==null)return 1;
+        String material=BuiltInRegistries.ITEM.getKey(target).toString();
+        int needed=0;
+        for(int idx:table.builderWorkOrder(donor.getUUID())){
+            if(idx>=0&&idx<steps.size()&&!table.builderStepCompletedForMaterials(idx)
+                    &&material.equals(steps.get(idx).requiredItem()))needed++;
+        }
+        int claim=table.claimedStep(donor.getUUID());
+        if(claim>=0&&claim<steps.size()&&material.equals(steps.get(claim).requiredItem()))
+            needed=Math.max(1,needed);
+        return BuilderBlockResolver.reusableSupply(material)?Math.min(1,needed):needed;
+    }
+    // Preserve a donor's current work order and only transfer material across
     // a short clear physical gap, never through a wall or different floor.
     static boolean borrowNearby(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,Item target,List<BuilderConstructionPlan.Step> steps,int requested){
-        if(BuilderBlockResolver.reusableSupply(BuiltInRegistries.ITEM.getKey(target).toString()))return false;
+        if(beltItem(BuiltInRegistries.ITEM.getKey(target).toString()))return false;
         for(var id:table.builderWorkerIds()){
             if(id.equals(worker.getUUID())||!(level.getEntity(id) instanceof BuilderGolem donor)
                     ||!donor.isAlive()||!worker.onGround()||!donor.onGround()
                     ||worker.distanceToSqr(donor)>4||Math.abs(worker.getY()-donor.getY())>.6
                     ||!worker.hasLineOfSight(donor))continue;
-            int reserved=0;
-            if(steps!=null){
-                int claim=table.claimedStep(id);
-                if(claim>=0&&claim<steps.size()
-                        &&BuiltInRegistries.ITEM.getKey(target).toString().equals(steps.get(claim).requiredItem()))
-                    reserved=1;
-            }else reserved=1;
-            int surplus=donor.carriedCount(target)-reserved;
+            int surplus=donor.carriedCount(target)-donorReserved(table,donor,target,steps);
             // Never borrow an entire working stack and make the donor
             // abandon its own task. The receiver can do this one step.
             int quantity=Math.min(requested,Math.max(0,surplus));
@@ -660,28 +667,59 @@ public final class BuilderSupplyInventory {
         }
         return false;
     }
+    private record BorrowMeet(Item material,java.util.UUID donor,BlockPos stand,long deadline){}
+    private static final Map<BuilderGolem,BorrowMeet> borrowMeets=new java.util.WeakHashMap<>();
+    private static final Map<BuilderGolem,Long> borrowRetry=new java.util.WeakHashMap<>();
     private static LoadStatus borrowFromCrew(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,Item target,
             List<BuilderConstructionPlan.Step> steps){
-        if(borrowNearby(level,worker,table,target,steps,1))return LoadStatus.READY;
+        if(borrowNearby(level,worker,table,target,steps,1)){
+            borrowMeets.remove(worker);return LoadStatus.READY;
+        }
+        if(beltItem(BuiltInRegistries.ITEM.getKey(target).toString()))return LoadStatus.MISSING;
+        long now=level.getGameTime();
+        BorrowMeet meet=borrowMeets.get(worker);
+        // If stock is truly finite, allow a single fixed rendezvous with
+        // a stationary donor. Never continuously retarget a moving peer.
+        if(meet!=null){
+            if(meet.material()==target&&now<meet.deadline()
+                    &&level.getEntity(meet.donor()) instanceof BuilderGolem donor
+                    &&donor.isAlive()&&donor.onGround()
+                    &&donor.distanceToSqr(meet.stand().getX()+.5,
+                            meet.stand().getY(),meet.stand().getZ()+.5)<=4
+                    &&donor.carriedCount(target)>donorReserved(table,donor,target,steps)
+                    &&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeToExact(level,worker,meet.stand(),.83))
+                return LoadStatus.MOVING;
+            borrowMeets.remove(worker);borrowRetry.put(worker,now+120);
+        }
+        if(now<borrowRetry.getOrDefault(worker,0L)||!worker.onGround()
+                ||BuilderFlight.active(worker))return LoadStatus.MISSING;
         BuilderGolem donor=null;
         double nearest=Double.MAX_VALUE;
         for(var id:table.builderWorkerIds()){
             if(id.equals(worker.getUUID()))continue;
-            if(!(level.getEntity(id) instanceof BuilderGolem teammate)
-                    ||!teammate.isAlive()||teammate.carriedCount(target)<=0)
-                continue;
-            double distance=worker.distanceToSqr(teammate);
-            if(distance<nearest){
-                nearest=distance;donor=teammate;
-            }
+            if(!(level.getEntity(id) instanceof BuilderGolem peer)
+                    ||!peer.isAlive()||!peer.onGround()||BuilderFlight.active(peer)
+                    ||!peer.getNavigation().isDone()
+                    ||peer.carriedCount(target)<=donorReserved(table,peer,target,steps))continue;
+            double distance=worker.distanceToSqr(peer);
+            if(distance<nearest&&distance<=256){nearest=distance;donor=peer;}
         }
-        if(donor==null)return LoadStatus.MISSING;
-        // Do not follow a moving peer around the roof forever. Let the
-        // planner choose stocked work and retry the actual depot when its
-        // stock changes. A same-layer neighbor can still hand over one
-        // item through borrowNearby without interrupting its own route.
-        return LoadStatus.MISSING;
+        if(donor==null){borrowRetry.put(worker,now+40);return LoadStatus.MISSING;}
+        var candidates=new ArrayList<BlockPos>();
+        BlockPos at=donor.blockPosition();
+        for(Direction side:Direction.Plane.HORIZONTAL){
+            BlockPos p=at.relative(side);
+            if(com.caszgamermd.golemsplus.worker.WorkerNavigation.canStandOn(level,worker,p))
+                candidates.add(p);
+        }
+        BlockPos stand=com.caszgamermd.golemsplus.worker.WorkerNavigation
+                .selectExecutableStand(level,worker,candidates);
+        if(stand==null){borrowRetry.put(worker,now+120);return LoadStatus.MISSING;}
+        borrowMeets.put(worker,new BorrowMeet(target,donor.getUUID(),stand,now+100));
+        return com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(level,worker,stand,.83)
+                ?LoadStatus.MOVING:LoadStatus.MISSING;
     }
     public static int carriedByTeammates(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,Item item){

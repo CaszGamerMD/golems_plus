@@ -119,4 +119,53 @@ public final class BuilderPropellerRecoveryGameTest {
         }catch(Exception e){h.fail("Bulk stock test setup failed "+e);}
     }
 
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=100,skyAccess=true)
+    public void nearbyCrewSharesOnlyRealSurplusWithoutRemoteTransfer(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=5;x<=18;x++)for(int z=5;z<=16;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=5;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        h.setBlock(6,2,6,WorksiteContent.BUILDER_TABLE);
+        BlockPos station=h.absolutePos(new BlockPos(6,2,6));
+        BlockPos near=h.absolutePos(new BlockPos(10,2,10));
+        BlockPos far=h.absolutePos(new BlockPos(16,2,10));
+        level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(near.getX()>>4,near.getZ()>>4),3);
+        if(!(level.getBlockEntity(station) instanceof com.caszgamermd.golemsplus.world.WorkerStationBlockEntity table)){
+            h.fail("Missing Planner");return;
+        }
+        var owner=h.makeMockServerPlayerInLevel();var id=owner.getUUID();
+        if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,2)){h.fail("Crew setup failed");return;}
+        var receiver=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        var donor=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        receiver.setPos(near.getX()+.5,near.getY(),near.getZ()+.5);
+        donor.setPos(far.getX()+.5,far.getY(),far.getZ()+.5);
+        receiver.assign(station,id);donor.assign(station,id);
+        level.addFreshEntity(receiver);level.addFreshEntity(donor);
+        if(!table.registerBuilderWorker(receiver.getUUID())||!table.registerBuilderWorker(donor.getUUID())){
+            h.fail("Worker registration failed");return;
+        }
+        var material=net.minecraft.world.item.Items.SMOOTH_STONE;
+        donor.setItem(0,new net.minecraft.world.item.ItemStack(material,2));
+        h.onEachTick(()->{
+            if(h.getTick()==5){
+                if(BuilderSupplyInventory.borrowNearby(level,receiver,table,material,null,1)
+                        ||receiver.carriedCount(material)!=0){h.fail("Remote material transfer");return;}
+                BlockPos p=near.east();
+                donor.setPos(p.getX()+.5,p.getY(),p.getZ()+.5);
+                donor.setDeltaMovement(Vec3.ZERO);
+            }
+            if(h.getTick()==12){
+                if(!BuilderSupplyInventory.borrowNearby(level,receiver,table,material,null,1)
+                        ||receiver.carriedCount(material)!=1||donor.carriedCount(material)!=1){
+                    h.fail("No conserved nearby surplus transfer");return;
+                }
+                if(BuilderSupplyInventory.borrowNearby(level,receiver,table,material,null,1)){
+                    h.fail("Donor's reserved material was taken");return;
+                }
+                System.out.println("[CREW SURPLUS PASS] one real transfer, one reserved, remote rejected");h.succeed();
+            }
+        });
+    }
+
 }

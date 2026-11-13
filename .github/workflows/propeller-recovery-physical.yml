@@ -38,6 +38,7 @@ jobs:
           gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[POWERED SCAFFOLD EXIT PASS]' "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[BULK LAYER STOCK PASS]' "$RUNNER_TEMP/propeller-recovery.log"
+          grep -F '[CREW SURPLUS PASS]' "$RUNNER_TEMP/propeller-recovery.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
