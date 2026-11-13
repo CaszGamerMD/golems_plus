@@ -186,11 +186,7 @@ public final class BuilderConstructionPlanner {
      */
     static boolean safeStandForStep(ServerLevel world,BuilderGolem builder,
             BlockPos target,BlockPos stance,String encodedState){
-        if(BuilderFlight.enabled(builder)
-                &&BuilderFlight.safeWorkPose(world,builder,target,
-                    new net.minecraft.world.phys.Vec3(stance.getX()+.5,stance.getY(),stance.getZ()+.5)))
-            return true; // Preserve existing safe grounded rail/waterlog poses below.
-        String expectedBlock=BuilderWaterPass.originalState(encodedState)
+         String expectedBlock=BuilderWaterPass.originalState(encodedState)
                 .split("\\[",2)[0];
         boolean finishingDry=BuilderWaterPass.isWaterlogPass(encodedState)
                 &&net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(
@@ -690,6 +686,10 @@ public final class BuilderConstructionPlanner {
                 // support. The five-tick Builder task will execute a
                 // collision-checked sidestep before considering placement.
                 stance=worker.blockPosition();
+            // A flight route is a distinct access mode. Keep the grounded
+            // stance null so speculative handoff never sends A* into midair.
+            boolean propeller=stance==null
+                    &&BuilderFlight.canAccessWork(world,worker,target);
             // An elevated unsupported block needs construction footing.
             // Prefer a real, item-paid scaffold platform if one can be
             // built. A grapple is an access tool, not a replacement for a
@@ -697,25 +697,25 @@ public final class BuilderConstructionPlanner {
             // cannot be planned, ordinary grapple access stays available.
             boolean unsupportedBelow=world.getBlockState(target.below()).isAir();
             boolean preferPlatform=preferScaffoldForUnsupportedWork(
-                    stance!=null,unsupportedBelow);
+                    stance!=null||propeller,unsupportedBelow);
             boolean scaffold=preferPlatform
                     &&BuilderScaffoldPlanA.canPlanWorkPose(
                             world,worker,table,target,steps);
             boolean grapple=false;
-            if(stance==null&&!scaffold
+            if(stance==null&&!propeller&&!scaffold
                     &&target.getY()-worker.blockPosition().getY()>0
                     &&worker.carriedCount(WorksiteContent.GRAPPLE_HOOK)>0
                     &&BuilderGrappleAccess.canPlanWorkAscent(world,worker,target))
                 grapple=true;
             boolean floating=BuilderScaffoldPlanA
                     .needsTemporaryWorkPlatform(world,target);
-            if(stance==null&&!grapple&&!scaffold)
+            if(stance==null&&!propeller&&!grapple&&!scaffold)
                 scaffold=BuilderScaffoldPlanA.canPlanWorkPose(
                         world,worker,table,target,steps)
                         ||(target.getY()-worker.blockPosition().getY()>1
                             &&!floating&&BuilderScaffolding.canPlanAccess(
                                     world,worker,table,target,steps));
-            if(stance==null&&!grapple&&!scaffold)continue;
+            if(stance==null&&!propeller&&!grapple&&!scaffold)continue;
             boolean sky=stance==null
                     ?world.canSeeSky(target.above())
                     :world.canSeeSky(stance.above());

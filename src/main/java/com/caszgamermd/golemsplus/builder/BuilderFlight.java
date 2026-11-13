@@ -144,8 +144,8 @@ public final class BuilderFlight {
     }
     /** Walk to a grounded launch point near an elevated task; flight never
      * replaces long horizontal ground navigation. */
-    public static boolean approachLaunch(ServerLevel level, BuilderGolem worker, BlockPos target) {
-        if (active(worker) || !worker.onGround()) return false;
+    public static BlockPos launchPose(ServerLevel level, BuilderGolem worker, BlockPos target) {
+        if (!enabled(worker) || active(worker) || !worker.onGround()) return null;
         var candidates = new ArrayList<BlockPos>();
         int y = worker.blockPosition().getY();
         for (int dx = -4; dx <= 4; dx++) for (int dz = -4; dz <= 4; dz++) {
@@ -160,8 +160,19 @@ public final class BuilderFlight {
                 }
             }
         }
-        BlockPos launch = WorkerNavigation.selectExecutableStand(level, worker, candidates);
+        return WorkerNavigation.selectExecutableStand(level, worker, candidates);
+    }
+    public static boolean approachLaunch(ServerLevel level, BuilderGolem worker, BlockPos target) {
+        BlockPos launch = launchPose(level, worker, target);
         return launch != null && WorkerNavigation.routeToExact(level, worker, launch, 1.0);
+    }
+    /** Preflight a real walk-then-lift route, without starting movement.
+     * A hover pose is not a walkable stance and must never be passed to A*. */
+    public static boolean canAccessWork(ServerLevel level, BuilderGolem worker, BlockPos target) {
+        if (!enabled(worker) || BuilderGrappleAccess.active(worker)
+                || BuilderScaffolding.isControllingMovement(worker)) return false;
+        return workPose(level, worker, target) != null
+                || launchPose(level, worker, target) != null;
     }
     /** Find a real floor below this local column, or a nearby clear column.
      * A failed attempt never turns gravity on while hovering in open air. */
@@ -212,13 +223,18 @@ public final class BuilderFlight {
         return false;
     }
     public static BlockPos workPose(ServerLevel level, BuilderGolem worker, BlockPos target) {
-        if (safeWorkPose(level, worker, target, worker.position())) return worker.blockPosition();
+        if (safeWorkPose(level, worker, target, worker.position())
+                && inEnvelope(origin(worker), feet(worker.blockPosition()))
+                && safeWorkPose(level, worker, target, feet(worker.blockPosition()))
+                && sweep(level, worker, worker.position(), feet(worker.blockPosition())))
+            return worker.blockPosition();
         var candidates = new ArrayList<BlockPos>();
         for (int dy = -2; dy <= 1; dy++)
             for (int dx = -4; dx <= 4; dx++)
                 for (int dz = -4; dz <= 4; dz++) {
                     BlockPos pose = target.offset(dx, dy, dz);
-                    if (safeWorkPose(level, worker, target, feet(pose))) candidates.add(pose);
+                    if (inEnvelope(origin(worker), feet(pose))
+                            && safeWorkPose(level, worker, target, feet(pose))) candidates.add(pose);
                 }
         return select(level, worker, candidates);
     }

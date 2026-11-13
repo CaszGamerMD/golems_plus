@@ -1688,19 +1688,29 @@ public final class BuilderBuildService {
                     &&!BuilderGrappleAccess.active(worker)
                     &&!BuilderScaffolding.isControllingMovement(worker)
                     &&(BuilderFlight.active(worker)
-                        ||Math.abs(pos.getY()-worker.blockPosition().getY())>1);
+                        ||Math.abs(pos.getY()-worker.blockPosition().getY())>1
+                        ||BuilderPlacementSpace.approachForStep(level,worker,pos,
+                            bodyBlockingWork,false,
+                            at->BuilderConstructionPlanner.safeStandForStep(
+                                level,worker,pos,at,step.encodedState()))==null);
             boolean hoverPose=propellerWork
                     &&BuilderFlight.safeWorkPose(level,worker,pos,worker.position());
             if(propellerWork&&!hoverPose){
                 BlockPos flightPose=BuilderFlight.workPose(level,worker,pos);
                 if(flightPose!=null&&BuilderFlight.request(level,worker,flightPose))return;
                 if(BuilderFlight.active(worker)){
-                    if(!BuilderFlight.land(level,worker,false))
+                    if(!BuilderFlight.land(level,worker,false)){
                         table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),
                                 "propeller needs clear local landing");
+                        publishHandoff(table,worker.getUUID(),index,level.getGameTime(),
+                                "propeller landing blocked; teammate may try");
+                    }
                     return;
                 }
-                if(BuilderFlight.approachLaunch(level,worker,pos))return;
+                if(BuilderFlight.approachLaunch(level,worker,pos)){
+                    activity.phase=Action.MOVE_TO_WORK;
+                    return;
+                }
             }
             if(!hoverPose){
             // PLAN B: physical Grapple Hook up to 20 blocks, never a

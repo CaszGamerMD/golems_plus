@@ -352,7 +352,6 @@ public final class BuilderPlacementSpace {
 
     private static BlockPos escape(ServerLevel level,BuilderGolem worker,
             BlockPos target){
-        if(BuilderFlight.enabled(worker))return BuilderFlight.workPose(level,worker,target);
         BlockPos origin=worker.blockPosition();
         List<BlockPos> choices=new ArrayList<>();
         // Probe a compact, predictable set of cardinal/diagonal safe
@@ -417,7 +416,6 @@ public final class BuilderPlacementSpace {
     static BlockPos approachForStep(ServerLevel level,BuilderGolem worker,
             BlockPos target,boolean bodyBlocking,boolean lookahead,
             java.util.function.Predicate<BlockPos> safe){
-        if(BuilderFlight.enabled(worker))return BuilderFlight.workPose(level,worker,target);
         return approachWithHeight(level,worker,target,false,safe,!lookahead,bodyBlocking);
     }
     private static BlockPos approachWithHeight(ServerLevel level,

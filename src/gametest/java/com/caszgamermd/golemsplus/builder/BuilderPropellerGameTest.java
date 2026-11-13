@@ -76,4 +76,68 @@ public final class BuilderPropellerGameTest {
             }
         });
     }
+    /** Full Planner -> claim -> material -> walk -> lift -> place pipeline.
+     * No hook, scaffolding, or existing platform is supplied. */
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=1600,skyAccess=true)
+    public void plannerClaimsDistantFloatingBlockViaWalkThenPropeller(GameTestHelper h) {
+        var world=h.getLevel();
+        for(int x=3;x<=24;x++)for(int z=3;z<=20;z++)h.setBlock(x,1,z,Blocks.STONE);
+        h.setBlock(4,2,4,WorksiteContent.BUILDER_TABLE);
+        h.setBlock(5,2,4,Blocks.CHEST);
+        BlockPos station=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos chest=h.absolutePos(new BlockPos(5,2,4));
+        BlockPos start=h.absolutePos(new BlockPos(7,2,4));
+        BlockPos target=h.absolutePos(new BlockPos(19,14,12));
+        world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        if(!(world.getBlockEntity(station) instanceof com.caszgamermd.golemsplus.world.WorkerStationBlockEntity table)
+                ||!(world.getBlockEntity(chest) instanceof net.minecraft.world.Container stock)){
+            h.fail("Missing Planner or storage");return;
+        }
+        stock.setItem(0,new net.minecraft.world.item.ItemStack(Blocks.STONE,8));
+        var owner=h.makeMockServerPlayerInLevel();
+        var id=owner.getUUID();
+        try{
+            var snapshot=BuilderPlacementSnapshot.encode("Propeller access",java.util.List.of(
+                    new LitematicFileReader.Block(target.getX(),target.getY(),target.getZ(),"minecraft:stone")),
+                    java.util.List.of());
+            var plan=BuilderConstructionPlan.create(BuilderPlacementSnapshot.decode(snapshot),
+                    BuilderPlacementSnapshot.worldSpaceSite());
+            var folder=net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
+                    .resolve("golems_plus").resolve("schematics");
+            java.nio.file.Files.createDirectories(folder);
+            String filename="placed-gametest-propeller-access.gpb";
+            java.nio.file.Files.write(folder.resolve(filename),snapshot);
+            if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,1)
+                    ||!table.setPlacedBuilderPlan(id,filename,"Propeller access",station,0,0,
+                        plan.steps().size(),plan.unsupported().size())
+                    ||!table.setBuilderMaterialStorage(id,chest)){
+                h.fail("Planner refused propeller test job");return;
+            }
+            table.setBuilderMaterialsForFile(filename,plan.required());
+            var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+            worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+            worker.assign(station,id);
+            world.addFreshEntity(worker);
+            if(!table.registerBuilderWorker(worker.getUUID())||!table.startPlacedBuilder(id)){
+                h.fail("Could not start propeller construction");return;
+            }
+            boolean[] walked={false},flew={false};
+            h.onEachTick(()->{
+                if(!worker.isAlive()){h.fail("Builder lost");return;}
+                if(!worker.propellerSpinning()&&worker.position().distanceToSqr(Vec3.atBottomCenterOf(start))>9)
+                    walked[0]=true;
+                if(worker.propellerSpinning()&&worker.getY()>start.getY()+5)flew[0]=true;
+                if(world.getBlockState(target).is(Blocks.STONE)){
+                    if(!walked[0]||!flew[0]){
+                        h.fail("Construction did not demonstrate walk plus powered lift");return;
+                    }
+                    System.out.println("[PROPELLER BUILD PASS] distant floating block tick="+h.getTick());
+                    h.succeed();
+                }
+                if(h.getTick()==1400)h.fail("Propeller construction stalled feet="+worker.position()
+                        +" claim="+table.claimedStep(worker.getUUID())+" problem="+table.problem());
+            });
+        }catch(Exception ex){h.fail("Propeller test setup failed "+ex);}
+    }
+
 }
