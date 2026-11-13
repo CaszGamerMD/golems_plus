@@ -438,7 +438,8 @@ public final class BuilderBuildService {
             ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             int completed){
-        if(!worker.onGround()||worker.isNoGravity()
+        boolean hovering=BuilderFlight.active(worker)&&!BuilderFlight.moving(worker);
+        if((!hovering&&(!worker.onGround()||worker.isNoGravity()))
                 ||BuilderScaffoldPlanA.hasPlan(worker)
                 ||BuilderGrappleAccess.active(worker)
                 ||completed<0||completed>=steps.size())return null;
@@ -460,8 +461,8 @@ public final class BuilderBuildService {
             if(locality>9||locality>=bestDistance)continue;
             BlockPos target=new BlockPos(step.x(),step.y(),step.z());
             if(!level.hasChunkAt(target)
-                    ||!BuilderPlacementSpace.placementHeight(target,worker)
-                    ||!BuilderPlacementSpace.horizontalClear(target,worker)
+                    ||!hovering&&(!BuilderPlacementSpace.placementHeight(target,worker)
+                        ||!BuilderPlacementSpace.horizontalClear(target,worker))
                     ||worker.distanceToSqr(target.getX()+.5,
                             target.getY()+.5,target.getZ()+.5)>BuilderConstructionPlanner.REACH_SQUARED)continue;
             var resolved=BuilderBlockResolver.resolve(step.encodedState(),
@@ -472,15 +473,17 @@ public final class BuilderBuildService {
                     ||!level.getBlockState(target).isAir()
                     ||step.requiredItem()!=null
                         &&worker.carriedCount(resolved.item())==0
-                    ||!(BuilderPlacementSpace.safeFractionalCapPose(
-                                level,worker,target)
-                        ||BuilderConstructionPlanner.safeStand(
-                                level,worker,target,pose)))continue;
+                    ||!(hovering
+                        ?BuilderFlight.safeWorkPose(level,worker,target,worker.position(),
+                            BuilderPlacementSpace.stepNeedsVacating(level,target,resolved.state(),
+                                    BuilderWaterPass.isWaterlogPass(step.encodedState())))
+                        :BuilderPlacementSpace.safeFractionalCapPose(level,worker,target)
+                            ||BuilderConstructionPlanner.safeStand(level,worker,target,pose)))continue;
             best=idx;
             bestDistance=locality;
         }
         return best<0?null:
-                new BuilderConstructionPlanner.Choice(best,pose,false,
+                new BuilderConstructionPlanner.Choice(best,hovering?null:pose,false,
                         level.canSeeSky(pose.above()),1);
     }
     /** After a REAL placement, consume the speculative choice only if
@@ -492,11 +495,11 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             WorkerAction activity,int completed){
-        var choice=activity.lookaheadFor==completed?activity.lookahead:null;
-        // A nearby connected run may be placeable without any walking;
-        // in that case movement-based lookahead did not run at all.
-        if(choice==null)choice=nearbyDirectFollowup(
-                level,worker,table,steps,zone,completed);
+        // Prefer a physically placeable, stocked neighbor from the SAME
+        // pose. In particular, hovering Builders can lay a short run
+        // without a needless landing, new A* probe or supply journey.
+        var choice=nearbyDirectFollowup(level,worker,table,steps,zone,completed);
+        if(choice==null&&activity.lookaheadFor==completed)choice=activity.lookahead;
         if(choice==null)return;
         int next=choice.index();
         if(next<0||next>=steps.size()
@@ -1724,7 +1727,15 @@ public final class BuilderBuildService {
             // The actual five-block hand pose can already be legal even
             // when the worker is three Y below a floating block. Do not
             // force a launch/landing cycle for a placement in real reach.
+            boolean localGroundPose=worker.onGround()&&!worker.isNoGravity()
+                    &&BuilderPlacementSpace.placementHeight(pos,worker)
+                    &&worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)
+                        <=BuilderConstructionPlanner.REACH_SQUARED
+                    &&(!bodyBlockingWork||BuilderPlacementSpace.horizontalClear(pos,worker))
+                    &&BuilderConstructionPlanner.safeStandForStep(level,worker,pos,
+                            worker.blockPosition(),step.encodedState());
             boolean propellerWork=BuilderFlight.enabled(worker)
+                    &&!localGroundPose
                     &&!BuilderGrappleAccess.active(worker)
                     &&!BuilderScaffolding.isControllingMovement(worker)
                     &&(BuilderFlight.active(worker)
