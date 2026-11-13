@@ -27,6 +27,7 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderReturnService.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderGrappleAccess.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
+      - 'src/client/java/com/caszgamermd/golemsplus/render/ProfessionGolemModel.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderPropellerGameTest.java'
       - 'src/main/java/com/caszgamermd/golemsplus/worker/WorkerNavigation.java'
       - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderCrewScheduleTest.java'
