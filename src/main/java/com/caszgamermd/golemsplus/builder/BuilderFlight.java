@@ -8,16 +8,12 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-/** Anchor-free vertical lift and bounded, supported low-altitude terrain navigation. */
+/** Anchor-free vertical lift, with a small fixed horizontal envelope per takeoff. */
 public final class BuilderFlight {
     private BuilderFlight() {}
     private static final double SPEED = .20;
     public static final double HORIZONTAL_LIMIT = 2.0;
     private static final double HORIZONTAL_LIMIT_SQUARED = HORIZONTAL_LIMIT * HORIZONTAL_LIMIT;
-    // Low hover is a separate movement mode: it cannot extend a high flight.
-    static final double TERRAIN_CLEARANCE = 1.0;
-    private static final int TERRAIN_RADIUS = 6;
-    private static final Map<BuilderGolem, Long> terrainRetry = new WeakHashMap<>();
     private static final Map<BuilderGolem, Flight> flights = new WeakHashMap<>();
 
     private static final class Flight {
@@ -31,9 +27,6 @@ public final class BuilderFlight {
         long landingRetryAt;
         Vec3 lastFailedDestination;
         long failedUntil;
-        boolean terrain;
-        boolean emergencyLanding;
-        long strandedSince=-1;
     }
 
     public static boolean enabled(BuilderGolem worker) {
@@ -51,12 +44,6 @@ public final class BuilderFlight {
         if (flight != null) {
             flight.path = List.of();
             flight.next = 0;
-            if (flight.terrain) {
-                // An interrupted low route owns no new horizontal air range.
-                // Rebase ordinary local landing recovery at the actual feet.
-                flight.terrain = false;
-                flight.origin = worker.position();
-            }
         }
         worker.setDeltaMovement(Vec3.ZERO);
     }
@@ -82,152 +69,6 @@ public final class BuilderFlight {
         // narrow corners. No velocity can cross an unchecked wall or chunk.
         AABB box = body(worker, from).minmax(body(worker, to));
         return loaded(level, box) && level.noCollision(worker, box);
-    }
-    /** Actual collision surface under the sampled column. Never infer
-     * support from air, a chunk boundary, or the integer block Y alone. */
-    private static double terrainSurface(ServerLevel level,double x,double z,double ceiling) {
-        int bx=(int)Math.floor(x), bz=(int)Math.floor(z);
-        int top=(int)Math.floor(ceiling);
-        double best=Double.NEGATIVE_INFINITY;
-        for(int y=top;y>=top-3;y--){
-            BlockPos at=new BlockPos(bx,y,bz);
-            if(y<level.getMinY()||y>=level.getMaxY()||!level.hasChunkAt(at))return Double.NaN;
-            var state=level.getBlockState(at);
-            if(state.is(net.minecraft.world.level.block.Blocks.LAVA)
-                    ||state.is(net.minecraft.world.level.block.Blocks.CACTUS)
-                    ||state.is(net.minecraft.world.level.block.Blocks.MAGMA_BLOCK)
-                    ||state.is(net.minecraft.world.level.block.Blocks.CAMPFIRE)
-                    ||state.is(net.minecraft.world.level.block.Blocks.SOUL_CAMPFIRE))return Double.NaN;
-            for(AABB shape:state.getCollisionShape(level,at).toAabbs()){
-                double lx=x-bx,lz=z-bz, surface=y+shape.maxY;
-                if(lx>=shape.minX-1e-6&&lx<=shape.maxX+1e-6
-                        &&lz>=shape.minZ-1e-6&&lz<=shape.maxZ+1e-6
-                        &&surface<=ceiling+.025)best=Math.max(best,surface);
-            }
-        }
-        return Double.isFinite(best)?best:Double.NaN;
-    }
-    private static boolean terrainSegment(ServerLevel level,BuilderGolem worker,Vec3 from,Vec3 to){
-        if(!sweep(level,worker,from,to))return false;
-        int samples=Math.max(1,(int)Math.ceil(from.distanceTo(to)/.15));
-        for(int i=0;i<=samples;i++){
-            Vec3 p=from.add(to.subtract(from).scale((double)i/samples));
-            double ground=terrainSurface(level,p.x,p.z,p.y+.025);
-            if(!Double.isFinite(ground)||p.y-ground<-.03
-                    ||p.y-ground>TERRAIN_CLEARANCE+.025
-                    ||!level.getFluidState(BlockPos.containing(p)).isEmpty())return false;
-        }
-        return true;
-    }
-    private record TerrainNode(Vec3 point,double floor,List<Vec3> path,int steps){}
-    private record TerrainPlan(BlockPos landing,List<Vec3> path){}
-    private static double goalDistance(Vec3 p,List<BlockPos> goals){
-        double best=Double.POSITIVE_INFINITY;
-        for(BlockPos goal:goals)best=Math.min(best,p.distanceToSqr(feet(goal)));
-        return best;
-    }
-    /** Bounded cardinal search: rise, cross a supported edge, descend.
-     * Every segment is checked against actual shapes and the one-block
-     * ground clearance. A deep gap or tall wall is NOT a terrain edge. */
-    private static TerrainPlan terrainPlan(ServerLevel level,BuilderGolem worker,List<BlockPos> goals){
-        if(goals.isEmpty()||!enabled(worker)||active(worker)||!worker.onGround()
-                ||BuilderGrappleAccess.active(worker)||BuilderScaffolding.isControllingMovement(worker))return null;
-        Vec3 start=worker.position();
-        double base=terrainSurface(level,start.x,start.z,start.y+.04);
-        if(!Double.isFinite(base)||Math.abs(start.y-base)>.1)return null;
-        var queue=new ArrayDeque<TerrainNode>();
-        var seen=new HashSet<BlockPos>();
-        var landings=new ArrayList<TerrainPlan>();
-        queue.add(new TerrainNode(start,base,List.of(),0));
-        seen.add(BlockPos.containing(start.x,base+.05,start.z));
-        while(!queue.isEmpty()&&seen.size()<=120){
-            TerrainNode node=queue.removeFirst();
-            if(node.steps()>=TERRAIN_RADIUS)continue;
-            BlockPos column=BlockPos.containing(node.point());
-            for(Direction side:Direction.Plane.HORIZONTAL){
-                double x=column.getX()+side.getStepX()+.5,z=column.getZ()+side.getStepZ()+.5;
-                double ground=terrainSurface(level,x,z,node.floor()+TERRAIN_CLEARANCE);
-                if(!Double.isFinite(ground)||Math.abs(ground-node.floor())>TERRAIN_CLEARANCE+.001)continue;
-                BlockPos key=BlockPos.containing(x,ground+.05,z);
-                if(seen.contains(key))continue;
-                // The lower side sets the maximum height, including a
-                // full-block rise. A half-block rise has spare clearance.
-                double y=Math.min(node.floor(),ground)+TERRAIN_CLEARANCE;
-                Vec3 a=new Vec3(node.point().x,y,node.point().z);
-                Vec3 b=new Vec3(x,y,z);
-                Vec3 end=new Vec3(x,ground+.10,z);
-                if(!terrainSegment(level,worker,node.point(),a)
-                        ||!terrainSegment(level,worker,a,b)
-                        ||!terrainSegment(level,worker,b,end))continue;
-                var route=new ArrayList<>(node.path());
-                route.add(a);route.add(b);route.add(end);
-                seen.add(key);
-                queue.addLast(new TerrainNode(end,ground,List.copyOf(route),node.steps()+1));
-                Vec3 landing=new Vec3(x,ground,z);
-                BlockPos stand=null;
-                for(int dy:new int[]{0,1,-1}){
-                    BlockPos candidate=key.above(dy);
-                    if(WorkerNavigation.canStandOn(level,worker,candidate)
-                            &&Math.abs(WorkerNavigation.surveyFloorHeight(level,candidate)-ground)<.06){
-                        stand=candidate;break;
-                    }
-                }
-                if(stand==null||!terrainSegment(level,worker,end,landing))continue;
-                route.add(landing);
-                TerrainPlan plan=new TerrainPlan(stand,List.copyOf(route));
-                if(goals.contains(stand))return plan;
-                if(goalDistance(landing,goals)<goalDistance(start,goals)-.25)landings.add(plan);
-            }
-        }
-        // Only land early if a genuine onward ground route exists.
-        // This avoids repeatedly hopping to a closer but isolated perch.
-        landings.sort(Comparator.comparingDouble(p->goalDistance(p.path().getLast(),goals)));
-        int probes=0;
-        for(TerrainPlan candidate:landings){
-            if(++probes>4)break;
-            if(WorkerNavigation.hasGroundRouteFrom(level,worker,candidate.landing(),goals))return candidate;
-        }
-        return null;
-    }
-    /** Called only after the ordinary walking selector fails. Walking is
-     * deliberately preferred even if the low hover would be shorter. */
-    public static boolean terrainToward(ServerLevel level,BuilderGolem worker,List<BlockPos> goals){
-        if(goals.isEmpty()||!enabled(worker)||active(worker)||!worker.onGround()
-                ||level.getGameTime()<terrainRetry.getOrDefault(worker,Long.MIN_VALUE))return false;
-        terrainRetry.put(worker,level.getGameTime()+20);
-        if(WorkerNavigation.selectExecutableStand(level,worker,goals)!=null)return false;
-        return requestTerrain(level,worker,goals);
-    }
-    // Explicit low-flight execution, separate from the walk-first policy.
-    // Also used by physical GameTests to exercise terrain physics even
-    // when the ordinary planner could walk across the fixture.
-    static boolean requestTerrain(ServerLevel level,BuilderGolem worker,List<BlockPos> goals){
-        TerrainPlan plan=terrainPlan(level,worker,goals);
-        return plan!=null&&startTerrain(worker,plan);
-    }
-    static boolean terrainWork(ServerLevel level,BuilderGolem worker,BlockPos target,
-            java.util.function.Predicate<BlockPos> safeStand){
-        if(Math.abs(target.getY()-worker.getY())>4||active(worker))return false;
-        var goals=new ArrayList<BlockPos>();
-        for(int dy=-2;dy<=1;dy++)for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
-            BlockPos pose=target.offset(dx,dy,dz);
-            if(WorkerNavigation.canStandOn(level,worker,pose)&&safeStand.test(pose))goals.add(pose);
-        }
-        return terrainToward(level,worker,goals);
-    }
-    private static boolean startTerrain(BuilderGolem worker,TerrainPlan plan){
-        Flight flight=new Flight();
-        flight.origin=worker.position();
-        flight.goal=plan.landing().immutable();
-        flight.path=plan.path();
-        flight.lastPosition=worker.position();
-        flight.terrain=true;
-        BuilderScaffoldPlanA.cancel(worker);
-        WorkerNavigation.stop(worker);
-        flights.put(worker,flight);
-        worker.setNoGravity(true);
-        worker.setPropellerSpinning(true);
-        return true;
     }
     private static Vec3 origin(BuilderGolem worker) {
         Flight flight = flights.get(worker);
@@ -280,8 +121,6 @@ public final class BuilderFlight {
     }
     public static boolean request(ServerLevel level, BuilderGolem worker, BlockPos goal) {
         if (goal == null || !enabled(worker)) return false;
-        Flight existing=flights.get(worker);
-        if(existing!=null&&(existing.terrain||existing.emergencyLanding))return false;
         return requestPosition(level,worker,goal,feet(goal));
     }
     /** Land at the actual collision-checked point inside a supported tile.
@@ -311,8 +150,7 @@ public final class BuilderFlight {
         if(!inEnvelope(origin(worker),destination))return false;
         Flight flight = flights.get(worker);
         if (flight != null && goal.equals(flight.goal) && moving(worker)) return true;
-        if (flight != null && goal.equals(flight.goal) && level.getGameTime() < flight.retryAt
-                && !flight.path.isEmpty()) return false;
+        if (flight != null && goal.equals(flight.goal) && level.getGameTime() < flight.retryAt) return false;
         BuilderChunkTickets.destination(level, worker, goal);
         List<Vec3> path = path(level,worker,worker.position(),destination,origin(worker));
         if(flight!=null&&flight.lastFailedDestination!=null
@@ -338,7 +176,6 @@ public final class BuilderFlight {
         BuilderScaffoldPlanA.cancel(worker);
         WorkerNavigation.stop(worker);
         flight.path = path;
-        flight.strandedSince=-1;
         flight.next = 0;
         flight.lastPosition = worker.position();
         flight.stuckTicks = 0;
@@ -537,13 +374,7 @@ public final class BuilderFlight {
         Flight flight = flights.get(worker);
         if (flight != null && moving(worker)) return true;
         if (flight != null && level.getGameTime() < flight.landingRetryAt) return false;
-        if (flight != null) {
-            flight.landingRetryAt = level.getGameTime() + 20;
-            if(flight.strandedSince<0)flight.strandedSince=level.getGameTime();
-            // A terrain route that ended or was interrupted must land
-            // using the same local recovery as ordinary vertical flight.
-            if(flight.terrain){flight.terrain=false;flight.origin=worker.position();}
-        }
+        if (flight != null) flight.landingRetryAt = level.getGameTime() + 20;
         Vec3 anchor = origin(worker);
         BlockPos center = BlockPos.containing(anchor);
         var columns = new ArrayList<BlockPos>();
@@ -569,65 +400,16 @@ public final class BuilderFlight {
         }
         if(below)landings.sort(Comparator.comparingInt((BlockPos p)->p.getY())
                 .thenComparingDouble(p->worker.position().distanceToSqr(feet(p))));
-        for(BlockPos floor:landings)if(requestLanding(level,worker,floor))return true;
+        for(BlockPos floor:landings)if(request(level,worker,floor))return true;
         // A hovering worker can also land on a nearby raised lip and
         // walk to the edge, rather than hovering forever under a roof.
         if(flight!=null){
             for(int dy=1;dy<=4;dy++)for(BlockPos column:columns){
                 BlockPos floor=new BlockPos(column.getX(),top+dy,column.getZ());
                 if(floor.getY()>=level.getMaxY())continue;
-                if(WorkerNavigation.canStandOn(level,worker,floor)&&requestLanding(level,worker,floor))
+                if(WorkerNavigation.canStandOn(level,worker,floor)&&request(level,worker,floor))
                     return true;
             }
-        }
-        // A vertical flight's original two-block envelope can become
-        // unusable after construction changes the terrain. Permit ONE
-        // local, collision-checked rescue to a real supported landing.
-        // No arbitrary airborne destination or repeated envelope reset.
-        if(flight!=null&&!flight.emergencyLanding
-                &&level.getGameTime()-flight.strandedSince>=40)
-            return rescueLanding(level,worker,flight);
-        return false;
-    }
-
-    private static Vec3 landingFeet(ServerLevel level,BlockPos stand){
-        double floor=WorkerNavigation.surveyFloorHeight(level,stand);
-        return new Vec3(stand.getX()+.5,floor,stand.getZ()+.5);
-    }
-    private static boolean requestLanding(ServerLevel level,BuilderGolem worker,BlockPos stand){
-        if(!WorkerNavigation.canStandOn(level,worker,stand))return false;
-        Vec3 position=landingFeet(level,stand);
-        if(!Double.isFinite(position.y))return false;
-        return requestPosition(level,worker,stand,position);
-    }
-    private static boolean rescueLanding(ServerLevel level,BuilderGolem worker,Flight flight){
-        Vec3 start=worker.position();
-        BlockPos here=worker.blockPosition();
-        var candidates=new ArrayList<BlockPos>();
-        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
-            BlockPos column=here.offset(dx,0,dz);
-            if(!inEnvelope(start,feet(column)))continue;
-            for(int y=here.getY()+4;y>level.getMinY();y--){
-                BlockPos at=column.atY(y);
-                if(!level.hasChunkAt(at))break;
-                if(!WorkerNavigation.canStandOn(level,worker,at))continue;
-                Vec3 end=landingFeet(level,at);
-                if(Double.isFinite(end.y)&&!path(level,worker,start,end,start).isEmpty())
-                    candidates.add(at);
-                // A real solid surface is not transparent to flight.
-                if(level.getBlockState(at.below()).isFaceSturdy(level,at.below(),Direction.UP))break;
-            }
-        }
-        candidates.sort(Comparator.comparingDouble(at->landingFeet(level,at).distanceToSqr(start)));
-        Vec3 oldOrigin=flight.origin;
-        for(BlockPos at:candidates){
-            flight.origin=start;
-            if(requestLanding(level,worker,at)){
-                flight.emergencyLanding=true;
-                System.out.println("[PROPELLER LANDING RECOVERY] "+worker.getName().getString()+" -> "+at);
-                return true;
-            }
-            flight.origin=oldOrigin;
         }
         return false;
     }
@@ -825,10 +607,7 @@ public final class BuilderFlight {
         return select(level, worker, candidates);
     }
     public static boolean tick(ServerLevel level, BuilderGolem worker) {
-        if (!enabled(worker)) {
-            if(flights.remove(worker)!=null)worker.setNoGravity(false);
-            worker.setPropellerSpinning(false); return false;
-        }
+        if (!enabled(worker)) { flights.remove(worker); worker.setPropellerSpinning(false); return false; }
         Flight flight = flights.get(worker);
         // Ordinary walking, falling, and furniture visits retain their controller
         // until an actual flight request has established powered hover.
@@ -844,10 +623,10 @@ public final class BuilderFlight {
         // as well: flooring the near-integer feet can select the solid
         // block UNDER the landing and leave the propeller hovering.
         boolean atLanding=flight.goal!=null
+                &&worker.position().distanceToSqr(feet(flight.goal))<.04
                 &&WorkerNavigation.canStandOn(level,worker,flight.goal)
-                &&worker.position().distanceToSqr(landingFeet(level,flight.goal))<.04;
+                &&Math.abs(worker.getY()-WorkerNavigation.surveyFloorHeight(level,flight.goal))<.15;
         if (!moving && (atLanding || worker.onGround() || (Double.isFinite(floor)
-                && WorkerNavigation.canStandOn(level,worker,worker.blockPosition())
                 && Math.abs(worker.getY() - floor) < .15))) {
             worker.setDeltaMovement(Vec3.ZERO);
             worker.setNoGravity(false);
@@ -876,9 +655,8 @@ public final class BuilderFlight {
         if (flight.next == flight.path.size()) return true;
         Vec3 delta = flight.path.get(flight.next).subtract(worker.position());
         Vec3 velocity = delta.scale(Math.min(1, SPEED / delta.length()));
-        Vec3 next=worker.position().add(velocity);
-        if (flight.terrain ? terrainSegment(level,worker,worker.position(),next)
-                : inEnvelope(flight.origin,next)&&sweep(level,worker,worker.position(),next))
+        if (inEnvelope(flight.origin, worker.position().add(velocity))
+                && sweep(level, worker, worker.position(), worker.position().add(velocity)))
             worker.setDeltaMovement(velocity);
         else {
             flight.lastFailedDestination=feet(flight.goal);

@@ -150,7 +150,6 @@ public final class BuilderReturnService {
             route.bestStandDistance=Double.POSITIVE_INFINITY;
             route.lastStandProgress=now;
             if(route.stand==null){
-                if(BuilderFlight.terrainToward(level,worker,possible))return true;
                 if(BuilderFlight.enabled(worker)&&worker.getY()>target.getY()+1.5){
                     // The roof-edge walk is preferable to dropping back
                     // into the same enclosed machine cell.
