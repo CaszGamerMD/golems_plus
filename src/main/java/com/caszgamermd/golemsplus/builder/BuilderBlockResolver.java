@@ -56,6 +56,8 @@ public final class BuilderBlockResolver {
         // vanilla soul-sand/magma physics creates the requested column.
         if(id.equals("minecraft:bubble_column"))item=WorksiteContent.INFINITE_WATER_BUCKET;
         if(id.equals("minecraft:lava"))item=WorksiteContent.INFINITE_LAVA_BUCKET;
+        // Soul fire is an ignition action with an actual reusable tool.
+        if(id.equals("minecraft:soul_fire"))item=Items.FLINT_AND_STEEL;
         // Wall signs have standing-sign inventory items, and can be
         // placed as blank physical signs. The test does not fake text NBT.
         boolean sign=id.endsWith("_sign")||id.endsWith("_hanging_sign");
@@ -93,7 +95,7 @@ public final class BuilderBlockResolver {
         // stand-alone material, and crops/fire/portals still require
         // their own future world-interaction handlers.
         if(id.endsWith("_crop")
-                ||id.contains("fire")||id.contains("portal"))
+                ||id.contains("fire")&&!id.equals("minecraft:soul_fire")||id.contains("portal"))
             return null;
         // A normal/sticky piston is an ordinary one-item block while
         // retracted. Its extended state and detached moving/head blocks
@@ -138,7 +140,8 @@ public final class BuilderBlockResolver {
     }
     public static boolean reusableSupply(String itemId){
         return "golems_plus:infinite_water_bucket".equals(itemId)
-                ||"golems_plus:infinite_lava_bucket".equals(itemId);
+                ||"golems_plus:infinite_lava_bucket".equals(itemId)
+                ||"minecraft:flint_and_steel".equals(itemId);
     }
     private static <T extends Comparable<T>> BlockState readProperty(
             BlockState state,Property<T> property,String text){

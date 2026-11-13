@@ -253,4 +253,39 @@ public final class BuilderBlockInteractionsGameTest {
         });
     }
 
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=80,skyAccess=true)
+    public void soulFireUsesRealBuilderFlintAndSteelOnSoulSand(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=8;x<=16;x++)for(int z=8;z<=16;z++){
+            h.setBlock(x,2,z,Blocks.STONE);
+            for(int y=3;y<=5;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        h.setBlock(12,2,12,Blocks.SOUL_SAND);
+        BlockPos pos=h.absolutePos(new BlockPos(12,3,12));
+        BlockPos feet=h.absolutePos(new BlockPos(10,3,12));
+        level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(feet.getX()>>4,feet.getZ()>>4),3);
+        var owner=h.makeMockServerPlayerInLevel();
+        var worker=new BuilderGolem(com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(feet.getX()+.5,feet.getY(),feet.getZ()+.5);level.addFreshEntity(worker);
+        var desired=BuilderBlockResolver.resolve("minecraft:soul_fire",BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        if(desired==null||desired.item()!=net.minecraft.world.item.Items.FLINT_AND_STEEL){
+            h.fail("Soul fire needs an actual ignition tool");return;
+        }
+        h.onEachTick(()->{
+            if(h.getTick()!=5)return;
+            if(BuilderIgnition.igniteSoulFire(level,worker,owner,pos)){
+                h.fail("Ignited fire without flint and steel");return;
+            }
+            worker.setItem(0,new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.FLINT_AND_STEEL));
+            if(!BuilderIgnition.igniteSoulFire(level,worker,owner,pos)
+                    ||!level.getBlockState(pos).is(Blocks.SOUL_FIRE)
+                    ||worker.getItem(0).getDamageValue()!=1){
+                h.fail("Native soul fire ignition or real tool wear failed");return;
+            }
+            System.out.println("[BUILDER SOUL FIRE PASS] native flint and steel, real durability debit");
+            h.succeed();
+        });
+    }
+
 }

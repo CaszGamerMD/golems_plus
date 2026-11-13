@@ -2222,6 +2222,21 @@ public final class BuilderBuildService {
                         partnerPos,partnerResolved.state()))
                     return; // The entire future two-cell collision is safe.
             }
+            // Native soul-sand ignition, with actual tool durability.
+            // Fire is never inserted as an inventory block or forced state.
+            if(state.state().is(net.minecraft.world.level.block.Blocks.SOUL_FIRE)){
+                if(!BuilderIgnition.igniteSoulFire(level,worker,owner,pos)){
+                    table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
+                    table.setProblem("Soul fire needs real flint and steel and soul sand/soil at "+pos.below());
+                    return;
+                }
+                table.recordBuilderPlacement(step.requiredItem());
+                table.completeBuilderStep(worker.getUUID(),index);
+                BuilderConstructionPlanner.noteCompleted(worker,pos);
+                activity.notePhysicalPlacement();
+                activity.phase=Action.COMPLETE;
+                return;
+            }
             boolean freeHalf=step.requiredItem()==null||reShapeRail||repairPartner;
             boolean reusableFluid=BuilderBlockResolver.reusableSupply(step.requiredItem());
             if(railJig){
