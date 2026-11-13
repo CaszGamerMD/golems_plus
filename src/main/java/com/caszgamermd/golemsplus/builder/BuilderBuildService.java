@@ -775,7 +775,7 @@ public final class BuilderBuildService {
             // Duplicating both scans here blocked the server at Start.
             if(!BuilderWarehouseCoordinator.queueMaterials(level,table,plan)){
                 var window=BuilderMaterialDemand.nextWindow(
-                        plan,table.builderCursor(),
+                        plan,table.builderActiveStepIndex(plan),
                         table::builderStepCompletedForMaterials,
                         BuilderMaterialRules.WINDOW_LAYERS);
                 if(BuilderMaterialDemand.outstandingRemaining(window,

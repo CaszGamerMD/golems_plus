@@ -186,4 +186,76 @@ public final class BuilderCreativeCrateFluidGameTest {
         });
     }
 
+    /** A complete physical job: the unpowered head must not hold the
+     * lower Y gate, yet the job cannot complete until vanilla powers it. */
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=1200,skyAccess=true)
+    public void plannerBuildsPowerBeforeCompletingPistonVerification(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=3;x<=20;x++)for(int z=3;z<=18;z++)h.setBlock(x,1,z,Blocks.STONE);
+        h.setBlock(4,2,4,WorksiteContent.BUILDER_TABLE);
+        h.setBlock(5,2,4,Blocks.CHEST);
+        BlockPos station=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos chest=h.absolutePos(new BlockPos(5,2,4));
+        BlockPos start=h.absolutePos(new BlockPos(7,2,4));
+        BlockPos base=h.absolutePos(new BlockPos(13,4,12));
+        BlockPos head=base.east();
+        BlockPos power=base.above();
+        world.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        if(!(world.getBlockEntity(station) instanceof com.caszgamermd.golemsplus.world.WorkerStationBlockEntity table)
+                ||!(world.getBlockEntity(chest) instanceof net.minecraft.world.Container stock)){
+            h.fail("Missing piston Planner or storage");return;
+        }
+        stock.setItem(0,new ItemStack(Blocks.STICKY_PISTON,1));
+        stock.setItem(1,new ItemStack(Blocks.REDSTONE_BLOCK,1));
+        var owner=h.makeMockServerPlayerInLevel();
+        var id=owner.getUUID();
+        try{
+            String baseState="minecraft:sticky_piston[extended=true,facing=east]";
+            String headState="minecraft:piston_head[facing=east,short=false,type=sticky]";
+            var snapshot=BuilderPlacementSnapshot.encode("Piston phase gate",List.of(
+                    new LitematicFileReader.Block(base.getX(),base.getY(),base.getZ(),baseState),
+                    new LitematicFileReader.Block(head.getX(),head.getY(),head.getZ(),headState),
+                    new LitematicFileReader.Block(power.getX(),power.getY(),power.getZ(),"minecraft:redstone_block")),List.of());
+            var plan=BuilderConstructionPlan.create(BuilderPlacementSnapshot.decode(snapshot),
+                    BuilderPlacementSnapshot.worldSpaceSite());
+            var folder=net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
+                    .resolve("golems_plus").resolve("schematics");
+            java.nio.file.Files.createDirectories(folder);
+            String filename="placed-gametest-piston-commission.gpb";
+            java.nio.file.Files.write(folder.resolve(filename),snapshot);
+            if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,1)
+                    ||!table.setPlacedBuilderPlan(id,filename,"Piston phase gate",station,0,0,
+                        plan.steps().size(),plan.unsupported().size())
+                    ||!table.setBuilderMaterialStorage(id,chest)){
+                h.fail("Planner refused piston construction");return;
+            }
+            table.setBuilderMaterialsForFile(filename,plan.required());
+            var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+            worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+            worker.assign(station,id);world.addFreshEntity(worker);
+            if(!table.registerBuilderWorker(worker.getUUID())||!table.startPlacedBuilder(id)){
+                h.fail("Could not start piston construction");return;
+            }
+            boolean[] sawPending={false};
+            h.onEachTick(()->{
+                boolean extended=BuilderPistonWork.matches(world,head,headState,
+                        BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                if(world.getBlockState(base).is(Blocks.STICKY_PISTON)
+                        &&!extended&&table.builderActiveLayer(plan.steps())==power.getY()
+                        &&!table.builderStepCompletedForMaterials(1))sawPending[0]=true;
+                if(table.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.COMPLETE){
+                    if(!sawPending[0]||!extended||!world.getBlockState(power).is(Blocks.REDSTONE_BLOCK)
+                            ||stock.getItem(0).getCount()!=0||stock.getItem(1).getCount()!=0){
+                        h.fail("Piston completed without real power, deferred verification or paid materials");return;
+                    }
+                    System.out.println("[PISTON PLANNER PASS] paid base, higher-layer power, verified head tick="+h.getTick());
+                    h.succeed();return;
+                }
+                if(h.getTick()==1100)h.fail("Piston phase gate stalled cursor="+table.builderCursor()
+                        +" active="+table.builderActiveStepIndex(plan.steps())+" problem="+table.problem());
+            });
+        }catch(Exception e){h.fail("Piston phase test setup failed "+e);}
+    }
+
 }

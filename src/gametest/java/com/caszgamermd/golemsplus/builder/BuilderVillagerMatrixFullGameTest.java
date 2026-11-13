@@ -378,8 +378,9 @@ public final class BuilderVillagerMatrixFullGameTest {
                     if(claim>=0&&claim<steps.size()&&needs.size()<19)
                         addItem(needs,steps.get(claim));
                 }
-                for(int i=Math.max(0,table.builderCursor());
-                        i<Math.min(steps.size(),table.builderCursor()+64)
+                int activeStep=table.builderActiveStepIndex(steps);
+                for(int i=Math.max(0,activeStep);
+                        i<Math.min(steps.size(),activeStep+64)
                                 &&needs.size()<19;i++)
                     addItem(needs,steps.get(i));
                 BuilderInfiniteOnsiteSupply.restock(level,supplyPos,needs);

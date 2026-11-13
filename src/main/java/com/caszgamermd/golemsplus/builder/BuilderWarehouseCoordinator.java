@@ -42,7 +42,7 @@ public final class BuilderWarehouseCoordinator {
         // full 100,000-cell blueprint. This reduces rack work and lets
         // warehouse packing follow the Builder frontier.
         Map<String,Long> window=BuilderMaterialDemand.nextWindow(
-                steps,table.builderCursor(),
+                steps,table.builderActiveStepIndex(steps),
                 table::builderStepCompletedForMaterials,
                 BuilderMaterialRules.WINDOW_LAYERS);
         if(window.isEmpty())return false;
@@ -374,7 +374,7 @@ public final class BuilderWarehouseCoordinator {
                 ||reply.state().equals("MISSING_EMPTY_SHULKERS")
                 ||reply.state().equals("NO_EMPTY_OUTPUT_PTP")
                 ||reply.state().equals("FULFILLING"))){
-            int cursor=table.builderCursor();
+            int cursor=table.builderActiveStepIndex(steps);
             if(cursor>=0&&cursor<steps.size()){
                 String next=steps.get(cursor).requiredItem();
                 if(next!=null&&BuilderSupplyInventory.available(table)
