@@ -39,8 +39,8 @@ public final class BuilderPlacementState {
             // Those blocks have only neighbour-connection geometry plus
             // waterlogged. The resolver rejects waterlogged builds, and
             // connectivity is recomputed when neighbours are built.
-            return !actual.getFluidState().isSource()
-                    &&!schematic.getFluidState().isSource();
+            return actual.getFluidState().isSource()
+                    ==schematic.getFluidState().isSource();
         }
         // Derived neighbours/weather states are not a reason to mine an
         // otherwise already-placed block. Keep critical properties (facing,
@@ -81,6 +81,8 @@ public final class BuilderPlacementState {
                         ||id.equals("redstone_wall_torch"))
                         &&name.equals("lit"))
                     ||(id.equals("observer")&&name.equals("powered"))
+                    ||((id.equals("dispenser")||id.equals("dropper"))&&name.equals("triggered"))
+                    ||(id.equals("hopper")&&name.equals("enabled"))
                     ||((id.equals("tripwire")||id.equals("tripwire_hook"))
                         &&(name.equals("powered")||name.equals("attached")))
                     ||(id.equals("target")&&name.equals("power"));

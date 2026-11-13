@@ -1092,7 +1092,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public int builderActiveStepIndex(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(steps==null||builderCursor<0||builderCursor>=steps.size())return -1;
-        if(!com.caszgamermd.golemsplus.builder.BuilderPistonWork.verification(
+        if(!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(
                 steps.get(builderCursor).encodedState()))return builderCursor;
         boolean same=activeScanPlan==steps&&java.util.Objects.equals(activeScanJob,activeOrder)
                 &&activeScanCursor==builderCursor;
@@ -1102,7 +1102,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         activeScanPlan=steps;activeScanJob=activeOrder;activeScanCursor=builderCursor;
         for(int i=start;i<steps.size();i++){
             if(!builderFinishedSteps.contains(i)
-                    &&!com.caszgamermd.golemsplus.builder.BuilderPistonWork.verification(
+                    &&!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(
                         steps.get(i).encodedState())){
                 activeScanIndex=i;return i;
             }

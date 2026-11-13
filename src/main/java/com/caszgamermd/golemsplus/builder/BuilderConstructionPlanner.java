@@ -418,8 +418,8 @@ public final class BuilderConstructionPlanner {
             String reason=step.ignorePlant()
                     ?"ignored vegetation: no physical support required":
                     !world.hasChunkAt(p)?"chunk unloaded":
-                    BuilderPistonWork.verification(step.encodedState())
-                        ?"waiting for real powered piston extension":
+                    BuilderDeferredState.verification(step.encodedState())
+                        ?"waiting for natural redstone/fluid result":
                     expected==null?"unsupported block state":
                     !expected.state().canSurvive(world,p)
                         ?"missing physical support":
@@ -623,8 +623,8 @@ public final class BuilderConstructionPlanner {
             var plannedStep=steps.get(idx);
             BlockPos plannedTarget=new BlockPos(plannedStep.x(),plannedStep.y(),plannedStep.z());
             if(!world.hasChunkAt(plannedTarget))continue;
-            if(BuilderPistonWork.verification(plannedStep.encodedState())){
-                if(BuilderPistonWork.matches(world,plannedTarget,plannedStep.encodedState(),
+            if(BuilderDeferredState.verification(plannedStep.encodedState())){
+                if(BuilderDeferredState.matches(world,plannedTarget,plannedStep.encodedState(),
                         BuildSite.Rotation.values()[table.builderRotation()/90],
                         BuildSite.Mirror.values()[table.builderMirror()]))
                     return new Choice(idx,null,false,true,examined);
@@ -647,7 +647,7 @@ public final class BuilderConstructionPlanner {
             if(state==null)continue;
             BlockState actual=world.getBlockState(target);
             boolean primaryMatches=BuilderPlacementState.matches(
-                    actual,state.state());
+                    actual,state.state())||BuilderChestWork.pendingHalf(world,target,actual,state.state(),builtSchematic);
             var partner=step.companion();
             boolean companionMatches=true;
             if(partner!=null){

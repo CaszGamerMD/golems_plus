@@ -30,7 +30,7 @@ public final class BuilderWaterPass {
         return isWaterlogPass(encoded)?encoded.substring(PREFIX.length()):encoded;
     }
     public static boolean isWaterStep(String encoded){
-        return isWaterlogPass(encoded)||"minecraft:water".equals(encoded)
+        return BuilderDeferredState.flowVerification(encoded)||isWaterlogPass(encoded)||"minecraft:water".equals(encoded)
                 ||encoded!=null&&encoded.startsWith("minecraft:water[")
                 ||isBubbleColumn(encoded);
     }
@@ -63,7 +63,7 @@ public final class BuilderWaterPass {
     }
 
     public static boolean samePhase(String a,String b){
-        return BuilderPistonWork.verification(a)==BuilderPistonWork.verification(b)
+        return BuilderDeferredState.verification(a)==BuilderDeferredState.verification(b)
                 &&isWaterStep(a)==isWaterStep(b);
     }
 }

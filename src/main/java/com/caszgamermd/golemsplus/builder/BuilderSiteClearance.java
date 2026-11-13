@@ -94,6 +94,15 @@ public final class BuilderSiteClearance {
                     &&BuilderVegetation.ignoreSchematicState(step.state());
             if(!ignoredPlant&&!step.state().equals("minecraft:air")){
                 String raw=BuilderPistonWork.original(step.state());
+                if(BuilderDeferredState.flowing(raw)){
+                    var flow=BuilderBlockResolver.expectedState(raw,
+                            BuildSite.Rotation.values()[table.builderRotation()/90],
+                            BuildSite.Mirror.values()[table.builderMirror()]);
+                    if(flow!=null&&existing.equals(flow)){
+                        table.completeBuilderClear(worker.getUUID(),index,false);
+                        continue;
+                    }
+                }
                 var resolved=BuilderBlockResolver.resolve(BuilderPistonWork.neutral(raw),
                         BuildSite.Rotation.values()[table.builderRotation()/90],
                         BuildSite.Mirror.values()[table.builderMirror()]);

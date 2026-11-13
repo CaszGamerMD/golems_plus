@@ -80,10 +80,14 @@ public final class BuilderBlockResolver {
         // custom source NBT. It is one ordinary bed item, with the head
         // created and validated as part of the same physical placement.
         boolean vanillaBed=block instanceof BedBlock;
+        // Empty vanilla containers are paid blocks; never import inventory NBT.
+        boolean vanillaContainer=id.equals("minecraft:chest")||id.equals("minecraft:trapped_chest")
+                ||id.equals("minecraft:hopper")||id.equals("minecraft:dispenser")
+                ||id.equals("minecraft:dropper");
         if((item==Items.AIR && !(expectedOnly&&id.equals("minecraft:piston_head")))
                 || block instanceof EntityBlock
                 &&!sign&&!vanillaComparator&&!vanillaDaylightDetector
-                &&!vanillaBed)return null;
+                &&!vanillaBed&&!vanillaContainer)return null;
         // The constructor groups each valid double-plant, door and bed
         // pair into one claimed item-backed job. Neither companion is a
         // stand-alone material, and crops/fire/portals still require
@@ -112,7 +116,7 @@ public final class BuilderBlockResolver {
         }
         // Only source fluids are schematic placements. Flowing levels must
         // emerge from vanilla physics, not be issued as infinite bucket jobs.
-        if((id.equals("minecraft:water")||id.equals("minecraft:lava"))
+        if(!expectedOnly&&(id.equals("minecraft:water")||id.equals("minecraft:lava"))
                 &&state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL)
                 &&state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL)!=0)
             return null;

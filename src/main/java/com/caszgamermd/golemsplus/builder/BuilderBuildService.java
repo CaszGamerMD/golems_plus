@@ -1412,15 +1412,15 @@ public final class BuilderBuildService {
             if(!level.mayInteract(owner,column)){
                 table.setProblem("Owner cannot modify this location");return;
             }
-            if(BuilderPistonWork.verification(claimedStep.encodedState())){
-                if(BuilderPistonWork.matches(level,column,claimedStep.encodedState(),
+            if(BuilderDeferredState.verification(claimedStep.encodedState())){
+                if(BuilderDeferredState.matches(level,column,claimedStep.encodedState(),
                         BuildSite.Rotation.values()[table.builderRotation()/90],
                         BuildSite.Mirror.values()[table.builderMirror()])){
                     table.completeBuilderStep(worker.getUUID(),index);
                     activity.phase=Action.COMPLETE;
                 }else{
                     table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
-                    table.setProblem("Redstone commissioning: waiting for real piston head at "+column);
+                    table.setProblem("Commissioning: waiting for natural block state at "+column);
                 }
                 return;
             }
@@ -1469,8 +1469,12 @@ public final class BuilderBuildService {
             }
             BlockState partnerExisting=partnerPos==null?null:
                     level.getBlockState(partnerPos);
+            var chestPlan=BuilderChestWork.paired(state.state())
+                    ?BuilderConstructionPlanner.schematicStates(plan.steps(),
+                        BuildSite.Rotation.values()[table.builderRotation()/90],
+                        BuildSite.Mirror.values()[table.builderMirror()]):java.util.Map.<BlockPos,BlockState>of();
             boolean primaryComplete=BuilderPlacementState.matches(
-                    existing,state.state());
+                    existing,state.state())||BuilderChestWork.pendingHalf(level,pos,existing,state.state(),chestPlan);
             boolean partnerComplete=partner==null||BuilderPlacementState.matches(
                     partnerExisting,partnerResolved.state());
             if(primaryComplete&&partnerComplete){
@@ -1490,7 +1494,8 @@ public final class BuilderBuildService {
             // A wrong lever/repeater/comparator/gate click-setting is not
             // a missing block. Retain the existing paid block and use
             // its native Minecraft interaction when within safe reach.
-            boolean interactionCorrection=BuilderBlockInteractions
+            boolean chestJoin=BuilderChestWork.canJoin(level,pos,existing,state.state(),chestPlan);
+            boolean interactionCorrection=chestJoin||BuilderBlockInteractions
                     .needsInteraction(existing,state.state());
             // Repairing a generated upper door/plant or bed head is not
             // a second item purchase. The original lower/foot block is
@@ -2178,7 +2183,8 @@ public final class BuilderBuildService {
             // A native right-click changes the state of a block that
             // was already paid for; never debit or destroy it again.
             if(interactionCorrection){
-                if(!BuilderBlockInteractions.interact(level,pos,state.state(),owner)){
+                if(!(chestJoin?BuilderChestWork.join(level,pos,state.state(),chestPlan,owner)
+                        :BuilderBlockInteractions.interact(level,pos,state.state(),owner))){
                     table.waitForBuilderSupport(worker.getUUID(),index,
                             level.getGameTime());
                     table.setProblem("Interactive state waiting at "+pos
@@ -2289,6 +2295,8 @@ public final class BuilderBuildService {
             // in that case, so it cannot yield free duplicate materials.
             var multiblockPlacement=railPlaced
                     ?new BuilderMultiblock.Placement(true,true)
+                    :BuilderChestWork.paired(toPlace)
+                        ?BuilderChestWork.place(level,pos,toPlace,chestPlan,owner)
                     :BuilderMultiblock.place(
                     level,pos,toPlace,partnerPos,
                     partnerResolved==null?null:

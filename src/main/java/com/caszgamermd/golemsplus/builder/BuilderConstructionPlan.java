@@ -81,6 +81,7 @@ public final class BuilderConstructionPlan {
             boolean waterlogged=!ignored&&BuilderWaterPass.isWaterlogged(b.state());
             String dry=waterlogged?BuilderWaterPass.dryState(b.state()):b.state();
             boolean verifyPiston=pistonHeads.contains(BuilderMultiblock.cell(b));
+            boolean verifyFlow=BuilderDeferredState.flowing(dry);
             if(pistonBases.contains(BuilderMultiblock.cell(b)))dry=BuilderPistonWork.neutral(dry);
             var resolved=ignored||incompletePair?null:
                     BuilderBlockResolver.resolve(dry,site.rotation(),site.mirror());
@@ -91,7 +92,7 @@ public final class BuilderConstructionPlan {
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(resolved.item()).toString()));
             if(world.y()<-64||world.y()>511)
                 throw new IllegalArgumentException("Placement exceeds supported world height");
-            if(resolved==null&&!ignored&&!verifyPiston)unsupported.add(b.state());
+            if(resolved==null&&!ignored&&!verifyPiston&&!verifyFlow)unsupported.add(b.state());
             String item=resolved==null||ignored?null:
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(resolved.item()).toString();
             Companion companion=null;
@@ -106,6 +107,7 @@ public final class BuilderConstructionPlan {
             // Incomplete objects are explicitly unsupported; never
             // silently construct half a door/bed/plant and call it done.
             String encoded=verifyPiston?BuilderPistonWork.verificationStep(dry):
+                    verifyFlow?BuilderDeferredState.flowStep(dry):
                     incompletePair&&!ignored?"golems_plus:unpaired_multiblock|"+dry:dry;
             // Each paired item creates ONE claim, ONE material demand and
             // ONE completion entry; the companion is verified on placement.

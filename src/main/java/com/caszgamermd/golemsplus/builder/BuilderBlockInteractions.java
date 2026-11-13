@@ -102,6 +102,10 @@ public final class BuilderBlockInteractions {
                 ||id.equals("tripwire")){
             neutral=set(neutral,"powered","false");
             neutral=set(neutral,"attached","false");
+        }else if(id.equals("dispenser")||id.equals("dropper")){
+            neutral=set(neutral,"triggered","false");
+        }else if(id.equals("hopper")){
+            neutral=set(neutral,"enabled","true");
         }else if(id.equals("target")){
             neutral=set(neutral,"power","0");
         }else if(id.equals("redstone_lamp")){
