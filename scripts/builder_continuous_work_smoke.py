@@ -12,8 +12,11 @@ assert "List<Integer> eligible=activity.lookaheadEligible;" in build
 assert "PriorityQueue<Integer> nearest" in build
 assert "nearest.size()<32" in build
 assert "return List.copyOf(result)" in build
-assert "var choice=activity.lookaheadFor==completed?activity.lookahead:null;" in build
-assert "if(choice==null)choice=nearbyDirectFollowup(" in build
+assert "var choice=nearbyDirectFollowup(" in build
+assert "if(choice==null&&activity.lookaheadFor==completed)choice=activity.lookahead;" in build
+assert "boolean hovering=BuilderFlight.active(worker)&&!BuilderFlight.moving(worker);" in build
+assert "BuilderFlight.safeWorkPose(level,worker,target,worker.position()," in build
+assert "new BuilderConstructionPlanner.Choice(best,hovering?null:pose,false," in build
 assert "BuilderConstructionPlanner.safeStand(" in build
 assert "BuilderPlacementSpace.horizontalClear(target,worker)" in build
 assert "table.claimPreferredBuilderZoneStep(worker.getUUID()," in build
