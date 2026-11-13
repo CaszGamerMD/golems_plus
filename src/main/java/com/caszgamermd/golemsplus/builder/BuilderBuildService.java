@@ -272,7 +272,8 @@ public final class BuilderBuildService {
         if(BuilderReturnService.withinStorageReach(worker,depot)||now-activity.supplyProgressTick<=TARGET_PROGRESS_STALL_TICKS
                 ||BuilderScaffolding.isControllingMovement(worker)
                 ||BuilderGrappleAccess.active(worker)
-                ||BuilderFlight.moving(worker))return;
+                ||BuilderFlight.moving(worker)
+                ||BuilderFlight.descentMakingProgress(level,worker,depot))return;
         String reason="no physical progress toward OnSite Storage";
         table.waitForBuilderAccess(worker.getUUID(),index,now,reason);
         publishHandoff(table,worker.getUUID(),index,now,reason);

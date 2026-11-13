@@ -282,14 +282,42 @@ public final class BuilderFlight {
         return false;
     }
 
-    private record Descent(BlockPos depot,BlockPos launch,BlockPos landing,long until){}
+    private static final class Descent {
+        final BlockPos depot,launch,landing;
+        final long until;
+        long lastProgress;
+        double bestDistance;
+        Descent(BlockPos depot,BlockPos launch,BlockPos landing,long now,Vec3 start){
+            this.depot=depot;this.launch=launch;this.landing=landing;
+            this.until=now+400;this.lastProgress=now;
+            this.bestDistance=start.distanceToSqr(feet(launch));
+        }
+        BlockPos depot(){return depot;}
+        BlockPos launch(){return launch;}
+        BlockPos landing(){return landing;}
+        long until(){return until;}
+    }
     private static final Map<BuilderGolem,Descent> descents=new WeakHashMap<>();
+
+    /** Progress toward the planned edge, not straight-line distance to
+     * the chest below. Protect only a genuinely advancing return leg. */
+    public static boolean descentMakingProgress(ServerLevel level,BuilderGolem worker,BlockPos depot){
+        Descent d=descents.get(worker);
+        if(d==null||!d.depot().equals(depot)||level.getGameTime()>=d.until())return false;
+        double distance=worker.position().distanceToSqr(feet(d.launch()));
+        if(distance<d.bestDistance-.04){
+            d.bestDistance=distance;
+            d.lastProgress=level.getGameTime();
+        }
+        return level.getGameTime()-d.lastProgress<=65;
+    }
 
     /** Walk to a real ledge, then use the local propeller to descend.
      * A two-block horizontal flight budget is not a two-block walking budget. */
     public static boolean hasDescentLaunch(ServerLevel level,BuilderGolem worker,BlockPos depot){
         Descent saved=descents.get(worker);
-        return saved!=null&&saved.depot().equals(depot)&&level.getGameTime()<saved.until();
+        return saved!=null&&saved.depot().equals(depot)&&level.getGameTime()<saved.until()
+                &&descentMakingProgress(level,worker,depot);
     }
 
     public static boolean approachDescentLaunch(ServerLevel level,BuilderGolem worker,BlockPos depot){
@@ -297,6 +325,7 @@ public final class BuilderFlight {
         long now=level.getGameTime();
         Descent saved=descents.get(worker);
         if(saved!=null&&saved.depot().equals(depot)&&now<saved.until()
+                &&descentMakingProgress(level,worker,depot)
                 &&WorkerNavigation.canStandOn(level,worker,saved.launch())
                 &&WorkerNavigation.canStandOn(level,worker,saved.landing())){
             if(worker.position().distanceToSqr(feet(saved.launch()))<.04){
@@ -336,7 +365,7 @@ public final class BuilderFlight {
         possible.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(feet(at))));
         BlockPos launch=WorkerNavigation.selectExecutableStand(level,worker,possible);
         if(launch==null)return false;
-        descents.put(worker,new Descent(depot.immutable(),launch,landingByLaunch.get(launch),now+400));
+        descents.put(worker,new Descent(depot.immutable(),launch,landingByLaunch.get(launch),now,worker.position()));
         return WorkerNavigation.routeToExact(level,worker,launch,1.0);
     }
     public static boolean safeWorkPose(ServerLevel level, BuilderGolem worker,

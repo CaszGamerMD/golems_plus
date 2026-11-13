@@ -21,7 +21,8 @@ public final class BuilderReturnService {
             new java.util.WeakHashMap<>();
     private static final class Approach {
         BlockPos target,stand,excludedStand;
-        long nextSearch,lastMovementTick;
+        long nextSearch,lastMovementTick,lastStandProgress;
+        double bestStandDistance=Double.POSITIVE_INFINITY;
         double lastX=Double.NaN,lastY=Double.NaN,lastZ=Double.NaN;
     }
     /** A route that keeps returning MOVING without actually displacing a
@@ -68,6 +69,8 @@ public final class BuilderReturnService {
             route.target=target.immutable();route.stand=null;route.nextSearch=0;
             route.excludedStand=null;
             route.lastMovementTick=now;
+            route.lastStandProgress=now;
+            route.bestStandDistance=Double.POSITIVE_INFINITY;
             route.lastX=worker.getX();
             route.lastY=worker.getY();
             route.lastZ=worker.getZ();
@@ -95,8 +98,17 @@ public final class BuilderReturnService {
             route.lastY=worker.getY();
             route.lastZ=worker.getZ();
         }
+        if(route.stand!=null){
+            double remaining=worker.distanceToSqr(route.stand.getX()+.5,
+                    route.stand.getY(),route.stand.getZ()+.5);
+            if(remaining<route.bestStandDistance-.04){
+                route.bestStandDistance=remaining;
+                route.lastStandProgress=now;
+            }
+        }
         if(route.stand!=null
-                &&depotApproachStalled(now-route.lastMovementTick,mobilityActive)){
+                &&(depotApproachStalled(now-route.lastMovementTick,mobilityActive)
+                    ||now-route.lastStandProgress>=180)){
             route.excludedStand=route.stand;
             route.stand=null;route.nextSearch=0;
             route.lastMovementTick=now;
@@ -135,6 +147,8 @@ public final class BuilderReturnService {
             }
             route.stand=com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .selectExecutableStand(level,worker,possible);
+            route.bestStandDistance=Double.POSITIVE_INFINITY;
+            route.lastStandProgress=now;
             if(route.stand==null){
                 if(BuilderFlight.enabled(worker)&&worker.getY()>target.getY()+1.5){
                     // The roof-edge walk is preferable to dropping back
