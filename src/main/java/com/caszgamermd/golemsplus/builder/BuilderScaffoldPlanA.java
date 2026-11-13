@@ -214,6 +214,21 @@ public final class BuilderScaffoldPlanA {
         return j==null?null:j.exit;
     }
     public static void cancel(BuilderGolem worker){jobs.remove(worker);}
+    public static boolean releaseDetachedPlan(ServerLevel level,BuilderGolem worker){
+        Job j=jobs.get(worker);
+        if(j==null||BuilderScaffolding.isControllingMovement(worker)
+                ||!worker.onGround()||worker.isNoGravity()
+                ||level.getGameTime()-j.lastProgress<80)return false;
+        if(j.phase==Phase.APPROACH||j.phase==Phase.BUILD||j.phase==Phase.CLIMB)return false;
+        BlockPos floor=worker.blockPosition().below();
+        if(level.getBlockState(floor).is(Blocks.SCAFFOLDING)
+                ||level.getBlockState(worker.blockPosition()).is(Blocks.SCAFFOLDING)
+                ||!level.getBlockState(floor).isFaceSturdy(level,floor,Direction.UP)
+                ||!WorkerNavigation.canStandOn(level,worker,worker.blockPosition()))return false;
+        rejectEntry(level,worker,j.base);
+        jobs.remove(worker);
+        return true;
+    }
 
     private static Set<BlockPos> future(ServerLevel level, List<BuilderConstructionPlan.Step> steps){
         Set<BlockPos> result=new HashSet<>();
@@ -1103,6 +1118,10 @@ public final class BuilderScaffoldPlanA {
         if(j==null)return false;
         j.bridgeTicks++;
         j.highest=Math.max(j.highest,worker.getY());
+        // A worker that already left the paid scaffold onto a genuine
+        // solid surface must not be pulled back by an obsolete READY or
+        // WALK bridge leg. Keep ownership of the physical materials.
+        if(releaseDetachedPlan(level,worker))return false;
         // Recover a lost vertical controller while physically suspended in
         // the paid scaffold shaft. Never treat an airborne scaffold occupant
         // as a completed work stance, and never fake a position change.

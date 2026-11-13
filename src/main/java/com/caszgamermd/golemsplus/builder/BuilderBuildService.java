@@ -1734,7 +1734,7 @@ public final class BuilderBuildService {
                             at->BuilderConstructionPlanner.safeStandForStep(
                                 level,worker,pos,at,step.encodedState()))==null);
             boolean hoverPose=propellerWork
-                    &&BuilderFlight.safeWorkPose(level,worker,pos,worker.position());
+                    &&BuilderFlight.safeWorkPose(level,worker,pos,worker.position(),bodyBlockingWork);
             if(propellerWork&&!hoverPose){
                 long now=level.getGameTime();
                 double distance=worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
@@ -1757,7 +1757,7 @@ public final class BuilderBuildService {
                     System.out.println("[PROPELLER HANDOFF] released "+index+" at "+worker.position());
                     return;
                 }
-                BlockPos flightPose=BuilderFlight.workPose(level,worker,pos);
+                BlockPos flightPose=BuilderFlight.workPose(level,worker,pos,bodyBlockingWork);
                 if(flightPose!=null&&BuilderFlight.request(level,worker,flightPose))return;
                 if(BuilderFlight.active(worker)){
                     if(BuilderFlight.land(level,worker,true))return;
@@ -1769,7 +1769,7 @@ public final class BuilderBuildService {
                     }
                     return;
                 }
-                if(BuilderFlight.approachLaunch(level,worker,pos)
+                if(BuilderFlight.approachLaunch(level,worker,pos,bodyBlockingWork)
                         ||BuilderFlight.approachRoofWork(level,worker,pos,bodyBlockingWork)){
                     activity.phase=Action.MOVE_TO_WORK;
                     return;
@@ -2127,7 +2127,7 @@ public final class BuilderBuildService {
             // any item: a teammate or a new schematic block may have
             // invalidated the cached approach while this worker walked.
             if(!(BuilderFlight.enabled(worker)
-                        &&BuilderFlight.safeWorkPose(level,worker,pos,worker.position())
+                        &&BuilderFlight.safeWorkPose(level,worker,pos,worker.position(),bodyBlockingWork)
                     ||BuilderScaffoldPlanA.safeTemporaryWorkPose(
                         level,worker,table,pos)
                     ||BuilderPlacementSpace.safeFractionalCapPose(

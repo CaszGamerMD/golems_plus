@@ -704,7 +704,7 @@ public final class BuilderConstructionPlanner {
             // A flight route is a distinct access mode. Keep the grounded
             // stance null so speculative handoff never sends A* into midair.
             boolean propeller=stance==null
-                    &&(BuilderFlight.canAccessWork(world,worker,target)
+                    &&(BuilderFlight.canAccessWork(world,worker,target,bodyBlocking)
                         ||pending.size()<=24&&BuilderFlight.canAccessRoofWork(world,worker,target,bodyBlocking));
             // An elevated unsupported block needs construction footing.
             // Prefer a real, item-paid scaffold platform if one can be

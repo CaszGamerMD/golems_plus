@@ -140,6 +140,10 @@ public final class BuilderFlight {
         }
         flight.goal = goal.immutable();
         flight.retryAt = level.getGameTime() + 20;
+        // A successful, collision-checked powered takeoff owns movement.
+        // Retain the real paid scaffold blocks, but never resume a stale
+        // bridge route after landing somewhere else.
+        BuilderScaffoldPlanA.cancel(worker);
         WorkerNavigation.stop(worker);
         flight.path = path;
         flight.next = 0;
@@ -162,6 +166,9 @@ public final class BuilderFlight {
     /** Walk to a grounded launch point near an elevated task; flight never
      * replaces long horizontal ground navigation. */
     public static BlockPos launchPose(ServerLevel level, BuilderGolem worker, BlockPos target) {
+        return launchPose(level,worker,target,true);
+    }
+    public static BlockPos launchPose(ServerLevel level, BuilderGolem worker, BlockPos target,boolean bodyBlocking) {
         if (!enabled(worker) || active(worker) || !worker.onGround()) return null;
         var candidates = new ArrayList<BlockPos>();
         int y = worker.blockPosition().getY();
@@ -170,7 +177,7 @@ public final class BuilderFlight {
             if (!WorkerNavigation.canStandOn(level, worker, launch)) continue;
             for (int dy = -2; dy <= 1; dy++) {
                 BlockPos pose = new BlockPos(launch.getX(), target.getY() + dy, launch.getZ());
-                if (safeWorkPose(level, worker, target, feet(pose))
+                if (safeWorkPose(level, worker, target, feet(pose),bodyBlocking)
                         && !path(level, worker, feet(launch), feet(pose), feet(launch)).isEmpty()) {
                     candidates.add(launch);
                     break;
@@ -182,19 +189,22 @@ public final class BuilderFlight {
     private record Launch(BlockPos target,BlockPos position,long until) {}
     private static final Map<BuilderGolem,Launch> launches=new WeakHashMap<>();
     public static boolean approachLaunch(ServerLevel level, BuilderGolem worker, BlockPos target) {
+        return approachLaunch(level,worker,target,true);
+    }
+    public static boolean approachLaunch(ServerLevel level, BuilderGolem worker, BlockPos target,boolean bodyBlocking) {
         if(active(worker)||!worker.onGround())return false;
         long now=level.getGameTime();
         Launch saved=launches.get(worker);
         BlockPos launch=saved!=null&&saved.target().equals(target)&&now<saved.until()
                 &&WorkerNavigation.canStandOn(level,worker,saved.position())?saved.position():null;
         if(launch==null){
-            launch=launchPose(level,worker,target);
+            launch=launchPose(level,worker,target,bodyBlocking);
             if(launch==null){launches.remove(worker);return false;}
             launches.put(worker,new Launch(target.immutable(),launch.immutable(),now+100));
         }
         if(worker.position().distanceToSqr(feet(launch))<.04){
             launches.remove(worker);
-            BlockPos pose=workPose(level,worker,target);
+            BlockPos pose=workPose(level,worker,target,bodyBlocking);
             return pose!=null&&request(level,worker,pose);
         }
         return WorkerNavigation.routeToExact(level,worker,launch,1.0);
@@ -202,10 +212,13 @@ public final class BuilderFlight {
     /** Preflight a real walk-then-lift route, without starting movement.
      * A hover pose is not a walkable stance and must never be passed to A*. */
     public static boolean canAccessWork(ServerLevel level, BuilderGolem worker, BlockPos target) {
+        return canAccessWork(level,worker,target,true);
+    }
+    public static boolean canAccessWork(ServerLevel level, BuilderGolem worker, BlockPos target,boolean bodyBlocking) {
         if (!enabled(worker) || BuilderGrappleAccess.active(worker)
                 || BuilderScaffolding.isControllingMovement(worker)) return false;
-        return workPose(level, worker, target) != null
-                || launchPose(level, worker, target) != null;
+        return workPose(level, worker, target,bodyBlocking) != null
+                || launchPose(level, worker, target,bodyBlocking) != null;
     }
     private static final class RoofAccess {
         final BlockPos target,launch,landing;
@@ -461,8 +474,16 @@ public final class BuilderFlight {
     }
     public static boolean safeWorkPose(ServerLevel level, BuilderGolem worker,
             BlockPos target, Vec3 position) {
+        return safeWorkPose(level,worker,target,position,true);
+    }
+    public static boolean safeWorkPose(ServerLevel level, BuilderGolem worker,
+            BlockPos target, Vec3 position,boolean bodyBlocking) {
         if (position.distanceToSqr(Vec3.atCenterOf(target)) > 25 || !clear(level, worker, position))
             return false;
+        // Waterlogging and collision-free circuit placement do not create
+        // a solid cube around the worker. Still require a real clear body,
+        // reach and an actual adjacent cell, never work from inside target.
+        if(!bodyBlocking)return !BlockPos.containing(position).equals(target);
         double dx = Math.max(0, Math.max(target.getX() - position.x, position.x - target.getX() - 1));
         double dz = Math.max(0, Math.max(target.getZ() - position.z, position.z - target.getZ() - 1));
         if (dx * dx + dz * dz < .8 * .8) return false;
@@ -477,9 +498,12 @@ public final class BuilderFlight {
         return false;
     }
     public static BlockPos workPose(ServerLevel level, BuilderGolem worker, BlockPos target) {
-        if (safeWorkPose(level, worker, target, worker.position())
+        return workPose(level,worker,target,true);
+    }
+    public static BlockPos workPose(ServerLevel level, BuilderGolem worker, BlockPos target,boolean bodyBlocking) {
+        if (safeWorkPose(level, worker, target, worker.position(),bodyBlocking)
                 && inEnvelope(origin(worker), feet(worker.blockPosition()))
-                && safeWorkPose(level, worker, target, feet(worker.blockPosition()))
+                && safeWorkPose(level, worker, target, feet(worker.blockPosition()),bodyBlocking)
                 && sweep(level, worker, worker.position(), feet(worker.blockPosition())))
             return worker.blockPosition();
         var candidates = new ArrayList<BlockPos>();
@@ -488,7 +512,7 @@ public final class BuilderFlight {
                 for (int dz = -4; dz <= 4; dz++) {
                     BlockPos pose = target.offset(dx, dy, dz);
                     if (inEnvelope(origin(worker), feet(pose))
-                            && safeWorkPose(level, worker, target, feet(pose))) candidates.add(pose);
+                            && safeWorkPose(level, worker, target, feet(pose),bodyBlocking)) candidates.add(pose);
                 }
         return select(level, worker, candidates);
     }
