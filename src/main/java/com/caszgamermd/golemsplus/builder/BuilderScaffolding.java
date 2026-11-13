@@ -58,6 +58,29 @@ public final class BuilderScaffolding {
     private static final java.util.Map<BuilderGolem,ReturnRoute> returning=
             new java.util.WeakHashMap<>();
     private record ExitRoute(BlockPos ground,long expires){}
+    private static final class ExitProgress {
+        final ExitRoute route;
+        double best=Double.POSITIVE_INFINITY;
+        long lastProgress;
+        ExitProgress(ExitRoute route,long now){this.route=route;lastProgress=now;}
+    }
+    private static final java.util.Map<BuilderGolem,ExitProgress> exitProgress=
+            new java.util.WeakHashMap<>();
+    private static boolean onSolidExit(ServerLevel level,BuilderGolem worker){
+        BlockPos feet=worker.blockPosition(),floor=feet.below();
+        return worker.onGround()
+                &&!level.getBlockState(feet).is(Blocks.SCAFFOLDING)
+                &&!level.getBlockState(floor).is(Blocks.SCAFFOLDING)
+                &&WorkerNavigation.canStandOn(level,worker,feet)
+                &&Math.abs(worker.getY()-WorkerNavigation.surveyFloorHeight(level,feet))<.15;
+    }
+    private static void finishExit(BuilderGolem worker){
+        exiting.remove(worker);exitProgress.remove(worker);
+        BuilderScaffoldPlanA.cancel(worker);
+        worker.setShiftKeyDown(false);worker.setNoGravity(false);
+        worker.getNavigation().stop();
+        worker.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+    }
     private static final java.util.Map<BuilderGolem,ExitRoute> exiting=
             new java.util.WeakHashMap<>();
     /** A job-specific, retained route UP and BACK DOWN. The exit must
@@ -165,6 +188,30 @@ public final class BuilderScaffolding {
     public static boolean tickMotion(ServerLevel level,BuilderGolem worker){
         ExitRoute exit=exiting.get(worker);
         if(exit!=null){
+            // An exit is finished when the worker has reached *any*
+            // genuine nearby floor at the intended height, not when it
+            // centers to the exact integer coordinate. Redstone, slabs
+            // and other thin collision shapes can alter the feet height.
+            double floor=WorkerNavigation.surveyFloorHeight(level,exit.ground());
+            double dx=worker.getX()-exit.ground().getX()-.5;
+            double dz=worker.getZ()-exit.ground().getZ()-.5;
+            double dy=worker.getY()-floor;
+            if(onSolidExit(level,worker)&&dx*dx+dz*dz<=1.0
+                    &&Double.isFinite(floor)&&Math.abs(dy)<.65){
+                finishExit(worker);return false;
+            }
+            long now=level.getGameTime();
+            ExitProgress watch=exitProgress.get(worker);
+            if(watch==null||watch.route!=exit){
+                watch=new ExitProgress(exit,now);exitProgress.put(worker,watch);
+            }
+            double distance=dx*dx+dz*dz+(Double.isFinite(dy)?dy*dy:0);
+            if(distance<watch.best-.025){watch.best=distance;watch.lastProgress=now;}
+            if(now-watch.lastProgress>45&&onSolidExit(level,worker)){
+                // Already off the scaffold; do not let an obstructed
+                // centering step hold exclusive movement indefinitely.
+                finishExit(worker);return false;
+            }
             // A roof can change under a returning Builder. If it is
             // already GROUNDED on a solid ledge two or more levels above
             // the recorded scaffold exit, that old dismount would need
@@ -180,20 +227,18 @@ public final class BuilderScaffolding {
                 System.out.println("[SCAFFOLD EXIT] abandoned unreachable lower "
                         +exit.ground().toShortString()+" from grounded roof "
                         +worker.blockPosition().toShortString());
-                exiting.remove(worker);
-                BuilderScaffoldPlanA.cancel(worker);
+                finishExit(worker);
                 return false;
             }
             if(level.getGameTime()>exit.expires()
                     ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
                             .canStandOn(level,worker,exit.ground())){
-                exiting.remove(worker);
+                exiting.remove(worker);exitProgress.remove(worker);
             }else if(Math.abs(worker.getX()-exit.ground().getX()-.5)<.35
                     &&Math.abs(worker.getZ()-exit.ground().getZ()-.5)<.35
                     &&Math.abs(worker.getY()-exit.ground().getY())<.32
                     &&worker.onGround()){
-                exiting.remove(worker);
-                worker.getNavigation().stop();
+                finishExit(worker);
                 return false;
             }else{
                 // Do not declare exit complete because the worker is only

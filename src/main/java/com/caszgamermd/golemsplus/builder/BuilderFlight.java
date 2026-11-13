@@ -243,7 +243,8 @@ public final class BuilderFlight {
         if(distance<r.bestDistance-.04){r.bestDistance=distance;r.lastProgress=level.getGameTime();}
         return level.getGameTime()-r.lastProgress<=90;
     }
-    private static final Map<BuilderGolem,Long> roofRetry=new WeakHashMap<>();
+    private record RoofRetry(BlockPos target,long until){}
+    private static final Map<BuilderGolem,RoofRetry> roofRetry=new WeakHashMap<>();
     /** Find an actual walk-lift-walk route around a completed roof, not
      * a vertical flight through it. Both grounded legs are checked before
      * selecting a takeoff, and the airborne leg keeps the same 2m limit. */
@@ -256,8 +257,9 @@ public final class BuilderFlight {
                 &&roofAccessProgress(level,worker,target)
                 &&WorkerNavigation.canStandOn(level,worker,saved.launch())
                 &&WorkerNavigation.canStandOn(level,worker,saved.landing()))return saved;
-        if(now<roofRetry.getOrDefault(worker,0L))return null;
-        roofRetry.put(worker,now+40);
+        RoofRetry retry=roofRetry.get(worker);
+        if(retry!=null&&retry.target().equals(target)&&now<retry.until())return null;
+        roofRetry.put(worker,new RoofRetry(target.immutable(),now+40));
         var work=new ArrayList<BlockPos>();
         for(int dy=-1;dy<=3;dy++)for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
             BlockPos at=target.offset(dx,dy,dz);
@@ -270,12 +272,25 @@ public final class BuilderFlight {
         var launches=new ArrayList<BlockPos>();
         var byLaunch=new HashMap<BlockPos,BlockPos>();
         int baseY=worker.blockPosition().getY();
-        int[][] axes={{1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1}};
-        // Search along the four sides and diagonals of the roof. The
-        // landing may be far from the target, but only 2m from takeoff.
-        roofSearch: for(int radius=3;radius<=32;radius++)for(int[] axis:axes){
+        // Sample the complete perimeter on small rings and intermediate
+        // points on larger rings. Eight radial rays alone miss narrow
+        // irregular roof edges (notably the Matrix water-channel wings).
+        int probes=0;
+        roofSearch: for(int radius=3;radius<=32;radius++){
+            var ring=new ArrayList<int[]>();
+            int stride=radius<=8?1:Math.max(2,radius/4);
+            for(int k=-radius;k<=radius;k+=stride){
+                ring.add(new int[]{radius,k});ring.add(new int[]{-radius,k});
+                ring.add(new int[]{k,radius});ring.add(new int[]{k,-radius});
+            }
+            ring.sort(Comparator.comparingDouble(off->worker.position().distanceToSqr(
+                    target.getX()+off[0]+.5,baseY,target.getZ()+off[1]+.5)));
+            for(int[] off:ring){
+            int[] axis={Integer.signum(off[0]),Integer.signum(off[1])};
+            if(Math.abs(off[0])>Math.abs(off[1]))axis[1]=0;
+            else if(Math.abs(off[1])>Math.abs(off[0]))axis[0]=0;
             for(int dy:new int[]{0,1,-1,2}){
-                BlockPos landing=target.offset(radius*axis[0],dy,radius*axis[1]);
+                BlockPos landing=target.offset(off[0],dy,off[1]);
                 if(!WorkerNavigation.canStandOn(level,worker,landing)
                         ||Math.abs(WorkerNavigation.surveyFloorHeight(level,landing)-landing.getY())>.1)continue;
                 // Walk from a clear exterior column to the roof's lip.
@@ -286,11 +301,13 @@ public final class BuilderFlight {
                             ||!WorkerNavigation.canStandOn(level,worker,launch)
                             ||Math.abs(WorkerNavigation.surveyFloorHeight(level,launch)-launch.getY())>.1
                             ||path(level,worker,feet(launch),feet(landing),feet(launch)).isEmpty())continue;
+                    if(++probes>24)break roofSearch;
                     if(!WorkerNavigation.hasGroundRouteFrom(level,worker,landing,work))continue;
                     launches.add(launch);byLaunch.put(launch,landing);
                 }
             }
-            if(launches.size()>=12)break roofSearch;
+            if(launches.size()>=8)break roofSearch;
+            }
         }
         if(launches.isEmpty())return null;
         launches.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(feet(at))));
