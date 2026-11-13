@@ -224,6 +224,9 @@ public final class BuilderPropellerGameTest {
         var world=h.getLevel();
         for(int x=8;x<=14;x++)for(int z=8;z<=14;z++){
             h.setBlock(x,2,z,Blocks.STONE);
+            // Empty structure templates do not explicitly clear air.
+            // Guarantee the open shaft and landing headroom exist.
+            for(int y=3;y<=9;y++)h.setBlock(x,y,z,Blocks.AIR);
             if(x!=11||z!=11){
                 h.setBlock(x,3,z,Blocks.STONE);
                 h.setBlock(x,4,z,Blocks.STONE);
@@ -237,7 +240,12 @@ public final class BuilderPropellerGameTest {
         world.addFreshEntity(worker);
         h.onEachTick(()->{
             if(h.getTick()==5&&!BuilderFlight.escapePocket(world,worker,start.east(6))){
-                h.fail("No collision-safe lift from the open pocket");return;
+                BlockPos landing=start.east().above(3);
+                h.fail("No collision-safe lift from the open pocket feet="+worker.position()
+                        +" grounded="+worker.onGround()+" landing="+landing
+                        +" stand="+com.caszgamermd.golemsplus.worker.WorkerNavigation.canStandOn(world,worker,landing)
+                        +" shaftClear="+BuilderFlight.clear(world,worker,Vec3.atBottomCenterOf(start.above(3)))
+                        +" landingClear="+BuilderFlight.clear(world,worker,Vec3.atBottomCenterOf(landing)));return;
             }
             if(h.getTick()>5&&!BuilderFlight.active(worker)&&worker.onGround()
                     &&worker.getY()>=start.getY()+2.9){
