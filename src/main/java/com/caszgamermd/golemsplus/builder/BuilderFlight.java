@@ -240,7 +240,67 @@ public final class BuilderFlight {
         if(below)landings.sort(Comparator.comparingInt((BlockPos p)->p.getY())
                 .thenComparingDouble(p->worker.position().distanceToSqr(feet(p))));
         for(BlockPos floor:landings)if(request(level,worker,floor))return true;
+        // A hovering worker can also land on a nearby raised lip and
+        // walk to the edge, rather than hovering forever under a roof.
+        if(flight!=null){
+            for(int dy=1;dy<=4;dy++)for(BlockPos column:columns){
+                BlockPos floor=new BlockPos(column.getX(),top+dy,column.getZ());
+                if(floor.getY()>=level.getMaxY())continue;
+                if(WorkerNavigation.canStandOn(level,worker,floor)&&request(level,worker,floor))
+                    return true;
+            }
+        }
         return false;
+    }
+
+    private record Descent(BlockPos depot,BlockPos launch,BlockPos landing,long until){}
+    private static final Map<BuilderGolem,Descent> descents=new WeakHashMap<>();
+
+    /** Walk to a real ledge, then use the local propeller to descend.
+     * A two-block horizontal flight budget is not a two-block walking budget. */
+    public static boolean approachDescentLaunch(ServerLevel level,BuilderGolem worker,BlockPos depot){
+        if(!enabled(worker)||active(worker)||!worker.onGround())return false;
+        long now=level.getGameTime();
+        Descent saved=descents.get(worker);
+        if(saved!=null&&saved.depot().equals(depot)&&now<saved.until()
+                &&WorkerNavigation.canStandOn(level,worker,saved.launch())
+                &&WorkerNavigation.canStandOn(level,worker,saved.landing())){
+            if(worker.position().distanceToSqr(feet(saved.launch()))<.04){
+                descents.remove(worker);
+                return request(level,worker,saved.landing());
+            }
+            return WorkerNavigation.routeToExact(level,worker,saved.launch(),1.0);
+        }
+        descents.remove(worker);
+        var possible=new ArrayList<BlockPos>();
+        var landingByLaunch=new HashMap<BlockPos,BlockPos>();
+        BlockPos here=worker.blockPosition();
+        int[][] offsets={{1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1}};
+        for(int radius=1;radius<=8;radius++)for(int[] off:offsets){
+            BlockPos launch=here.offset(radius*off[0],0,radius*off[1]);
+            if(!WorkerNavigation.canStandOn(level,worker,launch)
+                    ||Math.abs(WorkerNavigation.surveyFloorHeight(level,launch)-launch.getY())>.1)continue;
+            Vec3 anchor=feet(launch);
+            BlockPos best=null;
+            for(int[] side:offsets){
+                BlockPos column=launch.offset(side[0],0,side[1]);
+                if(!clear(level,worker,feet(column)))continue;
+                for(int y=launch.getY()-2;y>level.getMinY()&&y>=depot.getY()-2;y--){
+                    BlockPos floor=new BlockPos(column.getX(),y,column.getZ());
+                    if(!level.hasChunkAt(floor))break;
+                    if(!WorkerNavigation.canStandOn(level,worker,floor))continue;
+                    if(!path(level,worker,anchor,feet(floor),anchor).isEmpty()
+                            &&(best==null||floor.getY()<best.getY()))best=floor;
+                    break;
+                }
+            }
+            if(best!=null){possible.add(launch);landingByLaunch.put(launch,best);}
+        }
+        possible.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(feet(at))));
+        BlockPos launch=WorkerNavigation.selectExecutableStand(level,worker,possible);
+        if(launch==null)return false;
+        descents.put(worker,new Descent(depot.immutable(),launch,landingByLaunch.get(launch),now+180));
+        return WorkerNavigation.routeToExact(level,worker,launch,1.0);
     }
     public static boolean safeWorkPose(ServerLevel level, BuilderGolem worker,
             BlockPos target, Vec3 position) {

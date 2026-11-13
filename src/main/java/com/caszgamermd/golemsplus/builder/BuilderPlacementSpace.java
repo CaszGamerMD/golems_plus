@@ -302,6 +302,17 @@ public final class BuilderPlacementSpace {
                 yielding.put(worker,hold);
             }
         }
+        // Hovering workers cannot obey a ground-only escape order.
+        // Keep their existing flight envelope and hold this reservation
+        // until the other Builder has actually placed its block.
+        if(BuilderFlight.active(worker)){
+            if(occupied(hold.target(),worker,hold.placingWorker())){
+                BlockPos pose=BuilderFlight.workPose(level,worker,hold.target());
+                if(pose!=null&&BuilderFlight.request(level,worker,pose))return true;
+                BuilderFlight.land(level,worker,true);
+            }
+            return true;
+        }
         // Otherwise the worker must take a normal collision-safe A* path.
         if(occupied(hold.target(),worker,hold.placingWorker())
                 ||worker.distanceToSqr(hold.destination().getX()+.5,
@@ -702,8 +713,17 @@ public final class BuilderPlacementSpace {
             // When standing adjacent on real ground, do a precise
             // horizontal edge-clearance move instead of targeting a tile
             // center that still intersects the future placement cube.
-            boolean precision=!BuilderFlight.enabled(blocker)&&canPrecisionStep(level,blocker,target);
+            boolean precision=!BuilderFlight.active(blocker)&&canPrecisionStep(level,blocker,target);
             BlockPos destination=precision?blocker.blockPosition():escape(level,blocker,target);
+            if(BuilderFlight.enabled(blocker)&&!precision
+                    &&(BuilderFlight.active(blocker)||destination==null)){
+                BlockPos hover=BuilderFlight.workPose(level,blocker,target);
+                if(hover!=null&&!hover.equals(target)&&BuilderFlight.request(level,blocker,hover)){
+                    yielding.put(blocker,new Yield(target,hover,
+                            level.getGameTime()+60,blocker==placing,false));
+                    continue;
+                }
+            }
             // Ordinary A* must not route a blocker INTO the cell that
             // another Builder is about to fill. A precision sidestep,
             // however, deliberately starts and stays within the SAME

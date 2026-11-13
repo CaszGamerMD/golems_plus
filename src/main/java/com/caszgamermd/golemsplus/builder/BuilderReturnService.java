@@ -131,8 +131,9 @@ public final class BuilderReturnService {
             route.stand=com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .selectExecutableStand(level,worker,possible);
             if(route.stand==null){
-                if(BuilderFlight.enabled(worker)&&worker.getY()>target.getY()+1.5)
-                    BuilderFlight.land(level,worker,true);
+                if(BuilderFlight.enabled(worker)&&worker.getY()>target.getY()+1.5
+                        &&!BuilderFlight.land(level,worker,true))
+                    BuilderFlight.approachDescentLaunch(level,worker,target);
                 return true;
             }
         }

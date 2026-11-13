@@ -166,4 +166,31 @@ public final class BuilderPropellerGameTest {
         });
     }
 
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=400,skyAccess=true)
+    public void propellerWalksToRoofEdgeBeforeDescending(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=3;x<=20;x++)for(int z=3;z<=20;z++)h.setBlock(x,1,z,Blocks.STONE);
+        for(int x=7;x<=13;x++)for(int z=7;z<=13;z++)h.setBlock(x,6,z,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(10,7,10));
+        BlockPos depot=h.absolutePos(new BlockPos(5,2,5));
+        world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(worker);
+        boolean[] walked={false},flew={false};
+        h.onEachTick(()->{
+            if(h.getTick()<5)return;
+            if(!BuilderFlight.active(worker)&&worker.onGround()
+                    &&worker.getY()>start.getY()-.1
+                    &&worker.position().distanceToSqr(Vec3.atBottomCenterOf(start))>4)walked[0]=true;
+            if(BuilderFlight.active(worker))flew[0]=true;
+            if(worker.getY()<start.getY()-3&&worker.onGround()&&!BuilderFlight.active(worker)){
+                if(!walked[0]||!flew[0]){h.fail("Did not walk to launch and descend");return;}
+                h.succeed();return;
+            }
+            if(h.getTick()%5==0&&!BuilderFlight.active(worker))
+                BuilderFlight.approachDescentLaunch(world,worker,depot);
+        });
+    }
+
 }
