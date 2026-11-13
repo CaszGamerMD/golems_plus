@@ -1737,6 +1737,10 @@ public final class BuilderBuildService {
                     activity.lastTargetProgressTick=now;
                     activity.bestTargetDistance=distance;
                 }
+                if(BuilderFlight.roofAccessProgress(level,worker,pos)){
+                    activity.lastTargetProgressTick=now;
+                    if(BuilderFlight.approachRoofWork(level,worker,pos,bodyBlockingWork))return;
+                }
                 if(now-activity.lastTargetProgressTick>160){
                     table.waitForBuilderAccess(worker.getUUID(),index,now,"propeller approach made no target progress");
                     publishHandoff(table,worker.getUUID(),index,now,"propeller approach loop");
@@ -1761,7 +1765,7 @@ public final class BuilderBuildService {
                     return;
                 }
                 if(BuilderFlight.approachLaunch(level,worker,pos)
-                        ||BuilderFlight.approachRoofWork(level,worker,pos)){
+                        ||BuilderFlight.approachRoofWork(level,worker,pos,bodyBlockingWork)){
                     activity.phase=Action.MOVE_TO_WORK;
                     return;
                 }

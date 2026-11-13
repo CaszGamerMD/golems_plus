@@ -699,7 +699,7 @@ public final class BuilderConstructionPlanner {
             // stance null so speculative handoff never sends A* into midair.
             boolean propeller=stance==null
                     &&(BuilderFlight.canAccessWork(world,worker,target)
-                        ||pending.size()<=24&&BuilderFlight.canAccessRoofWork(world,worker,target));
+                        ||pending.size()<=24&&BuilderFlight.canAccessRoofWork(world,worker,target,bodyBlocking));
             // An elevated unsupported block needs construction footing.
             // Prefer a real, item-paid scaffold platform if one can be
             // built. A grapple is an access tool, not a replacement for a
