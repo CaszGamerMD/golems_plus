@@ -51,7 +51,25 @@ public final class BuilderClearance{
             slot=BuilderSupplyInventory.toolSlot(worker,current);
             if(slot<0)return Result.BLOCKED;
         }
-        if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>14){
+        if(BuilderFlight.enabled(worker)){
+            if(!BuilderFlight.safeWorkPose(level,worker,pos,worker.position())){
+                // Equip first, then use the same physical approach as
+                // construction. A lift needs no fabricated grapple anchor.
+                BlockPos pose=BuilderFlight.workPose(level,worker,pos);
+                if(pose!=null&&BuilderFlight.request(level,worker,pose))return Result.MOVING;
+                if(BuilderFlight.active(worker)){
+                    BuilderFlight.land(level,worker,false);
+                    return Result.MOVING;
+                }
+                if(BuilderFlight.approachLaunch(level,worker,pos))return Result.MOVING;
+                BlockPos stand=BuilderPlacementSpace.approachWithRules(level,worker,pos,
+                        at->BuilderConstructionPlanner.safeStand(level,worker,pos,at));
+                if(stand!=null&&com.caszgamermd.golemsplus.worker.WorkerNavigation
+                        .routeToExact(level,worker,stand,.84))return Result.MOVING;
+                table.setProblem("CLEARING: no collision-safe approach to "+pos);
+                return Result.BLOCKED;
+            }
+        }else if(worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5)>14){
             com.caszgamermd.golemsplus.worker.WorkerNavigation.routeTo(
                     level,worker,pos,.84);
             return Result.MOVING;

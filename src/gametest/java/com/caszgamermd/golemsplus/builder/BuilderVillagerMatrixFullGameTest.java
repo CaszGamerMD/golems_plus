@@ -258,10 +258,24 @@ public final class BuilderVillagerMatrixFullGameTest {
                 +unavailableStates+" unsupportedStates="+plan.unsupported()
                 +" "+WORKERS+" actual Builders; no scaffold or structure prebuilt");
 
-        // Dedicated arena is larger than the 48x48 Dome room: the Matrix
-        // is 49 blocks deep and requires external scaffold routes on all sides.
-        for(int x=1;x<=62;x++)for(int z=1;z<=70;z++)
+        // The matrix_arena structure template contains no block records.
+        // Vanilla's random test coordinates can therefore leave terrain
+        // or a generated structure inside its nominally empty air volume.
+        // Initialize the SAME empty flat test site each time, before
+        // creating the job or spawning any Builder. Never preplace a
+        // source cell or modify the world during the scored construction.
+        int terrain=0;
+        for(int x=1;x<=62;x++)for(int z=1;z<=70;z++){
             h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=27;y++){
+                BlockPos p=h.absolutePos(new BlockPos(x,y,z));
+                if(!level.getBlockState(p).isAir()){
+                    level.setBlock(p,Blocks.AIR.defaultBlockState(),2);
+                    terrain++;
+                }
+            }
+        }
+        System.out.println("[MATRIX EMPTY ARENA] removed preexisting test terrain="+terrain);
         // The wider upper layers extend far beyond the starter foundation.
         // Measure depot proximity to occupied cells on the first build layer.
         BlockPos plannerPos=h.absolutePos(new BlockPos(16,2,32));

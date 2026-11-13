@@ -134,7 +134,7 @@ public final class BuilderSiteClearance {
             }
             BuilderChunkTickets.destination(world,worker,pos);
             boolean surfaceSnow=existing.is(Blocks.SNOW);
-            if(!surfaceSnow&&pos.getY()-worker.getY()>2.5){
+            if(!BuilderFlight.enabled(worker)&&!surfaceSnow&&pos.getY()-worker.getY()>2.5){
                 var reach=BuilderGrappleAccess.reach(world,worker,table,pos);
                 if(reach!=BuilderGrappleAccess.Result.READY){
                     if(reach==BuilderGrappleAccess.Result.NEED_HOOK)
