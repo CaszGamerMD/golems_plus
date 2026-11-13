@@ -258,4 +258,43 @@ public final class BuilderCreativeCrateFluidGameTest {
         }catch(Exception e){h.fail("Piston phase test setup failed "+e);}
     }
 
+    @GameTest(maxTicks=100,skyAccess=true)
+    public void recoversMissingLowerBubbleSourcesBeforeFinishingUpperClaim(GameTestHelper h){
+        var world=h.getLevel();
+        BlockPos base=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos lower=base.above(),middle=base.above(2),upper=base.above(3);
+        String encoded="minecraft:bubble_column[drag=false]";
+        var wanted=BuilderBlockResolver.resolve(encoded,BuildSite.Rotation.NONE,BuildSite.Mirror.NONE).state();
+        var planned=Map.of(base,Blocks.SOUL_SAND.defaultBlockState(),lower,wanted,middle,wanted,upper,wanted);
+        for(int y=3;y<=5;y++){
+            h.setBlock(4,y,4,Blocks.AIR);
+            h.setBlock(3,y,4,Blocks.GLASS);h.setBlock(5,y,4,Blocks.GLASS);
+            h.setBlock(4,y,3,Blocks.GLASS);h.setBlock(4,y,5,Blocks.GLASS);
+        }
+        h.setBlock(4,2,4,Blocks.SOUL_SAND);
+        var claim=new BuilderConstructionPlan.Step(upper.getX(),upper.getY(),upper.getZ(),encoded,BuilderWaterPass.WATER_BUCKET);
+        var repair=BuilderWaterPass.bubbleAction(world,upper,claim,planned);
+        if(repair==null||repair==claim||repair.y()!=lower.getY()){
+            h.fail("Upper claim did not choose its lowest missing source");return;
+        }
+        h.setBlock(4,3,4,Blocks.WATER);
+        repair=BuilderWaterPass.bubbleAction(world,upper,claim,planned);
+        if(repair==null||repair==claim||repair.y()!=middle.getY()){
+            h.fail("Upper claim did not choose next missing source");return;
+        }
+        h.setBlock(4,4,4,Blocks.WATER);h.setBlock(4,5,4,Blocks.WATER);
+        if(BuilderWaterPass.bubbleAction(world,upper,claim,planned)!=claim
+                ||!BuilderWaterPass.refreshBubble(world,upper,wanted)){
+            h.fail("Real generator not selected for contiguous water");return;
+        }
+        h.onEachTick(()->{
+            if(h.getTick()<5)return;
+            if(world.getBlockState(lower).equals(wanted)
+                    &&world.getBlockState(middle).equals(wanted)
+                    &&world.getBlockState(upper).equals(wanted)){
+                System.out.println("[BUILDER BUBBLE REPAIR PASS] lowest source repair and natural full-column propagation");h.succeed();
+            }else if(h.getTick()==90)h.fail("Column did not naturally recover "+world.getBlockState(lower)+" "+world.getBlockState(middle)+" "+world.getBlockState(upper));
+        });
+    }
+
 }
