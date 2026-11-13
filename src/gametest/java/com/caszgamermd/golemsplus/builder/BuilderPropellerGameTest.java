@@ -332,8 +332,14 @@ public final class BuilderPropellerGameTest {
     @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=600,skyAccess=true)
     public void propellerRecoversWhenOriginalLandingEnvelopeCloses(GameTestHelper h){
         var world=h.getLevel();
-        for(int x=7;x<=17;x++)for(int z=9;z<=15;z++)
-            for(int y=0;y<=10;y++)h.setBlock(x,y,z,Blocks.AIR);
+        // Remove even the world floor below the empty structure so the
+        // original takeoff envelope truly contains no possible landing.
+        // The fixture's local Y=0 is several blocks above world minY.
+        for(int x=7;x<=17;x++)for(int z=9;z<=15;z++){
+            BlockPos top=h.absolutePos(new BlockPos(x,10,z));
+            for(int y=world.getMinY();y<=top.getY();y++)
+                world.setBlock(top.atY(y),Blocks.AIR.defaultBlockState(),3);
+        }
         h.setBlock(10,3,12,Blocks.STONE);
         h.setBlock(14,3,12,Blocks.STONE);
         BlockPos start=h.absolutePos(new BlockPos(10,4,12));
