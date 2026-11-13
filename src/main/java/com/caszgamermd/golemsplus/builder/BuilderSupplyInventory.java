@@ -948,10 +948,16 @@ public final class BuilderSupplyInventory {
     static LoadStatus loadRailKit(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,Item rail,int required,
             boolean foundation,List<BuilderConstructionPlan.Step> steps){
+        return loadRailKit(level,worker,table,rail,required,foundation,false,steps);
+    }
+    static LoadStatus loadRailKit(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,Item rail,int required,
+            boolean foundation,boolean wetRepair,List<BuilderConstructionPlan.Step> steps){
         Item cobble=net.minecraft.world.item.Items.COBBLESTONE;
         var kit=new LinkedHashMap<Item,Integer>();
         kit.put(rail,required);
         if(foundation)kit.merge(cobble,1,Math::max);
+        if(wetRepair)kit.put(com.caszgamermd.golemsplus.world.WorksiteContent.INFINITE_WATER_BUCKET,1);
         // A wet-rail repair must not displace the reusable water source.
         java.util.Set<Item> protectedItems=new java.util.HashSet<>(kit.keySet());
         protectedItems.add(com.caszgamermd.golemsplus.world.WorksiteContent.INFINITE_WATER_BUCKET);
@@ -981,7 +987,8 @@ public final class BuilderSupplyInventory {
             // exchange a whole real source stack with that pocket.
             if(room(worker,new ItemStack(item))<=0){
                 if(!makeRailKitRoom(table,worker,item,protectedItems))continue;
-                drawFromSources(table,worker,item,row.getValue()-worker.carriedCount(item));
+                int stillMissing=row.getValue()-worker.carriedCount(item);
+                if(stillMissing>0)drawFromSources(table,worker,item,stillMissing);
             }
         }
         return kit.entrySet().stream().allMatch(e->worker.carriedCount(e.getKey())>=e.getValue())

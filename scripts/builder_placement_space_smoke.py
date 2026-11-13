@@ -49,7 +49,12 @@ assert start < guard < payment < placed
 assert "BlockState toPlace=bubble" in build
 assert "Blocks.WATER.defaultBlockState()" in build
 assert "if(bubble&&!BuilderPlacementState.matches(" in build
-assert "BuilderSupplyInventory.loadRailJig(" in build
+# The whole rail kit must be ready before placement, and staging
+# a full pouch must exchange real stock without discarding the rail.
+assert "BuilderSupplyInventory.loadRailKit(" in build
+assert build.index("BuilderSupplyInventory.loadRailKit(") < payment
+assert "railItem,needed,temporaryRailFoundation,rebuildMissingWetRail,plan.steps()" in build
+assert "makeRailKitRoom(table,worker,item,protectedItems)" in (root/"BuilderSupplyInventory.java").read_text()
 assert "raisedRail.below(),net.minecraft.world.level.block.Blocks.COBBLESTONE" in build
 assert "if(!precision)" in space
 assert "WorkerNavigation.routeToExact(level,blocker,destination,.9)" in space

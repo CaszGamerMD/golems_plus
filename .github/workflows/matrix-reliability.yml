@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/matrix-reliability.yml'
+      # Run the three-way comparison when the rail-kit regression changes.
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderRailKitGameTest.java'
   workflow_dispatch:
 
 permissions:

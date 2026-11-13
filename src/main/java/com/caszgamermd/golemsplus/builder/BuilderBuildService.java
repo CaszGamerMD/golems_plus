@@ -1658,7 +1658,7 @@ public final class BuilderBuildService {
             if(railJig||rebuildMissingWetRail){
                 int needed=railJig?2:1;
                 var kit=BuilderSupplyInventory.loadRailKit(level,worker,table,
-                        railItem,needed,temporaryRailFoundation,plan.steps());
+                        railItem,needed,temporaryRailFoundation,rebuildMissingWetRail,plan.steps());
                 if(kit!=BuilderSupplyInventory.LoadStatus.READY){
                     activity.phase=Action.STAGE_MATERIALS;
                     if(kit==BuilderSupplyInventory.LoadStatus.MOVING)
@@ -1667,7 +1667,9 @@ public final class BuilderBuildService {
                         String reason="Ascending rail kit waiting: "+railItem
                                 +" "+worker.carriedCount(railItem)+"/"+needed
                                 +" cobblestone "+worker.carriedCount(net.minecraft.world.item.Items.COBBLESTONE)
-                                +"/"+(temporaryRailFoundation?1:0);
+                                +"/"+(temporaryRailFoundation?1:0)
+                                +(rebuildMissingWetRail?" water bucket "+worker.carriedCount(
+                                    com.caszgamermd.golemsplus.world.WorksiteContent.INFINITE_WATER_BUCKET)+"/1":"");
                         table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),reason);
                         publishHandoff(table,worker.getUUID(),index,level.getGameTime(),reason);
                         table.setProblem(reason);
