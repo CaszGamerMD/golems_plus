@@ -127,9 +127,12 @@ public final class BuilderFlight {
      * A nominal two-metre center-to-center leg may be 2.025m from the
      * physical walking endpoint. Trim the landing point, NOT the envelope. */
     static boolean requestSupportedLanding(ServerLevel level,BuilderGolem worker,BlockPos goal){
-        if(goal==null||!enabled(worker)||!WorkerNavigation.canStandOn(level,worker,goal)
-                ||Math.abs(WorkerNavigation.surveyFloorHeight(level,goal)-goal.getY())>.1)return false;
-        Vec3 center=feet(goal),anchor=origin(worker);
+        if(goal==null||!enabled(worker)||!WorkerNavigation.canStandOn(level,worker,goal))return false;
+        // A legal stand may be a bottom slab, stair, soul sand or
+        // farmland: its physical top is not necessarily integer Y.
+        // Use that exact collision surface for the entire powered leg.
+        Vec3 center=supportedFeet(level,goal),anchor=origin(worker);
+        if(!Double.isFinite(center.y)||!clear(level,worker,center))return false;
         double dx=center.x-anchor.x,dz=center.z-anchor.z;
         double length=Math.hypot(dx,dz);
         Vec3 landing=center;
@@ -145,6 +148,9 @@ public final class BuilderFlight {
                     ||!clear(level,worker,landing))return false;
         }
         return requestPosition(level,worker,goal,landing);
+    }
+    private static Vec3 supportedFeet(ServerLevel level,BlockPos stand){
+        return new Vec3(stand.getX()+.5,WorkerNavigation.surveyFloorHeight(level,stand),stand.getZ()+.5);
     }
     private static boolean requestPosition(ServerLevel level,BuilderGolem worker,BlockPos goal,Vec3 destination){
         if(!inEnvelope(origin(worker),destination))return false;
@@ -400,14 +406,14 @@ public final class BuilderFlight {
         }
         if(below)landings.sort(Comparator.comparingInt((BlockPos p)->p.getY())
                 .thenComparingDouble(p->worker.position().distanceToSqr(feet(p))));
-        for(BlockPos floor:landings)if(request(level,worker,floor))return true;
+        for(BlockPos floor:landings)if(requestSupportedLanding(level,worker,floor))return true;
         // A hovering worker can also land on a nearby raised lip and
         // walk to the edge, rather than hovering forever under a roof.
         if(flight!=null){
             for(int dy=1;dy<=4;dy++)for(BlockPos column:columns){
                 BlockPos floor=new BlockPos(column.getX(),top+dy,column.getZ());
                 if(floor.getY()>=level.getMaxY())continue;
-                if(WorkerNavigation.canStandOn(level,worker,floor)&&request(level,worker,floor))
+                if(WorkerNavigation.canStandOn(level,worker,floor)&&requestSupportedLanding(level,worker,floor))
                     return true;
             }
         }
@@ -623,9 +629,8 @@ public final class BuilderFlight {
         // as well: flooring the near-integer feet can select the solid
         // block UNDER the landing and leave the propeller hovering.
         boolean atLanding=flight.goal!=null
-                &&worker.position().distanceToSqr(feet(flight.goal))<.04
                 &&WorkerNavigation.canStandOn(level,worker,flight.goal)
-                &&Math.abs(worker.getY()-WorkerNavigation.surveyFloorHeight(level,flight.goal))<.15;
+                &&worker.position().distanceToSqr(supportedFeet(level,flight.goal))<.04;
         if (!moving && (atLanding || worker.onGround() || (Double.isFinite(floor)
                 && Math.abs(worker.getY() - floor) < .15))) {
             worker.setDeltaMovement(Vec3.ZERO);

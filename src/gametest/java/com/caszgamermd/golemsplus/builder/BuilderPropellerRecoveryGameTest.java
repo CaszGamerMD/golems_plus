@@ -250,4 +250,50 @@ public final class BuilderPropellerRecoveryGameTest {
         });
     }
 
+
+    /** Landing on fractional-height terrain is an ordinary powered
+     * descent, not a license to reset the two-block flight envelope. */
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=240,skyAccess=true)
+    public void propellerLandsOnActualBottomSlabSurface(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=8;x<=14;x++)for(int z=8;z<=14;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=9;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        h.setBlock(11,2,10,Blocks.STONE_SLAB);
+        BlockPos start=h.absolutePos(new BlockPos(10,2,10));
+        BlockPos slab=h.absolutePos(new BlockPos(11,2,10));
+        BlockPos hover=start.above(4);
+        Vec3 landing=new Vec3(slab.getX()+.5,slab.getY()+.5,slab.getZ()+.5);
+        level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        level.addFreshEntity(worker);
+        boolean[] descending={false};
+        Vec3[] previous={worker.position()};
+        h.onEachTick(()->{
+            if(!worker.isAlive()||worker.position().distanceTo(previous[0])>.45){
+                h.fail("Fractional landing lost physical motion");return;
+            }
+            previous[0]=worker.position();
+            if(h.getTick()==5&&!BuilderFlight.request(level,worker,hover)){
+                h.fail("Could not establish powered hover");return;
+            }
+            if(h.getTick()<=5)return;
+            if(!descending[0]&&!BuilderFlight.moving(worker)
+                    &&worker.position().distanceToSqr(Vec3.atBottomCenterOf(hover))<.04){
+                descending[0]=true;
+                if(!BuilderFlight.requestSupportedLanding(level,worker,slab)){
+                    h.fail("Physical half-block landing rejected");return;
+                }
+            }
+            if(descending[0]&&!BuilderFlight.active(worker)&&worker.onGround()){
+                if(worker.position().distanceToSqr(landing)>.04){
+                    h.fail("Landed at wrong surface: "+worker.position());return;
+                }
+                System.out.println("[FRACTIONAL SLAB LANDING PASS] real half-block surface");
+                h.succeed();
+            }
+        });
+    }
 }
