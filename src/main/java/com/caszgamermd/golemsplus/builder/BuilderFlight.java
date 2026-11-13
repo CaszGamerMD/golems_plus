@@ -225,7 +225,7 @@ public final class BuilderFlight {
             double dx = p.getX() + .5 - worker.getX(), dz = p.getZ() + .5 - worker.getZ();
             return dx * dx + dz * dz;
         }));
-        int top = worker.blockPosition().getY() - (below ? 1 : 0);
+        int top = worker.blockPosition().getY() - (below && flight==null ? 1 : 0);
         var landings=new ArrayList<BlockPos>();
         for (BlockPos column : columns) {
             for (int y = top; y > level.getMinY(); y--) {
@@ -237,7 +237,7 @@ public final class BuilderFlight {
                 break;
             }
         }
-        if(below)landings.sort(Comparator.comparingInt(BlockPos::getY)
+        if(below)landings.sort(Comparator.comparingInt((BlockPos p)->p.getY())
                 .thenComparingDouble(p->worker.position().distanceToSqr(feet(p))));
         for(BlockPos floor:landings)if(request(level,worker,floor))return true;
         return false;

@@ -1238,8 +1238,8 @@ public final class BuilderBuildService {
                         teammateRequested=true;break;
                     }
                 }
-            boolean emergencyRoofAssist=index>=0&&!zone.contains(index)
-                    ||ownLayerClear&&(teammateRequested||stalledRoof);
+            boolean emergencyRoofAssist=ownLayerClear&&(teammateRequested||stalledRoof)
+                    ||index>=0&&!zone.contains(index);
             // Monitoring already ran before the early finished-zone
             // return, so every crew member sees the SAME rescue window.
             if(emergencyRoofAssist){
