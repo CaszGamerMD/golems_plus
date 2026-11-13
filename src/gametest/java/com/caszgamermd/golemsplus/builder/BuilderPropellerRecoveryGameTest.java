@@ -34,6 +34,12 @@ public final class BuilderPropellerRecoveryGameTest {
                 }
             }
             if(h.getTick()<=5||anchor[0]==null)return;
+            if(h.getTick()==190){
+                h.fail("Powered escape stalled feet="+worker.position()+" active="+BuilderFlight.active(worker)
+                        +" moving="+BuilderFlight.moving(worker)+" grounded="+worker.onGround()
+                        +" gravity="+!worker.isNoGravity()+" floor="+level.getBlockState(worker.blockPosition().below()));
+                return;
+            }
             double dx=worker.getX()-anchor[0].x,dz=worker.getZ()-anchor[0].z;
             if(dx*dx+dz*dz>4.001){h.fail("Recovery exceeded 2m flight envelope");return;}
             if(!BuilderFlight.active(worker)&&worker.onGround()){

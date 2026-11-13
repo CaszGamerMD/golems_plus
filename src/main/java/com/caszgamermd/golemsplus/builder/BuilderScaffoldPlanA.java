@@ -220,7 +220,7 @@ public final class BuilderScaffoldPlanA {
     public static void cancel(BuilderGolem worker){jobs.remove(worker);}
     public static boolean releaseDetachedPlan(ServerLevel level,BuilderGolem worker){
         Job j=jobs.get(worker);
-        if(j==null||BuilderScaffolding.isControllingMovement(worker)
+        if(j==null||BuilderScaffolding.hasPhysicalMotion(worker)
                 ||!worker.onGround()||worker.isNoGravity()
                 ||level.getGameTime()-j.lastProgress<80)return false;
         if(j.phase==Phase.APPROACH||j.phase==Phase.BUILD||j.phase==Phase.CLIMB)return false;

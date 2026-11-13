@@ -334,6 +334,13 @@ public final class BuilderSupplyInventory {
         materials.put("golems_plus:grapple_hook",1);
         materials.put("minecraft:scaffolding",64);
         materials.put("minecraft:bucket",1);
+        // Stage the actual claim before speculative neighbors. The
+        // active work order can contain a large mixed-material palette.
+        int claim=table.claimedStep(worker.getUUID());
+        if(claim>=0&&claim<steps.size()){
+            var first=steps.get(claim);
+            if(first.requiredItem()!=null)materials.putIfAbsent(first.requiredItem(),0);
+        }
         int highest=worker.blockPosition().getY();
         for(int index:indices){
             if(index<0||index>=steps.size())continue;
@@ -348,6 +355,32 @@ public final class BuilderSupplyInventory {
         // instead of abandoning a hard-won scaffold tower afterward.
         if(hasNearTermWaterWork(steps,zone,highest))
             materials.put(BuilderWaterPass.WATER_BUCKET,1);
+        // Keep a full stack of high-volume CURRENT-layer materials when
+        // a depot visit is already necessary. Previously staging a new
+        // ten-cell order unloaded the other 54 stone, causing a full
+        // roof descent / ascent every handful of blocks. Do not add
+        // extra material types or stock for a future construction layer.
+        Map<String,Integer> activeDemand=new LinkedHashMap<>();
+        if(zone!=null){
+            int layer=table.builderActiveLayer(steps);
+            for(int idx:zone){
+                if(idx<0||idx>=steps.size())continue;
+                var cell=steps.get(idx);
+                String item=cell.requiredItem();
+                if(cell.y()!=layer||item==null||!materials.containsKey(item)
+                        ||cell.ignorePlant()||table.builderStepCompletedForMaterials(idx)
+                        ||!table.builderStepInActivePhase(steps,idx))continue;
+                activeDemand.merge(item,1,Integer::sum);
+            }
+        }
+        for(var row:activeDemand.entrySet()){
+            var key=net.minecraft.resources.Identifier.tryParse(row.getKey());
+            if(key==null||!BuiltInRegistries.ITEM.containsKey(key)
+                    ||BuilderBlockResolver.reusableSupply(row.getKey()))continue;
+            int max=new ItemStack(BuiltInRegistries.ITEM.getValue(key)).getMaxStackSize();
+            if(max>1)materials.computeIfPresent(row.getKey(),(id,amount)->
+                    Math.max(amount,Math.min(max,row.getValue())));
+        }
         // A reusable fluid source is one tool for the whole work order,
         // independent of how many fluid cells are assigned.
         for(String item:java.util.List.copyOf(materials.keySet()))

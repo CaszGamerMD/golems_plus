@@ -559,8 +559,17 @@ public final class BuilderFlight {
         boolean moving = moving(worker);
         worker.setPropellerSpinning(moving || !worker.onGround());
         double floor = WorkerNavigation.surveyFloorHeight(level, worker.blockPosition());
-        if (!moving && (worker.onGround() || (Double.isFinite(floor)
+        // At large world coordinates the final physical step can be a
+        // few millimeters below an integer tile. Survey the actual goal
+        // as well: flooring the near-integer feet can select the solid
+        // block UNDER the landing and leave the propeller hovering.
+        boolean atLanding=flight.goal!=null
+                &&worker.position().distanceToSqr(feet(flight.goal))<.04
+                &&WorkerNavigation.canStandOn(level,worker,flight.goal)
+                &&Math.abs(worker.getY()-WorkerNavigation.surveyFloorHeight(level,flight.goal))<.15;
+        if (!moving && (atLanding || worker.onGround() || (Double.isFinite(floor)
                 && Math.abs(worker.getY() - floor) < .15))) {
+            worker.setDeltaMovement(Vec3.ZERO);
             worker.setNoGravity(false);
             worker.setPropellerSpinning(false);
             flights.remove(worker);
