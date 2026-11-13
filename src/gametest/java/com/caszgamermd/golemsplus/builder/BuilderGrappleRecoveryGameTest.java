@@ -111,7 +111,7 @@ public final class BuilderGrappleRecoveryGameTest {
     }
 
     @GameTest(maxTicks=460,skyAccess=true)
-    public void failedAscentReturnsToGroundAndRejectsSameAnchor(
+    public void failedAscentReturnsToFloodedGroundAndRejectsSameAnchor(
             GameTestHelper h){
         ground(h);
         ServerLevel world=h.getLevel();
@@ -137,9 +137,10 @@ public final class BuilderGrappleRecoveryGameTest {
                 ascent[0]=BuilderGrappleAccess.active(g);
             }
             if(!obstructed[0]&&state.contains("STEP_ON_TOP")){
-                // Block ONLY the upper ledge's destination, not the lower
-                // rope column. Returning to ground stays physically safe.
+                // Water changes the entry while the rope is in use.
+                // The solid landing still supports a safe release.
                 h.setBlock(4,7,3,Blocks.STONE);
+                h.setBlock(5,2,3,Blocks.WATER);
                 obstructed[0]=true;
             }
             if(obstructed[0]&&!BuilderGrappleAccess.active(g)

@@ -10,7 +10,7 @@ assert "shouldEvacuateIdleLayer(true,index," in src
 assert "returnAction.returningToSite=!parkAtOnSite(" in src
 assert "if(BuilderScaffolding.descendForTravel(level,worker,table))" in src
 assert "BuilderGrappleAccess.rappelHome(level,worker,table,depot)" in src
-assert "&&worker.distanceToSqr(depot.getX()+.5,depot.getY()," in src
+assert "&&BuilderReturnService.withinStorageReach(worker,depot)" in src
 assert "&& !BuilderScaffoldPlanA.hasPlan(worker)" not in src or True
 # Evacuation before expensive owner's task search, and before roof assist.
 assert src.index("if(returning!=null&&returning.returningToSite)") < src.index(

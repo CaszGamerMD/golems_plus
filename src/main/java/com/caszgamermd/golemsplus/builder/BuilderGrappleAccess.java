@@ -1032,18 +1032,16 @@ public final class BuilderGrappleAccess {
             case RETREAT -> {
                 // Climbing failed: slide BACK down the original clear
                 // column. Keep the line attached throughout the descent.
+                if(mob.getY()<=r.landing.getY()+.08
+                        &&physicallyStandingWithoutRope(level,mob)){
+                    release(mob,r,"CLIMB RETREATED TO GROUND");
+                    return false;
+                }
                 if(Math.abs(mob.getX()-x)>.07
                         ||Math.abs(mob.getZ()-z)>.07)
                     moved=steer(level,mob,x,mob.getY(),z,.14,true);
                 else if(mob.getY()>r.landing.getY()+.035)
                     moved=steer(level,mob,x,r.landing.getY(),z,.14,true);
-                else if(solidTop(level,r.landing.below())
-                        &&(headroom(level,r.landing)
-                            ||level.getBlockState(r.landing).getBlock()
-                                    instanceof BaseRailBlock
-                                &&level.getFluidState(r.landing).isEmpty())
-                        &&level.noCollision(mob,mob.getBoundingBox()))
-                    release(mob,r,"CLIMB RETREATED TO GROUND");
                 else moved=false;
             }
             case RETURN_TO_TOP -> {
@@ -1084,6 +1082,13 @@ public final class BuilderGrappleAccess {
         if(r.phase==Phase.RETREAT||r.phase==Phase.RETURN_TO_TOP
                 ||r.phase==Phase.RETURN_ON_LEDGE){
             r.recoveryTicks++;
+            // A changed floor, waterlogged rail or fractional ledge can
+            // catch the Builder before its original endpoint is reached.
+            if(r.recoveryTicks>=STUCK_TICKS&&physicallyStandingWithoutRope(level,mob)){
+                reject(level,mob,r);
+                release(mob,r,"RECOVERY REACHED PHYSICAL SUPPORT");
+                return false;
+            }
             if(r.recoveryTicks==TRAVEL_TIMEOUT)
                 System.out.println("[GRAPPLE] RECOVERY BLOCKED (still attached)"
                         +" phase="+r.phase+" anchor="+r.anchor
