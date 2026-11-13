@@ -625,8 +625,7 @@ public final class BuilderBuildService {
             return false;
         if(BuilderGrappleAccess.escapeRailPocket(level,worker,depot))
             return false;
-        com.caszgamermd.golemsplus.worker.WorkerNavigation
-                .routeTo(level,worker,depot,.8);
+        BuilderReturnService.approach(level,worker,depot,.8);
         return false;
     }
     /** A return request is a travel state, not a cooldown timer.
