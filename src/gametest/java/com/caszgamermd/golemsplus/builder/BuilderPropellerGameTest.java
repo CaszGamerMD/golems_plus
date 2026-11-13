@@ -39,7 +39,7 @@ public final class BuilderPropellerGameTest {
                 descending[0]=true;
                 if(!BuilderFlight.request(world,worker,start))h.fail("Could not plan descent");
             }
-            if(descending[0]&&!BuilderFlight.moving(worker)
+            if(descending[0]&&!BuilderFlight.moving(worker)&&worker.onGround()
                     &&worker.position().distanceToSqr(Vec3.atBottomCenterOf(start))<.025){
                 System.out.println("[PROPELLER PASS] 30-block ascent and descent tick="+h.getTick());
                 h.succeed();
