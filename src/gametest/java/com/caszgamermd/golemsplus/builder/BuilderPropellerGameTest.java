@@ -328,4 +328,38 @@ public final class BuilderPropellerGameTest {
             }
         });
     }
+
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=600,skyAccess=true)
+    public void propellerRecoversWhenOriginalLandingEnvelopeCloses(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=7;x<=17;x++)for(int z=9;z<=15;z++)
+            for(int y=0;y<=10;y++)h.setBlock(x,y,z,Blocks.AIR);
+        h.setBlock(10,3,12,Blocks.STONE);
+        h.setBlock(14,3,12,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(10,4,12));
+        BlockPos hover=start.east(2).above(4);
+        BlockPos landing=start.east(4);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(worker);
+        boolean[] removed={false};
+        h.onEachTick(()->{
+            if(h.getTick()==5&&!BuilderFlight.request(world,worker,hover)){
+                h.fail("Cannot establish initial vertical hover");return;
+            }
+            if(h.getTick()<6)return;
+            if(!removed[0]&&!BuilderFlight.moving(worker)
+                    &&worker.position().distanceToSqr(Vec3.atBottomCenterOf(hover))<.04){
+                h.setBlock(10,3,12,Blocks.AIR);
+                removed[0]=true;
+            }
+            if(!removed[0])return;
+            if(!BuilderFlight.active(worker)&&worker.onGround()
+                    &&worker.position().distanceToSqr(Vec3.atBottomCenterOf(landing))<.04){
+                System.out.println("[PROPELLER LANDING RECOVERY PASS] safe landing outside closed takeoff envelope");
+                h.succeed();return;
+            }
+            if(h.getTick()%5==0)BuilderFlight.land(world,worker,false);
+        });
+    }
 }

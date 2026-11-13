@@ -1739,7 +1739,6 @@ public final class BuilderBuildService {
                     &&!BuilderGrappleAccess.active(worker)
                     &&!BuilderScaffolding.isControllingMovement(worker)
                     &&(BuilderFlight.active(worker)
-                        ||Math.abs(pos.getY()-worker.blockPosition().getY())>1
                         ||BuilderPlacementSpace.approachForStep(level,worker,pos,
                             bodyBlockingWork,false,
                             at->BuilderConstructionPlanner.safeStandForStep(
@@ -1779,7 +1778,6 @@ public final class BuilderBuildService {
                 BlockPos flightPose=BuilderFlight.workPose(level,worker,pos,bodyBlockingWork);
                 if(flightPose!=null&&BuilderFlight.request(level,worker,flightPose))return;
                 if(BuilderFlight.active(worker)){
-                    if(BuilderFlight.land(level,worker,true))return;
                     if(!BuilderFlight.land(level,worker,false)){
                         table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),
                                 "propeller needs clear local landing");

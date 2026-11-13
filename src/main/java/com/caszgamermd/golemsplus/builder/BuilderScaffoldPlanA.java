@@ -1132,13 +1132,14 @@ public final class BuilderScaffoldPlanA {
         if(BuilderFlight.enabled(worker)
                 &&(j.phase==Phase.READY||j.phase==Phase.WALK_FIRST
                     ||j.phase==Phase.WALK_SECOND||j.phase==Phase.RETURN_FIRST
-                    ||j.phase==Phase.RETURN_TOWER)){
+                    ||j.phase==Phase.RETURN_TOWER||j.phase==Phase.DISMOUNT)){
             long now=level.getGameTime();
             BlockPos goal=switch(j.phase){
                 case WALK_FIRST->j.first().above();
                 case WALK_SECOND->j.second().above();
                 case RETURN_FIRST->j.bridge(Math.max(1,j.returnStep)).above();
                 case RETURN_TOWER->j.base.atY(j.top+1);
+                case DISMOUNT->j.exit==null?j.base:j.exit;
                 default->j.bridge(j.bridgeSpan).above();
             };
             double distance=worker.distanceToSqr(goal.getX()+.5,goal.getY(),goal.getZ()+.5);

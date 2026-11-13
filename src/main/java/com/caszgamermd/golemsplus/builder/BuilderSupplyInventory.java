@@ -571,6 +571,11 @@ public final class BuilderSupplyInventory {
                     &&teammateId.equals(table.supplyRunner()))continue;
             if(level.getEntity(teammateId) instanceof BuilderGolem carrier
                     &&carrier.isAlive()&&carrier.carriedCount(target)>0
+                    // A stranded airborne carrier is not an available
+                    // material source. Keep the request with a worker
+                    // who can actually reach storage or a grounded donor.
+                    &&carrier.onGround()&&!BuilderFlight.active(carrier)
+                    &&!BuilderScaffolding.isControllingMovement(carrier)
                     &&table.reassignBuilderStep(worker.getUUID(),teammateId,index))
                 return LoadStatus.MOVING;
         }
