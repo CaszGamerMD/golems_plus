@@ -603,6 +603,19 @@ public final class BuilderConstructionPlanner {
         if(last!=null&&last.getY()!=y)last=null;
         BlockPos anchor=last==null?worker.blockPosition():last;
         orderConnectedFront(pending,steps,contacts,closureRisks,anchor);
+        // Within each existing safety/frontier tier prefer cells whose
+        // exact item is already in this worker's own pouch. A bounded
+        // rotating scan still visits unstocked cells, so the last rare
+        // material is never permanently skipped.
+        var carried=new java.util.HashSet<String>();
+        for(int slot=0;slot<worker.getContainerSize();slot++){
+            var stack=worker.getItem(slot);
+            if(!stack.isEmpty())carried.add(net.minecraft.core.registries.BuiltInRegistries.ITEM
+                    .getKey(stack.getItem()).toString());
+        }
+        pending.sort(java.util.Comparator.<Integer>comparingInt(idx->frontierTier(
+                contacts.getOrDefault(idx,0),closureRisks.getOrDefault(idx,0)))
+                .thenComparingInt(idx->carried.contains(steps.get(idx).requiredItem())?0:1));
         Choice best=null;
         int bestTier=Integer.MAX_VALUE;
         int bestContact=0;
@@ -754,6 +767,7 @@ public final class BuilderConstructionPlanner {
                     -Math.min(24,connectedPlacementBonus(
                             world,target,builtSchematic))
                     -touch*6+risk*250
+                    +(step.requiredItem()!=null&&!carried.contains(step.requiredItem())?160:0)
                     +(scaffold?BuilderFrontierTuning.GRAPPLE_PENALTY*2:0);
             if(tier<bestTier||tier==bestTier&&cost<bestScore){
                 bestTier=tier;

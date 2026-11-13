@@ -349,6 +349,8 @@ public final class BuilderSupplyInventory {
             if(next.requiredItem()!=null)
                 materials.merge(next.requiredItem(),1,Integer::sum);
         }
+        if(claim>=0&&claim<steps.size()&&steps.get(claim).requiredItem()!=null)
+            materials.computeIfPresent(steps.get(claim).requiredItem(),(id,n)->Math.max(1,n));
         // The active ten-cell dry order may not yet contain its water
         // phase, even though the very same elevated zone needs it next.
         // Bring ONE inventory-backed reusable bucket at this depot visit
@@ -367,10 +369,24 @@ public final class BuilderSupplyInventory {
                 if(idx<0||idx>=steps.size())continue;
                 var cell=steps.get(idx);
                 String item=cell.requiredItem();
-                if(cell.y()!=layer||item==null||!materials.containsKey(item)
+                if(cell.y()!=layer||item==null
                         ||cell.ignorePlant()||table.builderStepCompletedForMaterials(idx)
                         ||!table.builderStepInActivePhase(steps,idx))continue;
                 activeDemand.merge(item,1,Integer::sum);
+            }
+        }
+        // Preserve useful already-carried stock on this Y before unloading.
+        // Fill at most eight of nine material slots with optional varieties;
+        // the ninth remains available for a rare next claim. Required batch
+        // items always retain priority over these optional reservations.
+        int varieties=(int)materials.keySet().stream().filter(id->!beltItem(id)).count();
+        for(int slot=0;slot<BuilderGolem.SCAFFOLD_BELT_SLOT&&varieties<8;slot++){
+            ItemStack held=worker.getItem(slot);
+            if(held.isEmpty())continue;
+            String id=BuiltInRegistries.ITEM.getKey(held.getItem()).toString();
+            if(activeDemand.containsKey(id)&&!materials.containsKey(id)){
+                materials.put(id,Math.min(held.getCount(),activeDemand.get(id)));
+                varieties++;
             }
         }
         for(var row:activeDemand.entrySet()){
@@ -457,6 +473,11 @@ public final class BuilderSupplyInventory {
         return LoadStatus.READY;
     }
 
+    private static boolean beltItem(String id){
+        return id.equals("minecraft:scaffolding")||id.equals("golems_plus:grapple_hook")
+                ||id.equals("minecraft:bucket");
+    }
+
     /** Return only surplus from one inventory slot; never touch another
      * worker pocket or duplicate an item if the actual chest is full.
      */
@@ -505,11 +526,20 @@ public final class BuilderSupplyInventory {
 
     static LoadStatus loadForLayerStatus(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BuilderConstructionPlan.Step current,int index){
+        return loadForLayerStatus(level,worker,table,current,index,null,null);
+    }
+    static LoadStatus loadForLayerStatus(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BuilderConstructionPlan.Step current,int index,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
         var id=net.minecraft.resources.Identifier.tryParse(current.requiredItem()==null?
                 "":current.requiredItem());
         if(id==null||!BuiltInRegistries.ITEM.containsKey(id))return LoadStatus.MISSING;
         Item target=BuiltInRegistries.ITEM.getValue(id);
         if(worker.carriedCount(target)>0)return LoadStatus.READY;
+        // First use a physically nearby surplus, if there is one. No
+        // chase or remote transfer, and leave the donor's own claimed item
+        // in its pouch. Otherwise the ordinary depot route remains valid.
+        if(borrowNearby(level,worker,table,target,steps,1))return LoadStatus.READY;
         // The flower can already be in a different Builder's pouch. When
         // the carrier is eligible to build, exchange an unstarted job cell
         // rather than making the requester chase a constantly moving peer.
@@ -545,8 +575,18 @@ public final class BuilderSupplyInventory {
         // never a three-layer slice of the global schematic index (which
         // can belong to several *other* X/Z zones). Prepared stage supplies
         // already cover this worker's full 32-cell local window.
-        Map<String,Integer> wanted=Map.of(current.requiredItem(),
-                Math.max(1,new ItemStack(target).getMaxStackSize()));
+        int demand=0;
+        if(steps!=null&&zone!=null){
+            for(int n:zone){
+                if(n<0||n>=steps.size()||!table.builderStepInActivePhase(steps,n)
+                        ||table.builderStepCompletedForMaterials(n))continue;
+                if(current.requiredItem().equals(steps.get(n).requiredItem()))demand++;
+            }
+        }else demand=new ItemStack(target).getMaxStackSize();
+        int max=new ItemStack(target).getMaxStackSize();
+        int desired=BuilderBlockResolver.reusableSupply(current.requiredItem())?1:
+                Math.max(1,Math.min(max,demand));
+        Map<String,Integer> wanted=Map.of(current.requiredItem(),desired);
         var selections=new ArrayList<>(wanted.entrySet());
         selections.sort((left,right)->{
             boolean first=left.getKey().equals(current.requiredItem());
@@ -584,10 +624,46 @@ public final class BuilderSupplyInventory {
         // actual transfer that accounting made resources 'available' but
         // impossible for a different Builder to place. Borrow one physical
         // stack only when the crew are close enough to hand it over.
-        return borrowFromCrew(level,worker,table,target);
+        return borrowFromCrew(level,worker,table,target,steps);
+    }
+    // Preserve a donor's current claim and only transfer material across
+    // a short clear physical gap, never through a wall or different floor.
+    static boolean borrowNearby(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,Item target,List<BuilderConstructionPlan.Step> steps,int requested){
+        if(BuilderBlockResolver.reusableSupply(BuiltInRegistries.ITEM.getKey(target).toString()))return false;
+        for(var id:table.builderWorkerIds()){
+            if(id.equals(worker.getUUID())||!(level.getEntity(id) instanceof BuilderGolem donor)
+                    ||!donor.isAlive()||!worker.onGround()||!donor.onGround()
+                    ||worker.distanceToSqr(donor)>4||Math.abs(worker.getY()-donor.getY())>.6
+                    ||!worker.hasLineOfSight(donor))continue;
+            int reserved=0;
+            if(steps!=null){
+                int claim=table.claimedStep(id);
+                if(claim>=0&&claim<steps.size()
+                        &&BuiltInRegistries.ITEM.getKey(target).toString().equals(steps.get(claim).requiredItem()))
+                    reserved=1;
+            }else reserved=1;
+            int surplus=donor.carriedCount(target)-reserved;
+            // Never borrow an entire working stack and make the donor
+            // abandon its own task. The receiver can do this one step.
+            int quantity=Math.min(requested,Math.max(0,surplus));
+            if(quantity<=0)continue;
+            for(int slot=0;slot<BuilderGolem.SCAFFOLD_BELT_SLOT;slot++){
+                ItemStack stack=donor.getItem(slot);
+                if(!stack.is(target))continue;
+                int moved=tryPocket(worker,stack,Math.min(quantity,stack.getCount()));
+                if(moved>0){
+                    donor.setItem(slot,stack.copyWithCount(stack.getCount()-moved));
+                    return true;
+                }
+            }
+        }
+        return false;
     }
     private static LoadStatus borrowFromCrew(ServerLevel level,
-            BuilderGolem worker,WorkerStationBlockEntity table,Item target){
+            BuilderGolem worker,WorkerStationBlockEntity table,Item target,
+            List<BuilderConstructionPlan.Step> steps){
+        if(borrowNearby(level,worker,table,target,steps,1))return LoadStatus.READY;
         BuilderGolem donor=null;
         double nearest=Double.MAX_VALUE;
         for(var id:table.builderWorkerIds()){
@@ -601,24 +677,10 @@ public final class BuilderSupplyInventory {
             }
         }
         if(donor==null)return LoadStatus.MISSING;
-        if(nearest>12){
-            boolean route=com.caszgamermd.golemsplus.worker.WorkerNavigation
-                    .routeTo(level,worker,donor.blockPosition(),.83);
-            return route?LoadStatus.MOVING:LoadStatus.MISSING;
-        }
-        for(int slot=0;slot<donor.getContainerSize();slot++){
-            ItemStack stack=donor.getItem(slot);
-            if(stack.isEmpty()||!stack.is(target))continue;
-            int quantity=Math.min(stack.getCount(),Math.min(
-                    stack.getMaxStackSize(),room(worker,stack)));
-            if(quantity<=0)return LoadStatus.MISSING;
-            int transferred=tryPocket(worker,stack,quantity);
-            if(transferred>0){
-                donor.setItem(slot,stack.copyWithCount(
-                        stack.getCount()-transferred));
-                return LoadStatus.READY;
-            }
-        }
+        // Do not follow a moving peer around the roof forever. Let the
+        // planner choose stocked work and retry the actual depot when its
+        // stock changes. A same-layer neighbor can still hand over one
+        // item through borrowNearby without interrupting its own route.
         return LoadStatus.MISSING;
     }
     public static int carriedByTeammates(ServerLevel level,BuilderGolem worker,

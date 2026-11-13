@@ -1575,6 +1575,9 @@ public final class BuilderBuildService {
             // inventory rather than repeatedly rappelling back to OnSite.
             // The normal per-step load below will still require a genuine
             // depot visit when a later item is actually missing.
+            if(step.requiredItem()!=null&&worker.carriedCount(state.item())<=0
+                    &&!interactionCorrection&&!repairPartner&&!reShapeRail)
+                BuilderSupplyInventory.borrowNearby(level,worker,table,state.item(),plan.steps(),1);
             if(!table.builderOrderPrepared(worker.getUUID())
                     &&step.requiredItem()!=null
                     &&worker.carriedCount(state.item())<=0
@@ -1656,7 +1659,7 @@ public final class BuilderBuildService {
                     &&worker.carriedCount(state.item())<=0
                     &&!interactionCorrection&&!repairPartner&&!reShapeRail){
                 var loading=BuilderSupplyInventory.loadForLayerStatus(
-                        level,worker,table,step,index);
+                        level,worker,table,step,index,plan.steps(),zone);
                 if(loading==BuilderSupplyInventory.LoadStatus.MOVING){
                     activity.phase=Action.STAGE_MATERIALS;
                     watchSupplyTrip(level,worker,table,activity,index);
