@@ -271,7 +271,8 @@ public final class BuilderBuildService {
         }
         if(BuilderReturnService.withinStorageReach(worker,depot)||now-activity.supplyProgressTick<=TARGET_PROGRESS_STALL_TICKS
                 ||BuilderScaffolding.isControllingMovement(worker)
-                ||BuilderGrappleAccess.active(worker))return;
+                ||BuilderGrappleAccess.active(worker)
+                ||BuilderFlight.moving(worker))return;
         String reason="no physical progress toward OnSite Storage";
         table.waitForBuilderAccess(worker.getUUID(),index,now,reason);
         publishHandoff(table,worker.getUUID(),index,now,reason);
@@ -609,6 +610,7 @@ public final class BuilderBuildService {
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null)depot=table.getBlockPos();
         if(BuilderFlight.enabled(worker)&&BuilderFlight.active(worker)){
+            if(worker.getY()>depot.getY()+1.5&&BuilderFlight.land(level,worker,true))return false;
             BuilderFlight.land(level,worker,false);
             return false;
         }
@@ -960,6 +962,10 @@ public final class BuilderBuildService {
             }
         }
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
+            if(BuilderFlight.active(worker)){
+                if(!BuilderFlight.land(level,worker,true))BuilderFlight.land(level,worker,false);
+                return;
+            }
             // On job completion a Builder may still be on its LAST
             // scaffold tower. It must return to ground and dismount
             // BEFORE reclaiming blocks, delivering tools or going home.
@@ -1020,16 +1026,7 @@ public final class BuilderBuildService {
                 &&!retreat.alternateSideRequested){
             BlockPos depot=table.builderUnloadingStorage();
             if(depot==null)depot=home;
-            if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,
-                    depot.getZ()+.5)>12){
-                if(!BuilderScaffoldPlanA.hasPlan(worker)
-                        &&BuilderGrappleAccess.rappelHome(level,worker,table,depot))return;
-                if(BuilderScaffolding.descendForTravel(level,worker,table)
-                        ||BuilderGrappleAccess.rappelForTravel(level,worker,table))return;
-                com.caszgamermd.golemsplus.worker.WorkerNavigation
-                        .routeTo(level,worker,depot,.8);
-                return;
-            }
+            if(!parkAtOnSite(level,worker,table))return;
             if(level.getGameTime()<retreat.retreatUntil)return;
             retreat.retreatUntil=-1;
         }
@@ -1054,6 +1051,10 @@ public final class BuilderBuildService {
             Cache plan=cache(table,worker);
             WorkerAction alternate=workerActions.get(worker);
             if(alternate!=null&&alternate.alternateSideRequested){
+                if(BuilderFlight.active(worker)){
+                    if(!BuilderFlight.land(level,worker,true))BuilderFlight.land(level,worker,false);
+                    return;
+                }
                 long now=level.getGameTime();
                 BlockPos waypoint=alternate.alternateSideTarget;
                 if(waypoint==null){
@@ -1237,9 +1238,8 @@ public final class BuilderBuildService {
                         teammateRequested=true;break;
                     }
                 }
-            boolean emergencyRoofAssist=ownLayerClear
-                    &&(teammateRequested||index>=0&&!zone.contains(index)
-                        ||stalledRoof);
+            boolean emergencyRoofAssist=index>=0&&!zone.contains(index)
+                    ||ownLayerClear&&(teammateRequested||stalledRoof);
             // Monitoring already ran before the early finished-zone
             // return, so every crew member sees the SAME rescue window.
             if(emergencyRoofAssist){
@@ -1289,6 +1289,17 @@ public final class BuilderBuildService {
                         layerStaff.size()))return;
                 var next=BuilderConstructionPlanner.choose(
                         level,worker,table,plan.steps(),zone);
+                // A zone can contain only unsupported redstone results or
+                // inaccessible cells. An idle worker may assist another
+                // reachable SAME-Y cell when the crew has stalled.
+                if(next==null&&stalledRoof){
+                    var rescue=roofRescueZone(table,worker.getUUID(),plan.steps(),layer);
+                    rescue.removeIf(candidate->reservedForTeammate(table,
+                            worker.getUUID(),candidate,selectionTick));
+                    var other=BuilderConstructionPlanner.choose(
+                            level,worker,table,plan.steps(),rescue);
+                    if(other!=null){next=other;zone=rescue;}
+                }
                 index=next==null?-1:table.claimPreferredBuilderZoneStep(
                         worker.getUUID(),zone,plan.steps(),next.index());
             }
@@ -1684,6 +1695,9 @@ public final class BuilderBuildService {
             activity.supplyProgressTick=-1;
             boolean bodyBlockingWork=BuilderPlacementSpace.stepNeedsVacating(
                     level,pos,state.state(),waterlog);
+            // The actual five-block hand pose can already be legal even
+            // when the worker is three Y below a floating block. Do not
+            // force a launch/landing cycle for a placement in real reach.
             boolean propellerWork=BuilderFlight.enabled(worker)
                     &&!BuilderGrappleAccess.active(worker)
                     &&!BuilderScaffolding.isControllingMovement(worker)
@@ -1696,9 +1710,27 @@ public final class BuilderBuildService {
             boolean hoverPose=propellerWork
                     &&BuilderFlight.safeWorkPose(level,worker,pos,worker.position());
             if(propellerWork&&!hoverPose){
+                long now=level.getGameTime();
+                double distance=worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+                if(activity.lastTargetProgressTick<0||distance<activity.bestTargetDistance-.5){
+                    activity.lastTargetProgressTick=now;
+                    activity.bestTargetDistance=distance;
+                }
+                if(now-activity.lastTargetProgressTick>160){
+                    table.waitForBuilderAccess(worker.getUUID(),index,now,"propeller approach made no target progress");
+                    publishHandoff(table,worker.getUUID(),index,now,"propeller approach loop");
+                    activity.lastFailedStep=index;
+                    activity.failedApproachFrom=worker.blockPosition();
+                    activity.alternateSideRequested=true;
+                    activity.lastTargetProgressTick=-1;
+                    if(BuilderFlight.active(worker))BuilderFlight.land(level,worker,true);
+                    System.out.println("[PROPELLER HANDOFF] released "+index+" at "+worker.position());
+                    return;
+                }
                 BlockPos flightPose=BuilderFlight.workPose(level,worker,pos);
                 if(flightPose!=null&&BuilderFlight.request(level,worker,flightPose))return;
                 if(BuilderFlight.active(worker)){
+                    if(BuilderFlight.land(level,worker,true))return;
                     if(!BuilderFlight.land(level,worker,false)){
                         table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),
                                 "propeller needs clear local landing");

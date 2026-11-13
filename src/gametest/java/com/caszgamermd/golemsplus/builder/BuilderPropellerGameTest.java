@@ -140,4 +140,30 @@ public final class BuilderPropellerGameTest {
         }catch(Exception ex){h.fail("Propeller test setup failed "+ex);}
     }
 
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=250,skyAccess=true)
+    public void propellerCanLiftOverLocalLedgeWithoutLongHorizontalFlight(GameTestHelper h){
+        var world=h.getLevel();
+        BlockPos start=h.absolutePos(new BlockPos(10,4,10));
+        BlockPos goal=start.east(2);
+        h.setBlock(10,3,10,Blocks.STONE);
+        h.setBlock(12,3,10,Blocks.STONE);
+        h.setBlock(11,4,10,Blocks.STONE);
+        world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(worker);
+        boolean[] climbed={false};
+        h.onEachTick(()->{
+            if(h.getTick()==5&&!BuilderFlight.request(world,worker,goal)){
+                h.fail("No local ledge detour");return;
+            }
+            if(worker.getY()>start.getY()+.8)climbed[0]=true;
+            if(h.getTick()>5&&!BuilderFlight.active(worker)&&worker.onGround()
+                    &&worker.position().distanceToSqr(Vec3.atBottomCenterOf(goal))<.04){
+                if(!climbed[0]){h.fail("Did not lift above ledge");return;}
+                h.succeed();
+            }
+        });
+    }
+
 }
