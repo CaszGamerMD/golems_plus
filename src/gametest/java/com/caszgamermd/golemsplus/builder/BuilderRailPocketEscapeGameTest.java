@@ -19,6 +19,8 @@ public final class BuilderRailPocketEscapeGameTest {
     private static BuilderGolem worker(GameTestHelper h,BlockPos feet){
         ServerLevel level=h.getLevel();
         BuilderGolem g=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        // Exercise the legacy movement controller independently of powered flight.
+        g.setPropellerEnabled(false);
         g.setPos(feet.getX()+.5,feet.getY(),feet.getZ()+.5);
         g.setItem(0,new ItemStack(WorksiteContent.GRAPPLE_HOOK));
         level.addFreshEntity(g);

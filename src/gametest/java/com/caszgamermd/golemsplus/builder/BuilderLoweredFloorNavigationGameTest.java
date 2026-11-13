@@ -20,6 +20,8 @@ public final class BuilderLoweredFloorNavigationGameTest {
         BlockPos start=h.absolutePos(new BlockPos(1,1,3));
         BlockPos goal=h.absolutePos(new BlockPos(6,2,3));
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        // Exercise the legacy movement controller independently of powered flight.
+        worker.setPropellerEnabled(false);
         worker.setPos(start.getX()+.5,start.getY()+.875,start.getZ()+.5);
         level.addFreshEntity(worker);
         h.onEachTick(()->{
@@ -59,6 +61,8 @@ public final class BuilderLoweredFloorNavigationGameTest {
         h.setBlock(3,3,3,Blocks.STONE);
         BlockPos feet=h.absolutePos(new BlockPos(3,1,3));
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        // Exercise the legacy movement controller independently of powered flight.
+        worker.setPropellerEnabled(false);
         if(WorkerNavigation.canStandOn(level,worker,feet)){
             h.fail("Lowered floor bypassed solid head collision");return;
         }

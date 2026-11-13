@@ -186,9 +186,10 @@ public final class BuilderConstructionPlanner {
      */
     static boolean safeStandForStep(ServerLevel world,BuilderGolem builder,
             BlockPos target,BlockPos stance,String encodedState){
-        if(BuilderFlight.enabled(builder))
-            return BuilderFlight.safeWorkPose(world,builder,target,
-                    new net.minecraft.world.phys.Vec3(stance.getX()+.5,stance.getY(),stance.getZ()+.5));
+        if(BuilderFlight.enabled(builder)
+                &&BuilderFlight.safeWorkPose(world,builder,target,
+                    new net.minecraft.world.phys.Vec3(stance.getX()+.5,stance.getY(),stance.getZ()+.5)))
+            return true; // Preserve existing safe grounded rail/waterlog poses below.
         String expectedBlock=BuilderWaterPass.originalState(encodedState)
                 .split("\\[",2)[0];
         boolean finishingDry=BuilderWaterPass.isWaterlogPass(encodedState)

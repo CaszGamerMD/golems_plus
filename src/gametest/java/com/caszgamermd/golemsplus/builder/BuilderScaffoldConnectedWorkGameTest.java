@@ -72,6 +72,8 @@ public final class BuilderScaffoldConnectedWorkGameTest {
         long[] progress={helper.getTick(),helper.getTick()};
         for(int i=0;i<2;i++){
             var golem=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+            // Exercise the legacy movement controller independently of powered flight.
+            golem.setPropellerEnabled(false);
             golem.setPos(towers[i].getX()+.5,towers[i].getY(),
                     towers[i].getZ()+.5);
             golem.setItem(0,new ItemStack(Items.SCAFFOLDING,32));

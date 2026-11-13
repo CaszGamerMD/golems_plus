@@ -70,6 +70,8 @@ public final class BuilderHorizontalBridgeExitGameTest {
         BlockPos initialLedge=raisedFirst?ledge.above():ledge;
         level.setBlock(initialLedge,Blocks.STONE.defaultBlockState(),3);
         BuilderGolem builder=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        // Exercise the legacy movement controller independently of powered flight.
+        builder.setPropellerEnabled(false);
         builder.setPos(bridge.getX()+.5,
                 bridge.getY()+(startInside?.10:1.0),bridge.getZ()+.5);
         level.addFreshEntity(builder);

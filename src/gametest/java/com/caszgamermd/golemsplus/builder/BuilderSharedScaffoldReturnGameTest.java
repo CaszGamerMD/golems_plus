@@ -45,6 +45,8 @@ public final class BuilderSharedScaffoldReturnGameTest {
             }
         }
         var borrower=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        // Exercise the legacy movement controller independently of powered flight.
+        borrower.setPropellerEnabled(false);
         BlockPos top=h.absolutePos(new BlockPos(3,6,3));
         borrower.setPos(top.getX()+.5,top.getY(),top.getZ()+.5);
         world.addFreshEntity(borrower);

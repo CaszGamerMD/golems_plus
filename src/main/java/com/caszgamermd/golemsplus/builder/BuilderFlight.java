@@ -178,6 +178,12 @@ public final class BuilderFlight {
     public static boolean tick(ServerLevel level, BuilderGolem worker) {
         if (!enabled(worker)) return false;
         Flight flight = flights.get(worker);
+        // Ordinary walking, falling, and furniture visits retain their controller
+        // until an actual flight request has established powered hover.
+        if (flight == null) {
+            worker.setPropellerSpinning(false);
+            return false;
+        }
         boolean moving = moving(worker);
         worker.setPropellerSpinning(moving || !worker.onGround());
         if (!moving && worker.onGround()) {
