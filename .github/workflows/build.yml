@@ -42,7 +42,7 @@ jobs:
           test_status=${PIPESTATUS[0]}
           set -e
           if [ "$test_status" -eq 0 ]; then exit 0; fi
-          if grep -Fq "1 required tests failed" "$RUNNER_TEMP/main-release-gametest.log" && grep -Fq "builder_dome_construction_game_test_constructs_exact_dome_with_real_builders failed" "$RUNNER_TEMP/main-release-gametest.log"; then
+          if grep -Eq "\) 1 required tests failed" "$RUNNER_TEMP/main-release-gametest.log" && grep -Fq "builder_dome_construction_game_test_constructs_exact_dome_with_real_builders failed" "$RUNNER_TEMP/main-release-gametest.log"; then
             echo "::warning::The previously known dome GameTest stall remains; all other required physical tests passed."
             exit 0
           fi
