@@ -1768,6 +1768,14 @@ public final class BuilderBuildService {
                     System.out.println("[PROPELLER HANDOFF] released "+index+" at "+worker.position());
                     return;
                 }
+                // Walking was unavailable; try a supported low-altitude
+                // route before committing to a high vertical flight.
+                if(BuilderFlight.terrainWork(level,worker,pos,
+                        at->BuilderConstructionPlanner.safeStandForStep(
+                                level,worker,pos,at,step.encodedState()))) {
+                    activity.phase=Action.MOVE_TO_WORK;
+                    return;
+                }
                 BlockPos flightPose=BuilderFlight.workPose(level,worker,pos,bodyBlockingWork);
                 if(flightPose!=null&&BuilderFlight.request(level,worker,flightPose))return;
                 if(BuilderFlight.active(worker)){

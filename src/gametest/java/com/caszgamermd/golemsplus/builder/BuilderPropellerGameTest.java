@@ -261,4 +261,33 @@ public final class BuilderPropellerGameTest {
             }
         });
     }
+
+    /** No low hover on ordinary flat ground, nor across unsupported air.
+     * These checks exercise the production walk-first fallback. */
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=120,skyAccess=true)
+    public void lowTerrainHoverPrefersWalkingAndRejectsDeepGap(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=8;x<=18;x++)for(int y=1;y<=8;y++)h.setBlock(x,y,12,Blocks.AIR);
+        for(int x=8;x<=11;x++)h.setBlock(x,2,12,Blocks.STONE);
+        h.setBlock(16,2,12,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(9,3,12));
+        BlockPos walk=h.absolutePos(new BlockPos(11,3,12));
+        BlockPos gap=h.absolutePos(new BlockPos(16,3,12));
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(worker);
+        h.onEachTick(()->{
+            if(h.getTick()==5){
+                if(BuilderFlight.terrainToward(world,worker,java.util.List.of(walk))){
+                    h.fail("Low hover replaced available walking");return;
+                }
+            }
+            if(h.getTick()==30){
+                if(BuilderFlight.terrainToward(world,worker,java.util.List.of(gap))){
+                    h.fail("Low hover crossed unsupported air");return;
+                }
+                h.succeed();
+            }
+        });
+    }
 }
