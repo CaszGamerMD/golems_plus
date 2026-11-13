@@ -192,5 +192,32 @@ public final class BuilderPropellerGameTest {
                 BuilderFlight.approachDescentLaunch(world,worker,depot);
         });
     }
-
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=800,skyAccess=true)
+    public void propellerReturnsToDepotFromWideRoofWithoutGrapple(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=2;x<=36;x++)for(int z=2;z<=36;z++)h.setBlock(x,1,z,Blocks.STONE);
+        for(int x=5;x<=31;x++)for(int z=5;z<=31;z++)h.setBlock(x,7,z,Blocks.STONE);
+        h.setBlock(3,2,18,Blocks.CHEST);
+        BlockPos start=h.absolutePos(new BlockPos(18,8,18));
+        BlockPos depot=h.absolutePos(new BlockPos(3,2,18));
+        world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(worker);
+        boolean[] flew={false};
+        h.onEachTick(()->{
+            if(h.getTick()<5)return;
+            if(BuilderGrappleAccess.active(worker)){
+                h.fail("Propeller return started a competing grapple");return;
+            }
+            if(BuilderFlight.active(worker))flew[0]=true;
+            if(h.getTick()%5==0&&!BuilderReturnService.approach(world,worker,depot,.8)){
+                if(!flew[0]||!worker.onGround()||worker.getY()>depot.getY()+.1){
+                    h.fail("Depot return did not descend and physically arrive");return;
+                }
+                System.out.println("[PROPELLER DEPOT PASS] wide roof to real storage tick="+h.getTick());
+                h.succeed();
+            }
+        });
+    }
 }

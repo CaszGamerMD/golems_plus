@@ -258,6 +258,11 @@ public final class BuilderFlight {
 
     /** Walk to a real ledge, then use the local propeller to descend.
      * A two-block horizontal flight budget is not a two-block walking budget. */
+    public static boolean hasDescentLaunch(ServerLevel level,BuilderGolem worker,BlockPos depot){
+        Descent saved=descents.get(worker);
+        return saved!=null&&saved.depot().equals(depot)&&level.getGameTime()<saved.until();
+    }
+
     public static boolean approachDescentLaunch(ServerLevel level,BuilderGolem worker,BlockPos depot){
         if(!enabled(worker)||active(worker)||!worker.onGround())return false;
         long now=level.getGameTime();
@@ -276,7 +281,10 @@ public final class BuilderFlight {
         var landingByLaunch=new HashMap<BlockPos,BlockPos>();
         BlockPos here=worker.blockPosition();
         int[][] offsets={{1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1}};
-        for(int radius=1;radius<=8;radius++)for(int[] off:offsets){
+        // A 31x49 floor can leave a worker more than eight blocks
+        // from an edge. Search the actual perimeter directions, not
+        // just the small dome fixture's local eight-block radius.
+        for(int radius=1;radius<=32;radius++)for(int[] off:offsets){
             BlockPos launch=here.offset(radius*off[0],0,radius*off[1]);
             if(!WorkerNavigation.canStandOn(level,worker,launch)
                     ||Math.abs(WorkerNavigation.surveyFloorHeight(level,launch)-launch.getY())>.1)continue;
@@ -299,7 +307,7 @@ public final class BuilderFlight {
         possible.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(feet(at))));
         BlockPos launch=WorkerNavigation.selectExecutableStand(level,worker,possible);
         if(launch==null)return false;
-        descents.put(worker,new Descent(depot.immutable(),launch,landingByLaunch.get(launch),now+180));
+        descents.put(worker,new Descent(depot.immutable(),launch,landingByLaunch.get(launch),now+400));
         return WorkerNavigation.routeToExact(level,worker,launch,1.0);
     }
     public static boolean safeWorkPose(ServerLevel level, BuilderGolem worker,

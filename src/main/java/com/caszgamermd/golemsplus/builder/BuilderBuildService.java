@@ -618,10 +618,13 @@ public final class BuilderBuildService {
             com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
             return true;
         }
-        if(BuilderFlight.enabled(worker)&&worker.getY()>depot.getY()+1.5
-                &&!BuilderGrappleAccess.active(worker)
-                &&!BuilderScaffolding.isControllingMovement(worker)
-                &&BuilderFlight.land(level,worker,true))return false;
+        // Equipped workers share one stable return controller. Never
+        // attach a fresh rope while a propeller worker is trying to walk
+        // to its descent edge: the two plans otherwise alternate forever.
+        if(BuilderFlight.enabled(worker)){
+            BuilderReturnService.approach(level,worker,depot,.8);
+            return atOnSite(level,worker,depot);
+        }
         // Plan-A bridges and tracked shafts are mandatory return routes:
         // finish their bridge crossing and controlled dismount first.
         if(BuilderScaffolding.descendForTravel(level,worker,table))
@@ -971,7 +974,7 @@ public final class BuilderBuildService {
             // BEFORE reclaiming blocks, delivering tools or going home.
             BlockPos returnGoal=table.builderUnloadingStorage();
             if(returnGoal==null)returnGoal=table.getBlockPos();
-            if(!BuilderScaffoldPlanA.hasPlan(worker)
+            if(!BuilderFlight.enabled(worker)&&!BuilderScaffoldPlanA.hasPlan(worker)
                     &&BuilderGrappleAccess.rappelHome(
                             level,worker,table,returnGoal))return;
             if(BuilderScaffolding.descendForTravel(level,worker,table)

@@ -78,6 +78,11 @@ public final class BuilderReturnService {
         // physical return. The ordinary depot selector must not replace
         // its motion with a competing ground A* request.
         if(mobilityActive)return true;
+        // Finish the selected roof-edge walk before running another
+        // depot probe or picking a different nearby descent column.
+        if(BuilderFlight.enabled(worker)
+                &&BuilderFlight.hasDescentLaunch(level,worker,target)
+                &&BuilderFlight.approachDescentLaunch(level,worker,target))return true;
         // Observe real physical displacement instead of accepting a
         // pathfinder's MOVING result indefinitely. A busy rope/scaffold
         // controller owns its motion; never interrupt that descent.
