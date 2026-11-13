@@ -352,6 +352,16 @@ public final class BuilderVillagerMatrixFullGameTest {
         }
         final int[] best={0};
         final long assessmentStart=System.nanoTime();
+        // The standard five-minute benchmark stays unchanged. Reliability
+        // trials opt into a longer ceiling; elapsed time starts only when
+        // the actual construction job starts, not Gradle/server startup.
+        final long assessmentSeconds=Long.parseLong(
+                System.getenv().getOrDefault("MATRIX_ASSESSMENT_SECONDS","300"));
+        if(assessmentSeconds<1||assessmentSeconds>1800){
+            h.fail("Invalid assessment time ceiling");return;
+        }
+        System.out.println("[MATRIX TRIAL START] limitSeconds="+assessmentSeconds
+                +" origin="+origin.toShortString()+" workers="+WORKERS);
         var watchdog=new MatrixWorkWatchdog(h.getTick(),
                 table.builderWorkDone(),table.builderClearCursor());
         var movement=crew.stream()
@@ -370,7 +380,8 @@ public final class BuilderVillagerMatrixFullGameTest {
                             worker.isAlive()&&level.getEntity(worker.getUUID())==worker);
                 }
             }
-            boolean timeLimit=System.nanoTime()-assessmentStart>=300_000_000_000L;
+            long elapsedMillis=(System.nanoTime()-assessmentStart)/1_000_000L;
+            boolean timeLimit=elapsedMillis>=assessmentSeconds*1000L;
             boolean noWorkTimeout=noWorkTicks>=NO_WORK_LIMIT;
             boolean report=tick%PROGRESS_PERIOD==0;
             var stalls=tick%MOTION_SAMPLE_TICKS==0
@@ -459,6 +470,10 @@ public final class BuilderVillagerMatrixFullGameTest {
                         +" fluid="+level.getFluidState(at));
             }
             if(table.phase()==WorkerPhase.COMPLETE){
+                System.out.println("[MATRIX TRIAL RESULT] outcome="+(correct==SOURCE_BLOCKS?"COMPLETE":"MISMATCH")
+                        +" layer=complete elapsedMs="+elapsedMillis+" tick="+tick
+                        +" correct="+correct+" total="+SOURCE_BLOCKS+" best="+best[0]
+                        +" unsupported="+unavailableStates);
                 if(correct!=SOURCE_BLOCKS){
                     h.fail("Full Matrix marked complete but "
                             +(SOURCE_BLOCKS-correct)+" source blocks differ; "
@@ -470,12 +485,19 @@ public final class BuilderVillagerMatrixFullGameTest {
                 h.succeed();return;
             }
             if(timeLimit&&!allStalled&&!noWorkTimeout){
-                System.out.println("[MATRIX FULL TIMED] seconds=300 tick="+tick
+                System.out.println("[MATRIX TRIAL RESULT] outcome=TIME_LIMIT layer="+(y-origin.getY())
+                        +" elapsedMs="+elapsedMillis+" tick="+tick+" correct="+correct
+                        +" total="+SOURCE_BLOCKS+" best="+best[0]+" unsupported="+unavailableStates);
+                System.out.println("[MATRIX FULL TIMED] seconds="+assessmentSeconds+" tick="+tick
                         +" matchingSourceBlocks="+correct+"/"+SOURCE_BLOCKS
                         +" best="+best[0]+" layer="+(y-origin.getY()));
                 h.succeed();return;
             }
             if(allStalled||noWorkTimeout){
+                System.out.println("[MATRIX TRIAL RESULT] outcome="+(allStalled?"ALL_BUILDERS_STALLED":"NO_WORK_PROGRESS")
+                        +" layer="+(y-origin.getY())+" elapsedMs="+elapsedMillis+" tick="+tick
+                        +" correct="+correct+" total="+SOURCE_BLOCKS+" best="+best[0]
+                        +" unsupported="+unavailableStates);
                 StringBuilder result=new StringBuilder(
                         "[MATRIX FULL STALL] tick="+tick
                                 +" reason="+(allStalled?"ALL_BUILDERS_STALLED":"NO_WORK_PROGRESS")

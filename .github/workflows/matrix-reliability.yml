@@ -1,0 +1,90 @@
+name: Matrix reliability - three independent builds
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/matrix-reliability.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    name: Matrix trial ${{ matrix.trial }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        trial: [1, 2, 3]
+    env:
+      MATRIX_ASSESSMENT_SECONDS: '900'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Verify identical original source fixture
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib
+          from pathlib import Path
+          root=Path('src/gametest/resources/golems_plus_matrix')
+          data=base64.b64decode(''.join((root/f'segment{i}.txt').read_text().strip() for i in range(4)),validate=True)
+          assert len(data)==7906
+          assert hashlib.sha256(data).hexdigest()=='77fa9731b11b1b666034a9e155c5a56abc173b9f9a974f963f916d7ef7d11816'
+          PY
+      - name: Compile and isolate the full Matrix
+        run: |
+          gradle --no-daemon test compileGametestJava compileClientJava jar
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderVillagerMatrixAssessmentGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Run physical construction until completion or stall
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/matrix-trial.log"
+          code=${PIPESTATUS[0]}
+          python3 scripts/matrix_reliability.py extract "$RUNNER_TEMP/matrix-trial.log" "${{ matrix.trial }}" "$RUNNER_TEMP/result.json"
+          cat "$RUNNER_TEMP/result.json"
+          echo "GameTest exit status: $code"
+          grep -Fq '[MATRIX FULL IMPORT PASS] 15376' "$RUNNER_TEMP/matrix-trial.log" || exit 1
+          grep -Fq '[MATRIX TRIAL RESULT]' "$RUNNER_TEMP/matrix-trial.log" || exit 1
+      - name: Save trial result and complete trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-trial-${{ matrix.trial }}
+          path: |
+            ${{ runner.temp }}/result.json
+            ${{ runner.temp }}/matrix-trial.log
+          if-no-files-found: warn
+  compare:
+    name: Compare three independent outcomes
+    needs: trial
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: matrix-trial-*
+          path: results
+      - name: Check same stopping layer and maximum five-minute spread
+        run: python3 scripts/matrix_reliability.py compare results "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: matrix-reliability-summary
+          path: matrix-reliability.json
