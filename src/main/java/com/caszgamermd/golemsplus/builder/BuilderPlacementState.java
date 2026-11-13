@@ -83,6 +83,7 @@ public final class BuilderPlacementState {
                     ||(id.equals("observer")&&name.equals("powered"))
                     ||((id.equals("dispenser")||id.equals("dropper"))&&name.equals("triggered"))
                     ||(id.equals("hopper")&&name.equals("enabled"))
+                    ||(id.equals("scaffolding")&&(name.equals("bottom")||name.equals("distance")))
                     ||((id.equals("tripwire")||id.equals("tripwire_hook"))
                         &&(name.equals("powered")||name.equals("attached")))
                     ||(id.equals("target")&&name.equals("power"));

@@ -53,15 +53,62 @@ public final class BuilderWaterPass {
         if(planned!=null&&!planned.is(base)&&!planned.is(Blocks.BUBBLE_COLUMN))return null;
         if(actual.is(base)||actual.is(Blocks.BUBBLE_COLUMN)
                 &&actual.getValue(BubbleColumnBlock.DRAG_DOWN)==downward)return step;
-        // A planned lower column must stay fluid. Outside the schematic
-        // only air or the opposite bubble generator is eligible.
-        if(planned!=null&&planned.is(Blocks.BUBBLE_COLUMN))return null;
+        // A previously finished lower bubble may have fallen back to
+        // source water, flowing water or air. Rebuild the *lowest* missing
+        // source in the original column before finishing the upper claim.
+        if(planned!=null&&planned.is(Blocks.BUBBLE_COLUMN)){
+            var lower=new java.util.ArrayList<BlockPos>();
+            BlockPos scan=below;
+            while(scan.getY()>=world.getMinY()&&world.hasChunkAt(scan)){
+                BlockState want=schematic.get(scan);
+                if(want==null||!want.is(Blocks.BUBBLE_COLUMN))break;
+                if(want.getValue(BubbleColumnBlock.DRAG_DOWN)!=downward)return null;
+                BlockState live=world.getBlockState(scan);
+                if(!live.isAir()&&!live.is(Blocks.WATER)&&!live.is(Blocks.BUBBLE_COLUMN))return null;
+                lower.add(scan);scan=scan.below();
+            }
+            if(!world.hasChunkAt(scan))return null;
+            BlockState support=world.getBlockState(scan);
+            BlockState wanted=schematic.get(scan);
+            if(wanted!=null&&!wanted.is(base))return null;
+            if(!support.is(base)){
+                if(!support.isAir()&&!support.is(Blocks.SOUL_SAND)&&!support.is(Blocks.MAGMA_BLOCK))return null;
+                String id=BuiltInRegistries.BLOCK.getKey(base).toString();
+                return new BuilderConstructionPlan.Step(scan.getX(),scan.getY(),scan.getZ(),id,id);
+            }
+            for(int k=lower.size()-1;k>=0;k--){
+                BlockPos at=lower.get(k);BlockState live=world.getBlockState(at);
+                if(live.is(Blocks.BUBBLE_COLUMN)||live.is(Blocks.WATER)&&live.getFluidState().isSource())continue;
+                return new BuilderConstructionPlan.Step(at.getX(),at.getY(),at.getZ(),step.encodedState(),WATER_BUCKET);
+            }
+            // All source water exists. A real generator tick can restore
+            // the whole chain; there is no artificial bubble placement.
+            return step;
+        }
         if(planned==null&&!actual.isAir()&&!actual.is(Blocks.MAGMA_BLOCK)
                 &&!actual.is(Blocks.SOUL_SAND))return null;
         String id=BuiltInRegistries.BLOCK.getKey(base).toString();
         return new BuilderConstructionPlan.Step(below.getX(),below.getY(),below.getZ(),id,id);
     }
 
+    /** Wake the genuine generator at the bottom of a contiguous source
+     * column, rather than scheduling a no-op tick on an ordinary water block. */
+    static boolean refreshBubble(net.minecraft.server.level.ServerLevel level,BlockPos pos,BlockState desired){
+        if(!desired.is(Blocks.BUBBLE_COLUMN))return false;
+        boolean down=desired.getValue(BubbleColumnBlock.DRAG_DOWN);
+        var generator=down?Blocks.MAGMA_BLOCK:Blocks.SOUL_SAND;
+        BlockPos at=pos.below();
+        while(at.getY()>=level.getMinY()&&level.hasChunkAt(at)){
+            BlockState actual=level.getBlockState(at);
+            if(actual.is(generator)){
+                level.scheduleTick(at,generator,1);return true;
+            }
+            if(!actual.is(Blocks.BUBBLE_COLUMN)
+                    &&!(actual.is(Blocks.WATER)&&actual.getFluidState().isSource()))return false;
+            at=at.below();
+        }
+        return false;
+    }
     public static boolean samePhase(String a,String b){
         return BuilderDeferredState.verification(a)==BuilderDeferredState.verification(b)
                 &&isWaterStep(a)==isWaterStep(b);

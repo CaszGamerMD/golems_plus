@@ -633,7 +633,7 @@ public final class BuilderConstructionPlanner {
             var step=BuilderWaterPass.bubbleAction(world,plannedTarget,plannedStep,builtSchematic);
             if(step==null)continue;
             boolean repairingBubbleBase=step!=plannedStep;
-            BlockPos target=repairingBubbleBase?plannedTarget.below():plannedTarget;
+            BlockPos target=new BlockPos(step.x(),step.y(),step.z());
             if(!world.hasChunkAt(target))continue;
             // Already matching cells and ignored plants are NO-OP work:
             // the normal build service will confirm them in the world
@@ -669,7 +669,13 @@ public final class BuilderConstructionPlanner {
                     &&actual.is(net.minecraft.world.level.block.Blocks.WATER)
                     &&actual.getFluidState().isSource())
                 return new Choice(idx,null,false,true,examined);
-            if(!state.state().canSurvive(world,target))continue;
+            if(!state.state().canSurvive(world,target)){
+                // A source-filled lower chain can be waiting for its
+                // generator tick. Allow the execution service to wake it.
+                if(BuilderWaterPass.isBubbleColumn(step.encodedState()))
+                    return new Choice(idx,null,false,true,examined);
+                continue;
+            }
             // An ascending rail needs a REAL supporting surface below
             // its upper endpoint. A neighboring same-Y rail is not that
             // surface. Do not send a worker across the build, stage paid

@@ -1437,8 +1437,9 @@ public final class BuilderBuildService {
                     return;
                 }
                 if(effective!=claimedStep){
-                    if(!level.mayInteract(owner,column.below())){
-                        table.setProblem("Bubble column base is protected at "+column.below());
+                    BlockPos repair=new BlockPos(effective.x(),effective.y(),effective.z());
+                    if(!level.hasChunkAt(repair)||!level.mayInteract(owner,repair)){
+                        table.setProblem("Bubble column repair is protected/unloaded at "+repair);
                         return;
                     }
                     effectiveStep=effective;
@@ -1446,7 +1447,7 @@ public final class BuilderBuildService {
             }
             final var step=effectiveStep;
             final boolean repairingBubbleBase=step!=claimedStep;
-            final BlockPos pos=repairingBubbleBase?column.below():column;
+            final BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
             var state=BuilderBlockResolver.resolve(step.encodedState(),
                     BuildSite.Rotation.values()[table.builderRotation()/90],
                     BuildSite.Mirror.values()[table.builderMirror()]);
@@ -1478,6 +1479,7 @@ public final class BuilderBuildService {
             boolean partnerComplete=partner==null||BuilderPlacementState.matches(
                     partnerExisting,partnerResolved.state());
             if(primaryComplete&&partnerComplete){
+                if(repairingBubbleBase)return; // Original upper claim is still pending.
                 // Auto-connected walls/fences/panes and stair corner shapes
                 // may differ from the saved palette after neighbouring
                 // blocks change. They ARE already built; never dismantle
@@ -1543,9 +1545,10 @@ public final class BuilderBuildService {
                     return;
                 }
             }
-            if(bubble&&existing.is(net.minecraft.world.level.block.Blocks.WATER)
-                    &&existing.getFluidState().isSource()){
-                level.scheduleTick(pos.below(),level.getBlockState(pos.below()).getBlock(),1);
+            if(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
+                    &&existing.getFluidState().isSource()
+                    ||!state.state().canSurvive(level,pos))){
+                BuilderWaterPass.refreshBubble(level,pos,state.state());
                 // The Builder already supplied this source. Don't mine it
                 // or repeatedly place the same water block while vanilla
                 // propagates the upward/downward bubble from below.
@@ -1709,7 +1712,9 @@ public final class BuilderBuildService {
                     }
                 }
             }
-            if(repairingBubbleBase&&!existing.isAir()){
+            if(repairingBubbleBase&&!existing.isAir()
+                    &&!(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
+                        ||existing.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN)))){
                 BuilderClearance.clear(level,worker,table,owner,pos,existing);
                 return;
             }
@@ -2376,12 +2381,12 @@ public final class BuilderBuildService {
                 table.setProblem("Ascending rail awaiting stable slope at "+pos);
                 return;
             }
+            if(bubble)BuilderWaterPass.refreshBubble(level,pos,state.state());
             if(repairingBubbleBase){
                 BuilderConstructionPlanner.noteCompleted(worker,pos);
                 activity.notePhysicalPlacement();
                 return;
             }
-            if(bubble)level.scheduleTick(pos.below(),level.getBlockState(pos.below()).getBlock(),1);
             if(bubble&&!BuilderPlacementState.matches(
                     level.getBlockState(pos),state.state())){
                 // Do not advance the global Y or replace an actual water
