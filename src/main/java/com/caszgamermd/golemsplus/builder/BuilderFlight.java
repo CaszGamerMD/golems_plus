@@ -207,6 +207,73 @@ public final class BuilderFlight {
         return workPose(level, worker, target) != null
                 || launchPose(level, worker, target) != null;
     }
+    private record RoofAccess(BlockPos target,BlockPos launch,BlockPos landing,long expires){}
+    private static final Map<BuilderGolem,RoofAccess> roofAccess=new WeakHashMap<>();
+    private static final Map<BuilderGolem,Long> roofRetry=new WeakHashMap<>();
+    /** Find an actual walk-lift-walk route around a completed roof, not
+     * a vertical flight through it. Both grounded legs are checked before
+     * selecting a takeoff, and the airborne leg keeps the same 2m limit. */
+    private static RoofAccess roofPlan(ServerLevel level,BuilderGolem worker,BlockPos target){
+        if(!enabled(worker)||active(worker)||!worker.onGround()
+                ||target.getY()-worker.getY()<2)return null;
+        long now=level.getGameTime();
+        RoofAccess saved=roofAccess.get(worker);
+        if(saved!=null&&saved.target().equals(target)&&now<saved.expires()
+                &&WorkerNavigation.canStandOn(level,worker,saved.launch())
+                &&WorkerNavigation.canStandOn(level,worker,saved.landing()))return saved;
+        if(now<roofRetry.getOrDefault(worker,0L))return null;
+        roofRetry.put(worker,now+40);
+        var work=new ArrayList<BlockPos>();
+        for(int dy=-1;dy<=3;dy++)for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
+            BlockPos at=target.offset(dx,dy,dz);
+            if(WorkerNavigation.canStandOn(level,worker,at)
+                    &&safeWorkPose(level,worker,target,feet(at)))work.add(at);
+        }
+        if(work.isEmpty())return null;
+        var launches=new ArrayList<BlockPos>();
+        var byLaunch=new HashMap<BlockPos,BlockPos>();
+        int baseY=worker.blockPosition().getY();
+        int[][] axes={{1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1}};
+        // Search along the four sides and diagonals of the roof. The
+        // landing may be far from the target, but only 2m from takeoff.
+        for(int radius=3;radius<=32;radius++)for(int[] axis:axes){
+            for(int dy:new int[]{0,1,-1,2}){
+                BlockPos landing=target.offset(radius*axis[0],dy,radius*axis[1]);
+                if(!WorkerNavigation.canStandOn(level,worker,landing)
+                        ||Math.abs(WorkerNavigation.surveyFloorHeight(level,landing)-landing.getY())>.1)continue;
+                // Walk from a clear exterior column to the roof's lip.
+                for(int distance:new int[]{1,2}){
+                    BlockPos launch=new BlockPos(landing.getX()+distance*axis[0],
+                            baseY,landing.getZ()+distance*axis[1]);
+                    if(byLaunch.containsKey(launch)||!inEnvelope(feet(launch),feet(landing))
+                            ||!WorkerNavigation.canStandOn(level,worker,launch)
+                            ||Math.abs(WorkerNavigation.surveyFloorHeight(level,launch)-launch.getY())>.1
+                            ||path(level,worker,feet(launch),feet(landing),feet(launch)).isEmpty())continue;
+                    if(!WorkerNavigation.hasGroundRouteFrom(level,worker,landing,work))continue;
+                    launches.add(launch);byLaunch.put(launch,landing);
+                }
+            }
+            if(launches.size()>=12)break;
+        }
+        if(launches.isEmpty())return null;
+        launches.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(feet(at))));
+        BlockPos launch=WorkerNavigation.selectExecutableStand(level,worker,launches);
+        if(launch==null)return null;
+        var result=new RoofAccess(target.immutable(),launch,byLaunch.get(launch),now+400);
+        roofAccess.put(worker,result);return result;
+    }
+    public static boolean canAccessRoofWork(ServerLevel level,BuilderGolem worker,BlockPos target){
+        return roofPlan(level,worker,target)!=null;
+    }
+    public static boolean approachRoofWork(ServerLevel level,BuilderGolem worker,BlockPos target){
+        RoofAccess plan=roofPlan(level,worker,target);
+        if(plan==null)return false;
+        if(worker.position().distanceToSqr(feet(plan.launch()))<.04){
+            roofAccess.remove(worker);
+            return request(level,worker,plan.landing());
+        }
+        return WorkerNavigation.routeToExact(level,worker,plan.launch(),1.0);
+    }
     /** Find a real floor below this local column, or a nearby clear column.
      * A failed attempt never turns gravity on while hovering in open air. */
     public static boolean land(ServerLevel level, BuilderGolem worker, boolean below) {

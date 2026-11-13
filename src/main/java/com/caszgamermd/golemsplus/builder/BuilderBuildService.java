@@ -1760,7 +1760,8 @@ public final class BuilderBuildService {
                     }
                     return;
                 }
-                if(BuilderFlight.approachLaunch(level,worker,pos)){
+                if(BuilderFlight.approachLaunch(level,worker,pos)
+                        ||BuilderFlight.approachRoofWork(level,worker,pos)){
                     activity.phase=Action.MOVE_TO_WORK;
                     return;
                 }
