@@ -16,7 +16,7 @@ public final class BuilderPropellerGameTest {
         var world=h.getLevel();
         BlockPos start=h.absolutePos(new BlockPos(12,3,12));
         BlockPos top=start.above(30);
-        world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start),3);
+        world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
         h.setBlock(12,2,12,Blocks.STONE);
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
@@ -52,7 +52,7 @@ public final class BuilderPropellerGameTest {
         var world=h.getLevel();
         BlockPos start=h.absolutePos(new BlockPos(10,4,10));
         BlockPos goal=h.absolutePos(new BlockPos(18,4,10));
-        world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start),3);
+        world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
         for(int y=1;y<=9;y++)for(int z=7;z<=13;z++)h.setBlock(14,y,z,Blocks.STONE);
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
