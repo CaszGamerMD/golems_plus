@@ -228,7 +228,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         boolean ropeActive=BuilderGrappleAccess.active(this);
         boolean grappling=level() instanceof ServerLevel grappleWorld
                 &&BuilderGrappleAccess.tickMotion(grappleWorld,this);
-        boolean scaffolding=!BuilderFlight.enabled(this)&&!flying&&!ropeActive
+        boolean scaffolding=!flying&&!ropeActive
                 &&level() instanceof ServerLevel scaffoldWorld
                 &&(BuilderScaffolding.tickMotion(scaffoldWorld,this)
                     ||BuilderScaffoldPlanA.tickMotion(scaffoldWorld,this));

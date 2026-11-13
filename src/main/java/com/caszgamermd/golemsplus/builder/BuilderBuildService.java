@@ -608,15 +608,18 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table){
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null)depot=table.getBlockPos();
-        if(BuilderFlight.enabled(worker)){
-            if(BuilderReturnService.approach(level,worker,depot,.8))return false;
-            BuilderFlight.stop(worker);
-            return true;
+        if(BuilderFlight.enabled(worker)&&BuilderFlight.active(worker)){
+            BuilderFlight.land(level,worker,false);
+            return false;
         }
         if(atOnSite(level,worker,depot)){
             com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
             return true;
         }
+        if(BuilderFlight.enabled(worker)&&worker.getY()>depot.getY()+1.5
+                &&!BuilderGrappleAccess.active(worker)
+                &&!BuilderScaffolding.isControllingMovement(worker)
+                &&BuilderFlight.land(level,worker,true))return false;
         // Plan-A bridges and tracked shafts are mandatory return routes:
         // finish their bridge crossing and controlled dismount first.
         if(BuilderScaffolding.descendForTravel(level,worker,table))
@@ -1681,15 +1684,25 @@ public final class BuilderBuildService {
             activity.supplyProgressTick=-1;
             boolean bodyBlockingWork=BuilderPlacementSpace.stepNeedsVacating(
                     level,pos,state.state(),waterlog);
-            if(BuilderFlight.enabled(worker)){
-                if(!BuilderFlight.safeWorkPose(level,worker,pos,worker.position())){
-                    BlockPos flightPose=BuilderFlight.workPose(level,worker,pos);
-                    if(flightPose==null||!BuilderFlight.request(level,worker,flightPose))
+            boolean propellerWork=BuilderFlight.enabled(worker)
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker)
+                    &&(BuilderFlight.active(worker)
+                        ||Math.abs(pos.getY()-worker.blockPosition().getY())>1);
+            boolean hoverPose=propellerWork
+                    &&BuilderFlight.safeWorkPose(level,worker,pos,worker.position());
+            if(propellerWork&&!hoverPose){
+                BlockPos flightPose=BuilderFlight.workPose(level,worker,pos);
+                if(flightPose!=null&&BuilderFlight.request(level,worker,flightPose))return;
+                if(BuilderFlight.active(worker)){
+                    if(!BuilderFlight.land(level,worker,false))
                         table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),
-                                "no clear propeller flight to work position");
+                                "propeller needs clear local landing");
                     return;
                 }
-            }else{
+                if(BuilderFlight.approachLaunch(level,worker,pos))return;
+            }
+            if(!hoverPose){
             // PLAN B: physical Grapple Hook up to 20 blocks, never a
             // scaffold/flying/teleport fallback. Ordinary slopes use A*.
             // A released rope leaves feet slightly above the ledge until

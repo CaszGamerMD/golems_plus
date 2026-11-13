@@ -52,6 +52,14 @@ public final class BuilderReturnService {
     public static boolean approach(ServerLevel level,BuilderGolem worker,
             BlockPos target,double speed){
         if(target==null)return true;
+        if(BuilderFlight.enabled(worker)&&BuilderFlight.active(worker)){
+            BuilderFlight.land(level,worker,false);
+            return true;
+        }
+        if(BuilderFlight.enabled(worker)&&worker.getY()>target.getY()+1.5
+                &&!BuilderGrappleAccess.active(worker)
+                &&!BuilderScaffolding.isControllingMovement(worker)
+                &&BuilderFlight.land(level,worker,true))return true;
         if(withinStorageReach(worker,target)){
             approaches.remove(worker);
             com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
