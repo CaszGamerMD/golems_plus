@@ -253,6 +253,35 @@ public final class BuilderFlight {
         return false;
     }
 
+    /** A rail/glass/wet-root pocket may have no horizontal route at all.
+     * Lift in its open shaft, then land on a REAL nearby upper surface
+     * with an onward ground path. No temporary block, anchor or teleport. */
+    public static boolean escapePocket(ServerLevel level,BuilderGolem worker,BlockPos goal){
+        if(!enabled(worker)||active(worker))return false;
+        Vec3 anchor=worker.position();
+        BlockPos here=worker.blockPosition();
+        var candidates=new ArrayList<BlockPos>();
+        for(int dy=1;dy<=5;dy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+            BlockPos p=here.offset(dx,dy,dz);
+            if(!inEnvelope(anchor,feet(p))||p.getY()<=anchor.y+.6
+                    ||!WorkerNavigation.canStandOn(level,worker,p)
+                    ||Math.abs(WorkerNavigation.surveyFloorHeight(level,p)-p.getY())>.1)continue;
+            if(!path(level,worker,anchor,feet(p),anchor).isEmpty())candidates.add(p);
+        }
+        // Prefer a broad surface, not the same isolated one-block perch.
+        candidates.sort(Comparator.comparingDouble(p->feet(p).distanceToSqr(anchor)));
+        for(BlockPos p:candidates){
+            int exits=0;
+            for(Direction side:Direction.Plane.HORIZONTAL){
+                BlockPos next=p.relative(side);
+                if(WorkerNavigation.canStandOn(level,worker,next)
+                        &&sweep(level,worker,feet(p),feet(next)))exits++;
+            }
+            if(exits>0&&request(level,worker,p))return true;
+        }
+        return false;
+    }
+
     private record Descent(BlockPos depot,BlockPos launch,BlockPos landing,long until){}
     private static final Map<BuilderGolem,Descent> descents=new WeakHashMap<>();
 

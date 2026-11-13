@@ -219,5 +219,34 @@ public final class BuilderPropellerGameTest {
                 h.succeed();
             }
         });
+    }    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=300,skyAccess=true)
+    public void propellerEscapesOpenRailPocketToRealUpperFloor(GameTestHelper h){
+        var world=h.getLevel();
+        for(int x=8;x<=14;x++)for(int z=8;z<=14;z++){
+            h.setBlock(x,2,z,Blocks.STONE);
+            if(x!=11||z!=11){
+                h.setBlock(x,3,z,Blocks.STONE);
+                h.setBlock(x,4,z,Blocks.STONE);
+                h.setBlock(x,5,z,Blocks.STONE);
+            }
+        }
+        BlockPos start=h.absolutePos(new BlockPos(11,3,11));
+        world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(worker);
+        h.onEachTick(()->{
+            if(h.getTick()==5&&!BuilderFlight.escapePocket(world,worker,start.east(6))){
+                h.fail("No collision-safe lift from the open pocket");return;
+            }
+            if(h.getTick()>5&&!BuilderFlight.active(worker)&&worker.onGround()
+                    &&worker.getY()>=start.getY()+2.9){
+                if(BuilderGrappleAccess.active(worker)){
+                    h.fail("Pocket escape used a grapple");return;
+                }
+                System.out.println("[PROPELLER POCKET PASS] real upper floor tick="+h.getTick());
+                h.succeed();
+            }
+        });
     }
 }

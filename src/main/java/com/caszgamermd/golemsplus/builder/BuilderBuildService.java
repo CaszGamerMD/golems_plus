@@ -1824,10 +1824,11 @@ public final class BuilderBuildService {
                     &&!BuilderScaffoldPlanA.hasPlan(worker)
                     &&!BuilderScaffolding.isControllingMovement(worker)){
                 activity.lastPerchEscapeTick=now;
-                if(BuilderGrappleAccess.escapePerch(
-                        level,worker,table,pos)
-                        ||BuilderGrappleAccess.escapeRailPocket(
-                                level,worker,pos)){
+                if((BuilderFlight.enabled(worker)
+                        &&BuilderFlight.escapePocket(level,worker,pos))
+                        ||(!BuilderFlight.enabled(worker)
+                        &&(BuilderGrappleAccess.escapePerch(level,worker,table,pos)
+                        ||BuilderGrappleAccess.escapeRailPocket(level,worker,pos)))){
                     activity.lastMovementTick=now;
                     activity.workTravelSince=now;
                     return;

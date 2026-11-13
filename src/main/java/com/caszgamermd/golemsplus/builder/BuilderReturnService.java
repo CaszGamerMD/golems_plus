@@ -136,9 +136,15 @@ public final class BuilderReturnService {
             route.stand=com.caszgamermd.golemsplus.worker.WorkerNavigation
                     .selectExecutableStand(level,worker,possible);
             if(route.stand==null){
-                if(BuilderFlight.enabled(worker)&&worker.getY()>target.getY()+1.5
-                        &&!BuilderFlight.land(level,worker,true))
-                    BuilderFlight.approachDescentLaunch(level,worker,target);
+                if(BuilderFlight.enabled(worker)&&worker.getY()>target.getY()+1.5){
+                    // The roof-edge walk is preferable to dropping back
+                    // into the same enclosed machine cell.
+                    if(!BuilderFlight.approachDescentLaunch(level,worker,target)
+                            &&!BuilderFlight.escapePocket(level,worker,target))
+                        BuilderFlight.land(level,worker,true);
+                }else if(BuilderFlight.enabled(worker)){
+                    BuilderFlight.escapePocket(level,worker,target);
+                }
                 return true;
             }
         }
