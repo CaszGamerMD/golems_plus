@@ -119,7 +119,7 @@ public final class BuilderPropellerRecoveryGameTest {
         }catch(Exception e){h.fail("Bulk stock test setup failed "+e);}
     }
 
-    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=100,skyAccess=true)
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=160,skyAccess=true)
     public void nearbyCrewSharesOnlyRealSurplusWithoutRemoteTransfer(GameTestHelper h){
         var level=h.getLevel();
         for(int x=5;x<=18;x++)for(int z=5;z<=16;z++){
@@ -140,7 +140,7 @@ public final class BuilderPropellerRecoveryGameTest {
         var donor=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         receiver.setPos(near.getX()+.5,near.getY(),near.getZ()+.5);
         donor.setPos(far.getX()+.5,far.getY(),far.getZ()+.5);
-        receiver.assign(station,id);donor.assign(station,id);
+        // Register real entities without starting their idle return AI.
         level.addFreshEntity(receiver);level.addFreshEntity(donor);
         if(!table.registerBuilderWorker(receiver.getUUID())||!table.registerBuilderWorker(donor.getUUID())){
             h.fail("Worker registration failed");return;
@@ -151,11 +151,14 @@ public final class BuilderPropellerRecoveryGameTest {
             if(h.getTick()==5){
                 if(BuilderSupplyInventory.borrowNearby(level,receiver,table,material,null,1)
                         ||receiver.carriedCount(material)!=0){h.fail("Remote material transfer");return;}
-                BlockPos p=near.east();
-                donor.setPos(p.getX()+.5,p.getY(),p.getZ()+.5);
-                donor.setDeltaMovement(Vec3.ZERO);
             }
-            if(h.getTick()==12){
+            if(h.getTick()>5&&h.getTick()%5==0
+                    &&receiver.distanceToSqr(donor)>4){
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(
+                        level,donor,near.east(),1.0);
+            }
+            if(h.getTick()>5&&receiver.distanceToSqr(donor)<=4
+                    &&receiver.onGround()&&donor.onGround()){
                 if(!BuilderSupplyInventory.borrowNearby(level,receiver,table,material,null,1)
                         ||receiver.carriedCount(material)!=1||donor.carriedCount(material)!=1){
                     h.fail("No conserved nearby surplus transfer");return;
@@ -164,7 +167,7 @@ public final class BuilderPropellerRecoveryGameTest {
                     h.fail("Donor's reserved material was taken");return;
                 }
                 System.out.println("[CREW SURPLUS PASS] one real transfer, one reserved, remote rejected");h.succeed();
-            }
+            }else if(h.getTick()==150)h.fail("Donor did not walk into physical transfer range");
         });
     }
 
