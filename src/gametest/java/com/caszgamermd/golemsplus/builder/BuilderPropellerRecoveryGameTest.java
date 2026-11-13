@@ -52,4 +52,71 @@ public final class BuilderPropellerRecoveryGameTest {
             }
         });
     }
+    /** A real 48-block construction job: the builder should load its
+     * active-layer bulk material in one physical depot visit. */
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=1800,skyAccess=true)
+    public void stockedBuilderCompletesBulkLayerWithoutFrequentDepotTrips(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=2;x<=27;x++)for(int z=2;z<=25;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=8;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        h.setBlock(4,2,4,WorksiteContent.BUILDER_TABLE);
+        h.setBlock(5,2,4,Blocks.CHEST);
+        BlockPos station=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos depot=h.absolutePos(new BlockPos(5,2,4));
+        BlockPos start=h.absolutePos(new BlockPos(7,2,4));
+        level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        if(!(level.getBlockEntity(station) instanceof com.caszgamermd.golemsplus.world.WorkerStationBlockEntity table)
+                ||!(level.getBlockEntity(depot) instanceof net.minecraft.world.Container stock)){
+            h.fail("Missing bulk construction depot");return;
+        }
+        stock.setItem(0,new net.minecraft.world.item.ItemStack(Blocks.SMOOTH_STONE,64));
+        stock.setItem(1,new net.minecraft.world.item.ItemStack(Blocks.SCAFFOLDING,64));
+        stock.setItem(2,new net.minecraft.world.item.ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        stock.setItem(3,new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.BUCKET));
+        var cells=new java.util.ArrayList<LitematicFileReader.Block>();
+        var targets=new java.util.ArrayList<BlockPos>();
+        for(int x=12;x<20;x++)for(int z=12;z<18;z++){
+            BlockPos p=h.absolutePos(new BlockPos(x,2,z));
+            targets.add(p);
+            cells.add(new LitematicFileReader.Block(p.getX(),p.getY(),p.getZ(),"minecraft:smooth_stone"));
+        }
+        var owner=h.makeMockServerPlayerInLevel();var id=owner.getUUID();
+        try{
+            var snapshot=BuilderPlacementSnapshot.encode("Bulk layer stock",cells,java.util.List.of());
+            var plan=BuilderConstructionPlan.create(BuilderPlacementSnapshot.decode(snapshot),BuilderPlacementSnapshot.worldSpaceSite());
+            var folder=net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("golems_plus").resolve("schematics");
+            java.nio.file.Files.createDirectories(folder);
+            String file="placed-gametest-bulk-layer.gpb";java.nio.file.Files.write(folder.resolve(file),snapshot);
+            if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,1)
+                    ||!table.setPlacedBuilderPlan(id,file,"Bulk layer stock",station,0,0,plan.steps().size(),plan.unsupported().size())
+                    ||!table.setBuilderMaterialStorage(id,depot)){
+                h.fail("Bulk layer Planner refused job");return;
+            }
+            table.setBuilderMaterialsForFile(file,plan.required());
+            var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+            worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+            worker.assign(station,id);level.addFreshEntity(worker);
+            if(!table.registerBuilderWorker(worker.getUUID())||!table.startPlacedBuilder(id)){
+                h.fail("Bulk layer job refused start");return;
+            }
+            int[] peak={0};
+            h.onEachTick(()->{
+                peak[0]=Math.max(peak[0],worker.carriedCount(net.minecraft.world.item.Items.SMOOTH_STONE));
+                long built=targets.stream().filter(p->level.getBlockState(p).is(Blocks.SMOOTH_STONE)).count();
+                if(built==48){
+                    if(peak[0]<40){h.fail("Bulk layer only staged "+peak[0]+" blocks");return;}
+                    int remaining=worker.carriedCount(net.minecraft.world.item.Items.SMOOTH_STONE);
+                    for(int slot=0;slot<stock.getContainerSize();slot++)
+                        if(stock.getItem(slot).is(net.minecraft.world.item.Items.SMOOTH_STONE))remaining+=stock.getItem(slot).getCount();
+                    if(remaining!=16){h.fail("Physical material conservation failed: remaining="+remaining);return;}
+                    System.out.println("[BULK LAYER STOCK PASS] paid 48 blocks, peak pouch="+peak[0]+" tick="+h.getTick());
+                    h.succeed();return;
+                }
+                if(h.getTick()==1700)h.fail("Bulk layer stalled built="+built+" peak="+peak[0]+" problem="+table.problem());
+            });
+        }catch(Exception e){h.fail("Bulk stock test setup failed "+e);}
+    }
+
 }
