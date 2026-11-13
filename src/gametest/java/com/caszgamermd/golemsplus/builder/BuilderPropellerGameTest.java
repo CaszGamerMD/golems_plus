@@ -195,7 +195,10 @@ public final class BuilderPropellerGameTest {
     @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=800,skyAccess=true)
     public void propellerReturnsToDepotFromWideRoofWithoutGrapple(GameTestHelper h){
         var world=h.getLevel();
-        for(int x=2;x<=36;x++)for(int z=2;z<=36;z++)h.setBlock(x,1,z,Blocks.STONE);
+        for(int x=2;x<=36;x++)for(int z=2;z<=36;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=12;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
         for(int x=5;x<=31;x++)for(int z=5;z<=31;z++)h.setBlock(x,7,z,Blocks.STONE);
         h.setBlock(3,2,18,Blocks.CHEST);
         BlockPos start=h.absolutePos(new BlockPos(18,8,18));
@@ -207,6 +210,7 @@ public final class BuilderPropellerGameTest {
         boolean[] flew={false};
         h.onEachTick(()->{
             if(h.getTick()<5)return;
+            if(h.getTick()==790){h.fail("Wide roof return stalled feet="+worker.position()+" grounded="+worker.onGround()+" flight="+BuilderFlight.active(worker)+" flew="+flew[0]);return;}
             if(BuilderGrappleAccess.active(worker)){
                 h.fail("Propeller return started a competing grapple");return;
             }
