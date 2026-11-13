@@ -40,6 +40,7 @@ jobs:
           grep -F '[BULK LAYER STOCK PASS]' "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[CREW SURPLUS PASS]' "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[ROOF ASCENT PASS]' "$RUNNER_TEMP/propeller-recovery.log"
+          grep -F '[FRACTIONAL TAKEOFF PASS]' "$RUNNER_TEMP/propeller-recovery.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

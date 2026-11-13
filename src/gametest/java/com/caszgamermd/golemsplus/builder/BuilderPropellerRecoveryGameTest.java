@@ -211,4 +211,43 @@ public final class BuilderPropellerRecoveryGameTest {
         });
     }
 
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=150,skyAccess=true)
+    public void fractionalTakeoffDoesNotExceedTwoMetres(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=6;x<=16;x++)for(int z=6;z<=16;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=10;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        for(int x=12;x<=15;x++)for(int z=9;z<=12;z++)h.setBlock(x,6,z,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(10,2,10));
+        BlockPos landing=h.absolutePos(new BlockPos(12,7,10));
+        level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        // Ordinary walking centers only to about 2.5cm; reproduce the
+        // actual failed roof handoff, not an artificially perfect pose.
+        worker.setPos(start.getX()+.475,start.getY(),start.getZ()+.5);
+        level.addFreshEntity(worker);
+        Vec3[] anchor={null};
+        h.onEachTick(()->{
+            if(h.getTick()==5){
+                anchor[0]=worker.position();
+                if(BuilderFlight.request(level,worker,landing)){
+                    h.fail("Integer landing incorrectly accepted >2m");return;
+                }
+                if(!BuilderFlight.requestSupportedLanding(level,worker,landing)){
+                    h.fail("Fractional supported landing was rejected");return;
+                }
+            }
+            if(h.getTick()<=5||anchor[0]==null)return;
+            double dx=worker.getX()-anchor[0].x,dz=worker.getZ()-anchor[0].z;
+            if(dx*dx+dz*dz>4.0001){h.fail("Flight exceeded actual two-metre envelope");return;}
+            if(!BuilderFlight.active(worker)&&worker.onGround()){
+                if(!worker.blockPosition().equals(landing)){
+                    h.fail("Did not reach intended landing tile: "+worker.position());return;
+                }
+                System.out.println("[FRACTIONAL TAKEOFF PASS] actual <=2m; landed on intended tile");h.succeed();
+            }
+        });
+    }
+
 }
