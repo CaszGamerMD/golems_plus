@@ -296,4 +296,70 @@ public final class BuilderPropellerRecoveryGameTest {
             }
         });
     }
+
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=300,skyAccess=true)
+    public void idleCarrierReturnsRequestedSurplusToPhysicalDepot(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=3;x<=24;x++)for(int z=3;z<=18;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=6;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        h.setBlock(5,2,5,WorksiteContent.BUILDER_TABLE);
+        h.setBlock(6,2,5,Blocks.CHEST);
+        BlockPos station=h.absolutePos(new BlockPos(5,2,5));
+        BlockPos depot=h.absolutePos(new BlockPos(6,2,5));
+        BlockPos from=h.absolutePos(new BlockPos(15,2,12));
+        level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(from.getX()>>4,from.getZ()>>4),3);
+        if(!(level.getBlockEntity(station) instanceof com.caszgamermd.golemsplus.world.WorkerStationBlockEntity table)
+                ||!(level.getBlockEntity(depot) instanceof net.minecraft.world.Container chest)){
+            h.fail("Missing stock return depot");return;
+        }
+        var owner=h.makeMockServerPlayerInLevel();var id=owner.getUUID();
+        try{
+            var target=h.absolutePos(new BlockPos(20,2,12));
+            var cells=java.util.List.of(new LitematicFileReader.Block(target.getX(),target.getY(),target.getZ(),"minecraft:glass"));
+            var snapshot=BuilderPlacementSnapshot.encode("Crew surplus",cells,java.util.List.of());
+            var plan=BuilderConstructionPlan.create(BuilderPlacementSnapshot.decode(snapshot),BuilderPlacementSnapshot.worldSpaceSite());
+            var folder=net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("golems_plus").resolve("schematics");
+            java.nio.file.Files.createDirectories(folder);
+            String file="placed-gametest-crew-surplus-return.gpb";java.nio.file.Files.write(folder.resolve(file),snapshot);
+            if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,2)
+                    ||!table.setPlacedBuilderPlan(id,file,"Crew surplus",station,0,0,plan.steps().size(),plan.unsupported().size())
+                    ||!table.setBuilderMaterialStorage(id,depot)){
+                h.fail("Stock return plan refused");return;
+            }
+            table.setBuilderMaterialsForFile(file,plan.required());
+            var donor=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+            var receiver=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+            donor.setPos(from.getX()+.5,from.getY(),from.getZ()+.5);
+            var near=depot.south();
+            receiver.setPos(near.getX()+.5,near.getY(),near.getZ()+.5);
+            level.addFreshEntity(donor);level.addFreshEntity(receiver);
+            if(!table.registerBuilderWorker(donor.getUUID())||!table.registerBuilderWorker(receiver.getUUID())
+                    ||!table.startPlacedBuilder(id)){h.fail("Stock return crew refused");return;}
+            donor.setItem(0,new net.minecraft.world.item.ItemStack(Blocks.GLASS,12));
+            donor.setItem(1,new net.minecraft.world.item.ItemStack(Blocks.STONE,5));
+            var glass=net.minecraft.world.item.Items.GLASS;
+            h.onEachTick(()->{
+                if(h.getTick()==5&&!BuilderSupplyInventory.requestCrewStock(level,receiver,table,glass,plan.steps())){
+                    h.fail("Idle carrier did not accept surplus request");return;
+                }
+                if(h.getTick()<5)return;
+                int stored=0;
+                for(int slot=0;slot<chest.getContainerSize();slot++)
+                    if(chest.getItem(slot).is(glass))stored+=chest.getItem(slot).getCount();
+                if(stored>0){
+                    if(!BuilderReturnService.withinStorageReach(donor,depot)||stored!=12
+                            ||donor.carriedCount(glass)!=0||donor.carriedCount(net.minecraft.world.item.Items.STONE)!=5){
+                        h.fail("Surplus return violated reach or conservation");return;
+                    }
+                    System.out.println("[CREW STOCK RETURN PASS] walked to depot, transferred only requested material");
+                    h.succeed();return;
+                }
+                if(donor.carriedCount(glass)!=12){h.fail("Stock disappeared before arrival");return;}
+                if(h.getTick()%5==0)BuilderSupplyInventory.serviceCrewStock(level,donor,table,plan.steps());
+                if(h.getTick()==290)h.fail("Surplus trip stalled feet="+donor.position());
+            });
+        }catch(Exception e){h.fail("Stock return setup failed "+e);}
+    }
 }

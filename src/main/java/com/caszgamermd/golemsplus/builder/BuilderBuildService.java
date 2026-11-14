@@ -1157,6 +1157,7 @@ public final class BuilderBuildService {
                 reconciledJobs.put(table,new ReconciledJob(table.activeOrder(),plan));
             }
             if(table.phase()==WorkerPhase.COMPLETE)return;
+            if(BuilderSupplyInventory.serviceCrewStock(level,worker,table,plan.steps()))return;
             // All positions for each X/Z zone were pre-assigned as one
             // immutable ordered execution plan. The Planner does NOT
             // arbitrate between Builders on each move or block placement.
@@ -1699,6 +1700,7 @@ public final class BuilderBuildService {
                     int teammates=BuilderSupplyInventory.carriedByTeammates(
                             level,worker,table,state.item());
                     if(teammates>0){
+                        BuilderSupplyInventory.requestCrewStock(level,worker,table,state.item(),plan.steps());
                         table.setProblem("Builder teammate is carrying "
                                 +teammates+" "+step.requiredItem()
                                 +"; reorganizing crew pickup");
