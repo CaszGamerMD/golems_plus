@@ -349,6 +349,16 @@ public final class BuilderPropellerRecoveryGameTest {
                         h.fail("Stocked handoff violated exclusive claim or inventory conservation");return;
                     }
                     System.out.println("[MATERIAL NETWORK HANDOFF PASS] exact step transferred without moving items");
+                    // The recipient runs out before placing; a different
+                    // carrier now holds glass. Do not ping-pong this cell.
+                    donor.setItem(0,net.minecraft.world.item.ItemStack.EMPTY);
+                    requester.setItem(0,new net.minecraft.world.item.ItemStack(glass,2));
+                    if(BuilderMaterialNetwork.offer(level,donor,table,plan.steps(),0,glass)
+                            ||table.claimedStep(donor.getUUID())!=0){
+                        h.fail("Recently transferred claim bounced back");return;
+                    }
+                    requester.setItem(0,net.minecraft.world.item.ItemStack.EMPTY);
+                    System.out.println("[MATERIAL NETWORK NO BOUNCE PASS] recent claim retained");
                     // Fixture simulates consumption of the last stock, not
                     // completion of the unfinished construction cell.
                     donor.setItem(0,net.minecraft.world.item.ItemStack.EMPTY);

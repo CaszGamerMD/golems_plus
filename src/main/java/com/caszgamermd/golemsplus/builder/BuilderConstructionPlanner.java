@@ -603,8 +603,20 @@ public final class BuilderConstructionPlanner {
         if(last!=null&&last.getY()!=y)last=null;
         BlockPos anchor=last==null?worker.blockPosition():last;
         orderConnectedFront(pending,steps,contacts,closureRisks,anchor);
+        // Prefer real inventory, but preserve connected-front ordering
+        // within each group. A periodic ordinary scan still explores
+        // missing-material cells and inaccessible stocked alternatives.
+        var stocked=new java.util.HashSet<Integer>();
+        for(int idx:pending){
+            var item=BuilderMaterialNetwork.required(steps.get(idx));
+            if(item==null||worker.carriedCount(item)>0)stocked.add(idx);
+        }
+        if(!stocked.isEmpty()&&stocked.size()<pending.size()
+                &&(lookahead||Math.floorMod(world.getGameTime()/5,4)!=0))
+            pending.sort(java.util.Comparator.comparingInt(idx->stocked.contains(idx)?0:1));
         Choice best=null;
         int bestTier=Integer.MAX_VALUE;
+        int bestStock=Integer.MAX_VALUE;
         int bestContact=0;
         double bestScore=Double.POSITIVE_INFINITY;
         SearchWindow previous=lookahead?null:windows.get(worker);
@@ -755,7 +767,9 @@ public final class BuilderConstructionPlanner {
                             world,target,builtSchematic))
                     -touch*6+risk*250
                     +(scaffold?BuilderFrontierTuning.GRAPPLE_PENALTY*2:0);
-            if(tier<bestTier||tier==bestTier&&cost<bestScore){
+            int stockRank=stocked.contains(idx)?0:1;
+            if(stockRank<bestStock||stockRank==bestStock&&(tier<bestTier||tier==bestTier&&cost<bestScore)){
+                bestStock=stockRank;
                 bestTier=tier;
                 bestContact=touch;
                 bestScore=cost;

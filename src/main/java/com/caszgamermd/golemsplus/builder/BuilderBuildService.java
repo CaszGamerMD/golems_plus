@@ -1281,7 +1281,8 @@ public final class BuilderBuildService {
                 index=-1;
             var handoffCandidates=new java.util.ArrayList<Integer>();
             for(int candidate:zone)
-                if(!reservedForTeammate(table,worker.getUUID(),candidate,selectionTick))
+                if(!reservedForTeammate(table,worker.getUUID(),candidate,selectionTick)
+                        &&!table.builderStepClaimedByOther(worker.getUUID(),candidate))
                     handoffCandidates.add(candidate);
             zone=handoffCandidates;
             // No unfinished cell in this worker's portion of the active Y:
@@ -1307,8 +1308,8 @@ public final class BuilderBuildService {
                 if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
                         planningCrew.indexOf(worker.getUUID()),
                         planningCrew.size()))return;
-                var next=materialOffers.isEmpty()?null:BuilderConstructionPlanner.choose(
-                        level,worker,table,plan.steps(),materialOffers);
+                var next=materialOffers.isEmpty()?null:BuilderConstructionPlanner.chooseLookahead(
+                        level,worker,table,plan.steps(),materialOffers,0,1);
                 if(next==null)next=BuilderConstructionPlanner.choose(
                         level,worker,table,plan.steps(),zone);
                 // A zone can contain only unsupported redstone results or
