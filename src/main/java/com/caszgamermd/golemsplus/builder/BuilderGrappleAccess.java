@@ -53,7 +53,8 @@ public final class BuilderGrappleAccess {
         final BuilderRouteProgress progress=new BuilderRouteProgress(.04);
         Phase lastPhase;
         long lastWalkProgress;
-        double walkX=Double.NaN,walkZ=Double.NaN;
+        double bestWalkDistance=Double.POSITIVE_INFINITY;
+        double initialWalkDistance=Double.NaN;
         double supportY=Double.NaN,upperX,upperZ;
         Rope(BlockPos anchor,Direction side,BlockPos landing,BlockPos goal,
                 boolean down,long time) {
@@ -638,6 +639,7 @@ public final class BuilderGrappleAccess {
      */
     private static boolean startAscent(ServerLevel level,BuilderGolem worker,
             Rope route){
+        if(BuilderFlight.active(worker))return false;
         if(!WorkerNavigation.routeToExact(level,worker,route.landing,1.0)){
             reject(level,worker,route); // try a different physical face next time
             return false;
@@ -648,7 +650,7 @@ public final class BuilderGrappleAccess {
 
     public static Result reachWork(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos target){
-        if(active.containsKey(worker)||!worker.onGround())return Result.MOVING;
+        if(active.containsKey(worker)||!worker.onGround()||BuilderFlight.active(worker))return Result.MOVING;
         // An active paid scaffold owns this target's access/return route.
         // Never attach a second controller while the Builder is traversing
         // its bridge: an overlapping rope can strand BOTH controllers.
@@ -678,7 +680,7 @@ public final class BuilderGrappleAccess {
     public static Result reach(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos goal){
         Rope current=active.get(worker);
-        if(current!=null)return Result.MOVING;
+        if(current!=null||BuilderFlight.active(worker))return Result.MOVING;
         int diff=goal.getY()-worker.blockPosition().getY();
         if(diff<=0)return Result.READY;
         if(diff==1){
@@ -707,6 +709,7 @@ public final class BuilderGrappleAccess {
     public static boolean escapePerch(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos goal){
         if(active.containsKey(worker))return true;
+        if(BuilderFlight.active(worker))return false;
         if((!worker.onGround()&&!worker.isInWater())||BuilderScaffolding.isControllingMovement(worker)
                 ||BuilderScaffoldPlanA.hasPlan(worker))return false;
         BlockPos under=worker.blockPosition().below();
@@ -821,6 +824,7 @@ public final class BuilderGrappleAccess {
     public static boolean rappelHome(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos goal){
         if(active.containsKey(worker))return true;
+        if(BuilderFlight.active(worker))return false;
         if(BuilderScaffoldPlanA.hasPlan(worker)
                 &&BuilderScaffoldPlanA.returnToGround(level,worker,table))
             return true;
@@ -843,6 +847,7 @@ public final class BuilderGrappleAccess {
     public static boolean rappelToward(ServerLevel level,
             BuilderGolem worker,WorkerStationBlockEntity table,BlockPos goal){
         if(active.containsKey(worker))return true;
+        if(BuilderFlight.active(worker))return false;
         // Returning from a high work bridge must retrace and descend
         // its owned scaffold BEFORE considering a fresh grapple line.
         // In particular Plan A WALK_FIRST is not safe to interrupt.
@@ -912,29 +917,39 @@ public final class BuilderGrappleAccess {
     public static boolean tickMotion(ServerLevel level,BuilderGolem mob){
         Rope r=active.get(mob);
         if(r==null)return false;
-        // Failed to WALK to a grapple attachment point. No line was
-        // thrown, so grounded cancellation is safe. Forget this face
-        // temporarily instead of making the worker hold a dead route.
+        // An approach is NOT an attached rope. It must never retain
+        // powered no-gravity or keep moving while a flight is suspended.
+        // Only actual progress toward the real entry extends the timer.
         if(r.phase==Phase.WALK_TO_LINE||r.phase==Phase.WALK_TO_EDGE){
-            if(!Double.isFinite(r.walkX)
-                    ||Math.pow(mob.getX()-r.walkX,2)+Math.pow(mob.getZ()-r.walkZ,2)>.04){
-                r.walkX=mob.getX();r.walkZ=mob.getZ();
+            if(BuilderFlight.active(mob)){
+                reject(level,mob,r);
+                active.remove(mob);
+                WorkerNavigation.stop(mob);
+                mob.setDeltaMovement(0,0,0);
+                // Flight resumes control next tick; don't drop a hovering mob.
+                System.out.println("[GRAPPLE] CANCELLED UNTHROWN HOOK: powered flight owns motion");
+                return false;
+            }
+            if(mob.isNoGravity()){
+                mob.setNoGravity(false);
+                mob.setDeltaMovement(0,0,0);
+            }
+            BlockPos entry=r.phase==Phase.WALK_TO_EDGE?r.anchor.above():r.landing;
+            double distance=Math.sqrt(mob.distanceToSqr(entry.getX()+.5,entry.getY(),entry.getZ()+.5));
+            if(!Double.isFinite(r.initialWalkDistance))r.initialWalkDistance=distance;
+            if(distance<r.bestWalkDistance-.2){
+                r.bestWalkDistance=distance;
                 r.lastWalkProgress=level.getGameTime();
             }
-        }
-        if((r.phase==Phase.WALK_TO_LINE||r.phase==Phase.WALK_TO_EDGE)
-                &&(level.getGameTime()-r.lastWalkProgress>=TRAVEL_TIMEOUT
-                    ||level.getGameTime()-r.started>=2400)
-                &&mob.onGround()){
-            reject(level,mob,r);
-            if(r.visibleLine!=null)r.visibleLine.close();
-            active.remove(mob);
-            WorkerNavigation.stop(mob);
-            System.out.println("[GRAPPLE] ATTACHMENT ROUTE TIMED OUT; "
-                    +"trying alternate anchor after grounded abort "+r.anchor
-                    +" entry="+r.landing+" feet="+mob.position()
-                    +" "+WorkerNavigation.diagnoseExecutableStand(level,mob,List.of(r.landing)));
-            return false;
+            long now=level.getGameTime();
+            if(now-r.lastWalkProgress>=TRAVEL_TIMEOUT
+                    ||now-r.started>=600||distance>r.initialWalkDistance+12){
+                reject(level,mob,r);
+                // No line has been thrown, so even an airborne approach
+                // can be cancelled without releasing a suspended rope.
+                release(mob,r,"ATTACHMENT ROUTE TIMED OUT");
+                return false;
+            }
         }
         if(r.phase==Phase.WALK_TO_EDGE){
             BlockPos edge=r.anchor.above();

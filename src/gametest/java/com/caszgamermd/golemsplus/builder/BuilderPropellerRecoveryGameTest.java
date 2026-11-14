@@ -386,4 +386,42 @@ public final class BuilderPropellerRecoveryGameTest {
             });
         }catch(Exception e){h.fail("Network setup failed "+e);}
     }
+
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=220,skyAccess=true)
+    public void unthrownGrappleRestoresGravityAndRejectsConcurrentFlight(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=4;x<=22;x++)for(int z=5;z<=17;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=12;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        for(int x=15;x<=18;x++)for(int z=9;z<=12;z++)h.setBlock(x,6,z,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(7,2,10));
+        BlockPos goal=h.absolutePos(new BlockPos(16,7,10));
+        level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        worker.setItem(BuilderGolem.GRAPPLE_BELT_SLOT,new net.minecraft.world.item.ItemStack(WorksiteContent.GRAPPLE_HOOK));
+        level.addFreshEntity(worker);
+        h.onEachTick(()->{
+            if(h.getTick()==5){
+                BuilderGrappleAccess.reach(level,worker,null,goal);
+                if(!BuilderGrappleAccess.debug(worker).contains("WALK_TO_LINE")){
+                    h.fail("Could not establish real unthrown grapple approach");return;
+                }
+                if(BuilderFlight.request(level,worker,start.above(3))){
+                    h.fail("Flight accepted during grapple approach");return;
+                }
+                // Reproduce the stale powered state from a prior controller.
+                worker.setNoGravity(true);
+                worker.setDeltaMovement(.3,.1,.3);
+            }
+            if(h.getTick()==6){
+                if(worker.isNoGravity()||!BuilderGrappleAccess.active(worker)){
+                    h.fail("Unthrown grapple failed to restore gravity");return;
+                }
+                System.out.println("[GRAPPLE APPROACH GRAVITY PASS] ordinary walk owns motion");
+                h.succeed();
+            }
+        });
+    }
 }

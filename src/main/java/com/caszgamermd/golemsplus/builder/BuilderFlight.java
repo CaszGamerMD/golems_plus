@@ -120,14 +120,15 @@ public final class BuilderFlight {
         return path.isEmpty() ? null : BlockPos.containing(path.getLast());
     }
     public static boolean request(ServerLevel level, BuilderGolem worker, BlockPos goal) {
-        if (goal == null || !enabled(worker)) return false;
+        if (goal == null || !enabled(worker) || BuilderGrappleAccess.active(worker)) return false;
         return requestPosition(level,worker,goal,feet(goal));
     }
     /** Land at the actual collision-checked point inside a supported tile.
      * A nominal two-metre center-to-center leg may be 2.025m from the
      * physical walking endpoint. Trim the landing point, NOT the envelope. */
     static boolean requestSupportedLanding(ServerLevel level,BuilderGolem worker,BlockPos goal){
-        if(goal==null||!enabled(worker)||!WorkerNavigation.canStandOn(level,worker,goal))return false;
+        if(goal==null||!enabled(worker)||BuilderGrappleAccess.active(worker)
+                ||!WorkerNavigation.canStandOn(level,worker,goal))return false;
         // A legal stand may be a bottom slab, stair, soul sand or
         // farmland: its physical top is not necessarily integer Y.
         // Use that exact collision surface for the entire powered leg.
