@@ -7,7 +7,7 @@ on:
       # Run the three-way comparison when the rail-kit regression changes.
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderRailKitGameTest.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
-      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderSupplyInventory.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMaterialNetwork.java'
   workflow_dispatch:
 
 permissions:

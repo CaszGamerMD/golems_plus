@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMaterialNetwork.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffoldPlanA.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderPropellerRecoveryGameTest.java'
       - '.github/workflows/propeller-recovery-physical.yml'
@@ -42,7 +43,6 @@ jobs:
           grep -F '[ROOF ASCENT PASS]' "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[FRACTIONAL TAKEOFF PASS]' "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[FRACTIONAL SLAB LANDING PASS]' "$RUNNER_TEMP/propeller-recovery.log"
-          grep -F '[CREW STOCK RETURN PASS]' "$RUNNER_TEMP/propeller-recovery.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

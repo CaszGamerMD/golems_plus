@@ -269,7 +269,7 @@ public final class BuilderSupplyInventory {
         }
         return amount-remaining;
     }
-    private static boolean containsInSources(WorkerStationBlockEntity table,Item item){
+    static boolean containsInSources(WorkerStationBlockEntity table,Item item){
         if(creativeSupply(table))return true;
         for(Container source:sources(table))
             if(includesItem(source,source.getContainerSize(),item))return true;
@@ -751,68 +751,6 @@ public final class BuilderSupplyInventory {
         return com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(level,worker,stand,.83)
                 ?LoadStatus.MOVING:LoadStatus.MISSING;
     }
-    /** One bounded physical surplus delivery per Planner. Never interrupt
-     * a claimed placement or make the entire crew chase one carrier. */
-    private record CrewStockTrip(java.util.UUID job,java.util.UUID donor,Item item,long until){}
-    private static final Map<WorkerStationBlockEntity,CrewStockTrip> crewStockTrips=new java.util.WeakHashMap<>();
-    private static final Map<BuilderGolem,Long> stockTripRetry=new java.util.WeakHashMap<>();
-    static boolean requestCrewStock(ServerLevel level,BuilderGolem requester,
-            WorkerStationBlockEntity table,Item item,List<BuilderConstructionPlan.Step> steps){
-        if(table.activeOrder()==null||selectedStorage(table)==null
-                ||beltItem(BuiltInRegistries.ITEM.getKey(item).toString())
-                ||containsInSources(table,item))return false;
-        long now=level.getGameTime();
-        CrewStockTrip trip=crewStockTrips.get(table);
-        if(trip!=null&&java.util.Objects.equals(trip.job(),table.activeOrder())&&now<trip.until())
-            return trip.item()==item;
-        BlockPos depot=table.builderUnloadingStorage();
-        if(depot==null)return false;
-        BuilderGolem donor=null;
-        double best=Double.POSITIVE_INFINITY;
-        for(var id:table.builderWorkerIds()){
-            if(id.equals(requester.getUUID())||table.claimedStep(id)>=0
-                    ||!(level.getEntity(id) instanceof BuilderGolem peer)
-                    ||!peer.isAlive()||peer.hasSupplyBox()||!peer.onGround()
-                    ||BuilderFlight.active(peer)||BuilderScaffolding.isControllingMovement(peer)
-                    ||BuilderGrappleAccess.active(peer)||now<stockTripRetry.getOrDefault(peer,0L)
-                    ||peer.carriedCount(item)<=donorReserved(table,peer,item,steps))continue;
-            double distance=peer.distanceToSqr(depot.getX()+.5,depot.getY()+.5,depot.getZ()+.5);
-            if(distance<best){best=distance;donor=peer;}
-        }
-        if(donor==null)return false;
-        crewStockTrips.put(table,new CrewStockTrip(table.activeOrder(),donor.getUUID(),item,now+600));
-        stockTripRetry.put(donor,now+800);
-        return true;
-    }
-    static boolean serviceCrewStock(ServerLevel level,BuilderGolem worker,
-            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps){
-        CrewStockTrip trip=crewStockTrips.get(table);
-        if(trip==null||!trip.donor().equals(worker.getUUID()))return false;
-        if(!java.util.Objects.equals(trip.job(),table.activeOrder())
-                ||level.getGameTime()>=trip.until()||table.claimedStep(worker.getUUID())>=0
-                ||worker.hasSupplyBox()||containsInSources(table,trip.item())){
-            crewStockTrips.remove(table);return false;
-        }
-        int surplus=worker.carriedCount(trip.item())-donorReserved(table,worker,trip.item(),steps);
-        Container depot=selectedStorage(table);
-        if(surplus<=0||depot==null){crewStockTrips.remove(table);return false;}
-        if(!BuilderBuildService.parkAtOnSite(level,worker,table))return true;
-        int moved=0;
-        for(int slot=0;slot<BuilderGolem.SCAFFOLD_BELT_SLOT&&surplus>0;slot++){
-            ItemStack held=worker.getItem(slot);
-            if(!held.is(trip.item()))continue;
-            int amount=Math.min(surplus,held.getCount());
-            int accepted=amount-storeSurplus(depot,held,amount);
-            if(accepted<=0)continue;
-            worker.setItem(slot,held.copyWithCount(held.getCount()-accepted));
-            surplus-=accepted;moved+=accepted;
-        }
-        crewStockTrips.remove(table);
-        if(moved>0)System.out.println("[CREW STOCK RETURN] "+worker.getName().getString()
-                +" returned "+moved+" "+trip.item()+" to OnSite");
-        return moved>0;
-    }
-
     public static int carriedByTeammates(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,Item item){
         int total=0;

@@ -283,6 +283,8 @@ public final class BuilderBuildService {
     }
     private static boolean reservedForTeammate(WorkerStationBlockEntity table,
             UUID worker,int index,long now){
+        if(table.getLevel() instanceof ServerLevel level
+                &&BuilderMaterialNetwork.reservedForOther(level,table,worker,index))return true;
         var board=handoffBoard.get(table);
         if(board==null)return false;
         Handoff record=board.get(index);
@@ -1157,7 +1159,10 @@ public final class BuilderBuildService {
                 reconciledJobs.put(table,new ReconciledJob(table.activeOrder(),plan));
             }
             if(table.phase()==WorkerPhase.COMPLETE)return;
-            if(BuilderSupplyInventory.serviceCrewStock(level,worker,table,plan.steps()))return;
+            if(BuilderMaterialNetwork.recallTick(level,worker,table)){
+                BuilderWarehouseCoordinator.request(level,worker,table,owner,plan.steps());
+                return;
+            }
             // All positions for each X/Z zone were pre-assigned as one
             // immutable ordered execution plan. The Planner does NOT
             // arbitrate between Builders on each move or block placement.
@@ -1168,6 +1173,7 @@ public final class BuilderBuildService {
             // the physical trip before the rescue watchdog can recruit
             // it again, even if a different layer became active en route.
             int currentClaim=table.claimedStep(worker.getUUID());
+            var materialOffers=BuilderMaterialNetwork.offered(level,table,worker,plan.steps());
             WorkerAction returnAction=workerActions.computeIfAbsent(
                     worker,k->new WorkerAction());
             int layer=table.builderActiveLayer(plan.steps());
@@ -1177,7 +1183,7 @@ public final class BuilderBuildService {
             // The others stay at OnSite; any in-flight claim is finished
             // safely rather than discarding its paid materials mid-step.
             if(!layerStaff.contains(worker.getUUID())&&currentClaim<0
-                    &&!worker.hasSupplyBox()){
+                    &&materialOffers.isEmpty()&&!worker.hasSupplyBox()){
                 boolean parked=parkAtOnSite(level,worker,table);
                 returnAction.returningToSite=!parked;
                 if(parked)BuilderDroppedBlockRecovery.tick(
@@ -1192,7 +1198,7 @@ public final class BuilderBuildService {
                 zone=assigned.layerSteps().getOrDefault(layer,zone);
             }
             boolean stalledRoof=roofNeedsHelp(level,table);
-            if(shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim,
+            if(materialOffers.isEmpty()&&shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim,
                     stalledRoof)){
                 activityForFinished(worker);
                 boolean parked=parkAtOnSite(level,worker,table);
@@ -1248,12 +1254,17 @@ public final class BuilderBuildService {
                 }
             boolean emergencyRoofAssist=ownLayerClear&&(teammateRequested||stalledRoof)
                     ||index>=0&&!zone.contains(index);
+            if(!materialOffers.isEmpty()){
+                var stockedZone=new java.util.ArrayList<Integer>(materialOffers);
+                for(int candidate:zone)if(!stockedZone.contains(candidate))stockedZone.add(candidate);
+                zone=stockedZone;emergencyRoofAssist=true;
+            }
             // Monitoring already ran before the early finished-zone
             // return, so every crew member sees the SAME rescue window.
             if(emergencyRoofAssist){
                 var rescue=roofRescueZone(table,worker.getUUID(),
                         plan.steps(),layer);
-                if(!rescue.isEmpty()){
+                if(!rescue.isEmpty()&&materialOffers.isEmpty()){
                     zone=rescue;
                     if(level.getGameTime()%200==0)
                         System.out.println("[ROOF ASSIST] "
@@ -1295,7 +1306,9 @@ public final class BuilderBuildService {
                 if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
                         layerStaff.indexOf(worker.getUUID()),
                         layerStaff.size()))return;
-                var next=BuilderConstructionPlanner.choose(
+                var next=materialOffers.isEmpty()?null:BuilderConstructionPlanner.choose(
+                        level,worker,table,plan.steps(),materialOffers);
+                if(next==null)next=BuilderConstructionPlanner.choose(
                         level,worker,table,plan.steps(),zone);
                 // A zone can contain only unsupported redstone results or
                 // inaccessible cells. An idle worker may assist another
@@ -1579,6 +1592,18 @@ public final class BuilderBuildService {
             if(step.requiredItem()!=null&&worker.carriedCount(state.item())<=0
                     &&!interactionCorrection&&!repairPartner&&!reShapeRail)
                 BuilderSupplyInventory.borrowNearby(level,worker,table,state.item(),plan.steps(),1);
+            if(step.requiredItem()!=null&&worker.carriedCount(state.item())<=0
+                    &&!interactionCorrection&&!repairPartner&&!reShapeRail
+                    &&BuilderMaterialNetwork.offer(level,worker,table,plan.steps(),index,state.item())){
+                activity.setStep(-1);return;
+            }
+            if(step.requiredItem()!=null&&worker.carriedCount(state.item())<=0
+                    &&!interactionCorrection&&!repairPartner&&!reShapeRail
+                    &&!BuilderSupplyInventory.containsInSources(table,state.item())
+                    &&BuilderSupplyInventory.carriedByTeammates(level,worker,table,state.item())==0){
+                BuilderMaterialNetwork.shortage(level,table,plan.steps());
+                if(BuilderMaterialNetwork.recallTick(level,worker,table))return;
+            }
             if(!table.builderOrderPrepared(worker.getUUID())
                     &&step.requiredItem()!=null
                     &&worker.carriedCount(state.item())<=0
@@ -1700,7 +1725,6 @@ public final class BuilderBuildService {
                     int teammates=BuilderSupplyInventory.carriedByTeammates(
                             level,worker,table,state.item());
                     if(teammates>0){
-                        BuilderSupplyInventory.requestCrewStock(level,worker,table,state.item(),plan.steps());
                         table.setProblem("Builder teammate is carrying "
                                 +teammates+" "+step.requiredItem()
                                 +"; reorganizing crew pickup");
