@@ -265,7 +265,7 @@ public final class BuilderFlight {
         RoofAccess(BlockPos target,BlockPos launch,BlockPos landing,long now,Vec3 start){
             this.target=target;this.launch=launch;this.landing=landing;
             this.expires=now+400;this.lastProgress=now;
-            this.bestDistance=start.distanceToSqr(physicalLaunch);
+            this.bestDistance=start.distanceToSqr(feet(launch));
         }
         BlockPos target(){return target;}
         BlockPos launch(){return launch;}
@@ -489,7 +489,7 @@ public final class BuilderFlight {
         Descent(BlockPos depot,BlockPos launch,BlockPos landing,long now,Vec3 start,Vec3 physicalLaunch){
             this.depot=depot;this.launch=launch;this.landing=landing;
             this.until=now+400;this.lastProgress=now;
-            this.bestDistance=start.distanceToSqr(feet(launch));
+            this.bestDistance=start.distanceToSqr(physicalLaunch);
         }
         BlockPos depot(){return depot;}
         BlockPos launch(){return launch;}
