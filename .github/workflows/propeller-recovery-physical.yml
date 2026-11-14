@@ -43,6 +43,8 @@ jobs:
           grep -F '[ROOF ASCENT PASS]' "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[FRACTIONAL TAKEOFF PASS]' "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[FRACTIONAL SLAB LANDING PASS]' "$RUNNER_TEMP/propeller-recovery.log"
+          grep -F '[MATERIAL NETWORK HANDOFF PASS]' "$RUNNER_TEMP/propeller-recovery.log"
+          grep -F '[MATERIAL NETWORK RESUPPLY PASS]' "$RUNNER_TEMP/propeller-recovery.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -71,9 +71,7 @@ final class BuilderMaterialNetwork {
             if(score<best){best=score;donor=peer;}
         }
         if(donor==null)return false;
-        // Existing Planner release preserves the unfinished cell and
-        // exclusive claim; the short retry delay lets the crew regroup.
-        table.waitForBuilderMaterial(requester.getUUID(),index,level.getGameTime());
+        if(!table.releaseBuilderStepForStock(requester.getUUID(),index))return false;
         s.offers.put(index,new Offer(donor.getUUID(),item,level.getGameTime()+400));
         System.out.println("[MATERIAL NETWORK HANDOFF] step="+index+" "+requester.getUUID()+" -> "+donor.getUUID());
         return true;
@@ -122,6 +120,8 @@ final class BuilderMaterialNetwork {
         if(!s.resupplied){table.setProblem("Builders waiting at OnSite for current-layer materials");return true;}
         s.recall.remove(worker.getUUID());
         if(s.recall.isEmpty()){s.needs=Set.of();s.nextCheck=level.getGameTime()+100;}
-        return false;
+        // Claim fresh work next callback, never continue a released cell
+        // with the stale local index from the recall-triggering callback.
+        return true;
     }
 }

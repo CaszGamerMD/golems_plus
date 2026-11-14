@@ -296,4 +296,84 @@ public final class BuilderPropellerRecoveryGameTest {
             }
         });
     }
+
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=120,skyAccess=true)
+    public void materialNetworkTransfersClaimThenRecallsAndResumes(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=3;x<=20;x++)for(int z=3;z<=17;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=6;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        h.setBlock(5,2,5,WorksiteContent.BUILDER_TABLE);
+        h.setBlock(6,2,5,Blocks.CHEST);
+        BlockPos station=h.absolutePos(new BlockPos(5,2,5));
+        BlockPos depot=h.absolutePos(new BlockPos(6,2,5));
+        BlockPos target=h.absolutePos(new BlockPos(15,2,12));
+        level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(depot.getX()>>4,depot.getZ()>>4),3);
+        if(!(level.getBlockEntity(station) instanceof com.caszgamermd.golemsplus.world.WorkerStationBlockEntity table)
+                ||!(level.getBlockEntity(depot) instanceof net.minecraft.world.Container chest)){
+            h.fail("Missing network fixture");return;
+        }
+        var owner=h.makeMockServerPlayerInLevel();var id=owner.getUUID();
+        try{
+            var cells=java.util.List.of(new LitematicFileReader.Block(target.getX(),target.getY(),target.getZ(),"minecraft:glass"));
+            var snapshot=BuilderPlacementSnapshot.encode("Network material",cells,java.util.List.of());
+            var plan=BuilderConstructionPlan.create(BuilderPlacementSnapshot.decode(snapshot),BuilderPlacementSnapshot.worldSpaceSite());
+            var folder=net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("golems_plus").resolve("schematics");
+            java.nio.file.Files.createDirectories(folder);
+            String file="placed-gametest-network-material.gpb";java.nio.file.Files.write(folder.resolve(file),snapshot);
+            if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,2)
+                    ||!table.setPlacedBuilderPlan(id,file,"Network material",station,0,0,plan.steps().size(),plan.unsupported().size())
+                    ||!table.setBuilderMaterialStorage(id,depot)){h.fail("Network job refused");return;}
+            var requester=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+            var donor=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+            BlockPos a=depot.south(),c=depot.east();
+            requester.setPos(a.getX()+.5,a.getY(),a.getZ()+.5);
+            donor.setPos(c.getX()+.5,c.getY(),c.getZ()+.5);
+            level.addFreshEntity(requester);level.addFreshEntity(donor);
+            if(!table.registerBuilderWorker(requester.getUUID())||!table.registerBuilderWorker(donor.getUUID())
+                    ||!table.startPlacedBuilder(id)){h.fail("Network crew refused");return;}
+            var glass=net.minecraft.world.item.Items.GLASS;
+            h.onEachTick(()->{
+                if(h.getTick()==5){
+                    donor.setItem(0,new net.minecraft.world.item.ItemStack(glass,3));
+                    if(table.claimPreferredBuilderZoneStep(requester.getUUID(),java.util.List.of(0),plan.steps(),0)!=0
+                            ||!BuilderMaterialNetwork.offer(level,requester,table,plan.steps(),0,glass)){
+                        h.fail("Could not release material-limited claim");return;
+                    }
+                    if(table.claimedStep(requester.getUUID())>=0
+                            ||!BuilderMaterialNetwork.reservedForOther(level,table,requester.getUUID(),0)
+                            ||!BuilderMaterialNetwork.offered(level,table,donor,plan.steps()).contains(0)
+                            ||table.claimPreferredBuilderZoneStep(donor.getUUID(),java.util.List.of(0),plan.steps(),0)!=0
+                            ||donor.carriedCount(glass)!=3||requester.carriedCount(glass)!=0){
+                        h.fail("Stocked handoff violated exclusive claim or inventory conservation");return;
+                    }
+                    System.out.println("[MATERIAL NETWORK HANDOFF PASS] exact step transferred without moving items");
+                    // Fixture simulates consumption of the last stock, not
+                    // completion of the unfinished construction cell.
+                    donor.setItem(0,net.minecraft.world.item.ItemStack.EMPTY);
+                    BuilderMaterialNetwork.shortage(level,table,plan.steps());
+                    if(table.claimedStep(donor.getUUID())>=0
+                            ||!BuilderMaterialNetwork.recallTick(level,requester,table)
+                            ||!BuilderMaterialNetwork.recallTick(level,donor,table)){
+                        h.fail("Crew did not enter shared resupply wait");return;
+                    }
+                }
+                if(h.getTick()==10){
+                    chest.setItem(0,new net.minecraft.world.item.ItemStack(glass,5));
+                    if(!BuilderMaterialNetwork.recallTick(level,requester,table)
+                            ||!BuilderMaterialNetwork.recallTick(level,donor,table)
+                            ||BuilderMaterialNetwork.recallTick(level,requester,table)
+                            ||BuilderMaterialNetwork.recallTick(level,donor,table)){
+                        h.fail("Restock did not release the waiting crew");return;
+                    }
+                    if(!table.builderStepReadyForClaim(0)||chest.getItem(0).getCount()!=5){
+                        h.fail("Resupply incorrectly completed a cell or consumed stock");return;
+                    }
+                    System.out.println("[MATERIAL NETWORK RESUPPLY PASS] both crew wait and resume on physical stock");
+                    h.succeed();
+                }
+            });
+        }catch(Exception e){h.fail("Network setup failed "+e);}
+    }
 }

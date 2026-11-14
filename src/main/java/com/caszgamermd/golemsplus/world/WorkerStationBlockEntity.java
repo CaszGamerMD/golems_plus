@@ -1305,6 +1305,17 @@ public final class WorkerStationBlockEntity extends BlockEntity
      * when the stocked worker already has 64 cells, exchange an unfinished
      * non-active cell back to the original worker. No item moves remotely.
      */
+    public boolean releaseBuilderStepForStock(UUID requester,int index){
+        if(builderClaims.getOrDefault(requester,-1)!=index)return false;
+        builderClaims.remove(requester);builderMissingRetries.remove(index);
+        var order=builderWorkOrders.get(requester);
+        if(order!=null){order.remove(Integer.valueOf(index));
+            if(order.isEmpty())builderWorkOrders.remove(requester);}
+        builderPreparedOrders.remove(requester);
+        builderClaimDebug.put(requester,"released #"+index+" to stocked crew");
+        syncBuilderClaim();return true;
+    }
+
     public boolean reassignBuilderStep(UUID requester,UUID stocked,int index){
         if(builderZoned)return false; // Never transfer a cell across strict X/Z zones.
         if(requester.equals(stocked)||!builderWorkerIds().contains(requester)

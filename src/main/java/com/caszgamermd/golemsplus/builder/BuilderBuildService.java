@@ -1227,7 +1227,7 @@ public final class BuilderBuildService {
             // This keeps finished Builders out of the placement envelopes
             // seen in the narrow dome cap test. It can rejoin once it
             // has actually arrived at OnSite; no claimed rescue is lost.
-            if(ownLayerClear&&index<0){
+            if(ownLayerClear&&index<0&&materialOffers.isEmpty()){
                 BlockPos depot=table.builderUnloadingStorage();
                 if(depot==null)depot=table.getBlockPos();
                 if(shouldEvacuateIdleLayer(true,index,
@@ -1303,9 +1303,10 @@ public final class BuilderBuildService {
                 // five-tick work cadence. Their walking/path execution
                 // continues every tick, and one blocked search cannot cause
                 // all Builders to launch A* probes in the same tick.
+                List<UUID> planningCrew=materialOffers.isEmpty()?layerStaff:assigned.roster();
                 if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
-                        layerStaff.indexOf(worker.getUUID()),
-                        layerStaff.size()))return;
+                        planningCrew.indexOf(worker.getUUID()),
+                        planningCrew.size()))return;
                 var next=materialOffers.isEmpty()?null:BuilderConstructionPlanner.choose(
                         level,worker,table,plan.steps(),materialOffers);
                 if(next==null)next=BuilderConstructionPlanner.choose(
