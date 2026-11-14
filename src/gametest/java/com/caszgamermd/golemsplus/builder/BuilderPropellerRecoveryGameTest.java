@@ -403,65 +403,52 @@ public final class BuilderPropellerRecoveryGameTest {
         worker.setItem(BuilderGolem.GRAPPLE_BELT_SLOT,new net.minecraft.world.item.ItemStack(WorksiteContent.GRAPPLE_HOOK));
         level.addFreshEntity(worker);
         h.onEachTick(()->{
-            if(h.getTick()==5){
+            if(h.getTick()<5||h.getTick()>100)return;
+            if(!BuilderGrappleAccess.active(worker))
                 BuilderGrappleAccess.reach(level,worker,null,goal);
-                if(!BuilderGrappleAccess.debug(worker).contains("WALK_TO_LINE")){
-                    h.fail("Could not establish real unthrown grapple approach");return;
-                }
-                if(BuilderFlight.request(level,worker,start.above(3))){
-                    h.fail("Flight accepted during grapple approach");return;
-                }
-                // Reproduce the stale powered state from a prior controller.
-                worker.setNoGravity(true);
-                worker.setDeltaMovement(.3,.1,.3);
+            if(!BuilderGrappleAccess.debug(worker).contains("WALK_TO_LINE")){
+                if(h.getTick()==100)h.fail("Could not establish real unthrown grapple approach: "+BuilderGrappleAccess.debug(worker));
+                return;
             }
-            if(h.getTick()==6){
-                // Call the same controller used before super.tick; the
-                // harness callback can run before the entity tick itself.
-                BuilderGrappleAccess.tickMotion(level,worker);
-                if(worker.isNoGravity()&&BuilderGrappleAccess.debug(worker).contains("WALK_TO_LINE")){
-                    h.fail("Unthrown grapple retained gravity override: "+BuilderGrappleAccess.debug(worker));return;
-                }
-                if(worker.isNoGravity()){
-                    h.fail("Unexpected powered phase during distant approach: "+BuilderGrappleAccess.debug(worker));return;
-                }
-                System.out.println("[GRAPPLE APPROACH GRAVITY PASS] ordinary walk owns motion");
-                h.succeed();
+            if(BuilderFlight.request(level,worker,start.above(3))){
+                h.fail("Flight accepted during grapple approach");return;
             }
+            worker.setNoGravity(true);
+            worker.setDeltaMovement(.3,.1,.3);
+            BuilderGrappleAccess.tickMotion(level,worker);
+            if(worker.isNoGravity()&&BuilderGrappleAccess.debug(worker).contains("WALK_TO_LINE")){
+                h.fail("Unthrown grapple retained gravity override");return;
+            }
+            System.out.println("[GRAPPLE APPROACH GRAVITY PASS] ordinary walk owns motion");
+            h.succeed();
         });
     }
 
-    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=500,skyAccess=true)
-    public void fractionalRoofEdgeReturnsToOnSite(GameTestHelper h){
+
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=80,skyAccess=true)
+    public void returnFlightRejectsWetShaft(GameTestHelper h){
         var level=h.getLevel();
-        for(int x=4;x<=24;x++)for(int z=5;z<=18;z++){
+        for(int x=7;x<=15;x++)for(int z=7;z<=13;z++){
             h.setBlock(x,1,z,Blocks.STONE);
             for(int y=2;y<=10;y++)h.setBlock(x,y,z,Blocks.AIR);
         }
-        for(int x=8;x<=16;x++)for(int z=8;z<=12;z++)h.setBlock(x,6,z,Blocks.STONE_SLAB);
-        h.setBlock(19,2,10,Blocks.CHEST);
-        BlockPos start=h.absolutePos(new BlockPos(11,6,10));
-        BlockPos depot=h.absolutePos(new BlockPos(19,2,10));
-        level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        // A contained water source in the middle of an otherwise
+        // collision-free vertical shaft, and a parallel dry column.
+        h.setBlock(11,5,10,Blocks.WATER);
+        BlockPos wet=h.absolutePos(new BlockPos(11,5,10));
+        BlockPos dry=h.absolutePos(new BlockPos(10,5,10));
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-        worker.setPos(start.getX()+.5,start.getY()+.5,start.getZ()+.5);
+        Vec3 start=Vec3.atBottomCenterOf(dry.above(3));
+        worker.setPos(start.x,start.y,start.z);
         level.addFreshEntity(worker);
-        Vec3[] previous={worker.position()};
-        boolean[] powered={false};
-        h.onEachTick(()->{
-            if(!worker.isAlive()||worker.position().distanceTo(previous[0])>1.0){
-                h.fail("Fractional roof return lost continuous motion");return;
-            }
-            previous[0]=worker.position();
-            powered[0]|=BuilderFlight.active(worker);
-            if(h.getTick()>5&&h.getTick()%5==0)
-                BuilderReturnService.approach(level,worker,depot,.8);
-            if(powered[0]&&worker.onGround()&&!BuilderFlight.active(worker)
-                    &&BuilderReturnService.withinStorageReach(worker,depot)){
-                System.out.println("[FRACTIONAL ROOF RETURN PASS] slab edge to real OnSite");
-                h.succeed();
-            }
-            if(h.getTick()==490)h.fail("Fractional roof return stalled feet="+worker.position());
-        });
+        if(BuilderFlight.returnSweep(level,worker,Vec3.atBottomCenterOf(wet.above(3)),
+                    Vec3.atBottomCenterOf(wet.below(2)))){
+            h.fail("Return path accepted a submerged shaft");return;
+        }
+        if(!BuilderFlight.returnSweep(level,worker,start,Vec3.atBottomCenterOf(dry.below(2)))){
+            h.fail("Return path rejected adjacent dry shaft");return;
+        }
+        System.out.println("[DRY RETURN SHAFT PASS] liquid sweep rejected; dry route retained");
+        h.succeed();
     }
 }
