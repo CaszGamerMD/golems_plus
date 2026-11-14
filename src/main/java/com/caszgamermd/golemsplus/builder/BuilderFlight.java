@@ -265,7 +265,7 @@ public final class BuilderFlight {
         RoofAccess(BlockPos target,BlockPos launch,BlockPos landing,long now,Vec3 start){
             this.target=target;this.launch=launch;this.landing=landing;
             this.expires=now+400;this.lastProgress=now;
-            this.bestDistance=start.distanceToSqr(feet(launch));
+            this.bestDistance=start.distanceToSqr(physicalLaunch);
         }
         BlockPos target(){return target;}
         BlockPos launch(){return launch;}
@@ -486,7 +486,7 @@ public final class BuilderFlight {
         final long until;
         long lastProgress;
         double bestDistance;
-        Descent(BlockPos depot,BlockPos launch,BlockPos landing,long now,Vec3 start){
+        Descent(BlockPos depot,BlockPos launch,BlockPos landing,long now,Vec3 start,Vec3 physicalLaunch){
             this.depot=depot;this.launch=launch;this.landing=landing;
             this.until=now+400;this.lastProgress=now;
             this.bestDistance=start.distanceToSqr(feet(launch));
@@ -497,13 +497,28 @@ public final class BuilderFlight {
         long until(){return until;}
     }
     private static final Map<BuilderGolem,Descent> descents=new WeakHashMap<>();
+    private record FailedDescent(BlockPos depot,BlockPos launch,long until){}
+    private static final Map<BuilderGolem,List<FailedDescent>> failedDescents=new WeakHashMap<>();
+    private static void rejectDescent(BuilderGolem worker,Descent d,long now){
+        var list=new ArrayList<FailedDescent>();
+        for(var failure:failedDescents.getOrDefault(worker,List.of()))
+            if(failure.until()>now&&list.size()<7)list.add(failure);
+        list.add(new FailedDescent(d.depot(),d.launch(),now+300));
+        failedDescents.put(worker,list);
+    }
+    private static boolean rejectedDescent(BuilderGolem worker,BlockPos depot,BlockPos launch,long now){
+        return failedDescents.getOrDefault(worker,List.of()).stream().anyMatch(failure->
+            failure.until()>now&&failure.depot().equals(depot)&&failure.launch().equals(launch));
+    }
 
     /** Progress toward the planned edge, not straight-line distance to
      * the chest below. Protect only a genuinely advancing return leg. */
     public static boolean descentMakingProgress(ServerLevel level,BuilderGolem worker,BlockPos depot){
         Descent d=descents.get(worker);
         if(d==null||!d.depot().equals(depot)||level.getGameTime()>=d.until())return false;
-        double distance=worker.position().distanceToSqr(feet(d.launch()));
+        Vec3 physical=supportedFeet(level,d.launch());
+        if(!Double.isFinite(physical.y))return false;
+        double distance=worker.position().distanceToSqr(physical);
         if(distance<d.bestDistance-.04){
             d.bestDistance=distance;
             d.lastProgress=level.getGameTime();
@@ -527,15 +542,18 @@ public final class BuilderFlight {
                 &&descentMakingProgress(level,worker,depot)
                 &&WorkerNavigation.canStandOn(level,worker,saved.launch())
                 &&WorkerNavigation.canStandOn(level,worker,saved.landing())){
-            if(worker.position().distanceToSqr(feet(saved.launch()))<.04){
+            if(worker.position().distanceToSqr(supportedFeet(level,saved.launch()))<.04){
                 if(requestSupportedLanding(level,worker,saved.landing())){
                     descents.remove(worker);return true;
                 }
-                return WorkerNavigation.routeToExact(level,worker,saved.launch(),1.0);
-            }
-            return WorkerNavigation.routeToExact(level,worker,saved.launch(),1.0);
+                rejectDescent(worker,saved,now);
+                descents.remove(worker);
+            }else if(WorkerNavigation.routeToExact(level,worker,saved.launch(),1.0))return true;
+            else {rejectDescent(worker,saved,now);descents.remove(worker);}
+        }else if(saved!=null){
+            if(saved.depot().equals(depot))rejectDescent(worker,saved,now);
+            descents.remove(worker);
         }
-        descents.remove(worker);
         var possible=new ArrayList<BlockPos>();
         var landingByLaunch=new HashMap<BlockPos,BlockPos>();
         BlockPos here=worker.blockPosition();
@@ -545,28 +563,31 @@ public final class BuilderFlight {
         // just the small dome fixture's local eight-block radius.
         for(int radius=1;radius<=32;radius++)for(int[] off:offsets){
             BlockPos launch=here.offset(radius*off[0],0,radius*off[1]);
-            if(!WorkerNavigation.canStandOn(level,worker,launch)
-                    ||Math.abs(WorkerNavigation.surveyFloorHeight(level,launch)-launch.getY())>.1)continue;
-            Vec3 anchor=feet(launch);
+            if(rejectedDescent(worker,depot,launch,now)
+                    ||!WorkerNavigation.canStandOn(level,worker,launch))continue;
+            Vec3 anchor=supportedFeet(level,launch);
+            if(!Double.isFinite(anchor.y)||!clear(level,worker,anchor))continue;
             BlockPos best=null;
             for(int[] side:offsets){
                 BlockPos column=launch.offset(side[0],0,side[1]);
-                if(!clear(level,worker,feet(column)))continue;
+                if(!clear(level,worker,new Vec3(column.getX()+.5,anchor.y,column.getZ()+.5)))continue;
                 for(int y=launch.getY()-2;y>level.getMinY()&&y>=depot.getY()-2;y--){
                     BlockPos floor=new BlockPos(column.getX(),y,column.getZ());
                     if(!level.hasChunkAt(floor))break;
                     if(!WorkerNavigation.canStandOn(level,worker,floor))continue;
-                    if(!path(level,worker,anchor,feet(floor),anchor).isEmpty()
-                            &&(best==null||floor.getY()<best.getY()))best=floor;
+                    Vec3 physical=supportedFeet(level,floor);
+                    if(Double.isFinite(physical.y)&&physical.y<anchor.y-1
+                            &&!path(level,worker,anchor,physical,anchor).isEmpty()
+                            &&(best==null||physical.y<supportedFeet(level,best).y))best=floor;
                     break;
                 }
             }
             if(best!=null){possible.add(launch);landingByLaunch.put(launch,best);}
         }
-        possible.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(feet(at))));
+        possible.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(supportedFeet(level,at))));
         BlockPos launch=WorkerNavigation.selectExecutableStand(level,worker,possible);
         if(launch==null)return false;
-        descents.put(worker,new Descent(depot.immutable(),launch,landingByLaunch.get(launch),now,worker.position()));
+        descents.put(worker,new Descent(depot.immutable(),launch,landingByLaunch.get(launch),now,worker.position(),supportedFeet(level,launch)));
         return WorkerNavigation.routeToExact(level,worker,launch,1.0);
     }
     public static boolean safeWorkPose(ServerLevel level, BuilderGolem worker,

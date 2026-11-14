@@ -46,6 +46,7 @@ jobs:
           grep -F '[MATERIAL NETWORK HANDOFF PASS]' "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[MATERIAL NETWORK NO BOUNCE PASS]' "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[GRAPPLE APPROACH GRAVITY PASS]' "$RUNNER_TEMP/propeller-recovery.log"
+          grep -F '[FRACTIONAL ROOF RETURN PASS]' "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[MATERIAL NETWORK RESUPPLY PASS]' "$RUNNER_TEMP/propeller-recovery.log"
       - uses: actions/upload-artifact@v4
         if: always()
