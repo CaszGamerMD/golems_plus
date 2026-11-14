@@ -154,7 +154,7 @@ public final class BuilderFlight {
         return new Vec3(stand.getX()+.5,WorkerNavigation.surveyFloorHeight(level,stand),stand.getZ()+.5);
     }
     private static boolean requestPosition(ServerLevel level,BuilderGolem worker,BlockPos goal,Vec3 destination){
-        if(!inEnvelope(origin(worker),destination))return false;
+        if(BuilderGrappleAccess.active(worker)||!inEnvelope(origin(worker),destination))return false;
         Flight flight = flights.get(worker);
         if (flight != null && goal.equals(flight.goal) && moving(worker)) return true;
         if (flight != null && goal.equals(flight.goal) && level.getGameTime() < flight.retryAt) return false;

@@ -739,6 +739,7 @@ public final class BuilderGrappleAccess {
     public static boolean escapeRailPocket(ServerLevel level,BuilderGolem worker,
             BlockPos goal){
         if(active.containsKey(worker))return true;
+        if(BuilderFlight.active(worker))return false;
         if((!worker.onGround()&&!worker.isInWater())||BuilderScaffolding.isControllingMovement(worker)
                 ||BuilderScaffoldPlanA.hasPlan(worker))return false;
         BlockPos feet=worker.blockPosition();
