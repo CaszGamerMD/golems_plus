@@ -90,7 +90,8 @@ final class BuilderMaterialNetwork {
         var needs=new HashSet<Item>();
         for(int i=0;i<steps.size();i++){
             var step=steps.get(i);
-            if(step.y()!=layer||step.ignorePlant()||table.builderStepCompletedForMaterials(i)
+            if(step.y()!=layer||!table.builderStepInActivePhase(steps,i)
+                    ||step.ignorePlant()||table.builderStepCompletedForMaterials(i)
                     ||BuilderDeferredState.verification(step.encodedState()))continue;
             Item item=required(step);
             if(item==null)return;

@@ -1600,7 +1600,6 @@ public final class BuilderBuildService {
             }
             if(step.requiredItem()!=null&&worker.carriedCount(state.item())<=0
                     &&!interactionCorrection&&!repairPartner&&!reShapeRail
-                    &&!BuilderSupplyInventory.containsInSources(table,state.item())
                     &&BuilderSupplyInventory.carriedByTeammates(level,worker,table,state.item())==0){
                 BuilderMaterialNetwork.shortage(level,table,plan.steps());
                 if(BuilderMaterialNetwork.recallTick(level,worker,table))return;
