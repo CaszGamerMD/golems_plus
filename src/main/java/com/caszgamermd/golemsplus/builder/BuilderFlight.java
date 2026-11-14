@@ -211,12 +211,10 @@ public final class BuilderFlight {
         for (int dx = -4; dx <= 4; dx++) for (int dz = -4; dz <= 4; dz++) {
             BlockPos launch = new BlockPos(target.getX() + dx, y, target.getZ() + dz);
             if (!WorkerNavigation.canStandOn(level, worker, launch)) continue;
-            Vec3 takeoff=supportedFeet(level,launch);
-            if(!Double.isFinite(takeoff.y)||!clear(level,worker,takeoff))continue;
             for (int dy = -2; dy <= 1; dy++) {
                 BlockPos pose = new BlockPos(launch.getX(), target.getY() + dy, launch.getZ());
                 if (safeWorkPose(level, worker, target, feet(pose),bodyBlocking)
-                        && !path(level, worker, takeoff, feet(pose), takeoff).isEmpty()) {
+                        && !path(level, worker, feet(launch), feet(pose), feet(launch)).isEmpty()) {
                     candidates.add(launch);
                     break;
                 }
@@ -224,31 +222,8 @@ public final class BuilderFlight {
         }
         return WorkerNavigation.selectExecutableStand(level, worker, candidates);
     }
-    private static final class Launch {
-        final BlockPos target,position;
-        final long until;
-        long lastProgress;
-        double bestDistance;
-        Launch(BlockPos target,BlockPos position,long now,double distance){
-            this.target=target.immutable();this.position=position.immutable();
-            this.until=now+400;this.lastProgress=now;this.bestDistance=distance;
-        }
-    }
+    private record Launch(BlockPos target,BlockPos position,long until) {}
     private static final Map<BuilderGolem,Launch> launches=new WeakHashMap<>();
-    /** A legitimate detour to a takeoff must be measured against the
-     * takeoff, not the distant block above the worker. Bounded by actual
-     * movement and an absolute deadline so an idle path cannot pin a claim. */
-    public static boolean launchProgress(ServerLevel level,BuilderGolem worker,BlockPos target){
-        Launch launch=launches.get(worker);
-        long now=level.getGameTime();
-        if(launch==null||!launch.target.equals(target)||now>=launch.until
-                ||!WorkerNavigation.canStandOn(level,worker,launch.position))return false;
-        double distance=worker.position().distanceToSqr(supportedFeet(level,launch.position));
-        if(distance<launch.bestDistance-.04){
-            launch.bestDistance=distance;launch.lastProgress=now;
-        }
-        return now-launch.lastProgress<=90;
-    }
     public static boolean approachLaunch(ServerLevel level, BuilderGolem worker, BlockPos target) {
         return approachLaunch(level,worker,target,true);
     }
@@ -256,18 +231,14 @@ public final class BuilderFlight {
         if(active(worker)||!worker.onGround())return false;
         long now=level.getGameTime();
         Launch saved=launches.get(worker);
-        BlockPos launch=launchProgress(level,worker,target)?saved.position:null;
+        BlockPos launch=saved!=null&&saved.target().equals(target)&&now<saved.until()
+                &&WorkerNavigation.canStandOn(level,worker,saved.position())?saved.position():null;
         if(launch==null){
-            // Do not renew an expired or stalled approach to the same tile
-            // every callback. The caller can choose roof access or hand off.
-            if(saved!=null&&saved.target.equals(target)
-                    &&now<Math.min(saved.until,saved.lastProgress+90)+100)return false;
             launch=launchPose(level,worker,target,bodyBlocking);
             if(launch==null){launches.remove(worker);return false;}
-            launches.put(worker,new Launch(target,launch,now,
-                    worker.position().distanceToSqr(supportedFeet(level,launch))));
+            launches.put(worker,new Launch(target.immutable(),launch.immutable(),now+100));
         }
-        if(worker.position().distanceToSqr(supportedFeet(level,launch))<.04){
+        if(worker.position().distanceToSqr(feet(launch))<.04){
             launches.remove(worker);
             BlockPos pose=workPose(level,worker,target,bodyBlocking);
             return pose!=null&&request(level,worker,pose);

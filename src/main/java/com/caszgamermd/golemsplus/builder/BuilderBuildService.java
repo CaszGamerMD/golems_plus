@@ -1757,12 +1757,6 @@ public final class BuilderBuildService {
                     activity.lastTargetProgressTick=now;
                     if(BuilderFlight.approachRoofWork(level,worker,pos,bodyBlockingWork))return;
                 }
-                if(BuilderFlight.launchProgress(level,worker,pos)
-                        &&BuilderFlight.approachLaunch(level,worker,pos,bodyBlockingWork)){
-                    activity.lastTargetProgressTick=now;
-                    activity.phase=Action.MOVE_TO_WORK;
-                    return;
-                }
                 if(now-activity.lastTargetProgressTick>160){
                     table.waitForBuilderAccess(worker.getUUID(),index,now,"propeller approach made no target progress");
                     publishHandoff(table,worker.getUUID(),index,now,"propeller approach loop");

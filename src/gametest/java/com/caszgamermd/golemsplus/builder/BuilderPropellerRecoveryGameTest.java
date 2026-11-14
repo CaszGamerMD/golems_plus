@@ -296,42 +296,4 @@ public final class BuilderPropellerRecoveryGameTest {
             }
         });
     }
-
-    /** The takeoff is distant, and the job needs a lift after a real
-     * walk. The controller must retain and report that walking leg. */
-    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=500,skyAccess=true)
-    public void launchApproachTracksPhysicalWalkingBeforeLift(GameTestHelper h){
-        var level=h.getLevel();
-        for(int x=3;x<=30;x++)for(int z=4;z<=20;z++){
-            h.setBlock(x,1,z,Blocks.STONE);
-            for(int y=2;y<=12;y++)h.setBlock(x,y,z,Blocks.AIR);
-        }
-        // A barrier requires a real detour around the wall.
-        for(int z=6;z<=15;z++)for(int y=2;y<=5;y++)
-            h.setBlock(13,y,z,Blocks.STONE);
-        BlockPos start=h.absolutePos(new BlockPos(7,2,10));
-        BlockPos target=h.absolutePos(new BlockPos(23,10,10));
-        level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
-        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
-        level.addFreshEntity(worker);
-        boolean[] tracked={false},walked={false};
-        h.onEachTick(()->{
-            if(h.getTick()<5)return;
-            if(!BuilderFlight.active(worker)){
-                if(h.getTick()%5==0)BuilderFlight.approachLaunch(level,worker,target,true);
-                if(BuilderFlight.launchProgress(level,worker,target)
-                        &&worker.position().distanceToSqr(Vec3.atBottomCenterOf(start))>4){
-                    tracked[0]=true;
-                }
-                if(worker.position().distanceToSqr(Vec3.atBottomCenterOf(start))>64)walked[0]=true;
-            }else if(!BuilderFlight.moving(worker)
-                    &&BuilderFlight.safeWorkPose(level,worker,target,worker.position())){
-                if(!tracked[0]||!walked[0]){h.fail("Lift occurred without tracked physical launch walk");return;}
-                System.out.println("[PROPELLER LAUNCH PROGRESS PASS] walked detour then lifted");
-                h.succeed();
-            }
-            if(h.getTick()==490)h.fail("Launch approach stalled feet="+worker.position()+" tracked="+tracked[0]);
-        });
-    }
 }
