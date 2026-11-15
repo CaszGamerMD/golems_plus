@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compare three independent real Matrix builds, never confuse a cutoff with completion."""
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -12,15 +13,22 @@ def extract(log):
     if not matches:
         return {"outcome": "MISSING_RESULT"}
     outcome, layer, elapsed, tick, correct, total, best, unsupported = matches[-1]
+    env = re.findall(r"\[MATRIX CONTROLLED ENV\] ([^\r\n]+)", log)
     return dict(outcome=outcome, layer=layer, elapsedMs=int(elapsed), tick=int(tick),
-                correct=int(correct), total=int(total), best=int(best), unsupported=int(unsupported))
+                correct=int(correct), total=int(total), best=int(best), unsupported=int(unsupported),
+                environment=env[-1] if env else None)
 
 def compare(rows):
     valid = len(rows) == 3 and all("elapsedMs" in r for r in rows)
     spread = max(r["elapsedMs"] for r in rows)-min(r["elapsedMs"] for r in rows) if valid else None
     same_layer = valid and len({r["layer"] for r in rows}) == 1
     natural_stop = valid and all(r["outcome"] in ("COMPLETE","ALL_BUILDERS_STALLED","NO_WORK_PROGRESS") for r in rows)
-    consistent = bool(same_layer and natural_stop and spread <= 300000)
+    controlled = os.environ.get("MATRIX_TEST_MODE") == "controlled"
+    same_environment = bool(valid and all(r.get("environment") for r in rows)
+                            and len({r["environment"] for r in rows}) == 1)
+    environment_ok = not controlled or same_environment
+    tick_spread = max(r["tick"] for r in rows)-min(r["tick"] for r in rows) if valid else None
+    consistent = bool(environment_ok and same_layer and natural_stop and spread <= 300000)
     complete = valid and all(r["outcome"]=="COMPLETE" and r["correct"]==r["total"]==15376 for r in rows)
     # Repeating a very early failure is diagnostic, not a passing build.
     # The current development milestone is at least Y13 and 9,700 correct
@@ -33,8 +41,10 @@ def compare(rows):
     milestone = bool(consistent and (complete or all(reaches_milestone(r) for r in rows)))
     return dict(trials=rows, sameLayer=bool(same_layer), elapsedSpreadMs=spread,
                 repeatableStop=consistent, allComplete=bool(complete),
-                milestoneReached=milestone,
-                result="FULL_SUCCESS" if consistent and complete else
+                milestoneReached=milestone, controlled=controlled,
+                sameEnvironment=same_environment, tickSpread=tick_spread,
+                result="INVALID_ENVIRONMENT" if not environment_ok else
+                "FULL_SUCCESS" if consistent and complete else
                 "MILESTONE_REACHED" if milestone else
                 "REPEATABLE_STALL" if consistent else "NOT_YET_RELIABLE")
 

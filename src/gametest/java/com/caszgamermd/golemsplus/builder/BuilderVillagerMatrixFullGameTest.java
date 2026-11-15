@@ -33,6 +33,8 @@ import net.minecraft.world.phys.Vec3;
  * This long test is isolated from the quick mandatory GameTest suite.
  */
 public final class BuilderVillagerMatrixFullGameTest {
+    private static final long CONTROLLED_SEED=260215376L;
+    private static final BlockPos CONTROLLED_ARENA=new BlockPos(1024,-57,1024);
     private static final int SOURCE_BLOCKS=15376;
     private static final int SOURCE_AIR=15004;
     private static final int WORKERS=4;
@@ -231,7 +233,26 @@ public final class BuilderVillagerMatrixFullGameTest {
         ServerLevel level=h.getLevel();
         final LitematicFileReader.Schematic schematic;
         final BuilderConstructionPlan.Result plan;
-        final BlockPos origin=h.absolutePos(new BlockPos(10,6,10));
+        final boolean controlled="controlled".equals(System.getenv("MATRIX_TEST_MODE"));
+        if(controlled&&level.getSeed()!=CONTROLLED_SEED){
+            h.fail("Controlled Matrix seed mismatch: "+level.getSeed());return;
+        }
+        // The harness may place its own test marker at a random coordinate.
+        // The scored physical arena is independent of that marker.
+        final BlockPos arena=controlled?CONTROLLED_ARENA:h.absolutePos(BlockPos.ZERO);
+        final BlockPos origin=arena.offset(10,6,10);
+        final BlockPos arenaCenter=arena.offset(32,2,36);
+        level.getChunkSource().addTicketWithRadius(
+                net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(
+                        arenaCenter.getX()>>4,arenaCenter.getZ()>>4),4);
+        if(controlled){
+            // Load the same full footprint before editing blocks, not
+            // lazily as the workers arrive at different chunk boundaries.
+            for(int cx=(arena.getX()>>4)-1;cx<=(arena.getX()+63>>4)+1;cx++)
+                for(int cz=(arena.getZ()>>4)-1;cz<=(arena.getZ()+71>>4)+1;cz++)
+                    level.getChunk(cx,cz);
+        }
         try{
             schematic=LitematicFileReader.read(
                     BuilderVillagerMatrixFullFixture.unpack());
@@ -269,9 +290,9 @@ public final class BuilderVillagerMatrixFullGameTest {
         // source cell or modify the world during the scored construction.
         int terrain=0;
         for(int x=1;x<=62;x++)for(int z=1;z<=70;z++){
-            h.setBlock(x,1,z,Blocks.STONE);
+            level.setBlock(arena.offset(x,1,z),Blocks.STONE.defaultBlockState(),2);
             for(int y=2;y<=27;y++){
-                BlockPos p=h.absolutePos(new BlockPos(x,y,z));
+                BlockPos p=arena.offset(x,y,z);
                 if(!level.getBlockState(p).isAir()){
                     level.setBlock(p,Blocks.AIR.defaultBlockState(),2);
                     terrain++;
@@ -279,10 +300,22 @@ public final class BuilderVillagerMatrixFullGameTest {
             }
         }
         System.out.println("[MATRIX EMPTY ARENA] removed preexisting test terrain="+terrain);
+        if(controlled){
+            // Verify every floor and air cell after clearing; fail rather
+            // than silently compare a contaminated fixture.
+            for(int x=1;x<=62;x++)for(int z=1;z<=70;z++){
+                if(!level.getBlockState(arena.offset(x,1,z)).is(Blocks.STONE)){
+                    h.fail("Controlled Matrix floor mismatch");return;
+                }
+                for(int y=2;y<=27;y++)if(!level.getBlockState(arena.offset(x,y,z)).isAir()){
+                    h.fail("Controlled Matrix air mismatch at "+arena.offset(x,y,z));return;
+                }
+            }
+        }
         // The wider upper layers extend far beyond the starter foundation.
         // Measure depot proximity to occupied cells on the first build layer.
-        BlockPos plannerPos=h.absolutePos(new BlockPos(16,2,32));
-        BlockPos supplyPos=h.absolutePos(new BlockPos(17,2,32));
+        BlockPos plannerPos=arena.offset(16,2,32);
+        BlockPos supplyPos=arena.offset(17,2,32);
         int foundationY=schematic.blocks().stream()
                 .mapToInt(LitematicFileReader.Block::y).min().orElseThrow();
         double distanceSquared=schematic.blocks().stream()
@@ -296,18 +329,13 @@ public final class BuilderVillagerMatrixFullGameTest {
         }
         System.out.println("[MATRIX FULL DEPOT] foundationDistance="
                 +Math.sqrt(distanceSquared));
-        // Keep the depot, crew and all build chunks ticking in this arena.
-        BlockPos arenaCenter=h.absolutePos(new BlockPos(32,2,36));
-        level.getChunkSource().addTicketWithRadius(
-                net.minecraft.server.level.TicketType.FORCED,
-                new net.minecraft.world.level.ChunkPos(
-                        arenaCenter.getX()>>4,arenaCenter.getZ()>>4),4);
-        h.setBlock(16,2,32,WorksiteContent.BUILDER_TABLE);
-        h.setBlock(17,2,32,Blocks.CHEST);
+        level.setBlock(plannerPos,WorksiteContent.BUILDER_TABLE.defaultBlockState(),3);
+        level.setBlock(supplyPos,Blocks.CHEST.defaultBlockState(),3);
         if(!(level.getBlockEntity(plannerPos) instanceof WorkerStationBlockEntity table)){
             h.fail("Missing full Matrix Planner");return;
         }
         ServerPlayer owner=h.makeMockServerPlayerInLevel();
+        if(controlled)owner.setPos(plannerPos.getX()+.5,plannerPos.getY(),plannerPos.getZ()+2.5);
         UUID ownerId=owner.getUUID();
         if(!table.claimIfUnowned(ownerId)||!table.setCrewTarget(ownerId,WORKERS)){
             h.fail("Cannot configure four Matrix Builders");return;
@@ -338,7 +366,13 @@ public final class BuilderVillagerMatrixFullGameTest {
         var crew=new ArrayList<BuilderGolem>();
         for(int i=0;i<WORKERS;i++){
             BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-            BlockPos from=h.absolutePos(new BlockPos(16+i%4,2,29+i/4));
+            BlockPos from=arena.offset(16+i%4,2,29+i/4);
+            if(controlled){
+                worker.setUUID(new UUID(0x4d41545249584cL,i+1));
+                worker.setId(100000+i);
+                worker.getRandom().setSeed(CONTROLLED_SEED+i+1);
+                worker.setCustomName(net.minecraft.network.chat.Component.literal("Matrix Builder "+(i+1)));
+            }
             worker.setPos(from.getX()+.5,from.getY(),from.getZ()+.5);
             worker.assign(plannerPos,ownerId);
             level.addFreshEntity(worker);
@@ -346,6 +380,28 @@ public final class BuilderVillagerMatrixFullGameTest {
                 h.fail("Cannot register Builder "+i);return;
             }
             crew.add(worker);
+        }
+        if(controlled){
+            level.getRandom().setSeed(CONTROLLED_SEED);
+            if(!(level.getBlockEntity(supplyPos) instanceof Container chest)){
+                h.fail("Controlled Matrix missing initial depot");return;
+            }
+            var stock=new StringBuilder();
+            for(int slot=0;slot<chest.getContainerSize();slot++){
+                ItemStack stack=chest.getItem(slot);
+                if(!stack.isEmpty())stock.append(slot).append(':')
+                    .append(BuiltInRegistries.ITEM.getKey(stack.getItem())).append('=')
+                    .append(stack.getCount()).append(';');
+            }
+            var roster=new StringBuilder();
+            for(var worker:crew)roster.append(worker.getUUID()).append('@')
+                    .append(worker.getId()).append('@').append(worker.blockPosition().toShortString().replace(" ",""))
+                    .append(';');
+            String manifest="seed="+level.getSeed()+" origin="+origin.toShortString().replace(" ","")
+                    +" arena=62x26x70 floor=stone depot="+supplyPos.toShortString().replace(" ","")
+                    +" crew="+roster+" stock="+stock+" cap=1500";
+            System.out.println("[MATRIX CONTROLLED ENV] "+manifest);
+            System.out.println("[MATRIX CLOCK] worldTick="+level.getGameTime()+" testTick="+h.getTick());
         }
         if(!table.startPlacedBuilder(ownerId)){
             h.fail("Planner refused to start full Matrix");return;

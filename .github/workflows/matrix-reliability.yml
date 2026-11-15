@@ -5,6 +5,9 @@ on:
     paths:
       - '.github/workflows/matrix-reliability.yml'
       - 'scripts/matrix_reliability.py'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFullGameTest.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/gametest/mixin/MatrixWorldSeedMixin.java'
+      - 'src/gametest/resources/golems_plus_gametest.mixins.json'
       # Run the three-way comparison when the rail-kit regression changes.
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderRailKitGameTest.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
@@ -12,6 +15,12 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMaterialNetwork.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Controlled repeatability or randomized stress
+        type: choice
+        options: [controlled, randomized]
+        default: controlled
 
 permissions:
   contents: read
@@ -27,6 +36,7 @@ jobs:
         trial: [1, 2, 3]
     env:
       MATRIX_ASSESSMENT_SECONDS: '1500'
+      MATRIX_TEST_MODE: ${{ inputs.mode || 'controlled' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -68,6 +78,9 @@ jobs:
           echo "GameTest exit status: $code"
           grep -Fq '[MATRIX FULL IMPORT PASS] 15376' "$RUNNER_TEMP/matrix-trial.log" || exit 1
           grep -Fq '[MATRIX TRIAL RESULT]' "$RUNNER_TEMP/matrix-trial.log" || exit 1
+          if [ "$MATRIX_TEST_MODE" = controlled ]; then
+            grep -Fq '[MATRIX CONTROLLED ENV]' "$RUNNER_TEMP/matrix-trial.log" || exit 1
+          fi
       - name: Save trial result and complete trace
         if: always()
         uses: actions/upload-artifact@v4
@@ -89,6 +102,8 @@ jobs:
           pattern: matrix-trial-*
           path: results
       - name: Check minimum progress, same stopping layer and maximum five-minute spread
+        env:
+          MATRIX_TEST_MODE: ${{ inputs.mode || 'controlled' }}
         run: python3 scripts/matrix_reliability.py compare results "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()

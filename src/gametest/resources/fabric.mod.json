@@ -32,5 +32,8 @@
       "com.caszgamermd.golemsplus.builder.BuilderPropellerGameTest",
       "com.caszgamermd.golemsplus.builder.BuilderPropellerRecoveryGameTest"
     ]
-  }
+  },
+  "mixins": [
+    "golems_plus_gametest.mixins.json"
+  ]
 }
