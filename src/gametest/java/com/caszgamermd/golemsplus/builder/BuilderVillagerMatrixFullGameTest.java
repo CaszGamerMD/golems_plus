@@ -1,26 +1,20 @@
 package com.caszgamermd.golemsplus.builder;
 
 import com.caszgamermd.golemsplus.world.WorkerStationBlockEntity;
+import com.caszgamermd.golemsplus.world.CreativeCrateBlockEntity;
 import com.caszgamermd.golemsplus.world.WorksiteContent;
 import com.caszgamermd.golemsplus.worker.WorkerPhase;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.Container;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -29,7 +23,7 @@ import net.minecraft.world.phys.Vec3;
 /** The full, ORIGINAL user-uploaded VillagerMatrixClean_V2 (15,376 blocks).
  * No shortcut: the physical test sends four real Builder entities to an
  * empty, four-block-elevated job and counts only actual matching world blocks.
- * The test-only OnSite chest is replenished; no golem inventory is fabricated.
+ * The actual Creative Crate supplies and accepts cargo at physical OnSite reach.
  * This long test is isolated from the quick mandatory GameTest suite.
  */
 public final class BuilderVillagerMatrixFullGameTest {
@@ -331,7 +325,7 @@ public final class BuilderVillagerMatrixFullGameTest {
         System.out.println("[MATRIX FULL DEPOT] foundationDistance="
                 +Math.sqrt(distanceSquared));
         level.setBlock(plannerPos,WorksiteContent.BUILDER_TABLE.defaultBlockState(),3);
-        level.setBlock(supplyPos,Blocks.CHEST.defaultBlockState(),3);
+        level.setBlock(supplyPos,WorksiteContent.CREATIVE_CRATE.defaultBlockState(),3);
         if(!(level.getBlockEntity(plannerPos) instanceof WorkerStationBlockEntity table)){
             h.fail("Missing full Matrix Planner");return;
         }
@@ -356,16 +350,12 @@ public final class BuilderVillagerMatrixFullGameTest {
             h.fail("Planner refused full Matrix job");return;
         }
         table.setBuilderMaterialsForFile(name,plan.required());
-        // Item availability is a test fixture, not a Creative-style Builder:
-        // golems still take items from the chest, walk, scaffold, and place.
-        var firstNeeds=baseStock();
-        for(int i=0;i<Math.min(steps.size(),64);i++)
-            if(firstNeeds.size()<26)addItem(firstNeeds,steps.get(i));
-        // Stock one physical scaffold stack per Builder.
-        keepScaffoldingStock(level,supplyPos);
-        BuilderInfiniteOnsiteSupply.restock(level,supplyPos,firstNeeds);
-        if(level.getBlockEntity(supplyPos) instanceof Container chest)
-            chest.setItem(chest.getContainerSize()-1,new ItemStack(Items.SHULKER_BOX));
+        // Use the production creative depot, not a refilled finite chest.
+        // Workers still must physically reach the depot and carry materials.
+        if(!(level.getBlockEntity(supplyPos) instanceof CreativeCrateBlockEntity)
+                ||!BuilderSupplyInventory.creativeSupply(table)){
+            h.fail("Matrix requires linked Creative Crate");return;
+        }
         var crew=new ArrayList<BuilderGolem>();
         for(int i=0;i<WORKERS;i++){
             BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
@@ -386,23 +376,13 @@ public final class BuilderVillagerMatrixFullGameTest {
         }
         if(controlled){
             level.getRandom().setSeed(CONTROLLED_RANDOM_SEED);
-            if(!(level.getBlockEntity(supplyPos) instanceof Container chest)){
-                h.fail("Controlled Matrix missing initial depot");return;
-            }
-            var stock=new StringBuilder();
-            for(int slot=0;slot<chest.getContainerSize();slot++){
-                ItemStack stack=chest.getItem(slot);
-                if(!stack.isEmpty())stock.append(slot).append(':')
-                    .append(BuiltInRegistries.ITEM.getKey(stack.getItem())).append('=')
-                    .append(stack.getCount()).append(';');
-            }
             var roster=new StringBuilder();
             for(var worker:crew)roster.append(worker.getUUID()).append('@')
                     .append(worker.getId()).append('@').append(worker.blockPosition().toShortString().replace(" ",""))
                     .append(';');
             String manifest="seed="+level.getSeed()+" origin="+origin.toShortString().replace(" ","")
                     +" arena=62x26x70 floor=stone depot="+supplyPos.toShortString().replace(" ","")
-                    +" crew="+roster+" stock="+stock+" cap=1500"
+                    +" crew="+roster+" supply=creative_crate cap=1500"
                     +" temporaryScaffolding="+BuilderGolem.temporaryScaffoldingEnabled();
             System.out.println("[MATRIX CONTROLLED ENV] "+manifest);
             System.out.println("[MATRIX CLOCK] worldTick="+level.getGameTime()+" testTick="+h.getTick());
@@ -461,44 +441,6 @@ public final class BuilderVillagerMatrixFullGameTest {
             boolean allStalled=!recoveryGrace&&noWorkTicks>=STALL_TICKS
                     &&stalls.size()==WORKERS
                     &&stalls.stream().allMatch(stall->stall!=MatrixMovementWindow.Stall.MOVING);
-            if(tick%100==0&&!BuilderCrewRecovery.recalling(table)){
-                // 27 real chest slots cannot hold the entire machine palette.
-                // Replenish relevant assignments only, without inserting items
-                // directly into worker inventories or forcing any placements.
-                keepScaffoldingStock(level,supplyPos);
-                Set<Item> needs=baseStock();
-                // Current claims MUST fit before speculative work-order
-                // materials. The previous 19-type cap could evict the
-                // actual repeater a worker was trying to retrieve.
-                for(var worker:crew){
-                    int claim=table.claimedStep(worker.getUUID());
-                    if(claim>=0&&claim<steps.size())addItem(needs,steps.get(claim));
-                }
-                int activeStep=table.builderActiveStepIndex(steps);
-                int layer=table.builderActiveLayer(steps);
-                // Rotate through the unfinished active layer so unclaimed
-                // rare materials can become available as well. Never change
-                // the schematic or the actual worker inventories.
-                if(activeStep>=0){
-                    int end=activeStep;
-                    while(end<steps.size()&&steps.get(end).y()==layer)end++;
-                    int count=end-activeStep;
-                    for(int k=0;k<count&&needs.size()<23;k++){
-                        int i=activeStep+Math.floorMod((int)(tick/100)+k,count);
-                        if(!table.builderStepCompletedForMaterials(i)
-                                &&table.builderStepInActivePhase(steps,i))
-                            addItem(needs,steps.get(i));
-                    }
-                }
-                for(var worker:crew){
-                    for(Integer n:table.builderWorkOrder(worker.getUUID())){
-                        if(n!=null&&n>=0&&n<steps.size()&&needs.size()<23
-                                &&!table.builderStepCompletedForMaterials(n))
-                            addItem(needs,steps.get(n));
-                    }
-                }
-                BuilderInfiniteOnsiteSupply.restock(level,supplyPos,needs);
-            }
             if(!report&&!allStalled&&!noWorkTimeout&&!timeLimit&&table.phase()!=WorkerPhase.COMPLETE)return;
             int correct=0;
             for(Expected candidate:expected)
@@ -608,46 +550,5 @@ public final class BuilderVillagerMatrixFullGameTest {
                 origin.getZ()+cell.z(),cell.state())).toList();
     }
 
-    /** Test-only restock: four physically stored scaffold stacks, one per
-     * concurrent Builder. The golems must still pick them up themselves.
-     * Other material types are capped to the chest's remaining 23 slots. */
-    private static void keepScaffoldingStock(ServerLevel level,BlockPos depot){
-        if(!(level.getBlockEntity(depot) instanceof Container chest))return;
-        for(int slot=0;slot<WORKERS;slot++)
-            chest.setItem(slot,new ItemStack(Items.SCAFFOLDING,64));
-        chest.setChanged();
-    }
 
-    private static Set<Item> baseStock(){
-        Set<Item> needs=new LinkedHashSet<>();
-        needs.add(Items.SCAFFOLDING);
-        needs.add(Items.COBBLESTONE);
-        needs.add(WorksiteContent.GRAPPLE_HOOK);
-        needs.add(Items.BUCKET);
-        needs.add(WorksiteContent.INFINITE_WATER_BUCKET);
-        needs.add(Items.IRON_PICKAXE);
-        needs.add(Items.IRON_AXE);
-        needs.add(Items.IRON_SHOVEL);
-        needs.add(Items.FLINT_AND_STEEL);
-        return needs;
-    }
-    private static void addItem(Set<Item> needs,BuilderConstructionPlan.Step step){
-        if(step.requiredItem()==null)return;
-        Identifier name=Identifier.tryParse(step.requiredItem());
-        if(name==null)return;
-        Item item=BuiltInRegistries.ITEM.getValue(name);
-        if(item!=null&&item!=Items.AIR)needs.add(item);
-        // Test-only stock for a VANILLA-POPPED rail on its later water pass.
-        // Builders pay for and retrieve the replacement in-world; the
-        // chest replenishment never silently inserts it in a worker pouch.
-        if(BuilderWaterPass.isWaterlogPass(step.encodedState())){
-            var dry=BuilderBlockResolver.resolve(
-                    BuilderWaterPass.dryState(
-                            BuilderWaterPass.originalState(step.encodedState())),
-                    BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
-            if(dry!=null&&BuilderRailSlope.raisedEnd(
-                    BlockPos.ZERO,dry.state())!=null)
-                needs.add(dry.item());
-        }
-    }
 }
