@@ -8,6 +8,62 @@ from pathlib import Path
 
 FIELDS = re.compile(r"\[MATRIX TRIAL RESULT\] outcome=(\w+) layer=(\S+) elapsedMs=(\d+) tick=(\d+) correct=(\d+) total=(\d+) best=(\d+) unsupported=(\d+)")
 
+
+# Compare only actual observations at equal simulation ticks.
+PROGRESS = re.compile(
+    r"\[MATRIX FULL PROGRESS\] tick=(\d+) matchingSourceBlocks=(\d+)/(\d+)"
+    r" best=(\d+) cursor=(\d+)/(\d+) currentLayer=(\S+) noWorkTicks=(\d+)"
+    r" crewAlive=(\d+)"
+)
+
+def progress(log):
+    rows = {}
+    for m in PROGRESS.finditer(log):
+        tick, correct, total, best, cursor, steps, layer, idle, alive = m.groups()
+        rows[int(tick)] = dict(tick=int(tick), correct=int(correct), total=int(total),
+                              best=int(best), cursor=int(cursor), steps=int(steps),
+                              layer=layer, noWorkTicks=int(idle), crewAlive=int(alive))
+    return rows
+
+def compare_progress(timelines):
+    """Locate observed divergence, without implying its cause."""
+    available = len(timelines) == 3 and all(timelines.values())
+    common = sorted(set.intersection(*(set(t) for t in timelines.values()))) if available else []
+    first = None
+    first_by_trial = {}
+    consecutive = {}
+    previous = {}
+    for tick in common:
+        rows = {trial: timeline[tick] for trial, timeline in timelines.items()}
+        values = [r["correct"] for r in rows.values()]
+        lead = max(values)
+        if first is None and (len(set(values)) > 1 or len({r["layer"] for r in rows.values()}) > 1):
+            first = dict(tick=tick, correctSpread=max(values)-min(values), trials=rows)
+        for trial, row in rows.items():
+            gap = lead-row["correct"]
+            # Require two successive shared observations, not a single tick
+            # of scheduling noise. Never extrapolate beyond a run.
+            if gap >= 100:
+                if consecutive.get(trial, 0) == 0:
+                    previous[trial] = dict(tick=tick, gap=gap, trials=rows)
+                consecutive[trial] = consecutive.get(trial, 0)+1
+                if consecutive[trial] == 2 and trial not in first_by_trial:
+                    first_by_trial[trial] = dict(first=previous[trial], confirmedTick=tick, gap=gap)
+            else:
+                consecutive[trial] = 0
+    return dict(commonCheckpoints=len(common), firstObservedDifference=first,
+                sustainedLagByTrial=first_by_trial,
+                checkpointsByTrial={trial:len(t) for trial,t in timelines.items()},
+                note="100 fewer correct source blocks at two successive shared game-tick observations is a diagnostic flag, not a root cause; no interpolation.")
+
+def progress_from_artifacts(root):
+    timelines = {}
+    for trial in (1,2,3):
+        log = root/f"matrix-trial-{trial}"/"matrix-trial.log"
+        timelines[str(trial)] = progress(log.read_text(errors="replace")) if log.exists() else {}
+    return compare_progress(timelines)
+
+
 def extract(log):
     matches = FIELDS.findall(log)
     if not matches:
@@ -61,6 +117,7 @@ if __name__ == "__main__":
             rows.append(json.loads(path.read_text()) if path.exists() else
                         {"trial":trial,"outcome":"MISSING_RESULT"})
         result=compare(rows)
+        result["progressComparison"]=progress_from_artifacts(root)
         print(json.dumps(result,indent=2))
         Path("matrix-reliability.json").write_text(json.dumps(result,indent=2)+"\n")
         with open(sys.argv[3],"a") as f:
@@ -72,4 +129,17 @@ if __name__ == "__main__":
                 f.write(f"| {r['trial']} | {r['outcome']} | {r.get('layer','—')} | {r.get('correct','—')} | {elapsed} | {r.get('tick','—')} |\n")
             f.write(f"\n**Result: {result['result']}**\n\n")
             f.write(f"Same stopping layer: {result['sameLayer']}. Runtime spread: {result['elapsedSpreadMs']} ms. All complete: {result['allComplete']}.\n")
+            p=result["progressComparison"]
+            f.write("\n### Progress divergence (equal game ticks)\n\n")
+            f.write(f"Shared checkpoints: {p['commonCheckpoints']}.\n\n")
+            first=p["firstObservedDifference"]
+            if first:
+                f.write(f"First observed difference: tick {first['tick']}, "
+                        f"correct-block spread {first['correctSpread']}.\n\n")
+            else:
+                f.write("No differing shared checkpoint observed (or insufficient logs).\n\n")
+            for trial, lag in p["sustainedLagByTrial"].items():
+                f.write(f"- Trial {trial}: sustained lag starts at tick {lag['first']['tick']}, "
+                        f"confirmed at {lag['confirmedTick']} ({lag['gap']} fewer correct blocks).\n")
+            f.write("\n"+p["note"]+"\n")
         sys.exit(0 if result["milestoneReached"] else 1)
