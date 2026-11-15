@@ -111,6 +111,9 @@ public final class BuilderBuildService {
         // Otherwise the six-second assist watchdog can keep a "finished"
         // teammate camping inside the next Builder's placement volume.
         boolean returningToSite;
+        long returnProgress=-1,returnProbeAfter;
+        double returnBest=Double.POSITIVE_INFINITY;
+        int returnScanOffset;
         /** Recoveries are bounded per obstruction, not for the entire job.
          * One ACTUAL block placed means the golem has made fresh progress,
          * so later roof cells deserve their own three alternate approaches.
@@ -277,9 +280,89 @@ public final class BuilderBuildService {
         String reason="no physical progress toward OnSite Storage";
         table.waitForBuilderAccess(worker.getUUID(),index,now,reason);
         publishHandoff(table,worker.getUUID(),index,now,reason);
+        // Release the abandoned batch, not just its active cell. Paid
+        // materials remain in the real pouch, and the retry delay remains
+        // attached to the exact failed index.
+        table.releaseBuilderWorkOrder(worker.getUUID());
         activity.returningToSite=true;
+        activity.returnProgress=now;
+        activity.returnBest=distance;
+        activity.returnScanOffset=0;
         activity.supplyProgressTick=-1;
         table.setProblem("Builder handed off placement "+index+" after blocked supply return");
+    }
+    /** A failed depot approach is not a permanent disqualification from
+     * construction. Only a stalled crew may recruit a stranded worker,
+     * and only for real, already-carried stock and a validated same-phase
+     * construction approach. Never bypass a crew-wide shortage recall. */
+    static int tryStockedRecovery(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,int offset){
+        if(table.claimedStep(worker.getUUID())>=0||worker.hasSupplyBox()
+                ||BuilderMaterialNetwork.recalling(table,worker.getUUID())
+                ||BuilderFlight.active(worker)||BuilderGrappleAccess.active(worker)
+                ||BuilderScaffolding.isControllingMovement(worker)
+                ||BuilderScaffoldPlanA.hasPlan(worker)
+                ||!worker.onGround())return -1;
+        var eligible=new java.util.ArrayList<Integer>();
+        for(int idx=0;idx<steps.size();idx++){
+            var step=steps.get(idx);
+            if(!table.builderStepInActivePhase(steps,idx)
+                    ||!table.builderStepReadyForClaim(idx)
+                    ||table.builderStepClaimedByOther(worker.getUUID(),idx)
+                    ||reservedForTeammate(table,worker.getUUID(),idx,level.getGameTime())
+                    ||step.ignorePlant()||BuilderDeferredState.verification(step.encodedState()))continue;
+            var item=BuilderMaterialNetwork.required(step);
+            if(item!=null&&worker.carriedCount(item)>0)eligible.add(idx);
+        }
+        if(eligible.isEmpty())return -1;
+        eligible.sort(java.util.Comparator.comparingDouble(i->{
+            var cell=steps.get(i);
+            return worker.distanceToSqr(cell.x()+.5,cell.y()+.5,cell.z()+.5);
+        }));
+        // Bound each physical search to four nearby stocked cells;
+        // successive recovery ticks rotate through the rest.
+        var nearby=new java.util.ArrayList<Integer>();
+        for(int j=0;j<Math.min(4,eligible.size());j++)
+            nearby.add(eligible.get(Math.floorMod(offset+j,eligible.size())));
+        var next=BuilderConstructionPlanner.chooseLookahead(level,worker,table,steps,nearby,0,4);
+        if(next==null)return -1;
+        int idx=table.claimPreferredBuilderZoneStep(worker.getUUID(),nearby,steps,next.index());
+        if(idx>=0){
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+            System.out.println("[CREW RECOVERY STOCKED CLAIM] worker="+worker.getUUID()+" step="+idx);
+        }
+        return idx;
+    }
+    private static boolean recoverReturningWorker(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,WorkerAction action){
+        BlockPos depot=table.builderUnloadingStorage();
+        if(depot==null)depot=table.getBlockPos();
+        long now=level.getGameTime();
+        double distance=worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,depot.getZ()+.5);
+        if(action.returnProgress<0||distance<action.returnBest-1){
+            action.returnProgress=now;action.returnBest=distance;
+        }
+        if(now-action.returnProgress<180||now<action.returnProbeAfter
+                ||!roofNeedsHelp(level,table)
+                ||BuilderMaterialNetwork.recalling(table,worker.getUUID())
+                ||BuilderFlight.active(worker)||BuilderGrappleAccess.active(worker)
+                ||BuilderScaffolding.isControllingMovement(worker)
+                ||BuilderFlight.descentMakingProgress(level,worker,depot))return false;
+        action.returnProbeAfter=now+40;
+        Cache plan=cached.get(worker);
+        if(plan==null||!java.util.Objects.equals(table.activeOrder(),
+                schedules.containsKey(table)?schedules.get(table).job():null))return false;
+        int idx=tryStockedRecovery(level,worker,table,plan.steps(),action.returnScanOffset);
+        action.returnScanOffset+=4;
+        if(idx<0)return false;
+        action.returningToSite=false;
+        action.retreatUntil=-1;
+        action.alternateSideRequested=false;
+        action.alternateSideTarget=null;
+        action.returnProgress=-1;
+        action.returnBest=Double.POSITIVE_INFINITY;
+        action.setStep(idx);
+        return true;
     }
     private static boolean reservedForTeammate(WorkerStationBlockEntity table,
             UUID worker,int index,long now){
@@ -966,8 +1049,16 @@ public final class BuilderBuildService {
             WorkerAction returning=workerActions.get(worker);
             if(returning!=null&&returning.returningToSite){
                 boolean arrived=parkAtOnSite(level,worker,table);
-                if(shouldContinueEvacuation(true,arrived))return;
-                returning.returningToSite=false;
+                if(shouldContinueEvacuation(true,arrived)){
+                    // A physical return remains preferred. Only a bounded,
+                    // stalled-crew recovery can replace it with useful work.
+                    if(!recoverReturningWorker(level,worker,table,returning))return;
+                }else{
+                    returning.returningToSite=false;
+                    returning.returnProgress=-1;
+                    returning.returnBest=Double.POSITIVE_INFINITY;
+                    returning.returnScanOffset=0;
+                }
             }
         }
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
@@ -1264,6 +1355,9 @@ public final class BuilderBuildService {
             if(emergencyRoofAssist){
                 var rescue=roofRescueZone(table,worker.getUUID(),
                         plan.steps(),layer);
+                if(index>=0&&!rescue.contains(index)
+                        &&table.builderStepInActivePhase(plan.steps(),index)
+                        &&table.builderStepReadyForClaim(index))rescue.add(index);
                 if(!rescue.isEmpty()&&materialOffers.isEmpty()){
                     zone=rescue;
                     if(level.getGameTime()%200==0)

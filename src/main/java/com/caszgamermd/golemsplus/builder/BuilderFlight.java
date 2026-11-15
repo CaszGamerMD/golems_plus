@@ -70,19 +70,6 @@ public final class BuilderFlight {
         AABB box = body(worker, from).minmax(body(worker, to));
         return loaded(level, box) && level.noCollision(worker, box);
     }
-    private static boolean dryBody(ServerLevel level,AABB box){
-        for(int x=(int)Math.floor(box.minX+1e-5);x<=(int)Math.floor(box.maxX-1e-5);x++)
-            for(int y=(int)Math.floor(box.minY+1e-5);y<=(int)Math.floor(box.maxY-1e-5);y++)
-                for(int z=(int)Math.floor(box.minZ+1e-5);z<=(int)Math.floor(box.maxZ-1e-5);z++)
-                    if(!level.getFluidState(new BlockPos(x,y,z)).isEmpty())return false;
-        return true;
-    }
-    static boolean wetBody(ServerLevel level,BuilderGolem worker){
-        return !dryBody(level,worker.getBoundingBox());
-    }
-    static boolean returnSweep(ServerLevel level,BuilderGolem worker,Vec3 from,Vec3 to){
-        return sweep(level,worker,from,to)&&dryBody(level,body(worker,from).minmax(body(worker,to)));
-    }
     private static Vec3 origin(BuilderGolem worker) {
         Flight flight = flights.get(worker);
         return flight == null ? worker.position() : flight.origin;
@@ -95,19 +82,13 @@ public final class BuilderFlight {
     // No unrestricted 3D search, repeated horizontal hops, or grapple anchor.
     private static List<Vec3> path(ServerLevel level, BuilderGolem worker,
             Vec3 from, Vec3 to, Vec3 anchor) {
-        return path(level,worker,from,to,anchor,false);
-    }
-    private static List<Vec3> path(ServerLevel level, BuilderGolem worker,
-            Vec3 from, Vec3 to, Vec3 anchor,boolean dry) {
         if (!inEnvelope(anchor, from) || !inEnvelope(anchor, to)
                 || !clear(level, worker, to)) return List.of();
-        java.util.function.BiPredicate<Vec3,Vec3> leg=(a,b)->dry?
-                returnSweep(level,worker,a,b):sweep(level,worker,a,b);
         Vec3 upper = new Vec3(from.x, to.y, from.z);
-        if (leg.test(from,upper) && leg.test(upper,to))
+        if (sweep(level, worker, from, upper) && sweep(level, worker, upper, to))
             return upper.distanceToSqr(to) < .0001 ? List.of(to) : List.of(upper, to);
         Vec3 side = new Vec3(to.x, from.y, to.z);
-        if (leg.test(from,side) && leg.test(side,to))
+        if (sweep(level, worker, from, side) && sweep(level, worker, side, to))
             return side.distanceToSqr(to) < .0001 ? List.of(to) : List.of(side, to);
         // A ledge can block sideways movement at both endpoint heights.
         // Try a short vertical over/under detour inside the takeoff envelope.
@@ -115,8 +96,8 @@ public final class BuilderFlight {
             double y = offset > 0 ? Math.max(from.y,to.y)+offset : Math.min(from.y,to.y)+offset;
             Vec3 a = new Vec3(from.x,y,from.z);
             Vec3 b = new Vec3(to.x,y,to.z);
-            if (leg.test(from,a) && leg.test(a,b)
-                    && leg.test(b,to)) return List.of(a,b,to);
+            if (sweep(level,worker,from,a) && sweep(level,worker,a,b)
+                    && sweep(level,worker,b,to)) return List.of(a,b,to);
         }
         return List.of();
     }
@@ -146,9 +127,6 @@ public final class BuilderFlight {
      * A nominal two-metre center-to-center leg may be 2.025m from the
      * physical walking endpoint. Trim the landing point, NOT the envelope. */
     static boolean requestSupportedLanding(ServerLevel level,BuilderGolem worker,BlockPos goal){
-        return requestSupportedLanding(level,worker,goal,false);
-    }
-    private static boolean requestSupportedLanding(ServerLevel level,BuilderGolem worker,BlockPos goal,boolean dry){
         if(goal==null||!enabled(worker)||BuilderGrappleAccess.active(worker)
                 ||!WorkerNavigation.canStandOn(level,worker,goal))return false;
         // A legal stand may be a bottom slab, stair, soul sand or
@@ -170,21 +148,18 @@ public final class BuilderFlight {
             if(!level.getBlockState(floor).isFaceSturdy(level,floor,Direction.UP)
                     ||!clear(level,worker,landing))return false;
         }
-        return requestPosition(level,worker,goal,landing,dry);
+        return requestPosition(level,worker,goal,landing);
     }
     private static Vec3 supportedFeet(ServerLevel level,BlockPos stand){
         return new Vec3(stand.getX()+.5,WorkerNavigation.surveyFloorHeight(level,stand),stand.getZ()+.5);
     }
     private static boolean requestPosition(ServerLevel level,BuilderGolem worker,BlockPos goal,Vec3 destination){
-        return requestPosition(level,worker,goal,destination,false);
-    }
-    private static boolean requestPosition(ServerLevel level,BuilderGolem worker,BlockPos goal,Vec3 destination,boolean dry){
         if(BuilderGrappleAccess.active(worker)||!inEnvelope(origin(worker),destination))return false;
         Flight flight = flights.get(worker);
         if (flight != null && goal.equals(flight.goal) && moving(worker)) return true;
         if (flight != null && goal.equals(flight.goal) && level.getGameTime() < flight.retryAt) return false;
         BuilderChunkTickets.destination(level, worker, goal);
-        List<Vec3> path = path(level,worker,worker.position(),destination,origin(worker),dry);
+        List<Vec3> path = path(level,worker,worker.position(),destination,origin(worker));
         if(flight!=null&&flight.lastFailedDestination!=null
                 &&level.getGameTime()<flight.failedUntil
                 &&destination.distanceToSqr(flight.lastFailedDestination)<.04)return false;
@@ -432,15 +407,14 @@ public final class BuilderFlight {
         }
         if(below)landings.sort(Comparator.comparingInt((BlockPos p)->p.getY())
                 .thenComparingDouble(p->worker.position().distanceToSqr(feet(p))));
-        boolean dry=!wetBody(level,worker);
-        for(BlockPos floor:landings)if(requestSupportedLanding(level,worker,floor,dry))return true;
+        for(BlockPos floor:landings)if(requestSupportedLanding(level,worker,floor))return true;
         // A hovering worker can also land on a nearby raised lip and
         // walk to the edge, rather than hovering forever under a roof.
         if(flight!=null){
             for(int dy=1;dy<=4;dy++)for(BlockPos column:columns){
                 BlockPos floor=new BlockPos(column.getX(),top+dy,column.getZ());
                 if(floor.getY()>=level.getMaxY())continue;
-                if(WorkerNavigation.canStandOn(level,worker,floor)&&requestSupportedLanding(level,worker,floor,dry))
+                if(WorkerNavigation.canStandOn(level,worker,floor)&&requestSupportedLanding(level,worker,floor))
                     return true;
             }
         }
@@ -486,14 +460,12 @@ public final class BuilderFlight {
         Vec3 anchor=worker.position();
         BlockPos here=worker.blockPosition();
         var candidates=new ArrayList<BlockPos>();
-        boolean wet=wetBody(level,worker);
-        for(int dy=1;dy<=(wet?12:5);dy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+        for(int dy=1;dy<=5;dy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
             BlockPos p=here.offset(dx,dy,dz);
             if(!inEnvelope(anchor,feet(p))||p.getY()<=anchor.y+.6
                     ||!WorkerNavigation.canStandOn(level,worker,p)
                     ||Math.abs(WorkerNavigation.surveyFloorHeight(level,p)-p.getY())>.1)continue;
-            if(dryBody(level,body(worker,feet(p)))
-                    &&!path(level,worker,anchor,feet(p),anchor,!wet).isEmpty())candidates.add(p);
+            if(!path(level,worker,anchor,feet(p),anchor).isEmpty())candidates.add(p);
         }
         // Prefer a broad surface, not the same isolated one-block perch.
         candidates.sort(Comparator.comparingDouble(p->feet(p).distanceToSqr(anchor)));
@@ -504,7 +476,7 @@ public final class BuilderFlight {
                 if(WorkerNavigation.canStandOn(level,worker,next)
                         &&sweep(level,worker,feet(p),feet(next)))exits++;
             }
-            if(exits>0&&requestPosition(level,worker,p,feet(p),!wet))return true;
+            if(exits>0&&request(level,worker,p))return true;
         }
         return false;
     }
@@ -556,7 +528,7 @@ public final class BuilderFlight {
                 &&WorkerNavigation.canStandOn(level,worker,saved.launch())
                 &&WorkerNavigation.canStandOn(level,worker,saved.landing())){
             if(worker.position().distanceToSqr(feet(saved.launch()))<.04){
-                if(requestSupportedLanding(level,worker,saved.landing(),true)){
+                if(requestSupportedLanding(level,worker,saved.landing())){
                     descents.remove(worker);return true;
                 }
                 return WorkerNavigation.routeToExact(level,worker,saved.launch(),1.0);
@@ -584,7 +556,7 @@ public final class BuilderFlight {
                     BlockPos floor=new BlockPos(column.getX(),y,column.getZ());
                     if(!level.hasChunkAt(floor))break;
                     if(!WorkerNavigation.canStandOn(level,worker,floor))continue;
-                    if(!path(level,worker,anchor,feet(floor),anchor,true).isEmpty()
+                    if(!path(level,worker,anchor,feet(floor),anchor).isEmpty()
                             &&(best==null||floor.getY()<best.getY()))best=floor;
                     break;
                 }

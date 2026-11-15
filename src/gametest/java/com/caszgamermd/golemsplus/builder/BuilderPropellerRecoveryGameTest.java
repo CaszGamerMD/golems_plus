@@ -308,7 +308,7 @@ public final class BuilderPropellerRecoveryGameTest {
         h.setBlock(6,2,5,Blocks.CHEST);
         BlockPos station=h.absolutePos(new BlockPos(5,2,5));
         BlockPos depot=h.absolutePos(new BlockPos(6,2,5));
-        BlockPos target=h.absolutePos(new BlockPos(15,2,12));
+        BlockPos target=h.absolutePos(new BlockPos(9,2,5));
         level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(depot.getX()>>4,depot.getZ()>>4),3);
         if(!(level.getBlockEntity(station) instanceof com.caszgamermd.golemsplus.world.WorkerStationBlockEntity table)
                 ||!(level.getBlockEntity(depot) instanceof net.minecraft.world.Container chest)){
@@ -336,6 +336,10 @@ public final class BuilderPropellerRecoveryGameTest {
             var glass=net.minecraft.world.item.Items.GLASS;
             h.onEachTick(()->{
                 if(h.getTick()==5){
+                    // Keep this scheduler fixture physically grounded and
+                    // near the work, independent of an autonomous route.
+                    requester.setOnGround(true);
+                    donor.setOnGround(true);
                     donor.setItem(0,new net.minecraft.world.item.ItemStack(glass,3));
                     if(table.claimPreferredBuilderZoneStep(requester.getUUID(),java.util.List.of(0),plan.steps(),0)!=0
                             ||!BuilderMaterialNetwork.offer(level,requester,table,plan.steps(),0,glass)){
@@ -381,6 +385,14 @@ public final class BuilderPropellerRecoveryGameTest {
                         h.fail("Resupply incorrectly completed a cell or consumed stock");return;
                     }
                     System.out.println("[MATERIAL NETWORK RESUPPLY PASS] both crew wait and resume on physical stock");
+                    donor.setItem(0,new net.minecraft.world.item.ItemStack(glass,3));
+                    donor.setOnGround(true);
+                    if(BuilderBuildService.tryStockedRecovery(level,donor,table,plan.steps(),0)!=0
+                            ||table.claimedStep(donor.getUUID())!=0||donor.carriedCount(glass)!=3
+                            ||BuilderBuildService.tryStockedRecovery(level,requester,table,plan.steps(),0)>=0){
+                        h.fail("Recovery failed to claim stocked work exclusively");return;
+                    }
+                    System.out.println("[CREW RECOVERY CLAIM PASS] stocked worker resumes exact unfinished cell");
                     h.succeed();
                 }
             });
@@ -425,30 +437,4 @@ public final class BuilderPropellerRecoveryGameTest {
     }
 
 
-    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=80,skyAccess=true)
-    public void returnFlightRejectsWetShaft(GameTestHelper h){
-        var level=h.getLevel();
-        for(int x=7;x<=15;x++)for(int z=7;z<=13;z++){
-            h.setBlock(x,1,z,Blocks.STONE);
-            for(int y=2;y<=10;y++)h.setBlock(x,y,z,Blocks.AIR);
-        }
-        // A contained water source in the middle of an otherwise
-        // collision-free vertical shaft, and a parallel dry column.
-        h.setBlock(11,5,10,Blocks.WATER);
-        BlockPos wet=h.absolutePos(new BlockPos(11,5,10));
-        BlockPos dry=h.absolutePos(new BlockPos(10,5,10));
-        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-        Vec3 start=Vec3.atBottomCenterOf(dry.above(3));
-        worker.setPos(start.x,start.y,start.z);
-        level.addFreshEntity(worker);
-        if(BuilderFlight.returnSweep(level,worker,Vec3.atBottomCenterOf(wet.above(3)),
-                    Vec3.atBottomCenterOf(wet.below(2)))){
-            h.fail("Return path accepted a submerged shaft");return;
-        }
-        if(!BuilderFlight.returnSweep(level,worker,start,Vec3.atBottomCenterOf(dry.below(2)))){
-            h.fail("Return path rejected adjacent dry shaft");return;
-        }
-        System.out.println("[DRY RETURN SHAFT PASS] liquid sweep rejected; dry route retained");
-        h.succeed();
-    }
 }

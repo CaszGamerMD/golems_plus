@@ -135,6 +135,9 @@ final class BuilderMaterialNetwork {
         for(UUID id:crew)table.releaseBuilderWorkOrder(id);
         System.out.println("[MATERIAL NETWORK RECALL] layer="+layer+" materials="+needs.size());
     }
+    static boolean recalling(WorkerStationBlockEntity table,UUID worker){
+        return state(table).recall.contains(worker);
+    }
     static boolean recallTick(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table){
         State s=state(table);
         if(!s.recall.contains(worker.getUUID()))return false;

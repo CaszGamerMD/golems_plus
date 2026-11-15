@@ -81,10 +81,6 @@ public final class BuilderReturnService {
         // physical return. The ordinary depot selector must not replace
         // its motion with a competing ground A* request.
         if(mobilityActive)return true;
-        // Bubble columns apply vertical currents. An already wet builder
-        // must leave the shaft before it tries another depot descent.
-        if(BuilderFlight.enabled(worker)&&BuilderFlight.wetBody(level,worker)
-                &&BuilderFlight.escapePocket(level,worker,target))return true;
         // Finish the selected roof-edge walk before running another
         // depot probe or picking a different nearby descent column.
         if(BuilderFlight.enabled(worker)
