@@ -6,6 +6,7 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMaterialNetwork.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffoldPlanA.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffolding.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderPropellerRecoveryGameTest.java'
       - '.github/workflows/propeller-recovery-physical.yml'
   workflow_dispatch:
@@ -48,6 +49,8 @@ jobs:
           grep -F '[GRAPPLE APPROACH GRAVITY PASS]' "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[CREW RECOVERY CLAIM PASS]' "$RUNNER_TEMP/propeller-recovery.log"
           grep -F '[MATERIAL NETWORK RESUPPLY PASS]' "$RUNNER_TEMP/propeller-recovery.log"
+          grep -F '[SCAFFOLD CONTACT EXIT PASS]' "$RUNNER_TEMP/propeller-recovery.log"
+          grep -F '[SCAFFOLD EXIT WALK PASS]' "$RUNNER_TEMP/propeller-recovery.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

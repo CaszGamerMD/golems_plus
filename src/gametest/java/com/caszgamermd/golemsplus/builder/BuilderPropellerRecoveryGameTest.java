@@ -437,4 +437,51 @@ public final class BuilderPropellerRecoveryGameTest {
     }
 
 
+
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=100,skyAccess=true)
+    public void scaffoldExitReleasesActualRedstoneFooting(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=7;x<=14;x++)for(int z=8;z<=12;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=6;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        h.setBlock(9,2,10,Blocks.SCAFFOLDING);
+        h.setBlock(10,2,10,Blocks.SMOOTH_STONE);
+        h.setBlock(11,2,10,Blocks.SMOOTH_STONE);
+        h.setBlock(10,3,10,Blocks.REDSTONE_WIRE);
+        BlockPos landing=h.absolutePos(new BlockPos(10,3,10));
+        BlockPos onward=h.absolutePos(new BlockPos(11,3,10));
+        level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(landing.getX()>>4,landing.getZ()>>4),3);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(landing.getX()+.72,landing.getY(),landing.getZ()+.5);
+        level.addFreshEntity(worker);
+        boolean[] released={false};
+        h.onEachTick(()->{
+            if(h.getTick()==5){
+                // Reproduce an already-landed off-center Builder whose
+                // transient vanilla onGround flag has not updated.
+                if(!BuilderScaffolding.stepToPlatform(level,worker,landing)){
+                    h.fail("Could not establish physical exit on redstone platform");return;
+                }
+                worker.setOnGround(false);
+                if(BuilderScaffolding.tickMotion(level,worker)
+                        ||BuilderScaffolding.hasPhysicalMotion(worker)
+                        ||worker.isNoGravity()||BuilderScaffoldPlanA.hasPlan(worker)){
+                    h.fail("Actual supported exit retained stale scaffold controller");return;
+                }
+                released[0]=true;
+                System.out.println("[SCAFFOLD CONTACT EXIT PASS] actual stone contact releases stale exit");
+            }
+            if(!released[0])return;
+            if(worker.onGround()&&worker.distanceToSqr(onward.getX()+.5,onward.getY(),onward.getZ()+.5)<.16){
+                if(!level.getBlockState(landing.west().below()).is(Blocks.SCAFFOLDING)){
+                    h.fail("Recovery removed the actual scaffold");return;
+                }
+                System.out.println("[SCAFFOLD EXIT WALK PASS] normal navigation resumed");
+                h.succeed();return;
+            }
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(level,worker,onward,.8);
+            if(h.getTick()==90)h.fail("Normal walking did not resume after physical exit: "+worker.position());
+        });
+    }
 }

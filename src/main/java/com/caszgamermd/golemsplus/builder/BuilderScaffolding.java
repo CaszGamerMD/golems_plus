@@ -66,20 +66,67 @@ public final class BuilderScaffolding {
     }
     private static final java.util.Map<BuilderGolem,ExitProgress> exitProgress=
             new java.util.WeakHashMap<>();
+    private record FailedExit(BlockPos landing,long until){}
+    private static final java.util.Map<BuilderGolem,FailedExit> failedExits=
+            new java.util.WeakHashMap<>();
+    private static boolean exitAllowed(ServerLevel level,BuilderGolem worker,BlockPos landing){
+        FailedExit failed=failedExits.get(worker);
+        return failed==null||level.getGameTime()>=failed.until()||!failed.landing().equals(landing);
+    }
+    /** Read actual collision contact, not the center of an A* node.
+     * A scaffold-to-stone transfer can leave onGround false for a tick,
+     * or a builder slightly off-center above redstone/slabs. Neither
+     * should keep the obsolete scaffold controller in charge. */
     private static boolean onSolidExit(ServerLevel level,BuilderGolem worker){
-        BlockPos feet=worker.blockPosition(),floor=feet.below();
-        return worker.onGround()
-                &&!level.getBlockState(feet).is(Blocks.SCAFFOLDING)
-                &&!level.getBlockState(floor).is(Blocks.SCAFFOLDING)
-                &&WorkerNavigation.canStandOn(level,worker,feet)
-                &&Math.abs(worker.getY()-WorkerNavigation.surveyFloorHeight(level,feet))<.15;
+        var box=worker.getBoundingBox();
+        BlockPos feet=BlockPos.containing(worker.getX(),box.minY+.03,worker.getZ());
+        if(level.getBlockState(feet).is(Blocks.SCAFFOLDING)
+                ||level.getBlockState(feet.below()).is(Blocks.SCAFFOLDING)
+                ||!level.getFluidState(feet).isEmpty()
+                ||worker.getDeltaMovement().y>.10)return false;
+        var body=new net.minecraft.world.phys.AABB(box.minX,box.minY+.012,box.minZ,
+                box.maxX,box.maxY-.025,box.maxZ);
+        if(level.getBlockCollisions(worker,body).iterator().hasNext())return false;
+        var contact=new net.minecraft.world.phys.AABB(box.minX,box.minY-.055,box.minZ,
+                box.maxX,box.minY+.002,box.maxZ);
+        return level.getBlockCollisions(worker,contact).iterator().hasNext();
+    }
+    private static void stopExitInput(BuilderGolem worker){
+        WorkerNavigation.stop(worker);
+        worker.setJumping(false);
+        worker.setShiftKeyDown(false);
+        worker.getMoveControl().setWantedPosition(worker.getX(),worker.getY(),worker.getZ(),0);
+        var velocity=worker.getDeltaMovement();
+        worker.setDeltaMovement(0,Math.min(0,velocity.y),0);
     }
     private static void finishExit(BuilderGolem worker){
         exiting.remove(worker);exitProgress.remove(worker);
+        returning.remove(worker);access.remove(worker);
         BuilderScaffoldPlanA.cancel(worker);
-        worker.setShiftKeyDown(false);worker.setNoGravity(false);
-        worker.getNavigation().stop();
+        stopExitInput(worker);
+        worker.setNoGravity(false);
         worker.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+    }
+    private static boolean rejectExit(ServerLevel level,BuilderGolem worker,ExitRoute exit){
+        failedExits.put(worker,new FailedExit(exit.ground(),level.getGameTime()+120));
+        System.out.println("[SCAFFOLD EXIT REPLAN] "+worker.getName().getString()
+                +" at="+worker.position()+" rejected="+exit.ground().toShortString());
+        if(onSolidExit(level,worker)){
+            finishExit(worker);return false;
+        }
+        // An unsupported worker must use a real powered landing, if one
+        // exists, before releasing its old controller. Preserve the flight
+        // controller's gravity and velocity; never cancel its new request.
+        if(BuilderFlight.exitStalledScaffold(level,worker)){
+            exiting.remove(worker);exitProgress.remove(worker);
+            returning.remove(worker);access.remove(worker);
+            return true;
+        }
+        // No powered exit was proved. Retain the physical tower/Plan A;
+        // the next action can select another side or descend inside it.
+        exiting.remove(worker);exitProgress.remove(worker);
+        stopExitInput(worker);
+        return false;
     }
     private static final java.util.Map<BuilderGolem,ExitRoute> exiting=
             new java.util.WeakHashMap<>();
@@ -141,7 +188,7 @@ public final class BuilderScaffolding {
         BuilderScaffoldPlanA.cancel(worker);
         clearMotion(worker);
         returning.remove(worker);
-        exiting.remove(worker);
+        exiting.remove(worker);exitProgress.remove(worker);
         access.remove(worker);
     }
     public static boolean finishActiveAscent(ServerLevel level,BuilderGolem worker){
@@ -207,10 +254,11 @@ public final class BuilderScaffolding {
             }
             double distance=dx*dx+dz*dz+(Double.isFinite(dy)?dy*dy:0);
             if(distance<watch.best-.025){watch.best=distance;watch.lastProgress=now;}
-            if(now-watch.lastProgress>45&&onSolidExit(level,worker)){
-                // Already off the scaffold; do not let an obstructed
-                // centering step hold exclusive movement indefinitely.
-                finishExit(worker);return false;
+            if(now-watch.lastProgress>45){
+                // Actual contact, not a nominal path, is the handoff.
+                // Reject a stalled exit even if a new work tick keeps
+                // requesting it. The old destination has a cooldown.
+                return rejectExit(level,worker,exit);
             }
             // A roof can change under a returning Builder. If it is
             // already GROUNDED on a solid ledge two or more levels above
@@ -231,15 +279,8 @@ public final class BuilderScaffolding {
                 return false;
             }
             if(level.getGameTime()>exit.expires()
-                    ||!com.caszgamermd.golemsplus.worker.WorkerNavigation
-                            .canStandOn(level,worker,exit.ground())){
-                exiting.remove(worker);exitProgress.remove(worker);
-            }else if(Math.abs(worker.getX()-exit.ground().getX()-.5)<.35
-                    &&Math.abs(worker.getZ()-exit.ground().getZ()-.5)<.35
-                    &&Math.abs(worker.getY()-exit.ground().getY())<.32
-                    &&worker.onGround()){
-                finishExit(worker);
-                return false;
+                    ||!WorkerNavigation.canStandOn(level,worker,exit.ground())){
+                return rejectExit(level,worker,exit);
             }else{
                 // Do not declare exit complete because the worker is only
                 // horizontally close while still one block ABOVE the
@@ -250,14 +291,18 @@ public final class BuilderScaffolding {
                 worker.setShiftKeyDown(false);
                 double tx=exit.ground().getX()+.5;
                 double tz=exit.ground().getZ()+.5;
-                worker.getMoveControl().setWantedPosition(tx,
-                        exit.ground().getY(),tz,1.0);
+                // One owner: direct scaffold-exit velocity. Native
+                // MoveControl acceleration used to fight it and oscillate
+                // around a ledge center. No jump or additional steering.
+                worker.setJumping(false);
+                worker.getMoveControl().setWantedPosition(worker.getX(),worker.getY(),worker.getZ(),0);
                 double vx=Math.max(-.15,Math.min(.15,(tx-worker.getX())*.28));
                 double vz=Math.max(-.15,Math.min(.15,(tz-worker.getZ())*.28));
-                if(level.noCollision(worker,worker.getBoundingBox().move(vx,0,vz))){
-                    var velocity=worker.getDeltaMovement();
+                var velocity=worker.getDeltaMovement();
+                var body=worker.getBoundingBox();
+                if(level.noCollision(worker,body.minmax(body.move(vx,0,vz)))){
                     worker.setDeltaMovement(vx,Math.min(velocity.y,0),vz);
-                }
+                }else worker.setDeltaMovement(0,Math.min(velocity.y,0),0);
                 return true;
             }
         }
@@ -426,7 +471,7 @@ public final class BuilderScaffolding {
         // A session is renewed by the owning Builder task, never shared
         // across colleagues or over a remote scaffold.
         returning.remove(worker);
-        exiting.remove(worker);
+        exiting.remove(worker);exitProgress.remove(worker);
         ClimbSession current=sessions.get(worker);
         if(current!=null&&current.column().equals(column)
                 &&current.descending()==down
@@ -522,7 +567,7 @@ public final class BuilderScaffolding {
             // to take this ordinary one-block drop to dismount.
             for(int dy:new int[]{0,-1}){
                 BlockPos p=base.relative(side).offset(0,dy,0);
-                if(!walkableExit(level,worker,p))continue;
+                if(!walkableExit(level,worker,p)||!exitAllowed(level,worker,p))continue;
                 double score=worker.distanceToSqr(p.getX()+.5,worker.getY(),
                         p.getZ()+.5)+Math.abs(dy)*2;
                 if(score<cost){cost=score;best=p;}
@@ -586,6 +631,7 @@ public final class BuilderScaffolding {
                                   BlockPos destination){
         if(!canCrossToPlatform(level,worker,destination,worker.getY()))return false;
         clearMotion(worker);
+        stopExitInput(worker);
         exiting.put(worker,new ExitRoute(destination.immutable(),
                 level.getGameTime()+140));
         return true;
@@ -598,7 +644,8 @@ public final class BuilderScaffolding {
             BlockPos destination,double departureY){
         double dx=destination.getX()+.5-worker.getX();
         double dz=destination.getZ()+.5-worker.getZ();
-        if(dx*dx+dz*dz>3.2||!WorkerNavigation.canStandOn(level,worker,destination))
+        if(dx*dx+dz*dz>3.2||!exitAllowed(level,worker,destination)
+                ||!WorkerNavigation.canStandOn(level,worker,destination))
             return false;
         double floor=WorkerNavigation.surveyFloorHeight(level,destination);
         double drop=departureY-floor;
@@ -674,10 +721,10 @@ public final class BuilderScaffolding {
                                    BlockPos column,BlockPos preferred){
         AccessRoute planned=access.get(worker);
         BlockPos exit=preferred!=null
-                &&walkableExit(level,worker,preferred)
+                &&walkableExit(level,worker,preferred)&&exitAllowed(level,worker,preferred)
                 ?preferred:planned!=null
                 &&planned.base().equals(column)
-                &&walkableExit(level,worker,planned.groundExit())
+                &&walkableExit(level,worker,planned.groundExit())&&exitAllowed(level,worker,planned.groundExit())
                 ?planned.groundExit():exitGround(level,worker,column);
         if(exit==null)return false;
         // A Builder may safely fall TWO blocks from the scaffold lip
@@ -692,6 +739,7 @@ public final class BuilderScaffolding {
                     worker.getBoundingBox().move(x,0,z)))return false;
         }
         clearMotion(worker);
+        stopExitInput(worker);
         access.remove(worker);
         exiting.put(worker,new ExitRoute(exit,level.getGameTime()+140));
         return true;

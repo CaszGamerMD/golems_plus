@@ -12,6 +12,7 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderGrappleAccess.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMaterialNetwork.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffolding.java'
   workflow_dispatch:
     inputs:
       mode:
