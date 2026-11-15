@@ -36,7 +36,7 @@ public final class BuilderInfiniteOnsiteSupply {
         // Live survival OnSite inventories never use this method.
         for(int slot=0;slot<chest.getContainerSize();slot++){
             ItemStack old=chest.getItem(slot);
-            if(!old.isEmpty()&&!wanted.contains(old.getItem()))
+            if(!old.isEmpty()&&!old.is(net.minecraft.tags.ItemTags.SHULKER_BOXES)&&!wanted.contains(old.getItem()))
                 chest.setItem(slot,ItemStack.EMPTY);
         }
         int stocked=0;

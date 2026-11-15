@@ -364,6 +364,8 @@ public final class BuilderVillagerMatrixFullGameTest {
         // Stock one physical scaffold stack per Builder.
         keepScaffoldingStock(level,supplyPos);
         BuilderInfiniteOnsiteSupply.restock(level,supplyPos,firstNeeds);
+        if(level.getBlockEntity(supplyPos) instanceof Container chest)
+            chest.setItem(chest.getContainerSize()-1,new ItemStack(Items.SHULKER_BOX));
         var crew=new ArrayList<BuilderGolem>();
         for(int i=0;i<WORKERS;i++){
             BuilderGolem worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
@@ -449,16 +451,17 @@ public final class BuilderVillagerMatrixFullGameTest {
             }
             long elapsedMillis=(System.nanoTime()-assessmentStart)/1_000_000L;
             boolean timeLimit=elapsedMillis>=assessmentSeconds*1000L;
-            boolean noWorkTimeout=noWorkTicks>=NO_WORK_LIMIT;
+            boolean recoveryGrace=BuilderCrewRecovery.assessmentGrace(level,table);
+            boolean noWorkTimeout=!recoveryGrace&&noWorkTicks>=NO_WORK_LIMIT;
             boolean report=tick%PROGRESS_PERIOD==0;
             var stalls=tick%MOTION_SAMPLE_TICKS==0
                     &&(report||noWorkTicks>=STALL_TICKS)
                     ?movement.stream().map(MatrixMovementWindow::stall).toList()
                     :List.<MatrixMovementWindow.Stall>of();
-            boolean allStalled=noWorkTicks>=STALL_TICKS
+            boolean allStalled=!recoveryGrace&&noWorkTicks>=STALL_TICKS
                     &&stalls.size()==WORKERS
                     &&stalls.stream().allMatch(stall->stall!=MatrixMovementWindow.Stall.MOVING);
-            if(tick%100==0){
+            if(tick%100==0&&!BuilderCrewRecovery.recalling(table)){
                 // 27 real chest slots cannot hold the entire machine palette.
                 // Replenish relevant assignments only, without inserting items
                 // directly into worker inventories or forcing any placements.

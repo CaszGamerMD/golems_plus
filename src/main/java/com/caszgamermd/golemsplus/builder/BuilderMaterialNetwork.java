@@ -30,6 +30,7 @@ final class BuilderMaterialNetwork {
         }
         return s;
     }
+    static void resetForCrew(WorkerStationBlockEntity table){states.remove(table);}
     private static boolean usable(BuilderGolem peer,Item item){
         return peer.isAlive()&&!peer.hasSupplyBox()&&peer.carriedCount(item)>0;
     }
@@ -76,6 +77,7 @@ final class BuilderMaterialNetwork {
         var candidates=new ArrayList<BuilderGolem>();
         for(UUID id:table.builderWorkerIds()){
             if(id.equals(requester.getUUID())||s.recall.contains(id)
+                    ||BuilderCrewRecovery.sidelined(table,id)
                     ||!(level.getEntity(id) instanceof BuilderGolem peer)||!usable(peer,item)
                     ||table.claimedStep(id)>=0||BuilderScaffolding.isControllingMovement(peer)
                     ||BuilderGrappleAccess.active(peer)||BuilderFlight.moving(peer))continue;

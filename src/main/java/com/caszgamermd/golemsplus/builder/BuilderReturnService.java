@@ -35,6 +35,7 @@ public final class BuilderReturnService {
     }
     private static final java.util.Map<BuilderGolem,Approach> approaches=
             new java.util.WeakHashMap<>();
+    static void resetApproach(BuilderGolem worker){approaches.remove(worker);}
     /** Storage reach is independent of the five-block construction reach.
      * Measure from feet to the closest point of the storage block volume. */
     static boolean withinStorageReach(double x,double y,double z,BlockPos target){

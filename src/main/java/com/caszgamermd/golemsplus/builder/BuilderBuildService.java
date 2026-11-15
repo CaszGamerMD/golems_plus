@@ -694,6 +694,20 @@ public final class BuilderBuildService {
      *
      * @return true only after the worker physically reaches OnSite.
      */
+    static void resetCrewActions(ServerLevel level,WorkerStationBlockEntity table){
+        handoffBoard.remove(table);
+        roofProgress.remove(table);
+        for(UUID id:table.builderWorkerIds()){
+            if(!(level.getEntity(id) instanceof BuilderGolem worker))continue;
+            workerActions.remove(worker);
+            BuilderPlacementSpace.cancelYield(worker);
+            BuilderDroppedBlockRecovery.suspend(worker,table);
+            BuilderReturnService.resetApproach(worker);
+            if(!BuilderFlight.moving(worker)&&!BuilderGrappleAccess.active(worker)
+                    &&!BuilderScaffolding.isControllingMovement(worker))
+                com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+        }
+    }
     static boolean parkAtOnSite(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
         BlockPos depot=table.builderUnloadingStorage();
@@ -966,7 +980,6 @@ public final class BuilderBuildService {
         // Wait for the player to craft and place builders beside the table.
     }
     public static void tick(ServerLevel level,BuilderGolem worker){
-        if(BuilderFlight.enabled(worker)&&BuilderFlight.moving(worker))return;
         BlockPos home=worker.home();
         if(worker.owner()==null||!level.hasChunkAt(home))return;
         if(!(level.getBlockEntity(home) instanceof WorkerStationBlockEntity table)
@@ -986,6 +999,19 @@ public final class BuilderBuildService {
             table.setProblem("Unrecognized Builder Golem near workstation");
             return;
         }
+        // Crew-wide recovery precedes every individual travel/work state.
+        if(table.activeOrder()!=null&&table.phase()!=WorkerPhase.PAUSED
+                &&table.phase()!=WorkerPhase.COMPLETE){
+            try{
+                Cache recoveryPlan=cache(table,worker);
+                if(table.builderClearCursor()>=recoveryPlan.clearing().size()
+                        &&BuilderCrewRecovery.tick(level,worker,table,recoveryPlan.steps()))return;
+            }catch(Exception recoveryError){
+                table.setProblem("Crew recovery plan unavailable: "+recoveryError.getMessage());
+            }
+        }else if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE)
+            BuilderCrewRecovery.clear(table);
+        if(BuilderFlight.enabled(worker)&&BuilderFlight.moving(worker))return;
         // PAUSED is a recall order, not a freeze wherever the Builder
         // happens to be. Let an in-flight rope/bridge land safely, then
         // descend, walk to OnSite and empty every real inventory slot.
@@ -1268,8 +1294,8 @@ public final class BuilderBuildService {
             WorkerAction returnAction=workerActions.computeIfAbsent(
                     worker,k->new WorkerAction());
             int layer=table.builderActiveLayer(plan.steps());
-            List<UUID> layerStaff=assigned.layerStaff().getOrDefault(
-                    layer,assigned.roster());
+            List<UUID> layerStaff=BuilderCrewRecovery.staff(table,layer,
+                    assigned.layerStaff().getOrDefault(layer,assigned.roster()));
             // Small Y slices need only one Builder per ten real blocks.
             // The others stay at OnSite; any in-flight claim is finished
             // safely rather than discarding its paid materials mid-step.
