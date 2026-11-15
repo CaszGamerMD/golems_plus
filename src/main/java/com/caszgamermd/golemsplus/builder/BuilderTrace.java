@@ -20,7 +20,7 @@ public final class BuilderTrace {
     private record Event(long tick,String kind,String detail){}
     private static final class History {
         final ArrayDeque<Event> events=new ArrayDeque<>();
-        long start=-1,lastSample=-1,lastDecision=-1;
+        long start=-1,lastSample=-1,lastDecision=-1,lastCheckpoint=-1;
         String owner="",decision="",lastKey="";
         int repetitions;
         Vec3 lastPosition;
@@ -57,7 +57,9 @@ public final class BuilderTrace {
                 ||table.activeOrder()==null)return;
         long now=level.getGameTime();History h=history(worker,now);
         boolean changed=!controller.equals(h.owner);
-        if(!changed&&now-h.lastSample<10)return;
+        // Keep aligned observations even after the recent-event ring fills.
+        boolean periodic=now%100==0&&now!=h.lastCheckpoint;
+        if(!changed&&!periodic&&now-h.lastSample<10)return;
         h.owner=controller;h.lastSample=now;
         Vec3 feet=worker.position();
         double displacement=h.lastPosition==null?0:feet.distanceTo(h.lastPosition);
@@ -82,11 +84,13 @@ public final class BuilderTrace {
                 +" nav="+WorkerNavigation.debugStatus(worker)
                 +" decision="+h.decision;
         add(h,now,changed?"OWNER":"SAMPLE",detail);
-        // Low-volume early chronology: compare runs by elapsed game ticks,
-        // not wall clock. Keep the full recent timeline for stall dumps.
-        if(changed&&h.events.size()<LIMIT||now-h.start<200&&now%20==0)
+        // Retain an aligned, low-volume chronology across the whole run.
+        // Include world time so GameTest's MATRIX CLOCK can map it to test ticks.
+        if(periodic||(changed&&h.events.size()<LIMIT)||now-h.start<200&&now%20==0){
+            h.lastCheckpoint=now;
             System.out.println("[BUILDER TRACE CHECKPOINT] worker="+worker.getName().getString()
-                    +" tick="+(now-h.start)+" "+detail);
+                    +" tick="+(now-h.start)+" worldTick="+now+" "+detail);
+        }
     }
     static void dump(ServerLevel level,WorkerStationBlockEntity table,String reason){
         if(!ENABLED)return;
