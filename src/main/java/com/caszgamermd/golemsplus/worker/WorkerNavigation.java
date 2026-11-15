@@ -1477,7 +1477,9 @@ public final class WorkerNavigation {
         // Retain original work target while this worker clears the door.
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem)
             speed=1.0; // nominal 4 m/s from Builder movement attribute .40
-        if(target==null||!level.hasChunkAt(target))return false;
+        if(target==null||!level.hasChunkAt(target)){
+            com.caszgamermd.golemsplus.builder.BuilderTrace.decision(level,mob,"WALK_REJECT",target,"null or unloaded destination");return false;
+        }
         Progress p=state(mob);
         if(!p.cornerPath.isEmpty()){
             if(target.equals(p.requested)){
@@ -1516,7 +1518,9 @@ public final class WorkerNavigation {
             return moving||mob.distanceToSqr(target.getX()+.5,
                     targetFloor,target.getZ()+.5)<.05*.05;
         }
-        if(!standingTile(level,mob,target))return false;
+        if(!standingTile(level,mob,target)){
+            com.caszgamermd.golemsplus.builder.BuilderTrace.decision(level,mob,"WALK_REJECT",target,"destination is not a supported clear standing tile");return false;
+        }
         // A failed exact plan used to be recomputed on every callback.
         // Wait out the same retry delay ordinary routeTo() already uses.
         if(target.equals(p.failedExact)&&mob.tickCount<p.failedExactUntil)
@@ -1530,8 +1534,11 @@ public final class WorkerNavigation {
         // Search allowance spent by other golems this tick: report "still
         // working on it" (same convention as the courtesy wait above), not
         // a failure, and try again on the next callback.
-        if(planDeferred)return true;
+        if(planDeferred){
+            com.caszgamermd.golemsplus.builder.BuilderTrace.decision(level,mob,"WALK_DEFER",target,"planning budget deferred");return true;
+        }
         if(plan==null||plan.steps().isEmpty()){
+            com.caszgamermd.golemsplus.builder.BuilderTrace.decision(level,mob,"WALK_REJECT",target,"trained search returned no executable route");
             p.unreachablePlans++;
             p.failedExact=target.immutable();
             p.failedExactUntil=mob.tickCount+ROUTE_RETRY
@@ -1556,6 +1563,7 @@ public final class WorkerNavigation {
             p.routeCursor=Math.min(plan.steps().size(),span);
             p.stalled=0;p.unsafeChecks=0;p.wait=0;p.lastBad=null;
             p.nextRoute=mob.tickCount+CHECK_TICKS;
+            com.caszgamermd.golemsplus.builder.BuilderTrace.decision(level,mob,"WALK_ACCEPT",target,"native leg="+waypoint+" planned nodes="+plan.steps().size());
             return true;
         }
         if(walkTrainedEdge(level,mob,p,plan.steps().get(0))
@@ -1567,7 +1575,10 @@ public final class WorkerNavigation {
         // center edge is executable. Skirt a real corner via fractional
         // supported positions if the native short leg and terrain step
         // both fail; the exact final stance is still checked afterward.
-        return startCornerRecovery(level,mob,p,plan.steps().get(0),target);
+        boolean recovered=startCornerRecovery(level,mob,p,plan.steps().get(0),target);
+        com.caszgamermd.golemsplus.builder.BuilderTrace.decision(level,mob,recovered?"WALK_ACCEPT":"WALK_REJECT",target,
+                recovered?"fractional corner recovery":"first leg rejected: native, terrain, corner");
+        return recovered;
     }
 
     /** Route recoveries may empty their shared waypoint list mid-call. */

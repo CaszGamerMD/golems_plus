@@ -540,6 +540,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                         +" fluid="+level.getFluidState(at));
             }
             if(table.phase()==WorkerPhase.COMPLETE){
+                BuilderTrace.dump(level,table,"matrix complete");
                 System.out.println("[MATRIX TRIAL RESULT] outcome="+(correct==SOURCE_BLOCKS?"COMPLETE":"MISMATCH")
                         +" layer=complete elapsedMs="+elapsedMillis+" tick="+tick
                         +" correct="+correct+" total="+SOURCE_BLOCKS+" best="+best[0]
@@ -555,6 +556,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                 h.succeed();return;
             }
             if(timeLimit&&!allStalled&&!noWorkTimeout){
+                BuilderTrace.dump(level,table,"matrix time limit");
                 System.out.println("[MATRIX TRIAL RESULT] outcome=TIME_LIMIT layer="+(y-origin.getY())
                         +" elapsedMs="+elapsedMillis+" tick="+tick+" correct="+correct
                         +" total="+SOURCE_BLOCKS+" best="+best[0]+" unsupported="+unavailableStates);
@@ -564,6 +566,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                 h.succeed();return;
             }
             if(allStalled||noWorkTimeout){
+                BuilderTrace.dump(level,table,"matrix stall");
                 System.out.println("[MATRIX TRIAL RESULT] outcome="+(allStalled?"ALL_BUILDERS_STALLED":"NO_WORK_PROGRESS")
                         +" layer="+(y-origin.getY())+" elapsedMs="+elapsedMillis+" tick="+tick
                         +" correct="+correct+" total="+SOURCE_BLOCKS+" best="+best[0]

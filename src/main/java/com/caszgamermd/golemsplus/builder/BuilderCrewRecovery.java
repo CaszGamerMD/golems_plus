@@ -28,6 +28,14 @@ final class BuilderCrewRecovery {
         }
         return s;
     }
+    static String traceStatus(WorkerStationBlockEntity table,BuilderGolem worker){
+        State s=states.get(table);
+        if(s==null)return "none";
+        return "recall="+s.recalling+" attempt="+s.attempts+" layer="+s.layer
+                +" unloaded="+s.unloaded.contains(worker.getUUID())
+                +" barrier="+s.unloaded.size()+"/"+table.builderWorkerIds().size()
+                +" reduced="+s.reduced.contains(worker.getUUID());
+    }
     static void clear(WorkerStationBlockEntity table){states.remove(table);}
     static boolean recalling(WorkerStationBlockEntity table){return state(table).recalling;}
     static boolean assessmentGrace(ServerLevel level,WorkerStationBlockEntity table){
@@ -59,6 +67,7 @@ final class BuilderCrewRecovery {
         s.attempts++;s.recalling=true;s.graceUntil=0;
         s.unloaded.clear();s.retry.clear();s.parking.clear();
         s.lastReturnProgress.clear();s.bestReturnDistance.clear();
+        BuilderTrace.dump(level,table,"before crew retreat");
         table.beginBuilderZonePlan();
         BuilderMaterialNetwork.resetForCrew(table);
         BuilderBuildService.resetCrewActions(level,table);
@@ -121,6 +130,7 @@ final class BuilderCrewRecovery {
                     table.setProblem("Crew recovery: make room in OnSite for returned pockets");return true;
                 }
                 if(!worker.isEmpty()||worker.hasSupplyBox())return true;
+                BuilderTrace.decision(level,worker,"CREW_UNLOADED",table.builderUnloadingStorage(),"physical return and empty inventory verified");
                 s.unloaded.add(worker.getUUID());
                 System.out.println("[CREW RETREAT UNLOADED] "+worker.getUUID()+" at="+worker.blockPosition());
             }

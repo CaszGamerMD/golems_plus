@@ -29,6 +29,14 @@ public final class BuilderFlight {
         long failedUntil;
     }
 
+    static String traceStatus(BuilderGolem worker){
+        Flight f=flights.get(worker);
+        if(f==null)return "none";
+        return "goal="+f.goal+" leg="+f.next+"/"+f.path.size()
+                +" origin="+f.origin+" next="+(f.next<f.path.size()?f.path.get(f.next):"none")
+                +" stuckTicks="+f.stuckTicks+" failed="+f.lastFailedDestination
+                +" retryAt="+f.retryAt;
+    }
     public static boolean enabled(BuilderGolem worker) {
         return worker.propellerEnabled();
     }
@@ -154,7 +162,11 @@ public final class BuilderFlight {
         return new Vec3(stand.getX()+.5,WorkerNavigation.surveyFloorHeight(level,stand),stand.getZ()+.5);
     }
     private static boolean requestPosition(ServerLevel level,BuilderGolem worker,BlockPos goal,Vec3 destination){
-        if(BuilderGrappleAccess.active(worker)||!inEnvelope(origin(worker),destination))return false;
+        if(BuilderGrappleAccess.active(worker)||!inEnvelope(origin(worker),destination)){
+            BuilderTrace.decision(level,worker,"FLIGHT_REJECT",goal,
+                    BuilderGrappleAccess.active(worker)?"grapple owns motion":"outside horizontal envelope");
+            return false;
+        }
         Flight flight = flights.get(worker);
         if (flight != null && goal.equals(flight.goal) && moving(worker)) return true;
         if (flight != null && goal.equals(flight.goal) && level.getGameTime() < flight.retryAt) return false;
@@ -164,6 +176,7 @@ public final class BuilderFlight {
                 &&level.getGameTime()<flight.failedUntil
                 &&destination.distanceToSqr(flight.lastFailedDestination)<.04)return false;
         if (path.isEmpty()) {
+            BuilderTrace.decision(level,worker,"FLIGHT_REJECT",goal,"no collision-free powered path");
             if (flight != null) {
                 flight.goal = goal.immutable();
                 flight.retryAt = level.getGameTime() + 20;
@@ -182,6 +195,7 @@ public final class BuilderFlight {
         // bridge route after landing somewhere else.
         BuilderScaffoldPlanA.cancel(worker);
         WorkerNavigation.stop(worker);
+        BuilderTrace.decision(level,worker,"FLIGHT_ACCEPT",goal,"legs="+path.size()+" destination="+destination);
         flight.path = path;
         flight.next = 0;
         flight.lastPosition = worker.position();
@@ -637,6 +651,7 @@ public final class BuilderFlight {
             worker.setDeltaMovement(Vec3.ZERO);
             worker.setNoGravity(false);
             worker.setPropellerSpinning(false);
+            BuilderTrace.decision(level,worker,"FLIGHT_LAND",flight.goal,"support/contact verified");
             flights.remove(worker);
             return false;
         }
@@ -650,6 +665,7 @@ public final class BuilderFlight {
             flight.lastPosition = worker.position();
             flight.stuckTicks = 0;
         } else if (++flight.stuckTicks > 40) {
+            BuilderTrace.decision(level,worker,"FLIGHT_ABORT",flight.goal,"no physical displacement for 40 ticks");
             flight.lastFailedDestination=feet(flight.goal);
             flight.failedUntil=level.getGameTime()+100;
             stop(worker);
@@ -665,6 +681,7 @@ public final class BuilderFlight {
                 && sweep(level, worker, worker.position(), worker.position().add(velocity)))
             worker.setDeltaMovement(velocity);
         else {
+            BuilderTrace.decision(level,worker,"FLIGHT_ABORT",flight.goal,"next swept body blocked or outside envelope");
             flight.lastFailedDestination=feet(flight.goal);
             flight.failedUntil=level.getGameTime()+100;
             stop(worker);

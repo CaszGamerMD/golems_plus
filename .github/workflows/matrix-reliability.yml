@@ -5,6 +5,9 @@ on:
     paths:
       - '.github/workflows/matrix-reliability.yml'
       - 'scripts/matrix_reliability.py'
+      - 'scripts/builder_trace_report.py'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderTrace.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/worker/WorkerNavigation.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFullGameTest.java'
       # Run the three-way comparison when the rail-kit regression changes.
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderRailKitGameTest.java'
@@ -45,6 +48,7 @@ jobs:
         trial: [1, 2, 3]
     env:
       MATRIX_ASSESSMENT_SECONDS: '1500'
+      GOLEMS_BUILDER_TRACE: 'true'
       MATRIX_TEST_MODE: ${{ inputs.mode || 'controlled' }}
       GOLEMS_BUILDER_SCAFFOLDING: ${{ inputs.scaffolding || 'false' }}
     steps:
@@ -84,6 +88,7 @@ jobs:
           gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/matrix-trial.log"
           code=${PIPESTATUS[0]}
           python3 scripts/matrix_reliability.py extract "$RUNNER_TEMP/matrix-trial.log" "${{ matrix.trial }}" "$RUNNER_TEMP/result.json"
+          python3 scripts/builder_trace_report.py "$RUNNER_TEMP/matrix-trial.log" "$RUNNER_TEMP/trace-report.json"
           cat "$RUNNER_TEMP/result.json"
           echo "GameTest exit status: $code"
           grep -Fq '[MATRIX FULL IMPORT PASS] 15376' "$RUNNER_TEMP/matrix-trial.log" || exit 1
@@ -99,6 +104,7 @@ jobs:
           path: |
             ${{ runner.temp }}/result.json
             ${{ runner.temp }}/matrix-trial.log
+            ${{ runner.temp }}/trace-report.json
           if-no-files-found: warn
   compare:
     name: Compare three independent outcomes

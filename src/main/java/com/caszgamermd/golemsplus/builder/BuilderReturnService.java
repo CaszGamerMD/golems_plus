@@ -60,6 +60,7 @@ public final class BuilderReturnService {
             return true;
         }
         if(withinStorageReach(worker,target)){
+            BuilderTrace.decision(level,worker,"DEPOT_REACHED",target,"within physical storage reach");
             approaches.remove(worker);
             com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
             return false;
@@ -110,6 +111,7 @@ public final class BuilderReturnService {
         if(route.stand!=null
                 &&(depotApproachStalled(now-route.lastMovementTick,mobilityActive)
                     ||now-route.lastStandProgress>=180)){
+            BuilderTrace.decision(level,worker,"DEPOT_REPLAN",route.stand,"no displacement or no distance improvement");
             route.excludedStand=route.stand;
             route.stand=null;route.nextSearch=0;
             route.lastMovementTick=now;
@@ -151,6 +153,7 @@ public final class BuilderReturnService {
             route.bestStandDistance=Double.POSITIVE_INFINITY;
             route.lastStandProgress=now;
             if(route.stand==null){
+                BuilderTrace.decision(level,worker,"DEPOT_REJECT",target,"no executable depot stand; candidates="+possible.size());
                 if(BuilderFlight.enabled(worker)&&worker.getY()>target.getY()+1.5){
                     // The roof-edge walk is preferable to dropping back
                     // into the same enclosed machine cell.
@@ -163,6 +166,7 @@ public final class BuilderReturnService {
                 return true;
             }
         }
+        BuilderTrace.decision(level,worker,"DEPOT_APPROACH",route.stand,"selected physical stand for "+target);
         if(!com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(
                 level,worker,route.stand,speed)
                 &&now>=route.nextSearch){

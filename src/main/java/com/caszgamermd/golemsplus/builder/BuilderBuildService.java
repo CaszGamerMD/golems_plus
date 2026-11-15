@@ -1445,6 +1445,11 @@ public final class BuilderBuildService {
                 }
                 index=next==null?-1:table.claimPreferredBuilderZoneStep(
                         worker.getUUID(),zone,plan.steps(),next.index());
+                if(BuilderTrace.enabled())BuilderTrace.decision(level,worker,
+                        index<0?"CLAIM_REJECT":"CLAIM_ACCEPT",
+                        index<0?null:new BlockPos(plan.steps().get(index).x(),plan.steps().get(index).y(),plan.steps().get(index).z()),
+                        next==null?"no executable frontier choice; layer="+layer:
+                                "candidate="+next.index()+" result="+index+" layer="+layer);
             }
             if(index<0){
                 // No safely reachable or runnable cell on this same Y
@@ -2589,6 +2594,15 @@ public final class BuilderBuildService {
      * Diagnostic state is derived directly from its individual task and
      * the live station. No per-tick global Planner message spam.
      */
+    static String traceAction(BuilderGolem worker){
+        WorkerAction a=workerActions.get(worker);
+        if(a==null)return "none";
+        return a.phase+" index="+a.index+" return="+a.returningToSite
+                +" retreatUntil="+a.retreatUntil+" alternate="+a.alternateSideRequested
+                +" alternateTarget="+a.alternateSideTarget+" lastFailedStep="+a.lastFailedStep
+                +" workTravelSince="+a.workTravelSince+" lastTargetProgress="+a.lastTargetProgressTick
+                +" supplyProgress="+a.supplyProgressTick;
+    }
     public static String debugStatus(ServerLevel level,BuilderGolem worker){
         BlockPos home=worker.home();
         if(!level.hasChunkAt(home))return "Home Planner chunk unavailable";
