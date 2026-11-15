@@ -33,7 +33,8 @@ import net.minecraft.world.phys.Vec3;
  * This long test is isolated from the quick mandatory GameTest suite.
  */
 public final class BuilderVillagerMatrixFullGameTest {
-    private static final long CONTROLLED_SEED=260215376L;
+    private static final long CONTROLLED_SEED=0L;
+    private static final long CONTROLLED_RANDOM_SEED=260215376L;
     private static final BlockPos CONTROLLED_ARENA=new BlockPos(1024,-57,1024);
     private static final int SOURCE_BLOCKS=15376;
     private static final int SOURCE_AIR=15004;
@@ -370,7 +371,7 @@ public final class BuilderVillagerMatrixFullGameTest {
             if(controlled){
                 worker.setUUID(new UUID(0x4d41545249584cL,i+1));
                 worker.setId(100000+i);
-                worker.getRandom().setSeed(CONTROLLED_SEED+i+1);
+                worker.getRandom().setSeed(CONTROLLED_RANDOM_SEED+i+1);
                 worker.setCustomName(net.minecraft.network.chat.Component.literal("Matrix Builder "+(i+1)));
             }
             worker.setPos(from.getX()+.5,from.getY(),from.getZ()+.5);
@@ -382,7 +383,7 @@ public final class BuilderVillagerMatrixFullGameTest {
             crew.add(worker);
         }
         if(controlled){
-            level.getRandom().setSeed(CONTROLLED_SEED);
+            level.getRandom().setSeed(CONTROLLED_RANDOM_SEED);
             if(!(level.getBlockEntity(supplyPos) instanceof Container chest)){
                 h.fail("Controlled Matrix missing initial depot");return;
             }

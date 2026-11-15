@@ -6,8 +6,6 @@ on:
       - '.github/workflows/matrix-reliability.yml'
       - 'scripts/matrix_reliability.py'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFullGameTest.java'
-      - 'src/gametest/java/com/caszgamermd/golemsplus/gametest/mixin/MatrixWorldSeedMixin.java'
-      - 'src/gametest/resources/golems_plus_gametest.mixins.json'
       # Run the three-way comparison when the rail-kit regression changes.
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderRailKitGameTest.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
