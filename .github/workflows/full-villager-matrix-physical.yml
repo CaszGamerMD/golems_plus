@@ -45,6 +45,8 @@ permissions:
 jobs:
   full-matrix:
     runs-on: ubuntu-latest
+    env:
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

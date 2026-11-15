@@ -57,6 +57,13 @@ public final class BuilderGolem extends PathfinderMob implements Container {
     // Nine construction-material stacks and three RESERVED persistent tool
     // belt slots. Materials cannot take the tool slots, so a full build
     // order cannot displace the scaffold, reusable hook or future bucket.
+    // Retain the saved slot index for older worlds; no new temporary
+    // scaffold tools are issued by default. Legacy stacks are returned
+    // physically at OnSite, not deleted during save migration.
+    public static boolean temporaryScaffoldingEnabled(){
+        return Boolean.parseBoolean(System.getProperty("golems.builder.scaffolding",
+                System.getenv().getOrDefault("GOLEMS_BUILDER_SCAFFOLDING","false")));
+    }
     public static final int SCAFFOLD_BELT_SLOT=9;
     public static final int GRAPPLE_BELT_SLOT=10;
     public static final int BUCKET_BELT_SLOT=11;
@@ -200,7 +207,8 @@ public final class BuilderGolem extends PathfinderMob implements Container {
      * any item. Repeated calls are safe; partially filled scaffold stacks
      * may be topped up on the next actual depot visit. */
     public void organizeToolBelt(){
-        for(int slot=SCAFFOLD_BELT_SLOT;slot<=BUCKET_BELT_SLOT;slot++){
+        for(int slot=temporaryScaffoldingEnabled()?SCAFFOLD_BELT_SLOT:GRAPPLE_BELT_SLOT;
+                slot<=BUCKET_BELT_SLOT;slot++){
             ItemStack belt=getItem(slot);
             for(int i=0;i<materials.size();i++){
                 ItemStack have=materials.get(i);

@@ -180,6 +180,7 @@ public final class BuilderScaffoldPlanA {
     public static boolean canPlan(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos target,
             List<BuilderConstructionPlan.Step> steps){
+        if(!BuilderGolem.temporaryScaffoldingEnabled())return false;
         Job current=jobs.get(worker);
         return current!=null&&current.target.equals(target)
                 ||choose(level,worker,table,target,steps,false)!=null;
@@ -191,6 +192,7 @@ public final class BuilderScaffoldPlanA {
     public static boolean canPlanWorkPose(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos target,
             List<BuilderConstructionPlan.Step> steps){
+        if(!BuilderGolem.temporaryScaffoldingEnabled())return false;
         Job current=jobs.get(worker);
         return current!=null&&current.target.equals(target)
                 ||choose(level,worker,table,target,steps,true)!=null;
@@ -1462,6 +1464,7 @@ public final class BuilderScaffoldPlanA {
             BlockPos target,List<BuilderConstructionPlan.Step> steps,
             boolean workPose){
         Job j=jobs.get(worker);
+        if(!BuilderGolem.temporaryScaffoldingEnabled()&&j==null)return Result.NO_SAFE_ROUTE;
         if(j!=null&&!j.target.equals(target)){
             // A paid bridge can serve another block only when the actual
             // landing is a safe work stance for that new block.
@@ -1478,6 +1481,7 @@ public final class BuilderScaffoldPlanA {
             j=null;
         }
         if(j==null){
+            if(!BuilderGolem.temporaryScaffoldingEnabled())return Result.NO_SAFE_ROUTE;
             j=choose(level,worker,table,target,steps,workPose);
             if(j==null)return Result.NO_SAFE_ROUTE;
             jobs.put(worker,j);

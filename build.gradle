@@ -102,3 +102,9 @@ tasks.named('processResources') {
         }
     }
 }
+
+// Preserve legacy scaffold-specific physical regression fixtures. The
+// controlled Matrix workflow explicitly selects false (new gameplay default).
+tasks.named('runGameTest', JavaExec) {
+    environment 'GOLEMS_BUILDER_SCAFFOLDING', System.getenv('GOLEMS_BUILDER_SCAFFOLDING') ?: 'true'
+}

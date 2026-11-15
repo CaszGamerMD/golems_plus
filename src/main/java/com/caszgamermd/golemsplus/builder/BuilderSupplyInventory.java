@@ -78,7 +78,8 @@ public final class BuilderSupplyInventory {
             // the actual job palette and Builder kit to the normal planner.
             for(String item:table.builderRemaining().keySet())
                 stock.put(item,Integer.MAX_VALUE/2);
-            stock.put("minecraft:scaffolding",Integer.MAX_VALUE/2);
+            if(BuilderGolem.temporaryScaffoldingEnabled())
+                stock.put("minecraft:scaffolding",Integer.MAX_VALUE/2);
             stock.put("minecraft:bucket",Integer.MAX_VALUE/2);
             stock.put("golems_plus:grapple_hook",Integer.MAX_VALUE/2);
             return stock;
@@ -174,6 +175,7 @@ public final class BuilderSupplyInventory {
     private static int tryPocket(BuilderGolem worker,ItemStack sample,int amount){
         int remaining=amount;
         for(int i=0;i<worker.getContainerSize()&&remaining>0;i++){
+            if(i==BuilderGolem.SCAFFOLD_BELT_SLOT&&!BuilderGolem.temporaryScaffoldingEnabled())continue;
             ItemStack current=worker.getItem(i);
             if(current.isEmpty()||!ItemStack.isSameItemSameComponents(current,sample))
                 continue;
@@ -187,7 +189,7 @@ public final class BuilderSupplyInventory {
         // The three belt slots are genuinely dedicated: install a new
         // scaffold/hook/bucket there BEFORE filling loose material pockets.
         // Ordinary schematic blocks must never spill into the belt.
-        for(int i=BuilderGolem.SCAFFOLD_BELT_SLOT;
+        for(int i=BuilderGolem.temporaryScaffoldingEnabled()?BuilderGolem.SCAFFOLD_BELT_SLOT:BuilderGolem.GRAPPLE_BELT_SLOT;
                 i<worker.getContainerSize()&&remaining>0;i++){
             if(!worker.getItem(i).isEmpty()||!worker.canPlaceItem(i,sample))
                 continue;
@@ -206,6 +208,7 @@ public final class BuilderSupplyInventory {
     private static int room(BuilderGolem worker,ItemStack item){
         int space=0;
         for(int i=0;i<worker.getContainerSize();i++){
+            if(i==BuilderGolem.SCAFFOLD_BELT_SLOT&&!BuilderGolem.temporaryScaffoldingEnabled())continue;
             ItemStack have=worker.getItem(i);
             if(!worker.canPlaceItem(i,item))continue;
             if(have.isEmpty())space+=worker.slotCapacity(i,item);
@@ -332,7 +335,17 @@ public final class BuilderSupplyInventory {
         Map<String,Integer> materials=new LinkedHashMap<>();
         // Prioritize the reserved tool belt before schematic material stacks.
         materials.put("golems_plus:grapple_hook",1);
-        materials.put("minecraft:scaffolding",64);
+        if(BuilderGolem.temporaryScaffoldingEnabled())
+            materials.put("minecraft:scaffolding",64);
+        else{
+            // Existing save compatibility: physically return any old
+            // scaffold tool stack, preserving overflow in its old slot.
+            ItemStack old=worker.getItem(BuilderGolem.SCAFFOLD_BELT_SLOT);
+            if(!old.isEmpty()){
+                int left=storeSurplus(storage,old,old.getCount());
+                worker.setItem(BuilderGolem.SCAFFOLD_BELT_SLOT,old.copyWithCount(left));
+            }
+        }
         materials.put("minecraft:bucket",1);
         // Stage the actual claim before speculative neighbors. The
         // active work order can contain a large mixed-material palette.
@@ -481,7 +494,7 @@ public final class BuilderSupplyInventory {
                 com.caszgamermd.golemsplus.world.WorksiteContent.GRAPPLE_HOOK);
         boolean bucket=worker.getItem(BuilderGolem.BUCKET_BELT_SLOT).is(
                 net.minecraft.world.item.Items.BUCKET);
-        if(scaffolds<20||!hook||!bucket){
+        if(BuilderGolem.temporaryScaffoldingEnabled()&&scaffolds<20||!hook||!bucket){
             long start=kitStageStarted.computeIfAbsent(worker,
                     ignored->level.getGameTime());
             if(level.getGameTime()-start<STARTER_KIT_RETRY_TICKS)
@@ -495,7 +508,7 @@ public final class BuilderSupplyInventory {
     }
 
     private static boolean beltItem(String id){
-        return id.equals("minecraft:scaffolding")||id.equals("golems_plus:grapple_hook")
+        return BuilderGolem.temporaryScaffoldingEnabled()&&id.equals("minecraft:scaffolding")||id.equals("golems_plus:grapple_hook")
                 ||id.equals("minecraft:bucket");
     }
 
@@ -1051,6 +1064,7 @@ public final class BuilderSupplyInventory {
     }
     static ScaffoldLoad loadScaffold(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,int required,boolean groundPickup){
+        if(!BuilderGolem.temporaryScaffoldingEnabled()&&required>0)return ScaffoldLoad.MISSING;
         Item item=net.minecraft.world.item.Items.SCAFFOLDING;
         if(worker.carriedCount(item)>=required)return ScaffoldLoad.READY;
         Container site=selectedStorage(table);

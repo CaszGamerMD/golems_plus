@@ -400,7 +400,8 @@ public final class BuilderVillagerMatrixFullGameTest {
                     .append(';');
             String manifest="seed="+level.getSeed()+" origin="+origin.toShortString().replace(" ","")
                     +" arena=62x26x70 floor=stone depot="+supplyPos.toShortString().replace(" ","")
-                    +" crew="+roster+" stock="+stock+" cap=1500";
+                    +" crew="+roster+" stock="+stock+" cap=1500"
+                    +" temporaryScaffolding="+BuilderGolem.temporaryScaffoldingEnabled();
             System.out.println("[MATRIX CONTROLLED ENV] "+manifest);
             System.out.println("[MATRIX CLOCK] worldTick="+level.getGameTime()+" testTick="+h.getTick());
         }
@@ -428,6 +429,15 @@ public final class BuilderVillagerMatrixFullGameTest {
         // A sequence keeps one repeating event for this open-ended assessment.
         h.startSequence().thenExecuteFor(1_000_000_000,()->{
             long tick=h.getTick();
+            if(!BuilderGolem.temporaryScaffoldingEnabled()&&tick%100==0){
+                for(var worker:crew){
+                    if(!worker.getItem(BuilderGolem.SCAFFOLD_BELT_SLOT).isEmpty()
+                            ||!table.scaffoldPositions(worker.getUUID()).isEmpty()){
+                        h.fail("Scaffold-free Matrix violated tool/temporary scaffold restriction");
+                        return;
+                    }
+                }
+            }
             long noWorkTicks=watchdog.sample(tick,
                     table.builderWorkDone(),table.builderClearCursor());
             if(tick%MOTION_SAMPLE_TICKS==0){

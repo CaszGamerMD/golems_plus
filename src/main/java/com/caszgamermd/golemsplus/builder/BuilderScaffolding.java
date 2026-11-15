@@ -875,6 +875,7 @@ public final class BuilderScaffolding {
     public static boolean canPlanAccess(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,BlockPos target,
             List<BuilderConstructionPlan.Step> plan){
+        if(!BuilderGolem.temporaryScaffoldingEnabled())return false;
         if(target.getY()<worker.blockPosition().getY())return false;
         java.util.Set<BlockPos> future=new java.util.HashSet<>();
         for(var cell:plan)if(!cell.ignorePlant()){
@@ -911,6 +912,7 @@ public final class BuilderScaffolding {
     private static Result reach(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,ServerPlayer player,BlockPos target,
             List<BuilderConstructionPlan.Step> plan,boolean blockedWork){
+        if(!BuilderGolem.temporaryScaffoldingEnabled())return Result.NO_SAFE_TOWER;
         int feet=worker.blockPosition().getY();
         // A Builder could previously abort its climb one block early:
         // as soon as the desired work Y was within 1.35 blocks,

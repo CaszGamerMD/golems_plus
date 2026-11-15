@@ -13,6 +13,9 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMaterialNetwork.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffolding.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderGolem.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderSupplyInventory.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffoldPlanA.java'
   workflow_dispatch:
     inputs:
       mode:
@@ -20,6 +23,11 @@ on:
         type: choice
         options: [controlled, randomized]
         default: controlled
+      scaffolding:
+        description: Temporary Builder scaffold tools
+        type: choice
+        options: ['false', 'true']
+        default: 'false'
 
 permissions:
   contents: read
@@ -36,6 +44,7 @@ jobs:
     env:
       MATRIX_ASSESSMENT_SECONDS: '1500'
       MATRIX_TEST_MODE: ${{ inputs.mode || 'controlled' }}
+      GOLEMS_BUILDER_SCAFFOLDING: ${{ inputs.scaffolding || 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
