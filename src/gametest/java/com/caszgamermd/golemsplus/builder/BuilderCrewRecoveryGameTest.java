@@ -21,6 +21,8 @@ public final class BuilderCrewRecoveryGameTest {
         h.setBlock(6,2,5,Blocks.CHEST);
         BlockPos station=h.absolutePos(new BlockPos(5,2,5)),depot=h.absolutePos(new BlockPos(6,2,5));
         BlockPos target=h.absolutePos(new BlockPos(10,2,5));
+        level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(depot.getX()>>4,depot.getZ()>>4),3);
         if(!(level.getBlockEntity(station) instanceof WorkerStationBlockEntity table)
                 ||!(level.getBlockEntity(depot) instanceof Container chest)){
             h.fail("No recovery depot");return;

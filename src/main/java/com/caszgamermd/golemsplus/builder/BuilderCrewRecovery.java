@@ -16,7 +16,8 @@ final class BuilderCrewRecovery {
         boolean recalling;
         List<UUID> reduced=List.of();
         final Set<UUID> unloaded=new HashSet<>();
-        final Map<UUID,Long> retry=new HashMap<>();
+        final Map<UUID,Long> retry=new HashMap<>(), lastReturnProgress=new HashMap<>();
+        final Map<UUID,Double> bestReturnDistance=new HashMap<>();
         final Map<UUID,BlockPos> parking=new HashMap<>();
     }
     private static final Map<WorkerStationBlockEntity,State> states=new WeakHashMap<>();
@@ -57,6 +58,7 @@ final class BuilderCrewRecovery {
         s.lastProgress=level.getGameTime();s.started=s.lastProgress;
         s.attempts++;s.recalling=true;s.graceUntil=0;
         s.unloaded.clear();s.retry.clear();s.parking.clear();
+        s.lastReturnProgress.clear();s.bestReturnDistance.clear();
         table.beginBuilderZonePlan();
         BuilderMaterialNetwork.resetForCrew(table);
         BuilderBuildService.resetCrewActions(level,table);
@@ -75,7 +77,7 @@ final class BuilderCrewRecovery {
             }
             if(work>s.best){s.best=work;s.lastProgress=now;}
             if(layer==Integer.MAX_VALUE)return false;
-            if(s.attempts<2&&now>=s.graceUntil&&now-s.lastProgress>=STALL
+            if(s.attempts<2&&now>=s.graceUntil-40&&now-s.lastProgress>=STALL
                     &&remaining(table,steps,layer)>0){
                 begin(level,table,steps);s=state(table);
             }
@@ -86,12 +88,22 @@ final class BuilderCrewRecovery {
                 if(BuilderFlight.moving(worker)||BuilderGrappleAccess.active(worker)
                         ||BuilderScaffolding.isControllingMovement(worker))return true;
                 if(!BuilderBuildService.parkAtOnSite(level,worker,table)){
-                    if(now>=s.retry.getOrDefault(worker.getUUID(),0L)){
-                        s.retry.put(worker.getUUID(),now+80);
-                        BuilderReturnService.resetApproach(worker);
-                        BlockPos depot=table.builderUnloadingStorage();
-                        if(depot!=null&&BuilderFlight.enabled(worker)&&!BuilderFlight.active(worker))
-                            BuilderFlight.escapePocket(level,worker,depot);
+                    BlockPos depot=table.builderUnloadingStorage();
+                    UUID id=worker.getUUID();
+                    if(depot!=null){
+                        double distance=worker.distanceToSqr(depot.getX()+.5,depot.getY(),depot.getZ()+.5);
+                        if(distance<s.bestReturnDistance.getOrDefault(id,Double.POSITIVE_INFINITY)-.25){
+                            s.bestReturnDistance.put(id,distance);s.lastReturnProgress.put(id,now);
+                        }
+                        long last=s.lastReturnProgress.computeIfAbsent(id,k->now);
+                        // Do not replace a healthy return path with an
+                        // escape probe merely because 80 ticks elapsed.
+                        if(now-last>=160&&now>=s.retry.getOrDefault(id,0L)){
+                            s.retry.put(id,now+120);
+                            BuilderReturnService.resetApproach(worker);
+                            if(BuilderFlight.enabled(worker)&&!BuilderFlight.active(worker))
+                                BuilderFlight.escapePocket(level,worker,depot);
+                        }
                     }
                     if(now-s.started>=RETURN_BUDGET)
                         table.setProblem("Crew recovery: waiting for trapped Builder "+worker.getName().getString()+" to reach OnSite");

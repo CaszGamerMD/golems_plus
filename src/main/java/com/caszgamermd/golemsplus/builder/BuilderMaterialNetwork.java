@@ -128,6 +128,7 @@ final class BuilderMaterialNetwork {
         if(needs.isEmpty())return;
         var crew=new ArrayList<UUID>();
         for(UUID id:table.builderWorkerIds()){
+            if(BuilderCrewRecovery.sidelined(table,id))continue;
             if(!(level.getEntity(id) instanceof BuilderGolem peer)||!peer.isAlive())return;
             crew.add(id);
             for(Item item:needs)if(peer.carriedCount(item)>0)return;
