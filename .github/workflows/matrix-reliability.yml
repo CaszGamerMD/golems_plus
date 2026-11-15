@@ -5,22 +5,15 @@ on:
     paths:
       - '.github/workflows/matrix-reliability.yml'
       - 'scripts/matrix_reliability.py'
+      - 'scripts/test_matrix_reliability.py'
       - 'scripts/builder_trace_report.py'
-      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderTrace.java'
-      - 'src/main/java/com/caszgamermd/golemsplus/worker/WorkerNavigation.java'
-      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFullGameTest.java'
-      # Run the three-way comparison when the rail-kit regression changes.
-      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderRailKitGameTest.java'
-      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
-      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderGrappleAccess.java'
-      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMaterialNetwork.java'
-      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
-      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewRecovery.java'
-      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderReturnService.java'
-      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffolding.java'
-      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderGolem.java'
-      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderSupplyInventory.java'
-      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderScaffoldPlanA.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/**'
+      - 'src/main/java/com/caszgamermd/golemsplus/worker/**'
+      - 'src/main/java/com/caszgamermd/golemsplus/world/WorkerStationBlockEntity.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/**'
+      - 'src/gametest/resources/**'
+      - 'build.gradle'
+      - 'gradle.properties'
   workflow_dispatch:
     inputs:
       mode:
@@ -60,6 +53,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.0'
+      - name: Verify Matrix analysis regression tests
+        run: python3 scripts/test_matrix_reliability.py
       - name: Verify identical original source fixture
         run: |
           python3 - <<'PY'
