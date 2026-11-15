@@ -22,9 +22,20 @@ def compare(rows):
     natural_stop = valid and all(r["outcome"] in ("COMPLETE","ALL_BUILDERS_STALLED","NO_WORK_PROGRESS") for r in rows)
     consistent = bool(same_layer and natural_stop and spread <= 300000)
     complete = valid and all(r["outcome"]=="COMPLETE" and r["correct"]==r["total"]==15376 for r in rows)
+    # Repeating a very early failure is diagnostic, not a passing build.
+    # The current development milestone is at least Y13 and 9,700 correct
+    # cells in every trial, with the original same-layer / five-minute rule.
+    def reaches_milestone(r):
+        try:
+            return int(r["layer"]) >= 13 and r["correct"] >= 9700
+        except (KeyError, ValueError, TypeError):
+            return False
+    milestone = bool(consistent and (complete or all(reaches_milestone(r) for r in rows)))
     return dict(trials=rows, sameLayer=bool(same_layer), elapsedSpreadMs=spread,
                 repeatableStop=consistent, allComplete=bool(complete),
+                milestoneReached=milestone,
                 result="FULL_SUCCESS" if consistent and complete else
+                "MILESTONE_REACHED" if milestone else
                 "REPEATABLE_STALL" if consistent else "NOT_YET_RELIABLE")
 
 if __name__ == "__main__":
@@ -51,4 +62,4 @@ if __name__ == "__main__":
                 f.write(f"| {r['trial']} | {r['outcome']} | {r.get('layer','—')} | {r.get('correct','—')} | {elapsed} | {r.get('tick','—')} |\n")
             f.write(f"\n**Result: {result['result']}**\n\n")
             f.write(f"Same stopping layer: {result['sameLayer']}. Runtime spread: {result['elapsedSpreadMs']} ms. All complete: {result['allComplete']}.\n")
-        sys.exit(0 if result["repeatableStop"] else 1)
+        sys.exit(0 if result["milestoneReached"] else 1)

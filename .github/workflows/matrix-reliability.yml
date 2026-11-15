@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/matrix-reliability.yml'
+      - 'scripts/matrix_reliability.py'
       # Run the three-way comparison when the rail-kit regression changes.
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderRailKitGameTest.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
@@ -87,7 +88,7 @@ jobs:
         with:
           pattern: matrix-trial-*
           path: results
-      - name: Check same stopping layer and maximum five-minute spread
+      - name: Check minimum progress, same stopping layer and maximum five-minute spread
         run: python3 scripts/matrix_reliability.py compare results "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
