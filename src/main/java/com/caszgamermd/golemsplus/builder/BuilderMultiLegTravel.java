@@ -15,7 +15,10 @@ final class BuilderMultiLegTravel {
     private enum Kind {WORK,EXIT,LEVEL,STAND}
     private record Goal(Kind kind,BlockPos target,boolean bodyBlocking,BuilderEscapeBox.Bounds box){}
     private record Leg(BlockPos launch,BlockPos landing){}
-    private record Node(BlockPos at,List<Leg> legs,double score){}
+    private record Node(BlockPos at,List<Leg> legs,double cost,double score){}
+    private record Visit(BlockPos at,int legs){}
+    private static final int MAX_LEGS=8, MAX_EXPANDED=24, MAX_PROBES=120;
+    private static final int PROBES_PER_LAUNCH=6;
     private static final class Trip {
         final Goal goal;
         final List<Leg> legs;
@@ -94,13 +97,13 @@ final class BuilderMultiLegTravel {
         for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
             if(dx*dx+dz*dz>4)continue;
             for(int y=y0;y<=y1;y++){
-                if(Math.abs(y-launch.getY())<2)continue;
+                if(dx==0&&dz==0&&y==launch.getY())continue;
                 BlockPos p=new BlockPos(launch.getX()+dx,y,launch.getZ()+dz);
                 if(!level.hasChunkAt(p)||!WorkerNavigation.canStandOn(level,worker,p))continue;
                 result.add(p);
             }
         }
-        result.sort(Comparator.comparingDouble((BlockPos p)->score(goal,p))
+        result.sort(Comparator.comparingDouble((BlockPos p)->estimate(goal,p)+flightCost(launch,p))
                 .thenComparingDouble(launch::distSqr));
         return result;
     }
@@ -114,43 +117,66 @@ final class BuilderMultiLegTravel {
             if(!WorkerNavigation.canStandOn(level,worker,rounded))return List.of();
             start=rounded;
         }
-        var queue=new PriorityQueue<Node>(Comparator.comparingDouble(Node::score));
-        queue.add(new Node(start,List.of(),score(goal,start)));
-        var seen=new HashMap<BlockPos,Integer>();seen.put(start,0);
+        var queue=new PriorityQueue<Node>(Comparator.comparingDouble(Node::score)
+                .thenComparingDouble(Node::cost)
+                .thenComparingInt(n->n.at().getX())
+                .thenComparingInt(n->n.at().getY())
+                .thenComparingInt(n->n.at().getZ()));
+        queue.add(new Node(start,List.of(),0,estimate(goal,start)));
+        var seen=new HashMap<Visit,Double>();
+        seen.put(new Visit(start,0),0.0);
         int expanded=0,probes=0;
         Node bestPartial=null;
         double startScore=score(goal,start);
-        while(!queue.isEmpty()&&expanded++<18&&probes<120){
+        while(!queue.isEmpty()&&expanded<MAX_EXPANDED&&probes<MAX_PROBES){
             Node n=queue.remove();
+            if(n.cost()>seen.getOrDefault(new Visit(n.at(),n.legs().size()),Double.POSITIVE_INFINITY))continue;
             if(!n.legs().isEmpty()&&good(level,worker,goal,n.at()))return n.legs();
-            if(n.legs().size()>=4)continue;
+            if(n.legs().size()>=MAX_LEGS)continue;
+            expanded++;
             for(BlockPos launch:launches(level,worker,n.at())){
-                boolean walkChecked=launch.equals(n.at()),walkOK=walkChecked;
+                if(probes>=MAX_PROBES)break;
+                // Verify the walking approach once, before spending flight
+                // probes on a launch we cannot physically reach.
+                if(!launch.equals(n.at())&&!WorkerNavigation.hasGroundRouteFrom(level,worker,n.at(),List.of(launch)))continue;
                 int checked=0;
                 for(BlockPos land:landings(level,worker,goal,launch)){
-                    if(seen.getOrDefault(land,Integer.MAX_VALUE)<=n.legs().size()+1)continue;
-                    if(++checked>10||++probes>120)break;
+                    if(land.equals(start)||n.legs().stream().anyMatch(l->l.landing().equals(land)))continue;
+                    double cost=n.cost()+Math.sqrt(n.at().distSqr(launch))+flightCost(launch,land);
+                    Visit visit=new Visit(land,n.legs().size()+1);
+                    if(seen.getOrDefault(visit,Double.POSITIVE_INFINITY)<=cost)continue;
+                    if(checked>=PROBES_PER_LAUNCH||probes>=MAX_PROBES)break;
+                    checked++;probes++;
                     if(!BuilderFlight.canFlyBetween(level,worker,launch,land))continue;
-                    if(!walkChecked){
-                        walkChecked=true;
-                        walkOK=WorkerNavigation.hasGroundRouteFrom(level,worker,n.at(),List.of(launch));
-                    }
-                    if(!walkOK)break;
                     var next=new ArrayList<>(n.legs());next.add(new Leg(launch,land));
-                    if(good(level,worker,goal,land))return List.copyOf(next);
-                    seen.put(land,next.size());
-                    Node candidate=new Node(land,List.copyOf(next),score(goal,land)+next.size()*2);
+                    seen.put(visit,cost);
+                    Node candidate=new Node(land,List.copyOf(next),cost,cost+estimate(goal,land));
                     queue.add(candidate);
-                    // Long journeys may exceed this search window. Only
-                    // commit an incomplete chain if it ends on real support
-                    // with a strictly better goal score; no sideways cycle.
+                    // A complete route may detour in any direction. An
+                    // unfinished prefix still needs net progress, so repeated
+                    // bounded searches cannot shuttle between two platforms.
                     if(score(goal,land)+4<startScore
-                            &&(bestPartial==null||candidate.score()<bestPartial.score()))bestPartial=candidate;
+                            &&(bestPartial==null||score(goal,land)<score(goal,bestPartial.at())
+                            ||(score(goal,land)==score(goal,bestPartial.at())&&cost<bestPartial.cost())))bestPartial=candidate;
                 }
-                if(probes>=120)break;
             }
         }
-        return bestPartial==null?List.of():bestPartial.legs();
+        // The budget may expire just after discovering a complete route.
+        // Prefer that verified route to an unfinished prefix.
+        Node complete=null;
+        for(Node n:queue)if(good(level,worker,goal,n.at())&&(complete==null||n.cost()<complete.cost()))complete=n;
+        return complete!=null?complete.legs():bestPartial==null?List.of():bestPartial.legs();
+    }
+    private static double estimate(Goal goal,BlockPos p){
+        // WORK/EXIT/LEVEL are goal regions, not exact target cells. This
+        // is a weighted search heuristic, not a shortest-path guarantee.
+        return Math.sqrt(score(goal,p));
+    }
+    private static double flightCost(BlockPos from,BlockPos to){
+        // Landing/takeoff overhead plus nominal travel distance; walking
+        // approaches are charged separately. Keep the physical flight
+        // validator as the authority on whether the leg is legal.
+        return 2.0+Math.sqrt(from.distSqr(to));
     }
     private static boolean tick(ServerLevel level,BuilderGolem worker,Goal goal){
         if(!BuilderFlight.enabled(worker))return false;
