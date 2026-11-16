@@ -2268,6 +2268,15 @@ public final class BuilderBuildService {
                 if(scaffoldBlockedWork(level,worker,table,owner,pos,plan.steps()))
                     return;
                 if(yDiff>0){
+                    // A one-block rise is not a grapple-only problem.
+                    // Prefer the existing propeller's physical local
+                    // work pose or supported escape before deferring.
+                    if(BuilderFlight.enabled(worker)&&!BuilderGrappleAccess.active(worker)
+                            &&!BuilderScaffolding.isControllingMovement(worker)){
+                        BlockPos lift=BuilderFlight.workPose(level,worker,pos,bodyBlockingWork);
+                        if(lift!=null&&BuilderFlight.request(level,worker,lift))return;
+                        if(BuilderFlight.escapeAwkwardFooting(level,worker,pos))return;
+                    }
                     var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
                     if(access==BuilderGrappleAccess.Result.NEED_HOOK)
                         table.setProblem("Builder needs a Grapple Hook");

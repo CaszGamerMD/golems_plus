@@ -162,7 +162,14 @@ final class BuilderMultiLegTravel {
             if(BuilderFlight.active(worker)||!worker.onGround()||now<searchAfter.getOrDefault(worker,0L))return false;
             searchAfter.put(worker,now+60);
             var legs=plan(level,worker,goal);
-            if(legs.isEmpty())return false;
+            if(legs.isEmpty()){
+                BlockPos here=worker.blockPosition();
+                BlockPos rounded=BlockPos.containing(worker.getX(),worker.getY()+.001,worker.getZ());
+                if(!WorkerNavigation.canStandOn(level,worker,here)
+                        &&!WorkerNavigation.canStandOn(level,worker,rounded))
+                    return BuilderFlight.escapeAwkwardFooting(level,worker,goal.target());
+                return false;
+            }
             t=new Trip(goal,legs,now);trips.put(worker,t);
             BuilderTrace.decision(level,worker,"MULTI_TRIP_COMMIT",goal.target(),"verified flight legs="+legs);
         }
@@ -182,6 +189,10 @@ final class BuilderMultiLegTravel {
                 return true;
             }
             if(BuilderFlight.active(worker)&&now-t.progress<400){
+                // The flight controller is responsible for releasing
+                // verified contact. At the endpoint, wait for that handoff
+                // instead of endlessly submitting another zero-length leg.
+                if(worker.position().distanceToSqr(feet(level,leg.landing()))<.10)return true;
                 if(BuilderFlight.requestSupportedLanding(level,worker,leg.landing()))return true;
                 // A different emergency landing invalidates this leg.
                 // Never keep waiting for the old landing after diverting.

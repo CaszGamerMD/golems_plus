@@ -32,7 +32,8 @@ public final class BuilderPropellerGameTest {
                 h.fail("Could not plan anchor-free 100-block ascent");return;
             }
             if(h.getTick()<6)return;
-            if(!descending[0]&&worker.position().distanceToSqr(Vec3.atBottomCenterOf(top))<.025){
+            if(!descending[0]&&!BuilderFlight.moving(worker)
+                    &&worker.position().distanceToSqr(Vec3.atBottomCenterOf(top))<.025){
                 if(!worker.propellerSpinning()||!worker.isNoGravity()){
                     h.fail("Arrived without powered hover");return;
                 }
@@ -76,7 +77,7 @@ public final class BuilderPropellerGameTest {
             }
         });
     }
-    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=350,skyAccess=true)
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=1100,skyAccess=true)
     public void propellerChainsVerticalLegsFromFractionalHover(GameTestHelper h) {
         var world=h.getLevel();
         BlockPos start=h.absolutePos(new BlockPos(10,4,10));
@@ -91,7 +92,8 @@ public final class BuilderPropellerGameTest {
         world.addFreshEntity(worker);
         int[] stage={0};
         Vec3[] anchor={null};
-        double[] heights={start.getY()+8,start.getY()+3,start.getY()+10};
+        double[] heights=new double[20];
+        for(int i=0;i<heights.length;i++)heights[i]=start.getY()+(i%2==0?8:3);
         h.onEachTick(()->{
             if(h.getTick()<5)return;
             if(stage[0]==0){
@@ -121,7 +123,10 @@ public final class BuilderPropellerGameTest {
                     h.fail("Hover reset the horizontal flight envelope");return;
                 }
             }
-            if(stage[0]==3){h.succeed();return;}
+            if(stage[0]==heights.length){
+                System.out.println("[PROPELLER HOVER PASS] 20 consecutive exact vertical legs");
+                h.succeed();return;
+            }
             if(!BuilderFlight.requestVertical(world,worker,heights[stage[0]])){
                 h.fail("Could not continue vertically from unsupported hover");return;
             }

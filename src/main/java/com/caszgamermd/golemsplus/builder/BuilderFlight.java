@@ -147,6 +147,8 @@ public final class BuilderFlight {
         // onGround is a contact flag from the preceding physics tick,
         // not proof of support. Like request(), allow a clear powered
         // launch during the short falling/settling transition.
+        Flight current=flights.get(worker);
+        if(current!=null)advanceReached(worker,current);
         if (moving(worker)) return false;
         if (Math.abs(y-from.y)<.02 || !sweep(level,worker,from,to)) {
             BuilderTrace.decision(level,worker,"VERTICAL_REJECT",goal,
@@ -158,7 +160,7 @@ public final class BuilderFlight {
 
     private static Vec3 verticalWorkPose(ServerLevel level,BuilderGolem worker,
             BlockPos target,boolean bodyBlocking) {
-        if (!active(worker)) return null;
+        if (!enabled(worker)) return null;
         Vec3 from=worker.position();
         Vec3 best=null;
         double bestDistance=Double.POSITIVE_INFINITY;
@@ -176,7 +178,7 @@ public final class BuilderFlight {
 
     static boolean adjustHoverForWork(ServerLevel level,BuilderGolem worker,
             BlockPos target,boolean bodyBlocking) {
-        if (moving(worker)) return false;
+        if (!active(worker)||moving(worker)) return false;
         Vec3 pose=verticalWorkPose(level,worker,target,bodyBlocking);
         return pose!=null&&requestVertical(level,worker,pose.y);
     }
@@ -216,7 +218,49 @@ public final class BuilderFlight {
     private static Vec3 supportedFeet(ServerLevel level,BlockPos stand){
         return new Vec3(stand.getX()+.5,WorkerNavigation.surveyFloorHeight(level,stand),stand.getZ()+.5);
     }
+    private static final double ARRIVAL_SQUARED=.02*.02;
+    private static void advanceReached(BuilderGolem worker,Flight flight){
+        while(flight.next<flight.path.size()
+                &&worker.position().distanceToSqr(flight.path.get(flight.next))<ARRIVAL_SQUARED)
+            flight.next++;
+    }
+    private static boolean actualSupport(ServerLevel level,BuilderGolem worker){
+        // The actual footprint must contact a block, not just an entity
+        // or a nominal center of a nearby tile. No position snap.
+        return level.getBlockCollisions(worker,body(worker,worker.position()).move(0,-.05,0))
+                .iterator().hasNext();
+    }
+    private static boolean releaseLanding(ServerLevel level,BuilderGolem worker,Flight flight){
+        if(flight.next<flight.path.size()||!actualSupport(level,worker))return false;
+        BlockPos cell=worker.blockPosition();
+        BlockPos rounded=BlockPos.containing(worker.getX(),worker.getY()+.001,worker.getZ());
+        boolean supported=false;
+        for(BlockPos p:new BlockPos[]{flight.goal,cell,rounded}){
+            if(p==null||!WorkerNavigation.canStandOn(level,worker,p))continue;
+            Vec3 stand=supportedFeet(level,p);
+            if(Double.isFinite(stand.y)&&Math.abs(stand.y-worker.getY())<.05
+                    &&worker.position().distanceToSqr(stand)<.10){supported=true;break;}
+        }
+        if(!supported)return false;
+        worker.setDeltaMovement(Vec3.ZERO);
+        worker.setNoGravity(false);
+        worker.setPropellerSpinning(false);
+        BuilderTrace.decision(level,worker,"FLIGHT_LAND",flight.goal,"completed leg; actual block support verified");
+        flights.remove(worker);
+        return true;
+    }
     private static boolean requestPosition(ServerLevel level,BuilderGolem worker,BlockPos goal,Vec3 destination){
+        Flight existing=flights.get(worker);
+        if(existing!=null){
+            advanceReached(worker,existing);
+            if(!moving(worker)){
+                // Idempotent arrival: a repeated request at the endpoint
+                // must not create a zero-length flight and reclaim control.
+                boolean same=worker.position().distanceToSqr(destination)<ARRIVAL_SQUARED;
+                releaseLanding(level,worker,existing);
+                if(same)return true;
+            }
+        }
         if(BuilderGrappleAccess.active(worker)||!inEnvelope(origin(worker),destination)){
             BuilderTrace.decision(level,worker,"FLIGHT_REJECT",goal,
                     BuilderGrappleAccess.active(worker)?"grapple owns motion":"outside horizontal envelope");
@@ -275,6 +319,39 @@ public final class BuilderFlight {
                 candidates.add(target.relative(direction).above(dy));
         BlockPos goal = select(level, worker, candidates);
         return goal != null && request(level, worker, goal);
+    }
+    /** An isolated lip, slab or narrow glass tile may not have an
+     * integer-centered walking node. Lift directly from the actual feet
+     * to nearby real support instead of requiring a grapple anchor.
+     * Only a useful higher/closer landing is accepted; never reset the
+     * two-block takeoff envelope while hovering. */
+    static boolean escapeAwkwardFooting(ServerLevel level,BuilderGolem worker,BlockPos target){
+        if(!enabled(worker)||active(worker)||BuilderGrappleAccess.active(worker)
+                ||BuilderScaffolding.isControllingMovement(worker)
+                ||!worker.onGround())return false;
+        Vec3 from=worker.position();
+        BlockPos here=worker.blockPosition();
+        var candidates=new ArrayList<BlockPos>();
+        for(int dy=-2;dy<=4;dy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+            BlockPos p=here.offset(dx,dy,dz);
+            if(!level.hasChunkAt(p)||!WorkerNavigation.canStandOn(level,worker,p))continue;
+            Vec3 to=supportedFeet(level,p);
+            if(!Double.isFinite(to.y)||!inEnvelope(from,to)||to.distanceToSqr(from)<.25)continue;
+            double old=from.distanceToSqr(Vec3.atBottomCenterOf(target));
+            if(to.distanceToSqr(Vec3.atBottomCenterOf(target))>=old-.25)continue;
+            if(path(level,worker,from,to,from).isEmpty())continue;
+            candidates.add(p);
+        }
+        candidates.sort(Comparator.comparingDouble((BlockPos p)->p.distSqr(target))
+                .thenComparingDouble(p->from.distanceToSqr(supportedFeet(level,p)))
+                .thenComparingInt(BlockPos::getX).thenComparingInt(BlockPos::getY).thenComparingInt(BlockPos::getZ));
+        for(BlockPos p:candidates){
+            if(requestSupportedLanding(level,worker,p)){
+                BuilderTrace.decision(level,worker,"FLIGHT_FOOTING_ESCAPE",p,"actual feet="+from+" toward="+target);
+                return true;
+            }
+        }
+        return false;
     }
     /** Walk to a grounded launch point near an elevated task; flight never
      * replaces long horizontal ground navigation. */
@@ -731,33 +808,12 @@ public final class BuilderFlight {
             worker.setPropellerSpinning(false);
             return false;
         }
+        // Resolve arrival BEFORE any caller can request another flight.
+        // The previous tick physically moved the entity to its endpoint.
+        advanceReached(worker,flight);
+        if(releaseLanding(level,worker,flight))return false;
         boolean moving = moving(worker);
-        worker.setPropellerSpinning(moving || !worker.onGround());
-        double floor = WorkerNavigation.surveyFloorHeight(level, worker.blockPosition());
-        // At large world coordinates the final physical step can be a
-        // few millimeters below an integer tile. Survey the actual goal
-        // as well: flooring the near-integer feet can select the solid
-        // block UNDER the landing and leave the propeller hovering.
-        boolean atLanding=flight.goal!=null
-                &&WorkerNavigation.canStandOn(level,worker,flight.goal)
-                &&worker.position().distanceToSqr(supportedFeet(level,flight.goal))<.04;
-        // A stale onGround flag alone must never end a powered hover.
-        // Require the actual support surface at the intended landing or
-        // the current physical tile (including integer rounding aliases).
-        BlockPos rounded=BlockPos.containing(worker.getX(),worker.getY()+.001,worker.getZ());
-        double roundedFloor=WorkerNavigation.surveyFloorHeight(level,rounded);
-        boolean supportedHere=(Double.isFinite(floor)&&Math.abs(worker.getY()-floor)<.05
-                &&WorkerNavigation.canStandOn(level,worker,worker.blockPosition()))
-                ||(Double.isFinite(roundedFloor)&&Math.abs(worker.getY()-roundedFloor)<.05
-                &&WorkerNavigation.canStandOn(level,worker,rounded));
-        if (!moving && (atLanding || supportedHere)) {
-            worker.setDeltaMovement(Vec3.ZERO);
-            worker.setNoGravity(false);
-            worker.setPropellerSpinning(false);
-            BuilderTrace.decision(level,worker,"FLIGHT_LAND",flight.goal,"support/contact verified");
-            flights.remove(worker);
-            return false;
-        }
+        worker.setPropellerSpinning(true);
         worker.setNoGravity(true);
         worker.fallDistance = 0;
         worker.getNavigation().stop();
@@ -778,9 +834,6 @@ public final class BuilderFlight {
             flight.retryAt = level.getGameTime() + 10;
             return true;
         }
-        while (flight.next < flight.path.size()
-                && worker.position().distanceToSqr(flight.path.get(flight.next)) < .0004) flight.next++;
-        if (flight.next == flight.path.size()) return true;
         Vec3 delta = flight.path.get(flight.next).subtract(worker.position());
         Vec3 velocity = delta.scale(Math.min(1, SPEED / delta.length()));
         if (inEnvelope(flight.origin, worker.position().add(velocity))
