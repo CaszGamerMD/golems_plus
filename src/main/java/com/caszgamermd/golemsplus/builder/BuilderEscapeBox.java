@@ -88,7 +88,7 @@ final class BuilderEscapeBox {
         double best=Double.POSITIVE_INFINITY;
         long lastMove,lastProgress,nextSearch;
         boolean clearOfBuild,escaped;
-        BlockPos levelWaypoint,multiLevelGoal;
+        BlockPos levelWaypoint,multiLevelGoal,multiExitGoal;
         long levelSearch,levelProgress;
         double levelBest=Double.POSITIVE_INFINITY;
         int batch;
@@ -294,6 +294,10 @@ final class BuilderEscapeBox {
         if(t.escaped)return false;
         if(t.column!=null)return followColumn(level,worker,t);
         if(t.clearOfBuild)return finishElevation(level,worker,t,table);
+        if(t.multiExitGoal!=null){
+            if(BuilderMultiLegTravel.exit(level,worker,t.multiExitGoal,t.box))return true;
+            t.multiExitGoal=null;
+        }
         // At negative world heights an exact powered endpoint can floor
         // one cell short. Use the physical pose, not a rounded block Y.
         if(box.outside(worker.blockPosition())||(t.waypoint!=null
@@ -374,6 +378,13 @@ final class BuilderEscapeBox {
         }
         if(end<candidates.size()){t.batch=end;return true;}
         t.batch=0;
+        if(BuilderFlight.enabled(worker)&&worker.onGround()){
+            var sides=t.box.sideAir(worker.blockPosition());
+            sides.sort(Comparator.comparingDouble(p->distance(worker,p)));
+            if(!sides.isEmpty()&&BuilderMultiLegTravel.exit(level,worker,sides.get(0),t.box)){
+                t.multiExitGoal=sides.get(0);return true;
+            }
+        }
         // A floating structure may have no supported shell point. A local
         // powered flight to clear shell air is still a real physical exit.
         // Do not enlarge the existing two-block takeoff envelope.

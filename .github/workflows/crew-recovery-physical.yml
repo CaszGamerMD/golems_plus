@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewRecovery.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderEscapeBox.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMultiLegTravel.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderCrewRecoveryGameTest.java'
       - '.github/workflows/crew-recovery-physical.yml'

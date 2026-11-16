@@ -171,7 +171,7 @@ public final class BuilderCrewRecoveryGameTest {
         });
     }
 
-    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=400,skyAccess=true)
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=600,skyAccess=true)
     public void multiLegFlightUsesIntermediateLandingAndWalk(GameTestHelper h){
         var level=h.getLevel();
         for(int x=5;x<=19;x++)for(int z=6;z<=15;z++)
@@ -188,21 +188,30 @@ public final class BuilderCrewRecoveryGameTest {
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         level.addFreshEntity(worker);
-        boolean[] landed={false},walked={false};
+        boolean[] landed={false},walked={false},descending={false},downMiddle={false},downWalk={false};
         h.onEachTick(()->{
             if(h.getTick()<5)return;
             if(h.getTick()==5)worker.setOnGround(true);
             if(worker.onGround()&&!BuilderFlight.active(worker)){
-                if(worker.blockPosition().equals(middle))landed[0]=true;
-                if(landed[0]&&worker.blockPosition().equals(middle.east()))walked[0]=true;
-                if(worker.blockPosition().equals(finish)){
-                    if(!landed[0]||!walked[0]){h.fail("Skipped intermediate landing or walk");return;}
-                    System.out.println("[MULTI FLIGHT PASS] two supported flights and intermediate walking");
-                    h.succeed();return;
+                if(!descending[0]){
+                    if(worker.blockPosition().equals(middle))landed[0]=true;
+                    if(landed[0]&&worker.blockPosition().equals(middle.east()))walked[0]=true;
+                    if(worker.blockPosition().equals(finish)){
+                        if(!landed[0]||!walked[0]){h.fail("Skipped intermediate landing or walk");return;}
+                        descending[0]=true;BuilderMultiLegTravel.clear(worker);
+                    }
+                }else{
+                    if(worker.blockPosition().equals(middle.east()))downMiddle[0]=true;
+                    if(downMiddle[0]&&worker.blockPosition().equals(middle))downWalk[0]=true;
+                    if(worker.blockPosition().equals(start)){
+                        if(!downMiddle[0]||!downWalk[0]){h.fail("Return skipped intermediate landing or walk");return;}
+                        System.out.println("[MULTI FLIGHT PASS] supported flights and intermediate walking both directions");
+                        h.succeed();return;
+                    }
                 }
             }
-            BuilderMultiLegTravel.stand(level,worker,finish);
-            if(h.getTick()==390)h.fail("Multi-flight stalled at "+worker.position()+" intermediate="+landed[0]+" walked="+walked[0]);
+            BuilderMultiLegTravel.stand(level,worker,descending[0]?start:finish);
+            if(h.getTick()==590)h.fail("Multi-flight stalled at "+worker.position()+" intermediate="+landed[0]+" walked="+walked[0]+" descending="+descending[0]);
         });
     }
 }

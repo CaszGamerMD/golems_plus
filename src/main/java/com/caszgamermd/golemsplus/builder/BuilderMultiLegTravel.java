@@ -5,7 +5,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 import java.util.*;
-import java.util.function.Predicate;
 
 /** Bounded look-ahead through real grounded poses. Each flight starts a
  * fresh two-block horizontal envelope only after a supported landing.
@@ -13,7 +12,7 @@ import java.util.function.Predicate;
  * walks and flights; no route is replaced solely because of distance. */
 final class BuilderMultiLegTravel {
     private BuilderMultiLegTravel(){}
-    private enum Kind {WORK,LEVEL,STAND}
+    private enum Kind {WORK,EXIT,LEVEL,STAND}
     private record Goal(Kind kind,BlockPos target,boolean bodyBlocking,BuilderEscapeBox.Bounds box){}
     private record Leg(BlockPos launch,BlockPos landing){}
     private record Node(BlockPos at,List<Leg> legs,double score){}
@@ -35,6 +34,9 @@ final class BuilderMultiLegTravel {
     static boolean work(ServerLevel level,BuilderGolem worker,BlockPos target,boolean blocking){
         return tick(level,worker,new Goal(Kind.WORK,target.immutable(),blocking,null));
     }
+    static boolean exit(ServerLevel level,BuilderGolem worker,BlockPos target,BuilderEscapeBox.Bounds box){
+        return tick(level,worker,new Goal(Kind.EXIT,target.immutable(),false,box));
+    }
     static boolean elevation(ServerLevel level,BuilderGolem worker,BlockPos target,BuilderEscapeBox.Bounds box){
         return tick(level,worker,new Goal(Kind.LEVEL,target.immutable(),false,box));
     }
@@ -50,6 +52,7 @@ final class BuilderMultiLegTravel {
     }
     private static boolean good(ServerLevel level,BuilderGolem worker,Goal goal,BlockPos p){
         if(goal.kind()==Kind.STAND)return p.equals(goal.target());
+        if(goal.kind()==Kind.EXIT)return goal.box().sideOutside(p)||p.getY()<=goal.box().minY();
         if(goal.kind()==Kind.LEVEL)return goal.box().outside(p)
                 &&Math.abs(WorkerNavigation.surveyFloorHeight(level,p)-goal.target().getY())<=.6;
         return BuilderFlight.safeWorkPose(level,worker,goal.target(),feet(level,p),goal.bodyBlocking());
@@ -57,6 +60,7 @@ final class BuilderMultiLegTravel {
     private static double score(Goal goal,BlockPos p){
         double dy=p.getY()-goal.target().getY();
         if(goal.kind()==Kind.LEVEL)return dy*dy*4+.05*p.distSqr(goal.target());
+        if(goal.kind()==Kind.EXIT)return p.distSqr(goal.target())+Math.max(0,dy)*Math.max(0,dy)*4;
         return p.distSqr(goal.target())+dy*dy;
     }
     private static List<BlockPos> launches(ServerLevel level,BuilderGolem worker,BlockPos at){
@@ -105,8 +109,8 @@ final class BuilderMultiLegTravel {
                 boolean walkChecked=launch.equals(n.at()),walkOK=walkChecked;
                 int checked=0;
                 for(BlockPos land:landings(level,worker,goal,launch)){
-                    if(++checked>10||++probes>120)break;
                     if(seen.getOrDefault(land,Integer.MAX_VALUE)<=n.legs().size()+1)continue;
+                    if(++checked>10||++probes>120)break;
                     if(!BuilderFlight.canFlyBetween(level,worker,launch,land))continue;
                     if(!walkChecked){
                         walkChecked=true;
