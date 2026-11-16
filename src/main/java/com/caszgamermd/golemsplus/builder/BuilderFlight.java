@@ -78,6 +78,8 @@ public final class BuilderFlight {
     public static void stop(BuilderGolem worker) {
         Flight flight = flights.get(worker);
         if (flight != null) {
+            if (worker.level() instanceof ServerLevel level)
+                BuilderNeuralRecorder.finishFlight(level, worker, "CANCELLED");
             flight.path = List.of();
             flight.next = 0;
         }
@@ -284,6 +286,7 @@ public final class BuilderFlight {
         BuilderScaffoldPlanA.cancel(worker);
         WorkerNavigation.stop(worker);
         BuilderTrace.decision(level,worker,"FLIGHT_ACCEPT",goal,"legs="+path.size()+" destination="+destination);
+        BuilderNeuralRecorder.beginFlight(level, worker, path, destination);
         flight.path = path;
         flight.next = 0;
         flight.lastPosition = worker.position();
@@ -751,7 +754,9 @@ public final class BuilderFlight {
         return select(level, worker, candidates);
     }
     public static boolean tick(ServerLevel level, BuilderGolem worker) {
-        if (!enabled(worker)) { flights.remove(worker); worker.setPropellerSpinning(false); return false; }
+        if (!enabled(worker)) {
+            BuilderNeuralRecorder.finishFlight(level, worker, "DISABLED");
+            flights.remove(worker); worker.setPropellerSpinning(false); return false; }
         Flight flight = flights.get(worker);
         // Ordinary walking, falling, and furniture visits retain their controller
         // until an actual flight request has established powered hover.
@@ -759,6 +764,7 @@ public final class BuilderFlight {
             worker.setPropellerSpinning(false);
             return false;
         }
+        BuilderNeuralRecorder.observeFlightTick(level, worker);
         boolean moving = moving(worker);
         worker.setPropellerSpinning(moving || !worker.onGround());
         double floor = WorkerNavigation.surveyFloorHeight(level, worker.blockPosition());
@@ -800,6 +806,7 @@ public final class BuilderFlight {
             flight.stuckTicks = 0;
         } else if (++flight.stuckTicks > 40) {
             BuilderTrace.decision(level,worker,"FLIGHT_ABORT",flight.goal,"no physical displacement for 40 ticks");
+            BuilderNeuralRecorder.finishFlight(level, worker, "NO_DISPLACEMENT");
             flight.lastFailedDestination=flight.path.getLast();
             flight.failedUntil=level.getGameTime()+100;
             stop(worker);
@@ -808,7 +815,10 @@ public final class BuilderFlight {
         }
         while (flight.next < flight.path.size()
                 && worker.position().distanceToSqr(flight.path.get(flight.next)) < .0004) flight.next++;
-        if (flight.next == flight.path.size()) return true;
+        if (flight.next == flight.path.size()) {
+            BuilderNeuralRecorder.finishFlight(level, worker, "ARRIVED");
+            return true;
+        }
         Vec3 delta = flight.path.get(flight.next).subtract(worker.position());
         Vec3 velocity = delta.scale(Math.min(1, SPEED / delta.length()));
         if (inEnvelope(flight.origin, worker.position().add(velocity))
@@ -816,6 +826,7 @@ public final class BuilderFlight {
             worker.setDeltaMovement(velocity);
         else {
             BuilderTrace.decision(level,worker,"FLIGHT_ABORT",flight.goal,"next swept body blocked or outside envelope");
+            BuilderNeuralRecorder.finishFlight(level, worker, "BLOCKED");
             flight.lastFailedDestination=flight.path.getLast();
             flight.failedUntil=level.getGameTime()+100;
             stop(worker);

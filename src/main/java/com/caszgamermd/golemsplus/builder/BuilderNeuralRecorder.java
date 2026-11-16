@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.caszgamermd.golemsplus.worker.WorkerNavigation;
 import net.minecraft.core.BlockPos;
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 import java.util.WeakHashMap;
 import net.minecraft.server.level.ServerLevel;
@@ -25,6 +26,69 @@ final class BuilderNeuralRecorder {
     private static final Map<BuilderGolem, Start> pending = new WeakHashMap<>();
 
     private static final Map<BuilderGolem, Long> lastSeen = new WeakHashMap<>();
+
+    // One accepted physical action, with a terminal label independent of movement windows.
+    private static final Map<BuilderGolem, FlightStart> activeFlights = new WeakHashMap<>();
+    private static long actionSequence;
+    private static final int ACTION_LIMIT = 100_000;
+    private record FlightStart(long id, long tick, ServerLevel level, Vec3 from,
+            Vec3 destination, double[] features, long lastTick) {}
+    private record FlightRow(int schema, String run, String worker, long id,
+            long tick, long endTick, String action, double[] features,
+            String outcome, double remainingDistance) {}
+
+    static void beginFlight(ServerLevel level, BuilderGolem worker, List<Vec3> path, Vec3 destination) {
+        if (!ENABLED || actionSequence >= ACTION_LIMIT) return;
+        finishFlight(level, worker, "REPLACED");
+        Vec3 from = worker.position(), at = from;
+        double route = 0;
+        for (Vec3 waypoint : path) {
+            route += at.distanceTo(waypoint);
+            at = waypoint;
+        }
+        Vec3 delta = destination.subtract(from);
+        double[] x = {
+            Math.clamp(delta.x / 2, -1, 1),
+            Math.clamp(delta.y / 32, -1, 1),
+            Math.clamp(delta.z / 2, -1, 1),
+            Math.min(1, route / 64),
+            Math.min(1, path.size() / 3.0),
+            worker.onGround() ? 1 : 0,
+            Math.min(1, from.distanceTo(destination) / 64)
+        };
+        long now = level.getGameTime();
+        activeFlights.put(worker, new FlightStart(++actionSequence, now, level,
+                from, destination, x, now));
+    }
+
+    static void observeFlightTick(ServerLevel level, BuilderGolem worker) {
+        if (!ENABLED) return;
+        FlightStart f = activeFlights.get(worker);
+        if (f == null) return;
+        long now = level.getGameTime();
+        if (f.level() != level || now < f.lastTick() || now - f.lastTick() > 1) {
+            finishFlight(level, worker, "OBSERVATION_GAP");
+            return;
+        }
+        activeFlights.put(worker, new FlightStart(f.id(), f.tick(), f.level(),
+                f.from(), f.destination(), f.features(), now));
+    }
+
+    static void finishFlight(ServerLevel level, BuilderGolem worker, String outcome) {
+        if (!ENABLED) return;
+        FlightStart f = activeFlights.remove(worker);
+        if (f == null) return;
+        long now = level.getGameTime();
+        if (f.level() != level || now < f.lastTick() || now - f.lastTick() > 1) {
+            outcome = "OBSERVATION_GAP";
+            now = f.lastTick();
+        }
+        double remaining = worker.position().distanceTo(f.destination());
+        if (!Double.isFinite(remaining)) return;
+        System.out.println("[NNGOLEMS_ACTION] " + JSON.toJson(new FlightRow(1, RUN,
+                worker.getUUID().toString(), f.id(), f.tick(), now, "FLIGHT",
+                f.features(), outcome, remaining)));
+    }
 
     static void sample(ServerLevel level, BuilderGolem worker, String controller) {
         if (!ENABLED || emitted >= LIMIT) return;

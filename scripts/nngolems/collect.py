@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 from train import read_rows, MARKER
+from actions import read_actions, MARKER as ACTION_MARKER, summarize
 
 
 def main():
@@ -19,6 +20,9 @@ def main():
         raise ValueError('Expected at least 50 observations from exactly one fresh server')
     if {r['moved'] for r in rows} != {0, 1}:
         raise ValueError('Run must include moving and stationary observations')
+    actions = read_actions([args.log])
+    if not actions or {r['run'] for r in actions} != {rows[0]['run']}:
+        raise ValueError('Missing or mismatched flight action outcomes')
     lines = raw.decode().splitlines()
     manifests = [line.split('[MATRIX CONTROLLED ENV] ', 1)[1]
                  for line in lines if '[MATRIX CONTROLLED ENV] ' in line]
@@ -28,7 +32,8 @@ def main():
         raise ValueError('Missing or ambiguous controlled environment/result')
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output/'samples.log').write_text(''.join(MARKER+json.dumps(r)+'\n' for r in rows))
-    provenance = dict(commit=args.commit, trial=args.trial, schema=rows[0]['schema'],
+    (args.output/'actions.log').write_text(''.join(ACTION_MARKER+json.dumps(r)+'\n' for r in actions))
+    provenance = dict(action_outcomes=summarize(actions), commit=args.commit, trial=args.trial, schema=rows[0]['schema'],
                       run=rows[0]['run'], samples=len(rows),
                       moving=sum(r['moved'] for r in rows),
                       stationary=sum(not r['moved'] for r in rows),

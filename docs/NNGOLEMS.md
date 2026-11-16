@@ -97,3 +97,28 @@ The trainer accepts either schema 2 or 3 per dataset, never a mixture; schema
 path versus no-path hover and include a simple path-presence baseline. A new
 three-run collection is required; the first-model holdout remains frozen.
 No steering, collision, recovery or task behavior is modified.
+
+## Accepted flight action outcomes (action schema 1)
+
+Schema 3 movement windows remain unchanged. Separate [NNGOLEMS_ACTION] rows
+capture an accepted powered flight route, with start-only geometry, route length,
+leg count and ground contact, followed by its actual terminal outcome:
+ARRIVED (the existing waypoint tolerance), BLOCKED, NO_DISPLACEMENT, or a
+censored cancellation/disable/replacement/observation gap. One ID per accepted
+action; duplicate terminal events are prevented. The recorder is read-only and
+off by default. Flight arrival does not assert landing or block placement.
+Incomplete actions when a server stops are not counted; rejected requests and
+unselected alternatives are not included. The report therefore estimates
+observed accepted-action outcomes, not policy value or counterfactual success.
+
+The controlled workflow now preserves actions.log and an action-report.json
+with outcomes and arrival rates per server. Use these data to assess failure
+coverage before fitting an action-value model; no neural recommendations yet.
+
+Schema-3 evaluation at db28d0f3157b989a8990f551ab33fdfc9df2bfd1
+([run 43808726353](https://github.com/CaszGamerMD/golems_plus/actions/runs/43808726353)):
+97.77% held-out movement accuracy, 36.73% stationary-flight recall (90/245),
+18.75% stationary recall on committed flight paths (3/16).
+The simple no-path baseline recalls 93.47% stationary flights but only 79.46%
+moving flights. Neither predicts action success. This is a new held-out
+population, not a paired comparison with schema 2.

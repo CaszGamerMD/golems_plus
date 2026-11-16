@@ -6,6 +6,7 @@ on:
       - '.github/workflows/nngolems-collect.yml'
       - 'scripts/nngolems/**'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNeuralRecorder.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
   workflow_dispatch:
 permissions:
   contents: read
@@ -78,6 +79,7 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/nngolems -p 'test_*.py'
           python3 scripts/nngolems/train.py build/nn-data/nn-trial-*/samples.log --output build/nn-evaluation --commit "$GITHUB_SHA"
+          python3 scripts/nngolems/actions.py build/nn-data/nn-trial-*/actions.log --output build/nn-evaluation/action-report.json
       - uses: actions/upload-artifact@v4
         with:
           name: nn-evaluation
