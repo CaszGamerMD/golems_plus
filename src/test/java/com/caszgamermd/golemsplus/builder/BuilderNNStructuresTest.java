@@ -69,6 +69,31 @@ class BuilderNNStructuresTest {
         assertEquals(p.group(0),p.group(2));
         assertEquals(4,BuilderNNStructures.nextOffset(p,0,0,Set.of(1,4,2,3)));
     }
+    @Test void elevatedPlatformsAttachOnlyToOverlappingLargerParent(){
+        var steps=new ArrayList<BuilderConstructionPlan.Step>();
+        for(int x=0;x<10;x++)for(int z=0;z<10;z++)steps.add(s(x,0,z));
+        int platform=steps.size();
+        for(int x=2;x<5;x++)for(int z=2;z<5;z++)steps.add(s(x,30,z));
+        int independent=steps.size();
+        for(int x=30;x<33;x++)for(int z=0;z<3;z++)steps.add(s(x,30,z));
+        var p=BuilderNNStructures.compile(steps,true);
+        assertEquals(2,p.groups().size());
+        assertEquals(p.group(0),p.group(platform));
+        assertNotEquals(p.group(0),p.group(independent));
+        assertEquals(9,BuilderNNStructures.volume(steps,p.members(0)));
+        assertEquals(109,BuilderNNStructures.volume(steps,p.members(1)));
+    }
+    @Test void manualChecksNeverBlockNextPhysicalProject(){
+        var flow=new BuilderConstructionPlan.Step(0,0,0,
+            BuilderDeferredState.flowStep("minecraft:water[level=1]"),null);
+        var unsupported=new BuilderConstructionPlan.Step(0,1,0,"minecraft:moving_piston",null);
+        var steps=List.of(flow,unsupported,s(20,0,0),s(20,1,0),s(20,2,0),s(0,2,0));
+        var p=BuilderNNStructures.compile(steps,true);
+        assertEquals(List.of(5,2,3,4,0,1),p.order());
+        assertTrue(BuilderNNStructures.manualTail(flow));
+        assertTrue(BuilderNNStructures.manualTail(unsupported));
+        assertFalse(BuilderNNStructures.manualTail(steps.get(5)));
+    }
     @Test void connectedGroundStaysOneAndEveryIndexIsRetained(){
         var steps=new ArrayList<BuilderConstructionPlan.Step>();
         for(int x=0;x<=20;x++)steps.add(s(x,0,0));

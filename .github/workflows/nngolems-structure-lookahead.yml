@@ -4,6 +4,7 @@ on:
     branches: [NNGolems]
     paths:
       - '.github/workflows/nngolems-structure-lookahead.yml'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNStructures.java'
   workflow_dispatch:
 permissions:
   contents: read

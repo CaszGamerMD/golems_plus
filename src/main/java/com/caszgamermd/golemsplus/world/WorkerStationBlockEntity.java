@@ -1277,7 +1277,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean builderNNLookahead(){return Boolean.parseBoolean(System.getProperty("golems.nn.structureLookahead",System.getenv().getOrDefault("GOLEMS_NN_STRUCTURE_LOOKAHEAD","false")));}
     private com.caszgamermd.golemsplus.builder.BuilderNNStructures.Plan nnStructurePlan;
     private int nnStructureOffset,nnStructureLogged=-1;
-    private boolean nnStructureRejected;
+    private boolean nnStructureRejected,nnStructureManualLogged;
     private boolean nnStructures(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(activeOrder==null||crewTarget<2||warehouse!=null
@@ -1291,7 +1291,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||nnStructureRules!=builderRuleRevision||nnStructureIgnore!=builderIgnorePlants){
             nnStructureSource=steps;nnStructureJob=activeOrder;nnStructureOffset=0;
             nnStructureRules=builderRuleRevision;nnStructureIgnore=builderIgnorePlants;
-            nnStructureLogged=-1;nnStructureRejected=false;
+            nnStructureLogged=-1;nnStructureRejected=false;nnStructureManualLogged=false;
             // Legacy pilot falls back on deferred physics. Lookahead keeps
             // the checks with their geometric component and runs them only
             // after all its paid placements. Never assume a check succeeds.
@@ -1318,6 +1318,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
             nnStructurePlan,nnStructureOffset,builderCursor,builderFinishedSteps);
         if(nnStructureOffset>=nnStructurePlan.order().size())return -1;
         int index=nnStructurePlan.order().get(nnStructureOffset),group=nnStructurePlan.group(index);
+        if(builderNNLookahead()&&!nnStructureManualLogged
+                &&com.caszgamermd.golemsplus.builder.BuilderNNStructures.manualTail(nnStructureSource.get(index))){
+            nnStructureManualLogged=true;
+            System.out.println("[NN STRUCTURE MANUAL REVIEW] all ordinary scheduled work complete; checking remaining derived/unsupported states");
+        }
         if(group!=nnStructureLogged){
             nnStructureLogged=group;
             System.out.println("[NN STRUCTURE ACTIVE] group="+(group+1)+"/"+nnStructurePlan.groups().size()
@@ -1396,9 +1401,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
         var step=steps.get(index);
         var current=steps.get(active);
         if(builderNNLookahead()&&nnStructures(steps)){
-            boolean verifying=com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(current.encodedState());
-            boolean candidateVerifying=com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(step.encodedState());
-            if(verifying||candidateVerifying)return verifying&&candidateVerifying&&step.y()==current.y();
+            boolean late=com.caszgamermd.golemsplus.builder.BuilderNNStructures.manualTail(current);
+            boolean candidateLate=com.caszgamermd.golemsplus.builder.BuilderNNStructures.manualTail(step);
+            if(late||candidateLate)return late&&candidateLate&&step.y()==current.y()
+                &&com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(current.encodedState())
+                    ==com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(step.encodedState());
         }
         if(nnStripPilot(steps)&&(!nnPilotDome||nnDomePlan.vertical(active)||nnPilotMode==1)){
             if(nnPilotMode==1&&!nnPilotRescue.contains(index))return false;
