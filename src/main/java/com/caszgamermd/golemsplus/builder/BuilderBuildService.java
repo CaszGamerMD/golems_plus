@@ -147,13 +147,13 @@ public final class BuilderBuildService {
         }
     }
     private record SiteFootprint(UUID job,Cache plan,int minX,int maxX,
-                                 int minZ,int maxZ){}
+                                 int minZ,int maxZ,BuilderEscapeBox.Bounds escapeBox){}
     private static final Map<WorkerStationBlockEntity,SiteFootprint>
             siteFootprints=new WeakHashMap<>();
     private static SiteFootprint siteFootprint(WorkerStationBlockEntity table,
             Cache plan){
         SiteFootprint old=siteFootprints.get(table);
-        if(old!=null&&old.job().equals(table.activeOrder())&&old.plan()==plan)
+        if(old!=null&&java.util.Objects.equals(old.job(),table.activeOrder())&&old.plan()==plan)
             return old;
         int minX=Integer.MAX_VALUE,maxX=Integer.MIN_VALUE;
         int minZ=Integer.MAX_VALUE,maxZ=Integer.MIN_VALUE;
@@ -166,7 +166,7 @@ public final class BuilderBuildService {
             minZ=maxZ=table.builderOrigin().getZ();
         }
         SiteFootprint result=new SiteFootprint(table.activeOrder(),plan,
-                minX,maxX,minZ,maxZ);
+                minX,maxX,minZ,maxZ,BuilderEscapeBox.Bounds.from(plan.steps()));
         siteFootprints.put(table,result);
         return result;
     }
@@ -347,6 +347,7 @@ public final class BuilderBuildService {
                 ||BuilderMaterialNetwork.recalling(table,worker.getUUID())
                 ||BuilderFlight.active(worker)||BuilderGrappleAccess.active(worker)
                 ||BuilderScaffolding.isControllingMovement(worker)
+                ||BuilderEscapeBox.escaping(worker)
                 ||BuilderFlight.descentMakingProgress(level,worker,depot))return false;
         action.returnProbeAfter=now+40;
         Cache plan=cached.get(worker);
@@ -703,15 +704,29 @@ public final class BuilderBuildService {
             BuilderPlacementSpace.cancelYield(worker);
             BuilderDroppedBlockRecovery.suspend(worker,table);
             BuilderReturnService.resetApproach(worker);
+            BuilderEscapeBox.clear(worker);
             if(!BuilderFlight.moving(worker)&&!BuilderGrappleAccess.active(worker)
                     &&!BuilderScaffolding.isControllingMovement(worker))
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+        }
+    }
+    private static boolean escapeBeforeReturn(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BlockPos depot){
+        try{
+            Cache plan=table.activeOrder()==null?cached.get(worker):cache(table,worker);
+            if(plan==null)return false;
+            return BuilderEscapeBox.tick(level,worker,siteFootprint(table,plan).escapeBox(),depot);
+        }catch(Exception e){
+            BuilderTrace.decision(level,worker,"ESCAPE_BOX_UNAVAILABLE",depot,e.toString());
+            return false;
         }
     }
     static boolean parkAtOnSite(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null)depot=table.getBlockPos();
+        if(atOnSite(level,worker,depot)){BuilderEscapeBox.clear(worker);}
+        else if(escapeBeforeReturn(level,worker,table,depot))return false;
         if(BuilderFlight.enabled(worker)&&BuilderFlight.active(worker)){
             if(worker.getY()>depot.getY()+1.5&&BuilderFlight.land(level,worker,true))return false;
             BuilderFlight.land(level,worker,false);
@@ -1088,6 +1103,10 @@ public final class BuilderBuildService {
             }
         }
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
+            BlockPos exitDepot=table.builderUnloadingStorage();
+            if(exitDepot==null)exitDepot=table.getBlockPos();
+            if(!atOnSite(level,worker,exitDepot)&&escapeBeforeReturn(level,worker,table,exitDepot))return;
+            if(atOnSite(level,worker,exitDepot))BuilderEscapeBox.clear(worker);
             if(BuilderFlight.active(worker)){
                 if(!BuilderFlight.land(level,worker,true))BuilderFlight.land(level,worker,false);
                 return;

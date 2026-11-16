@@ -80,4 +80,45 @@ public final class BuilderCrewRecoveryGameTest {
             });
         }catch(Exception e){h.fail("Crew reset setup: "+e);}
     }
+
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=240,skyAccess=true)
+    public void escapeBoxCommitsBeforeDepotReturn(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=3;x<=20;x++)for(int z=3;z<=20;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=5;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        BlockPos low=h.absolutePos(new BlockPos(7,2,7));
+        BlockPos high=h.absolutePos(new BlockPos(13,4,13));
+        var box=new BuilderEscapeBox.Bounds(low.getX()-1,low.getY()-1,low.getZ()-1,high.getX()+1,high.getY()+1,high.getZ()+1);
+        BlockPos start=h.absolutePos(new BlockPos(9,2,10));
+        BlockPos depot=h.absolutePos(new BlockPos(18,2,10));
+        h.setBlock(18,2,10,Blocks.CHEST);
+        level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        level.addFreshEntity(worker);
+        BlockPos[] committed={null};boolean[] escaped={false};
+        h.onEachTick(()->{
+            if(h.getTick()<5)return;
+            if(!escaped[0]){
+                boolean owns=BuilderEscapeBox.tick(level,worker,box,depot);
+                BlockPos current=BuilderEscapeBox.waypoint(worker);
+                if(current!=null){
+                    if(committed[0]==null)committed[0]=current;
+                    else if(!committed[0].equals(current)){h.fail("Healthy escape waypoint changed");return;}
+                }
+                if(!owns){
+                    if(committed[0]==null||!box.outside(worker.blockPosition())){
+                        h.fail("OnSite route released before physical escape");return;
+                    }
+                    escaped[0]=true;
+                }
+            }else if(!BuilderReturnService.approach(level,worker,depot,1.0)){
+                h.succeed();return;
+            }
+            if(h.getTick()==230)h.fail("Escape/depot route stalled: "+worker.position()+" waypoint="+committed[0]);
+        });
+    }
 }

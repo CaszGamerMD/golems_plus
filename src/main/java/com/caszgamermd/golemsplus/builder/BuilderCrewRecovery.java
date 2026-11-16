@@ -107,7 +107,7 @@ final class BuilderCrewRecovery {
                         long last=s.lastReturnProgress.computeIfAbsent(id,k->now);
                         // Do not replace a healthy return path with an
                         // escape probe merely because 80 ticks elapsed.
-                        if(now-last>=160&&now>=s.retry.getOrDefault(id,0L)){
+                        if(!BuilderEscapeBox.escaping(worker)&&now-last>=160&&now>=s.retry.getOrDefault(id,0L)){
                             s.retry.put(id,now+120);
                             BuilderReturnService.resetApproach(worker);
                             // Return service selects escapes using its persistent landing history.
