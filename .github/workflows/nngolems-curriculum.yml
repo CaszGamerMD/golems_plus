@@ -1,0 +1,65 @@
+name: NNGolems user-build curriculum
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-curriculum.yml'
+      - 'src/gametest/resources/golems_plus_curriculum/**'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNCurriculum*.java'
+      - 'scripts/nngolems/prepare_curriculum.py'
+      - 'scripts/nngolems/collect_curriculum.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  course:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        course: [home, dragon, froglights, chibi]
+    env:
+      NN_COURSE: ${{ matrix.course }}
+      NN_COURSE_SECONDS: '300'
+      GOLEMS_NN_RECORD: 'true'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+      MATRIX_TEST_MODE: controlled
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Prepare verified fixtures and isolated course
+        run: |
+          python3 scripts/nngolems/prepare_curriculum.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderNNCurriculumGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Run real course and preserve outcomes
+        shell: bash
+        run: |
+          mkdir -p build/nn-curriculum
+          set +e
+          set -o pipefail
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-curriculum/server.log
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "$status" > build/nn-curriculum/gradle-exit.txt
+          python3 scripts/nngolems/collect_curriculum.py build/nn-curriculum/server.log build/nn-curriculum --course "$NN_COURSE" --commit "$GITHUB_SHA"
+          test "$status" = 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nn-course-${{ matrix.course }}
+          path: build/nn-curriculum/
+          if-no-files-found: error

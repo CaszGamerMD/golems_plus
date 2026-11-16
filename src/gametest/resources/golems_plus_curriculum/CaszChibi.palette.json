@@ -1,0 +1,152 @@
+[
+  {
+    "Name": "minecraft:grass_block"
+  },
+  {
+    "Name": "minecraft:sand"
+  },
+  {
+    "Name": "minecraft:cobweb"
+  },
+  {
+    "Name": "minecraft:iron_block"
+  },
+  {
+    "Name": "minecraft:oak_leaves",
+    "Properties": {
+      "persistent": "true"
+    }
+  },
+  {
+    "Name": "minecraft:jungle_log",
+    "Properties": {
+      "axis": "y"
+    }
+  },
+  {
+    "Name": "minecraft:cobblestone"
+  },
+  {
+    "Name": "minecraft:oak_log",
+    "Properties": {
+      "axis": "y"
+    }
+  },
+  {
+    "Name": "minecraft:birch_log",
+    "Properties": {
+      "axis": "x"
+    }
+  },
+  {
+    "Name": "minecraft:white_wool"
+  },
+  {
+    "Name": "minecraft:yellow_wool"
+  },
+  {
+    "Name": "minecraft:lime_wool"
+  },
+  {
+    "Name": "minecraft:gray_wool"
+  },
+  {
+    "Name": "minecraft:light_gray_wool"
+  },
+  {
+    "Name": "minecraft:cyan_wool"
+  },
+  {
+    "Name": "minecraft:brown_wool"
+  },
+  {
+    "Name": "minecraft:green_wool"
+  },
+  {
+    "Name": "minecraft:black_wool"
+  },
+  {
+    "Name": "minecraft:gold_block"
+  },
+  {
+    "Name": "minecraft:diamond_block"
+  },
+  {
+    "Name": "minecraft:emerald_block"
+  },
+  {
+    "Name": "minecraft:spruce_log",
+    "Properties": {
+      "axis": "y"
+    }
+  },
+  {
+    "Name": "minecraft:netherrack"
+  },
+  {
+    "Name": "minecraft:white_terracotta"
+  },
+  {
+    "Name": "minecraft:orange_terracotta"
+  },
+  {
+    "Name": "minecraft:yellow_terracotta"
+  },
+  {
+    "Name": "minecraft:lime_terracotta"
+  },
+  {
+    "Name": "minecraft:gray_terracotta"
+  },
+  {
+    "Name": "minecraft:light_gray_terracotta"
+  },
+  {
+    "Name": "minecraft:cyan_terracotta"
+  },
+  {
+    "Name": "minecraft:purple_terracotta"
+  },
+  {
+    "Name": "minecraft:blue_terracotta"
+  },
+  {
+    "Name": "minecraft:brown_terracotta"
+  },
+  {
+    "Name": "minecraft:green_terracotta"
+  },
+  {
+    "Name": "minecraft:red_terracotta"
+  },
+  {
+    "Name": "minecraft:black_terracotta"
+  },
+  {
+    "Name": "minecraft:crimson_hyphae"
+  },
+  {
+    "Name": "minecraft:warped_nylium"
+  },
+  {
+    "Name": "minecraft:warped_stem"
+  },
+  {
+    "Name": "minecraft:warped_wart_block"
+  },
+  {
+    "Name": "minecraft:deepslate"
+  },
+  {
+    "Name": "minecraft:raw_iron_block"
+  },
+  {
+    "Name": "minecraft:glow_lichen",
+    "Properties": {
+      "down": "true"
+    }
+  },
+  {
+    "Name": "minecraft:cobblestone"
+  }
+]
