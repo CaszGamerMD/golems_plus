@@ -389,6 +389,28 @@ public final class BuilderFlight {
         }
         return WorkerNavigation.routeToExact(level,worker,plan.launch(),1.0);
     }
+    /** A shell exit may be air. Survey the entire clear vertical column
+     * before committing to it. Never treat a virtual box as support. */
+    static BlockPos escapeColumnGround(ServerLevel level,BuilderGolem worker,BlockPos air){
+        Vec3 top=feet(air);
+        if(!clear(level,worker,top))return null;
+        for(int y=air.getY()-1;y>level.getMinY();y--){
+            BlockPos p=air.atY(y);
+            if(!level.hasChunkAt(p))return null;
+            if(!WorkerNavigation.canStandOn(level,worker,p))continue;
+            Vec3 floor=supportedFeet(level,p);
+            // First physical floor only: do not fly through a roof.
+            return sweep(level,worker,top,floor)?p:null;
+        }
+        return null;
+    }
+    static boolean canReachEscapeAir(ServerLevel level,BuilderGolem worker,BlockPos launch,BlockPos air){
+        Vec3 from=supportedFeet(level,launch);
+        return Double.isFinite(from.y)&&!path(level,worker,from,feet(air),from).isEmpty();
+    }
+    static boolean atEscapeAir(BuilderGolem worker,BlockPos air){
+        return worker.position().distanceToSqr(feet(air))<.04;
+    }
     /** Find a real floor below this local column, or a nearby clear column.
      * A failed attempt never turns gravity on while hovering in open air. */
     public static boolean land(ServerLevel level, BuilderGolem worker, boolean below) {
