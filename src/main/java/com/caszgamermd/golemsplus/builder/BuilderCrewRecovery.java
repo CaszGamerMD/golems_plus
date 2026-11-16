@@ -11,7 +11,7 @@ final class BuilderCrewRecovery {
     private static final int STALL=240, RETURN_BUDGET=1800, RESUME_GRACE=400;
     private static final class State {
         UUID job;
-        int layer=Integer.MIN_VALUE,best=-1,attempts;
+        int layer=Integer.MIN_VALUE,structure=-1,best=-1,attempts;
         long lastProgress,started,graceUntil;
         boolean recalling,localAttempted;
         long localUntil;
@@ -72,7 +72,7 @@ final class BuilderCrewRecovery {
         int count=0;
         for(int i=0;i<steps.size();i++){
             var step=steps.get(i);
-            if(step.y()==layer&&!step.ignorePlant()
+            if(step.y()==layer&&table.builderInNNStructure(steps,i)&&!step.ignorePlant()
                     &&!BuilderDeferredState.verification(step.encodedState())
                     &&!table.builderStepCompletedForMaterials(i))count++;
         }
@@ -80,7 +80,7 @@ final class BuilderCrewRecovery {
     }
     static void begin(ServerLevel level,WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps){
         State s=state(table);if(s.recalling)return;
-        s.layer=table.builderActiveLayer(steps);s.best=table.builderWorkDone();
+        s.layer=table.builderActiveLayer(steps);s.structure=table.builderNNStructure(steps);s.best=table.builderWorkDone();
         s.lastProgress=level.getGameTime();s.started=s.lastProgress;
         s.attempts++;s.recalling=true;s.graceUntil=0;
         s.unloaded.clear();s.retry.clear();s.parking.clear();
@@ -126,8 +126,9 @@ final class BuilderCrewRecovery {
             return true;
         }
         if(!s.recalling){
-            if(layer!=s.layer){
-                s.layer=layer;s.attempts=0;s.reduced=List.of();
+            int structure=table.builderNNStructure(steps);
+            if(layer!=s.layer||structure!=s.structure){
+                s.structure=structure;s.layer=layer;s.attempts=0;s.reduced=List.of();
                 s.parking.clear();s.best=work;s.lastProgress=now;s.graceUntil=0;
                 s.localAttempted=false;
             }

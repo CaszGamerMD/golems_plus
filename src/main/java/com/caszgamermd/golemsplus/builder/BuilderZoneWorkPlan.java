@@ -38,6 +38,12 @@ public final class BuilderZoneWorkPlan {
             List<BuilderConstructionPlan.Step> steps,
             BuilderZones.Layout footprint,List<UUID> activeWorkers,
             boolean downward){
+        return compile(steps,footprint,activeWorkers,downward,null);
+    }
+    public static BuilderZoneWorkPlan compile(
+            List<BuilderConstructionPlan.Step> steps,
+            BuilderZones.Layout footprint,List<UUID> activeWorkers,
+            boolean downward,List<Integer> members){
         if(steps==null||footprint==null||activeWorkers==null)
             throw new IllegalArgumentException("Builder plan missing");
         if(activeWorkers.isEmpty()||activeWorkers.size()>8)
@@ -46,7 +52,9 @@ public final class BuilderZoneWorkPlan {
             throw new IllegalArgumentException("Duplicate builder in crew");
         var data=new LinkedHashMap<UUID,List<Integer>>();
         for(UUID id:activeWorkers)data.put(id,new ArrayList<>());
-        for(int index=0;index<steps.size();index++){
+        int count=members==null?steps.size():members.size();
+        for(int offset=0;offset<count;offset++){
+            int index=members==null?offset:members.get(offset);
             var step=steps.get(index);
             int owner=footprint.zone(step.x(),step.z(),activeWorkers.size());
             data.get(activeWorkers.get(owner)).add(index);

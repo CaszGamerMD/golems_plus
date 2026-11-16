@@ -1268,10 +1268,76 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 +" blocked="+blocked+" xyz="+old.x()+","+old.y()+","+old.z());
         return true;
     }
+    // Branch-only team structure pilot. Original completion indices and
+    // water/ceiling dependencies remain authoritative on every reload.
+    private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> nnStructureSource;
+    private UUID nnStructureJob;
+    private com.caszgamermd.golemsplus.builder.BuilderNNStructures.Plan nnStructurePlan;
+    private int nnStructureOffset,nnStructureLogged=-1;
+    private boolean nnStructureRejected;
+    private boolean nnStructures(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(activeOrder==null||crewTarget<2||warehouse!=null
+                ||builderHeightMode!=com.caszgamermd.golemsplus.builder.BuilderMaterialRules.ALL
+                ||!builderMaterialRules.isEmpty()
+                ||!Boolean.parseBoolean(System.getProperty("golems.nn.structures",
+                    System.getenv().getOrDefault("GOLEMS_NN_STRUCTURES","false"))))return false;
+        if(nnStructureSource!=steps||!java.util.Objects.equals(nnStructureJob,activeOrder)){
+            nnStructureSource=steps;nnStructureJob=activeOrder;nnStructureOffset=0;
+            nnStructureLogged=-1;nnStructureRejected=false;
+            // Deferred result verification may require work in a different
+            // part of a machine. Leave these jobs on the proven global gate.
+            nnStructurePlan=steps.stream().anyMatch(s->
+                com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(s.encodedState()))
+                ?null:com.caszgamermd.golemsplus.builder.BuilderNNStructures.compile(steps);
+            if(nnStructurePlan!=null&&nnStructurePlan.groups().size()>1){
+                nnStructureOffset=com.caszgamermd.golemsplus.builder.BuilderNNStructures.nextOffset(
+                    nnStructurePlan,0,builderCursor,builderFinishedSteps);
+                if(nnStructureOffset<nnStructurePlan.order().size()){
+                    int group=nnStructurePlan.group(nnStructurePlan.order().get(nnStructureOffset));
+                    nnStructureRejected=builderClaims.values().stream().anyMatch(i->
+                        i>=builderCursor&&i<steps.size()&&nnStructurePlan.group(i)!=group);
+                }
+                System.out.println("[NN STRUCTURES] groups="+nnStructurePlan.groups().size()
+                    +" steps="+steps.size()+" rejected="+nnStructureRejected);
+            }
+        }
+        return !nnStructureRejected&&nnStructurePlan!=null&&nnStructurePlan.groups().size()>1;
+    }
+    private int nnStructureActive(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        nnStructureOffset=com.caszgamermd.golemsplus.builder.BuilderNNStructures.nextOffset(
+            nnStructurePlan,nnStructureOffset,builderCursor,builderFinishedSteps);
+        if(nnStructureOffset>=nnStructurePlan.order().size())return -1;
+        int index=nnStructurePlan.order().get(nnStructureOffset),group=nnStructurePlan.group(index);
+        if(group!=nnStructureLogged){
+            nnStructureLogged=group;
+            System.out.println("[NN STRUCTURE ACTIVE] group="+(group+1)+"/"+nnStructurePlan.groups().size()
+                +" steps="+nnStructurePlan.members(group).size()+" work="+builderWorkDone());
+        }
+        return index;
+    }
+    public int builderNNStructure(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(!nnStructures(steps))return -1;
+        int index=nnStructureActive(steps);
+        return index<0?-1:nnStructurePlan.group(index);
+    }
+    public java.util.List<Integer> builderNNStructureMembers(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        int group=builderNNStructure(steps);
+        return group<0?java.util.List.of():nnStructurePlan.members(group);
+    }
+    public boolean builderInNNStructure(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,int index){
+        int group=builderNNStructure(steps);
+        return group<0||nnStructurePlan.group(index)==group;
+    }
     public int builderActiveStepIndex(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(steps==null||builderCursor<0||builderCursor>=steps.size())return -1;
         if(nnStripPilot(steps))return nnStripActive(steps);
+        if(nnStructures(steps))return nnStructureActive(steps);
         if(!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(
                 steps.get(builderCursor).encodedState()))return builderCursor;
         boolean same=activeScanPlan==steps&&java.util.Objects.equals(activeScanJob,activeOrder)
@@ -1314,6 +1380,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             int index){
         int active=builderActiveStepIndex(steps);
         if(active<0||index<builderCursor||index>=steps.size())return false;
+        if(!builderInNNStructure(steps,index))return false;
         var step=steps.get(index);
         var current=steps.get(active);
         if(nnStripPilot(steps)&&(!nnPilotDome||nnDomePlan.vertical(active)||nnPilotMode==1)){
@@ -1617,6 +1684,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             if(index>=0&&index<steps.size()&&!steps.get(index).ignorePlant())
                 reopened.add(index);
         if(!reopened.isEmpty()){
+            nnStructureOffset=0;
             int oldCursor=builderCursor;
             int restart=reopened.stream().mapToInt(Integer::intValue)
                     .min().orElse(oldCursor);

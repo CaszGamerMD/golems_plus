@@ -49,7 +49,7 @@ public final class BuilderBuildService {
      * work is never repeated on each Builder tick or after a placement.
      */
     private record ScheduledZones(UUID job,Cache cache,List<UUID> roster,
-            BuilderZoneWorkPlan tasks,Map<Integer,List<Integer>> layerSteps,
+            int structure,BuilderZoneWorkPlan tasks,Map<Integer,List<Integer>> layerSteps,
             Map<Integer,List<UUID>> layerStaff){}
     private static final Map<WorkerStationBlockEntity,ScheduledZones>
             schedules=new WeakHashMap<>();
@@ -2862,18 +2862,24 @@ public final class BuilderBuildService {
         List<UUID> roster=table.builderWorkerIds();
         if(roster.size()>table.crewTarget())
             roster=roster.subList(0,table.crewTarget());
+        int structure=table.builderNNStructure(cache.steps());
         ScheduledZones found=schedules.get(table);
         if(found!=null&&found.job().equals(table.activeOrder())
-                &&found.cache()==cache&&found.roster().equals(roster))
+                &&found.cache()==cache&&found.roster().equals(roster)&&found.structure()==structure)
             return found;
         // Preserves completed cells and carried real items when adding or
         // retiring a Builder. Only unfinished staging reservations change.
-        var tasks=BuilderZoneWorkPlan.compile(cache.steps(),cache.zones(),
-                roster,table.builderHeightMode()==BuilderMaterialRules.FROM_Y_DOWN);
+        var members=structure<0?null:table.builderNNStructureMembers(cache.steps());
+        var footprint=members==null?cache.zones():BuilderZones.footprint(
+                members.stream().map(cache.steps()::get).toList());
+        var tasks=BuilderZoneWorkPlan.compile(cache.steps(),footprint,
+                roster,table.builderHeightMode()==BuilderMaterialRules.FROM_Y_DOWN,members);
         var layers=new java.util.HashMap<Integer,List<Integer>>();
         var mutableLayers=new java.util.HashMap<Integer,
                 java.util.ArrayList<Integer>>();
-        for(int i=0;i<cache.steps().size();i++){
+        int count=members==null?cache.steps().size():members.size();
+        for(int offset=0;offset<count;offset++){
+            int i=members==null?offset:members.get(offset);
             var step=cache.steps().get(i);
             mutableLayers.computeIfAbsent(step.y(),unused->new java.util.ArrayList<>())
                     .add(i);
@@ -2917,7 +2923,7 @@ public final class BuilderBuildService {
         }
         table.beginBuilderZonePlan();
         ScheduledZones result=new ScheduledZones(table.activeOrder(),cache,
-                List.copyOf(roster),tasks,Map.copyOf(layers),Map.copyOf(staff));
+                List.copyOf(roster),structure,tasks,Map.copyOf(layers),Map.copyOf(staff));
         schedules.put(table,result);
         return result;
     }
