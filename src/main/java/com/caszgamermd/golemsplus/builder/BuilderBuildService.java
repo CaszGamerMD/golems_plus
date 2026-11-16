@@ -2760,8 +2760,10 @@ public final class BuilderBuildService {
                 &&previous.mirror()==table.builderMirror()
                 &&previous.origin().equals(table.builderOrigin())
                 &&previous.ignorePlants()==table.builderIgnorePlants()
-                &&previous.rulesRevision()==table.builderRuleRevision())
+                &&previous.rulesRevision()==table.builderRuleRevision()){
+            table.ensureNNStrategy(previous.steps());
             return previous;
+        }
         if(!table.hasPlacedSchematic())
             throw new IllegalArgumentException("No placed schematic");
         Path folder=FabricLoader.getInstance().getConfigDir()
@@ -2823,6 +2825,7 @@ public final class BuilderBuildService {
                 table.builderIgnorePlants(),table.builderRuleRevision(),
                 BuilderZones.footprint(steps));
         cachedWarehousePlans.put(table,next);
+        table.ensureNNStrategy(next.steps());
         return next;
     }
 
@@ -2899,8 +2902,10 @@ public final class BuilderBuildService {
                 &&previous.mirror()==table.builderMirror()
                 &&previous.origin().equals(table.builderOrigin())
                 &&previous.ignorePlants()==table.builderIgnorePlants()
-                &&previous.rulesRevision()==table.builderRuleRevision())
+                &&previous.rulesRevision()==table.builderRuleRevision()){
+            table.ensureNNStrategy(previous.steps());
             return previous;
+        }
         // Share the same immutable validated work plan among all eight
         // Builders. A different Litematica parse per worker caused pauses
         // when several workers started the job at once.

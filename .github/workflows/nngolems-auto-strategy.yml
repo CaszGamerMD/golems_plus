@@ -1,0 +1,68 @@
+name: NNGolems automatic build strategy
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-auto-strategy.yml'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNStrategyAdvisor.java'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  automatic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture: [X, Z, Dragon]
+    env:
+      MATRIX_TEST_MODE: controlled
+      GOLEMS_NN_AUTO: 'true'
+      NN_AUTO_FIXTURE: ${{ matrix.fixture }}
+      NN_COURSE: dragon
+      NN_DRAGON_STRATEGY: 'true'
+      NN_STRIP_AXIS: Y
+      NN_SPEED_TEST: 'true'
+      NN_SPEED_TICK_LIMIT: '72000'
+      NN_COURSE_SECONDS: '600'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Prepare fixture and isolate assessment
+        run: |
+          python3 scripts/nngolems/prepare_curriculum.py
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          c='BuilderNNCurriculumGameTest' if os.environ['NN_AUTO_FIXTURE']=='Dragon' else 'BuilderNNAutoStrategyGameTest'
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.'+c]
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Test automatic choice with physical builder
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/nn-auto
+          gradle --no-daemon test --tests '*BuilderNNStrategyAdvisorTest' runGameTest 2>&1 | tee build/nn-auto/server.log
+          if [ "$NN_AUTO_FIXTURE" = Dragon ]; then
+            grep -F "[NN AUTO STRATEGY] axis=Y " build/nn-auto/server.log
+            grep -F "[NN DRAGON RESULT] axis=Y outcome=COMPLETE correct=1032 " build/nn-auto/server.log
+          else
+            grep -F "[NN AUTO STRATEGY] axis=$NN_AUTO_FIXTURE " build/nn-auto/server.log
+            grep -F "[NN AUTO WALL RESULT] expected=$NN_AUTO_FIXTURE chosen=true " build/nn-auto/server.log | grep -F "outcome=COMPLETE"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nn-auto-${{ matrix.fixture }}
+          path: build/nn-auto/

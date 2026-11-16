@@ -106,3 +106,19 @@ paired cases. A mismatch in paired physical results is evidence for
 orientation-dependent behavior, not proof of a particular nav bug.
 The earlier banded benchmark compile failure (duplicate local baseY)
 is corrected; a separate nine-trial foundation run is also triggered.
+
+## Automatic live strategy advisor
+The NNGolems branch now chooses at first server-side effective job
+plan access, not from a filename or manual test axis. All jobs get
+a decision; complex states, multiple workers, warehouse-linked,
+resumed jobs, edited rules and unvalidated sizes keep ordinary Y.
+The narrow alternative is a single-worker straight open wall of
+allowlisted solid cubes with connected six-layer foundation and
+continuous columns. Both signed directions are scored against Y
+using group endpoint travel and depot distance, with a 15% and
+12-unit minimum gain. Banded execution retains original indices,
+real materials, adjacent route-checked rescue and permanent ordinary
+Y fallback. This is a deterministic geometry heuristic, not a trained
+neural model or proof of fastest route. The default can be disabled
+with -Dgolems.nn.auto=false; forced strip experiments bypass the advisor.
+Tests exercise rotated walls and real Dragon job selection.

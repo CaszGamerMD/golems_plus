@@ -1091,7 +1091,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private int activeScanCursor=-1,activeScanIndex=-1;
     // Isolated NNGolems physical pilot only. No saved job or ordinary
     // player job opts into this policy; original indices remain unchanged.
-    private UUID nnPilotJob;
+    private UUID nnPilotJob,nnAutoJob;
+    private boolean nnPilotAuto;
+    private int nnAutoRules;
+    private String nnAutoDecision="Y";
     private String nnPilotAxis;
     private int nnPilotDirection=1;
     private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> nnPilotPlan;
@@ -1109,7 +1112,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||(!builderFile.startsWith("placed-nn-strip-pilot-")
                     &&!builderFile.equals("placed-nn-dragon.gpb"))
                 ||(!"X".equals(axis)&&!"Z".equals(axis)))return false;
-        nnPilotJob=activeOrder;nnPilotAxis=axis;
+        nnPilotJob=activeOrder;nnPilotAxis=axis;nnPilotAuto=false;
         nnPilotDirection=builderFile.equals("placed-nn-dragon.gpb")&&"true".equals(System.getenv("GOLEMS_NN_ROTATION_TEST"))
                 ?Integer.parseInt(System.getenv().getOrDefault("NN_STRIP_DIRECTION","1")):1;
         if(nnPilotDirection!=1&&nnPilotDirection!=-1)throw new IllegalArgumentException("NN strip direction");
@@ -1119,12 +1122,44 @@ public final class WorkerStationBlockEntity extends BlockEntity
         nnPilotBanded=builderFile.equals("placed-nn-dragon.gpb")&&"true".equals(System.getenv("GOLEMS_NN_BANDED"));
         return true;
     }
+    /** The server analyzes the actual effective immutable job once, before claims. */
+    public void ensureNNStrategy(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(activeOrder==null||!isBuilder()||!Boolean.parseBoolean(System.getProperty("golems.nn.auto",
+                System.getenv().getOrDefault("GOLEMS_NN_AUTO","true")))
+                ||"true".equals(System.getenv("GOLEMS_NN_STRIP_PILOT")))return;
+        if(activeOrder.equals(nnAutoJob)){
+            if(nnPilotAuto&&(crewTarget!=1||nnAutoRules!=builderRuleRevision||warehouse!=null)){
+                nnPilotAuto=false;nnPilotJob=null;nnAutoDecision="Y";
+                System.out.println("[NN AUTO STRATEGY] fallback=Y reason=crew_rules_or_supply_changed");
+            }
+            return;
+        }
+        nnAutoJob=activeOrder;nnPilotAuto=false;nnPilotJob=null;nnAutoDecision="Y";
+        // Old or reloaded jobs stay on the proven ordinary gate. Never
+        // discard a finished index or reinterpret a saved active claim.
+        boolean eligible=builderCursor==0&&builderFinishedSteps.isEmpty()&&builderClaims.isEmpty()
+                &&crewTarget==1&&warehouse==null&&builderMaterialStorage!=null
+                &&builderMaterialRules.isEmpty()&&builderHeightMode==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.ALL;
+        var choice=com.caszgamermd.golemsplus.builder.BuilderNNStrategyAdvisor.choose(steps,
+                builderMaterialStorage==null?worldPosition:builderMaterialStorage,eligible);
+        nnAutoDecision=choice.axis();
+        System.out.println("[NN AUTO STRATEGY] axis="+choice.axis()+" direction="+choice.direction()
+                +" reason="+choice.reason()+" scores="+choice.scores());
+        if(choice.axis().equals("Y"))return;
+        nnPilotJob=activeOrder;nnPilotAuto=true;nnAutoRules=builderRuleRevision;
+        nnPilotAxis=choice.axis();nnPilotDirection=choice.direction();nnPilotBanded=true;
+        nnPilotPlan=null;nnPilotOffset=0;nnPilotLastCursor=-1;
+        nnPilotMode=0;nnPilotProgress=-1;nnPilotProgressAt=-1;nnPilotRescue=java.util.List.of();
+        nnPilotBlocked=-1;nnPilotProbeWork=-1;
+    }
+    public String builderNNStrategy(){return nnAutoDecision;}
     private boolean nnStripPilot(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(nnPilotJob==null||!nnPilotJob.equals(activeOrder)||crewTarget!=1)return false;
         if(nnPilotPlan!=steps){
             nnPilotBaseY=steps.stream().mapToInt(com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step::y).min().orElse(0);
-            nnPilotOrder=nnPilotBanded&&nnPilotMode!=3
+            nnPilotOrder=nnPilotAuto?com.caszgamermd.golemsplus.builder.BuilderNNStrategyAdvisor.order(steps,nnPilotAxis,nnPilotDirection)
+                    :nnPilotBanded&&nnPilotMode!=3
                     ?com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.compileBanded(steps,nnPilotAxis,nnPilotBaseY)
                     :com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.compile(
                         steps,nnPilotMode==3?"Y":nnPilotAxis,builderFile.equals("placed-nn-dragon.gpb"),nnPilotDirection);
@@ -1155,8 +1190,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean advanceNNStripRecovery(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,long now,
             java.util.function.IntPredicate accessible){
-        if(!"true".equals(System.getenv("GOLEMS_NN_ADAPTIVE"))
-                ||!builderFile.equals("placed-nn-dragon.gpb")||!nnStripPilot(steps)
+        if((!nnPilotAuto&&(!"true".equals(System.getenv("GOLEMS_NN_ADAPTIVE"))
+                ||!builderFile.equals("placed-nn-dragon.gpb")))||!nnStripPilot(steps)
                 ||nnPilotMode==3)return false;
         int work=builderWorkDone();
         if(nnPilotProgress!=work||nnPilotProgressAt<0){
@@ -1195,6 +1230,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
                         +" candidates="+nnPilotRescue);
                 return true;
             }
+        }
+        if(nnPilotAuto){
+            nnPilotAuto=false;nnPilotJob=null;nnAutoDecision="Y";
+            System.out.println("[NN AUTO STRATEGY] fallback=Y work="+work+" blocked="+blocked);
+            return true;
         }
         nnPilotMode=3;nnPilotProgressAt=now;nnPilotOffset=0;nnPilotLastCursor=-1;
         nnPilotOrder=com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.compile(steps,"Y",true);
