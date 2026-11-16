@@ -208,7 +208,7 @@ final class BuilderCrewRecovery {
                     &&level.getEntity(id) instanceof BuilderGolem w&&w.isAlive()
                     &&table.claimedStep(id)<0&&BuilderBuildService.teamLocalEligible(table,id,s.layer))
                 candidates.add(w);
-        candidates.sort(Comparator.comparingDouble(BuilderGolem::getY).reversed()
+        candidates.sort(Comparator.comparingDouble((BuilderGolem w)->w.getY()).reversed()
                 .thenComparing(w->w.getUUID().toString()));
         for(var w:candidates){
             int idx=BuilderBuildService.resumeStockedCrewWorker(level,w,table,steps,0);

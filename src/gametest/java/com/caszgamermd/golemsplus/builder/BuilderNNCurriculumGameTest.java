@@ -49,7 +49,7 @@ public final class BuilderNNCurriculumGameTest {
         }
         int workers=strip?1:Integer.parseInt(System.getenv().getOrDefault("NN_TEAM_SIZE","4"));
         if(!List.of(1,2,4,8).contains(workers)){h.fail("Invalid crew size");return;}
-        if(speed&&course.blocks()>2000){h.fail("Speed course exceeds 2000 source blocks");return;}
+        if(speed&&course.blocks()>2000&&!"true".equals(System.getenv("GOLEMS_NN_TEAM_RECORD"))){h.fail("Speed course exceeds 2000 source blocks");return;}
         var all=new ArrayList<>(raw.blocks());
         all.addAll(raw.airBlocks());
         int minX=all.stream().mapToInt(LitematicFileReader.Block::x).min().orElseThrow();
@@ -245,7 +245,8 @@ public final class BuilderNNCurriculumGameTest {
             boolean tickTimeout=speed&&elapsedTicks>=tickLimit;
             boolean wallTimeout=elapsed>=limit*1000L;
             boolean timeout=tickTimeout||wallTimeout;
-            boolean stalled=noWork>=1200&&!BuilderCrewRecovery.assessmentGrace(level,table);
+            long stallBudget=Long.parseLong(System.getenv().getOrDefault("NN_TEAM_STALL_TICKS","1200"));
+            boolean stalled=noWork>=stallBudget&&!BuilderCrewRecovery.assessmentGrace(level,table);
             if(tick%400!=0&&!complete&&!timeout&&!stalled)return;
             int correct=0;
             for(var b:expected)

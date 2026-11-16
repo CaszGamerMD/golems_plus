@@ -129,9 +129,9 @@ public final class BuilderNNDomeStrategyGameTest {
             if(tick%200!=0&&!complete&&!timeout)return;
             int correct=0;for(var b:expected)if(BuilderPistonWork.sourceMatches(level.getBlockState(b.pos()),b.state()))correct++;
             best[0]=Math.max(best[0],correct);
-            teamTrace.sample(level,table,crew,steps,elapsed,correct,distance[0],complete||timeout);
             long idle=watchdog.sample(tick,correct,table.builderClearCursor());
             boolean stall=idle>=2400&&!BuilderCrewRecovery.assessmentGrace(level,table);
+            teamTrace.sample(level,table,crew,steps,elapsed,correct,distance[0],complete||timeout||stall);
             if(tick%1000==0||complete||timeout||stall){
                 int activeY=table.builderActiveLayer(steps);
                 System.out.println("[NN DOME PROGRESS] mode="+mode+" correct="+correct+" total=3493 tick="+elapsed
