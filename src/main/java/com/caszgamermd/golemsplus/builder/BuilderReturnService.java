@@ -36,6 +36,22 @@ public final class BuilderReturnService {
     private static final java.util.Map<BuilderGolem,Approach> approaches=
             new java.util.WeakHashMap<>();
     static void resetApproach(BuilderGolem worker){approaches.remove(worker);}
+    // Route resets must not forget failed physical return landings.
+    private static final class ReturnHistory {
+        BlockPos target;
+        final java.util.LinkedHashMap<BlockPos,Long> rejected=new java.util.LinkedHashMap<>();
+        void reject(BlockPos at,long now){
+            rejected.put(at.immutable(),now+1200);
+            if(rejected.size()>64)rejected.remove(rejected.keySet().iterator().next());
+        }
+    }
+    private static final java.util.Map<BuilderGolem,ReturnHistory> returnHistories=new java.util.WeakHashMap<>();
+    private static ReturnHistory history(BuilderGolem worker,BlockPos target,long now){
+        ReturnHistory h=returnHistories.computeIfAbsent(worker,k->new ReturnHistory());
+        if(!target.equals(h.target)){h.target=target.immutable();h.rejected.clear();}
+        h.rejected.values().removeIf(until->until<=now);
+        return h;
+    }
     /** Storage reach is independent of the five-block construction reach.
      * Measure from feet to the closest point of the storage block volume. */
     static boolean withinStorageReach(double x,double y,double z,BlockPos target){
@@ -54,6 +70,9 @@ public final class BuilderReturnService {
     public static boolean approach(ServerLevel level,BuilderGolem worker,
             BlockPos target,double speed){
         if(target==null)return true;
+        long now=level.getGameTime();
+        ReturnHistory history=history(worker,target,now);
+        var rejected=history.rejected.keySet();
         if(BuilderFlight.enabled(worker)&&BuilderFlight.active(worker)){
             if(worker.getY()>target.getY()+1.5&&BuilderFlight.land(level,worker,true))return true;
             BuilderFlight.land(level,worker,false);
@@ -62,11 +81,11 @@ public final class BuilderReturnService {
         if(withinStorageReach(worker,target)){
             BuilderTrace.decision(level,worker,"DEPOT_REACHED",target,"within physical storage reach");
             approaches.remove(worker);
+            returnHistories.remove(worker);
             com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
             return false;
         }
         Approach route=approaches.computeIfAbsent(worker,ignored->new Approach());
-        long now=level.getGameTime();
         if(!target.equals(route.target)){
             route.target=target.immutable();route.stand=null;route.nextSearch=0;
             route.excludedStand=null;
@@ -87,7 +106,7 @@ public final class BuilderReturnService {
         // depot probe or picking a different nearby descent column.
         if(BuilderFlight.enabled(worker)
                 &&BuilderFlight.hasDescentLaunch(level,worker,target)
-                &&BuilderFlight.approachDescentLaunch(level,worker,target))return true;
+                &&BuilderFlight.approachDescentLaunch(level,worker,target,rejected))return true;
         // Observe real physical displacement instead of accepting a
         // pathfinder's MOVING result indefinitely. A busy rope/scaffold
         // controller owns its motion; never interrupt that descent.
@@ -154,14 +173,16 @@ public final class BuilderReturnService {
             route.lastStandProgress=now;
             if(route.stand==null){
                 BuilderTrace.decision(level,worker,"DEPOT_REJECT",target,"no executable depot stand; candidates="+possible.size());
+                if(worker.onGround())history.reject(worker.blockPosition(),now);
+                BuilderTrace.decision(level,worker,"DEPOT_ESCAPE_HISTORY",worker.blockPosition(),"rejected landings="+rejected);
                 if(BuilderFlight.enabled(worker)&&worker.getY()>target.getY()+1.5){
                     // The roof-edge walk is preferable to dropping back
                     // into the same enclosed machine cell.
-                    if(!BuilderFlight.approachDescentLaunch(level,worker,target)
-                            &&!BuilderFlight.escapePocket(level,worker,target))
-                        BuilderFlight.land(level,worker,true);
+                    if(!BuilderFlight.approachDescentLaunch(level,worker,target,rejected)
+                            &&!BuilderFlight.escapePocket(level,worker,target,rejected))
+                        BuilderFlight.land(level,worker,true,rejected);
                 }else if(BuilderFlight.enabled(worker)){
-                    BuilderFlight.escapePocket(level,worker,target);
+                    BuilderFlight.escapePocket(level,worker,target,rejected);
                 }
                 return true;
             }

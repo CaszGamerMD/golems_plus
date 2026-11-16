@@ -392,6 +392,9 @@ public final class BuilderFlight {
     /** Find a real floor below this local column, or a nearby clear column.
      * A failed attempt never turns gravity on while hovering in open air. */
     public static boolean land(ServerLevel level, BuilderGolem worker, boolean below) {
+        return land(level,worker,below,Set.of());
+    }
+    static boolean land(ServerLevel level, BuilderGolem worker, boolean below, Set<BlockPos> rejected) {
         Flight flight = flights.get(worker);
         if (flight != null && moving(worker)) return true;
         if (flight != null && level.getGameTime() < flight.landingRetryAt) return false;
@@ -421,14 +424,14 @@ public final class BuilderFlight {
         }
         if(below)landings.sort(Comparator.comparingInt((BlockPos p)->p.getY())
                 .thenComparingDouble(p->worker.position().distanceToSqr(feet(p))));
-        for(BlockPos floor:landings)if(requestSupportedLanding(level,worker,floor))return true;
+        for(BlockPos floor:landings)if(!rejected.contains(floor)&&requestSupportedLanding(level,worker,floor))return true;
         // A hovering worker can also land on a nearby raised lip and
         // walk to the edge, rather than hovering forever under a roof.
         if(flight!=null){
             for(int dy=1;dy<=4;dy++)for(BlockPos column:columns){
                 BlockPos floor=new BlockPos(column.getX(),top+dy,column.getZ());
                 if(floor.getY()>=level.getMaxY())continue;
-                if(WorkerNavigation.canStandOn(level,worker,floor)&&requestSupportedLanding(level,worker,floor))
+                if(!rejected.contains(floor)&&WorkerNavigation.canStandOn(level,worker,floor)&&requestSupportedLanding(level,worker,floor))
                     return true;
             }
         }
@@ -470,13 +473,16 @@ public final class BuilderFlight {
      * Lift in its open shaft, then land on a REAL nearby upper surface
      * with an onward ground path. No temporary block, anchor or teleport. */
     public static boolean escapePocket(ServerLevel level,BuilderGolem worker,BlockPos goal){
+        return escapePocket(level,worker,goal,Set.of());
+    }
+    static boolean escapePocket(ServerLevel level,BuilderGolem worker,BlockPos goal,Set<BlockPos> rejected){
         if(!enabled(worker)||active(worker))return false;
         Vec3 anchor=worker.position();
         BlockPos here=worker.blockPosition();
         var candidates=new ArrayList<BlockPos>();
         for(int dy=1;dy<=5;dy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
             BlockPos p=here.offset(dx,dy,dz);
-            if(!inEnvelope(anchor,feet(p))||p.getY()<=anchor.y+.6
+            if(rejected.contains(p)||!inEnvelope(anchor,feet(p))||p.getY()<=anchor.y+.6
                     ||!WorkerNavigation.canStandOn(level,worker,p)
                     ||Math.abs(WorkerNavigation.surveyFloorHeight(level,p)-p.getY())>.1)continue;
             if(!path(level,worker,anchor,feet(p),anchor).isEmpty())candidates.add(p);
@@ -534,10 +540,14 @@ public final class BuilderFlight {
     }
 
     public static boolean approachDescentLaunch(ServerLevel level,BuilderGolem worker,BlockPos depot){
+        return approachDescentLaunch(level,worker,depot,Set.of());
+    }
+    static boolean approachDescentLaunch(ServerLevel level,BuilderGolem worker,BlockPos depot,Set<BlockPos> rejected){
         if(!enabled(worker)||active(worker)||!worker.onGround())return false;
         long now=level.getGameTime();
         Descent saved=descents.get(worker);
         if(saved!=null&&saved.depot().equals(depot)&&now<saved.until()
+                &&!rejected.contains(saved.landing())
                 &&descentMakingProgress(level,worker,depot)
                 &&WorkerNavigation.canStandOn(level,worker,saved.launch())
                 &&WorkerNavigation.canStandOn(level,worker,saved.landing())){
@@ -570,7 +580,7 @@ public final class BuilderFlight {
                     BlockPos floor=new BlockPos(column.getX(),y,column.getZ());
                     if(!level.hasChunkAt(floor))break;
                     if(!WorkerNavigation.canStandOn(level,worker,floor))continue;
-                    if(!path(level,worker,anchor,feet(floor),anchor).isEmpty()
+                    if(!rejected.contains(floor)&&!path(level,worker,anchor,feet(floor),anchor).isEmpty()
                             &&(best==null||floor.getY()<best.getY()))best=floor;
                     break;
                 }

@@ -110,8 +110,7 @@ final class BuilderCrewRecovery {
                         if(now-last>=160&&now>=s.retry.getOrDefault(id,0L)){
                             s.retry.put(id,now+120);
                             BuilderReturnService.resetApproach(worker);
-                            if(BuilderFlight.enabled(worker)&&!BuilderFlight.active(worker))
-                                BuilderFlight.escapePocket(level,worker,depot);
+                            // Return service selects escapes using its persistent landing history.
                         }
                     }
                     if(now-s.started>=RETURN_BUDGET)

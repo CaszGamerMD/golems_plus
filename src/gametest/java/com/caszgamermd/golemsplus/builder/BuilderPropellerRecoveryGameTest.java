@@ -484,4 +484,38 @@ public final class BuilderPropellerRecoveryGameTest {
             if(h.getTick()==90)h.fail("Normal walking did not resume after physical exit: "+worker.position());
         });
     }
+
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=160,skyAccess=true)
+    public void returnDescentDoesNotRevisitRejectedLanding(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=7;x<=16;x++)for(int z=7;z<=16;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=8;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        h.setBlock(11,4,11,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(11,5,11));
+        BlockPos alternate=h.absolutePos(new BlockPos(12,2,11));
+        level.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        level.addFreshEntity(worker);
+        var forbidden=new java.util.HashSet<BlockPos>();
+        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++)
+            forbidden.add(start.offset(dx,-3,dz));
+        forbidden.remove(alternate);
+        h.onEachTick(()->{
+            if(h.getTick()==5){
+                worker.setOnGround(true);
+                if(!BuilderFlight.land(level,worker,true,forbidden)){
+                    h.fail("No alternate physical descent");return;
+                }
+            }
+            if(h.getTick()>5&&!BuilderFlight.active(worker)&&worker.onGround()){
+                if(!worker.blockPosition().equals(alternate)){
+                    h.fail("Returned to rejected landing: "+worker.blockPosition());return;
+                }
+                h.succeed();
+            }
+        });
+    }
 }
