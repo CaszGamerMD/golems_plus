@@ -7,6 +7,8 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNStripOrder.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderConstructionPlanner.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewRecovery.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderReturnService.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMaterialNetwork.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNCurriculumGameTest.java'
   workflow_dispatch:
 permissions:
@@ -59,6 +61,7 @@ jobs:
           mkdir -p build/nn-dragon
           gradle --no-daemon runGameTest 2>&1 | tee build/nn-dragon/server.log
           grep -F "[NN DRAGON RESULT] axis=$NN_STRIP_AXIS " build/nn-dragon/server.log
+          grep -F "[NN DRAGON RESULT] axis=$NN_STRIP_AXIS outcome=COMPLETE correct=1032 " build/nn-dragon/server.log
           if [ "$NN_STRIP_AXIS" != Y ]; then
             grep -F "[NN STRIP POLICY] axis=$NN_STRIP_AXIS " build/nn-dragon/server.log
           fi
