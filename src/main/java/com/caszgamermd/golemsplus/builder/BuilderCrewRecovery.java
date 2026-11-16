@@ -48,7 +48,15 @@ final class BuilderCrewRecovery {
         State s=state(table);
         List<UUID> eligible=s.layer==layer&&!s.reduced.isEmpty()?s.reduced:normal;
         if(s.recovering.isEmpty())return eligible;
-        return eligible.stream().filter(id->!s.recovering.contains(id)).toList();
+        var ready=new ArrayList<UUID>();
+        for(UUID id:eligible)if(!s.recovering.contains(id))ready.add(id);
+        // Normal small-layer staffing may name only the stranded worker.
+        // Fill that slot from the returned roster, never from recovery.
+        for(UUID id:table.builderWorkerIds()){
+            if(ready.size()>=eligible.size())break;
+            if(!s.recovering.contains(id)&&!ready.contains(id))ready.add(id);
+        }
+        return List.copyOf(ready);
     }
     static boolean sidelined(WorkerStationBlockEntity table,UUID worker){
         State s=state(table);

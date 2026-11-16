@@ -78,6 +78,7 @@ public final class BuilderCrewRecoveryGameTest {
                         if(BuilderCrewRecovery.recalling(table)
                                 ||!BuilderCrewRecovery.staff(table,layer,table.builderWorkerIds()).equals(List.of(a.getUUID()))
                                 ||BuilderCrewRecovery.staff(table,layer+1,table.builderWorkerIds()).contains(b.getUUID())
+                                ||!BuilderCrewRecovery.staff(table,layer+1,List.of(b.getUUID())).equals(List.of(a.getUUID()))
                                 ||!BuilderCrewRecovery.sidelined(table,b.getUUID())
                                 ||b.carriedCount(Items.GLASS)!=4||!b.isAlive()
                                 ||table.builderWorkDone()!=done||table.crewTarget()!=2){
