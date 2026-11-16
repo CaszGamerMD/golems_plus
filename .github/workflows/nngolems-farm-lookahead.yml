@@ -11,8 +11,13 @@ jobs:
   farm:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        handoff: ['false', 'true']
     env:
       MATRIX_TEST_MODE: controlled
+      GOLEMS_NN_REACHABLE_HANDOFF: ${{ matrix.handoff }}
       NN_COURSE: farm
       NN_TEAM_SIZE: '8'
       GOLEMS_NN_STRUCTURES: 'true'
@@ -110,7 +115,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: farm-demo-lookahead-test
+          name: farm-demo-lookahead-${{ matrix.handoff }}
           path: build/nn-farm-lookahead/
 
 # Dedicated Farm Demo run; no other course in this workflow.

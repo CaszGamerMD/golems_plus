@@ -17,6 +17,8 @@ final class BuilderCrewRecovery {
         long localUntil;
         int localStartWork,localIndex=-1;
         UUID localWorker;
+        long nextReplacementProbe;
+        final Set<UUID> replacementTried=new HashSet<>();
         List<UUID> reduced=List.of();
         final Set<UUID> unloaded=new HashSet<>();
         final Set<UUID> recovering=new HashSet<>();
@@ -130,15 +132,18 @@ final class BuilderCrewRecovery {
             if(layer!=s.layer||structure!=s.structure){
                 s.structure=structure;s.layer=layer;s.attempts=0;s.reduced=List.of();
                 s.parking.clear();s.best=work;s.lastProgress=now;s.graceUntil=0;
-                s.localAttempted=false;
+                s.localAttempted=false;s.replacementTried.clear();s.nextReplacementProbe=0;
             }
-            if(work>s.best){s.best=work;s.lastProgress=now;}
+            if(work>s.best){s.best=work;s.lastProgress=now;s.replacementTried.clear();}
             if(s.localWorker!=null&&(work>s.localStartWork||now>=s.localUntil)){
                 System.out.println("[NN TEAM LOCAL OUTCOME] worker="+s.localWorker+" step="+s.localIndex
                         +" delta="+(work-s.localStartWork)+" elapsed="+(now-s.localUntil+400));
                 s.localWorker=null;
             }
             if(layer==Integer.MAX_VALUE)return false;
+            if(s.attempts>=2&&!s.reduced.isEmpty()&&now>=s.graceUntil
+                    &&now-s.lastProgress>=RESUME_GRACE)
+                tryReachableReplacement(level,table,steps,s,now);
             if(s.attempts<2&&now>=s.graceUntil-40&&now-s.lastProgress>=STALL
                     &&remaining(table,steps,layer)>0){
                 if(tryTeamLocal(level,table,steps,s,now))return false;
@@ -194,6 +199,48 @@ final class BuilderCrewRecovery {
         }
         return false;
     }
+    /** Last reduced worker cannot make progress: test an unclaimed teammate
+     * against the real active frontier. Never label a budget miss unreachable,
+     * never finish a block, and never move inventory or interrupt a flight. */
+    private static void tryReachableReplacement(ServerLevel level,WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,State s,long now){
+        if(!Boolean.parseBoolean(System.getenv().getOrDefault("GOLEMS_NN_REACHABLE_HANDOFF","false"))
+                ||s.structure<0||now<s.nextReplacementProbe)return;
+        s.nextReplacementProbe=now+80;
+        List<UUID> roster=table.builderWorkerIds();
+        if(roster.stream().anyMatch(id->table.claimedStep(id)>=0))return;
+        var pending=new ArrayList<Integer>();
+        for(int i=0;i<steps.size();i++)if(table.builderStepInActivePhase(steps,i)
+                &&table.builderStepReadyForClaim(i))pending.add(i);
+        if(pending.isEmpty())return;
+        var candidates=new ArrayList<BuilderGolem>();
+        for(UUID id:roster)if(!s.reduced.contains(id)&&!s.recovering.contains(id)
+                &&!s.replacementTried.contains(id)&&level.getEntity(id) instanceof BuilderGolem w
+                &&w.isAlive()&&w.onGround()&&!w.hasSupplyBox()&&!BuilderFlight.active(w)
+                &&!BuilderGrappleAccess.active(w)&&!BuilderScaffolding.isControllingMovement(w))
+            candidates.add(w);
+        candidates.sort(Comparator.comparingDouble((BuilderGolem w)->pending.stream()
+                .mapToDouble(i->{var p=steps.get(i);return w.distanceToSqr(p.x()+.5,p.y(),p.z()+.5);})
+                .min().orElse(Double.POSITIVE_INFINITY)).thenComparing(w->w.getUUID().toString()));
+        if(candidates.isEmpty())return;
+        var selected=candidates.getFirst();
+        s.replacementTried.add(selected.getUUID());
+        var choice=BuilderConstructionPlanner.chooseLookahead(level,selected,table,steps,pending,0,2);
+        if(choice==null)return;
+        // Revalidate ownership at mutation time. Other workers' motions and
+        // return duties are preserved; only the selected worker is reset.
+        if(roster.stream().anyMatch(id->table.claimedStep(id)>=0))return;
+        var preserve=new HashSet<>(roster);preserve.remove(selected.getUUID());
+        BuilderBuildService.resetCrewActions(level,table,preserve);
+        int claimed=table.claimPreferredBuilderZoneStep(selected.getUUID(),List.of(choice.index()),steps,choice.index());
+        if(claimed<0)return;
+        s.replacementTried.addAll(s.reduced);
+        s.reduced=List.of(selected.getUUID());s.parking.remove(selected.getUUID());
+        s.lastProgress=now;s.graceUntil=now+RESUME_GRACE;
+        System.out.println("[NN REACHABLE HANDOFF] worker="+selected.getUUID()+" step="+claimed
+                +" structure="+s.structure+" layer="+s.layer+" feet="+selected.position());
+    }
+
     /** Team-first experiment: before a global retreat, try an actual
      * stocked, idle teammate on the current phase. One attempt per layer;
      * no new blocks, remote items, or changes to anyone else's claim.
