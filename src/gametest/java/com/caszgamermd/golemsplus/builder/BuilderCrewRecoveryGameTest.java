@@ -112,6 +112,82 @@ public final class BuilderCrewRecoveryGameTest {
         }catch(Exception e){h.fail("Crew reset setup: "+e);}
     }
 
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=100,skyAccess=true)
+    public void finalMaterialPickupKeepsClaimAndUsesRealStock(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=3;x<=16;x++)for(int z=3;z<=16;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=5;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        h.setBlock(5,2,5,WorksiteContent.BUILDER_TABLE);
+        h.setBlock(6,2,5,Blocks.CHEST);
+        BlockPos station=h.absolutePos(new BlockPos(5,2,5)),
+                depot=h.absolutePos(new BlockPos(6,2,5)),
+                target=h.absolutePos(new BlockPos(10,2,5));
+        level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(depot.getX()>>4,depot.getZ()>>4),3);
+        if(!(level.getBlockEntity(station) instanceof WorkerStationBlockEntity table)
+                ||!(level.getBlockEntity(depot) instanceof Container chest)){
+            h.fail("Missing pickup fixture");return;
+        }
+        var owner=h.makeMockServerPlayerInLevel();var id=owner.getUUID();
+        try{
+            var cells=List.of(new LitematicFileReader.Block(target.getX(),target.getY(),target.getZ(),"minecraft:polished_diorite"));
+            var snapshot=BuilderPlacementSnapshot.encode("Final material pickup",cells,List.of());
+            var plan=BuilderConstructionPlan.create(BuilderPlacementSnapshot.decode(snapshot),BuilderPlacementSnapshot.worldSpaceSite());
+            var folder=net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("golems_plus").resolve("schematics");
+            java.nio.file.Files.createDirectories(folder);
+            String file="placed-crew-final-pickup.gpb";java.nio.file.Files.write(folder.resolve(file),snapshot);
+            if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,1)
+                    ||!table.setPlacedBuilderPlan(id,file,"Final material pickup",station,0,0,plan.steps().size(),plan.unsupported().size())
+                    ||!table.setBuilderMaterialStorage(id,depot)){h.fail("Pickup plan refused");return;}
+            var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+            BlockPos from=depot.south();
+            worker.setPos(from.getX()+.5,from.getY(),from.getZ()+.5);level.addFreshEntity(worker);
+            if(!table.registerBuilderWorker(worker.getUUID())||!table.startPlacedBuilder(id)){
+                h.fail("Pickup crew refused");return;
+            }
+            h.runAtTickTime(5,()->{
+                worker.setOnGround(true);
+                chest.setItem(0,new ItemStack(Items.POLISHED_DIORITE,1));
+                chest.setItem(1,new ItemStack(WorksiteContent.GRAPPLE_HOOK,1));
+                chest.setItem(2,new ItemStack(Items.BUCKET,1));
+                if(BuilderGolem.temporaryScaffoldingEnabled())
+                    chest.setItem(3,new ItemStack(Items.SCAFFOLDING,64));
+                if(table.claimPreferredBuilderZoneStep(worker.getUUID(),List.of(0),plan.steps(),0)!=0){
+                    h.fail("No initial claim");return;
+                }
+                BuilderMaterialNetwork.shortage(level,table,plan.steps());
+                if(BuilderMaterialNetwork.recalling(table,worker.getUUID())
+                        ||table.claimedStep(worker.getUUID())!=0
+                        ||!table.builderWorkOrder(worker.getUUID()).equals(List.of(0))){
+                    h.fail("Available material incorrectly caused recall/claim loss");return;
+                }
+                var prep=BuilderSupplyInventory.prepareWorkOrder(level,worker,table,plan.steps(),List.of(0));
+                if(prep!=BuilderSupplyInventory.LoadStatus.READY
+                        ||worker.carriedCount(Items.POLISHED_DIORITE)!=1
+                        ||!chest.getItem(0).isEmpty()
+                        ||table.claimedStep(worker.getUUID())!=0
+                        ||!level.getBlockState(target).isAir()
+                        ||table.builderStepCompletedForMaterials(0)){
+                    h.fail("Physical pickup failed: "+prep+" claim="+table.claimedStep(worker.getUUID()));return;
+                }
+                // A truly empty source must still trigger the old recall.
+                // The fixture removes its sample item solely for this check.
+                for(int i=0;i<worker.getContainerSize();i++)
+                    if(worker.getItem(i).is(Items.POLISHED_DIORITE))worker.removeItemNoUpdate(i);
+                BuilderMaterialNetwork.resetForCrew(table);
+                BuilderMaterialNetwork.shortage(level,table,plan.steps());
+                if(!BuilderMaterialNetwork.recalling(table,worker.getUUID())
+                        ||table.claimedStep(worker.getUUID())>=0){
+                    h.fail("Real material shortage no longer recalls");return;
+                }
+                System.out.println("[CREW FINAL PICKUP PASS] real stock paid, claim preserved, genuine shortage recalls");
+                h.succeed();
+            });
+        }catch(Exception e){h.fail("Pickup fixture setup: "+e);}
+    }
+
     @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=800,skyAccess=true)
     public void isolatedStockedWorkerResumesWithoutDepot(GameTestHelper h){
         var level=h.getLevel();
