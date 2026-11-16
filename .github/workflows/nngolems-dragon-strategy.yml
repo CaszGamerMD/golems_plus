@@ -1,0 +1,64 @@
+name: NNGolems Dragon strategy benchmark
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-dragon-strategy.yml'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNStripOrder.java'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dragon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        axis: [Y, X, Z]
+        trial: [1, 2, 3]
+    env:
+      MATRIX_TEST_MODE: controlled
+      NN_COURSE: dragon
+      NN_DRAGON_STRATEGY: 'true'
+      GOLEMS_NN_STRIP_PILOT: 'true'
+      NN_STRIP_AXIS: ${{ matrix.axis }}
+      NN_SPEED_TEST: 'true'
+      NN_SPEED_TICK_LIMIT: '72000'
+      NN_COURSE_SECONDS: '600'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Verify source and isolate Dragon assessment
+        run: |
+          python3 scripts/nngolems/prepare_curriculum.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderNNCurriculumGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Run physical benchmark
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/nn-dragon
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-dragon/server.log
+          grep -F "[NN DRAGON RESULT] axis=$NN_STRIP_AXIS " build/nn-dragon/server.log
+          if [ "$NN_STRIP_AXIS" != Y ]; then
+            grep -F "[NN STRIP POLICY] axis=$NN_STRIP_AXIS " build/nn-dragon/server.log
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nn-dragon-${{ matrix.axis }}-${{ matrix.trial }}
+          path: build/nn-dragon/

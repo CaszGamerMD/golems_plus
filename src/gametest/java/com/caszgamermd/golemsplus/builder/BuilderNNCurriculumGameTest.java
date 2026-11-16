@@ -32,6 +32,12 @@ public final class BuilderNNCurriculumGameTest {
         var course=BuilderNNCurriculumFixture.selected();
         var schematic=BuilderNNCurriculumFixture.read(course);
         boolean speed="true".equals(System.getenv("NN_SPEED_TEST"));
+        boolean strip="true".equals(System.getenv("NN_DRAGON_STRATEGY"));
+        String axis=System.getenv().getOrDefault("NN_STRIP_AXIS","Y");
+        if(strip&&(!course.id().equals("dragon")||!List.of("Y","X","Z").contains(axis))){
+            h.fail("Dragon strategy fixture/axis mismatch");return;
+        }
+        int workers=strip?1:4;
         if(speed&&course.blocks()>2000){h.fail("Speed course exceeds 2000 source blocks");return;}
         var all=new ArrayList<>(schematic.blocks());
         all.addAll(schematic.airBlocks());
@@ -128,7 +134,7 @@ public final class BuilderNNCurriculumGameTest {
         }
         int unsupported=course.blocks()-expected.size();
         var steps=plan.steps();
-        if(!table.claimIfUnowned(ownerId)||!table.setCrewTarget(ownerId,4)){
+        if(!table.claimIfUnowned(ownerId)||!table.setCrewTarget(ownerId,workers)){
             h.fail("Cannot configure curriculum crew");return;
         }
         Path folder=FabricLoader.getInstance().getConfigDir().resolve("golems_plus").resolve("schematics");
@@ -146,7 +152,7 @@ public final class BuilderNNCurriculumGameTest {
             h.fail("Missing real Creative Crate");return;
         }
         var crew=new ArrayList<BuilderGolem>();
-        for(int i=0;i<4;i++){
+        for(int i=0;i<workers;i++){
             var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
             int dx=planner.getX()-supply.getX(),dz=planner.getZ()-supply.getZ();
             BlockPos from=planner.offset(dx*(2+i%2)-dz*(1+i/2),0,
@@ -162,22 +168,40 @@ public final class BuilderNNCurriculumGameTest {
         }
         level.getRandom().setSeed(260215376L);
         System.out.println("[NN_CURRICULUM_ENV] course="+course.id()+" seed="+level.getSeed()
-                +" origin="+origin.toShortString().replace(" ","")+" arena="+arenaWidth+"x"+clearHeight+"x"+arenaDepth+" workers=4 supply=creative_crate"
+                +" origin="+origin.toShortString().replace(" ","")+" arena="+arenaWidth+"x"+clearHeight+"x"+arenaDepth+" workers="+workers+" supply=creative_crate"
                 +" scaffolding="+BuilderGolem.temporaryScaffoldingEnabled()
                 +" unsupportedStates="+plan.unsupported());
         if(!table.startPlacedBuilder(ownerId)){h.fail("Cannot start curriculum job");return;}
+        if(strip){
+            if(!axis.equals("Y")){
+                var order=BuilderNNStripOrder.compile(steps,axis,true);
+                if(!table.enableNNStripPilot(axis)
+                        ||table.builderActiveStepIndex(steps)!=order.getFirst()){
+                    h.fail("Dragon strip policy refused");return;
+                }
+            }
+            System.out.println("[NN DRAGON START] axis="+axis+" source="+course.blocks()
+                    +" steps="+steps.size()+" workers="+workers);
+        }
         final long start=System.nanoTime();
         final long startTick=h.getTick();
         final long tickLimit=Long.parseLong(System.getenv().getOrDefault("NN_SPEED_TICK_LIMIT","72000"));
         if(speed&&tickLimit<1){h.fail("Invalid speed tick limit");return;}
         if(speed)System.out.println("[NN_SPEED_START] course="+course.id()+" source="+course.blocks()
-                +" startTick="+startTick+" tickLimit="+tickLimit+" crew=4");
+                +" startTick="+startTick+" tickLimit="+tickLimit+" crew="+workers);
         final long limit=Long.parseLong(System.getenv().getOrDefault("NN_COURSE_SECONDS","300"));
         if(limit<1||limit>1800){h.fail("Invalid course seconds");return;}
         var watchdog=new MatrixWorkWatchdog(h.getTick(),table.builderWorkDone(),table.builderClearCursor());
         final int[] best={0};
+        final double[] distance={0};
+        var previous=crew.getFirst().position();
+        final net.minecraft.world.phys.Vec3[] lastPosition={previous};
         h.startSequence().thenExecuteFor(1_000_000_000,()->{
             long tick=h.getTick();
+            if(strip){
+                var pos=crew.getFirst().position();
+                distance[0]+=pos.distanceTo(lastPosition[0]);lastPosition[0]=pos;
+            }
             long elapsed=(System.nanoTime()-start)/1_000_000L;
             long noWork=watchdog.sample(tick,table.builderWorkDone(),table.builderClearCursor());
             boolean complete=table.phase()==WorkerPhase.COMPLETE;
@@ -215,6 +239,11 @@ public final class BuilderNNCurriculumGameTest {
                     +" elapsedMs="+elapsed+" unsupported="+unsupported
                     +" crewAlive="+crew.stream().filter(BuilderGolem::isAlive).count()
                     +" crewUnclaimed="+crew.stream().filter(w->table.claimedStep(w.getUUID())<0).count());
+            if(strip)System.out.println("[NN DRAGON RESULT] axis="+axis+" outcome="+outcome
+                    +" correct="+correct+" best="+best[0]+" total="+course.blocks()
+                    +" elapsedTicks="+elapsedTicks+" elapsedMs="+elapsed+" distance="+distance[0]
+                    +" alive="+crew.getFirst().isAlive()+" unsupported="+unsupported
+                    +" problem="+table.problem());
             h.succeed(); // Assessment completed, not necessarily the build.
         });
     }

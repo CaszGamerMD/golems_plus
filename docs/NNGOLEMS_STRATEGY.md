@@ -48,3 +48,16 @@ seed, crate and worker. The test checks actual world order and reports
 completion, elapsed game ticks and sampled physical movement distance.
 This is not yet a Chibi or mixed-zone result; stone columns do not cover
 attachment, fluid, gravity, multiblock, or cross-zone dependencies.
+
+## Dragon benchmark
+Nine fresh physical runs use the original hash-verified 1,032-block Dragon
+fixture, one worker, same seed, same Creative Crate, 72,000 game-tick and
+600-second wall limits, and the existing 1,200-tick no-work watchdog.
+Y is unmodified; X/Z use dry strips then global bottom-up water, then
+derived-flow verification. The additional fluid policy is a deliberate
+safety difference, so results compare complete policies, not axis alone.
+Only Dragon's allowlisted palette is enabled; unknown states fail closed.
+Original indices and real placement accounting are preserved. Run success
+means a terminal assessment was captured; it is not necessarily a complete
+build. Compare correct/total, outcome, ticks, distance and terminal worker
+diagnostics. No mixed zones, drone logistics or neural strategy training.

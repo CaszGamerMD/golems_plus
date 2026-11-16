@@ -1093,43 +1093,45 @@ public final class WorkerStationBlockEntity extends BlockEntity
     // player job opts into this policy; original indices remain unchanged.
     private UUID nnPilotJob;
     private String nnPilotAxis;
+    private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> nnPilotPlan;
+    private java.util.List<Integer> nnPilotOrder=java.util.List.of();
+    private int nnPilotOffset,nnPilotLastCursor=-1;
     public boolean enableNNStripPilot(String axis){
         if(!"true".equals(System.getenv("GOLEMS_NN_STRIP_PILOT"))
                 ||activeOrder==null||crewTarget!=1
-                ||!builderFile.startsWith("placed-nn-strip-pilot-")
+                ||(!builderFile.startsWith("placed-nn-strip-pilot-")
+                    &&!builderFile.equals("placed-nn-dragon.gpb"))
                 ||(!"X".equals(axis)&&!"Z".equals(axis)))return false;
         nnPilotJob=activeOrder;nnPilotAxis=axis;
+        nnPilotPlan=null;nnPilotOffset=0;nnPilotLastCursor=-1;
         return true;
     }
     private boolean nnStripPilot(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
-        if(nnPilotJob==null||!nnPilotJob.equals(activeOrder)||crewTarget!=1
-                ||steps.size()>128||steps.isEmpty())return false;
-        // Deliberately exclude attachments, gravity blocks, fluids, ignored
-        // cells and multiblocks until their cross-strip dependencies exist.
-        for(var step:steps)
-            if(step.ignorePlant()||step.companion()!=null
-                    ||!"minecraft:stone".equals(step.encodedState())
-                    ||!"minecraft:stone".equals(step.requiredItem()))return false;
+        if(nnPilotJob==null||!nnPilotJob.equals(activeOrder)||crewTarget!=1)return false;
+        if(nnPilotPlan!=steps){
+            nnPilotOrder=com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.compile(
+                    steps,nnPilotAxis,builderFile.equals("placed-nn-dragon.gpb"));
+            nnPilotPlan=steps;nnPilotOffset=0;nnPilotLastCursor=-1;
+            System.out.println("[NN STRIP POLICY] axis="+nnPilotAxis+" steps="+steps.size());
+        }
         return true;
     }
-    private int nnStripCoordinate(
-            com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step step){
-        return "X".equals(nnPilotAxis)?step.x():step.z();
+    private int nnStripActive(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(builderCursor<nnPilotLastCursor)nnPilotOffset=0;
+        nnPilotLastCursor=builderCursor;
+        while(nnPilotOffset<nnPilotOrder.size()){
+            int index=nnPilotOrder.get(nnPilotOffset);
+            if(index>=builderCursor&&!builderFinishedSteps.contains(index))return index;
+            nnPilotOffset++;
+        }
+        return -1;
     }
     public int builderActiveStepIndex(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(steps==null||builderCursor<0||builderCursor>=steps.size())return -1;
-        if(nnStripPilot(steps)){
-            int best=-1;
-            for(int i=builderCursor;i<steps.size();i++){
-                if(builderFinishedSteps.contains(i))continue;
-                if(best<0||nnStripCoordinate(steps.get(i))<nnStripCoordinate(steps.get(best))
-                        ||(nnStripCoordinate(steps.get(i))==nnStripCoordinate(steps.get(best))
-                            &&steps.get(i).y()<steps.get(best).y()))best=i;
-            }
-            return best;
-        }
+        if(nnStripPilot(steps))return nnStripActive(steps);
         if(!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(
                 steps.get(builderCursor).encodedState()))return builderCursor;
         boolean same=activeScanPlan==steps&&java.util.Objects.equals(activeScanJob,activeOrder)
@@ -1174,8 +1176,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(active<0||index<builderCursor||index>=steps.size())return false;
         var step=steps.get(index);
         var current=steps.get(active);
-        if(nnStripPilot(steps))return nnStripCoordinate(step)==nnStripCoordinate(current)
-                &&step.y()==current.y();
+        if(nnStripPilot(steps))return com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.sameGroup(step,current,nnPilotAxis);
         if(step.y()==current.y())
             return com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
                     step.encodedState(),current.encodedState());
