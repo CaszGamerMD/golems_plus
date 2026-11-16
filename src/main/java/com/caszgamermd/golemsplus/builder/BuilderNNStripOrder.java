@@ -40,6 +40,25 @@ public final class BuilderNNStripOrder {
                 .thenComparingInt(i->steps.get(i).y()).thenComparingInt(Integer::intValue));
         return List.copyOf(order);
     }
+    // Build six complete horizontal layers before opening three-layer
+    // vertical bands. No strip can rise an entire dragon above its neighbors.
+    public static final int FOUNDATION_LAYERS=6,BAND_HEIGHT=3;
+    private static int band(BuilderConstructionPlan.Step s,int baseY){
+        return s.y()<baseY+FOUNDATION_LAYERS?-1:
+                Math.floorDiv(s.y()-baseY-FOUNDATION_LAYERS,BAND_HEIGHT);
+    }
+    public static List<Integer> compileBanded(List<BuilderConstructionPlan.Step> steps,String axis,int baseY){
+        var order=new ArrayList<>(compile(steps,axis,true));
+        order.sort(Comparator.comparingInt((Integer i)->phase(steps.get(i)))
+                .thenComparingInt(i->phase(steps.get(i))==0?band(steps.get(i),baseY):0)
+                .thenComparingInt(i->phase(steps.get(i))==0&&band(steps.get(i),baseY)>=0
+                        ?strip(steps.get(i),axis):0)
+                .thenComparingInt(i->steps.get(i).y()).thenComparingInt(Integer::intValue));
+        return List.copyOf(order);
+    }
+    public static boolean sameBandedGroup(BuilderConstructionPlan.Step a,BuilderConstructionPlan.Step b,String axis,int baseY){
+        return sameGroup(a,b,band(a,baseY)<0?"Y":axis);
+    }
     /** Bounded adjacent dry work is an access hypothesis, not a route proof. */
     public static List<Integer> adjacentRescue(List<BuilderConstructionPlan.Step> steps,
             int blocked,String axis,java.util.function.IntPredicate unfinished,int limit){

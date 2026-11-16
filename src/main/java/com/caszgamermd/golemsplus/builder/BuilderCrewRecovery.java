@@ -97,7 +97,7 @@ final class BuilderCrewRecovery {
                 &&!BuilderScaffolding.isControllingMovement(worker)
                 &&!worker.hasSupplyBox()
                 &&(worker.onGround()||BuilderFlight.active(worker))
-                &&table.advanceNNStripRecovery(steps,now)){
+                &&table.advanceNNStripRecovery(steps,now,i->accessible(level,worker,table,steps.get(i)))){
             table.beginBuilderZonePlan();
             BuilderMaterialNetwork.resetForCrew(table);
             BuilderBuildService.resetCrewActions(level,table);
@@ -172,6 +172,21 @@ final class BuilderCrewRecovery {
             parkAway(level,worker,table,s);return true;
         }
         return false;
+    }
+    /** Real current-world approach and post-placement exit check.
+     * Never writes a block or starts movement while probing. */
+    private static boolean accessible(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,BuilderConstructionPlan.Step step){
+        BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+        if(!level.hasChunkAt(target))return false;
+        var resolved=BuilderBlockResolver.resolve(step.encodedState(),
+                BuildSite.Rotation.values()[table.builderRotation()/90],
+                BuildSite.Mirror.values()[table.builderMirror()]);
+        if(resolved==null||!resolved.state().canSurvive(level,target))return false;
+        boolean blocking=BuilderPlacementSpace.stepNeedsVacating(level,target,resolved.state(),false);
+        return BuilderPlacementSpace.approachForStep(level,worker,target,blocking,true,
+                at->BuilderConstructionPlanner.safeStandForStep(level,worker,target,at,step.encodedState()))!=null
+                ||BuilderFlight.canAccessWork(level,worker,target,blocking);
     }
     private static boolean tryUnload(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,State s){
         if(BuilderFlight.moving(worker)||BuilderGrappleAccess.active(worker)

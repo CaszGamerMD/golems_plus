@@ -174,7 +174,10 @@ public final class BuilderNNCurriculumGameTest {
         if(!table.startPlacedBuilder(ownerId)){h.fail("Cannot start curriculum job");return;}
         if(strip){
             if(!axis.equals("Y")){
-                var order=BuilderNNStripOrder.compile(steps,axis,true);
+                boolean banded="true".equals(System.getenv("GOLEMS_NN_BANDED"));
+                int baseY=steps.stream().mapToInt(BuilderConstructionPlan.Step::y).min().orElseThrow();
+                var order=banded?BuilderNNStripOrder.compileBanded(steps,axis,baseY)
+                        :BuilderNNStripOrder.compile(steps,axis,true);
                 if(!table.enableNNStripPilot(axis)
                         ||table.builderActiveStepIndex(steps)!=order.getFirst()){
                     h.fail("Dragon strip policy refused");return;

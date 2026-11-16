@@ -33,6 +33,18 @@ class BuilderNNStripOrderTest {
         assertFalse(BuilderNNStripOrder.sameGroup(steps.get(0),steps.get(6),"Y"));
         assertEquals(List.of(),BuilderNNStripOrder.adjacentRescue(steps,6,"X",i->true,24));
     }
+    @Test void foundationAndBandsPreventTallIsolatedStrips(){
+        var steps=List.of(s(0,0,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(0,5,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(0,9,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(1,0,1,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(1,6,1,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(0,8,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(0,0,0,"minecraft:water[level=0]",BuilderWaterPass.WATER_BUCKET));
+        assertEquals(List.of(0,3,1,5,4,2,6),BuilderNNStripOrder.compileBanded(steps,"X",0));
+        assertTrue(BuilderNNStripOrder.sameBandedGroup(steps.get(0),steps.get(3),"X",0));
+        assertFalse(BuilderNNStripOrder.sameBandedGroup(steps.get(5),steps.get(4),"X",0));
+    }
     @Test void axesDifferAndUnsupportedBlocksFailClosed(){
         var steps=List.of(s(0,0,2,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
                 s(2,0,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"));

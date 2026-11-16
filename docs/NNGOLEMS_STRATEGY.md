@@ -78,3 +78,17 @@ limit. Log NN STRATEGY SWITCH with the mode and progress. The adaptive
 workflow repeats all nine Dragon trials against the ordinary Y baseline.
 This is a deterministic recovery policy for generating learning labels,
 not a trained neural policy or a general multi-worker mixed-zone planner.
+
+## Foundation/access experiment
+Opt-in GOLEMS_NN_BANDED on the Dragon uses six global dry foundation
+layers and three-layer X/Z bands thereafter (Y baseline unchanged).
+The fixed heights are experimental; they bound height separation but
+do not establish a general corridor guarantee. Neighbor rescue now
+probes up to eight candidate cells using live safe work stance/exit
+or flight access, admits one, and rechecks the original blocked task
+after progress. If none passes, switch to the existing dry-first Y
+fallback. This does not simulate hypothetical world edits.
+The final-single-cell planner may also admit a verified complete
+multi-leg flight chain to a work pose, using existing collision-safe
+physical execution. Partial chains are not admission evidence.
+All nine trials repeat with the original fixture and limits.

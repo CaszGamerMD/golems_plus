@@ -31,6 +31,24 @@ final class BuilderMultiLegTravel {
     static boolean working(BuilderGolem worker,BlockPos target){
         Trip t=trips.get(worker);return t!=null&&t.goal.kind()==Kind.WORK&&t.goal.target().equals(target);
     }
+    private record WorkProbe(Goal goal,BlockPos start,long expires,boolean feasible){}
+    private static final Map<BuilderGolem,WorkProbe> workProbes=new WeakHashMap<>();
+    /** Rare finishing-cell admission: a complete grounded flight chain,
+     * not merely a partial improvement, must reach a safe work pose. */
+    static boolean canAccessWork(ServerLevel level,BuilderGolem worker,BlockPos target,boolean blocking){
+        if(!BuilderFlight.enabled(worker)||BuilderFlight.active(worker)||!worker.onGround()
+                ||BuilderGrappleAccess.active(worker)||BuilderScaffolding.isControllingMovement(worker))return false;
+        var goal=new Goal(Kind.WORK,target.immutable(),blocking,null);
+        long now=level.getGameTime();
+        var old=workProbes.get(worker);
+        if(old!=null&&old.goal().equals(goal)&&old.start().equals(worker.blockPosition())&&now<old.expires())
+            return old.feasible();
+        var legs=plan(level,worker,goal);
+        boolean feasible=!legs.isEmpty()&&good(level,worker,goal,legs.getLast().landing());
+        workProbes.put(worker,new WorkProbe(goal,worker.blockPosition(),now+60,feasible));
+        if(feasible)System.out.println("[NN MULTILEG ACCESS] target="+target+" legs="+legs);
+        return feasible;
+    }
     static boolean work(ServerLevel level,BuilderGolem worker,BlockPos target,boolean blocking){
         return tick(level,worker,new Goal(Kind.WORK,target.immutable(),blocking,null));
     }
