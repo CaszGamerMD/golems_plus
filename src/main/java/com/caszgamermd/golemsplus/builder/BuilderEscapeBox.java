@@ -6,8 +6,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 import java.util.*;
 
-/** A return is two separate trips: escape the placed build, then seek the depot.
- * A selected physical exit owns the route until reached or demonstrably blocked. */
+/** Three stages: leave the placed build, reach depot elevation on real ground,
+ * then allow the separate depot approach. Keep each physical route committed. */
 final class BuilderEscapeBox {
     private BuilderEscapeBox(){}
     record Bounds(int minX,int minY,int minZ,int maxX,int maxY,int maxZ){
@@ -87,7 +87,10 @@ final class BuilderEscapeBox {
         Vec3 lastPosition;
         double best=Double.POSITIVE_INFINITY;
         long lastMove,lastProgress,nextSearch;
-        boolean escaped;
+        boolean clearOfBuild,escaped;
+        BlockPos levelWaypoint;
+        long levelSearch,levelProgress;
+        double levelBest=Double.POSITIVE_INFINITY;
         int batch;
         final Set<BlockPos> rejected=new HashSet<>();
         Trip(Bounds box,BlockPos depot){this.box=box;this.depot=depot.immutable();}
@@ -111,6 +114,91 @@ final class BuilderEscapeBox {
         t.waypoint=null;t.batch=0;t.nextSearch=level.getGameTime()+10;
         WorkerNavigation.stop(worker);
     }
+    private static boolean depotLevel(BuilderGolem worker,BlockPos depot){
+        // A storage block occupies the same Y as the adjacent feet tile.
+        // Fractional slab/stair support is acceptable at that block level.
+        return worker.onGround()&&!BuilderFlight.active(worker)
+                &&!worker.isNoGravity()&&Math.abs(worker.getY()-depot.getY())<=.6;
+    }
+    private static void clearOfBuild(ServerLevel level,BuilderGolem worker,Trip t,BlockPos at){
+        t.clearOfBuild=true;t.levelSearch=0;t.levelProgress=level.getGameTime();
+        BuilderTrace.decision(level,worker,"ESCAPE_BOX_CLEAR",at,"outside structure; match OnSite elevation before routing home");
+        if(!BuilderFlight.active(worker)&&!BuilderGrappleAccess.active(worker)
+                &&!BuilderScaffolding.isControllingMovement(worker))WorkerNavigation.stop(worker);
+    }
+    private static boolean finishElevation(ServerLevel level,BuilderGolem worker,Trip t,
+            com.caszgamermd.golemsplus.world.WorkerStationBlockEntity table){
+        if(BuilderFlight.moving(worker)||BuilderGrappleAccess.active(worker)
+                ||BuilderScaffolding.isControllingMovement(worker))return true;
+        if(depotLevel(worker,t.depot)){
+            t.escaped=true;t.levelWaypoint=null;
+            BuilderTrace.decision(level,worker,"ESCAPE_LEVEL_REACHED",worker.blockPosition(),"grounded at OnSite height; release depot navigation");
+            BuilderTrace.decision(level,worker,"ESCAPE_BOX_REACHED",worker.blockPosition(),"outside build and at OnSite elevation");
+            BuilderReturnService.resetApproach(worker);WorkerNavigation.stop(worker);return false;
+        }
+        long now=level.getGameTime();
+        // Air is a waypoint, not a landing. Descend outside the build in
+        // the same collision-checked column, including an intermediate floor.
+        if(BuilderFlight.active(worker)){
+            BlockPos ground=BuilderFlight.escapeColumnGround(level,worker,worker.blockPosition());
+            if(ground!=null&&BuilderFlight.requestSupportedLanding(level,worker,ground))return true;
+            BuilderFlight.land(level,worker,true,t.rejected);return true;
+        }
+        if(t.levelWaypoint!=null){
+            BlockPos at=t.levelWaypoint;
+            double d=distance(worker,at);
+            if(d<t.levelBest-.04){t.levelBest=d;t.levelProgress=now;}
+            if(!WorkerNavigation.canStandOn(level,worker,at)||now-t.levelProgress>=400){
+                t.rejected.add(at);t.levelWaypoint=null;WorkerNavigation.stop(worker);
+            }else{
+                WorkerNavigation.routeToExact(level,worker,at,1.0);return true;
+            }
+        }
+        // An edge walk is a committed approach too, even if it initially
+        // moves sideways rather than nearer the storage block.
+        if(t.mobilityTarget!=null){
+            if(BuilderFlight.hasDescentLaunch(level,worker,t.mobilityTarget)
+                    &&BuilderFlight.approachDescentLaunch(level,worker,t.mobilityTarget,t.rejected))return true;
+            t.mobilityTarget=null;
+        }
+        if(now<t.levelSearch)return true;
+        t.levelSearch=now+30;
+        BlockPos here=worker.blockPosition();
+        var candidates=new ArrayList<BlockPos>();
+        // Find actual ground at the required elevation, outside the footprint
+        // or underneath the lowest build layer. Never route to the chest yet.
+        for(int dx=-16;dx<=16;dx++)for(int dz=-16;dz<=16;dz++){
+            BlockPos at=new BlockPos(here.getX()+dx,t.depot.getY(),here.getZ()+dz);
+            if(!t.box.outside(at)||t.rejected.contains(at)||!level.hasChunkAt(at)
+                    ||!WorkerNavigation.canStandOn(level,worker,at))continue;
+            candidates.add(at);
+        }
+        candidates.sort(Comparator.comparingDouble(p->distance(worker,p)));
+        BlockPos stand=WorkerNavigation.selectExecutableStand(level,worker,candidates.subList(0,Math.min(64,candidates.size())));
+        if(stand!=null){
+            t.levelWaypoint=stand;t.levelBest=distance(worker,stand);t.levelProgress=now;
+            BuilderTrace.decision(level,worker,"ESCAPE_LEVEL_COMMIT",stand,"walk to actual support at OnSite elevation");
+            WorkerNavigation.routeToExact(level,worker,stand,1.0);return true;
+        }
+        BlockPos vertical=here.atY(t.depot.getY());
+        if(BuilderFlight.enabled(worker)){
+            for(BlockPos at:candidates.subList(0,Math.min(16,candidates.size())))
+                if(BuilderFlight.requestSupportedLanding(level,worker,at)){
+                    BuilderTrace.decision(level,worker,"ESCAPE_LEVEL_COMMIT",at,"powered landing at OnSite elevation");return true;
+                }
+            if(worker.getY()>t.depot.getY()+.6){
+                if(BuilderFlight.approachDescentLaunch(level,worker,vertical,t.rejected)){
+                    t.mobilityTarget=vertical;return true;
+                }
+                if(BuilderFlight.land(level,worker,true,t.rejected))return true;
+            }else if(BuilderFlight.escapePocket(level,worker,vertical,t.rejected))return true;
+        }else if(table!=null){
+            if(BuilderScaffolding.descendForTravel(level,worker,table)
+                    ||BuilderGrappleAccess.rappelToward(level,worker,table,vertical))return true;
+        }
+        BuilderTrace.decision(level,worker,"ESCAPE_LEVEL_WAIT",vertical,"no safe route to OnSite elevation yet");
+        return true;
+    }
     private static Column selectColumn(ServerLevel level,BuilderGolem worker,Trip t){
         var air=t.box.sideAir(worker.blockPosition());
         air.sort(Comparator.comparingDouble(p->distance(worker,p)));
@@ -120,7 +208,8 @@ final class BuilderEscapeBox {
         for(BlockPos p:air){
             if(t.rejected.contains(p))continue;
             BlockPos ground=BuilderFlight.escapeColumnGround(level,worker,p);
-            if(ground==null||!t.box.sideOutside(ground))continue;
+            if(ground==null||!t.box.sideOutside(ground)
+                    ||Math.abs(WorkerNavigation.surveyFloorHeight(level,ground)-t.depot.getY())>.6)continue;
             for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
                 if(dx*dx+dz*dz>4)continue;
                 BlockPos launch=p.offset(dx,0,dz);
@@ -157,6 +246,7 @@ final class BuilderEscapeBox {
             return true;
         }
         if(t.columnStage==1&&BuilderFlight.atEscapeAir(worker,c.air())){
+            if(!t.clearOfBuild)clearOfBuild(level,worker,t,c.air());
             // Preserve the takeoff envelope and descend in this very same
             // column, not onto the roof from which we just escaped.
             if(BuilderFlight.requestSupportedLanding(level,worker,c.ground())){
@@ -167,9 +257,9 @@ final class BuilderEscapeBox {
                 &&worker.blockPosition().getX()==c.ground().getX()
                 &&worker.blockPosition().getZ()==c.ground().getZ()
                 &&Math.abs(worker.getY()-WorkerNavigation.surveyFloorHeight(level,c.ground()))<.2){
-            t.column=null;t.escaped=true;
-            BuilderTrace.decision(level,worker,"ESCAPE_BOX_REACHED",c.ground(),"outside side column; real ground reached");
-            BuilderReturnService.resetApproach(worker);return false;
+            t.column=null;
+            if(!t.clearOfBuild)clearOfBuild(level,worker,t,c.ground());
+            return finishElevation(level,worker,t,null);
         }
         if(now>=t.columnRetry){
             // A failed powered leg may still be hovering. Keep the hat on
@@ -191,16 +281,13 @@ final class BuilderEscapeBox {
         }
         if(t.escaped)return false;
         if(t.column!=null)return followColumn(level,worker,t);
+        if(t.clearOfBuild)return finishElevation(level,worker,t,table);
         // At negative world heights an exact powered endpoint can floor
         // one cell short. Use the physical pose, not a rounded block Y.
         if(box.outside(worker.blockPosition())||(t.waypoint!=null
                 &&box.outside(t.waypoint)&&BuilderFlight.atEscapeAir(worker,t.waypoint))){
-            t.escaped=true;
-            BuilderTrace.decision(level,worker,"ESCAPE_BOX_REACHED",worker.blockPosition(),"physical exit; now route to OnSite");
-            BuilderReturnService.resetApproach(worker);
-            if(!BuilderFlight.active(worker)&&!BuilderGrappleAccess.active(worker)
-                    &&!BuilderScaffolding.isControllingMovement(worker))WorkerNavigation.stop(worker);
-            return false;
+            clearOfBuild(level,worker,t,worker.blockPosition());
+            return finishElevation(level,worker,t,table);
         }
         if(BuilderFlight.moving(worker)||BuilderGrappleAccess.active(worker)
                 ||BuilderScaffolding.isControllingMovement(worker))return true;
