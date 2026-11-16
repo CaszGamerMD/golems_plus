@@ -696,9 +696,13 @@ public final class BuilderBuildService {
      * @return true only after the worker physically reaches OnSite.
      */
     static void resetCrewActions(ServerLevel level,WorkerStationBlockEntity table){
+        resetCrewActions(level,table,java.util.Set.of());
+    }
+    static void resetCrewActions(ServerLevel level,WorkerStationBlockEntity table,java.util.Set<UUID> preserveReturn){
         handoffBoard.remove(table);
         roofProgress.remove(table);
         for(UUID id:table.builderWorkerIds()){
+            if(preserveReturn.contains(id))continue;
             if(!(level.getEntity(id) instanceof BuilderGolem worker))continue;
             workerActions.remove(worker);
             BuilderPlacementSpace.cancelYield(worker);

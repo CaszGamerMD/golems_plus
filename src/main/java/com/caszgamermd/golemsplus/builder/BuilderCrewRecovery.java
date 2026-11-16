@@ -16,6 +16,7 @@ final class BuilderCrewRecovery {
         boolean recalling;
         List<UUID> reduced=List.of();
         final Set<UUID> unloaded=new HashSet<>();
+        final Set<UUID> recovering=new HashSet<>();
         final Map<UUID,Long> retry=new HashMap<>(), lastReturnProgress=new HashMap<>();
         final Map<UUID,Double> bestReturnDistance=new HashMap<>();
         final Map<UUID,BlockPos> parking=new HashMap<>();
@@ -34,7 +35,8 @@ final class BuilderCrewRecovery {
         return "recall="+s.recalling+" attempt="+s.attempts+" layer="+s.layer
                 +" unloaded="+s.unloaded.contains(worker.getUUID())
                 +" barrier="+s.unloaded.size()+"/"+table.builderWorkerIds().size()
-                +" reduced="+s.reduced.contains(worker.getUUID());
+                +" reduced="+s.reduced.contains(worker.getUUID())
+                +" independentRecovery="+s.recovering.contains(worker.getUUID());
     }
     static void clear(WorkerStationBlockEntity table){states.remove(table);}
     static boolean recalling(WorkerStationBlockEntity table){return state(table).recalling;}
@@ -44,11 +46,14 @@ final class BuilderCrewRecovery {
     }
     static List<UUID> staff(WorkerStationBlockEntity table,int layer,List<UUID> normal){
         State s=state(table);
-        return s.layer==layer&&!s.reduced.isEmpty()?s.reduced:normal;
+        List<UUID> eligible=s.layer==layer&&!s.reduced.isEmpty()?s.reduced:normal;
+        if(s.recovering.isEmpty())return eligible;
+        return eligible.stream().filter(id->!s.recovering.contains(id)).toList();
     }
     static boolean sidelined(WorkerStationBlockEntity table,UUID worker){
         State s=state(table);
-        return !s.recalling&&!s.reduced.isEmpty()&&!s.reduced.contains(worker);
+        return !s.recalling&&(s.recovering.contains(worker)
+                ||!s.reduced.isEmpty()&&!s.reduced.contains(worker));
     }
     static int remaining(WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,int layer){
         int count=0;
@@ -79,6 +84,18 @@ final class BuilderCrewRecovery {
             List<BuilderConstructionPlan.Step> steps){
         State s=state(table);long now=level.getGameTime();
         int layer=table.builderActiveLayer(steps),work=table.builderWorkDone();
+        if(!s.recalling&&s.recovering.contains(worker.getUUID())){
+            // This worker remains registered, retains its inventory and
+            // completes its physical return while the safe crew works.
+            if(tryUnload(level,worker,table,s)){
+                s.recovering.remove(worker.getUUID());
+                s.unloaded.add(worker.getUUID());
+                BuilderTrace.decision(level,worker,"CREW_INDEPENDENT_RETURN",table.builderUnloadingStorage(),
+                        "returned and unloaded; eligible next layer");
+                parkAway(level,worker,table,s);
+            }
+            return true;
+        }
         if(!s.recalling){
             if(layer!=s.layer){
                 s.layer=layer;s.attempts=0;s.reduced=List.of();
@@ -93,72 +110,76 @@ final class BuilderCrewRecovery {
         }
         if(s.recalling){
             s.unloaded.retainAll(table.builderWorkerIds());
-            if(!s.unloaded.contains(worker.getUUID())){
-                if(BuilderFlight.moving(worker)||BuilderGrappleAccess.active(worker)
-                        ||BuilderScaffolding.isControllingMovement(worker))return true;
-                if(!BuilderBuildService.parkAtOnSite(level,worker,table)){
-                    BlockPos depot=table.builderUnloadingStorage();
-                    UUID id=worker.getUUID();
-                    if(depot!=null){
-                        double distance=worker.distanceToSqr(depot.getX()+.5,depot.getY(),depot.getZ()+.5);
-                        if(distance<s.bestReturnDistance.getOrDefault(id,Double.POSITIVE_INFINITY)-.25){
-                            s.bestReturnDistance.put(id,distance);s.lastReturnProgress.put(id,now);
-                        }
-                        long last=s.lastReturnProgress.computeIfAbsent(id,k->now);
-                        // Do not replace a healthy return path with an
-                        // escape probe merely because 80 ticks elapsed.
-                        if(!BuilderEscapeBox.escaping(worker)&&now-last>=160&&now>=s.retry.getOrDefault(id,0L)){
-                            s.retry.put(id,now+120);
-                            BuilderReturnService.resetApproach(worker);
-                            // Return service selects escapes using its persistent landing history.
-                        }
-                    }
-                    if(now-s.started>=RETURN_BUDGET)
-                        table.setProblem("Crew recovery: waiting for trapped Builder "+worker.getName().getString()+" to reach OnSite");
-                    return true;
-                }
-                BuilderScaffolding.retrieve(level,worker,table,false);
-                if(worker.hasSupplyBox()){
-                    if(!BuilderSupplyInventory.depositBox(table,worker.supplyBox())){
-                        table.setProblem("Crew recovery: make room for returned shulker");return true;
-                    }
-                    worker.clearSupplyBox();
-                }
-                if(!BuilderDroppedBlockRecovery.unloadRecoveredAtSite(worker,table)
-                        ||!BuilderSupplyInventory.returnPouch(table,worker)){
-                    table.setProblem("Crew recovery: make room in OnSite for returned pockets");return true;
-                }
-                if(!worker.isEmpty()||worker.hasSupplyBox())return true;
-                BuilderTrace.decision(level,worker,"CREW_UNLOADED",table.builderUnloadingStorage(),"physical return and empty inventory verified");
+            if(!s.unloaded.contains(worker.getUUID())&&tryUnload(level,worker,table,s)){
                 s.unloaded.add(worker.getUUID());
-                System.out.println("[CREW RETREAT UNLOADED] "+worker.getUUID()+" at="+worker.blockPosition());
+                s.recovering.remove(worker.getUUID());
             }
             List<UUID> live=table.builderWorkerIds();
-            if(!s.unloaded.containsAll(live)){
-                parkAway(level,worker,table,s);return true;
+            boolean all=s.unloaded.containsAll(live);
+            // Only relax the barrier after the original full timeout,
+            // and only if someone actually returned with empty pockets.
+            // Missing or trapped workers remain in independent recovery.
+            if(!all&&(now-s.started<RETURN_BUDGET||s.unloaded.isEmpty())){
+                if(s.unloaded.contains(worker.getUUID()))parkAway(level,worker,table,s);
+                return true;
             }
+            s.recovering.clear();
+            for(UUID id:live)if(!s.unloaded.contains(id))s.recovering.add(id);
+            List<UUID> ready=live.stream().filter(s.unloaded::contains).toList();
             int active=table.builderActiveLayer(steps),count=remaining(table,steps,active);
             int cap=s.attempts>=2||count<=5?1:2;
-            int n=Math.min(Math.min(cap,table.crewTarget()),live.size());
+            int n=Math.min(Math.min(cap,table.crewTarget()),ready.size());
             List<UUID> chosen=new ArrayList<>();
             if(active==s.layer&&n>0){
-                int start=s.attempts>=2&&live.size()>1?1:0;
-                for(int i=0;i<n;i++)chosen.add(live.get((start+i)%live.size()));
+                int start=s.attempts>=2&&ready.size()>1?1:0;
+                for(int i=0;i<n;i++)chosen.add(ready.get((start+i)%ready.size()));
             }
             s.reduced=List.copyOf(chosen);s.recalling=false;
             s.best=table.builderWorkDone();s.lastProgress=now;s.graceUntil=now+RESUME_GRACE;
             table.beginBuilderZonePlan();
             BuilderMaterialNetwork.resetForCrew(table);
-            BuilderBuildService.resetCrewActions(level,table);
-            table.setProblem("Crew recovery: resuming remaining layer with "+(chosen.isEmpty()?live.size():chosen.size())+" Builders");
+            BuilderBuildService.resetCrewActions(level,table,s.recovering);
+            table.setProblem("Crew recovery: resuming remaining layer with "+(chosen.isEmpty()?ready.size():chosen.size())
+                    +" Builders; "+s.recovering.size()+" still returning");
             System.out.println("[CREW RETREAT RESUME] layer="+active+" remaining="+count
-                    +" active="+chosen+" unloaded="+s.unloaded.size());
+                    +" active="+chosen+" unloaded="+s.unloaded.size()+" independent="+s.recovering);
             return true;
         }
         if(!s.reduced.isEmpty()&&!s.reduced.contains(worker.getUUID())){
             parkAway(level,worker,table,s);return true;
         }
         return false;
+    }
+    private static boolean tryUnload(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,State s){
+        if(BuilderFlight.moving(worker)||BuilderGrappleAccess.active(worker)
+                ||BuilderScaffolding.isControllingMovement(worker))return false;
+        if(!BuilderBuildService.parkAtOnSite(level,worker,table)){
+            long now=level.getGameTime();
+            BlockPos depot=table.builderUnloadingStorage();
+            UUID id=worker.getUUID();
+            if(depot!=null){
+                double distance=worker.distanceToSqr(depot.getX()+.5,depot.getY(),depot.getZ()+.5);
+                if(distance<s.bestReturnDistance.getOrDefault(id,Double.POSITIVE_INFINITY)-.25){
+                    s.bestReturnDistance.put(id,distance);s.lastReturnProgress.put(id,now);
+                }
+                long last=s.lastReturnProgress.computeIfAbsent(id,k->now);
+                if(!BuilderEscapeBox.escaping(worker)&&now-last>=160&&now>=s.retry.getOrDefault(id,0L)){
+                    s.retry.put(id,now+120);BuilderReturnService.resetApproach(worker);
+                }
+            }
+            return false;
+        }
+        BuilderScaffolding.retrieve(level,worker,table,false);
+        if(worker.hasSupplyBox()){
+            if(!BuilderSupplyInventory.depositBox(table,worker.supplyBox()))return false;
+            worker.clearSupplyBox();
+        }
+        if(!BuilderDroppedBlockRecovery.unloadRecoveredAtSite(worker,table)
+                ||!BuilderSupplyInventory.returnPouch(table,worker)
+                ||!worker.isEmpty()||worker.hasSupplyBox())return false;
+        BuilderTrace.decision(level,worker,"CREW_UNLOADED",table.builderUnloadingStorage(),"physical return and empty inventory verified");
+        System.out.println("[CREW RETREAT UNLOADED] "+worker.getUUID()+" at="+worker.blockPosition());
+        return true;
     }
     private static void parkAway(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,State s){
         BlockPos depot=table.builderUnloadingStorage();

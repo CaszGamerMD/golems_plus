@@ -83,7 +83,8 @@ public final class BuilderPropellerGameTest {
         world.getChunkSource().addTicketWithRadius(TicketType.FORCED,
                 new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
         h.setBlock(10,3,10,Blocks.STONE);
-        for(int y=4;y<=20;y++)h.setBlock(10,y,10,Blocks.AIR);
+        for(int x=9;x<=11;x++)for(int z=9;z<=11;z++)
+            for(int y=4;y<=20;y++)h.setBlock(x,y,z,Blocks.AIR);
         h.setBlock(10,18,10,Blocks.STONE);
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
         worker.setPos(start.getX()+.475,start.getY(),start.getZ()+.6);
@@ -96,7 +97,9 @@ public final class BuilderPropellerGameTest {
             if(stage[0]==0){
                 anchor[0]=worker.position();
                 if(!BuilderFlight.requestVertical(world,worker,heights[0])){
-                    h.fail("Initial vertical lift rejected");return;
+                    BuilderTrace.dumpWorker(worker,"initial vertical lift rejected");
+                    h.fail("Initial vertical lift rejected feet="+worker.position()+" onGround="+worker.onGround()
+                            +" flight="+BuilderFlight.traceStatus(worker));return;
                 }
                 stage[0]=1;return;
             }

@@ -50,7 +50,13 @@ public final class BuilderMultiLegTravelGameTest {
                 }
             }
             BuilderMultiLegTravel.stand(level,worker,descending[0]?start:finish);
-            if(h.getTick()==590)h.fail("Multi-flight stalled at "+worker.position()+" intermediate="+landed[0]+" walked="+walked[0]+" descending="+descending[0]);
+            if(h.getTick()==590){
+                BuilderTrace.dumpWorker(worker,"multi-flight stalled");
+                h.fail("Multi-flight stalled at "+worker.position()+" intermediate="+landed[0]+" walked="+walked[0]
+                        +" descending="+descending[0]+" flight="+BuilderFlight.traceStatus(worker)
+                        +" trip="+BuilderMultiLegTravel.traceStatus(worker)
+                        +" nav="+com.caszgamermd.golemsplus.worker.WorkerNavigation.debugStatus(worker));
+            }
         });
     }
 }

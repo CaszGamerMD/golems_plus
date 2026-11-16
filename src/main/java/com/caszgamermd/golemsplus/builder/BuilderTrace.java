@@ -92,6 +92,14 @@ public final class BuilderTrace {
                     +" tick="+(now-h.start)+" worldTick="+now+" "+detail);
         }
     }
+    static void dumpWorker(BuilderGolem worker,String reason){
+        if(!ENABLED)return;
+        History h=histories.get(worker);
+        if(h==null)return;
+        System.out.println("[BUILDER TRACE BEGIN] reason="+clean(reason)+" worker="+worker.getUUID());
+        for(Event event:h.events)System.out.println("[BUILDER TRACE EVENT] tick="+event.tick()+" kind="+event.kind()+" "+event.detail());
+        System.out.println("[BUILDER TRACE END] reason="+clean(reason));
+    }
     static void dump(ServerLevel level,WorkerStationBlockEntity table,String reason){
         if(!ENABLED)return;
         System.out.println("[BUILDER TRACE BEGIN] reason="+clean(reason)+" worldTick="+level.getGameTime()

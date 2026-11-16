@@ -135,14 +135,25 @@ public final class BuilderFlight {
      * Keep the original takeoff envelope and the exact physical X/Z; a
      * fractional hover must not be forced to recenter or find a floor. */
     public static boolean requestVertical(ServerLevel level, BuilderGolem worker, double y) {
-        if (!enabled(worker) || BuilderGrappleAccess.active(worker)
-                || BuilderScaffolding.isControllingMovement(worker)
-                || (!active(worker) && !worker.onGround()) || !Double.isFinite(y)) return false;
+        if (!Double.isFinite(y)) return false;
         Vec3 from=worker.position();
         Vec3 to=new Vec3(from.x,y,from.z);
-        if (moving(worker)) return false; // finish the committed leg first
-        if (Math.abs(y-from.y)<.02 || !sweep(level,worker,from,to)) return false;
-        return requestPosition(level,worker,BlockPos.containing(to),to);
+        BlockPos goal=BlockPos.containing(to);
+        if (!enabled(worker) || BuilderGrappleAccess.active(worker)
+                || BuilderScaffolding.isControllingMovement(worker)) {
+            BuilderTrace.decision(level,worker,"VERTICAL_REJECT",goal,"disabled or competing motion owner");
+            return false;
+        }
+        // onGround is a contact flag from the preceding physics tick,
+        // not proof of support. Like request(), allow a clear powered
+        // launch during the short falling/settling transition.
+        if (moving(worker)) return false;
+        if (Math.abs(y-from.y)<.02 || !sweep(level,worker,from,to)) {
+            BuilderTrace.decision(level,worker,"VERTICAL_REJECT",goal,
+                    "zero length or blocked vertical sweep; feet="+from+" destination="+to);
+            return false;
+        }
+        return requestPosition(level,worker,goal,to);
     }
 
     private static Vec3 verticalWorkPose(ServerLevel level,BuilderGolem worker,
@@ -212,8 +223,13 @@ public final class BuilderFlight {
             return false;
         }
         Flight flight = flights.get(worker);
-        if (flight != null && goal.equals(flight.goal) && moving(worker)) return true;
-        if (flight != null && goal.equals(flight.goal) && level.getGameTime() < flight.retryAt) return false;
+        // A committed powered leg has exactly one owner. A new work or
+        // recovery request cannot overwrite its destination mid-flight.
+        if (flight != null && moving(worker)) {
+            return destination.distanceToSqr(flight.path.getLast())<.0004;
+        }
+        if (flight != null && goal.equals(flight.goal) && level.getGameTime() < flight.retryAt
+                && flight.lastFailedDestination!=null) return false;
         BuilderChunkTickets.destination(level, worker, goal);
         List<Vec3> path = path(level,worker,worker.position(),destination,origin(worker));
         if(flight!=null&&flight.lastFailedDestination!=null
@@ -244,6 +260,8 @@ public final class BuilderFlight {
         flight.next = 0;
         flight.lastPosition = worker.position();
         flight.stuckTicks = 0;
+        worker.getMoveControl().setWantedPosition(worker.getX(),worker.getY(),worker.getZ(),0);
+        worker.setDeltaMovement(Vec3.ZERO);
         worker.setNoGravity(true);
         worker.setPropellerSpinning(true);
         return true;
@@ -723,8 +741,16 @@ public final class BuilderFlight {
         boolean atLanding=flight.goal!=null
                 &&WorkerNavigation.canStandOn(level,worker,flight.goal)
                 &&worker.position().distanceToSqr(supportedFeet(level,flight.goal))<.04;
-        if (!moving && (atLanding || worker.onGround() || (Double.isFinite(floor)
-                && Math.abs(worker.getY() - floor) < .15))) {
+        // A stale onGround flag alone must never end a powered hover.
+        // Require the actual support surface at the intended landing or
+        // the current physical tile (including integer rounding aliases).
+        BlockPos rounded=BlockPos.containing(worker.getX(),worker.getY()+.001,worker.getZ());
+        double roundedFloor=WorkerNavigation.surveyFloorHeight(level,rounded);
+        boolean supportedHere=(Double.isFinite(floor)&&Math.abs(worker.getY()-floor)<.05
+                &&WorkerNavigation.canStandOn(level,worker,worker.blockPosition()))
+                ||(Double.isFinite(roundedFloor)&&Math.abs(worker.getY()-roundedFloor)<.05
+                &&WorkerNavigation.canStandOn(level,worker,rounded));
+        if (!moving && (atLanding || supportedHere)) {
             worker.setDeltaMovement(Vec3.ZERO);
             worker.setNoGravity(false);
             worker.setPropellerSpinning(false);
@@ -737,7 +763,10 @@ public final class BuilderFlight {
         worker.getNavigation().stop();
         worker.getMoveControl().setWantedPosition(worker.getX(), worker.getY(), worker.getZ(), 0);
         worker.setDeltaMovement(Vec3.ZERO);
-        if (!moving) return true; // Powered hover persists while selecting the next task.
+        if (!moving) {
+            worker.setPropellerSpinning(true);
+            return true; // Powered hover persists while selecting the next task.
+        }
         if (worker.position().distanceToSqr(flight.lastPosition) > .01) {
             flight.lastPosition = worker.position();
             flight.stuckTicks = 0;

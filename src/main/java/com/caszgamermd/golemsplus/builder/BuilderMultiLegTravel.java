@@ -50,6 +50,16 @@ final class BuilderMultiLegTravel {
         return worker.onGround()&&!BuilderFlight.active(worker)
                 &&worker.position().distanceToSqr(feet(level,p))<.10;
     }
+    private static boolean centeredLaunch(ServerLevel level,BuilderGolem worker,BlockPos p){
+        return arrived(level,worker,p)
+                &&worker.position().distanceToSqr(feet(level,p))<.035*.035;
+    }
+    static String traceStatus(BuilderGolem worker){
+        Trip t=trips.get(worker);
+        if(t==null)return "none";
+        return "goal="+t.goal+" leg="+t.index+"/"+t.legs.size()
+                +" flying="+t.flying+" legs="+t.legs+" progress="+t.progress;
+    }
     private static boolean good(ServerLevel level,BuilderGolem worker,Goal goal,BlockPos p){
         if(goal.kind()==Kind.STAND)return p.equals(goal.target());
         if(goal.kind()==Kind.EXIT)return goal.box().sideOutside(p)||p.getY()<=goal.box().minY();
@@ -96,7 +106,14 @@ final class BuilderMultiLegTravel {
     }
     private static List<Leg> plan(ServerLevel level,BuilderGolem worker,Goal goal){
         BlockPos start=worker.blockPosition();
-        if(!WorkerNavigation.canStandOn(level,worker,start))return List.of();
+        // Exact landings may be a few floating-point units below the
+        // integer tile. Do not discard the next leg because floor() picked
+        // the solid support instead of its supported feet cell.
+        if(!WorkerNavigation.canStandOn(level,worker,start)){
+            BlockPos rounded=BlockPos.containing(worker.getX(),worker.getY()+.001,worker.getZ());
+            if(!WorkerNavigation.canStandOn(level,worker,rounded))return List.of();
+            start=rounded;
+        }
         var queue=new PriorityQueue<Node>(Comparator.comparingDouble(Node::score));
         queue.add(new Node(start,List.of(),score(goal,start)));
         var seen=new HashMap<BlockPos,Integer>();seen.put(start,0);
@@ -166,7 +183,12 @@ final class BuilderMultiLegTravel {
             }
             if(BuilderFlight.active(worker)&&now-t.progress<400){
                 if(BuilderFlight.requestSupportedLanding(level,worker,leg.landing()))return true;
-                BuilderFlight.land(level,worker,false);
+                // A different emergency landing invalidates this leg.
+                // Never keep waiting for the old landing after diverting.
+                if(BuilderFlight.land(level,worker,false)){
+                    BuilderTrace.decision(level,worker,"MULTI_TRIP_REPLAN",leg.landing(),"diverted to safe landing");
+                    trips.remove(worker);searchAfter.put(worker,now+20);return true;
+                }
             }
             if(now-t.progress<400)return true;
         }else{
@@ -174,11 +196,12 @@ final class BuilderMultiLegTravel {
             if(d<t.best-.04){t.best=d;t.progress=now;}
             if(now-t.progress<400&&WorkerNavigation.canStandOn(level,worker,leg.launch())
                     &&WorkerNavigation.canStandOn(level,worker,leg.landing())){
-                if(arrived(level,worker,leg.launch())){
+                if(centeredLaunch(level,worker,leg.launch())){
                     if(BuilderFlight.requestSupportedLanding(level,worker,leg.landing())){
                         t.flying=true;t.progress=now;return true;
                     }
-                    // Center the physical takeoff before retrying.
+                    BuilderTrace.decision(level,worker,"MULTI_TRIP_LAUNCH_REJECT",leg.landing(),
+                            "centered launch="+leg.launch()+" feet="+worker.position());
                 }
                 WorkerNavigation.routeToExact(level,worker,leg.launch(),1.0);return true;
             }
