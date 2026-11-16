@@ -60,9 +60,9 @@ def split_runs(rows, seed=17):
 
 
 class Network:
-    def __init__(self, seed=17, hidden=8, schema=2):
+    def __init__(self, seed=17, hidden=8, schema=2, features=None):
         self.schema = schema
-        self.features = FEATURES_BY_SCHEMA[schema]
+        self.features = FEATURES_BY_SCHEMA[schema] if features is None else list(features)
         rng = random.Random(seed)
         self.w = [[rng.uniform(-.3, .3) for _ in self.features] for _ in range(hidden)]
         self.b = [0.] * hidden
@@ -126,7 +126,7 @@ def main():
     threshold = max(thresholds, key=lambda t: sum((speed(r) >= t) == r['moved'] for r in train))
     velocity_accuracy = sum((speed(r) >= threshold) == r['moved'] for r in held)/len(held)
     legacy_train = [dict(r, features=r['features'][:11] + [0.]*(len(r['features'])-11)) for r in train]
-    legacy_held = [dict(r, features=r['features'][:11] + [0.]*10) for r in held]
+    legacy_held = [dict(r, features=r['features'][:11] + [0.]*(len(r['features'])-11)) for r in held]
     legacy = Network(schema=schema)
     legacy.fit(legacy_train)
     report = {'commit': args.commit, 'schema': schema,

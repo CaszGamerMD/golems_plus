@@ -122,3 +122,17 @@ Schema-3 evaluation at db28d0f3157b989a8990f551ab33fdfc9df2bfd1
 The simple no-path baseline recalls 93.47% stationary flights but only 79.46%
 moving flights. Neither predicts action success. This is a new held-out
 population, not a paired comparison with schema 2.
+
+## First flight-arrival neural predictor
+
+Frozen action training source: [run 43809737045](https://github.com/CaszGamerMD/golems_plus/actions/runs/43809737045),
+3,503 terminal accepted flights (3,289 arrived, 214 blocked). No timeout
+failures or censor events were recorded; actions still open at shutdown are
+not observed. Three new servers are the untouched evaluation set.
+The seven-input, eight-hidden-unit network estimates arrival on accepted
+routes. The logistic baseline uses identical inputs, and a constant arrival
+baseline exposes the class imbalance. A fixed training-only threshold
+maximizes balanced accuracy; report per-run failure recall, false alarms,
+log loss, and default-threshold behavior. No model may select actions yet.
+The archive retrieval is pinned to the original run and requires its artifacts
+to remain available; workflow fails explicitly if the archive is unavailable.
