@@ -136,3 +136,17 @@ maximizes balanced accuracy; report per-run failure recall, false alarms,
 log loss, and default-threshold behavior. No model may select actions yet.
 The archive retrieval is pinned to the original run and requires its artifacts
 to remain available; workflow fails explicitly if the archive is unavailable.
+
+## Environmental knowledge extension
+
+Accepted actions retain the original seven geometry inputs and add 17 optional
+start-only context features: six collision-clearance probes at each endpoint,
+vertical-first and sideways-first route clearance, two bounded over/under
+detours, and nearby builder density in the chosen route bounding box.
+The candidate probes reuse existing swept-body collision checks, do not
+request routes, and do not imply execution outcomes. At abort, record block
+collision versus envelope, unloaded/border, or other collision; other collision
+is not proof of another golem. Old action logs remain readable. The new report
+compares seven-input geometry and 24-input environmental networks on identical
+leave-one-server-out folds, with training-only thresholds. This is exploratory
+validation, not a fresh final holdout. No gameplay changes or model deployment.

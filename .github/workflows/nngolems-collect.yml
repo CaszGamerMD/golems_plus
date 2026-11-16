@@ -88,6 +88,7 @@ jobs:
           python3 -m unittest discover -s scripts/nngolems -p 'test_*.py'
           python3 scripts/nngolems/train.py build/nn-data/nn-trial-*/samples.log --output build/nn-evaluation --commit "$GITHUB_SHA"
           python3 scripts/nngolems/actions.py build/nn-data/nn-trial-*/actions.log --output build/nn-evaluation/action-report.json
+          python3 scripts/nngolems/knowledge.py build/nn-data/nn-trial-*/actions.log --output build/nn-evaluation/knowledge-report.json
           python3 scripts/nngolems/train_actions.py --train build/nn-action-training/nn-trial-*/actions.log --held build/nn-data/nn-trial-*/actions.log --output build/nn-evaluation --commit "$GITHUB_SHA"
       - uses: actions/upload-artifact@v4
         with:

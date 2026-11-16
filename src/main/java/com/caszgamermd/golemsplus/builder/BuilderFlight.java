@@ -108,6 +108,47 @@ public final class BuilderFlight {
         AABB box = body(worker, from).minmax(body(worker, to));
         return loaded(level, box) && level.noCollision(worker, box);
     }
+    /** Experimental route context, sampled only for accepted requests.
+     * No route or controller state is mutated. Candidate flags describe
+     * current geometry, not future success or permission to execute. */
+    static double[] observedKnowledge(ServerLevel level, BuilderGolem worker,
+            List<Vec3> chosen, Vec3 destination) {
+        Vec3 from = worker.position(), anchor = origin(worker);
+        double[] x = new double[17];
+        int[][] offsets = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+        for (int i=0;i<offsets.length;i++) {
+            int[] o=offsets[i];
+            x[i]=clear(level,worker,from.add(o[0]*.5,o[1]*.5,o[2]*.5))?1:0;
+            x[6+i]=clear(level,worker,destination.add(o[0]*.5,o[1]*.5,o[2]*.5))?1:0;
+        }
+        Vec3 vertical = new Vec3(from.x,destination.y,from.z);
+        Vec3 side = new Vec3(destination.x,from.y,destination.z);
+        x[12]=sweep(level,worker,from,vertical)&&sweep(level,worker,vertical,destination)?1:0;
+        x[13]=sweep(level,worker,from,side)&&sweep(level,worker,side,destination)?1:0;
+        // Two bounded over/under probes, within the same takeoff envelope.
+        for (int i=0;i<2;i++) {
+            double y=i==0?Math.max(from.y,destination.y)+2:Math.min(from.y,destination.y)-2;
+            Vec3 a=new Vec3(from.x,y,from.z),b=new Vec3(destination.x,y,destination.z);
+            x[14+i]=inEnvelope(anchor,a)&&inEnvelope(anchor,b)
+                    &&sweep(level,worker,from,a)&&sweep(level,worker,a,b)
+                    &&sweep(level,worker,b,destination)?1:0;
+        }
+        // Nearby builders are a crowding signal, not proof of collision.
+        AABB corridor=body(worker,from);
+        for(Vec3 at:chosen) corridor=corridor.minmax(body(worker,at));
+        x[16]=Math.min(1,level.getEntitiesOfClass(BuilderGolem.class,
+                corridor.inflate(1),other->other!=worker).size()/4.0);
+        return x;
+    }
+
+    private static String observedBlockage(ServerLevel level, BuilderGolem worker, Vec3 next, Vec3 anchor) {
+        if (!inEnvelope(anchor,next)) return "ENVELOPE";
+        AABB box=body(worker,worker.position()).minmax(body(worker,next));
+        if (!loaded(level,box)) return "UNLOADED_OR_BORDER";
+        if (level.getBlockCollisions(worker,box).iterator().hasNext()) return "BLOCK";
+        return "OTHER_COLLISION";
+    }
+
     private static Vec3 origin(BuilderGolem worker) {
         Flight flight = flights.get(worker);
         return flight == null ? worker.position() : flight.origin;
@@ -826,7 +867,9 @@ public final class BuilderFlight {
             worker.setDeltaMovement(velocity);
         else {
             BuilderTrace.decision(level,worker,"FLIGHT_ABORT",flight.goal,"next swept body blocked or outside envelope");
-            BuilderNeuralRecorder.finishFlight(level, worker, "BLOCKED");
+            if (BuilderNeuralRecorder.ENABLED)
+                BuilderNeuralRecorder.finishFlight(level, worker, "BLOCKED",
+                        observedBlockage(level,worker,worker.position().add(velocity),flight.origin));
             flight.lastFailedDestination=flight.path.getLast();
             flight.failedUntil=level.getGameTime()+100;
             stop(worker);

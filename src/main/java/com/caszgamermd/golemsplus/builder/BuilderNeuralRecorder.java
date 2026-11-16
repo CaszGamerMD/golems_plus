@@ -32,10 +32,10 @@ final class BuilderNeuralRecorder {
     private static long actionSequence;
     private static final int ACTION_LIMIT = 100_000;
     private record FlightStart(long id, long tick, ServerLevel level, Vec3 from,
-            Vec3 destination, double[] features, long lastTick) {}
+            Vec3 destination, double[] features, double[] knowledge, long lastTick) {}
     private record FlightRow(int schema, String run, String worker, long id,
             long tick, long endTick, String action, double[] features,
-            String outcome, double remainingDistance) {}
+            String outcome, double remainingDistance, double[] knowledge, String blockage) {}
 
     static void beginFlight(ServerLevel level, BuilderGolem worker, List<Vec3> path, Vec3 destination) {
         if (!ENABLED || actionSequence >= ACTION_LIMIT) return;
@@ -58,7 +58,7 @@ final class BuilderNeuralRecorder {
         };
         long now = level.getGameTime();
         activeFlights.put(worker, new FlightStart(++actionSequence, now, level,
-                from, destination, x, now));
+                from, destination, x, BuilderFlight.observedKnowledge(level,worker,path,destination), now));
     }
 
     static void observeFlightTick(ServerLevel level, BuilderGolem worker) {
@@ -71,23 +71,28 @@ final class BuilderNeuralRecorder {
             return;
         }
         activeFlights.put(worker, new FlightStart(f.id(), f.tick(), f.level(),
-                f.from(), f.destination(), f.features(), now));
+                f.from(), f.destination(), f.features(), f.knowledge(), now));
     }
 
     static void finishFlight(ServerLevel level, BuilderGolem worker, String outcome) {
+        finishFlight(level, worker, outcome, "NONE");
+    }
+
+    static void finishFlight(ServerLevel level, BuilderGolem worker, String outcome, String blockage) {
         if (!ENABLED) return;
         FlightStart f = activeFlights.remove(worker);
         if (f == null) return;
         long now = level.getGameTime();
         if (f.level() != level || now < f.lastTick() || now - f.lastTick() > 1) {
             outcome = "OBSERVATION_GAP";
+            blockage = "NONE";
             now = f.lastTick();
         }
         double remaining = worker.position().distanceTo(f.destination());
         if (!Double.isFinite(remaining)) return;
         System.out.println("[NNGOLEMS_ACTION] " + JSON.toJson(new FlightRow(1, RUN,
                 worker.getUUID().toString(), f.id(), f.tick(), now, "FLIGHT",
-                f.features(), outcome, remaining)));
+                f.features(), outcome, remaining, f.knowledge(), blockage)));
     }
 
     static void sample(ServerLevel level, BuilderGolem worker, String controller) {
