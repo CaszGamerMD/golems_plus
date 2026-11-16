@@ -27,6 +27,17 @@ class BuilderNNStructuresTest {
             s(3,0,0),s(0,0,0),s(20,0,0)));
         assertEquals(List.of(List.of(0,1,2),List.of(3)),p.groups());
     }
+    @Test void localCrewZonesContainOnlyActiveOriginalIndices(){
+        var steps=List.of(s(0,0,0),s(20,0,0),s(0,1,0),s(20,1,0));
+        var members=BuilderNNStructures.compile(steps).members(0);
+        var workers=List.of(new UUID(0,1),new UUID(0,2));
+        var footprint=BuilderZones.footprint(members.stream().map(steps::get).toList());
+        var plan=BuilderZoneWorkPlan.compile(steps,footprint,workers,false,members);
+        var actual=new ArrayList<Integer>();
+        for(var w:workers)actual.addAll(plan.steps(w));
+        assertEquals(new HashSet<>(members),new HashSet<>(actual));
+        assertEquals(members.size(),actual.size());
+    }
     @Test void connectedGroundStaysOneAndEveryIndexIsRetained(){
         var steps=new ArrayList<BuilderConstructionPlan.Step>();
         for(int x=0;x<=20;x++)steps.add(s(x,0,0));

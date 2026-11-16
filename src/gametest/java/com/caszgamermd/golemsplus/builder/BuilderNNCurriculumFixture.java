@@ -24,9 +24,22 @@ final class BuilderNNCurriculumFixture {
                     "616846073ae6295a79f64f05c7e4b657ae8c2c5062c83f364ae2721674a4bc86"));
     static Course selected() {
         String name=System.getenv().getOrDefault("NN_COURSE","home");
+        if(name.equals("structures"))return new Course("structures","",56,0,"synthetic-v1");
         return COURSES.stream().filter(c->c.id().equals(name)).findFirst().orElseThrow();
     }
     static LitematicFileReader.Schematic read(Course course)throws Exception {
+        if(course.id().equals("structures")){
+            var blocks=new java.util.ArrayList<LitematicFileReader.Block>();
+            // Two 4x4 foundations with low perimeter walls, 16 air
+            // columns apart. Interleave by Y to catch global-layer claims.
+            for(int y=0;y<2;y++)for(int ox:List.of(0,20))
+                for(int x=0;x<4;x++)for(int z=0;z<4;z++)
+                    if(y==0||x==0||x==3||z==0||z==3)
+                        blocks.add(new LitematicFileReader.Block(ox+x,y,z,"minecraft:stone"));
+            if(blocks.size()!=course.blocks())throw new IllegalStateException("Structure fixture count");
+            return new LitematicFileReader.Schematic("Two Buildings",List.copyOf(blocks),
+                    java.util.Map.of("minecraft:stone",(long)blocks.size()),List.of());
+        }
         Path p=Files.createTempFile("nn-course-",".litematic");
         try(var in=BuilderNNCurriculumFixture.class.getResourceAsStream(
                 "/golems_plus_curriculum/"+course.file())){

@@ -22,3 +22,60 @@ jobs:
         with:
           gradle-version: '9.7.0'
       - run: gradle --no-daemon test --tests '*BuilderNNStructuresTest' --tests '*BuilderZoneWorkPlanTest'
+  physical:
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crew: 4
+            pilot: 'true'
+          - crew: 8
+            pilot: 'true'
+          - crew: 8
+            pilot: 'false'
+    env:
+      MATRIX_TEST_MODE: controlled
+      NN_COURSE: structures
+      NN_TEAM_SIZE: ${{ matrix.crew }}
+      GOLEMS_NN_STRUCTURES: ${{ matrix.pilot }}
+      GOLEMS_NN_AUTO: 'true'
+      GOLEMS_NN_STRIP_PILOT: 'false'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+      NN_SPEED_TEST: 'true'
+      NN_SPEED_TICK_LIMIT: '12000'
+      NN_COURSE_SECONDS: '180'
+      NN_TEAM_STALL_TICKS: '2400'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Select real-server course
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderNNCurriculumGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Verify physical completion and group boundary
+        run: |
+          set -o pipefail
+          mkdir -p build/nn-structures
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-structures/server.log
+          grep -F "[NN STRUCTURE TEST] PASS pilot=$GOLEMS_NN_STRUCTURES crew=$NN_TEAM_SIZE correct=56" build/nn-structures/server.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: structures-${{ matrix.crew }}-${{ matrix.pilot }}
+          path: build/nn-structures/
+

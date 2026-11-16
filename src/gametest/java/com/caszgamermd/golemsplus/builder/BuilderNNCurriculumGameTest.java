@@ -229,6 +229,12 @@ public final class BuilderNNCurriculumGameTest {
         if(limit<1||limit>1800){h.fail("Invalid course seconds");return;}
         var watchdog=new MatrixWorkWatchdog(h.getTick(),table.builderWorkDone(),table.builderClearCursor());
         final int[] best={0};
+        boolean structureTest=course.id().equals("structures");
+        boolean structurePilot=structureTest&&"true".equals(System.getenv("GOLEMS_NN_STRUCTURES"));
+        var structurePlan=structureTest?BuilderNNStructures.compile(steps):null;
+        if(structureTest&&(structurePlan.groups().size()!=2||structurePlan.members(0).size()!=28
+                ||structurePlan.members(1).size()!=28)){h.fail("Invalid structure fixture partition");return;}
+        final boolean[] firstComplete={false};
         final double[] distance={0};
         final var lastPosition=crew.stream().map(BuilderGolem::position).toArray(net.minecraft.world.phys.Vec3[]::new);
         var teamTrace=new BuilderNNTeamTrace(course.id(),"AUTO"+workers,workers,course.blocks());
@@ -237,6 +243,26 @@ public final class BuilderNNCurriculumGameTest {
             if(strip||teamTrace.enabled())for(int i=0;i<crew.size();i++){
                 var pos=crew.get(i).position();
                 distance[0]+=pos.distanceTo(lastPosition[i]);lastPosition[i]=pos;
+            }
+            if(structurePilot&&!firstComplete[0]){
+                boolean completeFirst=structurePlan.members(0).stream().allMatch(i->{
+                    var s=steps.get(i);
+                    return level.getBlockState(new BlockPos(s.x(),s.y(),s.z())).is(Blocks.STONE);
+                });
+                if(completeFirst){
+                    firstComplete[0]=true;
+                    System.out.println("[NN STRUCTURE TEST] first building complete tick="+(tick-startTick));
+                }else{
+                    boolean earlyPlacement=structurePlan.members(1).stream().anyMatch(i->{
+                        var s=steps.get(i);
+                        return level.getBlockState(new BlockPos(s.x(),s.y(),s.z())).is(Blocks.STONE);
+                    });
+                    boolean earlyClaim=crew.stream().anyMatch(w->{
+                        int i=table.claimedStep(w.getUUID());
+                        return i>=0&&i<steps.size()&&structurePlan.group(i)==1;
+                    });
+                    if(earlyPlacement||earlyClaim){h.fail("Second structure received work before first completed");return;}
+                }
             }
             long elapsed=(System.nanoTime()-start)/1_000_000L;
             long noWork=watchdog.sample(tick,table.builderWorkDone(),table.builderClearCursor());
@@ -286,6 +312,13 @@ public final class BuilderNNCurriculumGameTest {
                     +" axis="+axis+" direction="+direction+" outcome="+outcome+" correct="+correct
                     +" total="+course.blocks()+" elapsedTicks="+elapsedTicks+" distance="+distance[0]
                     +" problem="+table.problem());
+            if(structureTest){
+                if(!complete||correct!=course.blocks()||structurePilot&&!firstComplete[0]){
+                    h.fail("Structure course failed: "+outcome+" correct="+correct);return;
+                }
+                System.out.println("[NN STRUCTURE TEST] PASS pilot="+structurePilot+" crew="+workers
+                    +" correct="+correct+" ticks="+elapsedTicks+" elapsedMs="+elapsed);
+            }
             h.succeed(); // Assessment completed, not necessarily the build.
         });
     }
