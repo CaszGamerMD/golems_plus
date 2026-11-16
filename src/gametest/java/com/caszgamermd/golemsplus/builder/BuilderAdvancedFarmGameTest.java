@@ -99,4 +99,66 @@ public final class BuilderAdvancedFarmGameTest {
             if(h.getTick()==2300)h.fail("Distant exact movement stalled at "+worker.position());
         });
     }
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=2200,skyAccess=true)
+    public void ceilingAttachmentBuildsOnlyItsRealUpperSupport(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=2;x<=23;x++)for(int z=2;z<=20;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=7;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        h.setBlock(4,2,4,com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_TABLE);
+        h.setBlock(5,2,4,com.caszgamermd.golemsplus.world.WorksiteContent.CREATIVE_CRATE);
+        BlockPos station=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos depot=h.absolutePos(new BlockPos(5,2,4));
+        BlockPos start=h.absolutePos(new BlockPos(7,2,4));
+        level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        if(!(level.getBlockEntity(station) instanceof com.caszgamermd.golemsplus.world.WorkerStationBlockEntity table)){
+            h.fail("Missing Planner");return;
+        }
+        BlockPos lever=h.absolutePos(new BlockPos(12,2,12));
+        BlockPos support=lever.above(),unrelated=lever.offset(2,1,0);
+        String leverState="minecraft:lever[face=ceiling,facing=south,powered=false]";
+        var cells=java.util.List.of(new LitematicFileReader.Block(lever.getX(),lever.getY(),lever.getZ(),leverState),
+                new LitematicFileReader.Block(support.getX(),support.getY(),support.getZ(),"minecraft:stone"),
+                new LitematicFileReader.Block(unrelated.getX(),unrelated.getY(),unrelated.getZ(),"minecraft:stone"));
+        var owner=h.makeMockServerPlayerInLevel();var id=owner.getUUID();
+        try{
+            var snapshot=BuilderPlacementSnapshot.encode("Ceiling dependency",cells,java.util.List.of());
+            var plan=BuilderConstructionPlan.create(BuilderPlacementSnapshot.decode(snapshot),BuilderPlacementSnapshot.worldSpaceSite());
+            var folder=net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("golems_plus").resolve("schematics");
+            java.nio.file.Files.createDirectories(folder);
+            String file="placed-gametest-ceiling-dependency.gpb";java.nio.file.Files.write(folder.resolve(file),snapshot);
+            if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,1)
+                    ||!table.setPlacedBuilderPlan(id,file,"Ceiling dependency",station,0,0,plan.steps().size(),plan.unsupported().size())
+                    ||!table.setBuilderMaterialStorage(id,depot)){h.fail("Planner refused dependency job");return;}
+            table.setBuilderMaterialsForFile(file,plan.required());
+            var worker=new BuilderGolem(com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_GOLEM,level);
+            worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);worker.assign(station,id);level.addFreshEntity(worker);
+            if(!table.registerBuilderWorker(worker.getUUID())||!table.startPlacedBuilder(id)){h.fail("Cannot start dependency");return;}
+            int li=-1,si=-1,ui=-1;
+            for(int i=0;i<plan.steps().size();i++){
+                var s=plan.steps().get(i);var p=new BlockPos(s.x(),s.y(),s.z());
+                if(p.equals(lever))li=i;else if(p.equals(support))si=i;else if(p.equals(unrelated))ui=i;
+            }
+            if(li<0||si<0||ui<0||!table.builderStepInActivePhase(plan.steps(),si)
+                    ||table.builderStepInActivePhase(plan.steps(),ui)){
+                h.fail("Only the actual ceiling support may bypass the Y gate");return;
+            }
+            h.onEachTick(()->{
+                if(level.getBlockState(lever).isAir()&&!level.getBlockState(unrelated).isAir()){
+                    h.fail("Unrelated higher layer was placed before the attachment");return;
+                }
+                if(table.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.COMPLETE){
+                    var want=BuilderBlockResolver.expectedState(leverState,BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+                    if(!level.getBlockState(lever).equals(want)||!level.getBlockState(support).is(Blocks.STONE)
+                            ||!level.getBlockState(unrelated).is(Blocks.STONE)){
+                        h.fail("Wrong completed dependency states");return;
+                    }
+                    System.out.println("[NN CEILING DEPENDENCY PASS] real upper support before lever, unrelated higher cell after");
+                    h.succeed();
+                }else if(h.getTick()==2100)h.fail("Ceiling dependency stalled "+table.problem());
+            });
+        }catch(Exception e){h.fail("Ceiling dependency setup failed "+e);}
+    }
 }

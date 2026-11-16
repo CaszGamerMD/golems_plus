@@ -1337,6 +1337,13 @@ public final class BuilderBuildService {
                 // partition: the chosen small crew must see ALL its cells,
                 // including those originally assigned to parked workers.
                 zone=assigned.layerSteps().getOrDefault(layer,zone);
+                // A small crew owns the entire phase, including its one
+                // explicitly authorized higher support dependency.
+                var expanded=new java.util.ArrayList<Integer>(zone);
+                for(var dependency:table.builderCeilingDependencies(plan.steps()).entrySet())
+                    if(table.builderStepInActivePhase(plan.steps(),dependency.getKey())
+                            &&!expanded.contains(dependency.getKey()))expanded.add(dependency.getKey());
+                zone=expanded;
             }
             boolean stalledRoof=roofNeedsHelp(level,table);
             if(materialOffers.isEmpty()&&shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim,
@@ -1442,7 +1449,7 @@ public final class BuilderBuildService {
             }
             if(index<0||index>=plan.steps().size()
                     ||!zone.contains(index)
-                    ||plan.steps().get(index).y()!=layer
+                    ||!table.builderStepInActivePhase(plan.steps(),index)
                     ||!table.builderStepReadyForClaim(index)){
                 // Expensive frontier probes are spread across the crew's
                 // five-tick work cadence. Their walking/path execution
@@ -1544,8 +1551,7 @@ public final class BuilderBuildService {
             activity.frontierWaitSince=-1;
             var claimedStep=plan.steps().get(index);
             int activeLayer=table.builderActiveLayer(plan.steps());
-            if(claimedStep.y()!=activeLayer
-                    ||!table.builderStepInActivePhase(plan.steps(),index)){
+            if(!table.builderStepInActivePhase(plan.steps(),index)){
                 // Defensive execution guard: even a stale claim from a
                 // previous build version must not break the Y-layer rule.
                 table.setProblem("Builder waiting for completion of Y="+activeLayer

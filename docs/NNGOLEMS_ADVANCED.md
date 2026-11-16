@@ -34,3 +34,18 @@ Placement still checks actual reach, clearance and support. This is not an
 unlimited reachability certificate: destinations beyond native survey reach
 or around complex obstacles can still need hierarchical planning. The new
 72-block real-worker regression and full advanced courses test this change.
+
+## Explicit ceiling attachment dependency
+
+Run 43837677153: distant exact 72-block regression passed at tick 239;
+Farm advanced from 12 to 172, Chibi 505 to 1679, Froglights 598.
+Farm stopped at a ceiling lever needing the permanent schematic cell above.
+Allow only the exact dry item-backed support of a pending ceiling lever or
+button to join the preceding dry phase. Keep original persisted indices,
+material cost and world validation; unrelated upper cells remain gated.
+Small-crew assignments include this explicit dependency. New real-builder
+regression checks that the support is built before the lever and an unrelated
+upper cell waits. This is deliberately not a general dependency solver:
+unsupported/missing support, multi-level chains and other attachment types
+still need separate analysis. Chibi supply travel and Froglights body occupancy
+remain unresolved.

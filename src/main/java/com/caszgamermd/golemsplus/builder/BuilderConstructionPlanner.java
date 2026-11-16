@@ -406,7 +406,7 @@ public final class BuilderConstructionPlanner {
         List<String> examples=new ArrayList<>();
         for(int idx:zone){
             if(idx<0||idx>=steps.size()
-                    ||steps.get(idx).y()!=layer
+                    ||!table.builderStepInActivePhase(steps,idx)
                     ||table.builderZoneDone(List.of(idx)))continue;
             pending++;
             if(examples.size()>=4)continue;
@@ -460,7 +460,7 @@ public final class BuilderConstructionPlanner {
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
         int y=table.builderActiveLayer(steps);
         for(int idx:zone){
-            if(idx<0||idx>=steps.size()||steps.get(idx).y()!=y
+            if(idx<0||idx>=steps.size()||!table.builderStepInActivePhase(steps,idx)
                     ||table.builderZoneDone(List.of(idx))
                     ||steps.get(idx).ignorePlant())continue;
             var step=steps.get(idx);

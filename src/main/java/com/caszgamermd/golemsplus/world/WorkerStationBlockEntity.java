@@ -1115,6 +1115,17 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return active<0?Integer.MAX_VALUE:steps.get(active).y();
     }
 
+    private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> ceilingPlan;
+    private java.util.Map<Integer,Integer> ceilingDependencies=java.util.Map.of();
+    public java.util.Map<Integer,Integer> builderCeilingDependencies(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(ceilingPlan!=steps){
+            ceilingPlan=steps;
+            ceilingDependencies=com.caszgamermd.golemsplus.builder.BuilderCeilingDependencies.compile(steps);
+        }
+        return ceilingDependencies;
+    }
+
     /** The first unfinished index also gates water within its Y layer.
      * Builders across ALL zones must finish the dry phase before any
      * source water or waterlogging action can be claimed. */
@@ -1122,10 +1133,22 @@ public final class WorkerStationBlockEntity extends BlockEntity
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
             int index){
         int active=builderActiveStepIndex(steps);
-        return active>=0&&index>=builderCursor&&index<steps.size()
-                &&steps.get(index).y()==steps.get(active).y()
-                &&com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
-                        steps.get(index).encodedState(),steps.get(active).encodedState());
+        if(active<0||index<builderCursor||index>=steps.size())return false;
+        var step=steps.get(index);
+        var current=steps.get(active);
+        if(step.y()==current.y())
+            return com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
+                    step.encodedState(),current.encodedState());
+        // Only the exact permanent schematic support of a still-pending
+        // ceiling attachment may enter the preceding dry phase. No other
+        // upper block, water pass, or fabricated temporary support.
+        if(step.y()!=current.y()+1
+                ||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(current.encodedState()))
+            return false;
+        Integer dependent=builderCeilingDependencies(steps).get(index);
+        return dependent!=null&&dependent>=builderCursor
+                &&!builderFinishedSteps.contains(dependent)
+                &&steps.get(dependent).y()==current.y();
     }
 
     /** Each Builder owns its X/Z zone. ALL workers must finish ALL

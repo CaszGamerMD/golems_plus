@@ -8,6 +8,9 @@ on:
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNCurriculum*.java'
       - 'scripts/nngolems/prepare_curriculum.py'
       - 'scripts/nngolems/collect_curriculum.py'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCeilingDependencies.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/world/WorkerStationBlockEntity.java'
       - 'src/main/java/com/caszgamermd/golemsplus/worker/WorkerNavigation.java'
       - 'src/main/java/com/caszgamermd/golemsplus/worker/WorkerRoutePlanner.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBlockInteractions.java'
@@ -96,3 +99,4 @@ jobs:
           grep -Fq '[NN FARM GATE PASS]' farm-regressions.log
           grep -Fq '[NN FARM BLOCK PASS]' farm-regressions.log
           grep -Fq '[NN DISTANT STAND PASS]' farm-regressions.log
+          grep -Fq '[NN CEILING DEPENDENCY PASS]' farm-regressions.log
