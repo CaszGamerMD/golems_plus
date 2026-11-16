@@ -75,6 +75,10 @@ public final class WorkerRoutePlanner {
         return left;
     }
 
+    /** Same distance criterion used by the bounded search. */
+    public static boolean distant(BlockPos start,List<BlockPos> goals){
+        return start!=null&&!goals.isEmpty()&&heuristic(start,goals)>RADIUS*MOVE_COST;
+    }
     private static int heuristic(BlockPos at,List<BlockPos> goals){
         int best=Integer.MAX_VALUE;
         for(BlockPos goal:goals){
@@ -136,7 +140,7 @@ public final class WorkerRoutePlanner {
         Set<BlockPos> ends=new HashSet<>(goals);
         if(ends.contains(start))return new Route(List.of(),true,0,0);
         int original=heuristic(start,goals);
-        boolean distant=original>RADIUS*MOVE_COST;
+        boolean distant=distant(start,goals);
         Map<BlockPos,Integer> cost=new HashMap<>();
         Map<BlockPos,BlockPos> parents=new HashMap<>();
         // Block collision/headroom checks dominate routing time. Within

@@ -62,4 +62,41 @@ public final class BuilderAdvancedFarmGameTest {
         System.out.println("[NN FARM BLOCK PASS] barrel, crafter, soul campfire, legacy chain");
         h.succeed();
     }
+    @GameTest(structure="golems_plus_gametest:matrix_arena",maxTicks=2400,skyAccess=true)
+    public void distantExactWorkStandUsesMultipleRealLegs(GameTestHelper h){
+        var level=h.getLevel();
+        var start=new BlockPos(1024,-55,1024);
+        var target=start.offset(72,0,0);
+        var center=start.offset(36,0,0);
+        level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(center.getX()>>4,center.getZ()>>4),4);
+        for(int x=63;x<=70;x++)for(int z=63;z<=65;z++)level.getChunk(x,z);
+        for(int x=-4;x<=76;x++)for(int z=-4;z<=4;z++){
+            level.setBlock(start.offset(x,-1,z),Blocks.STONE.defaultBlockState(),2);
+            for(int y=0;y<=3;y++)level.setBlock(start.offset(x,y,z),Blocks.AIR.defaultBlockState(),2);
+        }
+        var worker=new BuilderGolem(com.caszgamermd.golemsplus.world.WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        level.addFreshEntity(worker);
+        final boolean[] accepted={false};
+        h.onEachTick(()->{
+            if(h.getTick()<10)return;
+            if(!accepted[0]){
+                var selected=com.caszgamermd.golemsplus.worker.WorkerNavigation.selectExecutableStand(
+                        level,worker,java.util.List.of(target));
+                if(!target.equals(selected)){
+                    h.fail("Distant standing destination was rejected: "+selected+" "
+                        +com.caszgamermd.golemsplus.worker.WorkerNavigation.diagnoseExecutableStand(
+                                level,worker,java.util.List.of(target)));return;
+                }
+                accepted[0]=true;
+            }
+            if(worker.distanceToSqr(target.getX()+.5,target.getY(),target.getZ()+.5)<.05*.05){
+                System.out.println("[NN DISTANT STAND PASS] 72-block exact arrival tick="+h.getTick());
+                h.succeed();return;
+            }
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(level,worker,target,1);
+            if(h.getTick()==2300)h.fail("Distant exact movement stalled at "+worker.position());
+        });
+    }
 }

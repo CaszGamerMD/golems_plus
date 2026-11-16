@@ -82,6 +82,7 @@ public final class WorkerNavigation {
         // routeToExact had no throttle after a failed plan, so a blocked goal
         // re-ran the whole multi-search planner on every Builder callback.
         BlockPos failedExact;
+        BlockPos certifiedExactGoal;
         int failedExactUntil;
         int detourFirstLegRetries;
         boolean narrowDoorway;
@@ -612,15 +613,42 @@ public final class WorkerNavigation {
         // Not deferrable: callers read null as "unreachable" and would
         // abandon a perfectly good work pose just because other golems
         // used this tick's search allowance.
+        boolean distant=WorkerRoutePlanner.distant(mob.blockPosition(),goals);
         WorkerRoutePlanner.Route route=planExecutableRoute(
-                level,mob,goals,progress==null?null:progress.lastBad,true,false);
+                level,mob,goals,progress==null?null:progress.lastBad,!distant,false);
         BlockPos result=null;
         if(route!=null&&!route.steps().isEmpty()){
-            BlockPos reached=route.steps().get(route.steps().size()-1);
-            if(goals.contains(reached))result=reached.immutable();
+            BlockPos reached=route.steps().getLast();
+            if(route.complete()&&goals.contains(reached))result=reached.immutable();
+            else if(distant&&!route.complete()){
+                // The local A* returned a physically executable advancing
+                // leg, NOT a work pose. Certify an actual final goal using
+                // a bounded complete native survey, without executing it.
+                // All live steps remain under the trained controller.
+                List<BlockPos> ordered=new ArrayList<>(goals);
+                ordered.sort(Comparator.comparingDouble(g->g.distSqr(reached)));
+                for(int i=0;i<Math.min(4,ordered.size());i++){
+                    BlockPos goal=ordered.get(i);
+                    if(reached.distSqr(goal)>=mob.blockPosition().distSqr(goal)
+                            ||!certifyDistantStand(level,mob,goal))continue;
+                    result=goal.immutable();
+                    break;
+                }
+            }
         }
         if(result==null)cache.noStand.add(key);else cache.stands.put(key,result);
         return result;
+    }
+
+    /** Native search is a read-only coarse reachability certificate, not
+     * a movement policy. Bound the full survey to the number of nodes
+     * safePath actually checks. Never treat an approximate endpoint as
+     * an exact work stance, nor use this to approve unsupported terrain. */
+    private static boolean certifyDistantStand(ServerLevel level,PathfinderMob mob,BlockPos goal){
+        if(!standingTile(level,mob,goal))return false;
+        Path path=mob.getNavigation().createPath(goal,0);
+        return path!=null&&path.getNodeCount()<=121&&endsAtExactTile(level,path,goal)
+                &&safePath(level,mob,path,false);
     }
 
     private static WorkerRoutePlanner.Route planExactRoute(
@@ -1494,7 +1522,7 @@ public final class WorkerNavigation {
             }else p.terrainStep=null;
         }
         boolean same=target.equals(p.requested);
-        if(!same)p.progressWatch.reset();
+        if(!same){p.progressWatch.reset();p.certifiedExactGoal=null;}
         if(same&&!mob.getNavigation().isDone()
                 &&p.stalled<STALL_TICKS&&p.unsafeChecks==0)return true;
         if(mob.getNavigation() instanceof GroundPathNavigation ground)
@@ -1528,9 +1556,21 @@ public final class WorkerNavigation {
         // Exact destinations also use the ONE trained planner. A
         // native navigation path is used solely to physically execute
         // a short already-scored waypoint, not as an alternate AI.
+        boolean distant=WorkerRoutePlanner.distant(mob.blockPosition(),List.of(target));
+        if(distant&&!target.equals(p.certifiedExactGoal)){
+            if(!certifyDistantStand(level,mob,target)){
+                p.failedExact=target.immutable();
+                p.failedExactUntil=mob.tickCount+ROUTE_RETRY;
+                return false;
+            }
+            p.certifiedExactGoal=target.immutable();
+        }
         p.planRequests++;
+        // A distant certified exact goal is executed in advancing local
+        // legs. Only the physical target arrival above can finish it.
+        // Once within local range demand a complete trained route again.
         WorkerRoutePlanner.Route plan=planExecutableRoute(
-                level,mob,List.of(target),p.lastBad,true);
+                level,mob,List.of(target),p.lastBad,!distant);
         // Search allowance spent by other golems this tick: report "still
         // working on it" (same convention as the courtesy wait above), not
         // a failure, and try again on the next callback.
@@ -1624,6 +1664,7 @@ public final class WorkerNavigation {
         }
         boolean changed=!target.equals(p.requested);
         if(changed){
+            p.certifiedExactGoal=null;
             p.progressWatch.reset();
             p.centering=null;
             p.requested=target.immutable();p.approach=null;
