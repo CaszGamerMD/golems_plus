@@ -12,6 +12,8 @@ import net.minecraft.server.level.ServerLevel;
  * All state is transient and belongs to the server thread. */
 final class BuilderNNFrontierStaging {
     private static final long STAGE_DEADLINE=780, LEG_DEADLINE=160;
+    private static final int MAX_CHAIN_LEGS=8;
+    private static final long SOFT_ROUTE_RETRY_TICKS=40;
     private static final int MAX_STAGING_CREW=2;
     private static final Map<BuilderGolem,Leg> active=new WeakHashMap<>();
     private static final Map<BuilderGolem,Window> windows=new WeakHashMap<>();
@@ -64,6 +66,47 @@ final class BuilderNNFrontierStaging {
                     +" "+reason+" legs="+window.legs);
         }
     }
+    /** Follow the SAME unfinished task through successive, verified
+     * short ground legs. A completed waypoint is not a completed task.
+     * Continuing here (before normal idle-work routing) prevents the
+     * worker from immediately turning around to OnSite between legs. */
+    private static boolean continueTowardWork(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,
+            Leg previous,Window window,long now){
+        if(window==null||window.legs>=MAX_CHAIN_LEGS
+                ||now-window.began>=STAGE_DEADLINE
+                ||previous.targetIndex<0||previous.targetIndex>=steps.size()
+                ||!table.builderStepReadyForClaim(previous.targetIndex)
+                ||!table.builderStepInActivePhase(steps,previous.targetIndex))
+            return false;
+        var targetStep=steps.get(previous.targetIndex);
+        BlockPos work=new BlockPos(targetStep.x(),targetStep.y(),targetStep.z());
+        BlockPos current=worker.blockPosition();
+        int attempts=0;
+        for(BlockPos seed:BuilderNNStageGeometry.candidates(current,work)){
+            for(int dy:new int[]{0,1,-1}){
+                BlockPos waypoint=seed.offset(0,dy,0);
+                if(!level.hasChunkAt(waypoint)
+                        ||!WorkerNavigation.canStandOn(level,worker,waypoint))continue;
+                if(++attempts>5)break;
+                if(!WorkerNavigation.routeToExact(level,worker,waypoint,1.0))continue;
+                double start=worker.distanceToSqr(
+                        waypoint.getX()+.5,waypoint.getY(),waypoint.getZ()+.5);
+                active.put(worker,new Leg(table,table.activeOrder(),previous.structure,
+                        previous.layer,previous.targetIndex,waypoint,now,start));
+                System.out.println("[NN FRONTIER STAGE CONTINUE] worker="+worker.getUUID()
+                        +" targetStep="+previous.targetIndex
+                        +" leg="+(window.legs+1)+"/"+MAX_CHAIN_LEGS
+                        +" from="+current+" waypoint="+waypoint
+                        +" remainingHorizontal="+String.format(java.util.Locale.ROOT,
+                            "%.1f",Math.hypot(work.getX()-waypoint.getX(),
+                                    work.getZ()-waypoint.getZ())));
+                return true;
+            }
+            if(attempts>5)break;
+        }
+        return false;
+    }
     /** Called before the routine work-claim search so a real walking
      * waypoint is not immediately cancelled by an idle return. */
     static boolean follow(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
@@ -89,21 +132,31 @@ final class BuilderNNFrontierStaging {
             if(window!=null){window.legs++;window.nextTry=now;}
             System.out.println("[NN FRONTIER STAGE ARRIVED] worker="+worker.getUUID()
                     +" targetStep="+leg.targetIndex+" waypoint="+leg.waypoint);
+            if(continueTowardWork(level,worker,table,steps,leg,window,now))return true;
+            // Only NOW return control to the real work planner. It will
+            // re-evaluate support, material and safe exit at this location.
             return false;
         }
         if(distance<leg.best-.25){leg.best=distance;leg.lastAdvance=now;}
-        if(now>=leg.expires||now-leg.lastAdvance>90
-                ||!WorkerNavigation.canStandOn(level,worker,leg.waypoint)
-                ||!WorkerNavigation.routeToExact(level,worker,leg.waypoint,1.0)){
-            active.remove(worker);
-            Window window=windows.get(worker);
-            if(window!=null)window.nextTry=now+60;
-            System.out.println("[NN FRONTIER STAGE STOP] worker="+worker.getUUID()
-                    +" targetStep="+leg.targetIndex+" waypoint="+leg.waypoint
-                    +" bestSqr="+leg.best+" elapsed="+(LEG_DEADLINE-(leg.expires-now)));
-            return false;
+        boolean supported=WorkerNavigation.canStandOn(level,worker,leg.waypoint);
+        boolean timedOut=now>=leg.expires||now-leg.lastAdvance>90;
+        if(!timedOut&&supported){
+            if(WorkerNavigation.routeToExact(level,worker,leg.waypoint,1.0))
+                return true;
+            // Exact routing briefly throttles a failed request. One
+            // rejection is not proof the safe waypoint has disappeared:
+            // retry within a STRICT bounded interval, never claim a block.
+            if(now-leg.lastAdvance<=SOFT_ROUTE_RETRY_TICKS)return true;
         }
-        return true;
+        active.remove(worker);
+        Window window=windows.get(worker);
+        if(window!=null)window.nextTry=now+60;
+        System.out.println("[NN FRONTIER STAGE STOP] worker="+worker.getUUID()
+                +" targetStep="+leg.targetIndex+" waypoint="+leg.waypoint
+                +" reason="+(timedOut?"no physical progress":!supported
+                        ?"standing tile no longer safe":"route retry exhausted")
+                +" bestSqr="+leg.best+" elapsed="+(LEG_DEADLINE-(leg.expires-now)));
+        return false;
     }
     /** A near local waypoint, not a fake distant route certificate. */
     static boolean start(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
@@ -120,7 +173,8 @@ final class BuilderNNFrontierStaging {
             window=new Window(table.activeOrder(),structure,layer,now);
             windows.put(worker,window);
         }
-        if(now<window.nextTry||now-window.began>=STAGE_DEADLINE)return false;
+        if(now<window.nextTry||now-window.began>=STAGE_DEADLINE
+                ||window.legs>=MAX_CHAIN_LEGS)return false;
         int staged=0;
         for(var leg:active.values())if(leg.table==table&&now<leg.expires)staged++;
         if(staged>=MAX_STAGING_CREW)return false;

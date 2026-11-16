@@ -1,9 +1,10 @@
-name: NNGolems Farm Demo staging scout validation
+name: NNGolems Farm Demo chained staging A/B
 on:
   push:
     branches: [NNGolems]
     paths:
       - '.github/workflows/nngolems-frontier-staging.yml'
+      # Edited to trigger a fresh, controlled post-fix comparison.
   workflow_dispatch:
 permissions:
   contents: read
@@ -130,16 +131,19 @@ jobs:
           report['stageDiagnostics']=[line.split('[NN FRONTIER STAGE DIAG] ',1)[1]
               for line in log.splitlines() if '[STDOUT]: [NN FRONTIER STAGE DIAG]' in line][-15:]
           report['stagingStarts']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE START\]',log))
+          report['stageContinues']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE CONTINUE\]',log))
           report['stagingArrivals']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE ARRIVED\]',log))
           report['stagingStops']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE STOP\]',log))
           (root/'report.json').write_text(json.dumps(report,indent=2))
           print('Staging:',report['staging'],'scouts:',report['scouts'],
               'starts:',report['stagingStarts'],
+              'continues:',report['stageContinues'],
               'arrived:',report['stagingArrivals'],'stops:',report['stagingStops'])
           print('99 percent ordinary completion target met:',report['meets99pct'])
           if report['staging']=='true':
               assert report['scouts']>0,'Staging scout was never recruited'
               assert report['stagingStarts']>0,'Staging scout found no executable approach leg'
+              assert report['stageContinues']>0,'No completed staging leg transitioned into a continuous follow-up leg'
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
               f.write('## Farm Demo staging='+report['staging']+'\n\n'+json.dumps(report,indent=2)+'\n')
           PY

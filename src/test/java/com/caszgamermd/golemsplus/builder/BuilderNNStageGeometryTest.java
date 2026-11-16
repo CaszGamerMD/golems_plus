@@ -13,6 +13,23 @@ class BuilderNNStageGeometryTest {
         assertEquals(new BlockPos(0,70,12),b.getFirst());
         assertEquals(new HashSet<>(a.stream().map(p->new BlockPos(p.getZ(),p.getY(),p.getX())).toList()),new HashSet<>(b));
     }
+    @Test void repeatedShortLegsConvergeWithoutBacktrackingOrLoops(){
+        var target=new BlockPos(96,75,0);
+        var current=new BlockPos(0,70,0);
+        var visited=new HashSet<BlockPos>();visited.add(current);
+        int legs=0;
+        while(!BuilderNNStageGeometry.candidates(current,target).isEmpty()&&legs<8){
+            var next=BuilderNNStageGeometry.candidates(current,target).getFirst();
+            assertTrue(visited.add(next),"staging must never revisit a waypoint");
+            assertEquals(70,next.getY(),"ground-stage does not fake a vertical lift");
+            assertTrue(Math.hypot(next.getX()-target.getX(),next.getZ()-target.getZ())+5
+                    <Math.hypot(current.getX()-target.getX(),current.getZ()-target.getZ()),
+                    "every leg must bring the worker measurably closer");
+            current=next;legs++;
+        }
+        assertTrue(legs>1&&legs<=8);
+        assertTrue(Math.hypot(current.getX()-target.getX(),current.getZ()-target.getZ())<18);
+    }
     @Test void noDestinationTeleportOrUnnecessaryNearStaging(){
         var from=new BlockPos(100,50,100);
         assertTrue(BuilderNNStageGeometry.candidates(from,new BlockPos(110,72,102)).isEmpty());
