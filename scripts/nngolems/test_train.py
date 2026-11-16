@@ -13,8 +13,9 @@ class TrainingTests(unittest.TestCase):
         for run in range(3):
             for i in range(80):
                 moved = i % 2
-                rows.append(dict(schema=1, run=str(run), worker='worker', tick=i*20,
-                                 features=[.2*moved, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
+                rows.append(dict(schema=2, run=str(run), worker='worker', tick=i*20,
+                                 controller='WALK',
+                                 features=[.2*moved, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1] + [0.]*10,
                                  moved=moved, distance=float(moved)))
         return rows
 

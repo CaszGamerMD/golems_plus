@@ -1,6 +1,8 @@
 package com.caszgamermd.golemsplus.builder;
 
 import com.google.gson.Gson;
+import com.caszgamermd.golemsplus.worker.WorkerNavigation;
+import net.minecraft.core.BlockPos;
 import java.util.Map;
 import java.util.UUID;
 import java.util.WeakHashMap;
@@ -16,15 +18,21 @@ final class BuilderNeuralRecorder {
     private static final Gson JSON = new Gson();
     private static final int LIMIT = 100_000;
     private static int emitted;
-    private record Start(long tick, Vec3 position, String controller, double[] features) {}
+    private record Start(long tick, Vec3 position, String controller, double[] features,
+            ServerLevel level) {}
     private record Row(int schema, String run, String worker, long tick,
             String controller, double[] features, double distance, int moved) {}
     private static final Map<BuilderGolem, Start> pending = new WeakHashMap<>();
+
+    private static final Map<BuilderGolem, Long> lastSeen = new WeakHashMap<>();
 
     static void sample(ServerLevel level, BuilderGolem worker, String controller) {
         if (!ENABLED || emitted >= LIMIT) return;
         long now = level.getGameTime();
         Start previous = pending.get(worker);
+        Long last = lastSeen.put(worker, now);
+        if (last == null || now - last != 1 || previous != null && previous.level() != level)
+            previous = null;
         // Controller changes and tick gaps are censored, never labelled failures.
         if (previous != null && previous.controller().equals(controller)) {
             long elapsed = now - previous.tick();
@@ -33,7 +41,7 @@ final class BuilderNeuralRecorder {
                 double distance = worker.position().distanceTo(previous.position());
                 // Exclude implausible discontinuities/teleports from training.
                 if (Double.isFinite(distance) && distance <= 8) {
-                    System.out.println("[NNGOLEMS] " + JSON.toJson(new Row(1, RUN,
+                    System.out.println("[NNGOLEMS] " + JSON.toJson(new Row(2, RUN,
                             worker.getUUID().toString(), previous.tick(), controller,
                             previous.features(), distance, distance >= .25 ? 1 : 0)));
                     emitted++;
@@ -41,7 +49,7 @@ final class BuilderNeuralRecorder {
             }
         }
         Vec3 velocity = worker.getDeltaMovement();
-        double[] features = new double[11];
+        double[] features = new double[21];
         features[0] = Math.clamp(velocity.x, -1, 1);
         features[1] = Math.clamp(velocity.y, -1, 1);
         features[2] = Math.clamp(velocity.z, -1, 1);
@@ -49,6 +57,22 @@ final class BuilderNeuralRecorder {
         String[] controllers = {"FLIGHT", "GRAPPLE", "SCAFFOLD", "YIELD", "CENTER", "IDLE", "WALK"};
         for (int i = 0; i < controllers.length; i++)
             features[4 + i] = controllers[i].equals(controller) ? 1 : 0;
-        pending.put(worker, new Start(now, worker.position(), controller, features));
+        BlockPos goal = controller.equals("FLIGHT") ? BuilderFlight.observedDestination(worker)
+                : controller.equals("WALK") ? WorkerNavigation.observedDestination(worker) : null;
+        if (goal != null) {
+            features[11] = 1;
+            features[12] = Math.clamp((goal.getX() + .5 - worker.getX()) / 32, -1, 1);
+            features[13] = Math.clamp((goal.getY() - worker.getY()) / 32, -1, 1);
+            features[14] = Math.clamp((goal.getZ() + .5 - worker.getZ()) / 32, -1, 1);
+        }
+        // Occupancy probes only, not executable route/standability claims.
+        // clear() rejects unloaded chunks before inspecting collisions.
+        int[][] directions = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+        for (int i=0; i<directions.length; i++) {
+            int[] d=directions[i];
+            features[15+i] = BuilderFlight.clear(level,worker,
+                    worker.position().add(d[0]*.5,d[1]*.5,d[2]*.5)) ? 1 : 0;
+        }
+        pending.put(worker, new Start(now, worker.position(), controller, features, level));
     }
 }

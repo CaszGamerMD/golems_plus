@@ -1775,6 +1775,12 @@ public final class WorkerNavigation {
     /** Read-only navigation diagnostics; required to distinguish no
      * candidate, cooldown, stalled path, and actual arrival in-game.
      */
+    /** Last requested walking destination; read-only, may include a pending replan. */
+    public static BlockPos observedDestination(PathfinderMob mob){
+        Progress p=states.get(mob);
+        return p==null?null:p.requested;
+    }
+
     public static String debugStatus(PathfinderMob mob){
         Progress p=states.get(mob);
         if(p==null)return "uninitialized";

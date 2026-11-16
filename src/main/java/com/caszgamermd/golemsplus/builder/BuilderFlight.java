@@ -29,6 +29,12 @@ public final class BuilderFlight {
         long failedUntil;
     }
 
+    /** Read-only destination for experimental observations. */
+    static BlockPos observedDestination(BuilderGolem worker){
+        Flight f=flights.get(worker);
+        return f==null?null:f.goal;
+    }
+
     static String traceStatus(BuilderGolem worker){
         Flight f=flights.get(worker);
         if(f==null)return "none";

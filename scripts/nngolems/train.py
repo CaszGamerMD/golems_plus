@@ -6,7 +6,9 @@ import random
 from pathlib import Path
 
 FEATURES = ['vx', 'vy', 'vz', 'grounded', 'FLIGHT', 'GRAPPLE', 'SCAFFOLD',
-            'YIELD', 'CENTER', 'IDLE', 'WALK']
+            'YIELD', 'CENTER', 'IDLE', 'WALK', 'has_goal', 'goal_dx_32',
+            'goal_dy_32', 'goal_dz_32', 'clear_xp', 'clear_xm', 'clear_yp',
+            'clear_ym', 'clear_zp', 'clear_zm']
 MARKER = '[NNGOLEMS] '
 
 
@@ -18,7 +20,7 @@ def read_rows(paths):
                 continue
             row = json.loads(line.split(MARKER, 1)[1])
             x = row['features']
-            if (row['schema'] != 1 or len(x) != len(FEATURES)
+            if (row['schema'] != 2 or len(x) != len(FEATURES)
                     or any(not isinstance(v, (int, float)) or not math.isfinite(v)
                            or abs(v) > 1 for v in x)
                     or row['moved'] not in (0, 1)
@@ -79,7 +81,7 @@ class Network:
                 self.c -= rate * error
 
     def export(self):
-        return dict(schema=1, features=FEATURES, target='moves_at_least_0.25m_in_20_ticks',
+        return dict(schema=2, features=FEATURES, target='moves_at_least_0.25m_in_20_ticks',
                     w=self.w, b=self.b, v=self.v, c=self.c)
 
 
@@ -89,20 +91,37 @@ def metrics(model, rows):
             'accuracy': sum((p >= .5) == r['moved'] for p, r in zip(probabilities, rows))/len(rows),
             'log_loss': -sum(math.log(max(1e-12, p if r['moved'] else 1-p))
                              for p, r in zip(probabilities, rows))/len(rows),
-            'stationary_recall': sum(p < .5 and not r['moved'] for p, r in zip(probabilities, rows)) /
-                                 sum(not r['moved'] for r in rows)}
+            'stationary_recall': (sum(p < .5 and not r['moved'] for p, r in zip(probabilities, rows)) /
+                                 sum(not r['moved'] for r in rows) if any(not r['moved'] for r in rows) else None),
+            'moving_samples': sum(r['moved'] for r in rows),
+            'stationary_samples': sum(not r['moved'] for r in rows)}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('logs', nargs='+')
+    parser.add_argument('--commit', default='unknown')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     train, held = split_runs(read_rows(args.logs))
     model = Network()
     model.fit(train)
     majority = int(sum(r['moved'] for r in train) >= len(train)/2)
-    report = {'training': metrics(model, train), 'held_out': metrics(model, held),
+    # Choose velocity threshold using training runs only.
+    speed = lambda r: math.sqrt(sum(v*v for v in r['features'][:3]))
+    thresholds = [i/1000 for i in range(0, 301)]
+    threshold = max(thresholds, key=lambda t: sum((speed(r) >= t) == r['moved'] for r in train))
+    velocity_accuracy = sum((speed(r) >= threshold) == r['moved'] for r in held)/len(held)
+    legacy_train = [dict(r, features=r['features'][:11] + [0.]*10) for r in train]
+    legacy_held = [dict(r, features=r['features'][:11] + [0.]*10) for r in held]
+    legacy = Network()
+    legacy.fit(legacy_train)
+    report = {'commit': args.commit, 'schema': 2,
+              'velocity_baseline': {'threshold': threshold, 'held_out_accuracy': velocity_accuracy},
+              'without_obstacle_goal_features': metrics(legacy, legacy_held),
+              'by_controller': {c: metrics(model, [r for r in held if r['controller'] == c])
+                                for c in sorted({r['controller'] for r in held})},
+              'training': metrics(model, train), 'held_out': metrics(model, held),
               'majority_baseline_accuracy': sum(r['moved'] == majority for r in held)/len(held),
               'training_runs': sorted({r['run'] for r in train}),
               'held_out_runs': sorted({r['run'] for r in held}),
