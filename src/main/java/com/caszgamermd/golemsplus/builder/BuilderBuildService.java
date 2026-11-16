@@ -1944,6 +1944,9 @@ public final class BuilderBuildService {
                     System.out.println("[PROPELLER HANDOFF] released "+index+" at "+worker.position());
                     return;
                 }
+                // Reposition vertically from the current hover before
+                // considering a different column or a grounded relaunch.
+                if(BuilderFlight.adjustHoverForWork(level,worker,pos,bodyBlockingWork))return;
                 BlockPos flightPose=BuilderFlight.workPose(level,worker,pos,bodyBlockingWork);
                 if(flightPose!=null&&BuilderFlight.request(level,worker,flightPose))return;
                 if(BuilderFlight.active(worker)){

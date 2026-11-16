@@ -131,6 +131,45 @@ public final class BuilderFlight {
         if (goal == null || !enabled(worker) || BuilderGrappleAccess.active(worker)) return false;
         return requestPosition(level,worker,goal,feet(goal));
     }
+    /** Move in the current vertical column, including from a powered hover.
+     * Keep the original takeoff envelope and the exact physical X/Z; a
+     * fractional hover must not be forced to recenter or find a floor. */
+    public static boolean requestVertical(ServerLevel level, BuilderGolem worker, double y) {
+        if (!enabled(worker) || BuilderGrappleAccess.active(worker)
+                || BuilderScaffolding.isControllingMovement(worker)
+                || (!active(worker) && !worker.onGround()) || !Double.isFinite(y)) return false;
+        Vec3 from=worker.position();
+        Vec3 to=new Vec3(from.x,y,from.z);
+        if (moving(worker)) return false; // finish the committed leg first
+        if (Math.abs(y-from.y)<.02 || !sweep(level,worker,from,to)) return false;
+        return requestPosition(level,worker,BlockPos.containing(to),to);
+    }
+
+    private static Vec3 verticalWorkPose(ServerLevel level,BuilderGolem worker,
+            BlockPos target,boolean bodyBlocking) {
+        if (!active(worker)) return null;
+        Vec3 from=worker.position();
+        Vec3 best=null;
+        double bestDistance=Double.POSITIVE_INFINITY;
+        for (int dy=-2;dy<=1;dy++) {
+            Vec3 to=new Vec3(from.x,target.getY()+dy,from.z);
+            double distance=Math.abs(to.y-from.y);
+            if (distance<.02 || distance>=bestDistance
+                    || !inEnvelope(origin(worker),to)
+                    || !safeWorkPose(level,worker,target,to,bodyBlocking)
+                    || !sweep(level,worker,from,to)) continue;
+            best=to;bestDistance=distance;
+        }
+        return best;
+    }
+
+    static boolean adjustHoverForWork(ServerLevel level,BuilderGolem worker,
+            BlockPos target,boolean bodyBlocking) {
+        if (moving(worker)) return false;
+        Vec3 pose=verticalWorkPose(level,worker,target,bodyBlocking);
+        return pose!=null&&requestVertical(level,worker,pose.y);
+    }
+
     /** Land at the actual collision-checked point inside a supported tile.
      * A nominal two-metre center-to-center leg may be 2.025m from the
      * physical walking endpoint. Trim the landing point, NOT the envelope. */
@@ -273,7 +312,8 @@ public final class BuilderFlight {
     public static boolean canAccessWork(ServerLevel level, BuilderGolem worker, BlockPos target,boolean bodyBlocking) {
         if (!enabled(worker) || BuilderGrappleAccess.active(worker)
                 || BuilderScaffolding.isControllingMovement(worker)) return false;
-        return workPose(level, worker, target,bodyBlocking) != null
+        return verticalWorkPose(level,worker,target,bodyBlocking)!=null
+                || workPose(level, worker, target,bodyBlocking) != null
                 || launchPose(level, worker, target,bodyBlocking) != null;
     }
     private static final class RoofAccess {
@@ -703,7 +743,7 @@ public final class BuilderFlight {
             flight.stuckTicks = 0;
         } else if (++flight.stuckTicks > 40) {
             BuilderTrace.decision(level,worker,"FLIGHT_ABORT",flight.goal,"no physical displacement for 40 ticks");
-            flight.lastFailedDestination=feet(flight.goal);
+            flight.lastFailedDestination=flight.path.getLast();
             flight.failedUntil=level.getGameTime()+100;
             stop(worker);
             flight.retryAt = level.getGameTime() + 10;
@@ -719,7 +759,7 @@ public final class BuilderFlight {
             worker.setDeltaMovement(velocity);
         else {
             BuilderTrace.decision(level,worker,"FLIGHT_ABORT",flight.goal,"next swept body blocked or outside envelope");
-            flight.lastFailedDestination=feet(flight.goal);
+            flight.lastFailedDestination=flight.path.getLast();
             flight.failedUntil=level.getGameTime()+100;
             stop(worker);
             flight.retryAt = level.getGameTime() + 10;

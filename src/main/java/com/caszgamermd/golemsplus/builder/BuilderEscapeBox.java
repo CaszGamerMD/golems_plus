@@ -308,8 +308,25 @@ final class BuilderEscapeBox {
         if(BuilderFlight.moving(worker)||BuilderGrappleAccess.active(worker)
                 ||BuilderScaffolding.isControllingMovement(worker))return true;
         long now=level.getGameTime();
-        // No competing ground route while a propeller is still hovering.
+        // An airborne builder can continue to a clear shell waypoint
+        // without first returning to a supported launch. The original
+        // takeoff envelope remains in force; a distant side still needs
+        // a genuine landing and another takeoff.
         if(BuilderFlight.active(worker)){
+            if(now>=t.nextSearch){
+                t.nextSearch=now+30;
+                var air=new ArrayList<>(box.localAirExits(worker.blockPosition()));
+                air.sort(Comparator.comparingDouble(p->distance(worker,p)));
+                for(BlockPos at:air){
+                    if(t.rejected.contains(at))continue;
+                    if(BuilderFlight.request(level,worker,at)){
+                        t.waypoint=at;t.lastPosition=worker.position();
+                        t.best=distance(worker,at);t.lastMove=t.lastProgress=now;
+                        BuilderTrace.decision(level,worker,"ESCAPE_BOX_COMMIT",at,"continue from powered hover");
+                        return true;
+                    }
+                }
+            }
             BuilderFlight.land(level,worker,true,t.rejected);
             return true;
         }

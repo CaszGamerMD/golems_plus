@@ -76,6 +76,56 @@ public final class BuilderPropellerGameTest {
             }
         });
     }
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=350,skyAccess=true)
+    public void propellerChainsVerticalLegsFromFractionalHover(GameTestHelper h) {
+        var world=h.getLevel();
+        BlockPos start=h.absolutePos(new BlockPos(10,4,10));
+        world.getChunkSource().addTicketWithRadius(TicketType.FORCED,
+                new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        h.setBlock(10,3,10,Blocks.STONE);
+        for(int y=4;y<=20;y++)h.setBlock(10,y,10,Blocks.AIR);
+        h.setBlock(10,18,10,Blocks.STONE);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setPos(start.getX()+.475,start.getY(),start.getZ()+.6);
+        world.addFreshEntity(worker);
+        int[] stage={0};
+        Vec3[] anchor={null};
+        double[] heights={start.getY()+8,start.getY()+3,start.getY()+10};
+        h.onEachTick(()->{
+            if(h.getTick()<5)return;
+            if(stage[0]==0){
+                anchor[0]=worker.position();
+                if(!BuilderFlight.requestVertical(world,worker,heights[0])){
+                    h.fail("Initial vertical lift rejected");return;
+                }
+                stage[0]=1;return;
+            }
+            if(Math.abs(worker.getX()-anchor[0].x)>.015
+                    ||Math.abs(worker.getZ()-anchor[0].z)>.015){
+                h.fail("Vertical flight recentered the airborne builder");return;
+            }
+            if(!worker.propellerSpinning()||!worker.isNoGravity()
+                    ||!BuilderFlight.active(worker)){
+                h.fail("Lost powered hover between legs");return;
+            }
+            if(BuilderFlight.moving(worker)
+                    ||Math.abs(worker.getY()-heights[stage[0]-1])>.04)return;
+            if(stage[0]==1){
+                if(BuilderFlight.requestVertical(world,worker,start.getY()+16)){
+                    h.fail("Accepted vertical travel through a ceiling");return;
+                }
+                if(BuilderFlight.request(world,worker,start.east(4).above(8))){
+                    h.fail("Hover reset the horizontal flight envelope");return;
+                }
+            }
+            if(stage[0]==3){h.succeed();return;}
+            if(!BuilderFlight.requestVertical(world,worker,heights[stage[0]])){
+                h.fail("Could not continue vertically from unsupported hover");return;
+            }
+            stage[0]++;
+        });
+    }
+
     /** Full Planner -> claim -> material -> walk -> lift -> place pipeline.
      * No hook, scaffolding, or existing platform is supplied. */
     @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=1600,skyAccess=true)
