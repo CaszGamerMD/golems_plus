@@ -31,6 +31,8 @@ public final class BuilderNNCurriculumGameTest {
     private void run(GameTestHelper h)throws Exception {
         var course=BuilderNNCurriculumFixture.selected();
         var schematic=BuilderNNCurriculumFixture.read(course);
+        boolean speed="true".equals(System.getenv("NN_SPEED_TEST"));
+        if(speed&&course.blocks()>2000){h.fail("Speed course exceeds 2000 source blocks");return;}
         var all=new ArrayList<>(schematic.blocks());
         all.addAll(schematic.airBlocks());
         int minX=all.stream().mapToInt(LitematicFileReader.Block::x).min().orElseThrow();
@@ -165,6 +167,11 @@ public final class BuilderNNCurriculumGameTest {
                 +" unsupportedStates="+plan.unsupported());
         if(!table.startPlacedBuilder(ownerId)){h.fail("Cannot start curriculum job");return;}
         final long start=System.nanoTime();
+        final long startTick=h.getTick();
+        final long tickLimit=Long.parseLong(System.getenv().getOrDefault("NN_SPEED_TICK_LIMIT","72000"));
+        if(speed&&tickLimit<1){h.fail("Invalid speed tick limit");return;}
+        if(speed)System.out.println("[NN_SPEED_START] course="+course.id()+" source="+course.blocks()
+                +" startTick="+startTick+" tickLimit="+tickLimit+" crew=4");
         final long limit=Long.parseLong(System.getenv().getOrDefault("NN_COURSE_SECONDS","300"));
         if(limit<1||limit>1800){h.fail("Invalid course seconds");return;}
         var watchdog=new MatrixWorkWatchdog(h.getTick(),table.builderWorkDone(),table.builderClearCursor());
@@ -174,7 +181,10 @@ public final class BuilderNNCurriculumGameTest {
             long elapsed=(System.nanoTime()-start)/1_000_000L;
             long noWork=watchdog.sample(tick,table.builderWorkDone(),table.builderClearCursor());
             boolean complete=table.phase()==WorkerPhase.COMPLETE;
-            boolean timeout=elapsed>=limit*1000L;
+            long elapsedTicks=tick-startTick;
+            boolean tickTimeout=speed&&elapsedTicks>=tickLimit;
+            boolean wallTimeout=elapsed>=limit*1000L;
+            boolean timeout=tickTimeout||wallTimeout;
             boolean stalled=noWork>=1200&&!BuilderCrewRecovery.assessmentGrace(level,table);
             if(tick%400!=0&&!complete&&!timeout&&!stalled)return;
             int correct=0;
@@ -187,11 +197,16 @@ public final class BuilderNNCurriculumGameTest {
                     +" tick="+tick+" problem="+table.problem());
             if(!complete&&!timeout&&!stalled)return;
             String outcome=complete?(correct==course.blocks()?"COMPLETE":"MISMATCH"):
-                    stalled?"NO_WORK_PROGRESS":"TIME_LIMIT";
+                    stalled?"NO_WORK_PROGRESS":tickTimeout?"TICK_LIMIT":"TIME_LIMIT";
             BuilderTrace.dump(level,table,"curriculum "+outcome);
             System.out.println("[NN_CURRICULUM_RESULT] course="+course.id()+" outcome="+outcome
                     +" correct="+correct+" best="+best[0]+" total="+course.blocks()
                     +" elapsedMs="+elapsed+" tick="+tick+" unsupported="+unsupported);
+            if(speed)System.out.println("[NN_SPEED_RESULT] course="+course.id()+" outcome="+outcome
+                    +" correct="+correct+" total="+course.blocks()+" elapsedTicks="+elapsedTicks
+                    +" elapsedMs="+elapsed+" unsupported="+unsupported
+                    +" crewAlive="+crew.stream().filter(BuilderGolem::isAlive).count()
+                    +" crewUnclaimed="+crew.stream().filter(w->table.claimedStep(w.getUUID())<0).count());
             h.succeed(); // Assessment completed, not necessarily the build.
         });
     }
