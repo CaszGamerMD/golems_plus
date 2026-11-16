@@ -13,7 +13,10 @@ final class BuilderCrewRecovery {
         UUID job;
         int layer=Integer.MIN_VALUE,best=-1,attempts;
         long lastProgress,started,graceUntil;
-        boolean recalling;
+        boolean recalling,localAttempted;
+        long localUntil;
+        int localStartWork,localIndex=-1;
+        UUID localWorker;
         List<UUID> reduced=List.of();
         final Set<UUID> unloaded=new HashSet<>();
         final Set<UUID> recovering=new HashSet<>();
@@ -126,11 +129,18 @@ final class BuilderCrewRecovery {
             if(layer!=s.layer){
                 s.layer=layer;s.attempts=0;s.reduced=List.of();
                 s.parking.clear();s.best=work;s.lastProgress=now;s.graceUntil=0;
+                s.localAttempted=false;
             }
             if(work>s.best){s.best=work;s.lastProgress=now;}
+            if(s.localWorker!=null&&(work>s.localStartWork||now>=s.localUntil)){
+                System.out.println("[NN TEAM LOCAL OUTCOME] worker="+s.localWorker+" step="+s.localIndex
+                        +" delta="+(work-s.localStartWork)+" elapsed="+(now-s.localUntil+400));
+                s.localWorker=null;
+            }
             if(layer==Integer.MAX_VALUE)return false;
             if(s.attempts<2&&now>=s.graceUntil-40&&now-s.lastProgress>=STALL
                     &&remaining(table,steps,layer)>0){
+                if(tryTeamLocal(level,table,steps,s,now))return false;
                 begin(level,table,steps);s=state(table);
             }
         }
@@ -180,6 +190,35 @@ final class BuilderCrewRecovery {
         }
         if(!s.reduced.isEmpty()&&!s.reduced.contains(worker.getUUID())){
             parkAway(level,worker,table,s);return true;
+        }
+        return false;
+    }
+    /** Team-first experiment: before a global retreat, try an actual
+     * stocked, idle teammate on the current phase. One attempt per layer;
+     * no new blocks, remote items, or changes to anyone else's claim.
+     * Failure returns to the original bounded crew recovery. */
+    private static boolean tryTeamLocal(ServerLevel level,WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,State s,long now){
+        if(!Boolean.parseBoolean(System.getenv().getOrDefault("GOLEMS_NN_TEAM_LOCAL","false"))
+                ||table.builderWorkerIds().size()<2||s.localAttempted)return false;
+        s.localAttempted=true;
+        var candidates=new ArrayList<BuilderGolem>();
+        for(UUID id:table.builderWorkerIds())
+            if(!s.recovering.contains(id)&&!sidelined(table,id)
+                    &&level.getEntity(id) instanceof BuilderGolem w&&w.isAlive()
+                    &&table.claimedStep(id)<0&&BuilderBuildService.teamLocalEligible(table,id,s.layer))
+                candidates.add(w);
+        candidates.sort(Comparator.comparingDouble(BuilderGolem::getY).reversed()
+                .thenComparing(w->w.getUUID().toString()));
+        for(var w:candidates){
+            int idx=BuilderBuildService.resumeStockedCrewWorker(level,w,table,steps,0);
+            if(idx<0)continue;
+            s.localStartWork=table.builderWorkDone();s.localWorker=w.getUUID();
+            s.localIndex=idx;s.localUntil=now+400;s.graceUntil=now+440;
+            s.lastProgress=now;
+            System.out.println("[NN TEAM LOCAL START] worker="+s.localWorker+" step="+idx
+                    +" layer="+s.layer+" work="+s.localStartWork+" crew="+table.builderWorkerIds().size());
+            return true;
         }
         return false;
     }

@@ -47,7 +47,8 @@ public final class BuilderNNCurriculumGameTest {
                 ||"true".equals(System.getenv("GOLEMS_NN_BANDED")))){
             h.fail("Rotation benchmark requires a pure signed strip");return;
         }
-        int workers=strip?1:4;
+        int workers=strip?1:Integer.parseInt(System.getenv().getOrDefault("NN_TEAM_SIZE","4"));
+        if(!List.of(1,2,4,8).contains(workers)){h.fail("Invalid crew size");return;}
         if(speed&&course.blocks()>2000){h.fail("Speed course exceeds 2000 source blocks");return;}
         var all=new ArrayList<>(raw.blocks());
         all.addAll(raw.airBlocks());
@@ -229,13 +230,13 @@ public final class BuilderNNCurriculumGameTest {
         var watchdog=new MatrixWorkWatchdog(h.getTick(),table.builderWorkDone(),table.builderClearCursor());
         final int[] best={0};
         final double[] distance={0};
-        var previous=crew.getFirst().position();
-        final net.minecraft.world.phys.Vec3[] lastPosition={previous};
+        final var lastPosition=crew.stream().map(BuilderGolem::position).toArray(net.minecraft.world.phys.Vec3[]::new);
+        var teamTrace=new BuilderNNTeamTrace(course.id(),"AUTO"+workers,workers,course.blocks());
         h.startSequence().thenExecuteFor(1_000_000_000,()->{
             long tick=h.getTick();
-            if(strip){
-                var pos=crew.getFirst().position();
-                distance[0]+=pos.distanceTo(lastPosition[0]);lastPosition[0]=pos;
+            if(strip||teamTrace.enabled())for(int i=0;i<crew.size();i++){
+                var pos=crew.get(i).position();
+                distance[0]+=pos.distanceTo(lastPosition[i]);lastPosition[i]=pos;
             }
             long elapsed=(System.nanoTime()-start)/1_000_000L;
             long noWork=watchdog.sample(tick,table.builderWorkDone(),table.builderClearCursor());
@@ -250,6 +251,7 @@ public final class BuilderNNCurriculumGameTest {
             for(var b:expected)
                 if(BuilderPistonWork.sourceMatches(level.getBlockState(b.pos()),b.state()))correct++;
             best[0]=Math.max(best[0],correct);
+            teamTrace.sample(level,table,crew,steps,elapsedTicks,correct,distance[0],complete||timeout||stalled);
             int y=table.builderActiveLayer(steps);
             System.out.println("[NN_CURRICULUM_PROGRESS] course="+course.id()+" correct="+correct
                     +" total="+course.blocks()+" layer="+(y==Integer.MAX_VALUE?"complete":y-origin.getY())

@@ -337,6 +337,11 @@ public final class BuilderBuildService {
      * physically validated stocked claim without resetting that claim again.
      * The ordinary execution pipeline still checks reach, support, exit,
      * inventory and ownership. */
+    static boolean teamLocalEligible(WorkerStationBlockEntity table,UUID id,int layer){
+        var schedule=schedules.get(table);
+        return schedule!=null&&java.util.Objects.equals(schedule.job(),table.activeOrder())
+                &&BuilderCrewRecovery.staff(table,layer,schedule.layerStaff().getOrDefault(layer,schedule.roster())).contains(id);
+    }
     static int resumeStockedCrewWorker(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,int offset){
         int idx=tryStockedRecovery(level,worker,table,steps,offset);

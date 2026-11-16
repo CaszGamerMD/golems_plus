@@ -1,0 +1,97 @@
+name: NNGolems team-first learning benchmark
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-team-learning.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  team:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        course: [dragon, dome]
+        crew: [4, 8]
+        policy: ['false', 'true']
+        trial: [1, 2, 3]
+    env:
+      MATRIX_TEST_MODE: controlled
+      NN_COURSE: ${{ matrix.course }}
+      NN_TEAM_SIZE: ${{ matrix.crew }}
+      NN_DOME_MODE: AUTO${{ matrix.crew }}
+      GOLEMS_NN_TEAM_LOCAL: ${{ matrix.policy }}
+      GOLEMS_NN_TEAM_RECORD: 'true'
+      GOLEMS_NN_RECORD: 'true'
+      GOLEMS_NN_SHADOW: 'true'
+      GOLEMS_NN_MODEL: ${{ github.workspace }}/experiments/nngolems/2026-11-16-rotation-learning/flight_environment-model.json
+      GOLEMS_NN_DIRECT_RETURN: 'false'
+      GOLEMS_NN_STOCKED_RECOVERY: 'true'
+      GOLEMS_NN_AUTO: 'true'
+      GOLEMS_NN_STRIP_PILOT: 'false'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+      NN_SPEED_TEST: 'true'
+      NN_SPEED_TICK_LIMIT: '72000'
+      NN_COURSE_SECONDS: '600'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Prepare real crew course
+        shell: bash
+        run: |
+          if [ "$NN_COURSE" = dragon ]; then python3 scripts/nngolems/prepare_curriculum.py; fi
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          name='BuilderNNCurriculumGameTest' if os.environ['NN_COURSE']=='dragon' else 'BuilderNNDomeStrategyGameTest'
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.'+name]
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Run real team and record physical learning windows
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/nn-team
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-team/server.log
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path('build/nn-team')
+          lines=(root/'server.log').read_text().splitlines()
+          rows={}
+          for line in lines:
+              marker='[NNGOLEMS_TEAM] '
+              if marker not in line: continue
+              try: row=json.loads(line.split(marker,1)[1])
+              except ValueError: continue
+              rows[(row['run'],row['start']['tick'],row['endTick'])]=row
+          assert rows, 'No team learning windows'
+          assert all(r['crew']==int(os.environ['NN_TEAM_SIZE']) and r['course']==os.environ['NN_COURSE'] for r in rows.values())
+          assert len({r['run'] for r in rows.values()})==1, 'Expected isolated server'
+          assert all(r['placedDelta']==r['endCorrect']-r['start']['correct'] for r in rows.values())
+          with (root/'team-windows.jsonl').open('w') as f:
+              for r in rows.values(): f.write(json.dumps(r)+'\n')
+          tag='[NN SPEED RESULT]' if os.environ['NN_COURSE']=='dragon' else '[NN DOME RESULT]'
+          # The curriculum tag uses an underscore.
+          if os.environ['NN_COURSE']=='dragon': tag='[NN_SPEED_RESULT]'
+          outcome=next((l.split(tag,1)[1].strip() for l in lines if tag in l and 'outcome=' in l),None)
+          assert outcome, 'No physical outcome'
+          print('[NN TEAM ASSESSMENT]',outcome,'windows=',len(rows))
+          (root/'outcome.txt').write_text(outcome+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: team-${{ matrix.course }}-${{ matrix.crew }}-${{ matrix.policy }}-${{ matrix.trial }}
+          path: build/nn-team/

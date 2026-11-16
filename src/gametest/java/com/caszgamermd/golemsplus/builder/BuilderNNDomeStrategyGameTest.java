@@ -26,8 +26,8 @@ public final class BuilderNNDomeStrategyGameTest {
     }
     private void run(GameTestHelper h)throws Exception{
         String mode=System.getenv().getOrDefault("NN_DOME_MODE","AUTO4");
-        if(!Set.of("AUTO4","Y1","X1","Z1").contains(mode))throw new IllegalArgumentException("Dome mode");
-        int workers=mode.equals("AUTO4")?4:1;
+        if(!Set.of("AUTO4","AUTO8","Y1","X1","Z1").contains(mode))throw new IllegalArgumentException("Dome mode");
+        int workers=mode.equals("AUTO8")?8:mode.equals("AUTO4")?4:1;
         String axis=mode.equals("X1")?"X":mode.equals("Z1")?"Z":"Y";
         Path original=BuilderDomeFixture.unpack();
         LitematicFileReader.Schematic source;
@@ -114,6 +114,7 @@ public final class BuilderNNDomeStrategyGameTest {
                 +" source=3537 required=3493 ignored=44 verticalTasks="+eligible+" depot="+depot+" origin="+origin);
         final long start=h.getTick(),startNs=System.nanoTime();
         final int[] best={0};final double[] distance={0};
+        var teamTrace=new BuilderNNTeamTrace("dome",mode,workers,3493);
         final var previous=crew.stream().map(BuilderGolem::position).toArray(net.minecraft.world.phys.Vec3[]::new);
         var watchdog=new MatrixWorkWatchdog(start,0,table.builderClearCursor());
         final boolean[] done={false};
@@ -128,6 +129,7 @@ public final class BuilderNNDomeStrategyGameTest {
             if(tick%200!=0&&!complete&&!timeout)return;
             int correct=0;for(var b:expected)if(BuilderPistonWork.sourceMatches(level.getBlockState(b.pos()),b.state()))correct++;
             best[0]=Math.max(best[0],correct);
+            teamTrace.sample(level,table,crew,steps,elapsed,correct,distance[0],complete||timeout);
             long idle=watchdog.sample(tick,correct,table.builderClearCursor());
             boolean stall=idle>=2400&&!BuilderCrewRecovery.assessmentGrace(level,table);
             if(tick%1000==0||complete||timeout||stall){
