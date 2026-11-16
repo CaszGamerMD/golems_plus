@@ -92,3 +92,5 @@ jobs:
         with:
           name: home-demo-structure-test
           path: build/nn-home-structures/
+
+# Dedicated Home Demo run; no other course in this workflow.
