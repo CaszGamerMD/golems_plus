@@ -156,6 +156,17 @@ final class BuilderEscapeBox {
         int end=Math.min(start+64,candidates.size());
         BlockPos chosen=start<end?WorkerNavigation.selectExecutableStand(level,worker,
                 candidates.subList(start,end)):null;
+        if(chosen==null){
+            // A large multi-goal search can exhaust its budget before a
+            // simple nearby exact route is tried. Probe the nearest few
+            // individually, never change a route that has been accepted.
+            for(int i=start;i<Math.min(end,start+4);i++){
+                BlockPos at=candidates.get(i);
+                if(WorkerNavigation.routeToExact(level,worker,at,1.0)){
+                    chosen=at;break;
+                }
+            }
+        }
         if(chosen!=null){
             t.waypoint=chosen;t.lastPosition=worker.position();
             t.best=distance(worker,chosen);t.lastMove=t.lastProgress=now;t.batch=0;
@@ -172,7 +183,12 @@ final class BuilderEscapeBox {
             var air=new ArrayList<>(box.localAirExits(worker.blockPosition()));
             air.sort(Comparator.comparingDouble(p->distance(worker,p)));
             for(BlockPos at:air)
-                if(!t.rejected.contains(at)&&BuilderFlight.request(level,worker,at))return true;
+                if(!t.rejected.contains(at)&&BuilderFlight.request(level,worker,at)){
+                    t.waypoint=at;t.lastPosition=worker.position();
+                    t.best=distance(worker,at);t.lastMove=t.lastProgress=now;
+                    BuilderTrace.decision(level,worker,"ESCAPE_BOX_COMMIT",at,"collision-checked powered shell exit");
+                    return true;
+                }
             BlockPos lower=candidates.isEmpty()?air.get(0):candidates.get(0);
             t.rejected.add(worker.blockPosition().immutable());
             if(BuilderFlight.approachDescentLaunch(level,worker,lower,t.rejected)){

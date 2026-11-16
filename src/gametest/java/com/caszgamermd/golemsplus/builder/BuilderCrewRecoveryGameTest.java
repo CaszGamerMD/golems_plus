@@ -105,10 +105,12 @@ public final class BuilderCrewRecoveryGameTest {
                 new net.minecraft.world.level.ChunkPos(start.getX()>>4,start.getZ()>>4),3);
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        worker.setPropellerEnabled(false); // this regression must exercise walking
         level.addFreshEntity(worker);
         BlockPos[] committed={null};boolean[] escaped={false};
         h.onEachTick(()->{
             if(h.getTick()<5)return;
+            if(h.getTick()==5)worker.setOnGround(true);
             if(!escaped[0]){
                 boolean owns=BuilderEscapeBox.tick(level,worker,box,depot);
                 BlockPos current=BuilderEscapeBox.waypoint(worker);
@@ -125,7 +127,7 @@ public final class BuilderCrewRecoveryGameTest {
             }else if(!BuilderReturnService.approach(level,worker,depot,1.0)){
                 h.succeed();return;
             }
-            if(h.getTick()==230)h.fail("Escape/depot route stalled: "+worker.position()+" waypoint="+committed[0]);
+            if(h.getTick()==230)h.fail("Escape/depot route stalled: "+worker.position()+" waypoint="+committed[0]+" box="+box);
         });
     }
 }

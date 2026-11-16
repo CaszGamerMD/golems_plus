@@ -15,6 +15,7 @@ jobs:
     timeout-minutes: 15
     env:
       GOLEMS_BUILDER_SCAFFOLDING: 'false'
+      GOLEMS_BUILDER_TRACE: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
