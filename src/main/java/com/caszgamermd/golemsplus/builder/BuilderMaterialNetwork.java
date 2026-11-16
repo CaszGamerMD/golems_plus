@@ -116,6 +116,7 @@ final class BuilderMaterialNetwork {
         s.nextCheck=now+40;
         int layer=table.builderActiveLayer(steps);
         var needs=new HashSet<Item>();
+        int remaining=0,lastIndex=-1;
         for(int i=0;i<steps.size();i++){
             var step=steps.get(i);
             if(step.y()!=layer||!table.builderStepInActivePhase(steps,i)
@@ -123,7 +124,7 @@ final class BuilderMaterialNetwork {
                     ||BuilderDeferredState.verification(step.encodedState()))continue;
             Item item=required(step);
             if(item==null)return;
-            needs.add(item);
+            needs.add(item);remaining++;lastIndex=i;
         }
         if(needs.isEmpty())return;
         var crew=new ArrayList<UUID>();
@@ -134,6 +135,23 @@ final class BuilderMaterialNetwork {
             for(Item item:needs)if(peer.carriedCount(item)>0)return;
         }
         if(crew.isEmpty())return;
+        // A worker with the final ready cell already claimed must not
+        // abandon that assignment merely because its pouch is empty.
+        // This is a material pickup, not a crew-wide shortage. Keep the
+        // existing claim/batch and let the paid physical staging path
+        // acquire the exact item. Restrict this first change to one real
+        // remaining cell and one registered worker; larger phases retain
+        // their existing material coordination.
+        if(Boolean.parseBoolean(System.getenv().getOrDefault("GOLEMS_NN_FINAL_PICKUP","true"))
+                &&remaining==1&&table.builderWorkerIds().size()==1
+                &&crew.size()==1&&table.claimedStep(crew.getFirst())==lastIndex
+                &&table.builderStepReadyForClaim(lastIndex)
+                &&table.builderWorkOrder(crew.getFirst()).contains(lastIndex)
+                &&BuilderSupplyInventory.containsInSources(table,needs.iterator().next())){
+            System.out.println("[MATERIAL NETWORK PICKUP] layer="+layer+" step="+lastIndex
+                    +" worker="+crew.getFirst()+" retain claim; OnSite has requested item");
+            return;
+        }
         s.needs=Set.copyOf(needs);s.resupplied=false;s.recall.addAll(crew);s.offers.clear();
         for(UUID id:crew)table.releaseBuilderWorkOrder(id);
         System.out.println("[MATERIAL NETWORK RECALL] layer="+layer+" materials="+needs.size());
