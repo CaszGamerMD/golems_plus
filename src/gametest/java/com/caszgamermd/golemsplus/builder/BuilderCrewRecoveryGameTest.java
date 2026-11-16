@@ -112,6 +112,70 @@ public final class BuilderCrewRecoveryGameTest {
         }catch(Exception e){h.fail("Crew reset setup: "+e);}
     }
 
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=800,skyAccess=true)
+    public void isolatedStockedWorkerResumesWithoutDepot(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=3;x<=19;x++)for(int z=3;z<=19;z++){
+            h.setBlock(x,1,z,Blocks.STONE);
+            for(int y=2;y<=7;y++)h.setBlock(x,y,z,Blocks.AIR);
+        }
+        h.setBlock(5,2,5,WorksiteContent.BUILDER_TABLE);
+        h.setBlock(6,2,5,Blocks.CHEST);
+        // Depot is deliberately unreachable by walking. The builder and
+        // its legitimate construction target are outside this sealed room.
+        for(int x=4;x<=7;x++)for(int z=4;z<=6;z++)
+            if(x==4||x==7||z==4||z==6)
+                for(int y=2;y<=6;y++)h.setBlock(x,y,z,Blocks.STONE);
+        BlockPos station=h.absolutePos(new BlockPos(5,2,5)),
+                depot=h.absolutePos(new BlockPos(6,2,5)),
+                target=h.absolutePos(new BlockPos(14,2,12)),
+                from=h.absolutePos(new BlockPos(12,2,12));
+        level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(depot.getX()>>4,depot.getZ()>>4),3);
+        if(!(level.getBlockEntity(station) instanceof WorkerStationBlockEntity table)){
+            h.fail("Missing isolated recovery Planner");return;
+        }
+        var owner=h.makeMockServerPlayerInLevel();var id=owner.getUUID();
+        try{
+            var cells=List.of(new LitematicFileReader.Block(target.getX(),target.getY(),target.getZ(),"minecraft:glass"));
+            var snapshot=BuilderPlacementSnapshot.encode("Isolated stocked recovery",cells,List.of());
+            var plan=BuilderConstructionPlan.create(BuilderPlacementSnapshot.decode(snapshot),BuilderPlacementSnapshot.worldSpaceSite());
+            var folder=net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("golems_plus").resolve("schematics");
+            java.nio.file.Files.createDirectories(folder);
+            String file="placed-crew-stocked-rescue.gpb";java.nio.file.Files.write(folder.resolve(file),snapshot);
+            if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,1)
+                    ||!table.setPlacedBuilderPlan(id,file,"Isolated stocked recovery",station,0,0,plan.steps().size(),plan.unsupported().size())
+                    ||!table.setBuilderMaterialStorage(id,depot)){h.fail("Recovery job refused");return;}
+            var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+            worker.setPropellerEnabled(false);
+            worker.setPos(from.getX()+.5,from.getY(),from.getZ()+.5);level.addFreshEntity(worker);
+            if(!table.registerBuilderWorker(worker.getUUID())||!table.startPlacedBuilder(id)){
+                h.fail("Recovery crew refused");return;
+            }
+            h.runAtTickTime(5,()->{
+                worker.setOnGround(true);worker.setItem(0,new ItemStack(Items.GLASS,3));
+                BuilderCrewRecovery.begin(level,table,plan.steps());
+                BuilderCrewRecovery.tick(level,worker,table,plan.steps());
+                if(!BuilderCrewRecovery.recalling(table)||worker.carriedCount(Items.GLASS)!=3){
+                    h.fail("Did not preserve unreachable worker's cargo");return;
+                }
+            });
+            h.runAtTickTime(650,()->{
+                BuilderCrewRecovery.tick(level,worker,table,plan.steps());
+                if(BuilderCrewRecovery.recalling(table)||table.claimedStep(worker.getUUID())!=0
+                        ||worker.carriedCount(Items.GLASS)!=3||!worker.isAlive()
+                        ||table.builderStepCompletedForMaterials(0)
+                        ||!level.getBlockState(target).isAir()
+                        ||BuilderReturnService.withinStorageReach(worker,depot)){
+                    h.fail("Stocked rescue failed to preserve real claim/cargo: "+table.problem()
+                            +" claim="+table.claimedStep(worker.getUUID())+" feet="+worker.position());return;
+                }
+                System.out.println("[CREW STOCKED RESCUE PASS] unreachable depot, actual stocked claim preserved");
+                h.succeed();
+            });
+        }catch(Exception e){h.fail("Isolated stocked recovery setup: "+e);}
+    }
+
     @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=240,skyAccess=true)
     public void escapeBoxCommitsBeforeDepotReturn(GameTestHelper h){
         var level=h.getLevel();

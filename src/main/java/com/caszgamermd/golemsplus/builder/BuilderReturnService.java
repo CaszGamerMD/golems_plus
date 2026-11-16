@@ -35,7 +35,55 @@ public final class BuilderReturnService {
     }
     private static final java.util.Map<BuilderGolem,Approach> approaches=
             new java.util.WeakHashMap<>();
+    private static final class DirectReturn {
+        BlockPos depot,stand;
+        long nextProbe,lastProgress;
+        double best=Double.POSITIVE_INFINITY;
+    }
+    private static final java.util.Map<BuilderGolem,DirectReturn> directReturns=new java.util.WeakHashMap<>();
     static void resetApproach(BuilderGolem worker){approaches.remove(worker);}
+    static void clearDirect(BuilderGolem worker){directReturns.remove(worker);}
+    /** At low height, certify the complete ordinary route to a real
+     * depot-adjacent stand BEFORE requiring an arbitrary box waypoint.
+     * Retain a successful route; on no progress, give the escape planner
+     * a full window to try another approach. Never interrupt flight/rope. */
+    static boolean directGroundReturn(ServerLevel level,BuilderGolem worker,BlockPos depot){
+        if(depot==null||!worker.onGround()||worker.isNoGravity()
+                ||BuilderFlight.active(worker)||BuilderGrappleAccess.active(worker)
+                ||BuilderScaffolding.isControllingMovement(worker)
+                ||Math.abs(worker.getY()-depot.getY())>1.25)return false;
+        long now=level.getGameTime();
+        DirectReturn r=directReturns.computeIfAbsent(worker,k->new DirectReturn());
+        if(!depot.equals(r.depot)){
+            r.depot=depot.immutable();r.stand=null;r.nextProbe=0;r.best=Double.POSITIVE_INFINITY;
+        }
+        if(r.stand!=null){
+            double d=worker.distanceToSqr(r.stand.getX()+.5,r.stand.getY(),r.stand.getZ()+.5);
+            if(d<r.best-.04){r.best=d;r.lastProgress=now;}
+            if(now-r.lastProgress<240&&com.caszgamermd.golemsplus.worker.WorkerNavigation.canStandOn(level,worker,r.stand)
+                    &&com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(level,worker,r.stand,.8))return true;
+            BuilderTrace.decision(level,worker,"DEPOT_DIRECT_REJECT",r.stand,"no physical progress or exact route blocked");
+            r.stand=null;r.nextProbe=now+400;
+            com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+            return false;
+        }
+        if(now<r.nextProbe)return false;
+        r.nextProbe=now+400;
+        var possible=new java.util.ArrayList<BlockPos>();
+        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++)for(int dy=-1;dy<=1;dy++){
+            if(dx==0&&dz==0)continue;
+            BlockPos at=depot.offset(dx,dy,dz);
+            if(!level.hasChunkAt(at)||!com.caszgamermd.golemsplus.worker.WorkerNavigation.canStandOn(level,worker,at))continue;
+            double floor=com.caszgamermd.golemsplus.worker.WorkerNavigation.surveyFloorHeight(level,at);
+            if(Double.isFinite(floor)&&withinStorageReach(at.getX()+.5,floor,at.getZ()+.5,depot))possible.add(at);
+        }
+        BlockPos stand=com.caszgamermd.golemsplus.worker.WorkerNavigation.selectExecutableStand(level,worker,possible);
+        if(stand==null)return false;
+        if(!com.caszgamermd.golemsplus.worker.WorkerNavigation.routeToExact(level,worker,stand,.8))return false;
+        r.stand=stand;r.best=worker.distanceToSqr(stand.getX()+.5,stand.getY(),stand.getZ()+.5);r.lastProgress=now;
+        BuilderTrace.decision(level,worker,"DEPOT_DIRECT_COMMIT",stand,"verified ground return instead of box detour");
+        return true;
+    }
     // Route resets must not forget failed physical return landings.
     private static final class ReturnHistory {
         BlockPos target;

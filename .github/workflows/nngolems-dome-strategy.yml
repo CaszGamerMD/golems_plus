@@ -6,6 +6,9 @@ on:
       - '.github/workflows/nngolems-dome-strategy.yml'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNDomeStrategyGameTest.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNDomeBandOrder.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewRecovery.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderReturnService.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
   workflow_dispatch:
 permissions:
   contents: read
@@ -62,3 +65,36 @@ jobs:
         with:
           name: nn-dome-${{ matrix.mode }}-${{ matrix.trial }}
           path: build/nn-dome/
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MATRIX_TEST_MODE: controlled
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Isolate crew retreat regressions
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderCrewRecoveryGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Validate stocked recovery and original retreat behavior
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon runGameTest 2>&1 | tee crew-recovery.log
+          grep -F '[CREW STOCKED RESCUE PASS]' crew-recovery.log
+          grep -F '[CREW RETREAT BARRIER PASS]' crew-recovery.log
+          grep -F '[CREW RETREAT TIMEOUT PASS]' crew-recovery.log

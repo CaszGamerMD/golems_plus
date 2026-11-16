@@ -19,6 +19,8 @@ final class BuilderCrewRecovery {
         final Set<UUID> recovering=new HashSet<>();
         final Map<UUID,Long> retry=new HashMap<>(), lastReturnProgress=new HashMap<>();
         final Map<UUID,Double> bestReturnDistance=new HashMap<>();
+        final Map<UUID,Long> nextStockProbe=new HashMap<>();
+        final Map<UUID,Integer> stockOffset=new HashMap<>();
         final Map<UUID,BlockPos> parking=new HashMap<>();
     }
     private static final Map<WorkerStationBlockEntity,State> states=new WeakHashMap<>();
@@ -80,6 +82,7 @@ final class BuilderCrewRecovery {
         s.attempts++;s.recalling=true;s.graceUntil=0;
         s.unloaded.clear();s.retry.clear();s.parking.clear();
         s.lastReturnProgress.clear();s.bestReturnDistance.clear();
+        s.nextStockProbe.clear();s.stockOffset.clear();
         BuilderTrace.dump(level,table,"before crew retreat");
         table.beginBuilderZonePlan();
         BuilderMaterialNetwork.resetForCrew(table);
@@ -139,11 +142,18 @@ final class BuilderCrewRecovery {
             }
             List<UUID> live=table.builderWorkerIds();
             boolean all=s.unloaded.containsAll(live);
-            // Only relax the barrier after the original full timeout,
-            // and only if someone actually returned with empty pockets.
-            // Missing or trapped workers remain in independent recovery.
+            if(!all&&!s.unloaded.contains(worker.getUUID())
+                    &&resumeStrandedStock(level,worker,table,steps,s,live,now))return true;
+            // Normal reduced-crew resume requires a real unloaded worker.
+            // A stocked stranded worker may instead resume above after a
+            // safe current-phase probe; no cargo or claim is fabricated.
             if(!all&&(now-s.started<RETURN_BUDGET||s.unloaded.isEmpty())){
                 if(s.unloaded.contains(worker.getUUID()))parkAway(level,worker,table,s);
+                if(now-s.started>=RETURN_BUDGET&&s.unloaded.isEmpty()&&now%200==0){
+                    table.setProblem("Crew recovery: no safe return or stocked work yet; retrying physical routes");
+                    System.out.println("[CREW RETREAT BLOCKED] layer="+s.layer+" elapsed="+(now-s.started)
+                            +" worker="+worker.getUUID()+" feet="+worker.position());
+                }
                 return true;
             }
             s.recovering.clear();
@@ -172,6 +182,50 @@ final class BuilderCrewRecovery {
             parkAway(level,worker,table,s);return true;
         }
         return false;
+    }
+    /** No useful physical return progress: resume real stocked work
+     * rather than leave the only useful worker behind a forever barrier.
+     * Do not stop a moving flight/rope, or allow a pause/shortage recall
+     * to be bypassed. Other crew finish their individual returns. */
+    private static boolean resumeStrandedStock(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,
+            State s,List<UUID> live,long now){
+        UUID id=worker.getUUID();
+        BlockPos depot=table.builderUnloadingStorage();
+        if(depot==null)depot=table.getBlockPos();
+        boolean elevated=worker.getY()-depot.getY()>=12;
+        // After a bounded stalled return, retain a useful roof worker
+        // or rescue a crew in which nobody has arrived. Otherwise let the
+        // ordinary physical retreat finish before considering alternatives.
+        long last=s.lastReturnProgress.getOrDefault(id,s.started);
+        if(now-s.started<600||now-last<160||now<s.nextStockProbe.getOrDefault(id,0L)
+                ||!s.unloaded.isEmpty()&&!elevated
+                ||BuilderReturnService.withinStorageReach(worker,depot)
+                ||BuilderMaterialNetwork.recalling(table,id)
+                ||BuilderFlight.active(worker)||BuilderGrappleAccess.active(worker)
+                ||BuilderScaffolding.isControllingMovement(worker)
+                ||BuilderScaffoldPlanA.hasPlan(worker)||!worker.onGround()||worker.isNoGravity()
+                ||worker.hasSupplyBox())return false;
+        s.nextStockProbe.put(id,now+40);
+        int offset=s.stockOffset.getOrDefault(id,0);
+        s.stockOffset.put(id,offset+4);
+        int index=BuilderBuildService.resumeStockedCrewWorker(level,worker,table,steps,offset);
+        if(index<0)return false;
+        // The old claims were released when retreat began; this new claim
+        // must survive resume. In particular, do not call beginBuilderZonePlan
+        // or resetCrewActions here, since either could invalidate the rescue.
+        s.recalling=false;s.recovering.clear();
+        for(UUID peer:live)if(!peer.equals(id)&&!s.unloaded.contains(peer))s.recovering.add(peer);
+        s.reduced=List.of(id);s.best=table.builderWorkDone();s.lastProgress=now;
+        s.graceUntil=now+RESUME_GRACE;
+        table.setProblem("Crew recovery: continuing reachable stocked work from current position");
+        BuilderTrace.decision(level,worker,"CREW_STOCKED_RESUME",
+                new BlockPos(steps.get(index).x(),steps.get(index).y(),steps.get(index).z()),
+                "preserved real inventory and claim; other workers returning");
+        System.out.println("[CREW RETREAT STOCKED RESUME] layer="+s.layer+" step="+index
+                +" worker="+id+" unloaded="+s.unloaded.size()+" independent="+s.recovering
+                +" elevated="+elevated+" elapsed="+(now-s.started));
+        return true;
     }
     /** Real current-world approach and post-placement exit check.
      * Never writes a block or starts movement while probing. */

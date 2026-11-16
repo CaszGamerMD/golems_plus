@@ -333,6 +333,23 @@ public final class BuilderBuildService {
         }
         return idx;
     }
+    /** Crew retreat already discarded its old assignments. Admit a new
+     * physically validated stocked claim without resetting that claim again.
+     * The ordinary execution pipeline still checks reach, support, exit,
+     * inventory and ownership. */
+    static int resumeStockedCrewWorker(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,int offset){
+        int idx=tryStockedRecovery(level,worker,table,steps,offset);
+        if(idx<0)return -1;
+        BuilderEscapeBox.clear(worker);BuilderMultiLegTravel.clear(worker);
+        BuilderReturnService.resetApproach(worker);BuilderReturnService.clearDirect(worker);
+        WorkerAction action=workerActions.computeIfAbsent(worker,k->new WorkerAction());
+        action.returningToSite=false;action.retreatUntil=-1;
+        action.alternateSideRequested=false;action.alternateSideTarget=null;
+        action.returnProgress=-1;action.returnBest=Double.POSITIVE_INFINITY;
+        action.setStep(idx);
+        return idx;
+    }
     private static boolean recoverReturningWorker(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table,WorkerAction action){
         BlockPos depot=table.builderUnloadingStorage();
@@ -708,6 +725,7 @@ public final class BuilderBuildService {
             BuilderPlacementSpace.cancelYield(worker);
             BuilderDroppedBlockRecovery.suspend(worker,table);
             BuilderReturnService.resetApproach(worker);
+            BuilderReturnService.clearDirect(worker);
             BuilderEscapeBox.clear(worker);
             BuilderMultiLegTravel.clear(worker);
             if(!BuilderFlight.moving(worker)&&!BuilderGrappleAccess.active(worker)
@@ -730,8 +748,13 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table){
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null)depot=table.getBlockPos();
-        if(atOnSite(level,worker,depot)){BuilderEscapeBox.clear(worker);BuilderMultiLegTravel.clear(worker);}
-        else if(escapeBeforeReturn(level,worker,table,depot))return false;
+        if(atOnSite(level,worker,depot)){
+            BuilderEscapeBox.clear(worker);BuilderMultiLegTravel.clear(worker);BuilderReturnService.clearDirect(worker);
+        }else if(!BuilderScaffoldPlanA.hasPlan(worker)
+                &&BuilderReturnService.directGroundReturn(level,worker,depot)){
+            BuilderEscapeBox.clear(worker);BuilderMultiLegTravel.clear(worker);
+            return false;
+        }else if(escapeBeforeReturn(level,worker,table,depot))return false;
         if(BuilderFlight.enabled(worker)&&BuilderFlight.active(worker)){
             if(worker.getY()>depot.getY()+1.5&&BuilderFlight.land(level,worker,true))return false;
             BuilderFlight.land(level,worker,false);
