@@ -88,7 +88,7 @@ final class BuilderEscapeBox {
         double best=Double.POSITIVE_INFINITY;
         long lastMove,lastProgress,nextSearch;
         boolean clearOfBuild,escaped;
-        BlockPos levelWaypoint;
+        BlockPos levelWaypoint,multiLevelGoal;
         long levelSearch,levelProgress;
         double levelBest=Double.POSITIVE_INFINITY;
         int batch;
@@ -131,12 +131,20 @@ final class BuilderEscapeBox {
         if(BuilderFlight.moving(worker)||BuilderGrappleAccess.active(worker)
                 ||BuilderScaffolding.isControllingMovement(worker))return true;
         if(depotLevel(worker,t.depot)){
+            BuilderMultiLegTravel.clear(worker);
             t.escaped=true;t.levelWaypoint=null;
             BuilderTrace.decision(level,worker,"ESCAPE_LEVEL_REACHED",worker.blockPosition(),"grounded at OnSite height; release depot navigation");
             BuilderTrace.decision(level,worker,"ESCAPE_BOX_REACHED",worker.blockPosition(),"outside build and at OnSite elevation");
             BuilderReturnService.resetApproach(worker);WorkerNavigation.stop(worker);return false;
         }
         long now=level.getGameTime();
+        BlockPos levelGoal=worker.blockPosition().atY(t.depot.getY());
+        // Retain an existing chain across intermediate landings; its goal
+        // is fixed for the entire elevation stage, not the moving feet.
+        if(t.multiLevelGoal!=null){
+            if(BuilderMultiLegTravel.elevation(level,worker,t.multiLevelGoal,t.box))return true;
+            t.multiLevelGoal=null;
+        }
         // Air is a waypoint, not a landing. Descend outside the build in
         // the same collision-checked column, including an intermediate floor.
         if(BuilderFlight.active(worker)){
@@ -186,6 +194,9 @@ final class BuilderEscapeBox {
                 if(BuilderFlight.requestSupportedLanding(level,worker,at)){
                     BuilderTrace.decision(level,worker,"ESCAPE_LEVEL_COMMIT",at,"powered landing at OnSite elevation");return true;
                 }
+            if(BuilderMultiLegTravel.elevation(level,worker,levelGoal,t.box)){
+                t.multiLevelGoal=levelGoal;return true;
+            }
             if(worker.getY()>t.depot.getY()+.6){
                 if(BuilderFlight.approachDescentLaunch(level,worker,vertical,t.rejected)){
                     t.mobilityTarget=vertical;return true;
@@ -277,6 +288,7 @@ final class BuilderEscapeBox {
         if(box==null||depot==null)return false;
         Trip t=trips.get(worker);
         if(t==null||!box.equals(t.box)||!depot.equals(t.depot)){
+            BuilderMultiLegTravel.clear(worker);
             t=new Trip(box,depot);t.lastProgress=level.getGameTime();trips.put(worker,t);
         }
         if(t.escaped)return false;

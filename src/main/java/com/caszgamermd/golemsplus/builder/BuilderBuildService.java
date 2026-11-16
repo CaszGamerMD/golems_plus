@@ -705,6 +705,7 @@ public final class BuilderBuildService {
             BuilderDroppedBlockRecovery.suspend(worker,table);
             BuilderReturnService.resetApproach(worker);
             BuilderEscapeBox.clear(worker);
+            BuilderMultiLegTravel.clear(worker);
             if(!BuilderFlight.moving(worker)&&!BuilderGrappleAccess.active(worker)
                     &&!BuilderScaffolding.isControllingMovement(worker))
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
@@ -725,7 +726,7 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table){
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null)depot=table.getBlockPos();
-        if(atOnSite(level,worker,depot)){BuilderEscapeBox.clear(worker);}
+        if(atOnSite(level,worker,depot)){BuilderEscapeBox.clear(worker);BuilderMultiLegTravel.clear(worker);}
         else if(escapeBeforeReturn(level,worker,table,depot))return false;
         if(BuilderFlight.enabled(worker)&&BuilderFlight.active(worker)){
             if(worker.getY()>depot.getY()+1.5&&BuilderFlight.land(level,worker,true))return false;
@@ -1919,6 +1920,10 @@ public final class BuilderBuildService {
                     &&BuilderFlight.safeWorkPose(level,worker,pos,worker.position(),bodyBlockingWork);
             if(propellerWork&&!hoverPose){
                 long now=level.getGameTime();
+                if(BuilderMultiLegTravel.working(worker,pos)
+                        &&BuilderMultiLegTravel.work(level,worker,pos,bodyBlockingWork)){
+                    activity.lastTargetProgressTick=now;activity.phase=Action.MOVE_TO_WORK;return;
+                }
                 double distance=worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
                 if(activity.lastTargetProgressTick<0||distance<activity.bestTargetDistance-.5){
                     activity.lastTargetProgressTick=now;
@@ -1955,6 +1960,9 @@ public final class BuilderBuildService {
                         ||BuilderFlight.approachRoofWork(level,worker,pos,bodyBlockingWork)){
                     activity.phase=Action.MOVE_TO_WORK;
                     return;
+                }
+                if(BuilderMultiLegTravel.work(level,worker,pos,bodyBlockingWork)){
+                    activity.lastTargetProgressTick=now;activity.phase=Action.MOVE_TO_WORK;return;
                 }
             }
             if(!hoverPose){

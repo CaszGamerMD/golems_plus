@@ -158,6 +158,11 @@ public final class BuilderFlight {
         }
         return requestPosition(level,worker,goal,landing);
     }
+    static boolean canFlyBetween(ServerLevel level,BuilderGolem worker,BlockPos from,BlockPos to){
+        if(!WorkerNavigation.canStandOn(level,worker,from)||!WorkerNavigation.canStandOn(level,worker,to))return false;
+        Vec3 a=supportedFeet(level,from),b=supportedFeet(level,to);
+        return Double.isFinite(a.y)&&Double.isFinite(b.y)&&!path(level,worker,a,b,a).isEmpty();
+    }
     private static Vec3 supportedFeet(ServerLevel level,BlockPos stand){
         return new Vec3(stand.getX()+.5,WorkerNavigation.surveyFloorHeight(level,stand),stand.getZ()+.5);
     }

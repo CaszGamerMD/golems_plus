@@ -170,4 +170,39 @@ public final class BuilderCrewRecoveryGameTest {
             if(h.getTick()==290)h.fail("Three stage escape stalled: "+worker.position()+" outsideHigh="+outsideHigh[0]+" landed="+landed[0]);
         });
     }
+
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=400,skyAccess=true)
+    public void multiLegFlightUsesIntermediateLandingAndWalk(GameTestHelper h){
+        var level=h.getLevel();
+        for(int x=5;x<=19;x++)for(int z=6;z<=15;z++)
+            for(int y=1;y<=12;y++)h.setBlock(x,y,z,Blocks.AIR);
+        h.setBlock(8,1,10,Blocks.STONE);
+        h.setBlock(10,4,10,Blocks.STONE);
+        h.setBlock(11,4,10,Blocks.STONE);
+        h.setBlock(13,7,10,Blocks.STONE);
+        BlockPos start=h.absolutePos(new BlockPos(8,2,10));
+        BlockPos middle=h.absolutePos(new BlockPos(10,5,10));
+        BlockPos finish=h.absolutePos(new BlockPos(13,8,10));
+        level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
+                new net.minecraft.world.level.ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        level.addFreshEntity(worker);
+        boolean[] landed={false},walked={false};
+        h.onEachTick(()->{
+            if(h.getTick()<5)return;
+            if(h.getTick()==5)worker.setOnGround(true);
+            if(worker.onGround()&&!BuilderFlight.active(worker)){
+                if(worker.blockPosition().equals(middle))landed[0]=true;
+                if(landed[0]&&worker.blockPosition().equals(middle.east()))walked[0]=true;
+                if(worker.blockPosition().equals(finish)){
+                    if(!landed[0]||!walked[0]){h.fail("Skipped intermediate landing or walk");return;}
+                    System.out.println("[MULTI FLIGHT PASS] two supported flights and intermediate walking");
+                    h.succeed();return;
+                }
+            }
+            BuilderMultiLegTravel.stand(level,worker,finish);
+            if(h.getTick()==390)h.fail("Multi-flight stalled at "+worker.position()+" intermediate="+landed[0]+" walked="+walked[0]);
+        });
+    }
 }
