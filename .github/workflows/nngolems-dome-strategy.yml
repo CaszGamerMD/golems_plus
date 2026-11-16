@@ -1,0 +1,64 @@
+name: NNGolems Dome strategy comparison
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-dome-strategy.yml'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNDomeStrategyGameTest.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNDomeBandOrder.java'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [AUTO4, Y1, X1, Z1]
+        trial: [1, 2, 3]
+    env:
+      MATRIX_TEST_MODE: controlled
+      NN_DOME_MODE: ${{ matrix.mode }}
+      GOLEMS_NN_AUTO: 'true'
+      GOLEMS_NN_DOME_PILOT: 'true'
+      GOLEMS_NN_BUILDER_SCAFFOLDING: 'false'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+      GOLEMS_NN_STRIP_PILOT: ${{ (matrix.mode == 'X1' || matrix.mode == 'Z1') && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Isolate the exact Dome physical assessment
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderNNDomeStrategyGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Run Dome strategy
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/nn-dome
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-dome/server.log
+          grep -F "[NN DOME RESULT] mode=$NN_DOME_MODE " build/nn-dome/server.log
+          if [[ "$NN_DOME_MODE" = X1 || "$NN_DOME_MODE" = Z1 ]]; then
+            grep -F "[NN DOME BANDS]" build/nn-dome/server.log
+          else
+            grep -F "[NN AUTO STRATEGY] axis=Y " build/nn-dome/server.log
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nn-dome-${{ matrix.mode }}-${{ matrix.trial }}
+          path: build/nn-dome/

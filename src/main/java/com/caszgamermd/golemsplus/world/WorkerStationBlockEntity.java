@@ -1092,7 +1092,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
     // Isolated NNGolems physical pilot only. No saved job or ordinary
     // player job opts into this policy; original indices remain unchanged.
     private UUID nnPilotJob,nnAutoJob;
-    private boolean nnPilotAuto;
+    private boolean nnPilotAuto,nnPilotDome;
+    private com.caszgamermd.golemsplus.builder.BuilderNNDomeBandOrder.Plan nnDomePlan;
     private int nnAutoRules;
     private String nnAutoDecision="Y";
     private String nnPilotAxis;
@@ -1112,7 +1113,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||(!builderFile.startsWith("placed-nn-strip-pilot-")
                     &&!builderFile.equals("placed-nn-dragon.gpb"))
                 ||(!"X".equals(axis)&&!"Z".equals(axis)))return false;
-        nnPilotJob=activeOrder;nnPilotAxis=axis;nnPilotAuto=false;
+        nnPilotJob=activeOrder;nnPilotAxis=axis;nnPilotAuto=false;nnPilotDome=false;
         nnPilotDirection=builderFile.equals("placed-nn-dragon.gpb")&&"true".equals(System.getenv("GOLEMS_NN_ROTATION_TEST"))
                 ?Integer.parseInt(System.getenv().getOrDefault("NN_STRIP_DIRECTION","1")):1;
         if(nnPilotDirection!=1&&nnPilotDirection!=-1)throw new IllegalArgumentException("NN strip direction");
@@ -1134,7 +1135,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             }
             return;
         }
-        nnAutoJob=activeOrder;nnPilotAuto=false;nnPilotJob=null;nnAutoDecision="Y";
+        nnAutoJob=activeOrder;nnPilotAuto=false;nnPilotDome=false;nnPilotJob=null;nnAutoDecision="Y";
         // Old or reloaded jobs stay on the proven ordinary gate. Never
         // discard a finished index or reinterpret a saved active claim.
         boolean eligible=builderCursor==0&&builderFinishedSteps.isEmpty()&&builderClaims.isEmpty()
@@ -1153,12 +1154,27 @@ public final class WorkerStationBlockEntity extends BlockEntity
         nnPilotBlocked=-1;nnPilotProbeWork=-1;
     }
     public String builderNNStrategy(){return nnAutoDecision;}
+    /** Explicit, fixture-only experiment; never relax live auto eligibility. */
+    public boolean enableNNDomePilot(String axis){
+        if(!"true".equals(System.getenv("GOLEMS_NN_DOME_PILOT"))
+                ||!"true".equals(System.getenv("GOLEMS_NN_STRIP_PILOT"))
+                ||activeOrder==null||crewTarget!=1||!builderFile.equals("placed-nn-dome.gpb")
+                ||(!axis.equals("X")&&!axis.equals("Z")))return false;
+        nnPilotJob=activeOrder;nnPilotAxis=axis;nnPilotDirection=1;nnPilotAuto=false;nnPilotDome=true;nnAutoDecision=axis;
+        nnPilotBanded=true;nnPilotMode=0;nnPilotPlan=null;nnPilotOffset=0;nnPilotLastCursor=-1;
+        nnPilotProgress=-1;nnPilotProgressAt=-1;nnPilotRescue=java.util.List.of();nnPilotBlocked=-1;nnPilotProbeWork=-1;
+        return true;
+    }
     private boolean nnStripPilot(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(nnPilotJob==null||!nnPilotJob.equals(activeOrder)||crewTarget!=1)return false;
         if(nnPilotPlan!=steps){
             nnPilotBaseY=steps.stream().mapToInt(com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step::y).min().orElse(0);
-            nnPilotOrder=nnPilotAuto?com.caszgamermd.golemsplus.builder.BuilderNNStrategyAdvisor.order(steps,nnPilotAxis,nnPilotDirection)
+            if(nnPilotDome){
+                nnDomePlan=com.caszgamermd.golemsplus.builder.BuilderNNDomeBandOrder.compile(steps,nnPilotAxis);
+                System.out.println("[NN DOME BANDS] axis="+nnPilotAxis+" vertical="+nnDomePlan.verticalBands()+" tasks="+nnDomePlan.verticalTasks());
+            }
+            nnPilotOrder=nnPilotDome?nnDomePlan.order():nnPilotAuto?com.caszgamermd.golemsplus.builder.BuilderNNStrategyAdvisor.order(steps,nnPilotAxis,nnPilotDirection)
                     :nnPilotBanded&&nnPilotMode!=3
                     ?com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.compileBanded(steps,nnPilotAxis,nnPilotBaseY)
                     :com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.compile(
@@ -1190,7 +1206,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean advanceNNStripRecovery(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,long now,
             java.util.function.IntPredicate accessible){
-        if((!nnPilotAuto&&(!"true".equals(System.getenv("GOLEMS_NN_ADAPTIVE"))
+        if((!nnPilotDome&&!nnPilotAuto&&(!"true".equals(System.getenv("GOLEMS_NN_ADAPTIVE"))
                 ||!builderFile.equals("placed-nn-dragon.gpb")))||!nnStripPilot(steps)
                 ||nnPilotMode==3)return false;
         int work=builderWorkDone();
@@ -1213,9 +1229,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(steps.get(blocked).encodedState())
                 ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(blocked).encodedState()))return false;
         var old=steps.get(blocked);
+        // A horizontal protection band uses ordinary recovery, not a
+        // premature abandonment of the experimental vertical bands.
+        if(nnPilotDome&&nnPilotMode==0&&!nnDomePlan.vertical(blocked))return false;
         if(nnPilotMode==0){
             nnPilotRescue=com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.adjacentRescue(
                     steps,blocked,nnPilotAxis,this::nnPilotUnfinished,24);
+            if(nnPilotDome)nnPilotRescue=nnPilotRescue.stream()
+                    .filter(i->nnDomePlan.sameVerticalBand(blocked,i)).toList();
             if(nnPilotBanded){
                 // Do not open arbitrary geometry from a trapped pose. Find
                 // one executable first placement; recheck the blocked target
@@ -1230,6 +1251,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
                         +" candidates="+nnPilotRescue);
                 return true;
             }
+        }
+        if(nnPilotDome){
+            nnPilotDome=false;nnPilotJob=null;nnAutoDecision="Y";
+            System.out.println("[NN DOME SWITCH] axis="+nnPilotAxis+" mode=Y_FALLBACK work="+work+" blocked="+blocked);
+            return true;
         }
         if(nnPilotAuto){
             nnPilotAuto=false;nnPilotJob=null;nnAutoDecision="Y";
@@ -1290,8 +1316,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(active<0||index<builderCursor||index>=steps.size())return false;
         var step=steps.get(index);
         var current=steps.get(active);
-        if(nnStripPilot(steps)){
+        if(nnStripPilot(steps)&&(!nnPilotDome||nnDomePlan.vertical(active)||nnPilotMode==1)){
             if(nnPilotMode==1&&!nnPilotRescue.contains(index))return false;
+            if(nnPilotDome)return nnDomePlan.sameVerticalGroup(steps,active,index,nnPilotAxis);
             if(nnPilotBanded&&nnPilotMode!=3&&nnPilotMode!=1)
                 return com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.sameBandedGroup(step,current,nnPilotAxis,nnPilotBaseY);
             return com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.sameGroup(
