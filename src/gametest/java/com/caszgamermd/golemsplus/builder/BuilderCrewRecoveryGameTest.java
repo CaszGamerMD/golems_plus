@@ -10,6 +10,27 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import java.util.List;
 public final class BuilderCrewRecoveryGameTest {
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=20,skyAccess=true)
+    public void recoveryRotatesThroughDistinctWorkers(GameTestHelper h){
+        var a=new java.util.UUID(0,1);var b=new java.util.UUID(0,2);
+        var c=new java.util.UUID(0,3);var d=new java.util.UUID(0,4);
+        var ready=List.of(a,b,c,d);
+        var tried=new java.util.HashSet<java.util.UUID>();
+        var first=BuilderCrewRecovery.chooseRecoveryStaff(ready,tried,2);
+        tried.addAll(first);
+        var second=BuilderCrewRecovery.chooseRecoveryStaff(ready,tried,1);
+        tried.addAll(second);
+        var third=BuilderCrewRecovery.chooseRecoveryStaff(ready,tried,1);
+        tried.addAll(third);
+        if(!first.equals(List.of(a,b))||!second.equals(List.of(c))||!third.equals(List.of(d))
+                ||BuilderCrewRecovery.recoveryBudgetAvailable(3,4,false)
+                ||!BuilderCrewRecovery.recoveryBudgetAvailable(2,4,true)
+                ||BuilderCrewRecovery.recoveryBudgetAvailable(5,4,true)){
+            h.fail("Recovery repeated a failed worker or exceeded bounded budget");return;
+        }
+        System.out.println("[CREW ROTATION PASS] distinct available workers tried before stopping");
+        h.succeed();
+    }
     @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=100,skyAccess=true)
     public void allUnloadBeforeReducedCrewResumes(GameTestHelper h){
         crewBarrier(h,false);
