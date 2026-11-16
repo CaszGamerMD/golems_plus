@@ -291,10 +291,13 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         if(((tickCount+getId())%5==0||followup)
                 &&level() instanceof ServerLevel server)
             BuilderBuildService.tick(server,this);
-        if(BuilderTrace.enabled()&&level() instanceof ServerLevel server)
-            BuilderTrace.sample(server,this,flying?"FLIGHT":ropeActive?"GRAPPLE":
+        if((BuilderTrace.enabled()||BuilderNeuralRecorder.ENABLED)&&level() instanceof ServerLevel server){
+            String controller=flying?"FLIGHT":ropeActive?"GRAPPLE":
                     scaffolding?"SCAFFOLD":precisionYield?"YIELD":centering?"CENTER":
-                    getNavigation().isDone()?"IDLE":"WALK");
+                    getNavigation().isDone()?"IDLE":"WALK";
+            BuilderTrace.sample(server,this,controller);
+            BuilderNeuralRecorder.sample(server,this,controller);
+        }
     }
     @Override protected void addAdditionalSaveData(ValueOutput out){
         super.addAdditionalSaveData(out);

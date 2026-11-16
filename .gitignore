@@ -6,3 +6,5 @@ out/
 *.iml
 *.jar
 !.github/**
+
+__pycache__/

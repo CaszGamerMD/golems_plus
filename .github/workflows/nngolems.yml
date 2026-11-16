@@ -1,0 +1,27 @@
+name: NNGolems experimental foundation
+on:
+  push:
+    branches: [NNGolems]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Test offline training pipeline
+        run: python3 -m unittest discover -s scripts/nngolems -p 'test_*.py'
+      - name: Compile mod and physical test fixtures
+        run: gradle --no-daemon compileJava compileGametestJava jar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nngolems-experimental
+          path: build/libs/*.jar
