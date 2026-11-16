@@ -1,0 +1,38 @@
+[
+  {
+    "commit": "ed51623659e23ba703ca3277e039765a38dafbcf",
+    "trial": "1",
+    "schema": 2,
+    "run": "df96b0b3-197e-4196-bc0c-15b0d30b4431",
+    "samples": 9114,
+    "moving": 3683,
+    "stationary": 5431,
+    "log_sha256": "e078bcf1532c6e67e7a114bea4aceb2a20ac5602d135478b0a283eddc7939c5a",
+    "environment": "seed=0 origin=1034,-51,1034 arena=62x26x70 floor=stone depot=1041,-55,1056 crew=004d4154-5249-584c-0000-000000000001@100000@1040,-55,1053;004d4154-5249-584c-0000-000000000002@100001@1041,-55,1053;004d4154-5249-584c-0000-000000000003@100002@1042,-55,1053;004d4154-5249-584c-0000-000000000004@100003@1043,-55,1053; supply=creative_crate cap=1500 temporaryScaffolding=false",
+    "result": "outcome=TIME_LIMIT layer=12 elapsedMs=300176 tick=72778 correct=9706 total=15376 best=9706 unsupported=2"
+  },
+  {
+    "commit": "ed51623659e23ba703ca3277e039765a38dafbcf",
+    "trial": "2",
+    "schema": 2,
+    "run": "6b98a1f4-d682-462a-880f-d0c0ad7009c0",
+    "samples": 10210,
+    "moving": 3793,
+    "stationary": 6417,
+    "log_sha256": "027e907fe4b0492c5612f9fb454ca62884bc339c8ce541508bbec29b4eee87a0",
+    "environment": "seed=0 origin=1034,-51,1034 arena=62x26x70 floor=stone depot=1041,-55,1056 crew=004d4154-5249-584c-0000-000000000001@100000@1040,-55,1053;004d4154-5249-584c-0000-000000000002@100001@1041,-55,1053;004d4154-5249-584c-0000-000000000003@100002@1042,-55,1053;004d4154-5249-584c-0000-000000000004@100003@1043,-55,1053; supply=creative_crate cap=1500 temporaryScaffolding=false",
+    "result": "outcome=ALL_BUILDERS_STALLED layer=13 elapsedMs=246363 tick=79110 correct=10863 total=15376 best=10863 unsupported=2"
+  },
+  {
+    "commit": "ed51623659e23ba703ca3277e039765a38dafbcf",
+    "trial": "3",
+    "schema": 2,
+    "run": "b2aec591-0fa8-4aa6-9e20-da48d62af8a9",
+    "samples": 9928,
+    "moving": 3207,
+    "stationary": 6721,
+    "log_sha256": "9dc73702026f17dc18981e8b6761cec03f5838264bd74987c410f55da1948880",
+    "environment": "seed=0 origin=1034,-51,1034 arena=62x26x70 floor=stone depot=1041,-55,1056 crew=004d4154-5249-584c-0000-000000000001@100000@1040,-55,1053;004d4154-5249-584c-0000-000000000002@100001@1041,-55,1053;004d4154-5249-584c-0000-000000000003@100002@1042,-55,1053;004d4154-5249-584c-0000-000000000004@100003@1043,-55,1053; supply=creative_crate cap=1500 temporaryScaffolding=false",
+    "result": "outcome=ALL_BUILDERS_STALLED layer=12 elapsedMs=268100 tick=75275 correct=9802 total=15376 best=9802 unsupported=2"
+  }
+]

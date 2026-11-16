@@ -1,0 +1,83 @@
+{
+  "commit": "ed51623659e23ba703ca3277e039765a38dafbcf",
+  "schema": 2,
+  "velocity_baseline": {
+    "threshold": 0.08,
+    "held_out_accuracy": 0.8711067580803135
+  },
+  "without_obstacle_goal_features": {
+    "samples": 10210,
+    "accuracy": 0.9085210577864838,
+    "log_loss": 0.16790266918582722,
+    "stationary_recall": 0.9596384603397227,
+    "moving_samples": 3793,
+    "stationary_samples": 6417
+  },
+  "by_controller": {
+    "FLIGHT": {
+      "samples": 3140,
+      "accuracy": 0.9194267515923567,
+      "log_loss": 0.20292891037095226,
+      "stationary_recall": 0.0,
+      "moving_samples": 2887,
+      "stationary_samples": 253
+    },
+    "GRAPPLE": {
+      "samples": 18,
+      "accuracy": 1.0,
+      "log_loss": 0.0027856677085466132,
+      "stationary_recall": null,
+      "moving_samples": 18,
+      "stationary_samples": 0
+    },
+    "IDLE": {
+      "samples": 5883,
+      "accuracy": 0.9928607853136155,
+      "log_loss": 0.03713320145313222,
+      "stationary_recall": 0.9998277940416739,
+      "moving_samples": 76,
+      "stationary_samples": 5807
+    },
+    "WALK": {
+      "samples": 1163,
+      "accuracy": 0.9931212381771282,
+      "log_loss": 0.01989279068836846,
+      "stationary_recall": 0.9971509971509972,
+      "moving_samples": 812,
+      "stationary_samples": 351
+    },
+    "YIELD": {
+      "samples": 6,
+      "accuracy": 1.0,
+      "log_loss": 0.01630101537338948,
+      "stationary_recall": 1.0,
+      "moving_samples": 0,
+      "stationary_samples": 6
+    }
+  },
+  "training": {
+    "samples": 19042,
+    "accuracy": 0.9726919441235164,
+    "log_loss": 0.08307276233042728,
+    "stationary_recall": 0.9643680052666228,
+    "moving_samples": 6890,
+    "stationary_samples": 12152
+  },
+  "held_out": {
+    "samples": 10210,
+    "accuracy": 0.9703232125367287,
+    "log_loss": 0.08608566761950379,
+    "stationary_recall": 0.9602618045815802,
+    "moving_samples": 3793,
+    "stationary_samples": 6417
+  },
+  "majority_baseline_accuracy": 0.6285014691478942,
+  "training_runs": [
+    "b2aec591-0fa8-4aa6-9e20-da48d62af8a9",
+    "df96b0b3-197e-4196-bc0c-15b0d30b4431"
+  ],
+  "held_out_runs": [
+    "6b98a1f4-d682-462a-880f-d0c0ad7009c0"
+  ],
+  "warning": "Movement is not task success. No gameplay control or promotion."
+}
