@@ -73,6 +73,11 @@ public final class BuilderGolem extends PathfinderMob implements Container {
             NonNullList.withSize(3,ItemStack.EMPTY);
     public BuilderGolem(EntityType<? extends PathfinderMob> type,Level world){
         super(type,world);
+        // Track entered from ordinary ground is classified as UNPASSABLE_RAIL
+        // by vanilla, although the rail has no solid collision. The shared
+        // terrain planner still verifies real footing, body clearance and fluids.
+        setPathfindingMalus(net.minecraft.world.level.pathfinder.PathType.RAIL,0.0F);
+        setPathfindingMalus(net.minecraft.world.level.pathfinder.PathType.UNPASSABLE_RAIL,0.0F);
         setPersistenceRequired();
         setInvulnerable(true);
         // A personal name is picked on the logical server when assigned.

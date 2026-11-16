@@ -1,0 +1,43 @@
+name: Physical rail and redstone walking
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderGolem.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/worker/**'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderCircuitWalkGameTest.java'
+      - '.github/workflows/circuit-walk-physical.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  circuit-walk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Run isolated circuit walking
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderCircuitWalkGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+          set -o pipefail
+          gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/circuit-walk.log"
+          grep -F '[CIRCUIT WALK PASS]' "$RUNNER_TEMP/circuit-walk.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: circuit-walk-log
+          path: ${{ runner.temp }}/circuit-walk.log
