@@ -1277,6 +1277,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean builderNNLookahead(){return Boolean.parseBoolean(System.getProperty("golems.nn.structureLookahead",System.getenv().getOrDefault("GOLEMS_NN_STRUCTURE_LOOKAHEAD","false")));}
     private com.caszgamermd.golemsplus.builder.BuilderNNStructures.Plan nnStructurePlan;
     private int nnStructureOffset,nnStructureLogged=-1;
+    private int nnStructureOrdinaryCheckWork=-1;
+    private boolean nnStructureAllOrdinaryDone;
     private boolean nnStructureRejected,nnStructureManualLogged;
     private boolean nnStructures(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
@@ -1292,6 +1294,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             nnStructureSource=steps;nnStructureJob=activeOrder;nnStructureOffset=0;
             nnStructureRules=builderRuleRevision;nnStructureIgnore=builderIgnorePlants;
             nnStructureLogged=-1;nnStructureRejected=false;nnStructureManualLogged=false;
+            nnStructureOrdinaryCheckWork=-1;nnStructureAllOrdinaryDone=false;
             // Legacy pilot falls back on deferred physics. Lookahead keeps
             // the checks with their geometric component and runs them only
             // after all its paid placements. Never assume a check succeeds.
@@ -1316,6 +1319,23 @@ public final class WorkerStationBlockEntity extends BlockEntity
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         nnStructureOffset=com.caszgamermd.golemsplus.builder.BuilderNNStructures.nextOffset(
             nnStructurePlan,nnStructureOffset,builderCursor,builderFinishedSteps);
+        // A parked ordinary project must be revisited BEFORE commissioning.
+        // Once the scan confirms there is no ordinary work left, don't
+        // rescan 13k cells on each builder tick or material query.
+        if(builderNNLookahead()
+                &&(!nnStructureAllOrdinaryDone||nnStructureOrdinaryCheckWork!=builderWorkDone)
+                &&(nnStructureOffset>=nnStructurePlan.order().size()
+                    ||com.caszgamermd.golemsplus.builder.BuilderNNStructures.manualTail(
+                        steps.get(nnStructurePlan.order().get(nnStructureOffset))))){
+            int found=com.caszgamermd.golemsplus.builder.BuilderNNStructures.resumeOrdinaryBeforeReview(
+                nnStructurePlan,steps,nnStructureOffset,builderCursor,builderFinishedSteps);
+            if(found!=nnStructureOffset){
+                nnStructureOffset=found;nnStructureAllOrdinaryDone=false;
+            }else{
+                nnStructureAllOrdinaryDone=true;
+                nnStructureOrdinaryCheckWork=builderWorkDone;
+            }
+        }
         if(nnStructureOffset>=nnStructurePlan.order().size())return -1;
         int index=nnStructurePlan.order().get(nnStructureOffset),group=nnStructurePlan.group(index);
         if(builderNNLookahead()&&!nnStructureManualLogged
@@ -1329,6 +1349,38 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 +" steps="+nnStructurePlan.members(group).size()+" volume="+com.caszgamermd.golemsplus.builder.BuilderNNStructures.volume(nnStructureSource,nnStructurePlan.members(group))+" work="+builderWorkDone());
         }
         return index;
+    }
+    /** Change only the active construction project after the entire crew
+     * has returned and unloaded. The blocked source coordinates, materials,
+     * completed bits and original index space remain unchanged. */
+    public boolean deferNNStructure(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(!builderNNLookahead()||!builderNNProjectYield()||!nnStructures(steps)
+                ||!builderClaims.isEmpty())return false;
+        int active=nnStructureActive(steps);
+        if(active<0||com.caszgamermd.golemsplus.builder.BuilderNNStructures.manualTail(
+                steps.get(active)))return false;
+        int target=com.caszgamermd.golemsplus.builder.BuilderNNStructures.nextOrdinaryProject(
+                nnStructurePlan,steps,nnStructureOffset,builderCursor,builderFinishedSteps);
+        if(target<0)return false;
+        int oldGroup=nnStructurePlan.group(active);
+        int newIndex=nnStructurePlan.order().get(target);
+        int newGroup=nnStructurePlan.group(newIndex);
+        nnStructureOffset=target;
+        nnStructureLogged=-1;
+        // Old staging reservations are not finished steps. All crew have
+        // physically unloaded before this method may be called.
+        beginBuilderZonePlan();
+        setProblem("NN: temporarily parked structure "+(oldGroup+1)
+                +"; trying structure "+(newGroup+1));
+        System.out.println("[NN PROJECT YIELD] from="+(oldGroup+1)+" to="+(newGroup+1)
+                +" originalCursor="+builderCursor+" next="+newIndex
+                +" completed="+builderWorkDone());
+        return true;
+    }
+    public boolean builderNNProjectYield(){
+        return Boolean.parseBoolean(System.getProperty("golems.nn.projectYield",
+            System.getenv().getOrDefault("GOLEMS_NN_PROJECT_YIELD","false")));
     }
     public int builderNNStructure(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){

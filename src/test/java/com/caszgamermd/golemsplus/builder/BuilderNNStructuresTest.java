@@ -94,6 +94,44 @@ class BuilderNNStructuresTest {
         assertTrue(BuilderNNStructures.manualTail(unsupported));
         assertFalse(BuilderNNStructures.manualTail(steps.get(5)));
     }
+    @Test void exhaustedProjectCanYieldWithoutLosingItsUnfinishedIndices(){
+        var steps=List.of(s(0,0,0),s(20,0,0),s(40,0,0),
+            s(0,1,0),s(20,1,0),s(40,1,0));
+        var plan=BuilderNNStructures.compile(steps,true);
+        assertEquals(List.of(0,3,1,4,2,5),plan.order());
+        var finished=new HashSet<Integer>();
+        finished.add(0); // first project has a stuck remaining block #3
+        int blocked=BuilderNNStructures.nextOffset(plan,0,0,finished);
+        assertEquals(1,blocked);
+        int next=BuilderNNStructures.nextOrdinaryProject(plan,steps,blocked,0,finished);
+        assertEquals(2,next);
+        assertEquals(1,plan.order().get(next));
+        finished.add(1);finished.add(4);finished.add(2);finished.add(5);
+        // All other projects are complete, but the original #3 MUST
+        // still be selected before any completion/review is possible.
+        assertEquals(1,BuilderNNStructures.resumeOrdinaryBeforeReview(
+                plan,steps,6,0,finished));
+        assertFalse(finished.contains(3));
+        assertEquals(-1,BuilderNNStructures.nextOrdinaryProject(
+                plan,steps,1,0,finished));
+    }
+    @Test void blockedPhysicalProjectIsRevisitedBeforeDynamicReview(){
+        var flow=new BuilderConstructionPlan.Step(0,0,0,
+            BuilderDeferredState.flowStep("minecraft:water[level=1]"),null);
+        var steps=List.of(flow,s(0,1,0),s(20,0,0),s(40,0,0));
+        var plan=BuilderNNStructures.compile(steps,true);
+        assertEquals(List.of(2,3,1,0),plan.order());
+        assertEquals(1,BuilderNNStructures.nextOrdinaryProject(
+                plan,steps,0,0,Set.of()));
+        // The source index 0 is NOT considered complete just because
+        // its derived fluid state is deferred to the very end.
+        assertEquals(0,BuilderNNStructures.resumeOrdinaryBeforeReview(
+                plan,steps,3,0,Set.of(3)));
+        assertEquals(2,BuilderNNStructures.resumeOrdinaryBeforeReview(
+                plan,steps,3,0,Set.of(2,3)));
+        assertEquals(3,BuilderNNStructures.resumeOrdinaryBeforeReview(
+                plan,steps,3,0,Set.of(1,2,3)));
+    }
     @Test void connectedGroundStaysOneAndEveryIndexIsRetained(){
         var steps=new ArrayList<BuilderConstructionPlan.Step>();
         for(int x=0;x<=20;x++)steps.add(s(x,0,0));

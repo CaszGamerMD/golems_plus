@@ -158,6 +158,17 @@ final class BuilderCrewRecovery {
             }
             List<UUID> live=table.builderWorkerIds();
             boolean all=s.unloaded.containsAll(live);
+            // After two unsuccessful whole-crew recoveries, don't freeze
+            // an entire multi-project schematic on one approach. Only
+            // yield once EVERY registered worker has physically returned
+            // and unloaded. The remaining cells stay unfinished and will
+            // be retried after useful work elsewhere.
+            if(all&&s.attempts>=2&&table.deferNNStructure(steps)){
+                BuilderMaterialNetwork.resetForCrew(table);
+                BuilderBuildService.resetCrewActions(level,table);
+                clear(table);
+                return true;
+            }
             if(!all&&!s.unloaded.contains(worker.getUUID())
                     &&resumeStrandedStock(level,worker,table,steps,s,live,now))return true;
             // Normal reduced-crew resume requires a real unloaded worker.

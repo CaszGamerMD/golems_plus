@@ -143,6 +143,38 @@ public final class BuilderNNStructures {
         }
         return cells.size();
     }
+    /** When a project has been safely unloaded after exhausted recovery,
+     * switch to an unfinished ORDINARY cell in a different project.
+     * This only selects an index: no completion bits or progress are changed.
+     * The scan wraps so previously deferred projects can be revisited. */
+    public static int nextOrdinaryProject(Plan plan,List<BuilderConstructionPlan.Step> steps,
+            int currentOffset,int cursor,Set<Integer> finished){
+        int n=plan.order().size();
+        if(currentOffset<0||currentOffset>=n)return -1;
+        int current=plan.group(plan.order().get(currentOffset));
+        for(int j=1;j<n;j++){
+            int at=(currentOffset+j)%n,index=plan.order().get(at);
+            if(plan.group(index)!=current&&index>=cursor&&!finished.contains(index)
+                    &&!manualTail(steps.get(index)))return at;
+        }
+        return -1;
+    }
+    /** Dynamic checks may only be visited after the last real material
+     * placement. If the active scan passed a parked project, revisit its
+     * unfinished ordinary cells before the commissioning tail. */
+    public static int resumeOrdinaryBeforeReview(Plan plan,
+            List<BuilderConstructionPlan.Step> steps,int from,int cursor,
+            Set<Integer> finished){
+        int result=nextOffset(plan,from,cursor,finished);
+        if(result<plan.order().size()
+                &&!manualTail(steps.get(plan.order().get(result))))return result;
+        for(int offset=0;offset<plan.order().size();offset++){
+            int index=plan.order().get(offset);
+            if(index>=cursor&&!finished.contains(index)
+                    &&!manualTail(steps.get(index)))return offset;
+        }
+        return result;
+    }
     /** Resume from original-index completion; no fabricated progress. */
     public static int nextOffset(Plan plan,int from,int cursor,Set<Integer> finished){
         int offset=Math.max(0,from);
