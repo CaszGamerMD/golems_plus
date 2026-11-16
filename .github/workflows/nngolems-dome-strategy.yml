@@ -9,6 +9,8 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewRecovery.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderReturnService.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMaterialNetwork.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderCrewRecoveryGameTest.java'
   workflow_dispatch:
 permissions:
   contents: read
@@ -95,6 +97,7 @@ jobs:
         run: |
           set -o pipefail
           gradle --no-daemon runGameTest 2>&1 | tee crew-recovery.log
+          grep -F '[CREW FINAL PICKUP PASS]' crew-recovery.log
           grep -F '[CREW STOCKED RESCUE PASS]' crew-recovery.log
           grep -F '[CREW RETREAT BARRIER PASS]' crew-recovery.log
           grep -F '[CREW RETREAT TIMEOUT PASS]' crew-recovery.log
