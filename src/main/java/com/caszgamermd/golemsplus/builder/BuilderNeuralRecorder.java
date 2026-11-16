@@ -41,6 +41,16 @@ final class BuilderNeuralRecorder {
     static void beginFlight(ServerLevel level, BuilderGolem worker, List<Vec3> path, Vec3 destination) {
         if (!ENABLED || actionSequence >= ACTION_LIMIT) return;
         finishFlight(level, worker, "REPLACED");
+        Vec3 from=worker.position();
+        double[] x=flightGeometry(worker,path,destination);
+        double[] knowledge=BuilderFlight.observedKnowledge(level,worker,path,destination);
+        long now = level.getGameTime();
+        activeFlights.put(worker, new FlightStart(++actionSequence, now, level,
+                from, destination, x, knowledge, now));
+        BuilderNeuralAdvisor.observe(level,worker,RUN,actionSequence,now,path,destination,x,knowledge);
+    }
+
+    static double[] flightGeometry(BuilderGolem worker,List<Vec3> path,Vec3 destination) {
         Vec3 from = worker.position(), at = from;
         double route = 0;
         for (Vec3 waypoint : path) {
@@ -48,7 +58,7 @@ final class BuilderNeuralRecorder {
             at = waypoint;
         }
         Vec3 delta = destination.subtract(from);
-        double[] x = {
+        return new double[]{
             Math.clamp(delta.x / 2, -1, 1),
             Math.clamp(delta.y / 32, -1, 1),
             Math.clamp(delta.z / 2, -1, 1),
@@ -57,9 +67,6 @@ final class BuilderNeuralRecorder {
             worker.onGround() ? 1 : 0,
             Math.min(1, from.distanceTo(destination) / 64)
         };
-        long now = level.getGameTime();
-        activeFlights.put(worker, new FlightStart(++actionSequence, now, level,
-                from, destination, x, BuilderFlight.observedKnowledge(level,worker,path,destination), now));
     }
 
     static void observeFlightTick(ServerLevel level, BuilderGolem worker) {
