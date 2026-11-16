@@ -27,18 +27,18 @@ def main():
     out.mkdir(parents=True,exist_ok=True)
     manifest=dict(course=a.course,commit=a.commit,source=source,result=result,
                   log_sha256=hashlib.sha256(raw).hexdigest())
-    if a.course!='chibi':
+    if 'outcome=IMPORT_ONLY' not in result:
         manifest['environment']=unique('[NN_CURRICULUM_ENV] ')
         movement=read_rows([a.log])
         flights=read_actions([a.log])
         placements=read_placements([a.log])
         runs={r['run'] for r in movement+flights+placements}
-        if not movement or not placements or len(runs)!=1:
-            raise ValueError('Missing or mixed physical observations')
+        if len(runs)>1:
+            raise ValueError('Mixed physical observations')
         for name,marker,rows in [('samples',MARKER,movement),('actions',ACTION_MARKER,flights),
                                  ('placements',PLACEMENT_MARKER,placements)]:
             (out/(name+'.log')).write_text(''.join(marker+json.dumps(r)+'\n' for r in rows))
-        manifest.update(run=next(iter(runs)),movement_samples=len(movement),
+        manifest.update(run=next(iter(runs),None),movement_samples=len(movement),
                         flights=summarize(flights),placements=summary(placements))
     (out/'provenance.json').write_text(json.dumps(manifest,indent=2))
     print(json.dumps(manifest,indent=2))

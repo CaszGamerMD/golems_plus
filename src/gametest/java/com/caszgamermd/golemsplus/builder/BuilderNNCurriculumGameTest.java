@@ -41,23 +41,29 @@ public final class BuilderNNCurriculumGameTest {
         int maxZ=all.stream().mapToInt(LitematicFileReader.Block::z).max().orElseThrow();
         System.out.println("[NN_CURRICULUM_IMPORT] course="+course.id()+" blocks="+course.blocks()
                 +" air="+course.air()+" hash="+course.hash());
-        if(!course.physical()){
-            var plan=BuilderConstructionPlan.create(schematic,new BuildSite(0,0,0,
-                    BuildSite.Rotation.NONE,BuildSite.Mirror.NONE),false);
-            System.out.println("[NN_CURRICULUM_RESULT] course="+course.id()
-                    +" outcome=IMPORT_ONLY total="+course.blocks()+" steps="+plan.steps().size()
-                    +" unsupportedStates="+plan.unsupported());
-            h.succeed();return;
-        }
         ServerLevel level=h.getLevel();
         if(level.getSeed()!=0){h.fail("Curriculum seed is not zero");return;}
         final BlockPos arena=new BlockPos(1024,-57,1024);
         final BlockPos origin=arena.offset(10-minX,2-minY,10-minZ);
         int width=maxX-minX+1,height=maxY-minY+1,depth=maxZ-minZ+1;
-        // Preserve the existing small arena and enlarge only when a course needs it.
-        if(width>100||height>60||depth>100){h.fail("Course exceeds physical arena limit");return;}
-        int arenaWidth=Math.max(62,width+20),arenaDepth=Math.max(70,depth+20);
+        // The fixture follows the schematic, never crops or divides a build.
+        // Explicit budgets protect the CI server rather than imposing a
+        // gameplay dimension restriction. A larger runner may raise them.
+        int arenaWidth=Math.max(62,Math.addExact(width,20));
+        int arenaDepth=Math.max(70,Math.addExact(depth,20));
+        int clearHeight=Math.max(27,Math.addExact(height,4));
+        if((long)arena.getY()+clearHeight>=level.getMaxY()
+                ||arena.getY()+1<level.getMinY()){
+            h.fail("Course does not fit the test dimension's world height");return;
+        }
+        long volume=Math.multiplyExact(Math.multiplyExact((long)arenaWidth,arenaDepth),clearHeight);
+        long budget=Long.parseLong(System.getenv().getOrDefault("NN_ARENA_CELL_BUDGET","8000000"));
+        if(volume>budget){h.fail("Test runner cell budget exceeded: "+volume+" > "+budget);return;}
         int radius=Math.max(4,(Math.max(arenaWidth,arenaDepth)+31)/32+1);
+        int chunkBudget=Integer.parseInt(System.getenv().getOrDefault("NN_ARENA_CHUNK_BUDGET","625"));
+        if((2L*radius+1)*(2L*radius+1)>chunkBudget){
+            h.fail("Test runner chunk budget exceeded; increase capacity, not crop the schematic");return;
+        }
         BlockPos center=arena.offset((arenaWidth+2)/2,2,(arenaDepth+2)/2);
         level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
                 new net.minecraft.world.level.ChunkPos(center.getX()>>4,center.getZ()>>4),radius);
@@ -66,16 +72,43 @@ public final class BuilderNNCurriculumGameTest {
                 level.getChunk(cx,cz);
         for(int x=1;x<=arenaWidth;x++)for(int z=1;z<=arenaDepth;z++){
             level.setBlock(arena.offset(x,1,z),Blocks.STONE.defaultBlockState(),2);
-            for(int y=2;y<=Math.max(27,height+4);y++){
+            for(int y=2;y<=clearHeight;y++){
                 BlockPos p=arena.offset(x,y,z);
                 if(!level.getBlockState(p).isAir())level.setBlock(p,Blocks.AIR.defaultBlockState(),2);
             }
         }
         int baseY=schematic.blocks().stream().mapToInt(LitematicFileReader.Block::y).min().orElseThrow();
+        // Keep the depot outside the source bounding box and choose
+        // the perimeter nearest a real foundation cell, not a fixed corner.
+        // Small historical courses keep their original depot for comparison.
         var first=schematic.blocks().stream().filter(b->b.y()==baseY)
                 .min(java.util.Comparator.comparingInt(LitematicFileReader.Block::x)).orElseThrow();
         BlockPos supply=arena.offset(8,2,10+first.z()-minZ);
         BlockPos planner=supply.west();
+        if(width>100||depth>100||height>60){
+            var foundations=schematic.blocks().stream().filter(b->b.y()==baseY).toList();
+            int closest=Integer.MAX_VALUE;
+            for(var cell:foundations){
+                int x=cell.x()-minX,z=cell.z()-minZ;
+                int[] distance={x,width-1-x,z,depth-1-z};
+                for(int side=0;side<4;side++){
+                    if(distance[side]>=closest)continue;
+                    closest=distance[side];
+                    supply=switch(side){
+                        case 0 -> arena.offset(8,2,10+z);
+                        case 1 -> arena.offset(10+width+1,2,10+z);
+                        case 2 -> arena.offset(10+x,2,8);
+                        default -> arena.offset(10+x,2,10+depth+1);
+                    };
+                    planner=switch(side){
+                        case 0 -> supply.west();
+                        case 1 -> supply.east();
+                        case 2 -> supply.north();
+                        default -> supply.south();
+                    };
+                }
+            }
+        }
         level.setBlock(planner,WorksiteContent.BUILDER_TABLE.defaultBlockState(),3);
         level.setBlock(supply,WorksiteContent.CREATIVE_CRATE.defaultBlockState(),3);
         if(!(level.getBlockEntity(planner) instanceof WorkerStationBlockEntity table)){
@@ -113,7 +146,9 @@ public final class BuilderNNCurriculumGameTest {
         var crew=new ArrayList<BuilderGolem>();
         for(int i=0;i<4;i++){
             var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-            BlockPos from=planner.offset(-2+i%2,0,-2+i/2);
+            int dx=planner.getX()-supply.getX(),dz=planner.getZ()-supply.getZ();
+            BlockPos from=planner.offset(dx*(2+i%2)-dz*(1+i/2),0,
+                    dz*(2+i%2)+dx*(1+i/2));
             worker.setUUID(new UUID(0x4e4e434f55525345L,i+1));
             worker.setId(100000+i);
             worker.getRandom().setSeed(260215376L+i+1);
@@ -125,7 +160,7 @@ public final class BuilderNNCurriculumGameTest {
         }
         level.getRandom().setSeed(260215376L);
         System.out.println("[NN_CURRICULUM_ENV] course="+course.id()+" seed="+level.getSeed()
-                +" origin="+origin.toShortString().replace(" ","")+" arena="+arenaWidth+"x"+Math.max(27,height+4)+"x"+arenaDepth+" workers=4 supply=creative_crate"
+                +" origin="+origin.toShortString().replace(" ","")+" arena="+arenaWidth+"x"+clearHeight+"x"+arenaDepth+" workers=4 supply=creative_crate"
                 +" scaffolding="+BuilderGolem.temporaryScaffoldingEnabled()
                 +" unsupportedStates="+plan.unsupported());
         if(!table.startPlacedBuilder(ownerId)){h.fail("Cannot start curriculum job");return;}

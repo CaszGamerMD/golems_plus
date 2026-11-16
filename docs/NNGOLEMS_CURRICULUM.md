@@ -45,3 +45,18 @@ function, inventory contents, and transient moving piston behavior are not
 validated by block-state matching. Preserve source scaffolding as construction
 material; temporary builder scaffolding remains disabled. First run is a
 baseline, not a neural policy evaluation.
+
+## Adaptive physical arena
+
+All five user courses now run physical assessments, including full Chibi.
+The test arena derives width, height and depth from the complete source bounds;
+no arbitrary 100×60×100 shape restriction, cropping or partial job. Actual
+Minecraft dimension height and explicit configurable CI resource budgets
+(default 8 million arena cells and 625 ticket-square chunks) are checked before
+setup. A bigger runner can raise budgets; production limits are separate.
+Large-course storage is placed outside the nearest foundation perimeter.
+Chibi uses a five-minute assessment like the others, not a completion promise.
+Its original sparse fixture still preserves all 32,061 solid positions; inferred
+region air is used only on the empty training site. No model steering changes.
+Production importer/planner/snapshot limits (100,000 non-air/steps, 300,000 air
+cells, file/palette limits) remain and require separate scalable-job work.
