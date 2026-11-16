@@ -102,6 +102,11 @@ public final class BuilderBlockInteractions {
                 ||id.equals("tripwire")){
             neutral=set(neutral,"powered","false");
             neutral=set(neutral,"attached","false");
+        }else if(id.equals("barrel")){
+            neutral=set(neutral,"open","false");
+        }else if(id.equals("crafter")){
+            neutral=set(neutral,"crafting","false");
+            neutral=set(neutral,"triggered","false");
         }else if(id.equals("dispenser")||id.equals("dropper")){
             neutral=set(neutral,"triggered","false");
         }else if(id.equals("hopper")){
@@ -155,7 +160,20 @@ public final class BuilderBlockInteractions {
             BlockState actual=level.getBlockState(pos);
             if(BuilderPlacementState.matches(actual,desired))return true;
             if(!needsInteraction(actual,desired))return false;
-            actual.useWithoutItem(level,actor,hit);
+            // Vanilla fence gates reverse their facing on opening if the
+            // actor faces the opposite way. The planner owner is only the
+            // interaction proxy; their arbitrary view direction must not
+            // change the paid schematic orientation. Temporarily face the
+            // desired direction, execute the actual native click, restore.
+            if(actual.getBlock() instanceof net.minecraft.world.level.block.FenceGateBlock
+                    &&hasValue(desired,"open","true")){
+                float yaw=actor.getYRot();
+                try{
+                    actor.setYRot(desired.getValue(
+                            net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING).toYRot());
+                    actual.useWithoutItem(level,actor,hit);
+                }finally{actor.setYRot(yaw);}
+            }else actual.useWithoutItem(level,actor,hit);
         }
         return BuilderPlacementState.matches(level.getBlockState(pos),desired);
     }

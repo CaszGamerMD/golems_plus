@@ -43,6 +43,11 @@ public final class BuilderBlockResolver {
         int open=encoded.indexOf('[');
         String id=open<0?encoded:encoded.substring(0,open);
         Identifier identifier=Identifier.tryParse(id);
+        // Older schematic exports use chain; modern registries may call
+        // the same iron-chain block iron_chain. Preserve all its properties.
+        if(id.equals("minecraft:chain")&&identifier!=null&&!BuiltInRegistries.BLOCK.containsKey(identifier)){
+            identifier=Identifier.tryParse("minecraft:iron_chain");
+        }
         if(identifier==null||!BuiltInRegistries.BLOCK.containsKey(identifier))return null;
         Block block=BuiltInRegistries.BLOCK.getValue(identifier);
         Item item=block.asItem();
@@ -85,17 +90,21 @@ public final class BuilderBlockResolver {
         // Empty vanilla containers are paid blocks; never import inventory NBT.
         boolean vanillaContainer=id.equals("minecraft:chest")||id.equals("minecraft:trapped_chest")
                 ||id.equals("minecraft:hopper")||id.equals("minecraft:dispenser")
-                ||id.equals("minecraft:dropper");
+                ||id.equals("minecraft:dropper")||id.equals("minecraft:barrel")
+                ||id.equals("minecraft:crafter");
+        // Campfires are ordinary paid blocks; the placed block entity is
+        // empty. Only the lit/default or wet case is presently supported.
+        boolean vanillaCampfire=id.equals("minecraft:campfire")||id.equals("minecraft:soul_campfire");
         if((item==Items.AIR && !(expectedOnly&&id.equals("minecraft:piston_head")))
                 || block instanceof EntityBlock
                 &&!sign&&!vanillaComparator&&!vanillaDaylightDetector
-                &&!vanillaBed&&!vanillaContainer)return null;
+                &&!vanillaBed&&!vanillaContainer&&!vanillaCampfire)return null;
         // The constructor groups each valid double-plant, door and bed
         // pair into one claimed item-backed job. Neither companion is a
         // stand-alone material, and crops/fire/portals still require
         // their own future world-interaction handlers.
         if(id.endsWith("_crop")
-                ||id.contains("fire")&&!id.equals("minecraft:soul_fire")||id.contains("portal"))
+                ||id.contains("fire")&&!id.equals("minecraft:soul_fire")&&!vanillaCampfire||id.contains("portal"))
             return null;
         // A normal/sticky piston is an ordinary one-item block while
         // retracted. Its extended state and detached moving/head blocks
@@ -116,6 +125,11 @@ public final class BuilderBlockResolver {
                     if(state==null)return null;
                 }
         }
+        // A dry unlit campfire needs an extinguishing interaction; do
+        // not silently pretend to have performed it.
+        if(!expectedOnly&&vanillaCampfire
+                &&!state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.LIT)
+                &&!state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED))return null;
         // Only source fluids are schematic placements. Flowing levels must
         // emerge from vanilla physics, not be issued as infinite bucket jobs.
         if(!expectedOnly&&(id.equals("minecraft:water")||id.equals("minecraft:lava"))

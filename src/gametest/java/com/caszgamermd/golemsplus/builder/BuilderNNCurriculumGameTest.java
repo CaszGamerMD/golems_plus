@@ -198,6 +198,14 @@ public final class BuilderNNCurriculumGameTest {
             if(!complete&&!timeout&&!stalled)return;
             String outcome=complete?(correct==course.blocks()?"COMPLETE":"MISMATCH"):
                     stalled?"NO_WORK_PROGRESS":tickTimeout?"TICK_LIMIT":"TIME_LIMIT";
+            // Preserve the exact terminal claim, frontier and route evidence
+            // even when the recovery state overwrote the table problem.
+            for(var w:crew){
+                System.out.println("[NN_CURRICULUM_WORKER] course="+course.id()
+                        +" uuid="+w.getUUID()+" feet="+w.position()
+                        +" alive="+w.isAlive()+" claim="+table.claimedStep(w.getUUID())
+                        +" "+BuilderBuildService.debugStatus(level,w));
+            }
             BuilderTrace.dump(level,table,"curriculum "+outcome);
             System.out.println("[NN_CURRICULUM_RESULT] course="+course.id()+" outcome="+outcome
                     +" correct="+correct+" best="+best[0]+" total="+course.blocks()
