@@ -1,0 +1,94 @@
+name: NNGolems Home Demo structure test
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-home-structures.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  home:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MATRIX_TEST_MODE: controlled
+      NN_COURSE: home
+      NN_TEAM_SIZE: '8'
+      GOLEMS_NN_STRUCTURES: 'true'
+      GOLEMS_NN_AUTO: 'true'
+      GOLEMS_NN_STRIP_PILOT: 'false'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+      GOLEMS_NN_TEAM_RECORD: 'true'
+      NN_SPEED_TEST: 'true'
+      NN_SPEED_TICK_LIMIT: '72000'
+      NN_COURSE_SECONDS: '300'
+      NN_TEAM_STALL_TICKS: '2400'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Select and instrument only Home Demo
+        run: |
+          python3 - <<'PY'
+          import json, hashlib
+          from pathlib import Path
+          root=Path('src/gametest/resources')
+          source=root/'golems_plus_curriculum/homeDemo.litematic'
+          assert hashlib.sha256(source.read_bytes()).hexdigest()=='f388372d46d6f94747fb4576789eca07fa2b5f086722a85fd7379f650ceda52c'
+          p=root/'fabric.mod.json'
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderNNCurriculumGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          p=Path('src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNCurriculumGameTest.java')
+          s=p.read_text()
+          marker='        var steps=plan.steps();'
+          assert s.count(marker)==1
+          s=s.replace(marker,marker+'''
+                  var homeGroups=BuilderNNStructures.compile(steps);
+                  System.out.println("[NN HOME GROUPS] groups="+homeGroups.groups().size()
+                      +" sizes="+homeGroups.groups().stream().map(java.util.List::size).toList()
+                      +" steps="+steps.size()
+                      +" deferred="+steps.stream().filter(s->BuilderDeferredState.verification(s.encodedState())).count());
+          ''')
+          marker='            h.succeed(); // Assessment completed, not necessarily the build.'
+          assert s.count(marker)==1
+          s=s.replace(marker,'''
+                  System.out.println("[NN HOME FINAL] correct="+correct+" total="+course.blocks()
+                      +" outcome="+outcome+" ticks="+elapsedTicks+" distance="+distance[0]);
+          '''+marker)
+          p.write_text(s)
+          PY
+      - name: Build Home Demo with structure detection
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/nn-home-structures
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-home-structures/server.log
+          python3 - <<'PY'
+          import re, json, os
+          from pathlib import Path
+          root=Path('build/nn-home-structures')
+          log=(root/'server.log').read_text()
+          group=re.search(r'\[NN HOME GROUPS\] groups=(\d+) sizes=(\[[^\]]*\]) steps=(\d+) deferred=(\d+)',log)
+          result=re.search(r'\[NN HOME FINAL\] correct=(\d+) total=(\d+) outcome=(\w+) ticks=(\d+) distance=([\d.Ee+-]+)',log)
+          assert group and result, 'Missing Home Demo assessment'
+          report={'course':'home','crew':8,'groups':int(group[1]),'groupSizes':json.loads(group[2]),'steps':int(group[3]),'deferred':int(group[4]),'correct':int(result[1]),'total':int(result[2]),'outcome':result[3],'ticks':int(result[4]),'distance':float(result[5]),'activeGroups':re.findall(r'\[NN STRUCTURE ACTIVE\] group=(\d+/\d+)',log)}
+          assert report['total']==620
+          assert sum(report['groupSizes'])==report['steps']
+          (root/'report.json').write_text(json.dumps(report,indent=2))
+          print(json.dumps(report,indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('## Home Demo structure test\n\n'+json.dumps(report,indent=2)+'\n')
+          assert report['outcome']=='COMPLETE' and report['correct']==620, 'Home Demo incomplete'
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: home-demo-structure-test
+          path: build/nn-home-structures/
