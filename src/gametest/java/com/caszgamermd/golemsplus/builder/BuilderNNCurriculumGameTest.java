@@ -54,14 +54,17 @@ public final class BuilderNNCurriculumGameTest {
         final BlockPos arena=new BlockPos(1024,-57,1024);
         final BlockPos origin=arena.offset(10-minX,2-minY,10-minZ);
         int width=maxX-minX+1,height=maxY-minY+1,depth=maxZ-minZ+1;
-        if(width>45||height>30||depth>50){h.fail("Course exceeds small arena");return;}
-        BlockPos center=arena.offset(32,2,36);
+        // Preserve the existing small arena and enlarge only when a course needs it.
+        if(width>100||height>60||depth>100){h.fail("Course exceeds physical arena limit");return;}
+        int arenaWidth=Math.max(62,width+20),arenaDepth=Math.max(70,depth+20);
+        int radius=Math.max(4,(Math.max(arenaWidth,arenaDepth)+31)/32+1);
+        BlockPos center=arena.offset((arenaWidth+2)/2,2,(arenaDepth+2)/2);
         level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.FORCED,
-                new net.minecraft.world.level.ChunkPos(center.getX()>>4,center.getZ()>>4),4);
-        for(int cx=(arena.getX()>>4)-1;cx<=((arena.getX()+63)>>4)+1;cx++)
-            for(int cz=(arena.getZ()>>4)-1;cz<=((arena.getZ()+71)>>4)+1;cz++)
+                new net.minecraft.world.level.ChunkPos(center.getX()>>4,center.getZ()>>4),radius);
+        for(int cx=(arena.getX()>>4)-1;cx<=((arena.getX()+arenaWidth+1)>>4)+1;cx++)
+            for(int cz=(arena.getZ()>>4)-1;cz<=((arena.getZ()+arenaDepth+1)>>4)+1;cz++)
                 level.getChunk(cx,cz);
-        for(int x=1;x<=62;x++)for(int z=1;z<=70;z++){
+        for(int x=1;x<=arenaWidth;x++)for(int z=1;z<=arenaDepth;z++){
             level.setBlock(arena.offset(x,1,z),Blocks.STONE.defaultBlockState(),2);
             for(int y=2;y<=Math.max(27,height+4);y++){
                 BlockPos p=arena.offset(x,y,z);
@@ -122,7 +125,7 @@ public final class BuilderNNCurriculumGameTest {
         }
         level.getRandom().setSeed(260215376L);
         System.out.println("[NN_CURRICULUM_ENV] course="+course.id()+" seed="+level.getSeed()
-                +" origin="+origin.toShortString().replace(" ","")+" workers=4 supply=creative_crate"
+                +" origin="+origin.toShortString().replace(" ","")+" arena="+arenaWidth+"x"+Math.max(27,height+4)+"x"+arenaDepth+" workers=4 supply=creative_crate"
                 +" scaffolding="+BuilderGolem.temporaryScaffoldingEnabled()
                 +" unsupportedStates="+plan.unsupported());
         if(!table.startPlacedBuilder(ownerId)){h.fail("Cannot start curriculum job");return;}

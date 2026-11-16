@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        course: [home, dragon, froglights, chibi]
+        course: [home, dragon, froglights, farm, chibi]
     env:
       NN_COURSE: ${{ matrix.course }}
       NN_COURSE_SECONDS: '300'

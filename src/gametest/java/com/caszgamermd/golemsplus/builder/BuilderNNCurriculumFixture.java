@@ -18,6 +18,8 @@ final class BuilderNNCurriculumFixture {
                     "c4b2961ca54efe70c9ab7a95d831ceb3541299ceadbe18ddfcca7cbb97953c83",true),
             new Course("froglights","froglights.litematic",3102,4458,
                     "497093590340226a295e90dd2de3bc4d86668ab48cdb516b25252a19db78e574",true),
+            new Course("farm","farmDemos.litematic",13143,140324,
+                    "31a88223773888df19d1ff9dcaa2ee88869f941adde5183599fe6a1ae12fbbbc",true),
             new Course("chibi","CaszChibi.litematic",32061,276058,
                     "616846073ae6295a79f64f05c7e4b657ae8c2c5062c83f364ae2721674a4bc86",false));
     static Course selected() {

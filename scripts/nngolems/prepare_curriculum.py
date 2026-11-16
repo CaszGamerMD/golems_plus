@@ -6,6 +6,7 @@ import collections
 import gzip
 import hashlib
 import json
+import lzma
 import math
 import struct
 from pathlib import Path
@@ -14,7 +15,8 @@ ROOT=Path('src/gametest/resources/golems_plus_curriculum')
 HASHES={'Dragon.litematic':'ccb6cf6a440b6f9c1fe7dd4c50c72c8baf60c22a4b09756a8b99eadb377d2a40',
         'froglights.litematic':'c9d3019305449a94d09980b27bcd15abb416657f61e06c636c94d686823c5467',
         'homeDemo.litematic':'f388372d46d6f94747fb4576789eca07fa2b5f086722a85fd7379f650ceda52c',
-        'CaszChibi.columns.gz':'e7fec9cb11e770c19c63c2397b7cb003f55d371449eed27040334e1f3ae596cd'}
+        'CaszChibi.columns.gz':'e7fec9cb11e770c19c63c2397b7cb003f55d371449eed27040334e1f3ae596cd',
+        'farmDemos.states.xz':'b46922c9e70d4480eddef4df34d212b6e66540a2b0b54d4b36919a7013d1ffec'}
 CELL_HASH='616846073ae6295a79f64f05c7e4b657ae8c2c5062c83f364ae2721674a4bc86'
 
 def nstr(s):
@@ -57,10 +59,53 @@ def pack(ids,n):
         if s+bits>64: out[j+1]|=v>>(64-s)
     return out
 
+def prepare_farm():
+    # Source Sponge v3 state data, stored X/Y/Z-major to compress efficiently.
+    # No inventories or transient entity NBT are reconstructed.
+    metadata,raw=lzma.decompress((ROOT/'farmDemos.states.xz').read_bytes()).split(b'\n',1)
+    source=json.loads(metadata)
+    w,h,d=source['size']
+    offset=source['offset']
+    states=source['palette']
+    if (w,h,d)!=(83,43,43) or offset!=[-82,0,-43] or len(states)!=186:
+        raise ValueError('Farm Demos metadata mismatch')
+    if len(raw)!=w*h*d or max(raw)>=len(states) or states[0]!='minecraft:air':
+        raise ValueError('Invalid Farm Demos palette indices')
+    ids=[raw[(x*h+y)*d+z] for y in range(h) for z in range(d) for x in range(w)]
+    palette=[]
+    for state in states:
+        name,sep,props=state.partition('[')
+        p={'Name':name}
+        if sep:
+            p['Properties']=dict(v.split('=',1) for v in props[:-1].split(','))
+        palette.append(p)
+    cells=sorted((x+offset[0],y+offset[1],z+offset[2],canonical(palette[ids[(y*d+z)*w+x]]))
+                 for y in range(h) for z in range(d) for x in range(w)
+                 if ids[(y*d+z)*w+x]!=0)
+    digest=hashlib.sha256(''.join(f'{x},{y},{z},{state}\n' for x,y,z,state in cells).encode()).hexdigest()
+    if len(cells)!=13143 or digest!='31a88223773888df19d1ff9dcaa2ee88869f941adde5183599fe6a1ae12fbbbc':
+        raise ValueError('Farm Demos coordinate/state mismatch')
+    region={'Position':(10,vec(offset)),'Size':(10,vec((w,h,d))),
+            'BlockStatePalette':(9,(10,[palstate(p) for p in palette])),
+            'BlockStates':(12,pack(ids,len(palette)))}
+    for name in ('Entities','TileEntities','PendingBlockTicks','PendingFluidTicks'):
+        region[name]=(9,(10,[]))
+    metadata={'Name':(8,'Farm Demos'),'Author':(8,'CaszGamerMD'),
+              'Description':(8,'Block-state training fixture'),
+              'TotalBlocks':(3,len(cells)),'TotalVolume':(3,len(ids)),
+              'RegionCount':(3,1),'EnclosingSize':(10,vec((w,h,d))),
+              'TimeCreated':(4,0),'TimeModified':(4,0)}
+    root={'Version':(3,7),'SubVersion':(3,1),'MinecraftDataVersion':(3,source['data_version']),
+          'Metadata':(10,metadata),'Regions':(10,{'farmDemos':(10,region)})}
+    (ROOT/'farmDemos.litematic').write_bytes(gzip.compress(tag(10,'',root),mtime=0))
+    print('Verified Farm Demos: 13143 source blocks, 140324 air cells, exact signed coordinates')
+
+
 def main():
     for name,digest in HASHES.items():
         if hashlib.sha256((ROOT/name).read_bytes()).hexdigest()!=digest:
             raise ValueError('Fixture checksum mismatch: '+name)
+    prepare_farm()
     palette=json.loads((ROOT/'CaszChibi.palette.json').read_text())
     raw=gzip.decompress((ROOT/'CaszChibi.columns.gz').read_bytes())
     n=128*129
