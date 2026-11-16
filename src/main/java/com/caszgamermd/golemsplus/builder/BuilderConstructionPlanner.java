@@ -392,6 +392,20 @@ public final class BuilderConstructionPlanner {
                 +(grapple?BuilderFrontierTuning.GRAPPLE_PENALTY:0); // rank valid hook access
     }
 
+    /** World-observed scaffolding support: do not confuse the empty
+     * underside of a legal horizontal bridge with a failed route. */
+    private static String scaffoldSupport(ServerLevel world,BlockPos at){
+        var parts=new ArrayList<String>();
+        for(Direction side:new Direction[]{Direction.NORTH,Direction.SOUTH,
+                Direction.EAST,Direction.WEST}){
+            BlockPos neighbor=at.relative(side);
+            parts.add(side.getName()+"="+net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                .getKey(world.getBlockState(neighbor).getBlock()).getPath());
+        }
+        return "below="+net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                    .getKey(world.getBlockState(at.below()).getBlock()).getPath()
+                +" sides=["+String.join(",",parts)+"]";
+    }
     /** Human-readable diagnostic in SCHEMATIC-LOCAL XYZ. This never
      * changes claims or tests artificial standability. It records exact
      * unfinished inputs and their real-world support so failures are
@@ -422,7 +436,9 @@ public final class BuilderConstructionPlanner {
                         ?"waiting for natural redstone/fluid result":
                     expected==null?"unsupported block state":
                     !expected.state().canSurvive(world,p)
-                        ?"missing physical support":
+                        ?"missing physical support"
+                            +(step.encodedState().startsWith("minecraft:scaffolding")
+                                    ?" ("+scaffoldSupport(world,p)+")":""):
                     !BuilderRailSlope.canReshapePaidSlope(world,p,expected.state())
                         &&!BuilderRailSlope.hasRaisedEndSupport(
                             world,p,expected.state())

@@ -13,7 +13,7 @@ final class BuilderCrewRecovery {
         UUID job;
         int layer=Integer.MIN_VALUE,structure=-1,best=-1,attempts;
         long lastProgress,started,graceUntil;
-        boolean recalling,localAttempted;
+        boolean recalling,localAttempted,yieldPending;
         long localUntil;
         int localStartWork,localIndex=-1;
         UUID localWorker;
@@ -86,12 +86,20 @@ final class BuilderCrewRecovery {
         s.lastProgress=level.getGameTime();s.started=s.lastProgress;
         s.attempts++;s.recalling=true;s.graceUntil=0;
         s.unloaded.clear();s.retry.clear();s.parking.clear();
+        s.yieldPending=false;
         s.lastReturnProgress.clear();s.bestReturnDistance.clear();
         s.nextStockProbe.clear();s.stockOffset.clear();
         BuilderTrace.dump(level,table,"before crew retreat");
+        // Compact, reproducible physical frontier snapshot. The normal
+        // trace also includes each worker's exact route and current cargo.
+        var members=table.builderNNStructureMembers(steps);
+        if(!members.isEmpty())
+            System.out.println("[NN FRONTIER SNAPSHOT] structure="+(s.structure+1)
+                    +" "+BuilderConstructionPlanner.blockedSummary(level,table,steps,members));
+
         table.beginBuilderZonePlan();
         BuilderMaterialNetwork.resetForCrew(table);
-        BuilderBuildService.resetCrewActions(level,table);
+        BuilderBuildService.resetCrewActions(level,table,s.recovering);
         table.setProblem("Crew recovery: all Builders return to OnSite and unload");
         System.out.println("[CREW RETREAT START] layer="+s.layer+" attempt="+s.attempts
                 +" remaining="+remaining(table,steps,s.layer)+" crew="+table.builderWorkerIds().size());
@@ -142,8 +150,24 @@ final class BuilderCrewRecovery {
             }
             if(layer==Integer.MAX_VALUE)return false;
             if(s.attempts>=2&&!s.reduced.isEmpty()&&now>=s.graceUntil
-                    &&now-s.lastProgress>=RESUME_GRACE)
+                    &&now-s.lastProgress>=RESUME_GRACE){
                 tryReachableReplacement(level,table,steps,s,now);
+                // Give a real teammate handoff a chance. If the reduced
+                // crew still cannot place anything, start a NEW physical
+                // unload before changing projects; earlier unloaded
+                // workers may have collected materials since the retreat.
+                if(BuilderNNProjectRecoveryPolicy.enabled()
+                        &&now-s.lastProgress>=RESUME_GRACE
+                        &&table.canDeferNNStructure(steps)
+                        &&table.builderWorkerIds().stream()
+                            .noneMatch(id->table.claimedStep(id)>=0)){
+                    begin(level,table,steps);
+                    s=state(table);s.yieldPending=true;
+                    table.setProblem("NN: blocked project; crew returning before project handoff");
+                    System.out.println("[NN PROJECT YIELD RECALL] layer="+s.layer
+                            +" attempt="+s.attempts+" crew="+table.builderWorkerIds().size());
+                }
+            }
             if(s.attempts<2&&now>=s.graceUntil-40&&now-s.lastProgress>=STALL
                     &&remaining(table,steps,layer)>0){
                 if(tryTeamLocal(level,table,steps,s,now))return false;
@@ -158,6 +182,34 @@ final class BuilderCrewRecovery {
             }
             List<UUID> live=table.builderWorkerIds();
             boolean all=s.unloaded.containsAll(live);
+            // Unloaded workers can start the next project while truly
+            // stranded teammates finish their INDIVIDUAL physical return.
+            // Require at least 600 ticks of a real return attempt and
+            // retain those pending returns and their actual cargo.
+            if(BuilderNNProjectRecoveryPolicy.ready(s.yieldPending,
+                    all,now-s.started,s.unloaded.size())){
+                int ready=s.unloaded.size();
+                if(table.deferNNStructure(steps)){
+                    s.recovering.clear();
+                    for(UUID id:live)if(!s.unloaded.contains(id))s.recovering.add(id);
+                    s.recalling=false;s.yieldPending=false;s.reduced=List.of();
+                    s.layer=table.builderActiveLayer(steps);
+                    s.structure=table.builderNNStructure(steps);
+                    s.attempts=0;s.best=table.builderWorkDone();
+                    s.lastProgress=now;s.graceUntil=now+RESUME_GRACE;
+                    s.parking.clear();s.localAttempted=false;
+                    s.replacementTried.clear();s.nextReplacementProbe=0;
+                    BuilderMaterialNetwork.resetForCrew(table);
+                    BuilderBuildService.resetCrewActions(level,table,s.recovering);
+                    table.setProblem("NN: next structure underway with "+ready
+                        +" unloaded Builders; "+s.recovering.size()+" still returning");
+                    System.out.println("[NN PROJECT PARTIAL YIELD] active="+(s.structure+1)
+                        +" ready="+ready+" returning="+s.recovering.size()
+                        +" work="+table.builderWorkDone());
+                    return true;
+                }
+                s.yieldPending=false;
+            }
             // After two unsuccessful whole-crew recoveries, don't freeze
             // an entire multi-project schematic on one approach. Only
             // yield once EVERY registered worker has physically returned

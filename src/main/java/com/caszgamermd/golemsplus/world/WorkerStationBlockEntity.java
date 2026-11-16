@@ -1350,13 +1350,22 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         return index;
     }
-    /** Change only the active construction project after the entire crew
-     * has returned and unloaded. The blocked source coordinates, materials,
-     * completed bits and original index space remain unchanged. */
+    /** The current project still has ordinary work but another project
+     * can be served. Read-only; no claims, inventory or progress change. */
+    public boolean canDeferNNStructure(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(!builderNNLookahead()||!builderNNProjectYield()||!nnStructures(steps))return false;
+        int active=nnStructureActive(steps);
+        return active>=0
+                &&!com.caszgamermd.golemsplus.builder.BuilderNNStructures.manualTail(steps.get(active))
+                &&com.caszgamermd.golemsplus.builder.BuilderNNStructures.nextOrdinaryProject(
+                    nnStructurePlan,steps,nnStructureOffset,builderCursor,builderFinishedSteps)>=0;
+    }
+    /** Change the active project after a physical crew recovery. Block
+     * indices, real inventory and verified progress never change. */
     public boolean deferNNStructure(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
-        if(!builderNNLookahead()||!builderNNProjectYield()||!nnStructures(steps)
-                ||!builderClaims.isEmpty())return false;
+        if(!builderClaims.isEmpty()||!canDeferNNStructure(steps))return false;
         int active=nnStructureActive(steps);
         if(active<0||com.caszgamermd.golemsplus.builder.BuilderNNStructures.manualTail(
                 steps.get(active)))return false;
