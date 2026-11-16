@@ -150,3 +150,13 @@ is not proof of another golem. Old action logs remain readable. The new report
 compares seven-input geometry and 24-input environmental networks on identical
 leave-one-server-out folds, with training-only thresholds. This is exploratory
 validation, not a fresh final holdout. No gameplay changes or model deployment.
+
+## Construction observations
+
+Near-work recorder observes 19 start-only pose, support, fluid, survivability,
+rail, multiblock and interaction features, desired/existing/support states,
+controller completion, dependency repair and distinct wait/rejection outcomes.
+Raw final state equality is diagnostic, not the dynamic placement matcher.
+Repeated waits are not distinct blocks; pre-reach and earlier dependency
+branches and exceptions are not covered. No policy changes or trained
+construction model. Controlled CI preserves observations and category reports.

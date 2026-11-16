@@ -9,6 +9,7 @@ import java.util.UUID;
 import java.util.WeakHashMap;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.block.state.BlockState;
 
 /** Experimental observation only. No route requests, claims or movement writes. */
 final class BuilderNeuralRecorder {
@@ -93,6 +94,49 @@ final class BuilderNeuralRecorder {
         System.out.println("[NNGOLEMS_ACTION] " + JSON.toJson(new FlightRow(1, RUN,
                 worker.getUUID().toString(), f.id(), f.tick(), now, "FLIGHT",
                 f.features(), outcome, remaining, f.knowledge(), blockage)));
+    }
+
+    private static long placementSequence;
+    record PlacementStart(long id,long tick,BlockPos pos,String desired,String existing,
+            String support,String category,double[] features) {}
+    private record PlacementRow(int schema,String run,String worker,long id,long tick,
+            String desired,String existing,String support,String category,double[] features,
+            String outcome,String actual,boolean stateMatches) {}
+
+    static PlacementStart beginPlacement(ServerLevel level,BuilderGolem worker,
+            BuilderConstructionPlan.Step step,BlockPos pos,BlockState desired,
+            boolean interaction,boolean repairDependency,boolean railJig,
+            boolean railRepair,boolean partnerRepair) {
+        if(!ENABLED||placementSequence>=100_000)return null;
+        BlockState existing=level.getBlockState(pos),below=level.getBlockState(pos.below());
+        boolean waterlog=BuilderWaterPass.isWaterlogPass(step.encodedState());
+        boolean bubble=BuilderWaterPass.isBubbleColumn(step.encodedState());
+        boolean rail=desired.getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock;
+        boolean multi=step.companion()!=null;
+        String category=repairDependency?"DEPENDENCY_REPAIR":waterlog?"WATERLOG":
+                bubble?"BUBBLE":rail?"RAIL":multi?"MULTIBLOCK":
+                interaction?"INTERACTION":BuilderWaterPass.isWaterStep(step.encodedState())?"WATER":"ORDINARY";
+        double[] x={
+            Math.clamp((pos.getX()+.5-worker.getX())/5,-1,1),
+            Math.clamp((pos.getY()+.5-worker.getY())/5,-1,1),
+            Math.clamp((pos.getZ()+.5-worker.getZ())/5,-1,1),
+            worker.onGround()?1:0,BuilderFlight.active(worker)?1:0,
+            existing.isAir()?1:0,existing.getFluidState().isEmpty()?0:1,
+            below.isAir()?1:0,below.isFaceSturdy(level,pos.below(),net.minecraft.core.Direction.UP)?1:0,
+            desired.canSurvive(level,pos)?1:0,multi?1:0,waterlog?1:0,bubble?1:0,
+            rail?1:0,interaction?1:0,railJig?1:0,railRepair?1:0,
+            partnerRepair?1:0,repairDependency?1:0
+        };
+        return new PlacementStart(++placementSequence,level.getGameTime(),pos.immutable(),
+                desired.toString(),existing.toString(),below.toString(),category,x);
+    }
+
+    static void finishPlacement(ServerLevel level,BuilderGolem worker,PlacementStart p,String outcome) {
+        if(p==null)return;
+        String actual=level.getBlockState(p.pos()).toString();
+        System.out.println("[NNGOLEMS_PLACEMENT] "+JSON.toJson(new PlacementRow(1,RUN,
+                worker.getUUID().toString(),p.id(),p.tick(),p.desired(),p.existing(),
+                p.support(),p.category(),p.features(),outcome,actual,actual.equals(p.desired()))));
     }
 
     static void sample(ServerLevel level, BuilderGolem worker, String controller) {

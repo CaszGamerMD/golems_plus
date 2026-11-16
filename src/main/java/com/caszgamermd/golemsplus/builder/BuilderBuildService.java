@@ -2382,6 +2382,8 @@ public final class BuilderBuildService {
                 table.setProblem("Builder still within 0.8 X/Z of "+pos);
                 return;
             }
+            var nnPlacement=BuilderNeuralRecorder.beginPlacement(level,worker,step,pos,state.state(),
+                    interactionCorrection,repairingBubbleBase,railJig,reShapeRail,repairPartner);
             // Upper door halves do not consume another door item; the
             // lower half was already placed and paid for in the prior
             // layer. Keep refund logic for all ordinary materials.
@@ -2394,11 +2396,13 @@ public final class BuilderBuildService {
                         :BuilderBlockInteractions.interact(level,pos,state.state(),owner))){
                     table.waitForBuilderSupport(worker.getUUID(),index,
                             level.getGameTime());
-                    table.setProblem("Interactive state waiting at "+pos
+                    BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_INTERACTION");
+                table.setProblem("Interactive state waiting at "+pos
                             +" current="+level.getBlockState(pos)
                             +" target="+state.state());
                     return;
                 }
+                BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"COMPLETED");
                 table.recordBuilderPlacement(step.requiredItem());
                 table.completeBuilderStep(worker.getUUID(),index);
                 BuilderConstructionPlanner.noteCompleted(worker,pos);
@@ -2409,7 +2413,8 @@ public final class BuilderBuildService {
             if(partnerPos!=null&&!partnerComplete){
                 if(!level.hasChunkAt(partnerPos)){
                     BuilderChunkTickets.destination(level,worker,partnerPos);
-                    table.setProblem("Loading multiblock partner at "+partnerPos);
+                    BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_CHUNK");
+                table.setProblem("Loading multiblock partner at "+partnerPos);
                     return;
                 }
                 if(!level.mayInteract(owner,partnerPos)
@@ -2420,22 +2425,25 @@ public final class BuilderBuildService {
                     // player's protected or occupied schematic cell.
                     table.waitForBuilderSupport(worker.getUUID(),index,
                             level.getGameTime());
-                    table.setProblem("Multiblock partner needs clear protected "
+                    BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_PARTNER");
+                table.setProblem("Multiblock partner needs clear protected "
                             +"space at "+partnerPos+" found="+partnerExisting);
                     return;
                 }
                 if(!BuilderPlacementSpace.readyForState(level,worker,table,
                         partnerPos,partnerResolved.state()))
-                    return; // The entire future two-cell collision is safe.
+                    { BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_CLEARANCE"); return; } // The entire future two-cell collision is safe.
             }
             // Native soul-sand ignition, with actual tool durability.
             // Fire is never inserted as an inventory block or forced state.
             if(state.state().is(net.minecraft.world.level.block.Blocks.SOUL_FIRE)){
                 if(!BuilderIgnition.igniteSoulFire(level,worker,owner,pos)){
                     table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
-                    table.setProblem("Soul fire needs real flint and steel and soul sand/soil at "+pos.below());
+                    BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_IGNITION");
+                table.setProblem("Soul fire needs real flint and steel and soul sand/soil at "+pos.below());
                     return;
                 }
+                BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"COMPLETED");
                 table.recordBuilderPlacement(step.requiredItem());
                 table.completeBuilderStep(worker.getUUID(),index);
                 BuilderConstructionPlanner.noteCompleted(worker,pos);
@@ -2449,13 +2457,14 @@ public final class BuilderBuildService {
                 if(!level.mayInteract(owner,raisedRail)
                         ||temporaryRailFoundation&&!level.mayInteract(owner,raisedRail.below())){
                     table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
-                    table.setProblem("Temporary rail jig space is protected at "+raisedRail);
+                    BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_PROTECTED");
+                table.setProblem("Temporary rail jig space is protected at "+raisedRail);
                     return;
                 }
                 if(temporaryRailFoundation){
                     if(!BuilderPlacementSpace.readyForState(level,worker,table,
                             raisedRail.below(),net.minecraft.world.level.block.Blocks.COBBLESTONE
-                                    .defaultBlockState()))return;
+                                    .defaultBlockState())){ BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_CLEARANCE"); return; }
                 }
             }
             BuilderSupplyInventory.Receipt payment=freeHalf||reusableFluid?null:
@@ -2463,6 +2472,7 @@ public final class BuilderBuildService {
             if(!freeHalf&&!reusableFluid&&payment==null){
                 table.waitForBuilderMaterial(worker.getUUID(),index,
                         level.getGameTime());
+                BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_MATERIAL");
                 if(BuilderWarehouseCoordinator.request(level,worker,table,
                         owner,plan.steps()))return;
                 table.setProblem("Builder pouch missing "+step.requiredItem());
@@ -2480,6 +2490,7 @@ public final class BuilderBuildService {
             boolean railPlaced=reShapeRail&&BuilderRailSlope.restorePaidSlope(level,pos,state.state());
             if(reShapeRail&&!railPlaced){
                 table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
+                BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_RAIL_SUPPORT");
                 table.setProblem("Paid rail repair waiting for stable support at "+pos);
                 return;
             }
@@ -2509,7 +2520,8 @@ public final class BuilderBuildService {
                     if(replacement!=null)BuilderSupplyInventory.refund(table,replacement);
                     if(payment!=null)BuilderSupplyInventory.refund(table,payment);
                     table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
-                    table.setProblem("Temporary rail did not produce a stable slope at "+pos);
+                    BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_RAIL_JIG");
+                table.setProblem("Temporary rail did not produce a stable slope at "+pos);
                     return;
                 }
             }
@@ -2534,6 +2546,7 @@ public final class BuilderBuildService {
             if(!placed){
                 if(payment!=null&&!multiblockPlacement.primaryPlaced())
                     BuilderSupplyInventory.refund(table,payment);
+                BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WORLD_REJECTED");
                 table.setProblem("World rejected complete multiblock placement at "+pos
                         +" companion="+partnerPos
                         +" primaryPlaced="+multiblockPlacement.primaryPlaced());
@@ -2549,6 +2562,7 @@ public final class BuilderBuildService {
                 // retained, while the single grouped task stays pending.
                 table.waitForBuilderSupport(worker.getUUID(),index,
                         level.getGameTime());
+                BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_PARTNER_STATE");
                 table.setProblem("Multiblock interaction not yet stable: "
                         +pos+" -> "+level.getBlockState(pos)
                         +" and "+partnerPos+" -> "+level.getBlockState(partnerPos));
@@ -2567,6 +2581,7 @@ public final class BuilderBuildService {
                 // physical block and does not charge its item again.
                 table.waitForBuilderSupport(worker.getUUID(),index,
                         level.getGameTime());
+                BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_INTERACTION");
                 table.setProblem("Placed block, awaiting real interaction at "
                         +pos+" actual="+level.getBlockState(pos)
                         +" wanted="+state.state());
@@ -2580,11 +2595,13 @@ public final class BuilderBuildService {
                 // hold its state, defer instead of falsely finishing it.
                 table.waitForBuilderSupport(worker.getUUID(),index,
                         level.getGameTime());
+                BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_RAIL_SUPPORT");
                 table.setProblem("Ascending rail awaiting stable slope at "+pos);
                 return;
             }
             if(bubble)BuilderWaterPass.refreshBubble(level,pos,state.state());
             if(repairingBubbleBase){
+                BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"REPAIRED_DEPENDENCY");
                 BuilderConstructionPlanner.noteCompleted(worker,pos);
                 activity.notePhysicalPlacement();
                 return;
@@ -2596,11 +2613,13 @@ public final class BuilderBuildService {
                 // fluid/neighbor update; the bucket remains in the pouch.
                 table.waitForBuilderSupport(worker.getUUID(),index,
                         level.getGameTime());
+                BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"WAIT_BUBBLE");
                 table.setProblem("Waiting for natural bubble column at "+pos
                         +" (needs source water over soul sand/magma)");
                 return;
             }
-            table.recordBuilderPlacement(step.requiredItem());
+            BuilderNeuralRecorder.finishPlacement(level,worker,nnPlacement,"COMPLETED");
+                table.recordBuilderPlacement(step.requiredItem());
             table.completeBuilderStep(worker.getUUID(),index);
             BuilderConstructionPlanner.noteCompleted(worker,pos);
             activity.notePhysicalPlacement();

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from train import read_rows, MARKER
 from actions import read_actions, MARKER as ACTION_MARKER, summarize
+from placements import read_placements, MARKER as PLACEMENT_MARKER
 
 
 def main():
@@ -23,6 +24,9 @@ def main():
     actions = read_actions([args.log])
     if not actions or {r['run'] for r in actions} != {rows[0]['run']}:
         raise ValueError('Missing or mismatched flight action outcomes')
+    placements = read_placements([args.log])
+    if not placements or {r['run'] for r in placements} != {rows[0]['run']}:
+        raise ValueError('Missing or mismatched construction observations')
     lines = raw.decode().splitlines()
     manifests = [line.split('[MATRIX CONTROLLED ENV] ', 1)[1]
                  for line in lines if '[MATRIX CONTROLLED ENV] ' in line]
@@ -33,7 +37,8 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output/'samples.log').write_text(''.join(MARKER+json.dumps(r)+'\n' for r in rows))
     (args.output/'actions.log').write_text(''.join(ACTION_MARKER+json.dumps(r)+'\n' for r in actions))
-    provenance = dict(action_outcomes=summarize(actions), commit=args.commit, trial=args.trial, schema=rows[0]['schema'],
+    (args.output/'placements.log').write_text(''.join(PLACEMENT_MARKER+json.dumps(r)+'\n' for r in placements))
+    provenance = dict(placement_observations=len(placements), action_outcomes=summarize(actions), commit=args.commit, trial=args.trial, schema=rows[0]['schema'],
                       run=rows[0]['run'], samples=len(rows),
                       moving=sum(r['moved'] for r in rows),
                       stationary=sum(not r['moved'] for r in rows),
