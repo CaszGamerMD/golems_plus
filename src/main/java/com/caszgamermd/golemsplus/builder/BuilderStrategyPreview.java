@@ -29,6 +29,8 @@ public final class BuilderStrategyPreview {
             int c;
             if(axis==Axis.Y){
                 c=Integer.compare(a.y(),b.y());if(c!=0)return c;
+                c=Boolean.compare(BuilderWaterPass.isWaterStep(a.encodedState()),
+                        BuilderWaterPass.isWaterStep(b.encodedState()));if(c!=0)return c;
                 c=Integer.compare(a.x(),b.x());if(c!=0)return c;
                 c=((a.x()&1)==0?1:-1)*Integer.compare(a.z(),b.z());
             }else if(axis==Axis.X){

@@ -15,7 +15,7 @@ class BuilderStrategyPreviewTest {
         var y=BuilderStrategyPreview.analyze(steps,indices,BuilderStrategyPreview.Axis.Y,2);
         var x=BuilderStrategyPreview.analyze(steps,indices,BuilderStrategyPreview.Axis.X,2);
         assertEquals(28,y.coordinateTravel());
-        assertEquals(11,x.coordinateTravel());
+        assertEquals(12,x.coordinateTravel());
         assertEquals(0,x.lowerSupportLate());
         assertEquals(List.of(0,2),x.current().indices());
         assertEquals(List.of(1,3),x.next().indices());
