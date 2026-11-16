@@ -1,0 +1,86 @@
+name: NNGolems recovery ablation benchmark
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-recovery-ablation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    name: recovery (${{ matrix.config.id }}, ${{ matrix.fixture.id }}, ${{ matrix.trial }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {id: control, direct: 'false', stocked: 'false'}
+          - {id: direct, direct: 'true', stocked: 'false'}
+          - {id: stocked, direct: 'false', stocked: 'true'}
+          - {id: both, direct: 'true', stocked: 'true'}
+        fixture:
+          - {id: dragon-Y, course: dragon, axis: Y, dome: Y1}
+          - {id: dragon-X, course: dragon, axis: X, dome: Y1}
+          - {id: dragon-Z, course: dragon, axis: Z, dome: Y1}
+          - {id: dome-Y1, course: dome, axis: Y, dome: Y1}
+          - {id: dome-AUTO4, course: dome, axis: Y, dome: AUTO4}
+        trial: [1, 2]
+    env:
+      MATRIX_TEST_MODE: controlled
+      GOLEMS_NN_DIRECT_RETURN: ${{ matrix.config.direct }}
+      GOLEMS_NN_STOCKED_RECOVERY: ${{ matrix.config.stocked }}
+      GOLEMS_NN_SHADOW: 'false'
+      GOLEMS_NN_AUTO: 'true'
+      GOLEMS_NN_STRIP_PILOT: ${{ matrix.fixture.course == 'dragon' && 'true' || 'false' }}
+      GOLEMS_NN_ADAPTIVE: ${{ matrix.fixture.course == 'dragon' && 'true' || 'false' }}
+      GOLEMS_NN_BANDED: ${{ matrix.fixture.course == 'dragon' && 'true' || 'false' }}
+      NN_COURSE: ${{ matrix.fixture.course }}
+      NN_DRAGON_STRATEGY: 'true'
+      NN_STRIP_AXIS: ${{ matrix.fixture.axis }}
+      NN_DOME_MODE: ${{ matrix.fixture.dome }}
+      NN_SPEED_TEST: 'true'
+      NN_SPEED_TICK_LIMIT: '72000'
+      NN_COURSE_SECONDS: '600'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Prepare exact fixture and isolate one physical test
+        shell: bash
+        run: |
+          if [ "$NN_COURSE" = dragon ]; then python3 scripts/nngolems/prepare_curriculum.py; fi
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          name='BuilderNNCurriculumGameTest' if os.environ['NN_COURSE']=='dragon' else 'BuilderNNDomeStrategyGameTest'
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.'+name]
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Run controlled physical comparison
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/nn-ablation
+          echo "[NN ABLATION] direct=$GOLEMS_NN_DIRECT_RETURN stocked=$GOLEMS_NN_STOCKED_RECOVERY fixture=${{ matrix.fixture.id }} trial=${{ matrix.trial }}" | tee build/nn-ablation/config.txt
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-ablation/server.log
+          if [ "$NN_COURSE" = dragon ]; then
+            grep -F "[NN DRAGON RESULT] axis=$NN_STRIP_AXIS " build/nn-ablation/server.log
+          else
+            grep -F "[NN DOME RESULT] mode=$NN_DOME_MODE " build/nn-ablation/server.log
+            grep -F "[NN DOME MATERIAL] mode=$NN_DOME_MODE " build/nn-ablation/server.log
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recovery-${{ matrix.config.id }}-${{ matrix.fixture.id }}-${{ matrix.trial }}
+          path: build/nn-ablation/

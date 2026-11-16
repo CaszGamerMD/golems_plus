@@ -48,7 +48,8 @@ public final class BuilderReturnService {
      * Retain a successful route; on no progress, give the escape planner
      * a full window to try another approach. Never interrupt flight/rope. */
     static boolean directGroundReturn(ServerLevel level,BuilderGolem worker,BlockPos depot){
-        if(depot==null||!worker.onGround()||worker.isNoGravity()
+        if(!Boolean.parseBoolean(System.getenv().getOrDefault("GOLEMS_NN_DIRECT_RETURN","true"))
+                ||depot==null||!worker.onGround()||worker.isNoGravity()
                 ||BuilderFlight.active(worker)||BuilderGrappleAccess.active(worker)
                 ||BuilderScaffolding.isControllingMovement(worker)
                 ||Math.abs(worker.getY()-depot.getY())>1.25)return false;

@@ -141,6 +141,31 @@ public final class BuilderNNDomeStrategyGameTest {
                     stall?"NO_WORK_PROGRESS":elapsed>=180000?"TICK_LIMIT":"TIME_LIMIT";
             for(var w:crew)System.out.println("[NN DOME WORKER] mode="+mode+" feet="+w.position()
                     +" alive="+w.isAlive()+" claim="+table.claimedStep(w.getUUID())+" "+BuilderBuildService.debugStatus(level,w));
+            // Diagnostic only: inspect the real remaining phase, batch and
+            // pouch without changing claims or consuming any material.
+            var pending=new ArrayList<Integer>();
+            for(int i=0;i<steps.size()&&pending.size()<8;i++)
+                if(table.builderStepInActivePhase(steps,i)&&!table.builderStepCompletedForMaterials(i))
+                    pending.add(i);
+            for(var w:crew){
+                var stock=new ArrayList<String>();
+                for(int i=0;i<w.getContainerSize();i++){
+                    var stack=w.getItem(i);
+                    if(!stack.isEmpty())stock.add(i+":"+stack);
+                }
+                System.out.println("[NN DOME MATERIAL] mode="+mode+" worker="+w.getUUID()
+                        +" claim="+table.claimedStep(w.getUUID())+" prepared="+table.builderOrderPrepared(w.getUUID())
+                        +" batch="+table.builderWorkOrder(w.getUUID())+" pouch="+stock
+                        +" box="+w.hasSupplyBox()+" recovery="+BuilderCrewRecovery.traceStatus(table,w));
+                for(int i:pending){
+                    var step=steps.get(i);var item=BuilderMaterialNetwork.required(step);
+                    System.out.println("[NN DOME PENDING] mode="+mode+" worker="+w.getUUID()+" step="+i
+                            +" xyz="+new BlockPos(step.x(),step.y(),step.z()).subtract(origin)
+                            +" item="+step.requiredItem()+" carried="+(item==null?0:w.carriedCount(item))
+                            +" onsiteAvailable="+(item!=null&&BuilderSupplyInventory.containsInSources(table,item))
+                            +" ready="+table.builderStepReadyForClaim(i));
+                }
+            }
             BuilderTrace.dump(level,table,"Dome "+mode+" "+outcome);
             System.out.println("[NN DOME RESULT] mode="+mode+" outcome="+outcome+" correct="+correct+" best="+best[0]
                     +" total=3493 ticks="+elapsed+" distance="+distance[0]+" workers="+workers+" alive="+alive

@@ -198,7 +198,8 @@ final class BuilderCrewRecovery {
         // or rescue a crew in which nobody has arrived. Otherwise let the
         // ordinary physical retreat finish before considering alternatives.
         long last=s.lastReturnProgress.getOrDefault(id,s.started);
-        if(now-s.started<600||now-last<160||now<s.nextStockProbe.getOrDefault(id,0L)
+        if(!Boolean.parseBoolean(System.getenv().getOrDefault("GOLEMS_NN_STOCKED_RECOVERY","true"))
+                ||now-s.started<600||now-last<160||now<s.nextStockProbe.getOrDefault(id,0L)
                 ||!s.unloaded.isEmpty()&&!elevated
                 ||BuilderReturnService.withinStorageReach(worker,depot)
                 ||BuilderMaterialNetwork.recalling(table,id)
