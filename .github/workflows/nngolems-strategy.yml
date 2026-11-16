@@ -1,0 +1,52 @@
+name: NNGolems zone strategy survey
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-strategy.yml'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderStrategyPreview.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNStrategyGameTest.java'
+      - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderStrategyPreviewTest.java'
+      - 'scripts/nngolems/strategy_report.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MATRIX_TEST_MODE: controlled
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Prepare exact source fixtures
+        run: |
+          python3 scripts/nngolems/prepare_curriculum.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderNNStrategyGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Verify strategy and inventory preview
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/strategy
+          gradle --no-daemon test runGameTest 2>&1 | tee build/strategy/server.log
+          grep -Fq '[NN STRATEGY PASS]' build/strategy/server.log
+          python3 scripts/nngolems/strategy_report.py build/strategy/server.log build/strategy/report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nn-strategy-survey
+          path: build/strategy/

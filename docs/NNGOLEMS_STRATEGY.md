@@ -1,0 +1,37 @@
+# Adaptive zone strategy and drone logistics
+
+Preserve Y as the conventional baseline; compare X and Z as alternate
+bottom-first column orders. Candidate features use complete source plans
+and the same four-zone production footprint. Coordinate Manhattan travel,
+largest transition, lower-cell order, cross-zone lower support, and four
+horizontal previously built neighbors are geometry proxies only. They do
+not validate actual walk/flight, attachment dependencies, temporary access,
+water sequencing, or escape. Never select live work from these previews.
+A real strategy controller must authorize only physically ready cells,
+keep persistent original indices, reserve one worker per step, maintain
+safe ingress/egress and switch only uncommitted work when a route fails.
+
+The survey emits 60 candidate rows from five exact verified courses,
+and shows the first two disjoint 32-step windows and exact nominal item
+demand. Counts for 10/32/64-step batches are idealized, not inventory-capacity
+or round-trip results. The preview deduplicates reusable items per batch;
+no stock is actually reserved, debited or transferred.
+
+Next live experiment: restrict initial alternate ordering to simple
+columnar zones (Chibi) with checked support and exit, compare three fresh
+servers per strategy at matched supplies, worker count and tick budgets.
+Record actual completion, distance, travel/placement/recovery, and stock trips.
+Mixed policies need explicit cross-zone dependency coordination, not merely
+different sort order. Keep unseen future schematics for model evaluation.
+
+Drone design: one physical carried/docked companion per builder, a current
+committed batch and separately reserved future batch. Drone acquires real
+inventory at OnSite, travels with unrestricted horizontal/vertical motion
+but collision-checked sweeps and loaded chunk boundaries, and transfers
+only at safe rendezvous. Reservations are job+worker+batch revision bound;
+cancel/reassign returns actual cargo and releases unused reservations.
+No double payment, duplication, remote stock teleport or material generation.
+Missing/failed drone returns to normal builder collection; pause/finish
+returns leftovers, crash/reload retains cargo and reservation identity.
+Drone implementation and runtime batch capacity changes are not in this
+survey. Build policy learning requires physical comparison labels.
