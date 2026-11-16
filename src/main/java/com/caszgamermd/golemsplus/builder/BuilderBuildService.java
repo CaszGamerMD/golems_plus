@@ -67,7 +67,10 @@ public final class BuilderBuildService {
     private static final Map<WorkerStationBlockEntity,StructureAhead> structureAhead=new WeakHashMap<>();
     private static StructureAhead ahead(WorkerStationBlockEntity table,Cache cache,List<UUID> roster){
         var partition=table.builderNNStructurePlan(cache.steps());
-        if(!table.builderNNLookahead()||partition==null)return null;
+        if(!table.builderNNLookahead()||partition==null){
+            var old=structureAhead.remove(table);if(old!=null)old.cancelled=true;
+            return null;
+        }
         BlockPos depot=table.builderMaterialStorage()==null?table.getBlockPos():table.builderMaterialStorage();
         var prior=structureAhead.get(table);
         if(prior!=null&&prior.job.equals(table.activeOrder())&&prior.cache==cache
@@ -2905,20 +2908,21 @@ public final class BuilderBuildService {
         if(roster.size()>table.crewTarget())
             roster=roster.subList(0,table.crewTarget());
         int structure=table.builderNNStructure(cache.steps());
+        var a=ahead(table,cache,roster);
         ScheduledZones found=schedules.get(table);
         if(found!=null&&found.job().equals(table.activeOrder())
-                &&found.cache()==cache&&found.roster().equals(roster)&&found.structure()==structure)
+                &&found.cache()==cache&&found.roster().equals(roster)&&found.structure()==structure
+                &&(a==null||a.ready.get(structure)==found))
             return found;
         // Preserves completed cells and carried real items when adding or
         // retiring a Builder. Only unfinished staging reservations change.
         var members=structure<0?null:table.builderNNStructureMembers(cache.steps());
-        var a=ahead(table,cache,roster);
         ScheduledZones result=a==null?null:a.ready.get(structure);
         if(result==null){
             result=compileSchedule(table.activeOrder(),cache,List.copyOf(roster),structure,members,
                 table.builderHeightMode()==BuilderMaterialRules.FROM_Y_DOWN,
                 table.builderMaterialStorage()==null?table.getBlockPos():table.builderMaterialStorage(),a!=null);
-            if(a!=null)a.ready.putIfAbsent(structure,result);
+            if(a!=null){var existing=a.ready.putIfAbsent(structure,result);if(existing!=null)result=existing;}
             if(a!=null)System.out.println("[NN STRUCTURE SCHEDULE] group="+(structure+1)+" source=on_demand");
         }else System.out.println("[NN STRUCTURE SCHEDULE] group="+(structure+1)+" source=prepared");
         table.beginBuilderZonePlan();

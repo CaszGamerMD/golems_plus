@@ -56,7 +56,13 @@ public final class BuilderNNStructures {
         }
         for(var group:ordered){
             int id=groups.size();groups.add(List.copyOf(group));
-            for(int i:group){order.add(i);membership.set(i,id);}
+            for(int i:group)membership.set(i,id);
+            // Deferred physics are checks, not paid placements. Keep all
+            // ordinary work in this component ahead of its result checks.
+            if(smallestFirst){
+                for(int i:group)if(!BuilderDeferredState.verification(steps.get(i).encodedState()))order.add(i);
+                for(int i:group)if(BuilderDeferredState.verification(steps.get(i).encodedState()))order.add(i);
+            }else order.addAll(group);
         }
         return new Plan(List.copyOf(groups),List.copyOf(order),List.copyOf(membership));
     }

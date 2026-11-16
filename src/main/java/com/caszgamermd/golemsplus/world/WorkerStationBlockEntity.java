@@ -1292,9 +1292,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
             nnStructureSource=steps;nnStructureJob=activeOrder;nnStructureOffset=0;
             nnStructureRules=builderRuleRevision;nnStructureIgnore=builderIgnorePlants;
             nnStructureLogged=-1;nnStructureRejected=false;
-            // Deferred result verification may require work in a different
-            // part of a machine. Leave these jobs on the proven global gate.
-            nnStructurePlan=steps.stream().anyMatch(s->
+            // Legacy pilot falls back on deferred physics. Lookahead keeps
+            // the checks with their geometric component and runs them only
+            // after all its paid placements. Never assume a check succeeds.
+            nnStructurePlan=!builderNNLookahead()&&steps.stream().anyMatch(s->
                 com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(s.encodedState()))
                 ?null:com.caszgamermd.golemsplus.builder.BuilderNNStructures.compile(steps,builderNNLookahead());
             if(nnStructurePlan!=null&&nnStructurePlan.groups().size()>1){
@@ -1394,6 +1395,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(!builderInNNStructure(steps,index))return false;
         var step=steps.get(index);
         var current=steps.get(active);
+        if(builderNNLookahead()&&nnStructures(steps)){
+            boolean verifying=com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(current.encodedState());
+            boolean candidateVerifying=com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(step.encodedState());
+            if(verifying||candidateVerifying)return verifying&&candidateVerifying&&step.y()==current.y();
+        }
         if(nnStripPilot(steps)&&(!nnPilotDome||nnDomePlan.vertical(active)||nnPilotMode==1)){
             if(nnPilotMode==1&&!nnPilotRescue.contains(index))return false;
             if(nnPilotDome)return nnDomePlan.sameVerticalGroup(steps,active,index,nnPilotAxis);

@@ -60,6 +60,15 @@ class BuilderNNStructuresTest {
         assertEquals(new HashSet<>(p.members(1)),new HashSet<>(actual));
         assertEquals(p.members(1).size(),actual.size());
     }
+    @Test void deferredPhysicsStayInGroupAndFollowAllPhysicalWork(){
+        var flow=new BuilderConstructionPlan.Step(0,0,0,
+            BuilderDeferredState.flowStep("minecraft:water[level=1]"),null);
+        var steps=List.of(flow,s(20,0,0),s(0,1,0),s(0,2,0),s(20,1,0));
+        var p=BuilderNNStructures.compile(steps,true);
+        assertEquals(List.of(1,4,2,3,0),p.order());
+        assertEquals(p.group(0),p.group(2));
+        assertEquals(4,BuilderNNStructures.nextOffset(p,0,0,Set.of(1,4,2,3)));
+    }
     @Test void connectedGroundStaysOneAndEveryIndexIsRetained(){
         var steps=new ArrayList<BuilderConstructionPlan.Step>();
         for(int x=0;x<=20;x++)steps.add(s(x,0,0));
