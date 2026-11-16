@@ -1,0 +1,56 @@
+name: NNGolems cross-build learning
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-cross-build.yml'
+      - 'scripts/nngolems/cross_build.py'
+      - 'scripts/nngolems/test_cross_build.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retrieve frozen Matrix training servers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nn-trial-*
+          path: build/cross/matrix
+          run-id: 43811361323
+          github-token: ${{ github.token }}
+      - name: Retrieve first curriculum
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nn-course-*
+          path: build/archive-one
+          run-id: 43832947779
+          github-token: ${{ github.token }}
+      - name: Retrieve adaptive curriculum
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nn-course-*
+          path: build/archive-two
+          run-id: 43833231954
+          github-token: ${{ github.token }}
+      - name: Assemble fixed course split and validate
+        run: |
+          python3 -m unittest discover -s scripts/nngolems -p 'test_*.py'
+          for course in home dragon froglights farm; do
+            mkdir -p "build/cross/$course"
+            cp -r "build/archive-one/nn-course-$course" "build/cross/$course/run-one"
+          done
+          for course in froglights farm chibi; do
+            mkdir -p "build/cross/$course"
+            cp -r "build/archive-two/nn-course-$course" "build/cross/$course/run-two"
+          done
+          python3 scripts/nngolems/cross_build.py build/cross --output build/cross-results --commit "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nn-cross-build-models
+          path: build/cross-results/
+          if-no-files-found: error
