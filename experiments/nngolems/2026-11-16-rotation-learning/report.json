@@ -1,0 +1,133 @@
+{
+  "training_runs": [
+    "19b57d36-ff74-45dd-a613-a605f31f7c24",
+    "29efaf4a-2cdf-468b-8236-55c487269c98",
+    "38a42c7b-39a7-4b73-a77d-c13f66d9a87a",
+    "70756216-324b-45a0-ad0e-e1232356c8d3",
+    "a7cd72e1-f4a0-4506-83cf-3cba24a56464",
+    "aaa43493-ffad-4e2b-b135-6ccd08aecc6f",
+    "cb268230-c40b-4a53-a764-904523abd5c9"
+  ],
+  "training_samples": 8801,
+  "training_failures": 807,
+  "threshold": 0.47,
+  "by_course": {
+    "froglights": {
+      "baseline": {
+        "samples": 270,
+        "arrivals": 268,
+        "failures": 2,
+        "accuracy": 0.9888888888888889,
+        "arrival_recall": 0.9888059701492538,
+        "failure_recall": 1.0,
+        "balanced_accuracy": 0.9944029850746269,
+        "log_loss": 0.014214556082463293,
+        "false_alarms": 3,
+        "missed_failures": 0
+      },
+      "candidate": {
+        "samples": 270,
+        "arrivals": 268,
+        "failures": 2,
+        "accuracy": 0.9851851851851852,
+        "arrival_recall": 0.9850746268656716,
+        "failure_recall": 1.0,
+        "balanced_accuracy": 0.9925373134328358,
+        "log_loss": 0.033212739590667215,
+        "false_alarms": 4,
+        "missed_failures": 0
+      },
+      "baseline_rotation_spread_max": 0.6552585743177889,
+      "candidate_rotation_spread_max": 0.0
+    },
+    "farm": {
+      "samples": 0
+    },
+    "chibi": {
+      "baseline": {
+        "samples": 7,
+        "arrivals": 7,
+        "failures": 0,
+        "accuracy": 1.0,
+        "arrival_recall": 1.0,
+        "failure_recall": null,
+        "balanced_accuracy": null,
+        "log_loss": 0.004263014171991497,
+        "false_alarms": 0,
+        "missed_failures": 0
+      },
+      "candidate": {
+        "samples": 7,
+        "arrivals": 7,
+        "failures": 0,
+        "accuracy": 1.0,
+        "arrival_recall": 1.0,
+        "failure_recall": null,
+        "balanced_accuracy": null,
+        "log_loss": 0.009917929789850606,
+        "false_alarms": 0,
+        "missed_failures": 0
+      },
+      "baseline_rotation_spread_max": 0.027334293960330824,
+      "candidate_rotation_spread_max": 0.0
+    },
+    "recent_matrix_3": {
+      "baseline": {
+        "samples": 1153,
+        "arrivals": 1112,
+        "failures": 41,
+        "accuracy": 0.9913269731136166,
+        "arrival_recall": 0.9928057553956835,
+        "failure_recall": 0.9512195121951219,
+        "balanced_accuracy": 0.9720126337954027,
+        "log_loss": 0.025153578675558928,
+        "false_alarms": 8,
+        "missed_failures": 2
+      },
+      "candidate": {
+        "samples": 1153,
+        "arrivals": 1112,
+        "failures": 41,
+        "accuracy": 0.98959236773634,
+        "arrival_recall": 0.9901079136690647,
+        "failure_recall": 0.975609756097561,
+        "balanced_accuracy": 0.9828588348833128,
+        "log_loss": 0.03404574277373922,
+        "false_alarms": 11,
+        "missed_failures": 1
+      },
+      "baseline_rotation_spread_max": 0.9164408668894792,
+      "candidate_rotation_spread_max": 0.0
+    }
+  },
+  "training": {
+    "baseline": {
+      "samples": 8801,
+      "arrivals": 7994,
+      "failures": 807,
+      "accuracy": 0.9812521304397228,
+      "arrival_recall": 0.9858643982987241,
+      "failure_recall": 0.9355638166047088,
+      "balanced_accuracy": 0.9607141074517165,
+      "log_loss": 0.05707519597747804,
+      "false_alarms": 113,
+      "missed_failures": 52
+    },
+    "candidate": {
+      "samples": 8801,
+      "arrivals": 7994,
+      "failures": 807,
+      "accuracy": 0.9796614021133963,
+      "arrival_recall": 0.9787340505379034,
+      "failure_recall": 0.9888475836431226,
+      "balanced_accuracy": 0.983790817090513,
+      "log_loss": 0.06927749103681867,
+      "false_alarms": 170,
+      "missed_failures": 9
+    },
+    "baseline_rotation_spread_max": 0.9725266731518242,
+    "candidate_rotation_spread_max": 0.0
+  },
+  "promotion": "SHADOW_ONLY",
+  "warning": "Retrospective prediction experiment; no gameplay changes. Failed builds are not flight failure labels. Counterfactual route outcomes remain unknown."
+}
