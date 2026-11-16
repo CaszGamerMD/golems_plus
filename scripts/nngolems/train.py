@@ -83,7 +83,10 @@ class Network:
             for row in order:
                 x, y = row['features'], row['moved']
                 h, p = self.forward(x)
-                error = p - y
+                weight = row.get("weight", 1.)
+                if not math.isfinite(weight) or weight <= 0:
+                    raise ValueError("Invalid training weight")
+                error = (p - y) * weight
                 for j in range(len(h)):
                     delta = error * self.v[j] * (1 - h[j]**2)
                     self.v[j] -= rate * error * h[j]

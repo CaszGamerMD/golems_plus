@@ -1,0 +1,86 @@
+name: NNGolems failure-balanced rotation learning
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-neural-learning.yml'
+      - 'scripts/nngolems/retrain_flight.py'
+      - 'scripts/nngolems/symmetry.py'
+      - 'scripts/nngolems/test_symmetry.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retrieve frozen Matrix training servers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nn-trial-*
+          path: build/cross/matrix
+          run-id: 43811361323
+          github-token: ${{ github.token }}
+      - name: Retrieve first curriculum
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nn-course-*
+          path: build/archive-one
+          run-id: 43832947779
+          github-token: ${{ github.token }}
+      - name: Retrieve adaptive curriculum
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nn-course-*
+          path: build/archive-two
+          run-id: 43833231954
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nn-trial-*
+          path: build/recent
+          run-id: 43860868337
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: nn-cross-build-models
+          path: build/baseline
+          run-id: 43833585125
+          github-token: ${{ github.token }}
+      - name: Assemble fixed course split and validate
+        run: |
+          python3 -m unittest discover -s scripts/nngolems -p 'test_*.py'
+          for course in home dragon froglights farm; do
+            mkdir -p "build/cross/$course"
+            cp -r "build/archive-one/nn-course-$course" "build/cross/$course/run-one"
+          done
+          for course in froglights farm chibi; do
+            mkdir -p "build/cross/$course"
+            cp -r "build/archive-two/nn-course-$course" "build/cross/$course/run-two"
+          done
+          python3 scripts/nngolems/retrain_flight.py build/cross --recent build/recent --baseline build/baseline/flight_environment-model.json --output build/cross-results
+          echo "$GITHUB_SHA" > build/cross-results/source-commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nn-rotation-model
+          path: build/cross-results/
+          if-no-files-found: error
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - run: gradle --no-daemon test --tests '*BuilderNeuralAdvisorTest' jar compileGametestJava
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nn-shadow-testing-jar
+          path: build/libs/*.jar

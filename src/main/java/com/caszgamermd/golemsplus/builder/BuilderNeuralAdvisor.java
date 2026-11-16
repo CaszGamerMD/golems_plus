@@ -25,8 +25,12 @@ final class BuilderNeuralAdvisor {
     private static final int LIMIT=100_000;
     private static int emitted;
     private static final Model MODEL=load();
-    record Model(List<String> features,double threshold,double[][] w,double[] b,double[] v,double c) {
+    record Model(List<String> features,double threshold,double[][] w,double[] b,double[] v,double c,String symmetry) {
+        Model(List<String> features,double threshold,double[][] w,double[] b,double[] v,double c){
+            this(features,threshold,w,b,v,c,null);
+        }
         boolean valid(){
+            if(symmetry!=null&&!symmetry.equals("c4_y"))return false;
             if(!FEATURES.equals(features)||!Double.isFinite(threshold)||threshold<0||threshold>1
                     ||w==null||b==null||v==null||w.length!=8||b.length!=8||v.length!=8
                     ||!Double.isFinite(c))return false;
@@ -38,6 +42,22 @@ final class BuilderNeuralAdvisor {
         }
         double score(double[] x){
             if(x.length!=24)throw new IllegalArgumentException("flight feature size");
+            for(double value:x)if(!Double.isFinite(value))throw new IllegalArgumentException("nonfinite input");
+            if("c4_y".equals(symmetry)){
+                double[] probabilities=new double[4];
+                double[] rotated=x;
+                for(int i=0;i<4;i++){
+                    probabilities[i]=rawScore(rotated);
+                    rotated=rotate(rotated);
+                }
+                Arrays.sort(probabilities);
+                double total=0;
+                for(double probability:probabilities)total+=probability;
+                return total/4;
+            }
+            return rawScore(x);
+        }
+        private double rawScore(double[] x){
             double z=c;
             for(int j=0;j<8;j++){
                 double a=b[j];
@@ -46,6 +66,16 @@ final class BuilderNeuralAdvisor {
             }
             return 1/(1+Math.exp(-Math.clamp(z,-40,40)));
         }
+    }
+    static double[] rotate(double[] x){
+        if(x.length!=24)throw new IllegalArgumentException("flight feature size");
+        double[] y=x.clone();
+        y[0]=-x[2];y[2]=x[0];
+        for(int start:new int[]{7,13}){
+            y[start]=x[start+5];y[start+1]=x[start+4];
+            y[start+4]=x[start];y[start+5]=x[start+1];
+        }
+        return y;
     }
     private record Candidate(int legs,double length,double score,List<Vec3> waypoints){}
     private record Row(int schema,String run,String worker,long id,long tick,
