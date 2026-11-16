@@ -101,6 +101,8 @@ final class BuilderMultiLegTravel {
         queue.add(new Node(start,List.of(),score(goal,start)));
         var seen=new HashMap<BlockPos,Integer>();seen.put(start,0);
         int expanded=0,probes=0;
+        Node bestPartial=null;
+        double startScore=score(goal,start);
         while(!queue.isEmpty()&&expanded++<18&&probes<120){
             Node n=queue.remove();
             if(!n.legs().isEmpty()&&good(level,worker,goal,n.at()))return n.legs();
@@ -120,12 +122,18 @@ final class BuilderMultiLegTravel {
                     var next=new ArrayList<>(n.legs());next.add(new Leg(launch,land));
                     if(good(level,worker,goal,land))return List.copyOf(next);
                     seen.put(land,next.size());
-                    queue.add(new Node(land,List.copyOf(next),score(goal,land)+next.size()*2));
+                    Node candidate=new Node(land,List.copyOf(next),score(goal,land)+next.size()*2);
+                    queue.add(candidate);
+                    // Long journeys may exceed this search window. Only
+                    // commit an incomplete chain if it ends on real support
+                    // with a strictly better goal score; no sideways cycle.
+                    if(score(goal,land)+4<startScore
+                            &&(bestPartial==null||candidate.score()<bestPartial.score()))bestPartial=candidate;
                 }
                 if(probes>=120)break;
             }
         }
-        return List.of();
+        return bestPartial==null?List.of():bestPartial.legs();
     }
     private static boolean tick(ServerLevel level,BuilderGolem worker,Goal goal){
         if(!BuilderFlight.enabled(worker))return false;
@@ -148,7 +156,12 @@ final class BuilderMultiLegTravel {
             if(arrived(level,worker,leg.landing())){
                 BuilderTrace.decision(level,worker,"MULTI_TRIP_LAND",leg.landing(),"finished leg "+(t.index+1)+"/"+t.legs.size());
                 t.index++;t.flying=false;t.progress=now;t.best=Double.POSITIVE_INFINITY;
-                if(t.index==t.legs.size()){trips.remove(worker);return false;}
+                if(t.index==t.legs.size()){
+                    trips.remove(worker);searchAfter.remove(worker);
+                    if(good(level,worker,goal,leg.landing()))return false;
+                    BuilderTrace.decision(level,worker,"MULTI_TRIP_CONTINUE",leg.landing(),"intermediate chain complete; search onward from real support");
+                    return true;
+                }
                 return true;
             }
             if(BuilderFlight.active(worker)&&now-t.progress<400){
