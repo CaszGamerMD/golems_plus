@@ -27,20 +27,33 @@ public final class BuilderMultiLegTravelGameTest {
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         level.addFreshEntity(worker);
+        BlockPos launch=h.absolutePos(new BlockPos(11,5,10));
         boolean[] landed={false},walked={false},descending={false},downMiddle={false},downWalk={false};
         h.onEachTick(()->{
             if(h.getTick()<5)return;
-            if(h.getTick()==5)worker.setOnGround(true);
+            if(h.getTick()==5){
+                worker.setOnGround(true);
+                boolean first=BuilderFlight.canFlyBetween(level,worker,start,middle);
+                boolean walking=com.caszgamermd.golemsplus.worker.WorkerNavigation.hasGroundRouteFrom(level,worker,middle,List.of(launch));
+                boolean second=BuilderFlight.canFlyBetween(level,worker,launch,finish);
+                System.out.println("[MULTI FIXTURE PROBE] start="+start+" middle="+middle+" launch="+launch+" finish="+finish
+                        +" first="+first+" walk="+walking+" second="+second
+                        +" launchFloor="+level.getBlockState(launch.below())
+                        +" finishFloor="+level.getBlockState(finish.below()));
+                if(!first||!walking||!second){
+                    h.fail("Required fixture transition not physically available: first="+first+" walk="+walking+" second="+second);return;
+                }
+            }
             if(worker.onGround()&&!BuilderFlight.active(worker)){
                 if(!descending[0]){
                     if(worker.blockPosition().equals(middle))landed[0]=true;
-                    if(landed[0]&&worker.blockPosition().equals(middle.east()))walked[0]=true;
+                    if(landed[0]&&worker.blockPosition().equals(launch))walked[0]=true;
                     if(worker.blockPosition().equals(finish)){
                         if(!landed[0]||!walked[0]){h.fail("Skipped intermediate landing or walk");return;}
                         descending[0]=true;BuilderMultiLegTravel.clear(worker);
                     }
                 }else{
-                    if(worker.blockPosition().equals(middle.east()))downMiddle[0]=true;
+                    if(worker.blockPosition().equals(launch))downMiddle[0]=true;
                     if(downMiddle[0]&&worker.blockPosition().equals(middle))downWalk[0]=true;
                     if(worker.blockPosition().equals(start)){
                         if(!downMiddle[0]||!downWalk[0]){h.fail("Return skipped intermediate landing or walk");return;}
