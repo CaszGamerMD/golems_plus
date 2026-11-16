@@ -35,3 +35,16 @@ Missing/failed drone returns to normal builder collection; pause/finish
 returns leftovers, crash/reload retains cargo and reservation identity.
 Drone implementation and runtime batch capacity changes are not in this
 survey. Build policy learning requires physical comparison labels.
+
+## Physical strip pilot
+
+An isolated test-only opt-in now gates a single builder's 12 stone cells
+by X or Z strip, then Y within that strip. The normal Y baseline uses
+the unchanged gate. Original task indices, stock, actual claims, collision
+checks and placement/escape checks are retained. The pilot refuses ordinary
+jobs, multi-worker crews and non-stone plans; it is not a saved gameplay
+setting. Nine independent server runs (three per axis) use the same fixture,
+seed, crate and worker. The test checks actual world order and reports
+completion, elapsed game ticks and sampled physical movement distance.
+This is not yet a Chibi or mixed-zone result; stone columns do not cover
+attachment, fluid, gravity, multiblock, or cross-zone dependencies.

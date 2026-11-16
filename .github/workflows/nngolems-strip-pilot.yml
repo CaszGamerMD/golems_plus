@@ -1,0 +1,55 @@
+name: NNGolems physical strip pilot
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-strip-pilot.yml'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNStripPilotGameTest.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/world/WorkerStationBlockEntity.java'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        axis: [Y, X, Z]
+        trial: [1, 2, 3]
+    env:
+      MATRIX_TEST_MODE: controlled
+      GOLEMS_NN_STRIP_PILOT: 'true'
+      NN_STRIP_AXIS: ${{ matrix.axis }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Isolate one physical test
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderNNStripPilotGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Build and measure
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/nn-strip
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-strip/server.log
+          grep -F "[NN STRIP RESULT] axis=$NN_STRIP_AXIS outcome=COMPLETE correct=12" build/nn-strip/server.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nn-strip-${{ matrix.axis }}-${{ matrix.trial }}
+          path: build/nn-strip/

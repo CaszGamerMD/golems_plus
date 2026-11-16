@@ -1089,9 +1089,47 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> activeScanPlan;
     private UUID activeScanJob;
     private int activeScanCursor=-1,activeScanIndex=-1;
+    // Isolated NNGolems physical pilot only. No saved job or ordinary
+    // player job opts into this policy; original indices remain unchanged.
+    private UUID nnPilotJob;
+    private String nnPilotAxis;
+    public boolean enableNNStripPilot(String axis){
+        if(!"true".equals(System.getenv("GOLEMS_NN_STRIP_PILOT"))
+                ||activeOrder==null||crewTarget!=1
+                ||!builderFile.startsWith("placed-nn-strip-pilot-")
+                ||(!"X".equals(axis)&&!"Z".equals(axis)))return false;
+        nnPilotJob=activeOrder;nnPilotAxis=axis;
+        return true;
+    }
+    private boolean nnStripPilot(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(nnPilotJob==null||!nnPilotJob.equals(activeOrder)||crewTarget!=1
+                ||steps.size()>128||steps.isEmpty())return false;
+        // Deliberately exclude attachments, gravity blocks, fluids, ignored
+        // cells and multiblocks until their cross-strip dependencies exist.
+        for(var step:steps)
+            if(step.ignorePlant()||step.companion()!=null
+                    ||!"minecraft:stone".equals(step.encodedState())
+                    ||!"minecraft:stone".equals(step.requiredItem()))return false;
+        return true;
+    }
+    private int nnStripCoordinate(
+            com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step step){
+        return "X".equals(nnPilotAxis)?step.x():step.z();
+    }
     public int builderActiveStepIndex(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(steps==null||builderCursor<0||builderCursor>=steps.size())return -1;
+        if(nnStripPilot(steps)){
+            int best=-1;
+            for(int i=builderCursor;i<steps.size();i++){
+                if(builderFinishedSteps.contains(i))continue;
+                if(best<0||nnStripCoordinate(steps.get(i))<nnStripCoordinate(steps.get(best))
+                        ||(nnStripCoordinate(steps.get(i))==nnStripCoordinate(steps.get(best))
+                            &&steps.get(i).y()<steps.get(best).y()))best=i;
+            }
+            return best;
+        }
         if(!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(
                 steps.get(builderCursor).encodedState()))return builderCursor;
         boolean same=activeScanPlan==steps&&java.util.Objects.equals(activeScanJob,activeOrder)
@@ -1136,6 +1174,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(active<0||index<builderCursor||index>=steps.size())return false;
         var step=steps.get(index);
         var current=steps.get(active);
+        if(nnStripPilot(steps))return nnStripCoordinate(step)==nnStripCoordinate(current)
+                &&step.y()==current.y();
         if(step.y()==current.y())
             return com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
                     step.encodedState(),current.encodedState());
