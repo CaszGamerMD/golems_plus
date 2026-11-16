@@ -35,6 +35,28 @@ public final class BuilderFlight {
         return f==null?null:f.goal;
     }
 
+    /** Read-only, bounded execution state for schema-3 offline observations. */
+    static double[] observedExecution(BuilderGolem worker, long now) {
+        Flight f = flights.get(worker);
+        double[] x = new double[7];
+        if (f == null) return x;
+        boolean moving = f.next < f.path.size();
+        x[0] = moving ? 1 : 0;
+        x[1] = Math.clamp((f.path.size() - f.next) / 3.0, 0, 1);
+        if (moving) {
+            Vec3 at = worker.position();
+            double remaining = at.distanceTo(f.path.get(f.next));
+            x[2] = Math.min(1, remaining / 32);
+            for (int i = f.next + 1; i < f.path.size(); i++)
+                remaining += f.path.get(i - 1).distanceTo(f.path.get(i));
+            x[3] = Math.min(1, remaining / 32);
+        }
+        x[4] = Math.clamp(f.stuckTicks / 40.0, 0, 1);
+        x[5] = now < f.retryAt ? 1 : 0;
+        x[6] = f.lastFailedDestination != null && now < f.failedUntil ? 1 : 0;
+        return x;
+    }
+
     static String traceStatus(BuilderGolem worker){
         Flight f=flights.get(worker);
         if(f==null)return "none";

@@ -28,7 +28,7 @@ def main():
         raise ValueError('Missing or ambiguous controlled environment/result')
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output/'samples.log').write_text(''.join(MARKER+json.dumps(r)+'\n' for r in rows))
-    provenance = dict(commit=args.commit, trial=args.trial, schema=2,
+    provenance = dict(commit=args.commit, trial=args.trial, schema=rows[0]['schema'],
                       run=rows[0]['run'], samples=len(rows),
                       moving=sum(r['moved'] for r in rows),
                       stationary=sum(not r['moved'] for r in rows),

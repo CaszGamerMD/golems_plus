@@ -33,6 +33,8 @@ final class BuilderNeuralRecorder {
         Long last = lastSeen.put(worker, now);
         if (last == null || now - last != 1 || previous != null && previous.level() != level)
             previous = null;
+        double previousDistance = 0;
+        boolean hasHistory = false;
         // Controller changes and tick gaps are censored, never labelled failures.
         if (previous != null && previous.controller().equals(controller)) {
             long elapsed = now - previous.tick();
@@ -41,7 +43,9 @@ final class BuilderNeuralRecorder {
                 double distance = worker.position().distanceTo(previous.position());
                 // Exclude implausible discontinuities/teleports from training.
                 if (Double.isFinite(distance) && distance <= 8) {
-                    System.out.println("[NNGOLEMS] " + JSON.toJson(new Row(2, RUN,
+                    previousDistance = distance;
+                    hasHistory = true;
+                    System.out.println("[NNGOLEMS] " + JSON.toJson(new Row(3, RUN,
                             worker.getUUID().toString(), previous.tick(), controller,
                             previous.features(), distance, distance >= .25 ? 1 : 0)));
                     emitted++;
@@ -49,7 +53,7 @@ final class BuilderNeuralRecorder {
             }
         }
         Vec3 velocity = worker.getDeltaMovement();
-        double[] features = new double[21];
+        double[] features = new double[30];
         features[0] = Math.clamp(velocity.x, -1, 1);
         features[1] = Math.clamp(velocity.y, -1, 1);
         features[2] = Math.clamp(velocity.z, -1, 1);
@@ -73,6 +77,12 @@ final class BuilderNeuralRecorder {
             features[15+i] = BuilderFlight.clear(level,worker,
                     worker.position().add(d[0]*.5,d[1]*.5,d[2]*.5)) ? 1 : 0;
         }
+        if (controller.equals("FLIGHT")) {
+            double[] execution = BuilderFlight.observedExecution(worker, now);
+            System.arraycopy(execution, 0, features, 21, execution.length);
+        }
+        features[28] = hasHistory ? 1 : 0;
+        features[29] = Math.min(1, previousDistance / 8);
         pending.put(worker, new Start(now, worker.position(), controller, features, level));
     }
 }

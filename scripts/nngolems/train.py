@@ -9,18 +9,28 @@ FEATURES = ['vx', 'vy', 'vz', 'grounded', 'FLIGHT', 'GRAPPLE', 'SCAFFOLD',
             'YIELD', 'CENTER', 'IDLE', 'WALK', 'has_goal', 'goal_dx_32',
             'goal_dy_32', 'goal_dz_32', 'clear_xp', 'clear_xm', 'clear_yp',
             'clear_ym', 'clear_zp', 'clear_zm']
+FEATURES_V3 = FEATURES + ['flight_has_path', 'flight_remaining_legs_3',
+                           'flight_next_distance_32', 'flight_remaining_distance_32',
+                           'flight_stuck_ticks_40', 'flight_retry_pending',
+                           'flight_recent_failure', 'has_previous_window',
+                           'previous_window_distance_8']
+FEATURES_BY_SCHEMA = {2: FEATURES, 3: FEATURES_V3}
 MARKER = '[NNGOLEMS] '
 
 
 def read_rows(paths):
     rows, seen = [], set()
+    schema = None
     for path in paths:
         for line in Path(path).read_text().splitlines():
             if MARKER not in line:
                 continue
             row = json.loads(line.split(MARKER, 1)[1])
             x = row['features']
-            if (row['schema'] != 2 or len(x) != len(FEATURES)
+            if schema is None:
+                schema = row['schema']
+            if (row['schema'] != schema or schema not in FEATURES_BY_SCHEMA
+                    or len(x) != len(FEATURES_BY_SCHEMA[schema])
                     or any(not isinstance(v, (int, float)) or not math.isfinite(v)
                            or abs(v) > 1 for v in x)
                     or row['moved'] not in (0, 1)
@@ -50,9 +60,11 @@ def split_runs(rows, seed=17):
 
 
 class Network:
-    def __init__(self, seed=17, hidden=8):
+    def __init__(self, seed=17, hidden=8, schema=2):
+        self.schema = schema
+        self.features = FEATURES_BY_SCHEMA[schema]
         rng = random.Random(seed)
-        self.w = [[rng.uniform(-.3, .3) for _ in FEATURES] for _ in range(hidden)]
+        self.w = [[rng.uniform(-.3, .3) for _ in self.features] for _ in range(hidden)]
         self.b = [0.] * hidden
         self.v = [rng.uniform(-.3, .3) for _ in range(hidden)]
         self.c = 0.
@@ -81,7 +93,7 @@ class Network:
                 self.c -= rate * error
 
     def export(self):
-        return dict(schema=2, features=FEATURES, target='moves_at_least_0.25m_in_20_ticks',
+        return dict(schema=self.schema, features=self.features, target='moves_at_least_0.25m_in_20_ticks',
                     w=self.w, b=self.b, v=self.v, c=self.c)
 
 
@@ -104,7 +116,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     train, held = split_runs(read_rows(args.logs))
-    model = Network()
+    schema = train[0]['schema']
+    model = Network(schema=schema)
     model.fit(train)
     majority = int(sum(r['moved'] for r in train) >= len(train)/2)
     # Choose velocity threshold using training runs only.
@@ -112,11 +125,11 @@ def main():
     thresholds = [i/1000 for i in range(0, 301)]
     threshold = max(thresholds, key=lambda t: sum((speed(r) >= t) == r['moved'] for r in train))
     velocity_accuracy = sum((speed(r) >= threshold) == r['moved'] for r in held)/len(held)
-    legacy_train = [dict(r, features=r['features'][:11] + [0.]*10) for r in train]
+    legacy_train = [dict(r, features=r['features'][:11] + [0.]*(len(r['features'])-11)) for r in train]
     legacy_held = [dict(r, features=r['features'][:11] + [0.]*10) for r in held]
-    legacy = Network()
+    legacy = Network(schema=schema)
     legacy.fit(legacy_train)
-    report = {'commit': args.commit, 'schema': 2,
+    report = {'commit': args.commit, 'schema': schema,
               'velocity_baseline': {'threshold': threshold, 'held_out_accuracy': velocity_accuracy},
               'without_obstacle_goal_features': metrics(legacy, legacy_held),
               'by_controller': {c: metrics(model, [r for r in held if r['controller'] == c])
@@ -126,6 +139,22 @@ def main():
               'training_runs': sorted({r['run'] for r in train}),
               'held_out_runs': sorted({r['run'] for r in held}),
               'warning': 'Movement is not task success. No gameplay control or promotion.'}
+    if schema == 3:
+        flight = [r for r in held if r['controller'] == 'FLIGHT']
+        report['flight_by_phase'] = {
+            phase: metrics(model, subset) if subset else None
+            for phase, subset in (
+                ('committed_path', [r for r in flight if r['features'][21] == 1]),
+                ('hover_no_path', [r for r in flight if r['features'][21] == 0]))
+        }
+        # Compare against a simple controller-aware baseline on identical rows.
+        flight_stationary = [r for r in flight if not r['moved']]
+        flight_moving = [r for r in flight if r['moved']]
+        report['flight_path_baseline'] = {
+            'stationary_recall': sum(not r['features'][21] for r in flight_stationary)/len(flight_stationary) if flight_stationary else None,
+            'moving_recall': sum(bool(r['features'][21]) for r in flight_moving)/len(flight_moving) if flight_moving else None,
+        }
+        report['flight_phase_warning'] = 'No-path hover is not failure; committed-path stationary is not automatically a stall.'
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output / 'model.json').write_text(json.dumps(model.export(), indent=2))
     (args.output / 'report.json').write_text(json.dumps(report, indent=2))

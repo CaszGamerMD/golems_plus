@@ -79,3 +79,21 @@ model rank already validated actions. Collision, reach, material, block-state,
 claim ownership and escape checks remain authoritative. Any future enabled policy
 needs a bounded fallback and three held-out full Matrix trials against the
 conventional branch before claiming better reliability.
+
+## Schema 3: flight execution and recent history
+
+New recordings use 30 inputs. The first 21 remain unchanged; seven additional
+inputs observe committed path presence, remaining legs, distance to the next
+waypoint, remaining route distance, controller stuck ticks, retry timer and
+recent destination failure. Two further inputs encode availability and net
+displacement of the immediately preceding completed 20-tick window. This
+history is available at the beginning of the new window, not from its future
+label. Controller transitions and tick gaps reset history. Non-flight execution
+features are zero. A powered hover with no committed path can be intentional;
+the network still predicts displacement, not task success.
+
+The trainer accepts either schema 2 or 3 per dataset, never a mixture; schema
+2 replay remains compatible. New reports break flight metrics down by committed
+path versus no-path hover and include a simple path-presence baseline. A new
+three-run collection is required; the first-model holdout remains frozen.
+No steering, collision, recovery or task behavior is modified.

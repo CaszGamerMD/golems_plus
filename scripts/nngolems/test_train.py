@@ -50,6 +50,24 @@ class TrainingTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 read_rows([path])
 
+    def test_schema_three_roundtrip_and_mixed_schema_rejected(self):
+        rows = [dict(r, schema=3, features=r['features'] + [0.]*9)
+                for r in self.fixture()]
+        train, held = split_runs(rows)
+        net = Network(schema=3)
+        net.fit(train)
+        self.assertGreater(metrics(net, held)['accuracy'], .95)
+        self.assertEqual(len(net.export()['features']), 30)
+        self.assertEqual(net.export()['schema'], 3)
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)/'rows.log'
+            p.write_text('[NNGOLEMS] '+json.dumps(rows[0])+'\n')
+            self.assertEqual(read_rows([p]), [rows[0]])
+            with p.open('a') as out:
+                out.write('[NNGOLEMS] '+json.dumps(self.fixture()[1])+'\n')
+            with self.assertRaises(ValueError):
+                read_rows([p])
+
     def test_single_class_evaluation_rejected(self):
         with self.assertRaises(ValueError):
             split_runs([r for r in self.fixture() if r['moved']])
