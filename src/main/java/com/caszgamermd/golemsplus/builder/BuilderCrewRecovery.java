@@ -13,7 +13,7 @@ final class BuilderCrewRecovery {
         UUID job;
         int layer=Integer.MIN_VALUE,structure=-1,best=-1,attempts;
         long lastProgress,started,graceUntil;
-        boolean recalling,localAttempted,yieldPending;
+        boolean recalling,localAttempted,yieldPending,stageScoutUsed;
         long localUntil;
         int localStartWork,localIndex=-1;
         UUID localWorker;
@@ -140,7 +140,8 @@ final class BuilderCrewRecovery {
             if(layer!=s.layer||structure!=s.structure){
                 s.structure=structure;s.layer=layer;s.attempts=0;s.reduced=List.of();
                 s.parking.clear();s.best=work;s.lastProgress=now;s.graceUntil=0;
-                s.localAttempted=false;s.replacementTried.clear();s.nextReplacementProbe=0;
+                s.localAttempted=false;s.stageScoutUsed=false;
+                s.replacementTried.clear();s.nextReplacementProbe=0;
             }
             if(work>s.best){s.best=work;s.lastProgress=now;s.replacementTried.clear();}
             // A bounded, collision-checked approach leg IS useful movement,
@@ -156,6 +157,11 @@ final class BuilderCrewRecovery {
             if(layer==Integer.MAX_VALUE)return false;
             if(s.attempts>=2&&!s.reduced.isEmpty()&&now>=s.graceUntil
                     &&now-s.lastProgress>=RESUME_GRACE){
+                // The previous 8-worker run restricted the entire layer
+                // to one Builder. A second PHYSICALLY unloaded worker may
+                // scout a short supported route from OnSite before we
+                // abandon the project; no distant claim is fabricated.
+                if(tryFrontierStageScout(level,table,steps,s,now))return false;
                 tryReachableReplacement(level,table,steps,s,now);
                 // Give a real teammate handoff a chance. If the reduced
                 // crew still cannot place anything, start a NEW physical
@@ -267,6 +273,44 @@ final class BuilderCrewRecovery {
         }
         return false;
     }
+    /** Admit one actual unloaded worker from OnSite, not a remote
+     * phantom teammate. The worker may claim valid work or attempt
+     * bounded supported ground staging on their own next work tick.
+     * Existing workers retain claims, locations, routes and cargo. */
+    private static boolean tryFrontierStageScout(ServerLevel level,
+            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,
+            State s,long now){
+        if(!BuilderNNFrontierStaging.enabled()||s.stageScoutUsed
+                ||s.recalling||s.reduced.size()!=1
+                ||remaining(table,steps,s.layer)==0)return false;
+        BlockPos depot=table.builderUnloadingStorage();
+        if(depot==null)depot=table.getBlockPos();
+        for(UUID id:table.builderWorkerIds()){
+            if(s.reduced.contains(id)||s.recovering.contains(id)
+                    ||!s.unloaded.contains(id)
+                    ||!(level.getEntity(id) instanceof BuilderGolem w)
+                    ||!w.isAlive()||!w.onGround()||!w.isEmpty()
+                    ||w.hasSupplyBox()||BuilderFlight.active(w)
+                    ||BuilderGrappleAccess.active(w)
+                    ||BuilderScaffolding.isControllingMovement(w)
+                    ||w.distanceToSqr(depot.getX()+.5,
+                        depot.getY(),depot.getZ()+.5)>25)continue;
+            var crew=new ArrayList<>(s.reduced);crew.add(id);
+            s.reduced=List.copyOf(crew);s.stageScoutUsed=true;
+            s.graceUntil=now+RESUME_GRACE;s.lastProgress=now;
+            s.parking.remove(id);
+            System.out.println("[NN STAGE SCOUT] active="+crew
+                    +" originalLayer="+s.layer+" structure="+(s.structure+1)
+                    +" pending="+remaining(table,steps,s.layer));
+            table.setProblem("NN: second unloaded Builder probing distant frontier");
+            return true;
+        }
+        if(now%160==0)System.out.println("[NN STAGE SCOUT BLOCKED] layer="+s.layer
+                +" unloaded="+s.unloaded.size()+" recovering="+s.recovering.size()
+                +" reduced="+s.reduced+" no idle safe OnSite candidate");
+        return false;
+    }
+
     /** Last reduced worker cannot make progress: test an unclaimed teammate
      * against the real active frontier. Never label a budget miss unreachable,
      * never finish a block, and never move inventory or interrupt a flight. */

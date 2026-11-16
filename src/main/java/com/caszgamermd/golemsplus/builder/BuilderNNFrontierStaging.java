@@ -19,7 +19,7 @@ final class BuilderNNFrontierStaging {
         final UUID job;
         final int structure,layer;
         final long began;
-        long nextTry;
+        long nextTry,lastNote=-1000000L;
         int legs;
         Window(UUID job,int structure,int layer,long began){
             this.job=job;this.structure=structure;this.layer=layer;this.began=began;
@@ -57,6 +57,13 @@ final class BuilderNNFrontierStaging {
                 &&leg.layer==table.builderActiveLayer(steps)
                 &&leg.structure==table.builderNNStructure(steps);
     }
+    private static void note(Window window,long now,BuilderGolem worker,String reason){
+        if(now-window.lastNote>=120){
+            window.lastNote=now;
+            System.out.println("[NN FRONTIER STAGE DIAG] worker="+worker.getUUID()
+                    +" "+reason+" legs="+window.legs);
+        }
+    }
     /** Called before the routine work-claim search so a real walking
      * waypoint is not immediately cancelled by an idle return. */
     static boolean follow(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
@@ -64,8 +71,14 @@ final class BuilderNNFrontierStaging {
         Leg leg=active.get(worker);
         if(leg==null)return false;
         long now=level.getGameTime();
-        if(!valid(table,steps,leg)||!worker.onGround()||BuilderFlight.active(worker)
+        if(!valid(table,steps,leg)||BuilderFlight.active(worker)
                 ||BuilderGrappleAccess.active(worker)||BuilderScaffolding.isControllingMovement(worker)){
+            active.remove(worker);return false;
+        }
+        // Ordinary path-following hops temporarily leave the ground;
+        // do not cancel the entire staging leg halfway through a jump.
+        if(!worker.onGround()){
+            if(now-leg.lastAdvance<=90&&now<leg.expires)return true;
             active.remove(worker);return false;
         }
         double distance=worker.distanceToSqr(leg.waypoint.getX()+.5,
@@ -121,7 +134,11 @@ final class BuilderNNFrontierStaging {
             double dx=(long)s.x()-from.getX(),dz=(long)s.z()-from.getZ();
             if(dx*dx+dz*dz>=18*18)pending.add(i);
         }
-        if(pending.isEmpty())return false;
+        if(pending.isEmpty()){
+            note(window,now,worker,"no distant unfinished work in assigned active phase"
+                    +" zone="+zone.size()+" Y="+layer);
+            return false;
+        }
         pending.sort(Comparator.comparingDouble(i->{
             var s=steps.get(i);
             double dx=(long)s.x()-from.getX(),dz=(long)s.z()-from.getZ();
@@ -156,6 +173,8 @@ final class BuilderNNFrontierStaging {
             if(routeAttempts>=4)break;
         }
         window.nextTry=now+60;
+        note(window,now,worker,"no safely executable short waypoint"
+                +" phase="+layer+" pending="+pending.size()+" tested="+routeAttempts);
         return false;
     }
 }

@@ -1,4 +1,4 @@
-name: NNGolems Farm Demo frontier staging A/B
+name: NNGolems Farm Demo staging scout validation
 on:
   push:
     branches: [NNGolems]
@@ -125,13 +125,21 @@ jobs:
           print('Physical ordinary completion:',report['ordinaryDone'],'/',report['ordinaryTotal'])
           (root/'report.json').write_text(json.dumps(report,indent=2))
           print('Ordinary construction:',report['ordinaryDone'],'/',report['ordinaryTotal'])
+          report['scouts']=len(re.findall(r'\[STDOUT\]: \[NN STAGE SCOUT\]',log))
+          report['scoutBlocked']=len(re.findall(r'\[STDOUT\]: \[NN STAGE SCOUT BLOCKED\]',log))
+          report['stageDiagnostics']=[line.split('[NN FRONTIER STAGE DIAG] ',1)[1]
+              for line in log.splitlines() if '[STDOUT]: [NN FRONTIER STAGE DIAG]' in line][-15:]
           report['stagingStarts']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE START\]',log))
           report['stagingArrivals']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE ARRIVED\]',log))
           report['stagingStops']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE STOP\]',log))
           (root/'report.json').write_text(json.dumps(report,indent=2))
-          print('Staging:',report['staging'],'starts:',report['stagingStarts'],
+          print('Staging:',report['staging'],'scouts:',report['scouts'],
+              'starts:',report['stagingStarts'],
               'arrived:',report['stagingArrivals'],'stops:',report['stagingStops'])
           print('99 percent ordinary completion target met:',report['meets99pct'])
+          if report['staging']=='true':
+              assert report['scouts']>0,'Staging scout was never recruited'
+              assert report['stagingStarts']>0,'Staging scout found no executable approach leg'
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
               f.write('## Farm Demo staging='+report['staging']+'\n\n'+json.dumps(report,indent=2)+'\n')
           PY
