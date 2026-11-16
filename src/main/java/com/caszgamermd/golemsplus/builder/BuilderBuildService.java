@@ -768,6 +768,7 @@ public final class BuilderBuildService {
             if(preserveReturn.contains(id))continue;
             if(!(level.getEntity(id) instanceof BuilderGolem worker))continue;
             workerActions.remove(worker);
+            BuilderNNFrontierStaging.clear(worker);
             BuilderPlacementSpace.cancelYield(worker);
             BuilderDroppedBlockRecovery.suspend(worker,table);
             BuilderReturnService.resetApproach(worker);
@@ -1391,6 +1392,10 @@ public final class BuilderBuildService {
             int layer=table.builderActiveLayer(plan.steps());
             List<UUID> layerStaff=BuilderCrewRecovery.staff(table,layer,
                     assigned.layerStaff().getOrDefault(layer,assigned.roster()));
+            if(currentClaim>=0||!layerStaff.contains(worker.getUUID()))
+                BuilderNNFrontierStaging.clear(worker);
+            else if(BuilderNNFrontierStaging.follow(level,worker,table,plan.steps()))
+                return;
             // Small Y slices need only one Builder per ten real blocks.
             // The others stay at OnSite; any in-flight claim is finished
             // safely rather than discarding its paid materials mid-step.
@@ -1547,8 +1552,11 @@ public final class BuilderBuildService {
                 }
                 index=next==null?-1:table.claimPreferredBuilderZoneStep(
                         worker.getUUID(),zone,plan.steps(),next.index());
-                if(index>=0&&assigned.structure()>=0)
-                    prepareFutureStructures(table,plan,assigned.roster(),assigned.structure());
+                if(index>=0){
+                    BuilderNNFrontierStaging.clear(worker);
+                    if(assigned.structure()>=0)
+                        prepareFutureStructures(table,plan,assigned.roster(),assigned.structure());
+                }
                 if(BuilderTrace.enabled())BuilderTrace.decision(level,worker,
                         index<0?"CLAIM_REJECT":"CLAIM_ACCEPT",
                         index<0?null:new BlockPos(plan.steps().get(index).x(),plan.steps().get(index).y(),plan.steps().get(index).z()),
@@ -1578,6 +1586,12 @@ public final class BuilderBuildService {
                             level,worker,table,plan.zones());
                     return;
                 }
+                // Do not repeatedly require a single 70-block A* from
+                // OnSite when a short, verified ground advance could get
+                // this worker within a local planning radius. No claim,
+                // supply transfer or schematic placement is made here.
+                if(!ownLayerClear&&BuilderNNFrontierStaging.start(
+                        level,worker,table,plan.steps(),zone))return;
                 // This worker still has unfinished current-layer work, but
                 // no safe pose was found. Keep a genuine elevated foothold
                 // briefly while its own retry search explores new routes.

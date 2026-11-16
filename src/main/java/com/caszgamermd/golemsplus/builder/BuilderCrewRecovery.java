@@ -143,6 +143,11 @@ final class BuilderCrewRecovery {
                 s.localAttempted=false;s.replacementTried.clear();s.nextReplacementProbe=0;
             }
             if(work>s.best){s.best=work;s.lastProgress=now;s.replacementTried.clear();}
+            // A bounded, collision-checked approach leg IS useful movement,
+            // even if no schematic block has yet been placed. Let it reach
+            // the local work area before declaring the whole crew stalled.
+            if(BuilderNNFrontierStaging.physicallyAdvancing(worker,now))
+                s.lastProgress=now;
             if(s.localWorker!=null&&(work>s.localStartWork||now>=s.localUntil)){
                 System.out.println("[NN TEAM LOCAL OUTCOME] worker="+s.localWorker+" step="+s.localIndex
                         +" delta="+(work-s.localStartWork)+" elapsed="+(now-s.localUntil+400));
