@@ -30,13 +30,17 @@ public final class BuilderNNStripOrder {
         return DRAGON_DRY.contains(id)&&s.requiredItem()!=null;
     }
     public static List<Integer> compile(List<BuilderConstructionPlan.Step> steps,String axis,boolean dragon){
+        return compile(steps,axis,dragon,1);
+    }
+    public static List<Integer> compile(List<BuilderConstructionPlan.Step> steps,String axis,boolean dragon,int direction){
+        if(direction!=1&&direction!=-1)throw new IllegalArgumentException("strip direction");
         if(!(Set.of("X","Z").contains(axis)||dragon&&"Y".equals(axis))||steps.isEmpty()||steps.size()>(dragon?4096:128)
                 ||steps.stream().anyMatch(s->!allowed(s,dragon)))
             throw new IllegalArgumentException("Unsupported NN strip pilot plan");
         var order=new ArrayList<Integer>();
         for(int i=0;i<steps.size();i++)order.add(i);
         order.sort(Comparator.comparingInt((Integer i)->phase(steps.get(i)))
-                .thenComparingInt(i->phase(steps.get(i))==0&&!"Y".equals(axis)?strip(steps.get(i),axis):0)
+                .thenComparingInt(i->phase(steps.get(i))==0&&!"Y".equals(axis)?direction*strip(steps.get(i),axis):0)
                 .thenComparingInt(i->steps.get(i).y()).thenComparingInt(Integer::intValue));
         return List.copyOf(order);
     }

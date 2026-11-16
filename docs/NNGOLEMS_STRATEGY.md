@@ -92,3 +92,17 @@ The final-single-cell planner may also admit a verified complete
 multi-leg flight chain to a work pose, using existing collision-safe
 physical execution. Partial chains are not admission evidence.
 All nine trials repeat with the original fixture and limits.
+
+## Rotation equivalence
+A/B compare original X+ to clockwise 90-degree Z+; C/D compare
+original Z+ to clockwise 90-degree X-. E/F reverse the original axes.
+All use a square arena, one builder, original source hash, the same
+seed, pure dry-first signed strips, no adaptive or banded recovery,
+and no temporary scaffolding. The original source and air cells,
+depot, planner, spawn and owner position rotate together; directional
+block states are transformed and inverse-checked before starting.
+Original source list order is retained so stable index ties map between
+paired cases. A mismatch in paired physical results is evidence for
+orientation-dependent behavior, not proof of a particular nav bug.
+The earlier banded benchmark compile failure (duplicate local baseY)
+is corrected; a separate nine-trial foundation run is also triggered.

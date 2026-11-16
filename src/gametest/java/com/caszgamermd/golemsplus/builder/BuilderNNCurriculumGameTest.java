@@ -30,17 +30,27 @@ public final class BuilderNNCurriculumGameTest {
     }
     private void run(GameTestHelper h)throws Exception {
         var course=BuilderNNCurriculumFixture.selected();
-        var schematic=BuilderNNCurriculumFixture.read(course);
+        var raw=BuilderNNCurriculumFixture.read(course);
         boolean speed="true".equals(System.getenv("NN_SPEED_TEST"));
         boolean strip="true".equals(System.getenv("NN_DRAGON_STRATEGY"));
         String axis=System.getenv().getOrDefault("NN_STRIP_AXIS","Y");
         if(strip&&(!course.id().equals("dragon")||!List.of("Y","X","Z").contains(axis))){
             h.fail("Dragon strategy fixture/axis mismatch");return;
         }
+        boolean rotationTest="true".equals(System.getenv("GOLEMS_NN_ROTATION_TEST"));
+        int turn=Integer.parseInt(System.getenv().getOrDefault("NN_ROTATION_TURN","0"));
+        int direction=Integer.parseInt(System.getenv().getOrDefault("NN_STRIP_DIRECTION","1"));
+        String caseId=System.getenv().getOrDefault("NN_ROTATION_CASE","none");
+        if(rotationTest&&(!strip||!List.of("X","Z").contains(axis)
+                ||(turn!=0&&turn!=90)||(direction!=1&&direction!=-1)
+                ||"true".equals(System.getenv("GOLEMS_NN_ADAPTIVE"))
+                ||"true".equals(System.getenv("GOLEMS_NN_BANDED")))){
+            h.fail("Rotation benchmark requires a pure signed strip");return;
+        }
         int workers=strip?1:4;
         if(speed&&course.blocks()>2000){h.fail("Speed course exceeds 2000 source blocks");return;}
-        var all=new ArrayList<>(schematic.blocks());
-        all.addAll(schematic.airBlocks());
+        var all=new ArrayList<>(raw.blocks());
+        all.addAll(raw.airBlocks());
         int minX=all.stream().mapToInt(LitematicFileReader.Block::x).min().orElseThrow();
         int minY=all.stream().mapToInt(LitematicFileReader.Block::y).min().orElseThrow();
         int minZ=all.stream().mapToInt(LitematicFileReader.Block::z).min().orElseThrow();
@@ -52,13 +62,17 @@ public final class BuilderNNCurriculumGameTest {
         ServerLevel level=h.getLevel();
         if(level.getSeed()!=0){h.fail("Curriculum seed is not zero");return;}
         final BlockPos arena=new BlockPos(1024,-57,1024);
-        final BlockPos origin=arena.offset(10-minX,2-minY,10-minZ);
+        final BlockPos originalOrigin=arena.offset(10-minX,2-minY,10-minZ);
         int width=maxX-minX+1,height=maxY-minY+1,depth=maxZ-minZ+1;
         // The fixture follows the schematic, never crops or divides a build.
         // Explicit budgets protect the CI server rather than imposing a
         // gameplay dimension restriction. A larger runner may raise them.
         int arenaWidth=Math.max(62,Math.addExact(width,20));
         int arenaDepth=Math.max(70,Math.addExact(depth,20));
+        if(rotationTest){int side=Math.max(arenaWidth,arenaDepth);arenaWidth=side;arenaDepth=side;}
+        final int squareSide=arenaWidth;
+        final BlockPos origin=turn==90?rotateArena(originalOrigin,arena,squareSide):originalOrigin;
+        var schematic=turn==90?rotateSchematic(raw):raw;
         int clearHeight=Math.max(27,Math.addExact(height,4));
         if((long)arena.getY()+clearHeight>=level.getMaxY()
                 ||arena.getY()+1<level.getMinY()){
@@ -85,16 +99,16 @@ public final class BuilderNNCurriculumGameTest {
                 if(!level.getBlockState(p).isAir())level.setBlock(p,Blocks.AIR.defaultBlockState(),2);
             }
         }
-        int baseY=schematic.blocks().stream().mapToInt(LitematicFileReader.Block::y).min().orElseThrow();
+        int baseY=raw.blocks().stream().mapToInt(LitematicFileReader.Block::y).min().orElseThrow();
         // Keep the depot outside the source bounding box and choose
         // the perimeter nearest a real foundation cell, not a fixed corner.
         // Small historical courses keep their original depot for comparison.
-        var first=schematic.blocks().stream().filter(b->b.y()==baseY)
+        var first=raw.blocks().stream().filter(b->b.y()==baseY)
                 .min(java.util.Comparator.comparingInt(LitematicFileReader.Block::x)).orElseThrow();
         BlockPos supply=arena.offset(8,2,10+first.z()-minZ);
         BlockPos planner=supply.west();
         if(width>100||depth>100||height>60){
-            var foundations=schematic.blocks().stream().filter(b->b.y()==baseY).toList();
+            var foundations=raw.blocks().stream().filter(b->b.y()==baseY).toList();
             int closest=Integer.MAX_VALUE;
             for(var cell:foundations){
                 int x=cell.x()-minX,z=cell.z()-minZ;
@@ -117,13 +131,21 @@ public final class BuilderNNCurriculumGameTest {
                 }
             }
         }
-        level.setBlock(planner,WorksiteContent.BUILDER_TABLE.defaultBlockState(),3);
-        level.setBlock(supply,WorksiteContent.CREATIVE_CRATE.defaultBlockState(),3);
+        BlockPos ownerStart=planner.offset(0,0,2);
+        var fixtureRotation=turn==90?net.minecraft.world.level.block.Rotation.CLOCKWISE_90:
+                net.minecraft.world.level.block.Rotation.NONE;
+        if(turn==90){
+            planner=rotateArena(planner,arena,squareSide);
+            supply=rotateArena(supply,arena,squareSide);
+            ownerStart=rotateArena(ownerStart,arena,squareSide);
+        }
+        level.setBlock(planner,WorksiteContent.BUILDER_TABLE.defaultBlockState().rotate(fixtureRotation),3);
+        level.setBlock(supply,WorksiteContent.CREATIVE_CRATE.defaultBlockState().rotate(fixtureRotation),3);
         if(!(level.getBlockEntity(planner) instanceof WorkerStationBlockEntity table)){
             h.fail("Missing curriculum Planner");return;
         }
         var owner=h.makeMockServerPlayerInLevel();
-        owner.setPos(planner.getX()+.5,planner.getY(),planner.getZ()+2.5);
+        owner.setPos(ownerStart.getX()+.5,ownerStart.getY(),ownerStart.getZ()+.5);
         UUID ownerId=owner.getUUID();
         var plan=BuilderConstructionPlan.create(schematic,new BuildSite(origin.getX(),
                 origin.getY(),origin.getZ(),BuildSite.Rotation.NONE,BuildSite.Mirror.NONE),false);
@@ -134,6 +156,15 @@ public final class BuilderNNCurriculumGameTest {
         }
         int unsupported=course.blocks()-expected.size();
         var steps=plan.steps();
+        if(rotationTest){
+            if(unsupported!=0||!plan.unsupported().isEmpty()||expected.size()!=course.blocks()
+                    ||schematic.airBlocks().size()!=raw.airBlocks().size()){
+                h.fail("Rotated fixture lost source states");return;
+            }
+            System.out.println("[NN ROTATION SETUP] case="+caseId+" turn="+turn+" axis="+axis
+                    +" direction="+direction+" square="+squareSide+" origin="+origin+" supply="+supply
+                    +" planner="+planner+" owner="+ownerStart+" source="+expected.size());
+        }
         if(!table.claimIfUnowned(ownerId)||!table.setCrewTarget(ownerId,workers)){
             h.fail("Cannot configure curriculum crew");return;
         }
@@ -157,6 +188,7 @@ public final class BuilderNNCurriculumGameTest {
             int dx=planner.getX()-supply.getX(),dz=planner.getZ()-supply.getZ();
             BlockPos from=planner.offset(dx*(2+i%2)-dz*(1+i/2),0,
                     dz*(2+i%2)+dx*(1+i/2));
+            if(rotationTest)System.out.println("[NN ROTATION SPAWN] case="+caseId+" pos="+from);
             worker.setUUID(new UUID(0x4e4e434f55525345L,i+1));
             worker.setId(100000+i);
             worker.getRandom().setSeed(260215376L+i+1);
@@ -175,9 +207,9 @@ public final class BuilderNNCurriculumGameTest {
         if(strip){
             if(!axis.equals("Y")){
                 boolean banded="true".equals(System.getenv("GOLEMS_NN_BANDED"));
-                int baseY=steps.stream().mapToInt(BuilderConstructionPlan.Step::y).min().orElseThrow();
-                var order=banded?BuilderNNStripOrder.compileBanded(steps,axis,baseY)
-                        :BuilderNNStripOrder.compile(steps,axis,true);
+                int planBaseY=steps.stream().mapToInt(BuilderConstructionPlan.Step::y).min().orElseThrow();
+                var order=banded?BuilderNNStripOrder.compileBanded(steps,axis,planBaseY)
+                        :BuilderNNStripOrder.compile(steps,axis,true,rotationTest?direction:1);
                 if(!table.enableNNStripPilot(axis)
                         ||table.builderActiveStepIndex(steps)!=order.getFirst()){
                     h.fail("Dragon strip policy refused");return;
@@ -247,8 +279,46 @@ public final class BuilderNNCurriculumGameTest {
                     +" elapsedTicks="+elapsedTicks+" elapsedMs="+elapsed+" distance="+distance[0]
                     +" alive="+crew.getFirst().isAlive()+" unsupported="+unsupported
                     +" problem="+table.problem());
+            if(rotationTest)System.out.println("[NN ROTATION RESULT] case="+caseId+" turn="+turn
+                    +" axis="+axis+" direction="+direction+" outcome="+outcome+" correct="+correct
+                    +" total="+course.blocks()+" elapsedTicks="+elapsedTicks+" distance="+distance[0]
+                    +" problem="+table.problem());
             h.succeed(); // Assessment completed, not necessarily the build.
         });
+    }
+    // Rotate the whole square arena about its center, including cell centers.
+    private static BlockPos rotateArena(BlockPos p,BlockPos arena,int side){
+        return new BlockPos(arena.getX()+side+1-(p.getZ()-arena.getZ()),p.getY(),
+                arena.getZ()+p.getX()-arena.getX());
+    }
+    private static <T extends Comparable<T>> String propertyValue(BlockState state,
+            net.minecraft.world.level.block.state.properties.Property<T> property){
+        return property.getName(state.getValue(property));
+    }
+    private static String encodeState(BlockState state){
+        String id=net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+        var properties=new ArrayList<String>();
+        for(var property:state.getProperties())
+            properties.add(property.getName()+"="+propertyValue(state,property));
+        return properties.isEmpty()?id:id+"["+String.join(",",properties)+"]";
+    }
+    private static LitematicFileReader.Block rotateCell(LitematicFileReader.Block cell){
+        var state=BuilderBlockResolver.expectedState(cell.state(),BuildSite.Rotation.CLOCKWISE_90,BuildSite.Mirror.NONE);
+        // Air does not require a material resolver; its orientation is invariant.
+        if(state==null&&cell.state().equals("minecraft:air"))return new LitematicFileReader.Block(-cell.z(),cell.y(),cell.x(),cell.state());
+        if(state==null)throw new IllegalArgumentException("Cannot rotate source state "+cell.state());
+        String encoded=encodeState(state);
+        var inverse=BuilderBlockResolver.expectedState(encoded,BuildSite.Rotation.COUNTERCLOCKWISE_90,BuildSite.Mirror.NONE);
+        var original=BuilderBlockResolver.expectedState(cell.state(),BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        if(!java.util.Objects.equals(inverse,original))throw new IllegalArgumentException("State rotation not reversible: "+cell.state());
+        return new LitematicFileReader.Block(-cell.z(),cell.y(),cell.x(),encoded);
+    }
+    private static LitematicFileReader.Schematic rotateSchematic(LitematicFileReader.Schematic raw){
+        var blocks=raw.blocks().stream().map(BuilderNNCurriculumGameTest::rotateCell).toList();
+        var air=raw.airBlocks().stream().map(BuilderNNCurriculumGameTest::rotateCell).toList();
+        var counts=new java.util.HashMap<String,Long>();
+        for(var cell:blocks)counts.merge(cell.state(),1L,Long::sum);
+        return new LitematicFileReader.Schematic(raw.name(),blocks,counts,air);
     }
     private static List<LitematicFileReader.Block> absolute(List<LitematicFileReader.Block> cells,BlockPos origin){
         return cells.stream().map(b->new LitematicFileReader.Block(origin.getX()+b.x(),

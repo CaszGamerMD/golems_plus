@@ -1093,6 +1093,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     // player job opts into this policy; original indices remain unchanged.
     private UUID nnPilotJob;
     private String nnPilotAxis;
+    private int nnPilotDirection=1;
     private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> nnPilotPlan;
     private java.util.List<Integer> nnPilotOrder=java.util.List.of();
     private int nnPilotOffset,nnPilotLastCursor=-1;
@@ -1109,6 +1110,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
                     &&!builderFile.equals("placed-nn-dragon.gpb"))
                 ||(!"X".equals(axis)&&!"Z".equals(axis)))return false;
         nnPilotJob=activeOrder;nnPilotAxis=axis;
+        nnPilotDirection=builderFile.equals("placed-nn-dragon.gpb")&&"true".equals(System.getenv("GOLEMS_NN_ROTATION_TEST"))
+                ?Integer.parseInt(System.getenv().getOrDefault("NN_STRIP_DIRECTION","1")):1;
+        if(nnPilotDirection!=1&&nnPilotDirection!=-1)throw new IllegalArgumentException("NN strip direction");
         nnPilotPlan=null;nnPilotOffset=0;nnPilotLastCursor=-1;
         nnPilotMode=0;nnPilotProgress=-1;nnPilotProgressAt=-1;nnPilotRescue=java.util.List.of();
         nnPilotBlocked=-1;nnPilotProbeWork=-1;
@@ -1123,9 +1127,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             nnPilotOrder=nnPilotBanded&&nnPilotMode!=3
                     ?com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.compileBanded(steps,nnPilotAxis,nnPilotBaseY)
                     :com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.compile(
-                        steps,nnPilotMode==3?"Y":nnPilotAxis,builderFile.equals("placed-nn-dragon.gpb"));
+                        steps,nnPilotMode==3?"Y":nnPilotAxis,builderFile.equals("placed-nn-dragon.gpb"),nnPilotDirection);
             nnPilotPlan=steps;nnPilotOffset=0;nnPilotLastCursor=-1;
-            System.out.println("[NN STRIP POLICY] axis="+nnPilotAxis+" steps="+steps.size()+" banded="+nnPilotBanded+" baseY="+nnPilotBaseY);
+            System.out.println("[NN STRIP POLICY] axis="+nnPilotAxis+" steps="+steps.size()+" banded="+nnPilotBanded+" baseY="+nnPilotBaseY+" direction="+nnPilotDirection);
         }
         return true;
     }

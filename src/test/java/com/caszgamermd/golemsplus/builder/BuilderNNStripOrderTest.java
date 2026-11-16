@@ -45,6 +45,15 @@ class BuilderNNStripOrderTest {
         assertTrue(BuilderNNStripOrder.sameBandedGroup(steps.get(0),steps.get(3),"X",0));
         assertFalse(BuilderNNStripOrder.sameBandedGroup(steps.get(5),steps.get(4),"X",0));
     }
+    @Test void signedStripsRotateEquivalently(){
+        var a=List.of(s(0,2,3,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(1,0,1,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(0,0,2,"minecraft:tuff_bricks","minecraft:tuff_bricks"));
+        var b=a.stream().map(v->s(-v.z(),v.y(),v.x(),v.encodedState(),v.requiredItem())).toList();
+        assertEquals(BuilderNNStripOrder.compile(a,"X",true,1),BuilderNNStripOrder.compile(b,"Z",true,1));
+        assertEquals(BuilderNNStripOrder.compile(a,"Z",true,1),BuilderNNStripOrder.compile(b,"X",true,-1));
+        assertNotEquals(BuilderNNStripOrder.compile(a,"X",true,1),BuilderNNStripOrder.compile(a,"X",true,-1));
+    }
     @Test void axesDifferAndUnsupportedBlocksFailClosed(){
         var steps=List.of(s(0,0,2,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
                 s(2,0,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"));

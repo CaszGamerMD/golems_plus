@@ -1,0 +1,75 @@
+name: NNGolems Dragon rotation equivalence
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-dragon-rotation.yml'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNCurriculumGameTest.java'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rotation:
+    name: rotation (${{ matrix.fixture.id }}, ${{ matrix.trial }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture:
+          - {id: A, axis: X, turn: '0', direction: '1'}
+          - {id: B, axis: Z, turn: '90', direction: '1'}
+          - {id: C, axis: Z, turn: '0', direction: '1'}
+          - {id: D, axis: X, turn: '90', direction: '-1'}
+          - {id: E, axis: X, turn: '0', direction: '-1'}
+          - {id: F, axis: Z, turn: '0', direction: '-1'}
+        trial: [1, 2, 3]
+    env:
+      MATRIX_TEST_MODE: controlled
+      NN_COURSE: dragon
+      NN_DRAGON_STRATEGY: 'true'
+      GOLEMS_NN_STRIP_PILOT: 'true'
+      GOLEMS_NN_ROTATION_TEST: 'true'
+      GOLEMS_NN_ADAPTIVE: 'false'
+      GOLEMS_NN_BANDED: 'false'
+      NN_ROTATION_CASE: ${{ matrix.fixture.id }}
+      NN_ROTATION_TURN: ${{ matrix.fixture.turn }}
+      NN_STRIP_AXIS: ${{ matrix.fixture.axis }}
+      NN_STRIP_DIRECTION: ${{ matrix.fixture.direction }}
+      NN_SPEED_TEST: 'true'
+      NN_SPEED_TICK_LIMIT: '72000'
+      NN_COURSE_SECONDS: '600'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Prepare original hashed fixture
+        run: |
+          python3 scripts/nngolems/prepare_curriculum.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderNNCurriculumGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Run physical rotation comparison
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/nn-rotation
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-rotation/server.log
+          grep -F "[NN ROTATION SETUP] case=$NN_ROTATION_CASE " build/nn-rotation/server.log
+          grep -F "[NN ROTATION RESULT] case=$NN_ROTATION_CASE " build/nn-rotation/server.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nn-rotation-${{ matrix.fixture.id }}-${{ matrix.trial }}
+          path: build/nn-rotation/
