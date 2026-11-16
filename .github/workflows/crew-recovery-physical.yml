@@ -8,6 +8,8 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMultiLegTravel.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderCrewRecoveryGameTest.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderHighEscapeGameTest.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderMultiLegTravelGameTest.java'
       - '.github/workflows/crew-recovery-physical.yml'
   workflow_dispatch:
 permissions:
@@ -16,6 +18,16 @@ jobs:
   recovery:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - fixture: BuilderCrewRecoveryGameTest
+            marker: '[CREW RETREAT BARRIER PASS]'
+          - fixture: BuilderHighEscapeGameTest
+            marker: '[ESCAPE THREE STAGES PASS]'
+          - fixture: BuilderMultiLegTravelGameTest
+            marker: '[MULTI FLIGHT PASS]'
     env:
       GOLEMS_BUILDER_SCAFFOLDING: 'false'
       GOLEMS_BUILDER_TRACE: 'true'
@@ -35,14 +47,14 @@ jobs:
           from pathlib import Path
           p=Path('src/gametest/resources/fabric.mod.json')
           d=json.loads(p.read_text())
-          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderCrewRecoveryGameTest']
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.${{ matrix.fixture }}']
           p.write_text(json.dumps(d,indent=2)+'\n')
           PY
           set -o pipefail
           gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/crew-recovery.log"
-          grep -F '[CREW RETREAT BARRIER PASS]' "$RUNNER_TEMP/crew-recovery.log"
+          grep -F '${{ matrix.marker }}' "$RUNNER_TEMP/crew-recovery.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: crew-recovery-log
+          name: crew-recovery-log-${{ matrix.fixture }}
           path: ${{ runner.temp }}/crew-recovery.log
