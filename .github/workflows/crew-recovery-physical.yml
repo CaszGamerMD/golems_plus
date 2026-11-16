@@ -10,6 +10,8 @@ on:
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderCrewRecoveryGameTest.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderHighEscapeGameTest.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderMultiLegTravelGameTest.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderSameHeightDetourGameTest.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderDynamicRouteRepairGameTest.java'
       - '.github/workflows/crew-recovery-physical.yml'
   workflow_dispatch:
 permissions:
@@ -28,6 +30,10 @@ jobs:
             marker: '[ESCAPE THREE STAGES PASS]'
           - fixture: BuilderMultiLegTravelGameTest
             marker: '[MULTI FLIGHT PASS]'
+          - fixture: BuilderSameHeightDetourGameTest
+            marker: '[MULTI DETOUR PASS]'
+          - fixture: BuilderDynamicRouteRepairGameTest
+            marker: '[MULTI REPAIR PASS]'
     env:
       GOLEMS_BUILDER_SCAFFOLDING: 'false'
       GOLEMS_BUILDER_TRACE: 'true'
