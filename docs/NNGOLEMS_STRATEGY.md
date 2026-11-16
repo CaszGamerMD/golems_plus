@@ -61,3 +61,20 @@ Original indices and real placement accounting are preserved. Run success
 means a terminal assessment was captured; it is not necessarily a complete
 build. Compare correct/total, outcome, ticks, distance and terminal worker
 diagnostics. No mixed zones, drone logistics or neural strategy training.
+
+## Adaptive Dragon recovery
+The opt-in Dragon-only policy permits one bounded adjacent-strip dry
+window (up to 24 unfinished source tasks no higher than the stalled
+target) after 600 game ticks without completion progress. It then
+retries the original strip once. If that window or the retried strip
+stalls, or no adjacent work exists, switch monotonically to globally
+bottom-up dry Y, then water and derived verification. This is a
+geometric access hypothesis, not a proof that a bridge exists.
+Switches occur only at safe movement boundaries; existing claims and
+staging are reset, not completed cells, paid cargo or world blocks.
+The ordinary physical placement and escape checks still gate all work.
+The recovery watchdog is reset at the switch, not the global benchmark
+limit. Log NN STRATEGY SWITCH with the mode and progress. The adaptive
+workflow repeats all nine Dragon trials against the ordinary Y baseline.
+This is a deterministic recovery policy for generating learning labels,
+not a trained neural policy or a general multi-worker mixed-zone planner.

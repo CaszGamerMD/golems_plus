@@ -30,18 +30,36 @@ public final class BuilderNNStripOrder {
         return DRAGON_DRY.contains(id)&&s.requiredItem()!=null;
     }
     public static List<Integer> compile(List<BuilderConstructionPlan.Step> steps,String axis,boolean dragon){
-        if(!Set.of("X","Z").contains(axis)||steps.isEmpty()||steps.size()>(dragon?4096:128)
+        if(!(Set.of("X","Z").contains(axis)||dragon&&"Y".equals(axis))||steps.isEmpty()||steps.size()>(dragon?4096:128)
                 ||steps.stream().anyMatch(s->!allowed(s,dragon)))
             throw new IllegalArgumentException("Unsupported NN strip pilot plan");
         var order=new ArrayList<Integer>();
         for(int i=0;i<steps.size();i++)order.add(i);
         order.sort(Comparator.comparingInt((Integer i)->phase(steps.get(i)))
-                .thenComparingInt(i->phase(steps.get(i))==0?strip(steps.get(i),axis):0)
+                .thenComparingInt(i->phase(steps.get(i))==0&&!"Y".equals(axis)?strip(steps.get(i),axis):0)
                 .thenComparingInt(i->steps.get(i).y()).thenComparingInt(Integer::intValue));
         return List.copyOf(order);
     }
+    /** Bounded adjacent dry work is an access hypothesis, not a route proof. */
+    public static List<Integer> adjacentRescue(List<BuilderConstructionPlan.Step> steps,
+            int blocked,String axis,java.util.function.IntPredicate unfinished,int limit){
+        if(blocked<0||blocked>=steps.size()||limit<1||limit>64
+                ||!Set.of("X","Z").contains(axis))throw new IllegalArgumentException("rescue window");
+        var target=steps.get(blocked);
+        if(phase(target)!=0)return List.of();
+        int at=strip(target,axis);
+        var candidates=new ArrayList<Integer>();
+        for(int i=0;i<steps.size();i++){
+            var step=steps.get(i);
+            if(unfinished.test(i)&&phase(step)==0&&step.y()<=target.y()
+                    &&Math.abs(strip(step,axis)-at)==1)candidates.add(i);
+        }
+        candidates.sort(Comparator.comparingInt((Integer i)->steps.get(i).y())
+                .thenComparingInt(i->strip(steps.get(i),axis)).thenComparingInt(Integer::intValue));
+        return List.copyOf(candidates.subList(0,Math.min(limit,candidates.size())));
+    }
     public static boolean sameGroup(BuilderConstructionPlan.Step a,BuilderConstructionPlan.Step b,String axis){
         return phase(a)==phase(b)&&a.y()==b.y()
-                &&(phase(a)!=0||strip(a,axis)==strip(b,axis));
+                &&(phase(a)!=0||"Y".equals(axis)||strip(a,axis)==strip(b,axis));
     }
 }

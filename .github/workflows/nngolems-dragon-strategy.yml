@@ -1,4 +1,4 @@
-name: NNGolems Dragon strategy benchmark
+name: NNGolems adaptive Dragon strategy benchmark
 on:
   push:
     branches: [NNGolems]
@@ -22,6 +22,7 @@ jobs:
       NN_COURSE: dragon
       NN_DRAGON_STRATEGY: 'true'
       GOLEMS_NN_STRIP_PILOT: 'true'
+      GOLEMS_NN_ADAPTIVE: 'true'
       NN_STRIP_AXIS: ${{ matrix.axis }}
       NN_SPEED_TEST: 'true'
       NN_SPEED_TICK_LIMIT: '72000'

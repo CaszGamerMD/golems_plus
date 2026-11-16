@@ -1096,6 +1096,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> nnPilotPlan;
     private java.util.List<Integer> nnPilotOrder=java.util.List.of();
     private int nnPilotOffset,nnPilotLastCursor=-1;
+    // 0 strip, 1 adjacent access window, 2 retry strip, 3 permanent Y fallback.
+    private int nnPilotMode,nnPilotProgress=-1;
+    private long nnPilotProgressAt=-1;
+    private java.util.List<Integer> nnPilotRescue=java.util.List.of();
     public boolean enableNNStripPilot(String axis){
         if(!"true".equals(System.getenv("GOLEMS_NN_STRIP_PILOT"))
                 ||activeOrder==null||crewTarget!=1
@@ -1104,6 +1108,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||(!"X".equals(axis)&&!"Z".equals(axis)))return false;
         nnPilotJob=activeOrder;nnPilotAxis=axis;
         nnPilotPlan=null;nnPilotOffset=0;nnPilotLastCursor=-1;
+        nnPilotMode=0;nnPilotProgress=-1;nnPilotProgressAt=-1;nnPilotRescue=java.util.List.of();
         return true;
     }
     private boolean nnStripPilot(
@@ -1111,7 +1116,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(nnPilotJob==null||!nnPilotJob.equals(activeOrder)||crewTarget!=1)return false;
         if(nnPilotPlan!=steps){
             nnPilotOrder=com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.compile(
-                    steps,nnPilotAxis,builderFile.equals("placed-nn-dragon.gpb"));
+                    steps,nnPilotMode==3?"Y":nnPilotAxis,builderFile.equals("placed-nn-dragon.gpb"));
             nnPilotPlan=steps;nnPilotOffset=0;nnPilotLastCursor=-1;
             System.out.println("[NN STRIP POLICY] axis="+nnPilotAxis+" steps="+steps.size());
         }
@@ -1119,6 +1124,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     private int nnStripActive(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(nnPilotMode==1){
+            for(int index:nnPilotRescue)
+                if(nnPilotUnfinished(index))return index;
+        }
         if(builderCursor<nnPilotLastCursor)nnPilotOffset=0;
         nnPilotLastCursor=builderCursor;
         while(nnPilotOffset<nnPilotOrder.size()){
@@ -1127,6 +1136,46 @@ public final class WorkerStationBlockEntity extends BlockEntity
             nnPilotOffset++;
         }
         return -1;
+    }
+    private boolean nnPilotUnfinished(int index){
+        return index>=builderCursor&&!builderFinishedSteps.contains(index);
+    }
+    /** Safe tick boundary only; never mutate policy from a claim predicate. */
+    public boolean advanceNNStripRecovery(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,long now){
+        if(!"true".equals(System.getenv("GOLEMS_NN_ADAPTIVE"))
+                ||!builderFile.equals("placed-nn-dragon.gpb")||!nnStripPilot(steps)
+                ||nnPilotMode==3)return false;
+        int work=builderWorkDone();
+        if(nnPilotProgress!=work||nnPilotProgressAt<0){
+            nnPilotProgress=work;nnPilotProgressAt=now;
+        }
+        if(nnPilotMode==1&&nnPilotRescue.stream().noneMatch(this::nnPilotUnfinished)){
+            nnPilotMode=2;nnPilotOffset=0;nnPilotLastCursor=-1;nnPilotProgressAt=now;
+            System.out.println("[NN STRATEGY SWITCH] axis="+nnPilotAxis+" mode=RETRY_STRIP work="+work);
+            return true;
+        }
+        int blocked=nnStripActive(steps);
+        if(blocked<0||now-nnPilotProgressAt<600
+                ||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(steps.get(blocked).encodedState())
+                ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(blocked).encodedState()))return false;
+        var old=steps.get(blocked);
+        if(nnPilotMode==0){
+            nnPilotRescue=com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.adjacentRescue(
+                    steps,blocked,nnPilotAxis,this::nnPilotUnfinished,24);
+            if(!nnPilotRescue.isEmpty()){
+                nnPilotMode=1;nnPilotProgressAt=now;
+                System.out.println("[NN STRATEGY SWITCH] axis="+nnPilotAxis+" mode=ADJACENT work="+work
+                        +" blocked="+blocked+" xyz="+old.x()+","+old.y()+","+old.z()
+                        +" candidates="+nnPilotRescue);
+                return true;
+            }
+        }
+        nnPilotMode=3;nnPilotProgressAt=now;nnPilotOffset=0;nnPilotLastCursor=-1;
+        nnPilotOrder=com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.compile(steps,"Y",true);
+        System.out.println("[NN STRATEGY SWITCH] axis="+nnPilotAxis+" mode=Y_FALLBACK work="+work
+                +" blocked="+blocked+" xyz="+old.x()+","+old.y()+","+old.z());
+        return true;
     }
     public int builderActiveStepIndex(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
@@ -1176,7 +1225,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(active<0||index<builderCursor||index>=steps.size())return false;
         var step=steps.get(index);
         var current=steps.get(active);
-        if(nnStripPilot(steps))return com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.sameGroup(step,current,nnPilotAxis);
+        if(nnStripPilot(steps)){
+            if(nnPilotMode==1&&!nnPilotRescue.contains(index))return false;
+            return com.caszgamermd.golemsplus.builder.BuilderNNStripOrder.sameGroup(
+                    step,current,nnPilotMode==3?"Y":nnPilotAxis);
+        }
         if(step.y()==current.y())
             return com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
                     step.encodedState(),current.encodedState());

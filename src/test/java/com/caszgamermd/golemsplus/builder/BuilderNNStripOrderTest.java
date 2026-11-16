@@ -18,6 +18,21 @@ class BuilderNNStripOrderTest {
         assertFalse(BuilderNNStripOrder.sameGroup(steps.get(3),steps.get(4),"X"));
         assertThrows(IllegalArgumentException.class,()->BuilderNNStripOrder.compile(steps,"X",false));
     }
+    @Test void boundedAdjacentRecoveryAndYFallbackPreserveIndices(){
+        var steps=List.of(s(0,0,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(1,0,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(0,5,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(1,2,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(1,6,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(2,0,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
+                s(1,0,1,"minecraft:water[level=0]",BuilderWaterPass.WATER_BUCKET));
+        assertEquals(List.of(1,3),BuilderNNStripOrder.adjacentRescue(steps,2,"X",i->true,24));
+        assertEquals(List.of(3),BuilderNNStripOrder.adjacentRescue(steps,2,"X",i->i!=1,1));
+        assertEquals(List.of(0,1,5,3,2,4,6),BuilderNNStripOrder.compile(steps,"Y",true));
+        assertTrue(BuilderNNStripOrder.sameGroup(steps.get(0),steps.get(5),"Y"));
+        assertFalse(BuilderNNStripOrder.sameGroup(steps.get(0),steps.get(6),"Y"));
+        assertEquals(List.of(),BuilderNNStripOrder.adjacentRescue(steps,6,"X",i->true,24));
+    }
     @Test void axesDifferAndUnsupportedBlocksFailClosed(){
         var steps=List.of(s(0,0,2,"minecraft:tuff_bricks","minecraft:tuff_bricks"),
                 s(2,0,0,"minecraft:tuff_bricks","minecraft:tuff_bricks"));

@@ -90,7 +90,22 @@ final class BuilderCrewRecovery {
     }
     static boolean tick(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps){
-        State s=state(table);long now=level.getGameTime();
+        long now=level.getGameTime();
+        // Strategy changes never interrupt physical flight, rope or
+        // scaffold movement. Keep actual cargo and finished indices.
+        if(!BuilderFlight.moving(worker)&&!BuilderGrappleAccess.active(worker)
+                &&!BuilderScaffolding.isControllingMovement(worker)
+                &&!worker.hasSupplyBox()
+                &&(worker.onGround()||BuilderFlight.active(worker))
+                &&table.advanceNNStripRecovery(steps,now)){
+            table.beginBuilderZonePlan();
+            BuilderMaterialNetwork.resetForCrew(table);
+            BuilderBuildService.resetCrewActions(level,table);
+            clear(table);
+            table.setProblem("NN strategy changed: replan remaining construction");
+            return true;
+        }
+        State s=state(table);
         int layer=table.builderActiveLayer(steps),work=table.builderWorkDone();
         if(!s.recalling&&s.recovering.contains(worker.getUUID())){
             // This worker remains registered, retains its inventory and
