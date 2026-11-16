@@ -720,6 +720,7 @@ public final class BuilderConstructionPlanner {
                         ||pending.size()<=24&&BuilderFlight.canAccessRoofWork(world,worker,target,bodyBlocking)
                         ||pending.size()==1&&"true".equals(System.getenv("GOLEMS_NN_BANDED"))
                             &&table.builderFile().equals("placed-nn-dragon.gpb")
+                            &&java.util.Set.of("X","Z").contains(System.getenv().getOrDefault("NN_STRIP_AXIS","Y"))
                             &&BuilderMultiLegTravel.canAccessWork(world,worker,target,bodyBlocking));
             // An elevated unsupported block needs construction footing.
             // Prefer a real, item-paid scaffold platform if one can be

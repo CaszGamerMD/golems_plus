@@ -184,8 +184,9 @@ final class BuilderCrewRecovery {
                 BuildSite.Mirror.values()[table.builderMirror()]);
         if(resolved==null||!resolved.state().canSurvive(level,target))return false;
         boolean blocking=BuilderPlacementSpace.stepNeedsVacating(level,target,resolved.state(),false);
-        return BuilderPlacementSpace.approachForStep(level,worker,target,blocking,true,
-                at->BuilderConstructionPlanner.safeStandForStep(level,worker,target,at,step.encodedState()))!=null
+        BlockPos stance=BuilderPlacementSpace.approachForStep(level,worker,target,blocking,true,
+                at->BuilderConstructionPlanner.safeStandForStep(level,worker,target,at,step.encodedState()));
+        return stance!=null&&WorkerNavigation.selectExecutableStand(level,worker,List.of(stance))!=null
                 ||BuilderFlight.canAccessWork(level,worker,target,blocking);
     }
     private static boolean tryUnload(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,State s){

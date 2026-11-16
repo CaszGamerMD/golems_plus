@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/nngolems-dragon-strategy.yml'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNStripOrder.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderConstructionPlanner.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewRecovery.java'
   workflow_dispatch:
 permissions:
   contents: read
