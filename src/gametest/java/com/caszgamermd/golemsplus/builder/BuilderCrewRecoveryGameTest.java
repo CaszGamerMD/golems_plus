@@ -12,6 +12,13 @@ import java.util.List;
 public final class BuilderCrewRecoveryGameTest {
     @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=100,skyAccess=true)
     public void allUnloadBeforeReducedCrewResumes(GameTestHelper h){
+        crewBarrier(h,false);
+    }
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=1900,skyAccess=true)
+    public void timedOutRetreatResumesWithReturnedWorkerWithoutLosingCargo(GameTestHelper h){
+        crewBarrier(h,true);
+    }
+    private void crewBarrier(GameTestHelper h,boolean delayed){
         var level=h.getLevel();
         for(int x=3;x<=18;x++)for(int z=3;z<=16;z++){
             h.setBlock(x,1,z,Blocks.STONE);
@@ -34,7 +41,7 @@ public final class BuilderCrewRecoveryGameTest {
             var plan=BuilderConstructionPlan.create(BuilderPlacementSnapshot.decode(snapshot),BuilderPlacementSnapshot.worldSpaceSite());
             var folder=net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("golems_plus").resolve("schematics");
             java.nio.file.Files.createDirectories(folder);
-            String file="placed-crew-reset.gpb";java.nio.file.Files.write(folder.resolve(file),snapshot);
+            String file=delayed?"placed-crew-reset-timeout.gpb":"placed-crew-reset.gpb";java.nio.file.Files.write(folder.resolve(file),snapshot);
             if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,2)
                     ||!table.setPlacedBuilderPlan(id,file,"Crew reset",station,0,0,plan.steps().size(),plan.unsupported().size())
                     ||!table.setBuilderMaterialStorage(id,depot)){
@@ -42,7 +49,7 @@ public final class BuilderCrewRecoveryGameTest {
             }
             var a=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
             var b=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
-            BlockPos ap=depot.south(),bp=depot.east();
+            BlockPos ap=depot.south(),bp=delayed?depot.east(8):depot.east();
             a.setPos(ap.getX()+.5,ap.getY(),ap.getZ()+.5);
             b.setPos(bp.getX()+.5,bp.getY(),bp.getZ()+.5);
             level.addFreshEntity(a);level.addFreshEntity(b);
@@ -62,6 +69,29 @@ public final class BuilderCrewRecoveryGameTest {
                 if(!BuilderCrewRecovery.tick(level,a,table,plan.steps())
                         ||!a.isEmpty()||b.isEmpty()||!BuilderCrewRecovery.recalling(table)){
                     h.fail("First unload did not retain crew barrier");return;
+                }
+                if(delayed){
+                    // Keep the second registered worker physically away
+                    // from storage and unserviced, with its real cargo.
+                    h.runAtTickTime(1810,()->{
+                        BuilderCrewRecovery.tick(level,a,table,plan.steps());
+                        if(BuilderCrewRecovery.recalling(table)
+                                ||!BuilderCrewRecovery.staff(table,layer,table.builderWorkerIds()).equals(List.of(a.getUUID()))
+                                ||BuilderCrewRecovery.staff(table,layer+1,table.builderWorkerIds()).contains(b.getUUID())
+                                ||!BuilderCrewRecovery.sidelined(table,b.getUUID())
+                                ||b.carriedCount(Items.GLASS)!=4||!b.isAlive()
+                                ||table.builderWorkDone()!=done||table.crewTarget()!=2){
+                            h.fail("Timeout did not preserve stranded worker and resume only safe crew");return;
+                        }
+                        if(!BuilderCrewRecovery.tick(level,b,table,plan.steps())
+                                ||b.carriedCount(Items.GLASS)!=4
+                                ||!BuilderCrewRecovery.sidelined(table,b.getUUID())){
+                            h.fail("Stranded worker did not enter independent physical recovery");return;
+                        }
+                        System.out.println("[CREW RETREAT TIMEOUT PASS] safe worker resumed, stranded worker retained cargo and registration");
+                        h.succeed();
+                    });
+                    return;
                 }
                 if(!BuilderCrewRecovery.tick(level,b,table,plan.steps())
                         ||!b.isEmpty()||BuilderCrewRecovery.recalling(table)){
