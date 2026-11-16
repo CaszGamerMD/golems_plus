@@ -110,6 +110,27 @@ final class BuilderMultiLegTravel {
                 .thenComparingDouble(launch::distSqr));
         return result;
     }
+    /** Before spending a node's budget on speculative landings, try the
+     * exact destination from every nearby supported walking launch.
+     * A successful walk/flight pair is an entire goal-reaching connector,
+     * not a partial prefix that can strand the worker on a platform. */
+    private static Leg directStandLeg(ServerLevel level,BuilderGolem worker,Goal goal,BlockPos at){
+        if(goal.kind()!=Kind.STAND||!WorkerNavigation.canStandOn(level,worker,goal.target()))return null;
+        var options=launches(level,worker,at);
+        options.sort(Comparator.comparingDouble((BlockPos p)->p.distSqr(goal.target()))
+                .thenComparingDouble(at::distSqr));
+        for(BlockPos launch:options){
+            if(launch.equals(goal.target()))continue;
+            double dx=launch.getX()-goal.target().getX(),dz=launch.getZ()-goal.target().getZ();
+            if(dx*dx+dz*dz>4)continue;
+            if(!BuilderFlight.canFlyBetween(level,worker,launch,goal.target()))continue;
+            if(!launch.equals(at)&&!WorkerNavigation.hasGroundRouteFrom(level,worker,at,List.of(launch)))continue;
+            if(Math.abs(goal.target().getY()-launch.getY())<2
+                    &&WorkerNavigation.hasGroundRouteFrom(level,worker,launch,List.of(goal.target())))continue;
+            return new Leg(launch,goal.target());
+        }
+        return null;
+    }
     private static List<Leg> detourPlan(ServerLevel level,BuilderGolem worker,Goal goal){
         BlockPos start=worker.blockPosition();
         // Exact landings may be a few floating-point units below the
@@ -137,6 +158,10 @@ final class BuilderMultiLegTravel {
             if(!n.legs().isEmpty()&&good(level,worker,goal,n.at()))return n.legs();
             if(n.legs().size()>=MAX_LEGS)continue;
             expanded++;
+            Leg direct=directStandLeg(level,worker,goal,n.at());
+            if(direct!=null){
+                var result=new ArrayList<>(n.legs());result.add(direct);return List.copyOf(result);
+            }
             for(BlockPos launch:launches(level,worker,n.at())){
                 if(probes>=MAX_PROBES)break;
                 // Verify the walking approach once, before spending flight
@@ -178,15 +203,15 @@ final class BuilderMultiLegTravel {
         return !legs.isEmpty()&&good(level,worker,goal,legs.getLast().landing());
     }
     private static List<Leg> plan(ServerLevel level,BuilderGolem worker,Goal goal){
-        // Preserve the proven vertical/walking route on elevated builds.
-        // Only use the wider detour search when the old route cannot
-        // reach its goal, or when the goal is on the same elevation.
+        // Keep the cost-based policy that reached the Matrix repeatability
+        // milestone for ordinary work and escape goals. The legacy vertical
+        // search is a fallback, not a global change to route ordering.
+        List<Leg> detour=detourPlan(level,worker,goal);
+        if(complete(level,worker,goal,detour))return detour;
         List<Leg> vertical=Math.abs(worker.getY()-goal.target().getY())>=2
                 ?verticalPlan(level,worker,goal):List.of();
         if(complete(level,worker,goal,vertical))return vertical;
-        List<Leg> detour=detourPlan(level,worker,goal);
-        if(complete(level,worker,goal,detour))return detour;
-        return vertical.isEmpty()?detour:vertical;
+        return detour.isEmpty()?vertical:detour;
     }
     private static List<Leg> verticalPlan(ServerLevel level,BuilderGolem worker,Goal goal){
         BlockPos start=worker.blockPosition();
@@ -208,6 +233,10 @@ final class BuilderMultiLegTravel {
             VerticalNode n=queue.remove();
             if(!n.legs().isEmpty()&&good(level,worker,goal,n.at()))return n.legs();
             if(n.legs().size()>=4)continue;
+            Leg direct=directStandLeg(level,worker,goal,n.at());
+            if(direct!=null){
+                var result=new ArrayList<>(n.legs());result.add(direct);return List.copyOf(result);
+            }
             for(BlockPos launch:launches(level,worker,n.at())){
                 boolean walkChecked=launch.equals(n.at()),walkOK=walkChecked;
                 int checked=0;
@@ -298,6 +327,8 @@ final class BuilderMultiLegTravel {
                 if(!WorkerNavigation.canStandOn(level,worker,here)
                         &&!WorkerNavigation.canStandOn(level,worker,rounded))
                     return BuilderFlight.escapeAwkwardFooting(level,worker,goal.target());
+                BuilderTrace.decision(level,worker,"MULTI_TRIP_NO_ROUTE",goal.target(),
+                        "no verified flight chain from "+worker.blockPosition());
                 return false;
             }
             t=new Trip(goal,legs,now);trips.put(worker,t);
