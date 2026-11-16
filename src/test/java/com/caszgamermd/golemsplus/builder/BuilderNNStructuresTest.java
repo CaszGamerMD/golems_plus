@@ -38,6 +38,28 @@ class BuilderNNStructuresTest {
         assertEquals(new HashSet<>(members),new HashSet<>(actual));
         assertEquals(members.size(),actual.size());
     }
+    @Test void smallestFirstCountsPhysicalCellsNotPassesOrAir(){
+        var steps=List.of(s(0,0,0),s(20,0,0),s(0,1,0),s(0,2,0),
+            s(20,0,0),new BuilderConstructionPlan.Step(20,1,0,"minecraft:air",null,true));
+        var p=BuilderNNStructures.compile(steps,true);
+        assertEquals(List.of(1,4,5),p.members(0));
+        assertEquals(1,BuilderNNStructures.volume(steps,p.members(0)));
+        assertEquals(List.of(1,4,5,0,2,3),p.order());
+        assertEquals(3,BuilderNNStructures.nextOffset(p,0,0,Set.of(1,4,5)));
+    }
+    @Test void preparedPlanRetainsOriginalIndicesAndSafeYOrder(){
+        var steps=List.of(s(0,0,0),s(20,0,0),s(0,1,0),s(20,1,0),s(21,1,0));
+        var p=BuilderNNStructures.compile(steps,true);
+        var roster=List.of(new UUID(0,1),new UUID(0,2));
+        var prepared=BuilderNNStructurePipeline.prepare(steps,p.members(1),roster,net.minecraft.core.BlockPos.ZERO);
+        var actual=new ArrayList<Integer>();
+        for(var id:roster){
+            var indices=prepared.tasks().steps(id);actual.addAll(indices);
+            for(int i=1;i<indices.size();i++)assertTrue(steps.get(indices.get(i-1)).y()<=steps.get(indices.get(i)).y());
+        }
+        assertEquals(new HashSet<>(p.members(1)),new HashSet<>(actual));
+        assertEquals(p.members(1).size(),actual.size());
+    }
     @Test void connectedGroundStaysOneAndEveryIndexIsRetained(){
         var steps=new ArrayList<BuilderConstructionPlan.Step>();
         for(int x=0;x<=20;x++)steps.add(s(x,0,0));

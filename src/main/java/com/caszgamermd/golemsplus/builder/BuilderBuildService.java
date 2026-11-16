@@ -53,6 +53,44 @@ public final class BuilderBuildService {
             Map<Integer,List<UUID>> layerStaff){}
     private static final Map<WorkerStationBlockEntity,ScheduledZones>
             schedules=new WeakHashMap<>();
+    /** Future planning uses immutable data only; never accesses the world. */
+    private static final class StructureAhead {
+        final UUID job;final Cache cache;final List<UUID> roster;final BlockPos depot;
+        final BuilderNNStructures.Plan partition;
+        final java.util.concurrent.ConcurrentMap<Integer,ScheduledZones> ready=new java.util.concurrent.ConcurrentHashMap<>();
+        java.util.concurrent.CompletableFuture<Void> future;
+        volatile boolean cancelled;
+        StructureAhead(UUID job,Cache cache,List<UUID> roster,BlockPos depot,BuilderNNStructures.Plan partition){
+            this.job=job;this.cache=cache;this.roster=List.copyOf(roster);this.depot=depot.immutable();this.partition=partition;
+        }
+    }
+    private static final Map<WorkerStationBlockEntity,StructureAhead> structureAhead=new WeakHashMap<>();
+    private static StructureAhead ahead(WorkerStationBlockEntity table,Cache cache,List<UUID> roster){
+        var partition=table.builderNNStructurePlan(cache.steps());
+        if(!table.builderNNLookahead()||partition==null)return null;
+        BlockPos depot=table.builderMaterialStorage()==null?table.getBlockPos():table.builderMaterialStorage();
+        var prior=structureAhead.get(table);
+        if(prior!=null&&prior.job.equals(table.activeOrder())&&prior.cache==cache
+                &&prior.roster.equals(roster)&&prior.depot.equals(depot)&&prior.partition==partition)return prior;
+        if(prior!=null)prior.cancelled=true;
+        var next=new StructureAhead(table.activeOrder(),cache,roster,depot,partition);
+        structureAhead.put(table,next);return next;
+    }
+    /** First structure is dispatched before any future group is optimized. */
+    private static void prepareFutureStructures(WorkerStationBlockEntity table,Cache cache,
+            List<UUID> roster,int current){
+        var a=ahead(table,cache,roster);
+        if(a==null||current<0||a.future!=null||current+1>=a.partition.groups().size())return;
+        System.out.println("[NN STRUCTURE LOOKAHEAD START] active="+(current+1)+" future="+(a.partition.groups().size()-current-1));
+        a.future=java.util.concurrent.CompletableFuture.runAsync(()->{
+            for(int id=current+1;id<a.partition.groups().size()&&!a.cancelled;id++){
+                var plan=compileSchedule(a.job,a.cache,a.roster,id,a.partition.members(id),false,a.depot,true);
+                if(a.cancelled)return;
+                a.ready.putIfAbsent(id,plan);
+                System.out.println("[NN STRUCTURE LOOKAHEAD READY] group="+(id+1));
+            }
+        }).exceptionally(error->{System.out.println("[NN STRUCTURE LOOKAHEAD ERROR] "+error);return null;});
+    }
     /** The immutable job plan only needs its virtual skips reconciled once.
      * Real placements update Planner totals directly on completion. */
     private record ReconciledJob(UUID job,Cache plan){}
@@ -1342,6 +1380,8 @@ public final class BuilderBuildService {
             // the physical trip before the rescue watchdog can recruit
             // it again, even if a different layer became active en route.
             int currentClaim=table.claimedStep(worker.getUUID());
+            if(currentClaim>=0&&assigned.structure()>=0)
+                prepareFutureStructures(table,plan,assigned.roster(),assigned.structure());
             var materialOffers=BuilderMaterialNetwork.offered(level,table,worker,plan.steps());
             WorkerAction returnAction=workerActions.computeIfAbsent(
                     worker,k->new WorkerAction());
@@ -1504,6 +1544,8 @@ public final class BuilderBuildService {
                 }
                 index=next==null?-1:table.claimPreferredBuilderZoneStep(
                         worker.getUUID(),zone,plan.steps(),next.index());
+                if(index>=0&&assigned.structure()>=0)
+                    prepareFutureStructures(table,plan,assigned.roster(),assigned.structure());
                 if(BuilderTrace.enabled())BuilderTrace.decision(level,worker,
                         index<0?"CLAIM_REJECT":"CLAIM_ACCEPT",
                         index<0?null:new BlockPos(plan.steps().get(index).x(),plan.steps().get(index).y(),plan.steps().get(index).z()),
@@ -2870,10 +2912,31 @@ public final class BuilderBuildService {
         // Preserves completed cells and carried real items when adding or
         // retiring a Builder. Only unfinished staging reservations change.
         var members=structure<0?null:table.builderNNStructureMembers(cache.steps());
+        var a=ahead(table,cache,roster);
+        ScheduledZones result=a==null?null:a.ready.get(structure);
+        if(result==null){
+            result=compileSchedule(table.activeOrder(),cache,List.copyOf(roster),structure,members,
+                table.builderHeightMode()==BuilderMaterialRules.FROM_Y_DOWN,
+                table.builderMaterialStorage()==null?table.getBlockPos():table.builderMaterialStorage(),a!=null);
+            if(a!=null)a.ready.putIfAbsent(structure,result);
+            if(a!=null)System.out.println("[NN STRUCTURE SCHEDULE] group="+(structure+1)+" source=on_demand");
+        }else System.out.println("[NN STRUCTURE SCHEDULE] group="+(structure+1)+" source=prepared");
+        table.beginBuilderZonePlan();
+        schedules.put(table,result);
+        return result;
+    }
+    private static ScheduledZones compileSchedule(UUID job,Cache cache,List<UUID> roster,int structure,
+            List<Integer> members,boolean downward,BlockPos depot,boolean optimize){
         var footprint=members==null?cache.zones():BuilderZones.footprint(
                 members.stream().map(cache.steps()::get).toList());
-        var tasks=BuilderZoneWorkPlan.compile(cache.steps(),footprint,
-                roster,table.builderHeightMode()==BuilderMaterialRules.FROM_Y_DOWN,members);
+        BuilderZoneWorkPlan tasks;
+        if(optimize&&members!=null){
+            var prepared=BuilderNNStructurePipeline.prepare(cache.steps(),members,roster,depot);
+            tasks=prepared.tasks();
+            System.out.println("[NN STRUCTURE STRATEGY] group="+(structure+1)+" execution=Y sweep="
+                +prepared.sweep()+prepared.direction()+" cost="+prepared.cost()
+                +" verticalCandidate="+prepared.candidate().axis()+" reason="+prepared.candidate().reason());
+        }else tasks=BuilderZoneWorkPlan.compile(cache.steps(),footprint,roster,downward,members);
         var layers=new java.util.HashMap<Integer,List<Integer>>();
         var mutableLayers=new java.util.HashMap<Integer,
                 java.util.ArrayList<Integer>>();
@@ -2921,11 +2984,7 @@ public final class BuilderBuildService {
             staff.put(y,BuilderCrewSchedule.staffForFootprint(roster,
                     physical,own,width,depth));
         }
-        table.beginBuilderZonePlan();
-        ScheduledZones result=new ScheduledZones(table.activeOrder(),cache,
-                List.copyOf(roster),structure,tasks,Map.copyOf(layers),Map.copyOf(staff));
-        schedules.put(table,result);
-        return result;
+        return new ScheduledZones(job,cache,List.copyOf(roster),structure,tasks,Map.copyOf(layers),Map.copyOf(staff));
     }
 
     private static Cache cache(WorkerStationBlockEntity table,BuilderGolem worker)

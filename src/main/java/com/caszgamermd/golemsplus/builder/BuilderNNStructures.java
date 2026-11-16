@@ -20,7 +20,8 @@ public final class BuilderNNStructures {
         Integer previous=cells.putIfAbsent(c,index);
         if(previous!=null)join(parent,index,previous);
     }
-    public static Plan compile(List<BuilderConstructionPlan.Step> steps){
+    public static Plan compile(List<BuilderConstructionPlan.Step> steps){return compile(steps,false);}
+    public static Plan compile(List<BuilderConstructionPlan.Step> steps,boolean smallestFirst){
         int n=steps.size();int[] parent=new int[n];
         var cells=new HashMap<Cell,Integer>();
         for(int i=0;i<n;i++){
@@ -47,11 +48,29 @@ public final class BuilderNNStructures {
         var groups=new ArrayList<List<Integer>>();
         var order=new ArrayList<Integer>(n);
         var membership=new ArrayList<Integer>(Collections.nCopies(n,-1));
-        for(var group:byRoot.values()){
+        var ordered=new ArrayList<>(byRoot.values());
+        if(smallestFirst){
+            var volumes=new IdentityHashMap<List<Integer>,Integer>();
+            for(var group:ordered)volumes.put(group,volume(steps,group));
+            ordered.sort(Comparator.comparingInt(volumes::get));
+        }
+        for(var group:ordered){
             int id=groups.size();groups.add(List.copyOf(group));
             for(int i:group){order.add(i);membership.set(i,id);}
         }
         return new Plan(List.copyOf(groups),List.copyOf(order),List.copyOf(membership));
+    }
+    /** Count distinct non-air cells, including companions, not work passes. */
+    public static int volume(List<BuilderConstructionPlan.Step> steps,List<Integer> members){
+        var cells=new HashSet<Cell>();
+        for(int i:members){
+            var s=steps.get(i);
+            if(s.ignorePlant()||s.encodedState().equals("minecraft:air"))continue;
+            cells.add(new Cell(s.x(),s.y(),s.z()));
+            var c=s.companion();
+            if(c!=null)cells.add(new Cell(c.x(),c.y(),c.z()));
+        }
+        return cells.size();
     }
     /** Resume from original-index completion; no fabricated progress. */
     public static int nextOffset(Plan plan,int from,int cursor,Set<Integer> finished){

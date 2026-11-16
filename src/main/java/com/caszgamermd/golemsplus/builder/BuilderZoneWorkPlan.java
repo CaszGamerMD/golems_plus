@@ -44,6 +44,12 @@ public final class BuilderZoneWorkPlan {
             List<BuilderConstructionPlan.Step> steps,
             BuilderZones.Layout footprint,List<UUID> activeWorkers,
             boolean downward,List<Integer> members){
+        return compile(steps,footprint,activeWorkers,downward,members,"X",1);
+    }
+    public static BuilderZoneWorkPlan compile(List<BuilderConstructionPlan.Step> steps,
+            BuilderZones.Layout footprint,List<UUID> activeWorkers,boolean downward,
+            List<Integer> members,String sweep,int direction){
+        if(!List.of("X","Z").contains(sweep)||Math.abs(direction)!=1)throw new IllegalArgumentException("sweep");
         if(steps==null||footprint==null||activeWorkers==null)
             throw new IllegalArgumentException("Builder plan missing");
         if(activeWorkers.isEmpty()||activeWorkers.size()>8)
@@ -69,9 +75,11 @@ public final class BuilderZoneWorkPlan {
             int height=downward?Integer.compare(b.y(),a.y()):
                     Integer.compare(a.y(),b.y());
             if(height!=0)return height;
-            int strip=Integer.compare(a.x(),b.x());
+            int pa=sweep.equals("X")?a.x():a.z(),pb=sweep.equals("X")?b.x():b.z();
+            int strip=direction*Integer.compare(pa,pb);
             if(strip!=0)return strip;
-            return ((a.x()&1)==0?1:-1)*Integer.compare(a.z(),b.z());
+            int sa=sweep.equals("X")?a.z():a.x(),sb=sweep.equals("X")?b.z():b.x();
+            return ((pa&1)==0?1:-1)*direction*Integer.compare(sa,sb);
         });
         return new BuilderZoneWorkPlan(activeWorkers,data);
     }
