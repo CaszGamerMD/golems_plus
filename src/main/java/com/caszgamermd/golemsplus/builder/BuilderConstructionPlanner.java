@@ -734,6 +734,7 @@ public final class BuilderConstructionPlanner {
             boolean propeller=stance==null
                     &&(BuilderFlight.canAccessWork(world,worker,target,bodyBlocking)
                         ||pending.size()<=24&&BuilderFlight.canAccessRoofWork(world,worker,target,bodyBlocking)
+                        ||BuilderNNRoofFrontier.canApproach(world,worker,target,bodyBlocking,pending.size())
                         ||pending.size()==1&&"true".equals(System.getenv("GOLEMS_NN_BANDED"))
                             &&table.builderFile().equals("placed-nn-dragon.gpb")
                             &&java.util.Set.of("X","Z").contains(System.getenv().getOrDefault("NN_STRIP_AXIS","Y"))
