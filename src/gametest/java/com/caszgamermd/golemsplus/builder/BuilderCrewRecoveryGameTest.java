@@ -90,7 +90,14 @@ public final class BuilderCrewRecoveryGameTest {
         }
         BlockPos low=h.absolutePos(new BlockPos(7,2,7));
         BlockPos high=h.absolutePos(new BlockPos(13,4,13));
-        var box=new BuilderEscapeBox.Bounds(low.getX()-1,low.getY()-1,low.getZ()-1,high.getX()+1,high.getY()+1,high.getZ()+1);
+        var box=BuilderEscapeBox.Bounds.from(List.of(
+                new BuilderConstructionPlan.Step(low.getX(),low.getY(),low.getZ(),"minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(high.getX(),high.getY()-1,high.getZ(),"minecraft:stone","minecraft:stone",false,
+                        new BuilderConstructionPlan.Companion(high.getX(),high.getY(),high.getZ(),"minecraft:stone"))));
+        if(box.minX()!=low.getX()-1||box.minY()!=low.getY()-1||box.minZ()!=low.getZ()-1
+                ||box.maxX()!=high.getX()+1||box.maxY()!=high.getY()+1||box.maxZ()!=high.getZ()+1){
+            h.fail("Escape box failed to include all six faces and companion cell");return;
+        }
         BlockPos start=h.absolutePos(new BlockPos(9,2,10));
         BlockPos depot=h.absolutePos(new BlockPos(18,2,10));
         h.setBlock(18,2,10,Blocks.CHEST);

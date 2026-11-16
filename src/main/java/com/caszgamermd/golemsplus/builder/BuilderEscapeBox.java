@@ -17,6 +17,11 @@ final class BuilderEscapeBox {
             for(var p:steps){
                 x=Math.min(x,p.x());y=Math.min(y,p.y());z=Math.min(z,p.z());
                 X=Math.max(X,p.x());Y=Math.max(Y,p.y());Z=Math.max(Z,p.z());
+                var companion=p.companion();
+                if(companion!=null){
+                    x=Math.min(x,companion.x());y=Math.min(y,companion.y());z=Math.min(z,companion.z());
+                    X=Math.max(X,companion.x());Y=Math.max(Y,companion.y());Z=Math.max(Z,companion.z());
+                }
             }
             return new Bounds(x-1,y-1,z-1,X+1,Y+1,Z+1);
         }
@@ -61,7 +66,7 @@ final class BuilderEscapeBox {
     private static final class Trip {
         final Bounds box;
         final BlockPos depot;
-        BlockPos waypoint;
+        BlockPos waypoint,mobilityTarget;
         Vec3 lastPosition;
         double best=Double.POSITIVE_INFINITY;
         long lastMove,lastProgress,nextSearch;
@@ -91,10 +96,14 @@ final class BuilderEscapeBox {
     }
     /** True while the escape stage owns motion; false permits depot routing. */
     static boolean tick(ServerLevel level,BuilderGolem worker,Bounds box,BlockPos depot){
+        return tick(level,worker,box,depot,null);
+    }
+    static boolean tick(ServerLevel level,BuilderGolem worker,Bounds box,BlockPos depot,
+            com.caszgamermd.golemsplus.world.WorkerStationBlockEntity table){
         if(box==null||depot==null)return false;
         Trip t=trips.get(worker);
         if(t==null||!box.equals(t.box)||!depot.equals(t.depot)){
-            t=new Trip(box,depot);trips.put(worker,t);
+            t=new Trip(box,depot);t.lastProgress=level.getGameTime();trips.put(worker,t);
         }
         if(t.escaped)return false;
         if(box.outside(worker.blockPosition())){
@@ -112,6 +121,11 @@ final class BuilderEscapeBox {
         if(BuilderFlight.active(worker)){
             BuilderFlight.land(level,worker,true,t.rejected);
             return true;
+        }
+        if(t.mobilityTarget!=null){
+            if(BuilderFlight.hasDescentLaunch(level,worker,t.mobilityTarget)
+                    &&BuilderFlight.approachDescentLaunch(level,worker,t.mobilityTarget,t.rejected))return true;
+            t.mobilityTarget=null;
         }
         if(t.waypoint!=null){
             double d=distance(worker,t.waypoint);
@@ -161,9 +175,21 @@ final class BuilderEscapeBox {
                 if(!t.rejected.contains(at)&&BuilderFlight.request(level,worker,at))return true;
             BlockPos lower=candidates.isEmpty()?air.get(0):candidates.get(0);
             t.rejected.add(worker.blockPosition().immutable());
-            if(BuilderFlight.approachDescentLaunch(level,worker,lower,t.rejected)
-                    ||BuilderFlight.escapePocket(level,worker,lower,t.rejected)
+            if(BuilderFlight.approachDescentLaunch(level,worker,lower,t.rejected)){
+                t.mobilityTarget=lower;return true;
+            }
+            if(BuilderFlight.escapePocket(level,worker,lower,t.rejected)
                     ||BuilderFlight.land(level,worker,true,t.rejected))return true;
+        }else if(table!=null){
+            // Preserve the existing paid scaffold/grapple tools for
+            // workers without a propeller, but aim at the shell, not home.
+            var air=new ArrayList<>(box.localAirExits(worker.blockPosition()));
+            air.sort(Comparator.comparingDouble(p->distance(worker,p)));
+            BlockPos exit=candidates.isEmpty()?air.get(0):candidates.get(0);
+            if(BuilderScaffolding.descendForTravel(level,worker,table)
+                    ||BuilderGrappleAccess.rappelHome(level,worker,table,exit)
+                    ||BuilderGrappleAccess.rappelToward(level,worker,table,exit)
+                    ||BuilderGrappleAccess.escapeRailPocket(level,worker,exit))return true;
         }
         BuilderTrace.decision(level,worker,"ESCAPE_BOX_WAIT",worker.blockPosition(),"no executable exit; retry shell survey");
         // Geometry can change as others build. Revisit rejected exits only

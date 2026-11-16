@@ -715,7 +715,7 @@ public final class BuilderBuildService {
         try{
             Cache plan=table.activeOrder()==null?cached.get(worker):cache(table,worker);
             if(plan==null)return false;
-            return BuilderEscapeBox.tick(level,worker,siteFootprint(table,plan).escapeBox(),depot);
+            return BuilderEscapeBox.tick(level,worker,siteFootprint(table,plan).escapeBox(),depot,table);
         }catch(Exception e){
             BuilderTrace.decision(level,worker,"ESCAPE_BOX_UNAVAILABLE",depot,e.toString());
             return false;
