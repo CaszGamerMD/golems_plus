@@ -83,7 +83,9 @@ final class BuilderNNFrontierStaging {
         BlockPos work=new BlockPos(targetStep.x(),targetStep.y(),targetStep.z());
         BlockPos current=worker.blockPosition();
         int attempts=0;
-        for(BlockPos seed:BuilderNNStageGeometry.candidates(current,work)){
+        var geometry=BuilderNNStageGeometry.candidates(current,work);
+        if(geometry.isEmpty())geometry=BuilderNNStageGeometry.elevatedCandidates(current,work);
+        for(BlockPos seed:geometry){
             for(int dy:new int[]{0,1,-1}){
                 BlockPos waypoint=seed.offset(0,dy,0);
                 if(!level.hasChunkAt(waypoint)
@@ -186,7 +188,9 @@ final class BuilderNNFrontierStaging {
             var s=steps.get(i);
             if(s.ignorePlant()||BuilderNNStructures.manualTail(s))continue;
             double dx=(long)s.x()-from.getX(),dz=(long)s.z()-from.getZ();
-            if(dx*dx+dz*dz>=18*18)pending.add(i);
+            if(dx*dx+dz*dz>=18*18
+                    ||BuilderNNStageGeometry.needsElevatedApproach(from,
+                            new BlockPos(s.x(),s.y(),s.z())))pending.add(i);
         }
         if(pending.isEmpty()){
             note(window,now,worker,"no distant unfinished work in assigned active phase"
@@ -202,7 +206,9 @@ final class BuilderNNFrontierStaging {
         for(int k=0;k<Math.min(3,pending.size());k++){
             int index=pending.get(k);var step=steps.get(index);
             var work=new BlockPos(step.x(),step.y(),step.z());
-            for(BlockPos seed:BuilderNNStageGeometry.candidates(from,work)){
+            var geometry=BuilderNNStageGeometry.candidates(from,work);
+            if(geometry.isEmpty())geometry=BuilderNNStageGeometry.elevatedCandidates(from,work);
+            for(BlockPos seed:geometry){
                 for(int dy:new int[]{0,1,-1}){
                     BlockPos candidate=seed.offset(0,dy,0);
                     if(!level.hasChunkAt(candidate)

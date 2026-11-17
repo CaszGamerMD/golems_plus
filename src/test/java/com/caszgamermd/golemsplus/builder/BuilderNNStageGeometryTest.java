@@ -30,6 +30,33 @@ class BuilderNNStageGeometryTest {
         assertTrue(legs>1&&legs<=8);
         assertTrue(Math.hypot(current.getX()-target.getX(),current.getZ()-target.getZ())<18);
     }
+    @Test void elevatedNearRoofCanStageWithoutInventingVerticalTravel(){
+        var from=new BlockPos(100,-55,100);
+        var xTarget=from.offset(15,24,0);
+        var zTarget=from.offset(0,24,15);
+        assertTrue(BuilderNNStageGeometry.candidates(from,xTarget).isEmpty(),
+                "long-distance geometry must remain unchanged");
+        assertTrue(BuilderNNStageGeometry.needsElevatedApproach(from,xTarget));
+        var x=BuilderNNStageGeometry.elevatedCandidates(from,xTarget);
+        var z=BuilderNNStageGeometry.elevatedCandidates(from,zTarget);
+        assertFalse(x.isEmpty());
+        assertEquals(x.size(),z.size());
+        assertEquals(new HashSet<>(x.stream()
+                    .map(p->new BlockPos(100+p.getZ()-100,p.getY(),100+p.getX()-100))
+                    .toList()),new HashSet<>(z));
+        for(var point:x){
+            assertEquals(from.getY(),point.getY());
+            assertTrue(point.distSqr(from)<=230);
+            assertTrue(Math.hypot(point.getX()-xTarget.getX(),
+                        point.getZ()-xTarget.getZ())<15);
+        }
+        assertTrue(BuilderNNStageGeometry.elevatedCandidates(
+                    from,from.offset(15,9,0)).isEmpty(),
+                "small height differences must not trigger a roof stage");
+        assertTrue(BuilderNNStageGeometry.elevatedCandidates(
+                    from,from.offset(20,24,0)).isEmpty(),
+                "long approaches still use the original geometry");
+    }
     @Test void noDestinationTeleportOrUnnecessaryNearStaging(){
         var from=new BlockPos(100,50,100);
         assertTrue(BuilderNNStageGeometry.candidates(from,new BlockPos(110,72,102)).isEmpty());
