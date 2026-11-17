@@ -209,14 +209,58 @@ def sample_per_run(rows, cap, seed):
     return pools[0][:cap // 2] + pools[1][:cap // 2]
 
 
-def train_shadow(entries, output):
-    train = read_rows([p / "samples.log" for p, m in entries if m["course"] in ("matrix", "dome")])
+
+# Immutable 2026-11-16 source: three physical, four-builder original-Matrix
+# runs from Actions run 43860868337. Distinct from the eight-builder trials.
+HISTORICAL_MATRIX_COMMIT = "e995f0f72705efa76663e4d075cbe366402f64e7"
+
+
+def historical_matrix_samples(root):
+    """Return validated earlier Matrix movement files; never include Farm data."""
+    if root is None:
+        return [], []
+    paths, origins = [], []
+    for trial in (1, 2, 3):
+        folder = root / ("nn-trial-" + str(trial))
+        log = folder / "samples.log"
+        provenance = folder / "provenance.json"
+        if not log.exists() and not provenance.exists():
+            continue  # Artifacts expire; distinguish missing history from bad data.
+        if not log.exists() or not provenance.exists():
+            raise ValueError("Incomplete archived Matrix trial " + str(trial))
+        meta = json.loads(provenance.read_text())
+        if (meta.get("commit") != HISTORICAL_MATRIX_COMMIT
+                or str(meta.get("trial")) != str(trial)
+                or meta.get("schema") != 3
+                or "crew=004d4154" not in meta.get("environment", "")):
+            raise ValueError("Wrong historical source / Matrix crew")
+        rows = read_rows([log])
+        if (len(rows) != meta.get("samples")
+                or {r["run"] for r in rows} != {meta.get("run")}
+                or {r["schema"] for r in rows} != {3}):
+            raise ValueError("Historical Matrix movement provenance mismatch")
+        paths.append(log)
+        origins.append(dict(trial=trial, run=meta["run"],
+                            commit=meta["commit"], samples=len(rows),
+                            crew=4, held_out=False))
+    if len({m["run"] for m in origins}) != len(origins):
+        raise ValueError("Duplicate archived Matrix server")
+    return paths, origins
+
+def train_shadow(entries, output, history=None):
+    history_paths, history_origins = historical_matrix_samples(history)
+    train = read_rows([p / "samples.log" for p, m in entries if m["course"] in ("matrix", "dome")]
+                      + history_paths)
     held = read_rows([p / "samples.log" for p, m in entries if m["course"] == "farm"])
     train_ids, held_ids = {r["run"] for r in train}, {r["run"] for r in held}
+    if any(m["run"] not in train_ids for m in history_origins):
+        raise ValueError("Archived Matrix runs missing from training")
     if train_ids & held_ids:
         raise ValueError("Training/held-out server ID overlap")
     report = dict(training_builds=["matrix", "dome"], held_out_build="farm",
                   training_runs=sorted(train_ids), held_out_runs=sorted(held_ids),
+                  historical_matrix_runs=history_origins,
+                  historical_matrix_samples=sum(m["samples"] for m in history_origins),
                   label="moved_at_least_0.25m_in_20_ticks", shadow_only=True)
     if (len(train_ids) < 3 or len(held_ids) < 3
             or {r["moved"] for r in train} != {0, 1}
@@ -252,7 +296,7 @@ def train_shadow(entries, output):
     return report
 
 
-def aggregate(root, output, commit, expected):
+def aggregate(root, output, commit, expected, history=None):
     output.mkdir(parents=True, exist_ok=True)
     entries = []
     for path in sorted(root.glob("nn-learning-*/manifest.json")):
@@ -319,7 +363,7 @@ def aggregate(root, output, commit, expected):
         report.append("INCOMPLETE: missing or invalid trials; model not trained.")
         (output / "report.md").write_text("\n".join(report) + "\n")
         raise ValueError("Incomplete batch; see summary.json")
-    model = train_shadow(entries, output)
+    model = train_shadow(entries, output, history=history)
     summary["movement_model_status"] = model["status"]
     write_json(output / "summary.json", summary)
     for filename in ("samples.log", "actions.log", "placements.log",
@@ -363,6 +407,7 @@ def main():
     b.add_argument("output", type=Path)
     b.add_argument("--commit", required=True)
     b.add_argument("--expected", type=int, default=9)
+    b.add_argument("--historical-matrix", type=Path, default=None)
     args = parser.parse_args()
     if args.command == "collect":
         print(json.dumps(collect(args.log, args.output, args.course,
@@ -370,7 +415,7 @@ def main():
                                  args.policy, args.exit_status), indent=2))
     else:
         print(json.dumps(aggregate(args.root, args.output, args.commit,
-                                   args.expected), indent=2))
+                                   args.expected, history=args.historical_matrix), indent=2))
 
 
 if __name__ == "__main__":
