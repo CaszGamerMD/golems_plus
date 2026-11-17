@@ -409,12 +409,18 @@ public final class BuilderVillagerMatrixFullGameTest {
                 .toList();
         // onEachTick eagerly allocates one callback for every maxTicks value.
         // A sequence keeps one repeating event for this open-ended assessment.
+        // A GameTest failure/success is processed after this sequence callback.
+        // Latch our terminal decision before another tick can emit a second
+        // and contradictory result (stall followed by a time limit).
+        final boolean[] terminal={false};
         h.startSequence().thenExecuteFor(1_000_000_000,()->{
+            if(terminal[0])return;
             long tick=h.getTick();
             if(!BuilderGolem.temporaryScaffoldingEnabled()&&tick%100==0){
                 for(var worker:crew){
                     if(!worker.getItem(BuilderGolem.SCAFFOLD_BELT_SLOT).isEmpty()
                             ||!table.scaffoldPositions(worker.getUUID()).isEmpty()){
+                        terminal[0]=true;
                         h.fail("Scaffold-free Matrix violated tool/temporary scaffold restriction");
                         return;
                     }
@@ -482,6 +488,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                         +" fluid="+level.getFluidState(at));
             }
             if(table.phase()==WorkerPhase.COMPLETE){
+                terminal[0]=true;
                 BuilderTrace.dump(level,table,"matrix complete");
                 System.out.println("[MATRIX TRIAL RESULT] outcome="+(correct==SOURCE_BLOCKS?"COMPLETE":"MISMATCH")
                         +" layer=complete elapsedMs="+elapsedMillis+" tick="+tick
@@ -498,6 +505,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                 h.succeed();return;
             }
             if(timeLimit&&!allStalled&&!noWorkTimeout){
+                terminal[0]=true;
                 BuilderTrace.dump(level,table,"matrix time limit");
                 System.out.println("[MATRIX TRIAL RESULT] outcome=TIME_LIMIT layer="+(y-origin.getY())
                         +" elapsedMs="+elapsedMillis+" tick="+tick+" correct="+correct
@@ -508,6 +516,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                 h.succeed();return;
             }
             if(allStalled||noWorkTimeout){
+                terminal[0]=true;
                 BuilderTrace.dump(level,table,"matrix stall");
                 System.out.println("[MATRIX TRIAL RESULT] outcome="+(allStalled?"ALL_BUILDERS_STALLED":"NO_WORK_PROGRESS")
                         +" layer="+(y-origin.getY())+" elapsedMs="+elapsedMillis+" tick="+tick

@@ -69,8 +69,13 @@ def diagnostics(lines, course, trial):
         if matched:
             key, label = matched
             detail = line.split(key, 1)[1].strip()
+            reasons = [r for r in REASONS if r in detail]
+            reason_match = re.search(r'(?:^| )reason=([A-Za-z0-9_+-]+)', detail)
+            reason_code = reason_match.group(1) if reason_match else None
+            if reason_code and reason_code not in reasons:
+                reasons.append(reason_code)
             rows.append(dict(course=course, trial=trial, category=label,
-                             reasons=[r for r in REASONS if r in detail],
+                             reasons=reasons, reason_code=reason_code,
                              detail=detail[:2200], diagnostic_only=True))
     return rows
 
@@ -134,6 +139,15 @@ def collect(log, output, course, trial, crew, commit, attempt, policy, exit_code
     return manifest
 
 
+def training_majority_baseline(train, held):
+    """Choose the majority label using raw training runs, not a balanced sample."""
+    if not train or not held:
+        raise ValueError("Missing baseline examples")
+    label = int(sum(r["moved"] for r in train) * 2 >= len(train))
+    return dict(label=label,
+                accuracy=sum(r["moved"] == label for r in held) / len(held))
+
+
 def sample_per_run(rows, cap, seed):
     rng = random.Random(seed)
     pools = [[r for r in rows if r["moved"] == label] for label in (0, 1)]
@@ -169,10 +183,15 @@ def train_shadow(entries, output):
         return report
     model = Network(seed=17, hidden=8, schema=3)
     model.fit(capped, epochs=20, rate=.015)
-    majority = int(sum(r["moved"] for r in capped) * 2 >= len(capped))
+    # The balanced fit sample is NOT representative of class prevalence.
+    # Compare to a constant predictor selected on the uncapped training runs.
+    baseline = training_majority_baseline(train, held)
+    held_metrics = metrics(model, held)
     report.update(status="SHADOW_ONLY_TRAINED", training_samples=len(capped),
-                  held_out=metrics(model, held), training=metrics(model, capped),
-                  held_out_majority_baseline=sum(r["moved"] == majority for r in held) / len(held),
+                  held_out=held_metrics, training=metrics(model, capped),
+                  held_out_majority_label=baseline["label"],
+                  held_out_majority_baseline=baseline["accuracy"],
+                  held_out_accuracy_gain=round(held_metrics["accuracy"] - baseline["accuracy"], 6),
                   by_held_out_run={run: metrics(model, [r for r in held if r["run"] == run])
                                    for run in sorted(held_ids)},
                   warning="Movement prediction does not prove build success; model cannot steer.")

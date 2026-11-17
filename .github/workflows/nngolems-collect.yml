@@ -8,6 +8,7 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNeuralRecorder.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFullGameTest.java'
   workflow_dispatch:
 permissions:
   contents: read

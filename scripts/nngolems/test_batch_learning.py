@@ -1,6 +1,7 @@
 """Schema/invariant tests for the multi-build learning batch."""
 import unittest
-from batch_learning import physical_result, diagnostics, sample_per_run, BUILDS
+from batch_learning import (physical_result, diagnostics, sample_per_run,
+                            training_majority_baseline, BUILDS)
 
 
 class BatchLearningTest(unittest.TestCase):
@@ -40,6 +41,17 @@ class BatchLearningTest(unittest.TestCase):
         self.assertTrue(rows[0]["diagnostic_only"])
         self.assertIn("search_no_route", rows[0]["reasons"])
         self.assertEqual(rows[1]["category"], "crew_retreat")
+        roof = diagnostics(["[NN ROOF GATE] worker=x reason=not_grounded"],
+                           "farm", 1)[0]
+        self.assertEqual(roof["reason_code"], "not_grounded")
+        self.assertEqual(roof["reasons"], ["not_grounded"])
+
+    def test_majority_baseline_uses_raw_training_prevalence(self):
+        # Balanced fitting would be a tie; actual train labels are mostly 0.
+        raw = [dict(moved=0)] * 9 + [dict(moved=1)]
+        held = [dict(moved=0)] * 3 + [dict(moved=1)]
+        self.assertEqual(training_majority_baseline(raw, held),
+                         {"label": 0, "accuracy": 0.75})
 
     def test_training_cap_balances_classes_and_is_deterministic(self):
         rows = [dict(moved=i % 2, run="a", worker="builder",
