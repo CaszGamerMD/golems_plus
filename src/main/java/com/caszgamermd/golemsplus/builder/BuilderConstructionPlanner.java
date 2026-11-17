@@ -756,6 +756,12 @@ public final class BuilderConstructionPlanner {
                     &&(BuilderNNRoofFrontier.canApproach(world,worker,target,bodyBlocking,pending.size())
                         ||BuilderFlight.canAccessWork(world,worker,target,bodyBlocking)
                         ||pending.size()<=24&&BuilderFlight.canAccessRoofWork(world,worker,target,bodyBlocking)
+                        // The dome's cap contains walls/fences between
+                        // independently grounded surfaces. When a simple
+                        // walk+one-lift is blocked, try a bounded chain of
+                        // actual landed flights with fully checked geometry.
+                        ||!lookahead&&BuilderNNRoofFrontier.canMultiLegApproach(
+                                world,worker,target,bodyBlocking,pending.size())
                         ||pending.size()==1&&"true".equals(System.getenv("GOLEMS_NN_BANDED"))
                             &&table.builderFile().equals("placed-nn-dragon.gpb")
                             &&java.util.Set.of("X","Z").contains(System.getenv().getOrDefault("NN_STRIP_AXIS","Y"))
