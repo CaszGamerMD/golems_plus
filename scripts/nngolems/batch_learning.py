@@ -11,7 +11,7 @@ from train import Network, metrics, read_rows
 from actions import read_actions
 from placements import read_placements
 
-BUILDS = ("home", "dome", "farm")
+BUILDS = ("matrix", "dome", "farm")
 REASONS = ("missing physical support", "search_no_route", "search_partial",
            "no confirmed reachable work stance/exit", "no_candidates")
 MARKERS = {
@@ -210,12 +210,12 @@ def sample_per_run(rows, cap, seed):
 
 
 def train_shadow(entries, output):
-    train = read_rows([p / "samples.log" for p, m in entries if m["course"] in ("home", "dome")])
+    train = read_rows([p / "samples.log" for p, m in entries if m["course"] in ("matrix", "dome")])
     held = read_rows([p / "samples.log" for p, m in entries if m["course"] == "farm"])
     train_ids, held_ids = {r["run"] for r in train}, {r["run"] for r in held}
     if train_ids & held_ids:
         raise ValueError("Training/held-out server ID overlap")
-    report = dict(training_builds=["home", "dome"], held_out_build="farm",
+    report = dict(training_builds=["matrix", "dome"], held_out_build="farm",
                   training_runs=sorted(train_ids), held_out_runs=sorted(held_ids),
                   label="moved_at_least_0.25m_in_20_ticks", shadow_only=True)
     if (len(train_ids) < 3 or len(held_ids) < 3
@@ -313,7 +313,7 @@ def aggregate(root, output, commit, expected):
                       + ", ".join(str(v) for v in case["end_no_progress_ticks"]) + " |")
     report.extend(["", "Problem codes are sampled planner messages and MUST NOT be "
                    "used as supervised success labels.",
-                   "Train on Home Demo+Dome; Farm Demo is unseen-build evaluation.",
+                   "Train on Villager Matrix+Dome; Farm Demo is unseen-build evaluation.",
                    "Counts reflect world state, not the builder ledger.", ""])
     if len(entries) != expected or summary["valid"] != expected:
         report.append("INCOMPLETE: missing or invalid trials; model not trained.")
