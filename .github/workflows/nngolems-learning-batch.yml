@@ -1,4 +1,4 @@
-name: NNGolems automatic multi-build learning batch
+name: NNGolems Matrix-Dome-Farm learning batch
 on:
   push:
     branches: [NNGolems]
@@ -12,6 +12,8 @@ on:
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderConstructionPlanner.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNN*.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNCurriculumGameTest.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNCurriculumFixture.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFullFixture.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNDomeStrategyGameTest.java'
   workflow_dispatch:
 permissions:
@@ -37,7 +39,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        course: [home, dome, farm]
+        course: [matrix, dome, farm]
         trial: [1, 2, 3]
     env:
       MATRIX_TEST_MODE: controlled
@@ -51,9 +53,9 @@ jobs:
       # This only changes the admission gate, never collision safety.
       GOLEMS_NN_ROOF_RADIUS: '24'
       NN_SPEED_TEST: 'true'
-      NN_SPEED_TICK_LIMIT: ${{ matrix.course == 'farm' && '240000' || '72000' }}
-      NN_COURSE_SECONDS: ${{ matrix.course == 'farm' && '1200' || '600' }}
-      NN_TEAM_STALL_TICKS: ${{ matrix.course == 'farm' && '2400' || '1200' }}
+      NN_SPEED_TICK_LIMIT: ${{ matrix.course != 'dome' && '240000' || '72000' }}
+      NN_COURSE_SECONDS: ${{ matrix.course != 'dome' && '1200' || '600' }}
+      NN_TEAM_STALL_TICKS: ${{ matrix.course != 'dome' && '2400' || '1200' }}
       GOLEMS_NN_RECORD: 'true'
       GOLEMS_NN_TEAM_RECORD: 'true'
       GOLEMS_NN_SHADOW: 'true'
