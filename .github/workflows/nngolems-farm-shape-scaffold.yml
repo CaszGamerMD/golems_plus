@@ -4,6 +4,12 @@ on:
     branches: [NNGolems]
     paths:
       - '.github/workflows/nngolems-farm-shape-scaffold.yml'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNExitGeometry.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNScaffoldChain.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderConstructionPlanner.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
+      - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderNNExitGeometryTest.java'
+      - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderNNScaffoldChainTest.java'
       # Edited to trigger a fresh, controlled post-fix comparison.
   workflow_dispatch:
 permissions:

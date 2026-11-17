@@ -5,11 +5,18 @@ import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
+import net.minecraft.server.Bootstrap;
+import net.minecraft.SharedConstants;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** No world edits or arbitrary pass-through: exact future voxel shape. */
 class BuilderNNExitGeometryTest {
     private static final BlockPos AT=new BlockPos(2,1,3);
+    @BeforeAll static void bootstrapMinecraft(){
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+    }
 
     @Test void upperSpaceOverRealBottomSlabIsNotAnImaginaryFullCube(){
         AABB body=new AABB(2.2,1.66,3.2,2.5,1.95,3.5);
