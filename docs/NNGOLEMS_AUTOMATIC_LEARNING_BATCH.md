@@ -18,8 +18,11 @@ or an external scheduled caller with GitHub Actions write access.
 
 ## Design
 
-The first batch is 3 original builds (Dragon, Dome, Farm Demo) x 3 separate
+The standard batch now uses three exact user builds (Villager Matrix, Dome, Farm Demo) x 3 separate
 Minecraft server processes per build = 9 physical tests, each with 8 golems.
+Villager Matrix is the byte-exact VillagerMatrixClean_V2 source (15,376 blocks,
+15,004 air cells), not a smaller synthetic fixture. Home Demo is retired from
+this standard batch; specialized historical regression workflows remain separate.
 The matrix runs at most 3 servers at once and waits for all 9 results before
 the cross-build evaluation. Each server uses a fixed fixture, actual Creative
 Crate, full modded movement/placement, a named experiment policy, an exact
@@ -57,7 +60,7 @@ Team and diagnostic merged JSONL includes course, trial, held_out, commit and
 the original source row for each event. Data is usable by ChatGPT or any future
 training pipeline; logs are preserved for forensic review.
 
-**Training split:** train movement on Dragon+Dome servers only. Evaluate on
+**Training split:** train movement on Villager Matrix+Dome servers only. Evaluate on
 all three Farm Demo servers, no overlap by server UUID or build. Training has
 balanced, reproducible per-run caps so a long run cannot dominate. Both classes
 are required for the model; insufficient data produces a visible skip rather
