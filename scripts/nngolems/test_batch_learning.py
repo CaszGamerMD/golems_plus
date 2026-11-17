@@ -6,7 +6,8 @@ from pathlib import Path
 from batch_learning import (physical_result, diagnostics, sample_per_run,
                             training_majority_baseline, parse_progress,
                             progress_diagnostics, progress_problem_code, BUILDS,
-                            historical_matrix_samples, HISTORICAL_MATRIX_COMMIT)
+                            historical_matrix_samples, HISTORICAL_MATRIX_COMMIT,
+                            collect, aggregate, train_shadow)
 
 
 class BatchLearningTest(unittest.TestCase):
@@ -36,6 +37,64 @@ class BatchLearningTest(unittest.TestCase):
             (folder / "provenance.json").write_text(json.dumps(provenance))
             with self.assertRaises(ValueError):
                 historical_matrix_samples(root)
+
+    def test_real_failure_observations_survive_nonzero_gametest_exit(self):
+        # A known terminal build outcome with coherent recording is useful
+        # even when the GameTest assertion reports failure.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            log = root / "server.log"
+            movement = dict(schema=3, run="matrix-run-1", worker="worker-a",
+                            tick=20, features=[0.0] * 30, moved=0,
+                            distance=0.0, controller="IDLE")
+            team = dict(run="team-run-1", course="matrix", crew=8,
+                        start={"correct": 123}, endCorrect=123, placedDelta=0)
+            log.write_text(
+                "[NN_SPEED_RESULT] course=matrix outcome=ALL_BUILDERS_STALLED "
+                "correct=123 total=15376 elapsedTicks=4000\\n" +
+                "[NNGOLEMS] " + json.dumps(movement) + "\n" +
+                "[NNGOLEMS_TEAM] " + json.dumps(team) + "\n")
+            case = root / "nn-learning-matrix-1"
+            manifest = collect(log, case, "matrix", 1, 8, "fixed-commit",
+                               "1", "recovery-baseline", 1)
+            self.assertTrue(manifest["valid"])
+            self.assertFalse(manifest["game_test_passed"])
+            self.assertEqual(manifest["gradle_exit"], 1)
+            self.assertEqual(manifest["outcome"], "ALL_BUILDERS_STALLED")
+            self.assertTrue((case / "samples.log").exists())
+            output = root / "merged"
+            summary = aggregate(root, output, "fixed-commit", 9)
+            self.assertEqual(summary["valid"], 1)
+            self.assertEqual(summary["received"], 1)
+            self.assertFalse(summary["complete_dataset"])
+            self.assertEqual(summary["builds"]["matrix"]["correct"], [123])
+            self.assertEqual(summary["game_test_passed"], 0)
+            self.assertTrue((output / "report.md").exists())
+            self.assertIn("INCOMPLETE PHYSICAL BATCH",
+                          (output / "report.md").read_text())
+
+    def test_shadow_trains_without_farm_but_must_not_claim_validation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            entries = []
+            for i in range(3):
+                folder = root / str(i)
+                folder.mkdir()
+                rows = [
+                    dict(schema=3, run="matrix-history-" + str(i),
+                         worker="worker-a", tick=20 + j * 20,
+                         features=[0.0] * 30, moved=j,
+                         distance=0.0 if j == 0 else 0.5, controller="IDLE")
+                    for j in range(2)]
+                (folder / "samples.log").write_text(
+                    "".join("[NNGOLEMS] " + json.dumps(row) + "\n" for row in rows))
+                entries.append((folder, {"course": "matrix"}))
+            output = root / "model"
+            output.mkdir()
+            result = train_shadow(entries, output)
+            self.assertEqual(result["status"], "SHADOW_ONLY_TRAINED_UNEVALUATED")
+            self.assertNotIn("held_out", result)
+            self.assertTrue((output / "movement-model.json").exists())
 
     def test_physical_dome_result(self):
         line = ("[NN DOME RESULT] mode=AUTO8 outcome=NO_WORK_PROGRESS "
