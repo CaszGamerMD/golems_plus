@@ -155,7 +155,7 @@ def collect(log, output, course, trial, crew, commit, attempt, policy, exit_code
         actions = read_actions([log])
         placements = read_placements([log])
         team = marked(lines, "[NNGOLEMS_TEAM] ")
-        if not movements or not team or exit_code != 0:
+        if not movements or not team:
             raise ValueError("No valid movement/team observations or GameTest failed")
         runs = {r["run"] for r in movements + actions + placements}
         if len(runs) != 1 or len({r["run"] for r in team}) != 1:
@@ -174,7 +174,8 @@ def collect(log, output, course, trial, crew, commit, attempt, policy, exit_code
         write_rows(output / "team.jsonl", team)
         write_rows(output / "diagnostics.jsonl", diag)
         write_rows(output / "progress.jsonl", progress)
-        manifest.update(result, valid=True, run=next(iter(runs)),
+        manifest.update(result, valid=True, game_test_passed=(exit_code == 0),
+                        run=next(iter(runs)),
                         team_run=team[0]["run"],
                         movement_samples=len(movements),
                         movement_stationary=sum(not r["moved"] for r in movements),
@@ -262,10 +263,9 @@ def train_shadow(entries, output, history=None):
                   historical_matrix_runs=history_origins,
                   historical_matrix_samples=sum(m["samples"] for m in history_origins),
                   label="moved_at_least_0.25m_in_20_ticks", shadow_only=True)
-    if (len(train_ids) < 3 or len(held_ids) < 3
+    if (len(train_ids) < 3
             or {r["moved"] for r in train} != {0, 1}
-            or {r["moved"] for r in held} != {0, 1}
-            or {r["schema"] for r in train + held} != {3}):
+            or {r["schema"] for r in train} != {3}):
         report["status"] = "INSUFFICIENT_CROSS_BUILD_DATA"
         write_json(output / "movement-model-report.json", report)
         return report
@@ -279,6 +279,15 @@ def train_shadow(entries, output, history=None):
         return report
     model = Network(seed=17, hidden=8, schema=3)
     model.fit(capped, epochs=20, rate=.015)
+    # Train even when Farm holdout runs are missing, but never imply validation.
+    if (len(held_ids) < 3 or {r["moved"] for r in held} != {0, 1}
+            or {r["schema"] for r in held} != {3}):
+        report.update(status="SHADOW_ONLY_TRAINED_UNEVALUATED",
+                      training_samples=len(capped), training=metrics(model, capped),
+                      warning="Farm holdout unavailable; model cannot steer builders.")
+        write_json(output / "movement-model.json", model.export())
+        write_json(output / "movement-model-report.json", report)
+        return report
     # The balanced fit sample is NOT representative of class prevalence.
     # Compare to a constant predictor selected on the uncapped training runs.
     baseline = training_majority_baseline(train, held)
@@ -315,7 +324,7 @@ def aggregate(root, output, commit, expected, history=None):
         spread = max(complete_ticks) - min(complete_ticks) if len(complete_ticks) >= 2 else None
         by_build[course] = dict(valid_runs=len(cases), correct=scores,
                                 completion_spread_ticks=spread,
-                                consistent_completion=(course == "dome" and len(cases) == 3
+                                consistent_completion=(len(cases) == 3
                                                        and len(complete_ticks) == 3
                                                        and spread is not None and spread <= 6000),
                                 full_completions=sum(m["outcome"] == "COMPLETE" for m in cases),
@@ -329,9 +338,12 @@ def aggregate(root, output, commit, expected, history=None):
                                 sampled_problem_windows=dict(sum(
                                     (Counter(m.get("problem_windows", {})) for m in cases),
                                     Counter())))
+    valid_entries = [(p, m) for p, m in entries if m.get("valid")]
     summary = dict(schema=1, commit=commit, expected=expected,
-                   received=len(entries),
-                   valid=sum(m.get("valid", False) for _, m in entries),
+                   received=len(entries), valid=len(valid_entries),
+                   game_test_passed=sum(m.get("game_test_passed", m.get("gradle_exit") == 0)
+                                        for _, m in valid_entries),
+                   complete_dataset=(len(entries) == expected and len(valid_entries) == expected),
                    builds=by_build, models_never_deployed=True)
     write_json(output / "summary.json", summary)
     report = ["# NNGolems multi-build training batch", "",
@@ -359,17 +371,16 @@ def aggregate(root, output, commit, expected, history=None):
                    "used as supervised success labels.",
                    "Train on Villager Matrix+Dome; Farm Demo is unseen-build evaluation.",
                    "Counts reflect world state, not the builder ledger.", ""])
-    if len(entries) != expected or summary["valid"] != expected:
-        report.append("INCOMPLETE: missing or invalid trials; model not trained.")
-        (output / "report.md").write_text("\n".join(report) + "\n")
-        raise ValueError("Incomplete batch; see summary.json")
-    model = train_shadow(entries, output, history=history)
+    if not summary["complete_dataset"]:
+        report.append("INCOMPLETE PHYSICAL BATCH: missing/invalid trials; "
+                      "train only on verified observations.")
+    model = train_shadow(valid_entries, output, history=history)
     summary["movement_model_status"] = model["status"]
     write_json(output / "summary.json", summary)
     for filename in ("samples.log", "actions.log", "placements.log",
                      "team.jsonl", "diagnostics.jsonl", "progress.jsonl"):
         with (output / filename).open("w") as destination:
-            for folder, m in entries:
+            for folder, m in valid_entries:
                 src = folder / filename
                 if not src.exists():
                     raise ValueError("Missing " + str(src))
