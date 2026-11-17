@@ -22,4 +22,21 @@ class BuilderNNRoofFrontierTest {
         assertTrue(BuilderNNRoofFrontier.nearElevated(from,from.offset(0,14,-24),25));
         assertFalse(BuilderNNRoofFrontier.nearElevated(from,from.offset(24,14,1),25));
     }
+    @Test void sparseDomeCapMayTrySeparateVerifiedFlightLegs(){
+        var from=new BlockPos(100,-55,100);
+        var east=from.offset(35,23,0);
+        var north=from.offset(0,23,-35);
+        assertTrue(BuilderNNRoofFrontier.sparseRoofMultiLegCandidate(from,east,7));
+        assertTrue(BuilderNNRoofFrontier.sparseRoofMultiLegCandidate(from,north,7));
+        assertTrue(BuilderNNRoofFrontier.sparseRoofMultiLegCandidate(from,
+                from.offset(-40,23,0),24));
+        assertFalse(BuilderNNRoofFrontier.sparseRoofMultiLegCandidate(from,
+                from.offset(41,23,0),7));
+        assertFalse(BuilderNNRoofFrontier.sparseRoofMultiLegCandidate(from,east,25));
+        assertFalse(BuilderNNRoofFrontier.sparseRoofMultiLegCandidate(from,east,0));
+        assertFalse(BuilderNNRoofFrontier.sparseRoofMultiLegCandidate(from,
+                from.offset(3,1,0),7));
+        assertFalse(BuilderNNRoofFrontier.sparseRoofMultiLegCandidate(from,
+                from.offset(3,49,0),7));
+    }
 }
