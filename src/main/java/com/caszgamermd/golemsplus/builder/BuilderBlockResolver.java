@@ -95,10 +95,16 @@ public final class BuilderBlockResolver {
         // Campfires are ordinary paid blocks; the placed block entity is
         // empty. Only the lit/default or wet case is presently supported.
         boolean vanillaCampfire=id.equals("minecraft:campfire")||id.equals("minecraft:soul_campfire");
+        // Vanilla standing mob/player heads contain a block entity but their
+        // ordinary blockstates (rotation, redstone power) require one paid head
+        // item. The .litematic source-state reader does NOT import owner skin
+        // or profile NBT. Limit this exemption to the two exact Matrix states.
+        boolean vanillaStaticHead=id.equals("minecraft:player_head")
+                ||id.equals("minecraft:zombie_head");
         if((item==Items.AIR && !(expectedOnly&&id.equals("minecraft:piston_head")))
                 || block instanceof EntityBlock
                 &&!sign&&!vanillaComparator&&!vanillaDaylightDetector
-                &&!vanillaBed&&!vanillaContainer&&!vanillaCampfire)return null;
+                &&!vanillaBed&&!vanillaContainer&&!vanillaCampfire&&!vanillaStaticHead)return null;
         // The constructor groups each valid double-plant, door and bed
         // pair into one claimed item-backed job. Neither companion is a
         // stand-alone material, and crops/fire/portals still require
