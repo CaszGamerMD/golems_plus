@@ -60,6 +60,18 @@ Team and diagnostic merged JSONL includes course, trial, held_out, commit and
 the original source row for each event. Data is usable by ChatGPT or any future
 training pipeline; logs are preserved for forensic review.
 
+**Historical bootstrap (verified):** Each new batch attempts to retrieve three
+actual original-Matrix trials from GitHub Actions run 43860868337, source
+commit `e995f0f72705efa76663e4d075cbe366402f64e7`. These used FOUR
+builders and are tagged separately; they are not counted as any of the nine
+current EIGHT-builder trials. Raw movement rows, schema and independent run
+IDs are validated against archived provenance before inclusion. If the
+90-day artifacts have expired, the workflow continues without them; a
+malformed/downloaded archive is rejected rather than silently treated as
+valid. Historical Farm runs never enter training. Historical observations
+are only fitted after all nine new trials have passed data validation.
+The exported movement model stays shadow-only.
+
 **Training split:** train movement on Villager Matrix+Dome servers only. Evaluate on
 all three Farm Demo servers, no overlap by server UUID or build. Training has
 balanced, reproducible per-run caps so a long run cannot dominate. Both classes
