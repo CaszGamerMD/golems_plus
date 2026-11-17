@@ -17,6 +17,17 @@ public final class BuilderNNRoofFrontier {
         return Boolean.parseBoolean(System.getProperty("golems.nn.roofFrontier",
                 System.getenv().getOrDefault("GOLEMS_NN_ROOF_FRONTIER","false")));
     }
+    /** A bounded, experimental search-radius change. No flight is approved
+     * without the existing physical collision, launch and landing proof.
+     * Only the NNGolems dome batch opts in to 40; ordinary play stays at 24. */
+    static int searchRadius(){
+        String value=System.getProperty("golems.nn.roofProbeRadius",
+                System.getenv().getOrDefault("GOLEMS_NN_ROOF_RADIUS","24"));
+        try{
+            int radius=Integer.parseInt(value);
+            return radius>=24&&radius<=40?radius:24;
+        }catch(RuntimeException ex){return 24;}
+    }
     /** Rotation-neutral admission; never authorizes a flight or placement. */
     static boolean nearElevated(BlockPos from,BlockPos target,int pending){
         if(from==null||target==null||pending<=24)return false;
@@ -24,7 +35,8 @@ public final class BuilderNNRoofFrontier {
         if(rise<2||rise>64)return false;
         long dx=(long)target.getX()-from.getX();
         long dz=(long)target.getZ()-from.getZ();
-        return dx*dx+dz*dz<=24L*24L;
+        long radius=searchRadius();
+        return dx*dx+dz*dz<=radius*radius;
     }
     static boolean canApproach(ServerLevel level,BuilderGolem worker,
             BlockPos target,boolean bodyBlocking,int pending){
