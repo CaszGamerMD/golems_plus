@@ -17,6 +17,8 @@ on:
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNCurriculumGameTest.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNCurriculumFixture.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFullFixture.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBlockResolver.java'
+      - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderNNVanillaHeadTest.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNDomeStrategyGameTest.java'
   workflow_dispatch:
 permissions:
@@ -27,13 +29,22 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
-    name: Validate structured learning pipeline
+    name: Validate neural dataset and Matrix head source
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Run dataset regression tests
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Run neural dataset regression tests
         run: python3 -m unittest discover -s scripts/nngolems -p 'test_batch_learning.py' -v
+      - name: Confirm Matrix head states are source-resolvable
+        run: gradle --no-daemon test --tests '*BuilderNNVanillaHeadTest'
   run:
     name: ${{ matrix.course }} physical run ${{ matrix.trial }}
     needs: validate
