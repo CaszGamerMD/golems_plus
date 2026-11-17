@@ -1,7 +1,8 @@
 """Schema/invariant tests for the multi-build learning batch."""
 import unittest
 from batch_learning import (physical_result, diagnostics, sample_per_run,
-                            training_majority_baseline, BUILDS)
+                            training_majority_baseline, parse_progress,
+                            progress_diagnostics, progress_problem_code, BUILDS)
 
 
 class BatchLearningTest(unittest.TestCase):
@@ -61,6 +62,42 @@ class BatchLearningTest(unittest.TestCase):
         self.assertEqual(a, b)
         self.assertEqual(len(a), 20)
         self.assertEqual(sum(r["moved"] for r in a), 10)
+
+
+    def test_progress_preserves_exact_blocker_with_spaces_and_block_states(self):
+        line = ("[NN_CURRICULUM_PROGRESS] course=farm correct=297 total=13143 "
+                "layer=4 tick=18000 problem=Waiting for Builders to vacate "
+                "placement cell 1080, -51, 1071")
+        event = parse_progress(line, "[NN_CURRICULUM_PROGRESS]")
+        self.assertEqual(event["problem_code"], "crew_occupancy")
+        self.assertIn("1080, -51, 1071", event["problem"])
+        self.assertEqual(event["correct"], 297)
+        self.assertIsNone(parse_progress("[NN_SPEED_RESULT] correct=30",
+                                         "[NN_CURRICULUM_PROGRESS]"))
+        self.assertEqual(progress_problem_code("Deferred blocked one-step rise BlockPos{x=1}"),
+                         "vertical_access")
+        self.assertEqual(progress_problem_code("FRONTIER: Y=14 pending=329 next=[state=a=b]"),
+                         "blocked_frontier")
+
+    def test_stall_windows_are_observations_not_success_labels(self):
+        observations = [parse_progress(
+            "[NN_CURRICULUM_PROGRESS] course=farm correct=" + str(correct)
+            + " total=13143 layer=14 tick=" + str(tick) + " problem=" + problem,
+            "[NN_CURRICULUM_PROGRESS]") for tick, correct, problem in [
+                (400, 290, "Crew recovery: returning"),
+                (800, 290, "Crew recovery: returning"),
+                (1200, 297, "NN: second unloaded Builder probing distant frontier"),
+                (1600, 297, "Deferred block BlockPos{x=1080} until safe stance"),
+                (2000, 297, "Waiting for Builders to vacate placement cell 1080")]]
+        report = progress_diagnostics(observations)
+        self.assertEqual(report["progress_samples"], 5)
+        self.assertEqual(report["max_no_progress_ticks"], 800)
+        self.assertEqual(report["end_no_progress_ticks"], 800)
+        self.assertEqual(report["terminal_problem_code"], "crew_occupancy")
+        self.assertEqual(report["problem_windows"]["crew_recovery"], 2)
+        empty = progress_diagnostics([])
+        self.assertEqual(empty["terminal_problem_code"], "unrecorded")
+        self.assertIsNone(empty["end_no_progress_ticks"])
 
 
 if __name__ == "__main__":
