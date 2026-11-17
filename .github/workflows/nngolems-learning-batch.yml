@@ -1,0 +1,156 @@
+name: NNGolems automatic multi-build learning batch
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-learning-batch.yml'
+      - 'scripts/nngolems/batch_learning.py'
+      - 'scripts/nngolems/test_batch_learning.py'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNeuralRecorder.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderConstructionPlanner.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNN*.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNCurriculumGameTest.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNDomeStrategyGameTest.java'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nngolems-learning-batch-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    name: Validate structured learning pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run dataset regression tests
+        run: python3 -m unittest discover -s scripts/nngolems -p 'test_batch_learning.py' -v
+  run:
+    name: ${{ matrix.course }} physical run ${{ matrix.trial }}
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        course: [dragon, dome, farm]
+        trial: [1, 2, 3]
+    env:
+      MATRIX_TEST_MODE: controlled
+      NN_COURSE: ${{ matrix.course }}
+      NN_REPEAT_TRIAL: ${{ matrix.trial }}
+      NN_TEAM_SIZE: '8'
+      NN_DOME_MODE: AUTO8
+      NN_SPEED_TEST: 'true'
+      NN_SPEED_TICK_LIMIT: ${{ matrix.course == 'farm' && '240000' || '72000' }}
+      NN_COURSE_SECONDS: ${{ matrix.course == 'farm' && '1200' || '600' }}
+      NN_TEAM_STALL_TICKS: ${{ matrix.course == 'farm' && '2400' || '1200' }}
+      GOLEMS_NN_RECORD: 'true'
+      GOLEMS_NN_TEAM_RECORD: 'true'
+      GOLEMS_NN_SHADOW: 'true'
+      GOLEMS_NN_MODEL: ${{ github.workspace }}/experiments/nngolems/2026-11-16-rotation-learning/flight_environment-model.json
+      GOLEMS_NN_REACHABLE_HANDOFF: 'false'
+      GOLEMS_NN_PARTIAL_YIELD: 'false'
+      GOLEMS_NN_TEAM_LOCAL: 'false'
+      GOLEMS_NN_FRONTIER_STAGING: 'true'
+      GOLEMS_NN_ROOF_FRONTIER: 'true'
+      GOLEMS_NN_SHAPE_EXIT: 'true'
+      GOLEMS_NN_SCAFFOLD_CHAIN: 'true'
+      GOLEMS_NN_STRUCTURES: 'true'
+      GOLEMS_NN_STRUCTURE_LOOKAHEAD: 'true'
+      GOLEMS_NN_PROJECT_YIELD: 'true'
+      GOLEMS_NN_AUTO: 'true'
+      GOLEMS_NN_STRIP_PILOT: 'false'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Prepare exact user-build fixture and isolated GameTest
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$NN_COURSE" != "dome" ]; then
+            python3 scripts/nngolems/prepare_curriculum.py
+          fi
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path=Path('src/gametest/resources/fabric.mod.json')
+          data=json.loads(path.read_text())
+          name=('BuilderNNDomeStrategyGameTest' if os.environ['NN_COURSE']=='dome'
+                else 'BuilderNNCurriculumGameTest')
+          data['entrypoints']['fabric-gametest']=[
+            'com.caszgamermd.golemsplus.builder.'+name]
+          path.write_text(json.dumps(data,indent=2)+'\n')
+          PY
+      - name: Build physically and preserve a strict data manifest
+        shell: bash
+        run: |
+          mkdir -p build/nn-batch
+          set +e
+          set -o pipefail
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-batch/server.log
+          game_status=$?
+          set -e
+          echo "$game_status" > build/nn-batch/gradle-exit.txt
+          python3 scripts/nngolems/batch_learning.py collect \
+            build/nn-batch/server.log build/nn-batch \
+            --course "$NN_COURSE" --trial "$NN_REPEAT_TRIAL" \
+            --crew "$NN_TEAM_SIZE" --commit "$GITHUB_SHA" \
+            --attempt "$GITHUB_RUN_ATTEMPT" \
+            --policy roof+shape+scaffold+staging \
+            --exit-status "$game_status"
+          test "$game_status" = 0
+      - name: Upload evidence even on a physical test failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-learning-${{ matrix.course }}-${{ matrix.trial }}
+          path: build/nn-batch/
+          retention-days: 90
+          if-no-files-found: warn
+  aggregate:
+    name: Assemble datasets and train held-out shadow model
+    runs-on: ubuntu-latest
+    needs: [validate, run]
+    if: always()
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nn-learning-*
+          path: build/nn-learning-runs
+      - name: Aggregate real server runs; hold Farm Demo out of training
+        shell: bash
+        run: |
+          python3 scripts/nngolems/batch_learning.py aggregate \
+            build/nn-learning-runs build/nn-learning-dataset \
+            --commit "$GITHUB_SHA" --expected 9
+      - name: Display report
+        if: always()
+        shell: bash
+        run: |
+          if [ -f build/nn-learning-dataset/report.md ]; then
+            cat build/nn-learning-dataset/report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Incomplete dataset; inspect failed physical jobs" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Archive merged data and shadow-model evaluation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-learning-dataset
+          path: build/nn-learning-dataset/
+          retention-days: 90
+          if-no-files-found: warn
