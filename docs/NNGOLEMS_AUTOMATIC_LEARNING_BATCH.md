@@ -84,6 +84,36 @@ No safety gate, schematic claims, block purchases or physical movement are
 bypassed. A GitHub Actions success means tests executed and valid observations
 were collected; it does not imply build completion.
 
+## Current reliability and learning safeguards (November 17)
+
+The standard physical suite is the original Villager Matrix V2 (15,376
+source cells), Dome (3,493), and Farm Demo (13,143): three separate
+eight-builder Minecraft servers per build. Each build must finish 3/3
+times with an elapsed-game-tick spread no greater than 6,000. A nonzero
+GameTest/Gradle exit always FAILS this reliability gate, even if an
+assessment logged a terminal `COMPLETE` row.
+
+**Training is independent of the build-completion gate.** If Minecraft
+reports a terminal physical result and all recorded movement and crew
+measurements pass schema/run-identity validation, its observations are
+retained even if Gradle exits nonzero. The per-trial manifest records both
+`valid` (observations) and `game_test_passed` (test process); these are
+not interchangeable. Incomplete batches retain their report and can
+train a shadow-only model from verified available runs, including the
+provenance-checked historical Matrix runs. Without three valid Farm
+servers with both movement labels the status is
+`SHADOW_ONLY_TRAINED_UNEVALUATED`, and **no held-out accuracy claim**
+is made. Training never enables the model as a movement controller.
+
+The archived original Matrix tests exposed two source states previously
+excluded by the safe-entity-block rule:
+`minecraft:player_head[powered=false,rotation=4]` and
+`minecraft:zombie_head[powered=false,rotation=4]`. On NNGolems only,
+these ordinary standing heads are eligible as paid head-item placements
+and exact-world comparisons; this does not reconstruct player-skin
+profiles or other block-entity NBT. A Java regression confirms resolver
+behavior. Physical in-world placement still needs the new batch result.
+
 ## Reuse
 
 After downloading artifacts, use:
