@@ -1,0 +1,14 @@
+# NNGolems physical exit geometry and scaffold anchor trial
+
+2026-11-16 Farm Demo roof planner A/B [GitHub run 43989256679]:
+- Roof ON: 1,454 / 744 exact-world correct blocks, 32 / 4 real roof probes, 28 / 4 approved; roof OFF: 311 / 618. All four stopped with NO_WORK_PROGRESS and wide within-condition variation.
+- Final upper-layer (schematic Y 13–14) logs contain end-stone brick walls, crimson stairs, slabs, and horizontal scaffolding with no **currently present** physical support. Several blocks have multiple standable/exit candidate tiles, but zero end-to-end trained routes.
+- The original builder exit proof checked a hypothetical FULL SOLID CUBE at the target, regardless of the real prospective shape. It could reject a valid sidestep around a narrow wall post or above a lower slab, even when vanilla collision would permit it.
+
+Two independent, opt-in experimental policies (kept ON together in first controlled A/B):
+1. `GOLEMS_NN_SHAPE_EXIT=true`: when the fully transformed intended state is known, simulate the actual future collision `BlockState.getCollisionShape(...).toAabbs()` instead of an imaginary 1x1x1 cube. Margin 4 cm remains on every voxel, real existing-world `noCollision` and grounded support remain required, and the 0.8-block X/Z placement clearance does NOT change. If the future state is unknown, retain the conservative cube. This change is used identically by planner/preview and execution checks; it cannot justify building from a route that has not physically executed.
+2. `GOLEMS_NN_SCAFFOLD_CHAIN=true`: assign a bounded sorting bonus to **already survivable** schematic scaffolding with real material below or real adjacent scaffolding. This prioritizes vertical anchors followed by extensions, rather than attempting unsupported bridge tails first. It never bypasses `canSurvive`, purchases imaginary scaffolding, or finishes a pending cell without actual work. Unanchored bridge segments still have to wait for their source; this is not a full solution if the source is absent from the physical schematic.
+
+The added JUnit tests explicitly contrast full-cube vs bottom-slab/wall-post collision, require unknown-state conservatism, and forbid any scheduling reward for physically unsupported scaffold. The new physical Farm Demo workflow runs four independent eight-worker tests, with roof and staging enabled in both groups and only these two policies toggled. Reports exact world correctness (not placement ledger only), ordinary completions, real roof probes and stage movement. The original `main` branch is untouched.
+
+Potential remaining work: if horizontal scaffold still cannot survive with all schematic neighbors already placed, identify the missing physical anchor and design a *paid*, temporary support tower with real recovery/cleanup, or flag such schematic cells for manual engineering. Avoid fabricated scaffold placements to inflate completion.

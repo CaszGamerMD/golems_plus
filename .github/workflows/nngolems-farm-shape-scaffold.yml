@@ -1,0 +1,224 @@
+name: NNGolems Farm Demo shape-exit and scaffold-chain A/B
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-farm-shape-scaffold.yml'
+      # Edited to trigger a fresh, controlled post-fix comparison.
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  farm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        geometry: ['false', 'true']
+        trial: [1, 2]
+    env:
+      MATRIX_TEST_MODE: controlled
+      GOLEMS_NN_REACHABLE_HANDOFF: 'false'
+      GOLEMS_NN_PARTIAL_YIELD: 'false'
+      GOLEMS_NN_FRONTIER_STAGING: 'true'
+      GOLEMS_NN_ROOF_FRONTIER: 'true'
+      GOLEMS_NN_SHAPE_EXIT: ${{ matrix.geometry }}
+      GOLEMS_NN_SCAFFOLD_CHAIN: ${{ matrix.geometry }}
+      NN_REPEAT_TRIAL: ${{ matrix.trial }}
+      NN_COURSE: farm
+      NN_TEAM_SIZE: '8'
+      GOLEMS_NN_STRUCTURES: 'true'
+      GOLEMS_NN_STRUCTURE_LOOKAHEAD: 'true'
+      GOLEMS_NN_PROJECT_YIELD: 'true'
+      GOLEMS_NN_AUTO: 'true'
+      GOLEMS_NN_STRIP_PILOT: 'false'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+      GOLEMS_NN_TEAM_RECORD: 'true'
+      NN_SPEED_TEST: 'true'
+      NN_SPEED_TICK_LIMIT: '240000'
+      NN_COURSE_SECONDS: '1200'
+      NN_TEAM_STALL_TICKS: '2400'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Validate real future collision, scaffold anchor order, and roof gates
+        run: gradle --no-daemon test --tests '*BuilderNNExitGeometryTest' --tests '*BuilderNNScaffoldChainTest' --tests '*BuilderNNRoofFrontierTest' --tests '*BuilderNNStageGeometryTest' --tests '*BuilderNNProjectRecoveryPolicyTest' --tests '*BuilderNNStructuresTest'
+      - name: Select and instrument only Farm Demo
+        run: |
+          python3 scripts/nngolems/prepare_curriculum.py
+          python3 - <<'PY'
+          import json, hashlib
+          from pathlib import Path
+          root=Path('src/gametest/resources')
+          p=root/'fabric.mod.json'
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderNNCurriculumGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          p=Path('src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNCurriculumGameTest.java')
+          s=p.read_text()
+          marker='        var steps=plan.steps();'
+          assert s.count(marker)==1
+          s=s.replace(marker,marker+'''
+                  var farmGroups=BuilderNNStructures.compile(steps,true);
+                  System.out.println("[NN FARM GROUPS] groups="+farmGroups.groups().size()
+                      +" sizes="+farmGroups.groups().stream().map(java.util.List::size).toList()
+                      +" steps="+steps.size()
+                      +" deferred="+steps.stream().filter(s->BuilderDeferredState.verification(s.encodedState())).count());
+                  for(int i=0;i<farmGroups.groups().size();i++){
+                      var members=farmGroups.members(i);
+                      System.out.println("[NN FARM GROUP DETAIL] group="+(i+1)+" volume="+BuilderNNStructures.volume(steps,members)
+                          +" deferred="+members.stream().filter(j->BuilderDeferredState.verification(steps.get(j).encodedState())).count()
+                          +" first="+steps.get(members.getFirst())
+                          +" maxY="+members.stream().mapToInt(j->steps.get(j).y()).max().orElseThrow());
+                  }
+          ''')
+          marker='            h.succeed(); // Assessment completed, not necessarily the build.'
+          assert s.count(marker)==1
+          s=s.replace(marker,'''
+                  long ordinary=java.util.stream.IntStream.range(0,steps.size()).filter(i->!BuilderNNStructures.manualTail(steps.get(i))&&!steps.get(i).ignorePlant()).count();
+                  long ordinaryDone=java.util.stream.IntStream.range(0,steps.size()).filter(i->!BuilderNNStructures.manualTail(steps.get(i))&&!steps.get(i).ignorePlant()&&table.builderStepCompletedForMaterials(i)).count();
+                  System.out.println("[NN FARM ORDINARY] done="+ordinaryDone+" total="+ordinary);
+                  System.out.println("[NN FARM FINAL] correct="+correct+" total="+course.blocks()
+                      +" outcome="+outcome+" ticks="+elapsedTicks+" distance="+distance[0]);
+          '''+marker)
+          p.write_text(s)
+          PY
+      - name: Build Farm Demo with structure detection
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/nn-farm-shape-scaffold
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-farm-shape-scaffold/server.log
+          python3 - <<'PY'
+          import re, json, os
+          from pathlib import Path
+          root=Path('build/nn-farm-shape-scaffold')
+          log=(root/'server.log').read_text()
+          group=re.search(r'\[NN FARM GROUPS\] groups=(\d+) sizes=(\[[^\]]*\]) steps=(\d+) deferred=(\d+)',log)
+          result=re.search(r'\[NN FARM FINAL\] correct=(\d+) total=(\d+) outcome=(\w+) ticks=(\d+) distance=([\d.Ee+-]+)',log)
+          assert group and result, 'Missing Farm Demo assessment'
+          report={'course':'farm','crew':8,'groups':int(group[1]),'groupSizes':json.loads(group[2]),'steps':int(group[3]),'deferred':int(group[4]),'correct':int(result[1]),'total':int(result[2]),'outcome':result[3],'ticks':int(result[4]),'distance':float(result[5]),'activeGroups':re.findall(r'\[NN STRUCTURE ACTIVE\] group=(\d+/\d+)',log)}
+          assert report['total']==13143
+          assert sum(report['groupSizes'])==report['steps']
+          report['readyGroups']=re.findall(r'\[NN STRUCTURE LOOKAHEAD READY\] group=(\d+)',log)
+          report['preparedSchedules']=re.findall(r'\[NN STRUCTURE SCHEDULE\] group=(\d+) source=prepared',log)
+          report['groupDetails']=[line.split('[NN FARM GROUP DETAIL] ',1)[1] for line in log.splitlines() if '[NN FARM GROUP DETAIL] group=' in line]
+          assert report['activeGroups'], 'Structure policy did not activate'
+          (root/'report.json').write_text(json.dumps(report,indent=2))
+          print(json.dumps(report,indent=2))
+
+          ordinary=re.search(r'\[NN FARM ORDINARY\] done=(\d+) total=(\d+)',log)
+          assert ordinary, 'Missing ordinary task assessment'
+          report['ordinaryDone']=int(ordinary[1]); report['ordinaryTotal']=int(ordinary[2])
+          report['meets99pct']=report['ordinaryDone']*100>=99*report['ordinaryTotal']
+          report['manualReviewReached']='[NN STRUCTURE MANUAL REVIEW]' in log
+          report['projectYields']=re.findall(r'\[NN PROJECT YIELD\] from=(\d+) to=(\d+)',log)
+          report['projectsVisited']=list(dict.fromkeys(report['activeGroups']))
+          report['staging']='true'
+          report['roofPilot']='true'
+          report['geometryPolicy']=os.environ['GOLEMS_NN_SHAPE_EXIT']
+          report['scaffoldChainPolicy']=os.environ['GOLEMS_NN_SCAFFOLD_CHAIN']
+          report['trial']=int(os.environ['NN_REPEAT_TRIAL'])
+          report['yieldRecalls']=log.count('[NN PROJECT YIELD RECALL]')
+          report['partialYieldEvents']=re.findall(r'\[NN PROJECT PARTIAL YIELD\] active=(\d+) ready=(\d+) returning=(\d+) work=(\d+)',log)
+          report['frontierSnapshots']=[line.split('[NN FRONTIER SNAPSHOT] ',1)[1] for line in log.splitlines() if '[NN FRONTIER SNAPSHOT] structure=' in line][-12:]
+          report['scaffoldingSupportDiagnostics']=len(re.findall(r'missing physical support \(below=',log))
+          report['retreatStarts']=log.count('[CREW RETREAT START]')
+          print('Project yield events:',report['projectYields'])
+          print('Physical ordinary completion:',report['ordinaryDone'],'/',report['ordinaryTotal'])
+          (root/'report.json').write_text(json.dumps(report,indent=2))
+          print('Ordinary construction:',report['ordinaryDone'],'/',report['ordinaryTotal'])
+          report['scouts']=len(re.findall(r'\[STDOUT\]: \[NN STAGE SCOUT\]',log))
+          report['scoutBlocked']=len(re.findall(r'\[STDOUT\]: \[NN STAGE SCOUT BLOCKED\]',log))
+          report['stageDiagnostics']=[line.split('[NN FRONTIER STAGE DIAG] ',1)[1]
+              for line in log.splitlines() if '[STDOUT]: [NN FRONTIER STAGE DIAG]' in line][-15:]
+          report['stagingStarts']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE START\]',log))
+          report['stageContinues']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE CONTINUE\]',log))
+          report['stagingArrivals']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE ARRIVED\]',log))
+          report['roofGates']=len(re.findall(r'\[STDOUT\]: \[NN ROOF GATE\]',log))
+          report['roofGateReasons']=dict(__import__('collections').Counter(
+              re.findall(r'\[NN ROOF GATE\].*?reason=([a-z_]+)',log)))
+          report['roofProbes']=len(re.findall(r'\[STDOUT\]: \[NN ROOF PROBE\]',log))
+          report['roofApproved']=len(re.findall(r'\[STDOUT\]: \[NN ROOF APPROVED\]',log))
+          report['stagingStops']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE STOP\]',log))
+          (root/'report.json').write_text(json.dumps(report,indent=2))
+          print('Staging:',report['staging'],'scouts:',report['scouts'],
+              'starts:',report['stagingStarts'],
+              'continues:',report['stageContinues'],
+              'arrived:',report['stagingArrivals'],'stops:',report['stagingStops'])
+          print('99 percent ordinary completion target met:',report['meets99pct'])
+          # This run tests a real short-circuit fix; a zero-probe result
+          # is a reproducible failure, not proof the policy works.
+          # Geometry eligibility and route probes may differ across
+          # physical runs; record them, never invent a successful flight.
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('## Farm Demo geometry='+report['geometryPolicy']+' trial='+str(report['trial'])+'\n\n'+json.dumps(report,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: farm-geometry-${{ matrix.geometry }}-trial-${{ matrix.trial }}
+          path: build/nn-farm-shape-scaffold/
+
+  summarize:
+    name: Compare shape-aware Farm Demo trials
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [farm]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: farm-geometry-*
+          path: trial-results
+      - name: Summarize complete run variance
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,statistics,os
+          paths=list(Path('trial-results').rglob('report.json'))
+          data=[json.loads(p.read_text()) for p in paths]
+          out=['# Farm Demo exact exit shapes + scaffold anchoring — repeated tests','',
+               '8 builders; world seed 0; roof and staging ON in both policies.','']
+          for mode in ('false','true'):
+              samples=sorted((d for d in data if d.get('geometryPolicy')==mode),
+                  key=lambda d:d['trial'])
+              scores=[d['correct'] for d in samples]
+              out += ['## Shape/scaffold pilot '+mode+' ('+str(len(samples))+'/2 trials)','']
+              if scores:
+                  out.append('Correct blocks: min='+str(min(scores))
+                      +' median='+str(statistics.median(scores))
+                      +' max='+str(max(scores)))
+                  for d in samples:
+                      out.append('- Trial '+str(d['trial'])+': correct='+str(d['correct'])
+                          +' ordinary='+str(d['ordinaryDone'])
+                          +' roof probes='+str(d['roofProbes'])
+                          +' roof approvals='+str(d['roofApproved'])
+                          +' staging continues='+str(d['stageContinues'])
+                          +' outcome='+d['outcome'])
+              out.append('')
+          if len(data)==4:
+              first=[d['correct'] for d in data if d['geometryPolicy']=='false']
+              second=[d['correct'] for d in data if d['geometryPolicy']=='true']
+              out.append('Median correct-block difference (geometry ON - OFF): '
+                  +str(statistics.median(second)-statistics.median(first)))
+          else:out.append('INCOMPLETE: expected four reports; got '+str(len(data)))
+          result='\n'.join(out)+'\n'
+          print(result)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write(result)
+          Path('trial-results/summary.md').write_text(result)
+          if len(data)!=4:raise SystemExit('Missing one or more roof trials')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: farm-geometry-summary
+          path: trial-results/summary.md
+# Dedicated Farm Demo run; four independent shape + scaffold policy trials.

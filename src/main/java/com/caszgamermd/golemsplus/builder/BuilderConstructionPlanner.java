@@ -114,8 +114,13 @@ public final class BuilderConstructionPlanner {
      */
     static boolean exitAfterPlacement(ServerLevel world,BuilderGolem builder,
             BlockPos stance,BlockPos target){
-        var future=new net.minecraft.world.phys.AABB(target)
-                .inflate(.10,0,.10);
+        return exitAfterPlacement(world,builder,stance,target,null);
+    }
+    static boolean exitAfterPlacement(ServerLevel world,BuilderGolem builder,
+            BlockPos stance,BlockPos target,BlockState intended){
+        // Use the real future voxel collision for walls, stairs, slabs
+        // and scaffolding. An unknown state keeps the conservative cube.
+        var future=BuilderNNExitGeometry.futureCollision(world,target,intended);
         double fromFloor=WorkerNavigation.surveyFloorHeight(world,stance);
         if(!Double.isFinite(fromFloor))return false;
         var base=builder.getBoundingBox().move(
@@ -152,7 +157,7 @@ public final class BuilderConstructionPlanner {
                     double rise=riseTo>.6001?riseTo*Math.min(1,2*t):
                             riseTo<-.6001?riseTo*Math.max(0,2*t-1):riseTo*t;
                     var moved=base.move(dx*horizontal,rise,dz*horizontal);
-                    if(moved.intersects(future)
+                    if(BuilderNNExitGeometry.intersects(moved,future)
                             ||!world.noCollision(builder,moved)){
                         free=false;break;
                     }
@@ -164,6 +169,10 @@ public final class BuilderConstructionPlanner {
     }
     static boolean safeStand(ServerLevel world,BuilderGolem builder,
             BlockPos target,BlockPos stance){
+        return safeStand(world,builder,target,stance,null);
+    }
+    static boolean safeStand(ServerLevel world,BuilderGolem builder,
+            BlockPos target,BlockPos stance,BlockState intended){
         return stance.distSqr(target)<=REACH_SQUARED
                 // A target's interaction point is HALF A BLOCK ABOVE
                 // its integer Y, whereas the Builder's feet are at the
@@ -176,7 +185,7 @@ public final class BuilderConstructionPlanner {
                         ||stance.getY()==target.getY()+1
                         ||stance.getY()==target.getY()-1
                         ||stance.getY()==target.getY()-2)
-                &&exitAfterPlacement(world,builder,stance,target);
+                &&exitAfterPlacement(world,builder,stance,target,intended);
     }
     /** Waterlogging modifies a PREEXISTING block rather than creating
      * new solid collision. Requiring an exit from a hypothetical fresh
@@ -186,6 +195,10 @@ public final class BuilderConstructionPlanner {
      */
     static boolean safeStandForStep(ServerLevel world,BuilderGolem builder,
             BlockPos target,BlockPos stance,String encodedState){
+        return safeStandForStep(world,builder,target,stance,encodedState,null);
+    }
+    static boolean safeStandForStep(ServerLevel world,BuilderGolem builder,
+            BlockPos target,BlockPos stance,String encodedState,BlockState intended){
          String expectedBlock=BuilderWaterPass.originalState(encodedState)
                 .split("\\[",2)[0];
         boolean finishingDry=BuilderWaterPass.isWaterlogPass(encodedState)
@@ -214,7 +227,8 @@ public final class BuilderConstructionPlanner {
                             world,target,physical.state());
         }
         if(!finishingDry&&!nonBlocking)
-            return safeStand(world,builder,target,stance);
+            return safeStand(world,builder,target,stance,
+                    BuilderNNExitGeometry.enabled()?intended:null);
         return !stance.equals(target)
                 &&stance.distSqr(target)<=REACH_SQUARED
                 &&workReachFromFeet(stance,target)<=REACH_SQUARED
@@ -720,7 +734,8 @@ public final class BuilderConstructionPlanner {
                     BuilderWaterPass.isWaterlogPass(step.encodedState()));
             BlockPos stance=BuilderPlacementSpace.approachForStep(
                     world,worker,target,bodyBlocking,lookahead,
-                    at->safeStandForStep(world,worker,target,at,step.encodedState()));
+                    at->safeStandForStep(world,worker,target,at,step.encodedState(),
+                            state.state()));
             if(stance==null&&(BuilderPlacementSpace.safeFractionalCapPose(
                     world,worker,target)
                     ||BuilderPlacementSpace.canRetreatToFractionalCap(
@@ -792,6 +807,10 @@ public final class BuilderConstructionPlanner {
                     // outweigh a long trip across the construction zone.
                     -Math.min(24,connectedPlacementBonus(
                             world,target,builtSchematic))
+                    // Anchor genuine schematic scaffolding before spending
+                    // more time on its presently unsupported bridge tail.
+                    // Only physically survivable steps receive this hint.
+                    -BuilderNNScaffoldChain.costBonus(world,target,state.state())
                     -touch*6+risk*250
                     +(scaffold?BuilderFrontierTuning.GRAPPLE_PENALTY*2:0);
             int stockRank=stocked.contains(idx)?0:1;
