@@ -18,7 +18,10 @@ on:
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNCurriculumFixture.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFullFixture.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBlockResolver.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCeilingDependencies.java'
       - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderNNVanillaHeadTest.java'
+      - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderCeilingDependenciesTest.java'
+      - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderNNRoofFrontierTest.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNDomeStrategyGameTest.java'
   workflow_dispatch:
 permissions:
@@ -43,8 +46,12 @@ jobs:
           gradle-version: '9.7.0'
       - name: Run neural dataset regression tests
         run: python3 -m unittest discover -s scripts/nngolems -p 'test_batch_learning.py' -v
-      - name: Confirm Matrix head states are source-resolvable
-        run: gradle --no-daemon test --tests '*BuilderNNVanillaHeadTest'
+      - name: Verify Matrix ceiling dependency and dome multi-leg eligibility
+        run: |
+          gradle --no-daemon test \
+            --tests '*BuilderNNVanillaHeadTest' \
+            --tests '*BuilderCeilingDependenciesTest' \
+            --tests '*BuilderNNRoofFrontierTest'
   run:
     name: ${{ matrix.course }} physical run ${{ matrix.trial }}
     needs: validate
@@ -80,6 +87,9 @@ jobs:
       GOLEMS_NN_TEAM_LOCAL: 'false'
       GOLEMS_NN_FRONTIER_STAGING: 'true'
       GOLEMS_NN_ROOF_FRONTIER: 'true'
+      # Isolated dome-only fallback. Every leg must prove physical support,
+      # collision clearance and an executable post-landing work route.
+      GOLEMS_NN_MULTI_LEG_ROOF: ${{ matrix.course == 'dome' && 'true' || 'false' }}
       GOLEMS_NN_SHAPE_EXIT: 'true'
       GOLEMS_NN_SCAFFOLD_CHAIN: 'true'
       GOLEMS_NN_STRUCTURES: 'true'
