@@ -127,14 +127,14 @@ jobs:
           root.mkdir(parents=True, exist_ok=True)
           log = (root / 'server.log').read_text(errors='replace') if (root / 'server.log').exists() else ''
           signatures = {
-              'whole_crew_retreats': r'\\[CREW RETREAT START\\]',
-              'frontier_stage_starts': r'\\[NN FRONTIER STAGE START\\]',
-              'frontier_stage_arrivals': r'\\[NN FRONTIER STAGE ARRIVED\\]',
-              'frontier_stage_stops': r'\\[NN FRONTIER STAGE STOP\\]',
-              'stage_diagnostics': r'\\[NN FRONTIER STAGE DIAG\\]',
+              'whole_crew_retreats': r'\[CREW RETREAT START\]',
+              'frontier_stage_starts': r'\[NN FRONTIER STAGE START\]',
+              'frontier_stage_arrivals': r'\[NN FRONTIER STAGE ARRIVED\]',
+              'frontier_stage_stops': r'\[NN FRONTIER STAGE STOP\]',
+              'stage_diagnostics': r'\[NN FRONTIER STAGE DIAG\]',
               'missing_physical_support': r'missing physical support',
               'no_ground_frontier': r'no ground frontier|no grounded frontier',
-              'project_yields': r'\\[NN PROJECT YIELD\\]',
+              'project_yields': r'\[NN PROJECT YIELD\]',
           }
           lines = [
               f'course={os.environ.get("NN_COURSE", "unknown")}',
@@ -143,13 +143,13 @@ jobs:
               f'log_present={bool(log)}',
           ]
           lines += [f'{key}={len(re.findall(pattern, log, re.IGNORECASE))}' for key, pattern in signatures.items()]
-          (root / 'failure-signatures.txt').write_text('\\n'.join(lines) + '\\n')
-          print('NN diagnostic signatures:\\n' + '\\n'.join(lines))
+          (root / 'failure-signatures.txt').write_text('\n'.join(lines) + '\n')
+          print('NN diagnostic signatures:\n' + '\n'.join(lines))
           summary = os.environ.get('GITHUB_STEP_SUMMARY')
           if summary:
               with open(summary, 'a') as out:
-                  out.write('### NNGolems physical diagnostic signatures\\n\\n```\\n' +
-                            '\\n'.join(lines) + '\\n```\\n')
+                  out.write('### NNGolems physical diagnostic signatures\n\n```\n' +
+                            '\n'.join(lines) + '\n```\n')
           PY
       - name: Upload evidence even on a physical test failure
         if: always()
