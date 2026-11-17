@@ -1413,12 +1413,24 @@ public final class BuilderBuildService {
                 // partition: the chosen small crew must see ALL its cells,
                 // including those originally assigned to parked workers.
                 zone=assigned.layerSteps().getOrDefault(layer,zone);
-                // A small crew owns the entire phase, including its one
-                // explicitly authorized higher support dependency.
+            }
+            // Ceiling-mounted lichen/buttons can be blocked by the exact
+            // permanent Y+1 support in the schematic. A different X/Z
+            // zone may own that support, so ALL active crew (not only a
+            // reduced small-layer crew) may volunteer to place it. Claims
+            // remain exclusive and every candidate still passes the same
+            // physical reach, collision, material and future-exit tests.
+            // Never extend this exception to other upper-layer cells.
+            var ceiling=table.builderCeilingDependencies(plan.steps());
+            if(!ceiling.isEmpty()){
                 var expanded=new java.util.ArrayList<Integer>(zone);
-                for(var dependency:table.builderCeilingDependencies(plan.steps()).entrySet())
-                    if(table.builderStepInActivePhase(plan.steps(),dependency.getKey())
-                            &&!expanded.contains(dependency.getKey()))expanded.add(dependency.getKey());
+                for(var dependency:ceiling.entrySet()){
+                    int support=dependency.getKey();
+                    if(table.builderStepInActivePhase(plan.steps(),support)
+                            &&!table.builderZoneDone(List.of(support))
+                            &&!expanded.contains(support))
+                        expanded.add(support);
+                }
                 zone=expanded;
             }
             boolean stalledRoof=roofNeedsHelp(level,table);
