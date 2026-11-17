@@ -156,6 +156,14 @@ public final class BuilderNNCurriculumGameTest {
             if(state!=null)expected.add(new Expected(origin.offset(b.x(),b.y(),b.z()),state));
         }
         int unsupported=course.blocks()-expected.size();
+        // Exact Matrix reliability is meaningless if any source-state was
+        // silently excluded from the physical construction job or score.
+        if(course.id().equals("matrix")&&(unsupported!=0||!plan.unsupported().isEmpty())){
+            System.out.println("[NN MATRIX SOURCE REJECTED] unresolved="+unsupported
+                    +" plannerUnsupported="+plan.unsupported());
+            h.fail("Original Matrix has unresolved source blocks; do not score a partial fixture");
+            return;
+        }
         var steps=plan.steps();
         if(rotationTest){
             if(unsupported!=0||!plan.unsupported().isEmpty()||expected.size()!=course.blocks()
