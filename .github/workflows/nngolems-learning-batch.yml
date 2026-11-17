@@ -21,6 +21,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: nngolems-learning-batch-${{ github.ref }}
   cancel-in-progress: false
@@ -176,12 +177,40 @@ jobs:
         with:
           pattern: nn-learning-*
           path: build/nn-learning-runs
+      # These are separate, previously recorded original-Matrix runs with
+      # four builders. Do not confuse them with the current eight-builder trials.
+      # They are fed into training only; Farm remains completely held out.
+      - name: Restore verified Matrix trial 1 from prior physical test
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 43860868337
+          name: nn-trial-1
+          path: build/nn-historical/nn-trial-1
+          github-token: ${{ github.token }}
+      - name: Restore verified Matrix trial 2 from prior physical test
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 43860868337
+          name: nn-trial-2
+          path: build/nn-historical/nn-trial-2
+          github-token: ${{ github.token }}
+      - name: Restore verified Matrix trial 3 from prior physical test
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 43860868337
+          name: nn-trial-3
+          path: build/nn-historical/nn-trial-3
+          github-token: ${{ github.token }}
       - name: Aggregate real server runs; hold Farm Demo out of training
         shell: bash
         run: |
           python3 scripts/nngolems/batch_learning.py aggregate \
             build/nn-learning-runs build/nn-learning-dataset \
-            --commit "$GITHUB_SHA" --expected 9
+            --commit "$GITHUB_SHA" --expected 9 \
+            --historical-matrix build/nn-historical
       - name: Display report
         if: always()
         shell: bash
