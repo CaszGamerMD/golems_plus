@@ -51,7 +51,7 @@ class BatchLearningTest(unittest.TestCase):
                         start={"correct": 123}, endCorrect=123, placedDelta=0)
             log.write_text(
                 "[NN_SPEED_RESULT] course=matrix outcome=ALL_BUILDERS_STALLED "
-                "correct=123 total=15376 elapsedTicks=4000\\n" +
+                "correct=123 total=15376 elapsedTicks=4000\n" +
                 "[NNGOLEMS] " + json.dumps(movement) + "\n" +
                 "[NNGOLEMS_TEAM] " + json.dumps(team) + "\n")
             case = root / "nn-learning-matrix-1"
