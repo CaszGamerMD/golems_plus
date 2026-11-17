@@ -1,13 +1,41 @@
 """Schema/invariant tests for the multi-build learning batch."""
 import unittest
+import json
+import tempfile
+from pathlib import Path
 from batch_learning import (physical_result, diagnostics, sample_per_run,
                             training_majority_baseline, parse_progress,
-                            progress_diagnostics, progress_problem_code, BUILDS)
+                            progress_diagnostics, progress_problem_code, BUILDS,
+                            historical_matrix_samples, HISTORICAL_MATRIX_COMMIT)
 
 
 class BatchLearningTest(unittest.TestCase):
     def test_all_builds_supported(self):
         self.assertEqual(BUILDS, ("matrix", "dome", "farm"))
+
+    def test_verified_archived_matrix_training_samples(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(historical_matrix_samples(root), ([], []))
+            folder = root / "nn-trial-1"
+            folder.mkdir()
+            row = dict(schema=3, run="previous-matrix-server", worker="a",
+                       tick=20, features=[0.] * 30, moved=0,
+                       distance=0.0, controller="IDLE")
+            (folder / "samples.log").write_text(
+                "[NNGOLEMS] " + json.dumps(row) + "\\n")
+            provenance = dict(commit=HISTORICAL_MATRIX_COMMIT, trial="1",
+                              schema=3, samples=1, run="previous-matrix-server",
+                              environment="seed=0 crew=004d4154 old-matrix")
+            (folder / "provenance.json").write_text(json.dumps(provenance))
+            files, origins = historical_matrix_samples(root)
+            self.assertEqual(len(files), 1)
+            self.assertEqual(origins[0]["crew"], 4)
+            self.assertEqual(origins[0]["samples"], 1)
+            provenance["commit"] = "bad-commit"
+            (folder / "provenance.json").write_text(json.dumps(provenance))
+            with self.assertRaises(ValueError):
+                historical_matrix_samples(root)
 
     def test_physical_dome_result(self):
         line = ("[NN DOME RESULT] mode=AUTO8 outcome=NO_WORK_PROGRESS "
