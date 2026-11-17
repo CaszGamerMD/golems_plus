@@ -33,9 +33,17 @@ public final class BuilderCeilingDependencies {
         int n=state.indexOf('[');
         if(n<0)return false;
         String id=state.substring(0,n);
-        if(!id.equals("minecraft:lever")&&!id.endsWith("_button"))return false;
-        for(String p:state.substring(n+1,state.length()-1).split(","))
-            if(p.equals("face=ceiling"))return true;
+        if(!id.equals("minecraft:lever")&&!id.endsWith("_button")
+                &&!id.equals("minecraft:glow_lichen"))return false;
+        if(!state.endsWith("]"))return false;
+        for(String p:state.substring(n+1,state.length()-1).split(",")){
+            // Up-facing lichen requires the permanent schematic block above.
+            // This narrow exception never fabricates a temporary support.
+            if(id.equals("minecraft:glow_lichen")&&p.equals("up=true"))
+                return true;
+            if(!id.equals("minecraft:glow_lichen")&&p.equals("face=ceiling"))
+                return true;
+        }
         return false;
     }
 }
