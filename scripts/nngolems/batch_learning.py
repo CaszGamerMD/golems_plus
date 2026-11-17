@@ -27,6 +27,65 @@ MARKERS = {
 }
 
 
+# These are *observed planner messages*, not proven causes and never training
+# labels. Preserve the original message alongside a stable comparison category.
+PROBLEM_PREFIXES = (
+    ("Waiting for Builders to vacate placement cell", "crew_occupancy"),
+    ("Deferred blocked one-step rise", "vertical_access"),
+    ("Deferred block ", "unsafe_placement_stance"),
+    ("FRONTIER:", "blocked_frontier"),
+    ("Crew recovery:", "crew_recovery"),
+    ("NN: second unloaded Builder probing", "distant_frontier_probe"),
+)
+
+
+def progress_problem_code(problem):
+    if not problem:
+        return "unspecified"
+    for prefix, code in PROBLEM_PREFIXES:
+        if problem.startswith(prefix):
+            return code
+    return "other"
+
+
+def parse_progress(line, marker):
+    if marker not in line:
+        return None
+    detail = line.split(marker, 1)[1]
+    fields = dict(re.findall(r"([A-Za-z][A-Za-z0-9]*)=([A-Za-z0-9_.+-]+)", detail))
+    if "correct" not in fields or "total" not in fields:
+        return None
+    problem = detail.split(" problem=", 1)[1].strip() if " problem=" in detail else ""
+    return dict(tick=int(fields.get("tick", 0)), correct=int(fields["correct"]),
+                total=int(fields["total"]), layer=fields.get("layer", "unknown"),
+                problem_code=progress_problem_code(problem), problem=problem[:500])
+
+
+def progress_diagnostics(events):
+    """Summarize observed stalled windows, never infer a physical root cause."""
+    if not events:
+        return dict(progress_samples=0, end_no_progress_ticks=None,
+                    max_no_progress_ticks=None, terminal_problem_code="unrecorded",
+                    terminal_problem="", problem_windows={})
+    ordered = sorted(events, key=lambda e: e["tick"])
+    last_change = ordered[0]["tick"]
+    prior_correct = ordered[0]["correct"]
+    longest = 0
+    for event in ordered[1:]:
+        if event["correct"] != prior_correct:
+            longest = max(longest, event["tick"] - last_change)
+            last_change = event["tick"]
+            prior_correct = event["correct"]
+        longest = max(longest, event["tick"] - last_change)
+    codes = Counter(event.get("problem_code", "unspecified") for event in ordered)
+    return dict(progress_samples=len(ordered),
+                end_no_progress_ticks=ordered[-1]["tick"] - last_change,
+                max_no_progress_ticks=longest,
+                terminal_problem_code=ordered[-1].get("problem_code", "unspecified"),
+                terminal_problem=ordered[-1].get("problem", "")[:500],
+                problem_windows=dict(codes))
+
+
 def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
@@ -107,16 +166,8 @@ def collect(log, output, course, trial, crew, commit, attempt, policy, exit_code
             raise ValueError("Invalid independent team progress measurements")
         diag = diagnostics(lines, course, trial)
         progress_marker = "[NN DOME PROGRESS]" if course == "dome" else "[NN_CURRICULUM_PROGRESS]"
-        progress = []
-        for line in lines:
-            if progress_marker in line:
-                fields = dict(re.findall(r"([A-Za-z][A-Za-z0-9]*)=([A-Za-z0-9_.+-]+)",
-                                         line.split(progress_marker, 1)[1]))
-                if "correct" in fields and "total" in fields:
-                    progress.append(dict(tick=int(fields.get("tick", 0)),
-                                         correct=int(fields["correct"]),
-                                         total=int(fields["total"]),
-                                         layer=fields.get("layer", "unknown")))
+        progress = [event for line in lines
+                    if (event := parse_progress(line, progress_marker)) is not None]
         write_rows(output / "samples.log", movements, "[NNGOLEMS] ")
         write_rows(output / "actions.log", actions, "[NNGOLEMS_ACTION] ")
         write_rows(output / "placements.log", placements, "[NNGOLEMS_PLACEMENT] ")
@@ -130,7 +181,8 @@ def collect(log, output, course, trial, crew, commit, attempt, policy, exit_code
                         flight_actions=len(actions), placements=len(placements),
                         team_windows=len(team),
                         diagnostics=dict(Counter(d["category"] for d in diag)),
-                        failure_reasons=dict(Counter(x for d in diag for x in d["reasons"])))
+                        failure_reasons=dict(Counter(x for d in diag for x in d["reasons"])),
+                        **progress_diagnostics(progress))
     except Exception as exc:
         manifest.update(valid=False, error=str(exc))
         write_json(output / "manifest.json", manifest)
@@ -219,7 +271,14 @@ def aggregate(root, output, commit, expected):
                                 full_completions=sum(m["outcome"] == "COMPLETE" for m in cases),
                                 mean_correct=sum(scores) / len(scores) if scores else None,
                                 best=max(scores) if scores else None,
-                                worst=min(scores) if scores else None)
+                                worst=min(scores) if scores else None,
+                                terminal_problem_codes=[m.get("terminal_problem_code", "unrecorded")
+                                                        for m in cases],
+                                end_no_progress_ticks=[m.get("end_no_progress_ticks")
+                                                       for m in cases],
+                                sampled_problem_windows=dict(sum(
+                                    (Counter(m.get("problem_windows", {})) for m in cases),
+                                    Counter())))
     summary = dict(schema=1, commit=commit, expected=expected,
                    received=len(entries),
                    valid=sum(m.get("valid", False) for _, m in entries),
@@ -234,7 +293,17 @@ def aggregate(root, output, commit, expected):
         report.append("| " + course + " | " + str(case["valid_runs"]) + " | "
                       + ", ".join(map(str, case["correct"])) + " | "
                       + str(case["full_completions"]) + " |")
-    report.extend(["", "Train on Dragon+Dome; Farm Demo is unseen-build evaluation.",
+    report.extend(["", "## Physical stall diagnostics (observations, not root causes)", "",
+                   "| Build | Terminal problem codes, per trial | Final no-progress ticks, per trial |",
+                   "|---|---|---|"])
+    for course in BUILDS:
+        case = by_build[course]
+        report.append("| " + course + " | "
+                      + ", ".join(case["terminal_problem_codes"]) + " | "
+                      + ", ".join(str(v) for v in case["end_no_progress_ticks"]) + " |")
+    report.extend(["", "Problem codes are sampled planner messages and MUST NOT be "
+                   "used as supervised success labels.",
+                   "Train on Dragon+Dome; Farm Demo is unseen-build evaluation.",
                    "Counts reflect world state, not the builder ledger.", ""])
     if len(entries) != expected or summary["valid"] != expected:
         report.append("INCOMPLETE: missing or invalid trials; model not trained.")
