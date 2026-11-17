@@ -1,4 +1,7 @@
 name: NNGolems Matrix-Dome-Farm learning batch
+# Requested fresh physical batch: Villager Matrix, Dome, Farm Demo.
+# Each source is tested independently three times with eight builders.
+run-name: "Matrix-Dome-Farm #${{ github.run_number }} (${{ github.sha }})"
 on:
   push:
     branches: [NNGolems]
