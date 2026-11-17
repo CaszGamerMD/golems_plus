@@ -177,6 +177,8 @@ jobs:
         with:
           pattern: nn-learning-*
           path: build/nn-learning-runs
+          # Preserve partial batches when one or more physical servers fail.
+          if_no_artifacts_found: warn
       # These are separate, previously recorded original-Matrix runs with
       # four builders. Do not confuse them with the current eight-builder trials.
       # They are fed into training only; Farm remains completely held out.
@@ -228,7 +230,7 @@ jobs:
           path: build/nn-learning-dataset/
           retention-days: 90
           if-no-files-found: warn
-      - name: Require reliable dome completion (not merely a green GameTest)
+      - name: Require consistent exact completion on Matrix, Dome and Farm
         if: always()
         shell: bash
         run: |
@@ -239,9 +241,16 @@ jobs:
           if not path.exists():
               raise SystemExit('Dome reliability gate: no aggregate summary')
           summary=json.loads(path.read_text())
-          dome=summary['builds']['dome']
-          print('DOME RELIABILITY:', dome['full_completions'], '/', dome['valid_runs'],
-                'complete; required 3/3; timing spread:', dome.get('completion_spread_ticks'))
-          if not dome.get('consistent_completion'):
-              raise SystemExit('Dome reliability gate FAILED: require 3/3 exact finishes within 6000 game ticks')
+          # Green GameTests are assessments, not completed schematics.
+          # Keep the explicit reliability gate separate from the training
+          # pipeline: a failing physical build can still provide valid data.
+          if not summary.get('complete_dataset'):
+              raise SystemExit('Physical reliability gate FAILED: batch incomplete')
+          for name in ('matrix', 'dome', 'farm'):
+              course=summary['builds'][name]
+              print(name.upper(), 'RELIABILITY:', course['full_completions'],
+                    '/', course['valid_runs'], 'complete; spread:',
+                    course.get('completion_spread_ticks'))
+              if not course.get('consistent_completion'):
+                  raise SystemExit(name+' reliability FAILED: require 3/3 exact finishes within 6000 game ticks')
           PY
