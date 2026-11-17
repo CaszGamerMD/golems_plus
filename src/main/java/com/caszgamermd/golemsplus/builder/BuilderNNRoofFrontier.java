@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerLevel;
 public final class BuilderNNRoofFrontier {
     private static final long PROBE_COOLDOWN=30;
     private static final Map<BuilderGolem,Long> nextProbe=new WeakHashMap<>();
+    private static final Map<BuilderGolem,Long> nextGateNote=new WeakHashMap<>();
     private BuilderNNRoofFrontier(){}
     static boolean enabled(){
         return Boolean.parseBoolean(System.getProperty("golems.nn.roofFrontier",
@@ -27,11 +28,26 @@ public final class BuilderNNRoofFrontier {
     }
     static boolean canApproach(ServerLevel level,BuilderGolem worker,
             BlockPos target,boolean bodyBlocking,int pending){
-        if(!enabled()||!BuilderFlight.enabled(worker)||!worker.onGround()
-                ||!nearElevated(worker.blockPosition(),target,pending)
-                ||BuilderFlight.active(worker)||BuilderGrappleAccess.active(worker)
-                ||BuilderScaffolding.isControllingMovement(worker))return false;
+        if(!enabled())return false;
         long now=level.getGameTime();
+        String rejected=!BuilderFlight.enabled(worker)?"propeller_disabled"
+                :!worker.onGround()?"not_grounded"
+                :!nearElevated(worker.blockPosition(),target,pending)
+                    ?"outside_bounded_near_elevated_window"
+                :BuilderFlight.active(worker)?"flight_busy"
+                :BuilderGrappleAccess.active(worker)?"grapple_busy"
+                :BuilderScaffolding.isControllingMovement(worker)?"scaffold_busy":null;
+        if(rejected!=null){
+            // One diagnostic per worker per 160 ticks: a test with ZERO
+            // actual roof probes must explain its eligibility gate.
+            if(now>=nextGateNote.getOrDefault(worker,0L)){
+                nextGateNote.put(worker,now+160);
+                System.out.println("[NN ROOF GATE] worker="+worker.getUUID()
+                        +" reason="+rejected+" from="+worker.blockPosition()
+                        +" target="+target+" pending="+pending);
+            }
+            return false;
+        }
         if(now<nextProbe.getOrDefault(worker,0L))return false;
         nextProbe.put(worker,now+PROBE_COOLDOWN);
         System.out.println("[NN ROOF PROBE] worker="+worker.getUUID()

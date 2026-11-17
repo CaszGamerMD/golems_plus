@@ -731,10 +731,16 @@ public final class BuilderConstructionPlanner {
                 stance=worker.blockPosition();
             // A flight route is a distinct access mode. Keep the grounded
             // stance null so speculative handoff never sends A* into midair.
+            // The generic vertical-work preflight may find a nearby hover
+            // pose WITHOUT proving the required walk-to-launch path. It is
+            // therefore not evidence that the roof detour is unnecessary.
+            // Evaluate the opt-in, throttled, physically checked roof route
+            // FIRST: otherwise Java's || short circuit can prevent the
+            // experimental planner from running at all on large layers.
             boolean propeller=stance==null
-                    &&(BuilderFlight.canAccessWork(world,worker,target,bodyBlocking)
+                    &&(BuilderNNRoofFrontier.canApproach(world,worker,target,bodyBlocking,pending.size())
+                        ||BuilderFlight.canAccessWork(world,worker,target,bodyBlocking)
                         ||pending.size()<=24&&BuilderFlight.canAccessRoofWork(world,worker,target,bodyBlocking)
-                        ||BuilderNNRoofFrontier.canApproach(world,worker,target,bodyBlocking,pending.size())
                         ||pending.size()==1&&"true".equals(System.getenv("GOLEMS_NN_BANDED"))
                             &&table.builderFile().equals("placed-nn-dragon.gpb")
                             &&java.util.Set.of("X","Z").contains(System.getenv().getOrDefault("NN_STRIP_AXIS","Y"))

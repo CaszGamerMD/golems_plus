@@ -13,3 +13,11 @@ New opt-in `GOLEMS_NN_ROOF_FRONTIER=true`:
 - Four separate physical Farm Demo assessments (two with roof pilot ON, two OFF) use eight builders, seeded world 0 and staging ON in both modes. Report actual roof probe and approval counts, staging activity, exact correct blocks, ordinary completion, and run-to-run spread, with an aggregate median comparison. A workflow PASS only means the tests executed; not a completed farm or proof of learning.
 
 If this pilot finds no approved roof paths, the next problem is reachable flight launch / supported landing geometry, not the size of the roof-search budget.
+
+## Rerun diagnosis and correction (2026-11-16)
+
+GitHub Actions attempt 2 at https://github.com/CaszGamerMD/golems_plus/actions/runs/43956250427/attempts/2 showed roof ON=472/361 and roof OFF=309/1164 correct schematic cells. All four runs ended with NO_WORK_PROGRESS, and roof ON recorded ZERO NN ROOF PROBE events. Upper layers continued to stall with valid stand candidates but no executable routes; scaffold cells without support chains also remained pending. This is not evidence against roof access because the experimental path never activated.
+
+Code inspection found that the planner evaluated `BuilderFlight.canAccessWork` before `BuilderNNRoofFrontier.canApproach` using Java short-circuit `||`. The generic check may return true for a local hover pose without proving the supported perimeter travel needed to get there, suppressing the bounded roof preflight completely. We now evaluate the opt-in roof preflight first and retain the generic fallback and full physical movement safeguards. The change only affects NNGolems when the opt-in flag is enabled, and roof checks are still gated to nearby, above-ground targets on large unfinished layers and throttled every 30 ticks per worker. Each roof candidate rejection now emits a bounded, low-rate `NN ROOF GATE` reason, which distinguishes too-distant work, ungrounded workers, busy motion and disabled equipment. The comparison workflow now **fails** a roof-ON test if it never reaches any `NN ROOF PROBE` event.
+
+Repeats are deliberately reported as separate trials: a fixed Minecraft seed did not yield stable outcomes, and neither better raw movement nor a one-off correct-block spike will be presented as validated learning.

@@ -1,4 +1,4 @@
-name: NNGolems Farm Demo roof access pilot A/B repeated
+name: NNGolems Farm Demo roof probe priority A/B
 on:
   push:
     branches: [NNGolems]
@@ -138,6 +138,9 @@ jobs:
           report['stagingStarts']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE START\]',log))
           report['stageContinues']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE CONTINUE\]',log))
           report['stagingArrivals']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE ARRIVED\]',log))
+          report['roofGates']=len(re.findall(r'\[STDOUT\]: \[NN ROOF GATE\]',log))
+          report['roofGateReasons']=dict(__import__('collections').Counter(
+              re.findall(r'\[NN ROOF GATE\].*?reason=([a-z_]+)',log)))
           report['roofProbes']=len(re.findall(r'\[STDOUT\]: \[NN ROOF PROBE\]',log))
           report['roofApproved']=len(re.findall(r'\[STDOUT\]: \[NN ROOF APPROVED\]',log))
           report['stagingStops']=len(re.findall(r'\[STDOUT\]: \[NN FRONTIER STAGE STOP\]',log))
@@ -147,8 +150,10 @@ jobs:
               'continues:',report['stageContinues'],
               'arrived:',report['stagingArrivals'],'stops:',report['stagingStops'])
           print('99 percent ordinary completion target met:',report['meets99pct'])
-          # Route/roof admissions are measurements, not preconditions for
-          # a valid physical assessment. A zero-admission trial is reported.
+          # This run tests a real short-circuit fix; a zero-probe result
+          # is a reproducible failure, not proof the policy works.
+          if report['roofPilot']=='true':
+              assert report['roofProbes']>0, 'Roof pilot did not execute: gate='+str(report['roofGateReasons'])
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
               f.write('## Farm Demo roof='+report['roofPilot']+' trial='+str(report['trial'])+'\n\n'+json.dumps(report,indent=2)+'\n')
           PY
@@ -212,4 +217,4 @@ jobs:
         with:
           name: farm-roof-summary
           path: trial-results/summary.md
-# Dedicated Farm Demo run; four independent roof-policy trials.
+# Dedicated Farm Demo run; four independent roof-policy trials; assert real roof probe activation.
