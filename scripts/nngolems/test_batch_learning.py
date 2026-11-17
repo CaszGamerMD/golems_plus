@@ -23,7 +23,7 @@ class BatchLearningTest(unittest.TestCase):
                        tick=20, features=[0.] * 30, moved=0,
                        distance=0.0, controller="IDLE")
             (folder / "samples.log").write_text(
-                "[NNGOLEMS] " + json.dumps(row) + "\\n")
+                "[NNGOLEMS] " + json.dumps(row) + "\n")
             provenance = dict(commit=HISTORICAL_MATRIX_COMMIT, trial="1",
                               schema=3, samples=1, run="previous-matrix-server",
                               environment="seed=0 crew=004d4154 old-matrix")
