@@ -7,7 +7,7 @@ from batch_learning import (physical_result, diagnostics, sample_per_run,
 
 class BatchLearningTest(unittest.TestCase):
     def test_all_builds_supported(self):
-        self.assertEqual(BUILDS, ("home", "dome", "farm"))
+        self.assertEqual(BUILDS, ("matrix", "dome", "farm"))
 
     def test_physical_dome_result(self):
         line = ("[NN DOME RESULT] mode=AUTO8 outcome=NO_WORK_PROGRESS "
@@ -22,13 +22,22 @@ class BatchLearningTest(unittest.TestCase):
                 "correct=1970 total=13143 elapsedTicks=12000")
         self.assertEqual(physical_result([line], "farm")["correct"], 1970)
         with self.assertRaises(ValueError):
-            physical_result([line], "home")
+            physical_result([line], "matrix")
+
+    def test_matrix_eight_builder_source_score(self):
+        line = ("[NN_SPEED_RESULT] course=matrix outcome=TIME_LIMIT "
+                "correct=12500 total=15376 elapsedTicks=240000")
+        result = physical_result([line], "matrix")
+        self.assertEqual(result["total"], 15376)
+        self.assertEqual(result["correct"], 12500)
+        self.assertEqual(result["elapsed_ticks"], 240000)
+        self.assertLess(result["correct_fraction"], 1.0)
 
     def test_reject_ambiguous_or_absent_terminal_result(self):
-        line = "[NN_SPEED_RESULT] course=home outcome=COMPLETE correct=20 total=20"
+        line = "[NN_SPEED_RESULT] course=matrix outcome=COMPLETE correct=15376 total=15376"
         for lines in ([], [line, line]):
             with self.assertRaises(ValueError):
-                physical_result(lines, "home")
+                physical_result(lines, "matrix")
         with self.assertRaises(ValueError):
             physical_result(["[NN_SPEED_RESULT] course=farm outcome=COMPLETE "
                              "correct=21 total=20"], "farm")
