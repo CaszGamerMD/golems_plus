@@ -11,7 +11,7 @@ from train import Network, metrics, read_rows
 from actions import read_actions
 from placements import read_placements
 
-BUILDS = ("dragon", "dome", "farm")
+BUILDS = ("home", "dome", "farm")
 REASONS = ("missing physical support", "search_no_route", "search_partial",
            "no confirmed reachable work stance/exit", "no_candidates")
 MARKERS = {
@@ -210,12 +210,12 @@ def sample_per_run(rows, cap, seed):
 
 
 def train_shadow(entries, output):
-    train = read_rows([p / "samples.log" for p, m in entries if m["course"] in ("dragon", "dome")])
+    train = read_rows([p / "samples.log" for p, m in entries if m["course"] in ("home", "dome")])
     held = read_rows([p / "samples.log" for p, m in entries if m["course"] == "farm"])
     train_ids, held_ids = {r["run"] for r in train}, {r["run"] for r in held}
     if train_ids & held_ids:
         raise ValueError("Training/held-out server ID overlap")
-    report = dict(training_builds=["dragon", "dome"], held_out_build="farm",
+    report = dict(training_builds=["home", "dome"], held_out_build="farm",
                   training_runs=sorted(train_ids), held_out_runs=sorted(held_ids),
                   label="moved_at_least_0.25m_in_20_ticks", shadow_only=True)
     if (len(train_ids) < 3 or len(held_ids) < 3
@@ -267,7 +267,13 @@ def aggregate(root, output, commit, expected):
     for course in BUILDS:
         cases = [m for _, m in entries if m["course"] == course and m.get("valid")]
         scores = [m["correct"] for m in cases]
+        complete_ticks = [m["elapsed_ticks"] for m in cases if m["outcome"] == "COMPLETE"]
+        spread = max(complete_ticks) - min(complete_ticks) if len(complete_ticks) >= 2 else None
         by_build[course] = dict(valid_runs=len(cases), correct=scores,
+                                completion_spread_ticks=spread,
+                                consistent_completion=(course == "dome" and len(cases) == 3
+                                                       and len(complete_ticks) == 3
+                                                       and spread is not None and spread <= 6000),
                                 full_completions=sum(m["outcome"] == "COMPLETE" for m in cases),
                                 mean_correct=sum(scores) / len(scores) if scores else None,
                                 best=max(scores) if scores else None,
@@ -293,7 +299,11 @@ def aggregate(root, output, commit, expected):
         report.append("| " + course + " | " + str(case["valid_runs"]) + " | "
                       + ", ".join(map(str, case["correct"])) + " | "
                       + str(case["full_completions"]) + " |")
-    report.extend(["", "## Physical stall diagnostics (observations, not root causes)", "",
+    report.extend(["", "Dome reliability goal: 3/3 exact finishes, within 6000 game ticks "
+                   "(5 minutes at 20 TPS) of one another.",
+                   "Dome reliability gate: "
+                   + ("PASS" if by_build["dome"]["consistent_completion"] else "NOT MET"),
+                   "", "## Physical stall diagnostics (observations, not root causes)", "",
                    "| Build | Terminal problem codes, per trial | Final no-progress ticks, per trial |",
                    "|---|---|---|"])
     for course in BUILDS:
@@ -303,7 +313,7 @@ def aggregate(root, output, commit, expected):
                       + ", ".join(str(v) for v in case["end_no_progress_ticks"]) + " |")
     report.extend(["", "Problem codes are sampled planner messages and MUST NOT be "
                    "used as supervised success labels.",
-                   "Train on Dragon+Dome; Farm Demo is unseen-build evaluation.",
+                   "Train on Home Demo+Dome; Farm Demo is unseen-build evaluation.",
                    "Counts reflect world state, not the builder ledger.", ""])
     if len(entries) != expected or summary["valid"] != expected:
         report.append("INCOMPLETE: missing or invalid trials; model not trained.")
