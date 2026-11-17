@@ -12,6 +12,9 @@ import java.util.List;
 final class BuilderNNCurriculumFixture {
     record Course(String id,String file,int blocks,int air,String hash) {}
     static final List<Course> COURSES=List.of(
+            // Byte-exact user-uploaded VillagerMatrixClean_V2; hash is the source-file SHA-256.
+            new Course("matrix","VillagerMatrixClean_V2.litematic",15376,15004,
+                    "77fa9731b11b1b666034a9e155c5a56abc173b9f9a974f963f916d7ef7d11816"),
             new Course("home","homeDemo.litematic",620,20086,
                     "fd9356663144ec1e6f55e1e71bddc9704624d95b4ca8eb9c358c14f1b3bb7ebb"),
             new Course("dragon","Dragon.litematic",1032,9903,
@@ -39,6 +42,18 @@ final class BuilderNNCurriculumFixture {
             if(blocks.size()!=course.blocks())throw new IllegalStateException("Structure fixture count");
             return new LitematicFileReader.Schematic("Two Buildings",List.copyOf(blocks),
                     java.util.Map.of("minecraft:stone",(long)blocks.size()),List.of());
+        }
+        if(course.id().equals("matrix")){
+            // The original source is embedded in verified Base64 segments. It
+            // must not be approximated by an unrelated synthetic Matrix.
+            Path source=BuilderVillagerMatrixFullFixture.unpack();
+            try{
+                var s=LitematicFileReader.read(source);
+                if(s.blocks().size()!=course.blocks()||s.airBlocks().size()!=course.air()
+                        ||!s.name().equals("VillagerMatrixClean_V2"))
+                    throw new IllegalStateException("Original Matrix fixture count/name mismatch");
+                return s;
+            }finally{Files.deleteIfExists(source);}
         }
         Path p=Files.createTempFile("nn-course-",".litematic");
         try(var in=BuilderNNCurriculumFixture.class.getResourceAsStream(
