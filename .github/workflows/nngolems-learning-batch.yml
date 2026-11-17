@@ -45,9 +45,11 @@ jobs:
       NN_REPEAT_TRIAL: ${{ matrix.trial }}
       NN_TEAM_SIZE: '8'
       NN_DOME_MODE: AUTO8
-      # Search farther for safe roof launch positions on Dome only.
-      # This is a candidate gate, never permission to bypass collision checks.
-      GOLEMS_NN_ROOF_RADIUS: ${{ matrix.course == 'dome' && '40' || '24' }}
+      # Controlled radius ablation: restore 24 after 40-block eligibility
+      # yielded 0/3 exact dome finishes (2873/3201/2873). Keep the same
+      # eight-worker, three-trial matrix so the next batch is comparable.
+      # This only changes the admission gate, never collision safety.
+      GOLEMS_NN_ROOF_RADIUS: '24'
       NN_SPEED_TEST: 'true'
       NN_SPEED_TICK_LIMIT: ${{ matrix.course == 'farm' && '240000' || '72000' }}
       NN_COURSE_SECONDS: ${{ matrix.course == 'farm' && '1200' || '600' }}
