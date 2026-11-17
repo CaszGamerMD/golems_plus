@@ -325,9 +325,13 @@ def aggregate(root, output, commit, expected, history=None):
         by_build[course] = dict(valid_runs=len(cases), correct=scores,
                                 completion_spread_ticks=spread,
                                 consistent_completion=(len(cases) == 3
+                                                       and all(m.get("game_test_passed", m.get("gradle_exit") == 0)
+                                                               for m in cases)
                                                        and len(complete_ticks) == 3
                                                        and spread is not None and spread <= 6000),
                                 full_completions=sum(m["outcome"] == "COMPLETE" for m in cases),
+                                passing_game_tests=sum(m.get("game_test_passed", m.get("gradle_exit") == 0)
+                                                       for m in cases),
                                 mean_correct=sum(scores) / len(scores) if scores else None,
                                 best=max(scores) if scores else None,
                                 worst=min(scores) if scores else None,
