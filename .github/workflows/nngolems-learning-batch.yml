@@ -37,7 +37,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        course: [dragon, dome, farm]
+        course: [home, dome, farm]
         trial: [1, 2, 3]
     env:
       MATRIX_TEST_MODE: controlled
@@ -45,6 +45,9 @@ jobs:
       NN_REPEAT_TRIAL: ${{ matrix.trial }}
       NN_TEAM_SIZE: '8'
       NN_DOME_MODE: AUTO8
+      # Search farther for safe roof launch positions on Dome only.
+      # This is a candidate gate, never permission to bypass collision checks.
+      GOLEMS_NN_ROOF_RADIUS: ${{ matrix.course == 'dome' && '40' || '24' }}
       NN_SPEED_TEST: 'true'
       NN_SPEED_TICK_LIMIT: ${{ matrix.course == 'farm' && '240000' || '72000' }}
       NN_COURSE_SECONDS: ${{ matrix.course == 'farm' && '1200' || '600' }}
@@ -154,3 +157,20 @@ jobs:
           path: build/nn-learning-dataset/
           retention-days: 90
           if-no-files-found: warn
+      - name: Require reliable dome completion (not merely a green GameTest)
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('build/nn-learning-dataset/summary.json')
+          if not path.exists():
+              raise SystemExit('Dome reliability gate: no aggregate summary')
+          summary=json.loads(path.read_text())
+          dome=summary['builds']['dome']
+          print('DOME RELIABILITY:', dome['full_completions'], '/', dome['valid_runs'],
+                'complete; required 3/3; timing spread:', dome.get('completion_spread_ticks'))
+          if not dome.get('consistent_completion'):
+              raise SystemExit('Dome reliability gate FAILED: require 3/3 exact finishes within 6000 game ticks')
+          PY
