@@ -1,0 +1,254 @@
+name: NNGolems terrain-aware neural Dome teaching
+# Full fresh run after NN initializer regression fix; always test branch HEAD.
+run-name: "NN terrain-AI A/B Dome (${{ github.sha }})"
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-terrain-learning-dome.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: nn-terrain-dome-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    name: Verify trainable frontier network and safe candidate gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Verify trainable frontier network backpropagation and safety
+        run: gradle --no-daemon test --tests '*BuilderNeuralAdvisorTest' --tests '*BuilderNeuralFrontierPolicyTest'
+      - name: Verify frozen, exact flight-arrival network
+        run: |
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('experiments/nngolems/2026-11-16-rotation-learning/flight_environment-model.json')
+          d=json.loads(p.read_text())
+          assert len(d['features'])==24 and len(d['w'])==8
+          assert all(len(w)==24 for w in d['w'])
+          assert d['target']=='accepted_flight_arrives' and d['symmetry']=='c4_y'
+          assert 0 < d['threshold'] < 1
+          print('[NN PILOT MODEL] sha256='+hashlib.sha256(p.read_bytes()).hexdigest())
+          PY
+  build:
+    name: "Dome physical - ${{ matrix.mode }}"
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        mode: [baseline, neural]
+    env:
+      MATRIX_TEST_MODE: controlled
+      NN_COURSE: dome
+      NN_REPEAT_TRIAL: '1'
+      NN_TEAM_SIZE: '8'
+      NN_DOME_MODE: AUTO8
+      NN_SPEED_TEST: 'true'
+      NN_SPEED_TICK_LIMIT: '180000'
+      NN_COURSE_SECONDS: '900'
+      NN_TEAM_STALL_TICKS: '2400'
+      GOLEMS_NN_RECORD: 'true'
+      GOLEMS_NN_TEAM_RECORD: 'true'
+      GOLEMS_NN_SHADOW: 'true'
+      # Only the task selector is under neural control; flight controller
+      # remains conventional in BOTH halves of this A/B experiment.
+      GOLEMS_NN_CONTROL: 'false'
+      GOLEMS_NN_FRONTIER_CONTROL: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
+      GOLEMS_NN_FRONTIER_MODEL_PATH: ${{ github.workspace }}/build/nn-pilot/learned-frontier-policy.json
+      GOLEMS_DOME_FEASIBLE_LIMIT: '8'
+      GOLEMS_NN_MODEL: ${{ github.workspace }}/experiments/nngolems/2026-11-16-rotation-learning/flight_environment-model.json
+      GOLEMS_NN_CEILING_TAIL: 'false'
+      GOLEMS_NN_REACHABLE_HANDOFF: 'false'
+      GOLEMS_NN_PARTIAL_YIELD: 'false'
+      GOLEMS_NN_TEAM_LOCAL: 'false'
+      GOLEMS_NN_FRONTIER_STAGING: 'true'
+      GOLEMS_NN_ROOF_FRONTIER: 'true'
+      GOLEMS_NN_ROOF_RADIUS: '24'
+      GOLEMS_NN_MULTI_LEG_ROOF: 'true'
+      GOLEMS_NN_SHAPE_EXIT: 'true'
+      GOLEMS_NN_SCAFFOLD_CHAIN: 'true'
+      GOLEMS_NN_STRUCTURES: 'true'
+      GOLEMS_NN_STRUCTURE_LOOKAHEAD: 'true'
+      GOLEMS_NN_PROJECT_YIELD: 'true'
+      GOLEMS_NN_AUTO: 'true'
+      GOLEMS_NN_STRIP_PILOT: 'false'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Prepare real Dome and the previous trained Dome network
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderNNDomeStrategyGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Import real-world trained checkpoint, not synthetic weights
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/nn-seed build/nn-pilot
+          gh run download 44249383327 --repo CaszGamerMD/golems_plus \
+            --name nn-terrain-dome-neural --dir build/nn-seed
+          test -s build/nn-seed/learned-frontier-policy.json
+          cp build/nn-seed/learned-frontier-policy.json build/nn-pilot/learned-frontier-policy.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path('build/nn-pilot/learned-frontier-policy.json').read_text())
+          assert x['schema']==1 and x['updates']>=1600
+          assert len(x['w'])==8 and all(len(w)==12 for w in x['w'])
+          print('[NN TRAIN TRANSFER] Dome checkpoint updates='+str(x['updates'])+' legacy_features=12 terrain_features=20')
+          PY
+      - name: Test physical construction with selected controller
+        shell: bash
+        run: |
+          mkdir -p build/nn-pilot
+          set +e
+          set -o pipefail
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-pilot/server.log
+          echo "exit=${PIPESTATUS[0]}" > build/nn-pilot/exit.txt
+          exit "$(sed -n 's/^exit=//p' build/nn-pilot/exit.txt)"
+      - name: Summarize original schematic completion and actual model influence
+        if: always()
+        shell: bash
+        env:
+          PILOT_MODE: ${{ matrix.mode }}
+          PILOT_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          p=Path('build/nn-pilot')
+          p.mkdir(parents=True,exist_ok=True)
+          lines=(p/'server.log').read_text(errors='replace').splitlines() if (p/'server.log').exists() else []
+          term=next((line.split('[NN DOME RESULT] ',1)[1] for line in reversed(lines)
+                     if '[NN DOME RESULT] mode=AUTO8 ' in line),None)
+          fields=dict(re.findall(r'(\w+)=([^\s]+)',term)) if term else {}
+          control=[]
+          feedback=[]
+          for line in lines:
+              if '[NN FRONTIER DECISION] ' in line:
+                  try:control.append(json.loads(line.split('[NN FRONTIER DECISION] ',1)[1]))
+                  except ValueError:pass
+              if '[NN FRONTIER FEEDBACK] ' in line:
+                  try:feedback.append(json.loads(line.split('[NN FRONTIER FEEDBACK] ',1)[1]))
+                  except ValueError:pass
+          enabled=[line for line in lines if '[NN FRONTIER ENABLED] ' in line]
+          replay=[line for line in lines if '[NN TERRAIN REPLAY] ' in line]
+          migrated=[line for line in lines if '[NN FRONTIER LOAD] updates=' in line]
+          mode=os.environ['PILOT_MODE']
+          result=dict(schema=2,course='dome',mode=mode,commit=os.environ['PILOT_SHA'],
+                      physical_result=fields,terminal_present=bool(term),
+                      model_loaded=bool(enabled),checkpoint_migrated=bool(migrated),
+                      weighted_failure_replay_events=len(replay),
+                      neural_decisions=len(control),
+                      changed_tasks=sum(bool(x.get('changed')) for x in control),
+                      exploratory_changes=sum(bool(x.get('changed')) and
+                          bool(x.get('exploring')) for x in control),
+                      exploitative_changes=sum(bool(x.get('changed')) and
+                          not bool(x.get('exploring')) for x in control),
+                      competing_decisions=sum(x.get('considered',0)>1 for x in control),
+                      learning_updates=len(feedback),
+                      rewarded_placements=sum(x.get('outcome')=='WORLD_COMPLETED' for x in feedback),
+                      penalized_handoffs=sum(str(x.get('outcome','')).startswith('HANDOFF_') for x in feedback),
+                      first_changes=[x for x in control if x.get('changed')][:4],
+                      first_feedback=feedback[:4],
+                      outcome=fields.get('outcome','NO_TERMINAL_RESULT'),
+                      correct=int(fields.get('correct','-1')),
+                      total=int(fields.get('total','3493')),
+                      elapsed_ticks=int(fields.get('ticks','-1')))
+          (p/'result.json').write_text(json.dumps(result,indent=2)+'\n')
+          print('[NN PILOT RESULT] '+json.dumps(result))
+          Path(os.environ['GITHUB_STEP_SUMMARY']).open('a').write(
+              '## Dome '+mode+'\n'+
+              'Correct: '+str(result['correct'])+'/'+str(result['total'])+
+              ', outcome: '+result['outcome']+
+              ', decisions: '+str(result['neural_decisions'])+
+              ', changed tasks: '+str(result['changed_tasks'])+', updates: '+str(result['learning_updates'])+'\n')
+          if not term:raise SystemExit('Missing physical GameTest result')
+          if mode=='neural' and not enabled:
+              raise SystemExit('Neural frontier pilot did NOT activate')
+          if mode=='neural' and not any('[NN FRONTIER LOAD] updates=' in s for s in lines):
+              raise SystemExit('Dome did not resume saved Dome weights')
+          if mode=='neural' and (result['neural_decisions']==0 or
+                   result['changed_tasks']==0 or result['learning_updates']==0):
+              raise SystemExit('Neural policy did not make and learn from any real build decisions')
+          if mode=='baseline' and (control or feedback):
+              raise SystemExit('Baseline unexpectedly made neural frontier decisions')
+          if mode=='neural':
+              matches=list(Path('.').glob('**/nn-frontier-policy.json'))
+              if matches:
+                  import shutil
+                  shutil.copyfile(matches[0],p/'learned-frontier-policy.json')
+                  print('[NN FRONTIER CHECKPOINT] '+str(matches[0]))
+          PY
+      - name: Preserve physical gameplay log and metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-terrain-dome-${{ matrix.mode }}
+          path: build/nn-pilot
+          retention-days: 30
+          if-no-files-found: warn
+  compare:
+    name: Compare same-build baseline and neural decisions
+    needs: [validate, build]
+    if: always() && needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nn-terrain-dome-*
+          path: build/nn-terrain-dome-comparison
+      - name: Compare actual world-correct block counts
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('build/nn-terrain-dome-comparison')
+          data={}
+          for name in ['baseline','neural']:
+              p=root/('nn-terrain-dome-'+name)/'result.json'
+              data[name]=json.loads(p.read_text()) if p.exists() else None
+          a,b=data['baseline'],data['neural']
+          data['delta_correct_blocks']=(b['correct']-a['correct']) if a and b else None
+          data['same_schematic']=bool(a and b and a['course']==b['course']=='dome' and
+                                      a['total']==b['total']==3493)
+          (root/'comparison.json').write_text(json.dumps(data,indent=2)+'\n')
+          print('[NN PILOT COMPARISON] '+json.dumps(data))
+          PY
+      - name: Save verified A/B comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-terrain-dome-comparison
+          path: build/nn-terrain-dome-comparison/comparison.json
+          retention-days: 30
