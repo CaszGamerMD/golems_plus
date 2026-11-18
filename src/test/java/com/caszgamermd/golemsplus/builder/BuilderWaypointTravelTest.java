@@ -175,4 +175,22 @@ class BuilderWaypointTravelTest {
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,
                 new BlockPos(38,30,0)));
     }
+    @Test void recoveryPrefersUntriedSupportedLandingButRetainsFallback(){
+        BlockPos repeated=new BlockPos(4,20,5);
+        BlockPos alternate=new BlockPos(5,20,6);
+        BlockPos lastResort=new BlockPos(6,20,6);
+        List<BlockPos> safeCandidates=List.of(repeated,alternate,lastResort);
+        assertEquals(List.of(alternate,repeated,lastResort),
+                BuilderFlight.prioritizeRecoveryLandings(safeCandidates,
+                        Set.of(repeated,lastResort)),
+                "A certified alternative gets first chance before cycling");
+        assertEquals(safeCandidates,
+                BuilderFlight.prioritizeRecoveryLandings(safeCandidates,
+                        Set.copyOf(safeCandidates)),
+                "Never discard all possible safe recovery landings");
+        assertEquals(safeCandidates,
+                BuilderFlight.prioritizeRecoveryLandings(safeCandidates,Set.of()));
+        assertEquals(List.of(),
+                BuilderFlight.prioritizeRecoveryLandings(List.of(),Set.of(repeated)));
+    }
 }
