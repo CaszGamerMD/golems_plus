@@ -1,5 +1,5 @@
 name: NNGolems finished Dome waypoint traversal test
-# Confirm known-good 120/192 code after reverting regressive ascent and slope experiments; goal <=52 failures.
+# Checkpoint ablation: hold restored physical code fixed, reload 877-update snapshot used by 120-arrival run.
 run-name: "Finished Dome 24-waypoint navigation A/B (${{ github.sha }})"
 on:
   push:
@@ -96,7 +96,7 @@ jobs:
           # The former workflow restarted at 120 updates every run.
           # This trial resumes the ACTUAL 877-update checkpoint from the
           # immediately preceding 192-waypoint episode, not random weights.
-          gh run download 44299734429 --repo CaszGamerMD/golems_plus \
+          gh run download 44298694091 --repo CaszGamerMD/golems_plus \
             --name nn-finished-dome-waypoints-neural --dir build/nn-waypoints/seed
           test -s build/nn-waypoints/seed/state/roof-maneuver-policy.json
           cp build/nn-waypoints/seed/state/roof-maneuver-policy.json \
@@ -110,7 +110,7 @@ jobs:
           from pathlib import Path
           p=Path('build/nn-waypoints/state/roof-maneuver-policy.json')
           d=json.loads(p.read_text())
-          assert d['schema']==1 and d['updates']>=1507 and len(d['w'])==8
+          assert d['schema']==1 and d['updates']>=877 and len(d['w'])==8
           assert all(len(v)==14 for v in d['w'])
           print('[NN WAYPOINT SEED] trained_roof_updates='+str(d['updates'])+
                 ' sha256='+hashlib.sha256(p.read_bytes()).hexdigest())
