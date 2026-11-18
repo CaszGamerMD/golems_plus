@@ -19,7 +19,7 @@ class BuilderNNRoofManeuverPolicyTest {
         assertEquals(14,x.length);
         assertEquals(1,x[8],1e-12,"above-roof flag");
         assertTrue(x[4]>0,"height above target");
-        assertTrue(x[5]==0,"route does not go below target");
+        assertTrue(x[5]>0,"ascent from below target is included in the context");
         assertTrue(x[10]>0,"multi-leg cost signal");
         assertEquals(1,x[13],1e-12,"verified complete work pose");
     }
