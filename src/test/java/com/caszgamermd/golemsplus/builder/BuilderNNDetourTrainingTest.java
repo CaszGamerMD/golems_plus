@@ -43,6 +43,22 @@ class BuilderNNDetourTrainingTest {
         assertFalse(ordinary.contains(from.offset(1,1,0)),
                 "traditional build modes retain old grounded takeoff candidates");
     }
+    @Test void slopeFallbackNeverDisplacesCompletedPhysicalRoute(){
+        assertFalse(BuilderMultiLegTravel.preferSlopeFallback(
+                true,false,true,100,0),
+                "A traditional completed route outranks an experimental roof shortcut");
+        assertTrue(BuilderMultiLegTravel.preferSlopeFallback(
+                false,true,false,Double.POSITIVE_INFINITY,20),
+                "No traditional path: try physically checked slope candidate");
+        assertTrue(BuilderMultiLegTravel.preferSlopeFallback(
+                false,false,true,120,80),
+                "A complete slope route can supersede an incomplete route");
+        assertFalse(BuilderMultiLegTravel.preferSlopeFallback(
+                false,false,false,120,116),
+                "Reject partial changes with no substantial progress");
+        assertTrue(BuilderMultiLegTravel.preferSlopeFallback(
+                false,false,false,120,105));
+    }
     @Test void stoppedPhysicalFlightMustBeRejectedBeforeWholeWaypointTimesOut(){
         assertFalse(BuilderMultiLegTravel.staleFlightLeg(true,200),
                 "a genuinely moving flight retains its certified destination");
