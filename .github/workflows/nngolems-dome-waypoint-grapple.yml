@@ -63,7 +63,7 @@ jobs:
       GOLEMS_NN_ROOF_MANEUVER_POLICY: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
       GOLEMS_NN_FROZEN: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
       GOLEMS_NN_LONG_DETOUR: 'true'
-      GOLEMS_NN_SLOPED_ROOF_LAUNCHES: 'true'
+      GOLEMS_NN_SLOPED_ROOF_LAUNCHES: 'false'
       GOLEMS_NN_WAYPOINT_GRAPPLE: 'true'
       GOLEMS_NN_ROOF_WIDE_HOPS: 'true'
       GOLEMS_NN_WAYPOINT_FINAL_HOP: 'true'
@@ -71,7 +71,7 @@ jobs:
       GOLEMS_NN_WAYPOINT_ISLAND_EGRESS: 'true'
       GOLEMS_NN_WAYPOINT_BRIDGE_RESCUE: 'true'
       GOLEMS_NN_WAYPOINT_CERTIFIED_GATEWAY: 'true'
-      GOLEMS_NN_STICKY_ROOF_REJECTIONS: 'false'
+      GOLEMS_NN_STICKY_ROOF_REJECTIONS: 'true'
       GOLEMS_NN_HOVER_ANCHOR_RESCUE: 'true'
       GOLEMS_NN_DIVERSE_HOVER_RECOVERY: 'false'
       GOLEMS_NN_DISCONNECTED_ROOF_EGRESS: 'true'
