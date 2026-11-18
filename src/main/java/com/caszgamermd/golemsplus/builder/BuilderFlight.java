@@ -29,6 +29,10 @@ public final class BuilderFlight {
             System.getenv().getOrDefault("GOLEMS_NN_HOVER_ANCHOR_RESCUE","false"));
     private static final boolean VERIFIED_GROUND_CONTACT=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_VERIFIED_GROUND_CONTACT","false"));
+    // Prefer a different physical recovery landing before retrying a known
+    // hover loop. The original safe landing sequence remains a fallback.
+    private static final boolean DIVERSE_HOVER_RECOVERY=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_DIVERSE_HOVER_RECOVERY","false"));
     public static final double HORIZONTAL_LIMIT = WIDE_ROOF_HOPS ? 3.5 : 2.0;
     private static final double HORIZONTAL_LIMIT_SQUARED = HORIZONTAL_LIMIT * HORIZONTAL_LIMIT;
     private static final Map<BuilderGolem, Flight> flights = new WeakHashMap<>();
@@ -726,6 +730,20 @@ public final class BuilderFlight {
      * collision-swept, supported-landing validator. */
     static boolean recoverStoppedHover(ServerLevel level,BuilderGolem worker,
             BlockPos ultimateGoal,boolean stagnant){
+        return recoverStoppedHover(level,worker,ultimateGoal,stagnant,Set.of());
+    }
+    static List<BlockPos> prioritizeRecoveryLandings(List<BlockPos> landings,
+            Set<BlockPos> previouslyTried){
+        if(previouslyTried==null||previouslyTried.isEmpty())return List.copyOf(landings);
+        List<BlockPos> ordered=new ArrayList<>(landings.size());
+        for(BlockPos landing:landings)if(!previouslyTried.contains(landing))ordered.add(landing);
+        for(BlockPos landing:landings)if(previouslyTried.contains(landing))ordered.add(landing);
+        return ordered;
+    }
+    static boolean recoverStoppedHover(ServerLevel level,BuilderGolem worker,
+            BlockPos ultimateGoal,boolean stagnant,Set<BlockPos> previouslyTried){
+        Set<BlockPos> deferred=DIVERSE_HOVER_RECOVERY&&previouslyTried!=null
+                ?previouslyTried:Set.of();
         Flight flight=flights.get(worker);
         if(flight==null||moving(worker)||worker.onGround()
                 ||level.getGameTime()<flight.landingRetryAt)return false;
@@ -761,7 +779,7 @@ public final class BuilderFlight {
             candidates.sort(Comparator.comparingDouble(p->
                     supportedFeet(level,p).distanceToSqr(goalFeet)));
             flight.origin=hover;
-            for(BlockPos landing:candidates){
+            for(BlockPos landing:prioritizeRecoveryLandings(candidates,deferred)){
                 if(requestSupportedLanding(level,worker,landing)){
                     System.out.println("[NN WAYPOINT HOVER GOAL RESCUE] worker="
                             +worker.getUUID()+" from="+hover+" landing="+landing
@@ -773,7 +791,7 @@ public final class BuilderFlight {
             // exists. The ordinary safest fallback must remain available.
             flight.origin=previous;
         }
-        if(land(level,worker,false))return true;
+        if(land(level,worker,false,Set.of(),deferred))return true;
         // Only the isolated experimental branch permits a final, one-time
         // stationary emergency reroot after the old envelope fails. It is
         // still collision-verified and ends on actual support.
@@ -784,7 +802,7 @@ public final class BuilderFlight {
         flight.emergencyAnchorUsed=true;
         flight.origin=worker.position();
         flight.landingRetryAt=0;
-        boolean accepted=land(level,worker,false);
+        boolean accepted=land(level,worker,false,Set.of(),deferred);
         System.out.println("[NN WAYPOINT HOVER REANCHOR] worker="+worker.getUUID()
                 +" anchor="+flight.origin+" accepted="+accepted);
         return accepted;
@@ -828,6 +846,10 @@ public final class BuilderFlight {
         return land(level,worker,below,Set.of());
     }
     static boolean land(ServerLevel level, BuilderGolem worker, boolean below, Set<BlockPos> rejected) {
+        return land(level,worker,below,rejected,Set.of());
+    }
+    private static boolean land(ServerLevel level, BuilderGolem worker, boolean below,
+            Set<BlockPos> rejected,Set<BlockPos> deferred) {
         Flight flight = flights.get(worker);
         if (flight != null && moving(worker)) return true;
         if (flight != null && level.getGameTime() < flight.landingRetryAt) return false;
@@ -857,7 +879,8 @@ public final class BuilderFlight {
         }
         if(below)landings.sort(Comparator.comparingInt((BlockPos p)->p.getY())
                 .thenComparingDouble(p->worker.position().distanceToSqr(feet(p))));
-        for(BlockPos floor:landings)if(!rejected.contains(floor)&&requestSupportedLanding(level,worker,floor))return true;
+        for(BlockPos floor:prioritizeRecoveryLandings(landings,deferred))
+            if(!rejected.contains(floor)&&requestSupportedLanding(level,worker,floor))return true;
         // A hovering worker can also land on a nearby raised lip and
         // walk to the edge, rather than hovering forever under a roof.
         if(flight!=null){
