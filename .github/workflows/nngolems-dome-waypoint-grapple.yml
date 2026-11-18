@@ -65,6 +65,7 @@ jobs:
       GOLEMS_NN_LONG_DETOUR: 'true'
       GOLEMS_NN_WAYPOINT_GRAPPLE: 'true'
       GOLEMS_NN_ROOF_WIDE_HOPS: 'true'
+      GOLEMS_NN_WAYPOINT_FINAL_HOP: 'true'
       GOLEMS_NN_MULTI_LEG_ROOF: 'true'
       GOLEMS_NN_ROOF_FRONTIER: 'true'
       GOLEMS_NN_DETOUR_TRAINING: 'false'
