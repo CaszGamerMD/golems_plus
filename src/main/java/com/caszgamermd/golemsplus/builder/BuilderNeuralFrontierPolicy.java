@@ -53,7 +53,7 @@ final class BuilderNeuralFrontierPolicy {
             double baselineScore,double chosenScore,int updates){}
     private record Feedback(int schema,String worker,int index,long ticks,
             double reward,String outcome,int successes,int failures,int updates){}
-    private record Saved(int schema,int updates,int successes,int failures,
+    record Saved(int schema,int updates,int successes,int failures,
             double[][] w,double[] b,double[] v,double c){}
 
     static final class Network {
@@ -211,7 +211,15 @@ final class BuilderNeuralFrontierPolicy {
             if(eligible(original,candidate))feasible.add(candidate);
         feasible.sort(Comparator.comparingDouble(Candidate::cost)
                 .thenComparingInt(a->a.choice().index()));
-        if(feasible.size()>MAX_POOL)feasible=new ArrayList<>(feasible.subList(0,MAX_POOL));
+        if(feasible.size()>MAX_POOL){
+            feasible=new ArrayList<>(feasible.subList(0,MAX_POOL));
+            // The traditional choice is an ALWAYS-available fallback, even
+            // if the worker's best-safe choice was not among cheapest N.
+            if(feasible.stream().noneMatch(candidate->
+                    candidate.choice().index()==baseline.index())){
+                feasible.removeLast();feasible.add(original);
+            }
+        }
         if(feasible.isEmpty())return baseline;
         int winner=0;
         double top=-1;
