@@ -1,4 +1,5 @@
 name: NNGolems learned frontier decision pilot - homeDemo
+# Full fresh run after NN initializer regression fix; always test branch HEAD.
 run-name: "NN frontier learning A/B homeDemo (${{ github.sha }})"
 on:
   push:
