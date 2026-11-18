@@ -1,5 +1,5 @@
 name: NNGolems finished Dome waypoint traversal test
-# Verify collision-certified exterior ascent gateway routing while retaining the current checkpoint/test configuration.
+# Verify successive collision-certified intermediate roof ascents with identical matched waypoint setup.
 run-name: "Finished Dome 24-waypoint navigation A/B (${{ github.sha }})"
 on:
   push:
