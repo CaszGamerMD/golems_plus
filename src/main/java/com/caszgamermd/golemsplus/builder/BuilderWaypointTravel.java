@@ -30,7 +30,7 @@ final class BuilderWaypointTravel {
         final BlockPos goal;
         final ArrayDeque<BlockPos> visited=new ArrayDeque<>();
         BlockPos stage;
-        long stageTick, nextSurvey;
+        long stageTick, nextSurvey, nextDescentProbe;
         double best=Double.POSITIVE_INFINITY;
         int failedStages,stagesCompleted;
         Plan(BlockPos goal){this.goal=goal.immutable();}
@@ -74,6 +74,42 @@ final class BuilderWaypointTravel {
         plan.visited.remove(cell);
         plan.visited.addLast(cell.immutable());
         while(plan.visited.size()>RETAIN)plan.visited.removeFirst();
+    }
+    /** Try a genuine swept, collision-certified downward flight from the
+     * real stance. A whole roof often has no path to its far-side ground
+     * objective; descending nearby first is a legitimate longer route. */
+    private static boolean directDescent(ServerLevel level,BuilderGolem worker,
+            BlockPos finalGoal){
+        if(!worker.onGround()||BuilderFlight.active(worker))return false;
+        BlockPos from=worker.blockPosition();
+        if(from.getY()<=finalGoal.getY()+2)return false;
+        BlockPos best=null;
+        double bestScore=Double.NEGATIVE_INFINITY;
+        int low=Math.max(level.getMinY()+2,finalGoal.getY()-2);
+        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+            if(dx*dx+dz*dz>4)continue;
+            for(int y=from.getY()-3;y>=low;y--){
+                BlockPos candidate=from.offset(dx,y-from.getY(),dz);
+                if(!level.hasChunkAt(candidate))break;
+                if(!WorkerNavigation.canStandOn(level,worker,candidate))continue;
+                // If a higher floor blocks this column, a lower floor
+                // cannot be accepted by guessing through that barrier.
+                if(BuilderFlight.canFlyBetween(level,worker,from,candidate)){
+                    double score=(from.getY()-candidate.getY())*2
+                            -.03*flatDistance(candidate,finalGoal);
+                    if(best==null||score>bestScore){
+                        bestScore=score;best=candidate;
+                    }
+                }
+                break;
+            }
+        }
+        if(best!=null&&BuilderFlight.requestSupportedLanding(level,worker,best)){
+            System.out.println("[NN WAYPOINT DIRECT DESCENT] worker="+worker.getUUID()
+                    +" from="+from+" landing="+best+" final="+finalGoal);
+            return true;
+        }
+        return false;
     }
     static void clear(BuilderGolem worker){
         plans.remove(worker);
@@ -133,6 +169,10 @@ final class BuilderWaypointTravel {
             // Once grounded at courtyard Y, normal long-distance walking
             // resumes; do not use a roof-hop as a long horizontal shortcut.
             if(BuilderFlight.approachDescentLaunch(level,worker,destination))return true;
+            if(now>=p.nextDescentProbe){
+                p.nextDescentProbe=now+50;
+                if(directDescent(level,worker,destination))return true;
+            }
             if(horizontal<=12&&BuilderMultiLegTravel.stand(level,worker,destination))
                 return true;
         }else if(high&&horizontal<=16){
