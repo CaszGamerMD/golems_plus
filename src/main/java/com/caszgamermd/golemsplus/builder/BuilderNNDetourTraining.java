@@ -111,6 +111,24 @@ final class BuilderNNDetourTraining {
                 e.maxGoalDistance>e.origin.distanceTo(Vec3.atCenterOf(e.target))+1.5,
                 e.routeSteps);
     }
+    /** Explicit handoff without an available entity reference. The
+     * observed episode is labeled only if actual motion was sampled. */
+    static void failed(UUID worker,long now,String reason){
+        if(!ENABLED)return;
+        Episode e=episodes.remove(worker);
+        if(e==null)return;
+        failures++;
+        System.out.println("[NN DETOUR OUTCOME] worker="+worker+" target="+e.target
+                +" success=false reason="+reason
+                +" elapsedTicks="+Math.max(0,now-e.start)
+                +" unique="+e.unique.size()+" traveled="+e.totalDistance
+                +" climbedAbove="+(e.maxRise>1)
+                +" pastX="+(e.overshootX>0)+" pastZ="+(e.overshootZ>0)
+                +" movedAway="+(e.maxGoalDistance>
+                    e.origin.distanceTo(Vec3.atCenterOf(e.target))+1.5)
+                +" physicalRouteTicks="+e.routeSteps+" successes="+successes
+                +" failures="+failures);
+    }
     static void finish(ServerLevel level,BuilderGolem worker,
             BlockPos target,boolean success,String reason){
         if(!ENABLED)return;
