@@ -299,6 +299,9 @@ public final class BuilderBuildService {
             UUID worker,int index,long now,String reason){
         handoffBoard.computeIfAbsent(table,k->new java.util.HashMap<>())
                 .put(index,new Handoff(worker,now+1200,reason));
+        // An explicit failed handoff is genuine negative supervised data.
+        // Never label a merely parked/unloaded worker as failed.
+        BuilderNeuralFrontierPolicy.failed(worker,index,now,reason);
     }
     /** A stationary worker on an unreachable supply route must release
      * its placement so an available teammate can collect the material. */
@@ -1565,6 +1568,7 @@ public final class BuilderBuildService {
                 index=next==null?-1:table.claimPreferredBuilderZoneStep(
                         worker.getUUID(),zone,plan.steps(),next.index());
                 if(index>=0){
+                    BuilderNeuralFrontierPolicy.claim(level,worker,index);
                     BuilderNNFrontierStaging.clear(worker);
                     if(assigned.structure()>=0)
                         prepareFutureStructures(table,plan,assigned.roster(),assigned.structure());
