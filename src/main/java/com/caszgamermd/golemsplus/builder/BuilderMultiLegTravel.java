@@ -13,6 +13,9 @@ import java.util.*;
 final class BuilderMultiLegTravel {
     private BuilderMultiLegTravel(){}
     private enum Kind {WORK,EXIT,LEVEL,STAND}
+    private static final boolean LONG_DETOUR=Boolean.parseBoolean(System.getProperty(
+            "golems.nn.longDetour",
+            System.getenv().getOrDefault("GOLEMS_NN_LONG_DETOUR","false")));
     private record Goal(Kind kind,BlockPos target,boolean bodyBlocking,BuilderEscapeBox.Bounds box){}
     private record Leg(BlockPos launch,BlockPos landing){}
     private record Node(BlockPos at,List<Leg> legs,double score){}
@@ -85,6 +88,20 @@ final class BuilderMultiLegTravel {
                 &&Math.abs(WorkerNavigation.surveyFloorHeight(level,p)-goal.target().getY())<=.6;
         return BuilderFlight.safeWorkPose(level,worker,goal.target(),feet(level,p),goal.bodyBlocking());
     }
+    /** Going above / beyond the target can be the only valid path to its
+     * other side. An incomplete detour must still be finite and bounded. */
+    static boolean usefulPartial(double startingCost,double landingCost,
+            BlockPos start,BlockPos target,BlockPos landing,boolean longDetour){
+        if(landingCost+4<startingCost)return true;
+        if(!longDetour||!Double.isFinite(startingCost)||!Double.isFinite(landingCost)
+                ||landingCost>startingCost+84)return false;
+        boolean above=landing.getY()>=target.getY()+2;
+        boolean pastX=(start.getX()<target.getX()&&landing.getX()>target.getX()+1)
+                ||(start.getX()>target.getX()&&landing.getX()<target.getX()-1);
+        boolean pastZ=(start.getZ()<target.getZ()&&landing.getZ()>target.getZ()+1)
+                ||(start.getZ()>target.getZ()&&landing.getZ()<target.getZ()-1);
+        return above||pastX||pastZ;
+    }
     private static double score(Goal goal,BlockPos p){
         double dy=p.getY()-goal.target().getY();
         if(goal.kind()==Kind.LEVEL)return dy*dy*4+.05*p.distSqr(goal.target());
@@ -101,8 +118,9 @@ final class BuilderMultiLegTravel {
     }
     private static List<BlockPos> landings(ServerLevel level,BuilderGolem worker,Goal goal,BlockPos launch){
         var result=new ArrayList<BlockPos>();
-        int y0=Math.max(level.getMinY()+1,Math.min(launch.getY(),goal.target().getY())-3);
-        int y1=Math.min(level.getMaxY()-2,Math.max(launch.getY(),goal.target().getY())+3);
+        int margin=LONG_DETOUR?7:3;
+        int y0=Math.max(level.getMinY()+1,Math.min(launch.getY(),goal.target().getY())-margin);
+        int y1=Math.min(level.getMaxY()-2,Math.max(launch.getY(),goal.target().getY())+margin);
         // Limit the per-column search, but include the actual goal level.
         // This is a fallback planner, not an unbounded global 3D scan.
         if(y1-y0>48){
@@ -136,18 +154,22 @@ final class BuilderMultiLegTravel {
         queue.add(new Node(start,List.of(),score(goal,start)));
         var seen=new HashMap<BlockPos,Integer>();seen.put(start,0);
         int expanded=0,probes=0;
+        int expandedLimit=LONG_DETOUR?36:18;
+        int probeLimit=LONG_DETOUR?240:120;
+        int checkedLimit=LONG_DETOUR?18:10;
+        int maxLegs=LONG_DETOUR?6:4;
         Node bestPartial=null;
         double startScore=score(goal,start);
-        while(!queue.isEmpty()&&expanded++<18&&probes<120){
+        while(!queue.isEmpty()&&expanded++<expandedLimit&&probes<probeLimit){
             Node n=queue.remove();
             if(!n.legs().isEmpty()&&good(level,worker,goal,n.at()))return n.legs();
-            if(n.legs().size()>=4)continue;
+            if(n.legs().size()>=maxLegs)continue;
             for(BlockPos launch:launches(level,worker,n.at())){
                 boolean walkChecked=launch.equals(n.at()),walkOK=walkChecked;
                 int checked=0;
                 for(BlockPos land:landings(level,worker,goal,launch)){
                     if(seen.getOrDefault(land,Integer.MAX_VALUE)<=n.legs().size()+1)continue;
-                    if(++checked>10||++probes>120)break;
+                    if(++checked>checkedLimit||++probes>probeLimit)break;
                     if(!BuilderFlight.canFlyBetween(level,worker,launch,land))continue;
                     if(!walkChecked){
                         walkChecked=true;
@@ -162,12 +184,20 @@ final class BuilderMultiLegTravel {
                     // Long journeys may exceed this search window. Only
                     // commit an incomplete chain if it ends on real support
                     // with a strictly better goal score; no sideways cycle.
-                    if(score(goal,land)+4<startScore
-                            &&(bestPartial==null||candidate.score()<bestPartial.score()))bestPartial=candidate;
+                    if(usefulPartial(startScore,score(goal,land),start,
+                            goal.target(),land,LONG_DETOUR)
+                            &&(bestPartial==null||candidate.score()<bestPartial.score()))
+                        bestPartial=candidate;
                 }
-                if(probes>=120)break;
+                if(probes>=probeLimit)break;
             }
         }
+        if(bestPartial!=null&&LONG_DETOUR&&
+                score(goal,bestPartial.at())>=startScore-4)
+            System.out.println("[NN ROUTE OVERSHOOT PLAN] goal="+goal.target()
+                    +" from="+start+" via="+bestPartial.at()
+                    +" legs="+bestPartial.legs().size()
+                    +" originCost="+startScore+" viaCost="+score(goal,bestPartial.at()));
         return bestPartial==null?List.of():bestPartial.legs();
     }
     private static boolean tick(ServerLevel level,BuilderGolem worker,Goal goal){
