@@ -95,6 +95,60 @@ final class BuilderWaypointTravel {
         }
         return best;
     }
+    /**
+     * Find an exterior grounded launch which can execute a real collision-
+     * swept upward flight to a FULL supported landing. A nearer x/z point
+     * underneath the solid dome is NOT meaningful ascent progress.
+     *
+     * We use the actual reachable component and physical flight validator,
+     * not a guessed skylight line or a virtual entity. The chosen launch is
+     * reached by ordinary grounded A* before taking off.
+     */
+    static BlockPos chooseAscentGateway(ServerLevel level,BuilderGolem worker,
+            BlockPos target,Set<BlockPos> connected,List<BlockPos> recent){
+        BlockPos start=worker.blockPosition();
+        List<BlockPos> options=new ArrayList<>();
+        for(BlockPos candidate:connected){
+            if(candidate.equals(start)||recent.contains(candidate)
+                    ||Math.abs(candidate.getY()-start.getY())>2
+                    ||flatDistance(start,candidate)>STAGE_RADIUS+9
+                    ||!level.canSeeSky(candidate.above()))continue;
+            options.add(candidate);
+        }
+        options.sort(Comparator.comparingDouble(p->flatDistance(p,target)));
+        BlockPos best=null;
+        double bestScore=Double.POSITIVE_INFINITY;
+        int checked=0;
+        for(BlockPos launch:options){
+            if(++checked>64)break;
+            // Candidate ascents must be to genuine supported full-foot
+            // positions above this launch or within the 2m propeller
+            // envelope. Never authorize arbitrary horizontal flight.
+            int desired=Math.min(target.getY()+2,launch.getY()+28);
+            boolean flightPossible=false;
+            for(int dy=Math.max(3,desired-launch.getY());dy>=3&&!flightPossible;dy--){
+                if(dy>28)continue;
+                for(int dx=-2;dx<=2&&!flightPossible;dx++)
+                    for(int dz=-2;dz<=2;dz++){
+                        if(dx*dx+dz*dz>4)continue;
+                        BlockPos landing=launch.offset(dx,dy,dz);
+                        if(WorkerNavigation.canStandOn(level,worker,landing)
+                                &&BuilderFlight.canFlyBetween(level,worker,launch,landing)){
+                            flightPossible=true;break;
+                        }
+                    }
+            }
+            if(!flightPossible)continue;
+            double score=flatDistance(launch,target)
+                    +.23*flatDistance(start,launch);
+            if(score<bestScore){bestScore=score;best=launch;}
+        }
+        if(best!=null)
+            System.out.println("[NN WAYPOINT CERTIFIED ROOF ENTRY] worker="+worker.getUUID()
+                    +" from="+start+" launch="+best+" target="+target
+                    +" checked="+checked);
+        return best;
+    }
     private static void mark(Plan plan,BlockPos cell){
         if(cell==null)return;
         plan.visited.remove(cell);
@@ -237,9 +291,16 @@ final class BuilderWaypointTravel {
             List<BlockPos> recent=new ArrayList<>(p.visited);
             // Never require horizontal proximity while trapped BELOW a
             // roof. Going outward to find unobstructed sky is real progress.
-            BlockPos candidate=high&&!level.canSeeSky(here.above())
-                    ?chooseExposedGateway(here,destination,connected,recent,
-                            at->level.canSeeSky(at.above())):null;
+            BlockPos candidate=null;
+            // On an upper-roof assignment a 1-block horizontal separation
+            // can still mean 23 blocks of solid ceiling in between. Probe
+            // the connected exterior, not a greedy near-target tile.
+            if(high&&destination.getY()-here.getY()>=6)
+                candidate=chooseAscentGateway(
+                        level,worker,destination,connected,recent);
+            if(candidate==null&&high&&!level.canSeeSky(here.above()))
+                candidate=chooseExposedGateway(here,destination,connected,recent,
+                        at->level.canSeeSky(at.above()));
             if(candidate!=null)
                 System.out.println("[NN WAYPOINT ROOF GATEWAY] worker="+worker.getUUID()
                         +" from="+here+" exterior="+candidate
