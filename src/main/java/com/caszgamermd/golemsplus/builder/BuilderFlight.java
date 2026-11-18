@@ -169,10 +169,15 @@ public final class BuilderFlight {
         Vec3 side = new Vec3(to.x, from.y, to.z);
         if (sweep(level, worker, from, side) && sweep(level, worker, side, to))
             return side.distanceToSqr(to) < .0001 ? List.of(to) : List.of(side, to);
-        // A ledge can block sideways movement at both endpoint heights.
-        // Try a short vertical over/under detour inside the takeoff envelope.
-        for (int offset : new int[]{1,2,3,4,-1,-2,-3,-4}) {
+        // A roof ridge or short parapet may need more than four blocks
+        // of clearance. The propeller already has vertical range: keep the
+        // SAME two-block horizontal takeoff envelope, and verify every
+        // vertical/sideways/descent swept AABB before accepting any route.
+        // Checking additional heights is never permission to phase through
+        // a ledge. Short, cheap legal maneuvers are still preferred first.
+        for (int offset : new int[]{1,2,3,4,6,8,12,16,-1,-2,-3,-4,-6,-8}) {
             double y = offset > 0 ? Math.max(from.y,to.y)+offset : Math.min(from.y,to.y)+offset;
+            if(y+2>level.getMaxY()||y<level.getMinY())continue;
             Vec3 a = new Vec3(from.x,y,from.z);
             Vec3 b = new Vec3(to.x,y,to.z);
             if (sweep(level,worker,from,a) && sweep(level,worker,a,b)
