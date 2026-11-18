@@ -1,5 +1,5 @@
 name: NNGolems finished Dome waypoint traversal test
-# Second roof-routing retest: expire dead physical legs, avoid repeated invalid takeoffs; target <=52/192 failures.
+# Third test: conservative neural candidate safety shield and 877-update checkpoint transfer.
 run-name: "Finished Dome 24-waypoint navigation A/B (${{ github.sha }})"
 on:
   push:
@@ -86,20 +86,23 @@ jobs:
               'com.caszgamermd.golemsplus.builder.BuilderNNDomeWaypointGameTest']
           p.write_text(json.dumps(j,indent=2)+'\n')
           PY
-      - name: Load previous successful Dome roof-maneuver model
+      - name: Resume neural maneuver learning from last completed physical waypoint trial
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/nn-waypoints/state build/nn-waypoints/seed
-          gh run download 44272487461 --repo CaszGamerMD/golems_plus \
-            --name nn-roof-dome-neural --dir build/nn-waypoints/seed
-          test -s build/nn-waypoints/seed/roof-maneuver-policy.json
-          cp build/nn-waypoints/seed/roof-maneuver-policy.json \
+          # The former workflow restarted at 120 updates every run.
+          # This trial resumes the ACTUAL 877-update checkpoint from the
+          # immediately preceding 192-waypoint episode, not random weights.
+          gh run download 44298694091 --repo CaszGamerMD/golems_plus \
+            --name nn-finished-dome-waypoints-neural --dir build/nn-waypoints/seed
+          test -s build/nn-waypoints/seed/state/roof-maneuver-policy.json
+          cp build/nn-waypoints/seed/state/roof-maneuver-policy.json \
              build/nn-waypoints/state/roof-maneuver-policy.json
-          if test -s build/nn-waypoints/seed/learned-frontier-policy.json; then
-            cp build/nn-waypoints/seed/learned-frontier-policy.json \
+          if test -s build/nn-waypoints/seed/state/frontier-policy.json; then
+            cp build/nn-waypoints/seed/state/frontier-policy.json \
                build/nn-waypoints/state/frontier-policy.json
           fi
           python3 - <<'PY'
@@ -107,7 +110,7 @@ jobs:
           from pathlib import Path
           p=Path('build/nn-waypoints/state/roof-maneuver-policy.json')
           d=json.loads(p.read_text())
-          assert d['schema']==1 and len(d['w'])==8
+          assert d['schema']==1 and d['updates']>=877 and len(d['w'])==8
           assert all(len(v)==14 for v in d['w'])
           print('[NN WAYPOINT SEED] trained_roof_updates='+str(d['updates'])+
                 ' sha256='+hashlib.sha256(p.read_bytes()).hexdigest())
