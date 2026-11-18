@@ -303,6 +303,7 @@ public final class BuilderBuildService {
         // Never label a merely parked/unloaded worker as failed.
         BuilderNeuralFrontierPolicy.failed(worker,index,now,reason);
         BuilderNNDetourTraining.failed(worker,now,reason);
+        BuilderNNRoofManeuverPolicy.handedOff(worker);
     }
     /** A stationary worker on an unreachable supply route must release
      * its placement so an available teammate can collect the material. */
