@@ -16,6 +16,11 @@ final class BuilderMultiLegTravel {
     private static final boolean LONG_DETOUR=Boolean.parseBoolean(System.getProperty(
             "golems.nn.longDetour",
             System.getenv().getOrDefault("GOLEMS_NN_LONG_DETOUR","false")));
+    // Dome roof walking can change Y at every tile. Allow collision-verified
+    // grounded approaches to sloped takeoffs rather than assuming that only
+    // launch stances at the current integer elevation are walkable.
+    private static final boolean SLOPED_LAUNCHES=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_SLOPED_ROOF_LAUNCHES","false"));
     private record Goal(Kind kind,BlockPos target,boolean bodyBlocking,BuilderEscapeBox.Bounds box){}
     record Leg(BlockPos launch,BlockPos landing){}
     private record Node(BlockPos at,List<Leg> legs,double score){}
@@ -158,11 +163,28 @@ final class BuilderMultiLegTravel {
         if(goal.kind()==Kind.EXIT)return p.distSqr(goal.target())+Math.max(0,dy)*Math.max(0,dy)*4;
         return p.distSqr(goal.target())+dy*dy;
     }
+    static List<BlockPos> candidateLaunchCells(BlockPos at,boolean slopes){
+        var result=new LinkedHashSet<BlockPos>();result.add(at);
+        int[][] compass={{1,0},{-1,0},{0,1},{0,-1},
+                {1,1},{1,-1},{-1,1},{-1,-1}};
+        for(int radius=1;radius<=3;radius++){
+            for(int[] v:compass){
+                BlockPos same=at.offset(radius*v[0],0,radius*v[1]);
+                result.add(same);
+                if(slopes)for(int deltaY:new int[]{1,-1,2,-2})
+                    result.add(at.offset(radius*v[0],deltaY,radius*v[1]));
+            }
+        }
+        return List.copyOf(result);
+    }
     private static List<BlockPos> launches(ServerLevel level,BuilderGolem worker,BlockPos at){
-        var result=new ArrayList<BlockPos>();result.add(at);
-        for(int d=1;d<=3;d++)for(int[] v:new int[][]{{1,0},{-1,0},{0,1},{0,-1}}){
-            BlockPos p=at.offset(d*v[0],0,d*v[1]);
+        var result=new ArrayList<BlockPos>();
+        for(BlockPos p:candidateLaunchCells(at,SLOPED_LAUNCHES)){
+            // Uncertified standing cells cannot become launch candidates.
+            // A DIFFERENT launch is subsequently checked for actual A* reachability
+            // before any flight is accepted by the physical planner.
             if(WorkerNavigation.canStandOn(level,worker,p))result.add(p);
+            if(result.size()>=(SLOPED_LAUNCHES?32:13))break;
         }
         return result;
     }
