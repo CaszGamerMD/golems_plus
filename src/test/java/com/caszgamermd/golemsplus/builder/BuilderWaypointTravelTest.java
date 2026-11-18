@@ -71,6 +71,28 @@ class BuilderWaypointTravelTest {
                 "Visited or absent ground stances must never be fabricated");
     }
 
+    @Test void emergencyRoofDescentOnlyOccursOnStalledSmallIslands(){
+        assertTrue(BuilderWaypointTravel.shouldEscapeRoofIsland(
+                170,5,9,1,true,false));
+        assertTrue(BuilderWaypointTravel.shouldEscapeRoofIsland(
+                240,0,3,0,true,false),
+                "A fractional perch with no centered ground cells must be recoverable");
+        assertFalse(BuilderWaypointTravel.shouldEscapeRoofIsland(
+                169,5,9,1,true,false));
+        assertFalse(BuilderWaypointTravel.shouldEscapeRoofIsland(
+                220,25,9,1,true,false),
+                "Do not abandon a substantial traversable roof component");
+        assertFalse(BuilderWaypointTravel.shouldEscapeRoofIsland(
+                220,5,20,1,true,false));
+        assertFalse(BuilderWaypointTravel.shouldEscapeRoofIsland(
+                220,5,9,5,true,false));
+        assertFalse(BuilderWaypointTravel.shouldEscapeRoofIsland(
+                220,5,9,1,false,false));
+        assertFalse(BuilderWaypointTravel.shouldEscapeRoofIsland(
+                220,5,9,1,true,true),
+                "Never interrupt a collision-certified powered flight");
+    }
+
     @Test void groundDestinationsShouldNotNeedHorizontalFlight(){
         BlockPos ground=new BlockPos(0,10,0);
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,
