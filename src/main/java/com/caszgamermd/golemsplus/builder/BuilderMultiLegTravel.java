@@ -35,6 +35,12 @@ final class BuilderMultiLegTravel {
     private static final Map<BuilderGolem,Trip> trips=new WeakHashMap<>();
     private static final Map<BuilderGolem,Long> searchAfter=new WeakHashMap<>();
     static void clear(BuilderGolem worker){trips.remove(worker);searchAfter.remove(worker);}
+    static void abortWaypoint(ServerLevel level,BuilderGolem worker,String reason){
+        Trip t=trips.remove(worker);
+        searchAfter.remove(worker);
+        if(t!=null&&t.goal.kind()==Kind.STAND)
+            BuilderNNRoofManeuverPolicy.failed(level,worker,t.neural,reason);
+    }
     static boolean working(BuilderGolem worker,BlockPos target){
         Trip t=trips.get(worker);return t!=null&&t.goal.kind()==Kind.WORK&&t.goal.target().equals(target);
     }
@@ -176,8 +182,11 @@ final class BuilderMultiLegTravel {
     }
     private static List<Leg> plan(ServerLevel level,BuilderGolem worker,Goal goal,
             boolean commit){
+        // A navigation-only waypoint is an actual safe landing objective,
+        // not a fake block-placement task. Let the same route model learn
+        // from successful physical arrival at this standing location.
         boolean neural=commit&&BuilderNNRoofManeuverPolicy.ENABLED
-                &&goal.kind()==Kind.WORK;
+                &&(goal.kind()==Kind.WORK||goal.kind()==Kind.STAND);
         BlockPos start=worker.blockPosition();
         // Exact landings may be a few floating-point units below the
         // integer tile. Do not discard the next leg because floor() picked
@@ -308,7 +317,7 @@ final class BuilderMultiLegTravel {
             searchAfter.put(worker,now+60);
             var legs=plan(level,worker,goal,true);
             if(legs.isEmpty())return false;
-            var selection=goal.kind()==Kind.WORK
+            var selection=(goal.kind()==Kind.WORK||goal.kind()==Kind.STAND)
                     ?BuilderNNRoofManeuverPolicy.committed(worker,goal.target(),legs):null;
             t=new Trip(goal,legs,now,selection);trips.put(worker,t);
             BuilderTrace.decision(level,worker,"MULTI_TRIP_COMMIT",goal.target(),"verified flight legs="+legs);
