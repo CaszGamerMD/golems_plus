@@ -1,7 +1,7 @@
-name: NNGolems terrain-aware neural Dome teaching
+name: NNGolems long-detour traversal Dome teaching
 # Rerun after corrected legacy-checkpoint migration test; maintain same Dome A/B physics.
 # Full fresh run after NN initializer regression fix; always test branch HEAD.
-run-name: "NN terrain-AI A/B Dome (${{ github.sha }})"
+run-name: "NN detour-navigation A/B Dome (${{ github.sha }})"
 on:
   push:
     branches: [NNGolems]
@@ -29,7 +29,7 @@ jobs:
         with:
           gradle-version: '9.7.0'
       - name: Verify trainable frontier network backpropagation and safety
-        run: gradle --no-daemon test --tests '*BuilderNeuralAdvisorTest' --tests '*BuilderNeuralFrontierPolicyTest'
+        run: gradle --no-daemon test --tests '*BuilderNeuralAdvisorTest' --tests '*BuilderNeuralFrontierPolicyTest' --tests '*BuilderNNDetourTrainingTest'
       - name: Verify frozen, exact flight-arrival network
         run: |
           python3 - <<'PY'
@@ -70,6 +70,9 @@ jobs:
       # remains conventional in BOTH halves of this A/B experiment.
       GOLEMS_NN_CONTROL: 'false'
       GOLEMS_NN_FRONTIER_CONTROL: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
+      # The control experiment must retain old path gating/watchdogs.
+      GOLEMS_NN_DETOUR_TRAINING: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
+      GOLEMS_NN_LONG_DETOUR: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
       GOLEMS_NN_FRONTIER_MODEL_PATH: ${{ github.workspace }}/build/nn-pilot/learned-frontier-policy.json
       GOLEMS_DOME_FEASIBLE_LIMIT: '8'
       GOLEMS_NN_MODEL: ${{ github.workspace }}/experiments/nngolems/2026-11-16-rotation-learning/flight_environment-model.json
@@ -163,6 +166,13 @@ jobs:
               if '[NN FRONTIER FEEDBACK] ' in line:
                   try:feedback.append(json.loads(line.split('[NN FRONTIER FEEDBACK] ',1)[1]))
                   except ValueError:pass
+          detours=[line for line in lines if '[NN DETOUR OUTCOME] ' in line]
+          detours_ok=sum('success=true' in s for s in detours)
+          detours_failed=sum('success=false' in s for s in detours)
+          detours_up=sum('success=true' in s and 'climbedAbove=true' in s for s in detours)
+          detours_past=sum('success=true' in s and ('pastX=true' in s or 'pastZ=true' in s) for s in detours)
+          detours_accepted=sum('[NN DETOUR ACCEPT] ' in s for s in lines)
+          overhead_plans=sum('[NN ROUTE OVERSHOOT PLAN] ' in s for s in lines)
           enabled=[line for line in lines if '[NN FRONTIER ENABLED] ' in line]
           replay=[line for line in lines if '[NN TERRAIN REPLAY] ' in line]
           migrated=[line for line in lines if '[NN FRONTIER LOAD] updates=' in line]
@@ -171,6 +181,13 @@ jobs:
                       physical_result=fields,terminal_present=bool(term),
                       model_loaded=bool(enabled),checkpoint_migrated=bool(migrated),
                       weighted_failure_replay_events=len(replay),
+                      real_detour_episodes=len(detours),
+                      real_detour_successes=detours_ok,
+                      real_detour_failures=detours_failed,
+                      successful_above_target=detours_up,
+                      successful_beyond_xz=detours_past,
+                      verified_detours_protected=detours_accepted,
+                      above_or_overshoot_multileg_plans=overhead_plans,
                       neural_decisions=len(control),
                       changed_tasks=sum(bool(x.get('changed')) for x in control),
                       exploratory_changes=sum(bool(x.get('changed')) and
@@ -194,7 +211,7 @@ jobs:
               'Correct: '+str(result['correct'])+'/'+str(result['total'])+
               ', outcome: '+result['outcome']+
               ', decisions: '+str(result['neural_decisions'])+
-              ', changed tasks: '+str(result['changed_tasks'])+', updates: '+str(result['learning_updates'])+'\n')
+              ', changed tasks: '+str(result['changed_tasks'])+', updates: '+str(result['learning_updates'])+', valid detours: '+str(result['verified_detours_protected'])+'\n')
           if not term:raise SystemExit('Missing physical GameTest result')
           if mode=='neural' and not enabled:
               raise SystemExit('Neural frontier pilot did NOT activate')
