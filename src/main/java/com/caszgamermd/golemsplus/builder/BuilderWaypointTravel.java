@@ -205,7 +205,10 @@ final class BuilderWaypointTravel {
             // A rooftop waypoint often lies directly ABOVE a solid roof.
             // The takeoff must be from a physically clear exterior pose;
             // planning straight up through the ceiling is never legal.
-            if((horizontal<=18||level.canSeeSky(here.above()))
+            boolean openSky=level.canSeeSky(here.above());
+            if(((horizontal<=18&&(openSky
+                            ||destination.getY()-here.getY()<9))
+                        ||(openSky&&horizontal<=24))
                     &&BuilderMultiLegTravel.stand(level,worker,destination))
                 return true;
         }else{
