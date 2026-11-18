@@ -6,6 +6,9 @@ on:
     branches: [NNGolems]
     paths:
       - ".github/workflows/nngolems-dome-waypoint-course.yml"
+      - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderWaypointTravel.java"
+      - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderMultiLegTravel.java"
+      - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNRoofManeuverPolicy.java"
   workflow_dispatch:
 permissions:
   contents: read
@@ -228,7 +231,7 @@ jobs:
                 f"| Learned route choices | {x['route_choices']} | {y['route_choices']} |",
                 f"| Routes changed | {x['route_changes']} | {y['route_changes']} |",
                 f"| Positive roof maneuver rewards | {x['training_updates']} | {y['training_updates']} |",
-                f"| Target: 52 or fewer failures | {'Met' if x['failed']<=52 else 'Not yet'} | {'Met' if y['failed']<=52 else 'Not yet'} |",
+                f"| Target: 50 or fewer failures | {'Met' if x['failed']<=50 else 'Not yet'} | {'Met' if y['failed']<=52 else 'Not yet'} |",
                 '',
                 'All destinations are genuine full-cube supported feet poses on a prebuilt Dome.',
                 'A workflow success confirms recorded results, not successful navigation of every target.']
