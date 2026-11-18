@@ -35,6 +35,7 @@ final class BuilderWaypointTravel {
         final BlockPos goal;
         final ArrayDeque<BlockPos> visited=new ArrayDeque<>();
         BlockPos stage;
+        BlockPos verifiedFlightLanding;
         long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe;
         BlockPos lastAscentLanding;
         double best=Double.POSITIVE_INFINITY;
@@ -154,6 +155,52 @@ final class BuilderWaypointTravel {
                     +" checked="+checked);
         return best;
     }
+    private record VerifiedBridge(BlockPos launch,BlockPos landing,double score){}
+
+    /**
+     * A grounded approach to a roof climb is useful ONLY if its actual
+     * collision-verified flight destination is retained too. No fictional
+     * stance, teleportation or unfounded 3D movement is permitted.
+     */
+    private static VerifiedBridge ascentBridge(ServerLevel level,BuilderGolem worker,
+            BlockPos destination,Set<BlockPos> component,List<BlockPos> avoid){
+        BlockPos from=worker.blockPosition();
+        if(destination.getY()<=from.getY()+3)return null;
+        List<BlockPos> launches=new ArrayList<>();
+        for(BlockPos at:component){
+            if(avoid.contains(at)||Math.abs(at.getY()-from.getY())>2
+                    ||flatDistance(from,at)>26
+                    ||!level.hasChunkAt(at))continue;
+            launches.add(at);
+        }
+        launches.sort(Comparator.comparingDouble((BlockPos a)->flatDistance(a,destination))
+                .thenComparingDouble(a->flatDistance(a,from)));
+        VerifiedBridge best=null;
+        int inspected=0;
+        for(BlockPos launch:launches){
+            if(++inspected>48)break;
+            int upper=Math.min(destination.getY()+3,launch.getY()+32);
+            for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+                if(dx*dx+dz*dz>4)continue;
+                for(int y=launch.getY()+3;y<=upper;y++){
+                    BlockPos landing=new BlockPos(launch.getX()+dx,y,launch.getZ()+dz);
+                    if(avoid.contains(landing)||!level.hasChunkAt(landing)
+                            ||!WorkerNavigation.canStandOn(level,worker,landing)
+                            ||!BuilderFlight.canFlyBetween(level,worker,launch,landing))
+                        continue;
+                    double heightRemaining=destination.getY()-landing.getY();
+                    double cost=2*Math.abs(heightRemaining)
+                            +.28*flatDistance(landing,destination)
+                            +.15*flatDistance(from,launch)
+                            +Math.max(0,-heightRemaining)*1.5;
+                    if(best==null||cost<best.score())
+                        best=new VerifiedBridge(launch,landing,cost);
+                }
+            }
+        }
+        return best;
+    }
+
     private static void mark(Plan plan,BlockPos cell){
         if(cell==null)return;
         plan.visited.remove(cell);
@@ -265,17 +312,42 @@ final class BuilderWaypointTravel {
                     p.stage.getX()+.5,WorkerNavigation.surveyFloorHeight(level,p.stage),
                     p.stage.getZ()+.5);
             if(dist<.27*.27){
-                mark(p,p.stage);
-                p.stagesCompleted++;
-                System.out.println("[NN WAYPOINT STAGE REACHED] worker="+worker.getUUID()
-                        +" stage="+p.stage+" destination="+destination);
-                p.stage=null;p.nextSurvey=now+10;p.best=Double.POSITIVE_INFINITY;
+                if(p.verifiedFlightLanding!=null){
+                    if(dist>.08*.08){
+                        WorkerNavigation.routeToExact(level,worker,p.stage,1.0);
+                        return true;
+                    }
+                    BlockPos flightLanding=p.verifiedFlightLanding;
+                    if(BuilderFlight.requestSupportedLanding(level,worker,flightLanding)){
+                        mark(p,p.stage);
+                        mark(p,flightLanding);
+                        p.stagesCompleted++;
+                        System.out.println("[NN WAYPOINT VERIFIED BRIDGE] worker="
+                                +worker.getUUID()+" launch="+p.stage
+                                +" landing="+flightLanding+" final="+destination);
+                        p.stage=null;p.verifiedFlightLanding=null;
+                        p.nextSurvey=now+10;p.best=Double.POSITIVE_INFINITY;
+                        return true;
+                    }
+                    System.out.println("[NN WAYPOINT BRIDGE REJECTED AT LAUNCH] worker="
+                            +worker.getUUID()+" launch="+p.stage
+                            +" landing="+flightLanding+" target="+destination);
+                    mark(p,p.stage);
+                    p.verifiedFlightLanding=null;p.stage=null;
+                    p.nextSurvey=now+20;
+                }else{
+                    mark(p,p.stage);
+                    p.stagesCompleted++;
+                    System.out.println("[NN WAYPOINT STAGE REACHED] worker="+worker.getUUID()
+                            +" stage="+p.stage+" destination="+destination);
+                    p.stage=null;p.nextSurvey=now+10;p.best=Double.POSITIVE_INFINITY;
+                }
             }else if(now-p.stageTick>STAGE_TTL){
                 System.out.println("[NN WAYPOINT STAGE FAILED] worker="+worker.getUUID()
                         +" stage="+p.stage+" target="+destination
                         +" traveled="+Math.sqrt(Math.max(0,p.best)));
                 mark(p,p.stage);
-                p.stage=null;p.failedStages++;
+                p.stage=null;p.verifiedFlightLanding=null;p.failedStages++;
                 p.nextSurvey=now+20;
                 WorkerNavigation.stop(worker);
             }else{
@@ -351,6 +423,17 @@ final class BuilderWaypointTravel {
             // Never require horizontal proximity while trapped BELOW a
             // roof. Going outward to find unobstructed sky is real progress.
             BlockPos candidate=null;
+            if(high&&destination.getY()-here.getY()>=6){
+                var bridge=ascentBridge(level,worker,destination,connected,recent);
+                if(bridge!=null){
+                    candidate=bridge.launch();
+                    p.verifiedFlightLanding=bridge.landing();
+                    System.out.println("[NN WAYPOINT BRIDGE PLAN] worker="
+                            +worker.getUUID()+" from="+here
+                            +" launch="+candidate+" landing="+bridge.landing()
+                            +" target="+destination+" score="+bridge.score());
+                }
+            }
             // On an upper-roof assignment a 1-block horizontal separation
             // can still mean 23 blocks of solid ceiling in between. Probe
             // the connected exterior, not a greedy near-target tile.
@@ -365,7 +448,10 @@ final class BuilderWaypointTravel {
                         +" from="+here+" exterior="+candidate
                         +" target="+destination+" distanceDetour="
                         +flatDistance(candidate,destination));
-            if(candidate==null)candidate=chooseStage(here,destination,connected,recent);
+            if(candidate==null){
+                p.verifiedFlightLanding=null;
+                candidate=chooseStage(here,destination,connected,recent);
+            }
             if(candidate!=null){
                 // Stage walking owns movement until the worker reaches this
                 // collision-certified standing tile. An abandoned powered
