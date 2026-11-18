@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/nngolems-dome-waypoint-grapple.yml"
       - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderWaypointTravel.java"
+      - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java"
       - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderMultiLegTravel.java"
       - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNRoofManeuverPolicy.java"
   workflow_dispatch:
@@ -232,7 +233,7 @@ jobs:
                 f"| Learned route choices | {x['route_choices']} | {y['route_choices']} |",
                 f"| Routes changed | {x['route_changes']} | {y['route_changes']} |",
                 f"| Positive roof maneuver rewards | {x['training_updates']} | {y['training_updates']} |",
-                f"| Target: 50 or fewer failures | {'Met' if x['failed']<=50 else 'Not yet'} | {'Met' if y['failed']<=50 else 'Not yet'} |",
+                f"| Target: 10 or fewer failures | {'Met' if x['failed']<=10 else 'Not yet'} | {'Met' if y['failed']<=10 else 'Not yet'} |",
                 '',
                 'All destinations are genuine full-cube supported feet poses on a prebuilt Dome.',
                 'A workflow success confirms recorded results, not successful navigation of every target.']
