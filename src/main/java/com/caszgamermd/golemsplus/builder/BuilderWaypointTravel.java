@@ -24,6 +24,8 @@ import net.minecraft.server.level.ServerLevel;
  */
 final class BuilderWaypointTravel {
     private static final int STAGE_RADIUS=18;
+    private static final boolean GRAPPLE_TRAINING=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_GRAPPLE","false"));
     private static final boolean EXPERIMENTAL_DIRECT_ASCENT=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_DIRECT_ASCENT","false"));
     private static final boolean EXPERIMENTAL_GATEWAY=Boolean.parseBoolean(
@@ -41,7 +43,8 @@ final class BuilderWaypointTravel {
         final ArrayDeque<BlockPos> visited=new ArrayDeque<>();
         BlockPos stage;
         BlockPos verifiedFlightLanding;
-        long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe, nextSurfaceProbe, nextHoverRecovery;
+        long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe, nextSurfaceProbe,
+                nextHoverRecovery, nextGrappleProbe;
         BlockPos lastAscentLanding;
         double best=Double.POSITIVE_INFINITY;
         int failedStages,stagesCompleted;
@@ -303,6 +306,7 @@ final class BuilderWaypointTravel {
         }
         BlockPos here=worker.blockPosition();
         long now=level.getGameTime();
+        if(GRAPPLE_TRAINING&&BuilderGrappleAccess.active(worker))return true;
         if(BuilderFlight.moving(worker)){
             // Never overwrite or stop an active collision-certified flight.
             BuilderMultiLegTravel.stand(level,worker,destination);
@@ -413,6 +417,23 @@ final class BuilderWaypointTravel {
             if(horizontal<=12&&BuilderMultiLegTravel.stand(level,worker,destination))
                 return true;
         }else if(high){
+            if(GRAPPLE_TRAINING&&horizontal<=16&&now>=p.nextGrappleProbe){
+                p.nextGrappleProbe=now+85;
+                int rise=destination.getY()-here.getY();
+                for(int targetRise:new int[]{16,12,8,20}){
+                    BlockPos anchorGoal=destination.atY(
+                            here.getY()+Math.min(rise,targetRise));
+                    var result=BuilderGrappleAccess.reach(
+                            level,worker,null,anchorGoal);
+                    if(result==BuilderGrappleAccess.Result.MOVING){
+                        BuilderMultiLegTravel.clear(worker);
+                        System.out.println("[NN WAYPOINT GRAPPLE ASCENT] worker="
+                                +worker.getUUID()+" from="+here
+                                +" goal="+anchorGoal+" final="+destination);
+                        return true;
+                    }
+                }
+            }
             // Short individually verified ascents are better than a single
             // six-flight commitment that fails after three legs. The actual
             // support and the complete flight sweep are checked afresh for
