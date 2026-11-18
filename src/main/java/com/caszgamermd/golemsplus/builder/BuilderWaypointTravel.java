@@ -31,7 +31,8 @@ final class BuilderWaypointTravel {
         final BlockPos goal;
         final ArrayDeque<BlockPos> visited=new ArrayDeque<>();
         BlockPos stage;
-        long stageTick, nextSurvey, nextDescentProbe;
+        long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe;
+        BlockPos lastAscentLanding;
         double best=Double.POSITIVE_INFINITY;
         int failedStages,stagesCompleted;
         Plan(BlockPos goal){this.goal=goal.immutable();}
@@ -191,6 +192,41 @@ final class BuilderWaypointTravel {
         }
         return false;
     }
+    /**
+     * Physically verified short, vertical-first roof climb from an existing
+     * supported stance. Unlike a planned trip all the way to the target,
+     * each hop is real and useful even if the full roof route is unknown.
+     * Never allow unbounded horizontal propeller travel.
+     */
+    static BlockPos chooseDirectAscent(ServerLevel level,BuilderGolem worker,
+            BlockPos target,BlockPos excluded){
+        BlockPos start=worker.blockPosition();
+        if(target.getY()<=start.getY()+2||!worker.onGround()
+                ||BuilderFlight.active(worker))return null;
+        BlockPos best=null;
+        double score=Double.POSITIVE_INFINITY;
+        int upper=Math.min(start.getY()+32,target.getY()+3);
+        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+            if(dx*dx+dz*dz>4)continue;
+            for(int y=start.getY()+3;y<=upper;y++){
+                BlockPos candidate=new BlockPos(start.getX()+dx,y,start.getZ()+dz);
+                if(candidate.equals(excluded)
+                        ||!level.hasChunkAt(candidate)
+                        ||!WorkerNavigation.canStandOn(level,worker,candidate)
+                        ||!BuilderFlight.canFlyBetween(level,worker,start,candidate))
+                    continue;
+                // A rise in Y is the primary objective; horizontal approach
+                // is secondary. Allow overshooting the target height by at
+                // most 3 blocks, but do not repeatedly land on one roof lip.
+                double remaining=Math.abs(target.getY()-candidate.getY());
+                double horizontal=flatDistance(candidate,target);
+                double candidateScore=remaining*2+.18*horizontal
+                        +Math.max(0,candidate.getY()-target.getY())*2;
+                if(candidateScore<score){score=candidateScore;best=candidate;}
+            }
+        }
+        return best;
+    }
     static void clear(BuilderGolem worker){
         plans.remove(worker);
         BuilderMultiLegTravel.clear(worker);
@@ -256,6 +292,25 @@ final class BuilderWaypointTravel {
             if(horizontal<=12&&BuilderMultiLegTravel.stand(level,worker,destination))
                 return true;
         }else if(high){
+            // Short individually verified ascents are better than a single
+            // six-flight commitment that fails after three legs. The actual
+            // support and the complete flight sweep are checked afresh for
+            // every intermediate landing, including awkward roof lips.
+            if(now>=p.nextAscentProbe
+                    &&(horizontal<=25||level.canSeeSky(here.above()))){
+                p.nextAscentProbe=now+35;
+                BlockPos landing=chooseDirectAscent(
+                        level,worker,destination,p.lastAscentLanding);
+                if(landing!=null&&BuilderFlight.requestSupportedLanding(
+                        level,worker,landing)){
+                    p.lastAscentLanding=landing.immutable();
+                    BuilderMultiLegTravel.clear(worker);
+                    System.out.println("[NN WAYPOINT INCREMENTAL ASCENT] worker="
+                            +worker.getUUID()+" from="+here+" landing="+landing
+                            +" final="+destination);
+                    return true;
+                }
+            }
             // A rooftop waypoint often lies directly ABOVE a solid roof.
             // The takeoff must be from a physically clear exterior pose;
             // planning straight up through the ceiling is never legal.
