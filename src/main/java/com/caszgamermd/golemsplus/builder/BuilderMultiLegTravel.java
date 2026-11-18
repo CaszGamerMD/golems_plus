@@ -24,6 +24,7 @@ final class BuilderMultiLegTravel {
         final List<Leg> legs;
         final BuilderNNRoofManeuverPolicy.Selection neural;
         int index;
+        int rejectedLaunches;
         boolean flying;
         long progress;
         double best=Double.POSITIVE_INFINITY;
@@ -34,6 +35,21 @@ final class BuilderMultiLegTravel {
     }
     private static final Map<BuilderGolem,Trip> trips=new WeakHashMap<>();
     private static final Map<BuilderGolem,Long> searchAfter=new WeakHashMap<>();
+    // A physically rejected takeoff must not be selected again immediately.
+    // This is per-worker, temporary, and never bypasses collision checks.
+    private static final Map<BuilderGolem,Map<Leg,Long>> rejectedLegs=new WeakHashMap<>();
+    private static final long FAILED_LEG_RETRY_TICKS=240;
+    private static boolean rejected(BuilderGolem worker,Leg leg,long now){
+        Map<Leg,Long> bad=rejectedLegs.get(worker);
+        return bad!=null&&bad.getOrDefault(leg,-1L)>now;
+    }
+    private static void reject(BuilderGolem worker,Leg leg,long now,String reason){
+        rejectedLegs.computeIfAbsent(worker,k->new HashMap<>())
+                .put(leg,now+FAILED_LEG_RETRY_TICKS);
+        System.out.println("[NN WAYPOINT BAD LEG] worker="+worker.getUUID()
+                +" launch="+leg.launch()+" landing="+leg.landing()
+                +" reason="+reason+" retryAfter="+(now+FAILED_LEG_RETRY_TICKS));
+    }
     static void clear(BuilderGolem worker){trips.remove(worker);searchAfter.remove(worker);}
     static void abortWaypoint(ServerLevel level,BuilderGolem worker,String reason){
         Trip t=trips.remove(worker);
@@ -231,7 +247,9 @@ final class BuilderMultiLegTravel {
                 for(BlockPos land:landings(level,worker,goal,launch)){
                     if(seen.getOrDefault(land,Integer.MAX_VALUE)<=n.legs().size()+1)continue;
                     if(++checked>checkedLimit||++probes>probeLimit)break;
-                    if(!BuilderFlight.canFlyBetween(level,worker,launch,land))continue;
+                    Leg physical=new Leg(launch,land);
+                    if(rejected(worker,physical,level.getGameTime())
+                            ||!BuilderFlight.canFlyBetween(level,worker,launch,land))continue;
                     if(!walkChecked){
                         walkChecked=true;
                         walkOK=WorkerNavigation.hasGroundRouteFrom(level,worker,n.at(),List.of(launch));
@@ -359,7 +377,19 @@ final class BuilderMultiLegTravel {
                     trips.remove(worker);searchAfter.put(worker,now+20);return true;
                 }
             }
-            if(now-t.progress<400)return true;
+            // A stopped/aborted flight is NOT continuing progress toward
+            // its promised landing. The old controller waited 400 ticks
+            // after a dead leg, spending half of a 750-tick training trial
+            // without finding another route.
+            if(!BuilderFlight.moving(worker)&&now-t.progress>=25){
+                reject(worker,leg,now,"flight_ended_short");
+                BuilderNNRoofManeuverPolicy.failed(
+                        level,worker,t.neural,"flight_ended_short");
+                trips.remove(worker);searchAfter.put(worker,now+20);
+                if(!BuilderFlight.active(worker))WorkerNavigation.stop(worker);
+                return false;
+            }
+            if(now-t.progress<180)return true;
         }else{
             double d=worker.position().distanceToSqr(feet(level,leg.launch()));
             if(d<t.best-.04){t.best=d;t.progress=now;}
@@ -367,15 +397,25 @@ final class BuilderMultiLegTravel {
                     &&WorkerNavigation.canStandOn(level,worker,leg.landing())){
                 if(centeredLaunch(level,worker,leg.launch())){
                     if(BuilderFlight.requestSupportedLanding(level,worker,leg.landing())){
-                        t.flying=true;t.progress=now;return true;
+                        t.flying=true;t.rejectedLaunches=0;t.progress=now;return true;
                     }
+                    t.rejectedLaunches++;
                     BuilderTrace.decision(level,worker,"MULTI_TRIP_LAUNCH_REJECT",leg.landing(),
-                            "centered launch="+leg.launch()+" feet="+worker.position());
+                            "centered launch="+leg.launch()+" feet="+worker.position()
+                            +" physicalRejects="+t.rejectedLaunches);
+                    if(t.rejectedLaunches>=3){
+                        reject(worker,leg,now,"repeated_centered_launch_reject");
+                        BuilderNNRoofManeuverPolicy.failed(
+                                level,worker,t.neural,"rejected_takeoff");
+                        trips.remove(worker);searchAfter.put(worker,now+20);
+                        return false;
+                    }
                 }
                 WorkerNavigation.routeToExact(level,worker,leg.launch(),1.0);return true;
             }
         }
         BuilderTrace.decision(level,worker,"MULTI_TRIP_REPLAN",leg.landing(),"blocked support or physical leg stopped");
+        reject(worker,leg,now,"timeout_or_blocked");
         BuilderNNRoofManeuverPolicy.failed(level,worker,t.neural,"stalled_or_blocked_leg");
         trips.remove(worker);searchAfter.put(worker,now+60);
         if(!BuilderFlight.active(worker))WorkerNavigation.stop(worker);
