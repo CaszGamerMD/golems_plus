@@ -298,7 +298,11 @@ public final class BuilderNNDomeWaypointGameTest {
                             level,workers.getFirst().entity,target.feet()));
         final long start=h.getTick(),started=System.nanoTime();
         final boolean[] finished={false};
-        h.onEachTick(()->{
+        // onEachTick() eagerly schedules a callback for EVERY declared
+        // maxTicks value, causing Java heap exhaustion before any route
+        // attempt. ThenExecuteFor advances incrementally, as in the
+        // physical BuilderNNDomeStrategyGameTest.
+        h.startSequence().thenExecuteFor(1000000000,()->{
             if(finished[0])return;
             long now=h.getTick();
             for(Walker w:workers){
