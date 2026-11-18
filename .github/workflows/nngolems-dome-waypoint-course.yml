@@ -1,5 +1,5 @@
 name: NNGolems finished Dome waypoint traversal test
-# Fifth test: revert failed direct-ascent approach; probe connected +/-1 roof-height launch sites, 1507-update checkpoint.
+# Sixth test: traditional complete route first, stepped roof takeoffs only for incomplete routes; <=52 failures goal.
 run-name: "Finished Dome 24-waypoint navigation A/B (${{ github.sha }})"
 on:
   push:
