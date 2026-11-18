@@ -19,8 +19,10 @@ on:
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderVillagerMatrixFullFixture.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBlockResolver.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCeilingDependencies.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderConstructionPlan.java'
       - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderNNVanillaHeadTest.java'
       - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderCeilingDependenciesTest.java'
+      - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderNNCeilingOrderTest.java'
       - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderNNRoofFrontierTest.java'
       - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderNNDomeStrategyGameTest.java'
   workflow_dispatch:
@@ -51,6 +53,7 @@ jobs:
           gradle --no-daemon test \
             --tests '*BuilderNNVanillaHeadTest' \
             --tests '*BuilderCeilingDependenciesTest' \
+            --tests '*BuilderNNCeilingOrderTest' \
             --tests '*BuilderNNRoofFrontierTest'
   run:
     name: ${{ matrix.course }} physical run ${{ matrix.trial }}
@@ -66,6 +69,9 @@ jobs:
     env:
       MATRIX_TEST_MODE: controlled
       NN_COURSE: ${{ matrix.course }}
+      # An isolated Matrix ablation: keep paid overhead lichen pending until
+      # its real support is built; ordinary gameplay retains strict Y order.
+      GOLEMS_NN_CEILING_TAIL: ${{ matrix.course == 'matrix' && 'true' || 'false' }}
       NN_REPEAT_TRIAL: ${{ matrix.trial }}
       NN_TEAM_SIZE: '8'
       NN_DOME_MODE: AUTO8
@@ -162,6 +168,9 @@ jobs:
               'missing_physical_support': r'missing physical support',
               'no_ground_frontier': r'no ground frontier|no grounded frontier',
               'project_yields': r'\[NN PROJECT YIELD\]',
+              'ceiling_tail_plans': r'\[NN CEILING TAIL\]',
+              'roof_route_rejections': r'\[NN ROOF ROUTE REJECT\]',
+              'roof_multileg_approvals': r'\[NN ROOF MULTILEG\].*approved=true',
           }
           lines = [
               f'course={os.environ.get("NN_COURSE", "unknown")}',
