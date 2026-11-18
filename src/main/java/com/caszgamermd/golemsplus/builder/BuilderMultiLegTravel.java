@@ -244,6 +244,12 @@ final class BuilderMultiLegTravel {
      * unlock diagonal and +/-1 roof-slope takeoffs. This avoids trading
      * an easy complete roof route for an exploratory dead-end.
      */
+    static boolean preferSlopeFallback(boolean traditionalComplete,
+            boolean traditionalEmpty,boolean alternativeComplete,
+            double traditionalScore,double alternativeScore){
+        return !traditionalComplete&&(traditionalEmpty||alternativeComplete
+                ||alternativeScore+10<traditionalScore);
+    }
     private static List<Leg> plan(ServerLevel level,BuilderGolem worker,Goal goal,
             boolean commit){
         List<Leg> normal=searchPlan(level,worker,goal,commit,false);
@@ -253,9 +259,10 @@ final class BuilderMultiLegTravel {
         List<Leg> slope=searchPlan(level,worker,goal,false,true);
         if(slope.isEmpty())return normal;
         boolean completed=good(level,worker,goal,slope.getLast().landing());
-        boolean meaningful=normal.isEmpty()||completed
-                ||score(goal,slope.getLast().landing())+10
-                    <score(goal,normal.getLast().landing());
+        boolean meaningful=preferSlopeFallback(false,normal.isEmpty(),
+                completed,normal.isEmpty()?Double.POSITIVE_INFINITY
+                        :score(goal,normal.getLast().landing()),
+                score(goal,slope.getLast().landing()));
         if(!meaningful)return normal;
         System.out.println("[NN WAYPOINT SLOPE FALLBACK] worker="+worker.getUUID()
                 +" target="+goal.target()+" ordinaryLegs="+normal.size()
