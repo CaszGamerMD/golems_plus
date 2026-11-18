@@ -36,6 +36,8 @@ final class BuilderWaypointTravel {
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_ROOF_RETREAT","false"));
     private static final boolean ISLAND_EGRESS=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_ISLAND_EGRESS","false"));
+    private static final boolean DISCONNECTED_ROOF_EGRESS=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_DISCONNECTED_ROOF_EGRESS","false"));
     private static final boolean TARGETED_BRIDGE_RESCUE=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_BRIDGE_RESCUE","false"));
     private static final boolean EXPERIMENTAL_DIRECT_ASCENT=Boolean.parseBoolean(
@@ -71,6 +73,17 @@ final class BuilderWaypointTravel {
         return stagnantTicks>=170&&groundedCells<=12
                 &&horizontal<=12&&Math.abs(verticalDelta)<=3
                 &&grounded&&!powered;
+    }
+    /** A forty-to-eighty-cell roof can still be a disconnected dead-end.
+     * Physical ground-connectivity is stronger evidence than island size:
+     * only abandon the route when the target is NOT in the actual component,
+     * after a prolonged lack of goal progress. */
+    static boolean shouldEscapeDisconnectedRoof(int stagnantTicks,int groundedCells,
+            double horizontal,int verticalDelta,boolean grounded,
+            boolean powered,boolean disconnected){
+        return stagnantTicks>=190&&groundedCells>12&&groundedCells<=96
+                &&horizontal<=12&&Math.abs(verticalDelta)<=3
+                &&grounded&&!powered&&disconnected;
     }
     static boolean needsElevation(BlockPos here,BlockPos goal){
         return Math.abs(here.getY()-goal.getY())>=3;
@@ -446,9 +459,16 @@ final class BuilderWaypointTravel {
                 &&!BuilderGrappleAccess.active(worker)){
             p.nextIslandEscape=now+220;
             Set<BlockPos> island=WorkerNavigation.groundReachableFrom(level,worker,here);
+            boolean disconnected=!island.contains(destination);
+            boolean largerPocket=DISCONNECTED_ROOF_EGRESS
+                    &&shouldEscapeDisconnectedRoof((int)(now-p.lastGoalImprovement),
+                            island.size(),horizontal,destination.getY()-here.getY(),
+                            worker.onGround(),BuilderFlight.active(worker),
+                            disconnected);
             if(shouldEscapeRoofIsland((int)(now-p.lastGoalImprovement),
                     island.size(),horizontal,destination.getY()-here.getY(),
-                    worker.onGround(),BuilderFlight.active(worker))){
+                    worker.onGround(),BuilderFlight.active(worker))
+                    ||largerPocket){
                 BuilderMultiLegTravel.abortWaypoint(
                         level,worker,"roof_island_no_goal_progress");
                 boolean escaped=GRAPPLE_TRAINING
@@ -467,6 +487,30 @@ final class BuilderWaypointTravel {
                     p.bestGoalScore=Double.POSITIVE_INFINITY;
                     p.stage=null;p.verifiedFlightLanding=null;
                     return true;
+                }
+                if(largerPocket){
+                    // If a vertical descent is roof-blocked, stage at an
+                    // actual reachable edge; it is safer to move AWAY from
+                    // this goal briefly than spend another 750 ticks
+                    // revisiting the same disconnected roof component.
+                    BlockPos edge=chooseRoofRetreat(here,destination,island,
+                            new ArrayList<>(p.visited),
+                            at->roofHeadroom(level,at),
+                            at->level.canSeeSky(at.above()));
+                    if(edge!=null){
+                        p.stage=edge.immutable();p.stageTick=now;
+                        p.best=Double.POSITIVE_INFINITY;
+                        p.nextSurvey=now+10;
+                        p.lastGoalImprovement=now;
+                        p.bestGoalScore=Double.POSITIVE_INFINITY;
+                        p.verifiedFlightLanding=null;
+                        System.out.println("[NN WAYPOINT DISCONNECTED ROOF EGRESS] worker="
+                                +worker.getUUID()+" from="+here
+                                +" edge="+edge+" target="+destination
+                                +" component="+island.size());
+                        WorkerNavigation.routeToExact(level,worker,edge,1.0);
+                        return true;
+                    }
                 }
             }
         }

@@ -127,6 +127,23 @@ class BuilderWaypointTravelTest {
         assertFalse(BuilderFlight.worthwhileHoverProgress(1,Double.NaN));
     }
 
+    @Test void disconnectedMediumRoofPocketCanRetreatRatherThanLoop(){
+        assertTrue(BuilderWaypointTravel.shouldEscapeDisconnectedRoof(
+                220,56,8,2,true,false,true));
+        assertFalse(BuilderWaypointTravel.shouldEscapeDisconnectedRoof(
+                220,56,8,2,true,false,false),
+                "Connected roof goals must not retreat");
+        assertFalse(BuilderWaypointTravel.shouldEscapeDisconnectedRoof(
+                220,260,8,2,true,false,true),
+                "Do not abandon a large physically connected roof");
+        assertFalse(BuilderWaypointTravel.shouldEscapeDisconnectedRoof(
+                169,56,8,2,true,false,true));
+        assertFalse(BuilderWaypointTravel.shouldEscapeDisconnectedRoof(
+                220,56,8,2,false,false,true));
+        assertFalse(BuilderWaypointTravel.shouldEscapeDisconnectedRoof(
+                220,56,8,2,true,true,true));
+    }
+
     @Test void groundDestinationsShouldNotNeedHorizontalFlight(){
         BlockPos ground=new BlockPos(0,10,0);
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,
