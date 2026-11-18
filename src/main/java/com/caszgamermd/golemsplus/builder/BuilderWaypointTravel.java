@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -68,6 +69,31 @@ final class BuilderWaypointTravel {
             if(cost<best){best=cost;chosen=at;}
         }
         return chosen;
+    }
+    /**
+     * To ascend a solid roof, first reach SKY-EXPOSED connected ground
+     * rather than standing directly beneath the objective and attempting
+     * to fly through it. An exterior gateway is allowed to be FURTHER from
+     * the goal in X/Z, but it must belong to the actually reachable ground
+     * component and remain collision-safe.
+     */
+    static BlockPos chooseExposedGateway(BlockPos start,BlockPos target,
+            Set<BlockPos> connected,List<BlockPos> recent,
+            Predicate<BlockPos> skyExposed){
+        BlockPos best=null;
+        double bestCost=Double.POSITIVE_INFINITY;
+        for(BlockPos at:connected){
+            if(recent.contains(at)||Math.abs(start.getY()-at.getY())>2
+                    ||at.equals(start))continue;
+            double travel=flatDistance(start,at);
+            if(travel<3||travel>STAGE_RADIUS+6||!skyExposed.test(at))continue;
+            double residual=flatDistance(at,target);
+            // Prefer a gateway near the roof's outer edge, but first
+            // prioritize escaping the overhead obstruction.
+            double cost=residual+.18*travel;
+            if(cost<bestCost){bestCost=cost;best=at;}
+        }
+        return best;
     }
     private static void mark(Plan plan,BlockPos cell){
         if(cell==null)return;
@@ -175,14 +201,28 @@ final class BuilderWaypointTravel {
             }
             if(horizontal<=12&&BuilderMultiLegTravel.stand(level,worker,destination))
                 return true;
-        }else if(high&&horizontal<=16){
-            if(BuilderMultiLegTravel.stand(level,worker,destination))return true;
-        }else if(!high&&!lower){
-            if(horizontal<=12){
-                WorkerNavigation.routeToExact(level,worker,destination,1.0);
+        }else if(high){
+            // A rooftop waypoint often lies directly ABOVE a solid roof.
+            // The takeoff must be from a physically clear exterior pose;
+            // planning straight up through the ceiling is never legal.
+            if((horizontal<=18||level.canSeeSky(here.above()))
+                    &&BuilderMultiLegTravel.stand(level,worker,destination))
                 return true;
-            }
-            if(WorkerNavigation.routeTo(level,worker,destination,1.0))
+        }else{
+            // A roof can have several unsupported seams at exactly the same
+            // integer Y. Earlier multi-leg searches rejected ALL same-level
+            // landings; a true short powered hop is safe when the swept
+            // flight and landing are both physically certified.
+            if(horizontal<=12){
+                if(WorkerNavigation.canReachExact(level,worker,destination)){
+                    WorkerNavigation.routeToExact(level,worker,destination,1.0);
+                    return true;
+                }
+                if(BuilderMultiLegTravel.stand(level,worker,destination))
+                    return true;
+            }else if(horizontal<=26&&BuilderMultiLegTravel.stand(
+                    level,worker,destination))return true;
+            if(horizontal>12&&WorkerNavigation.routeTo(level,worker,destination,1.0))
                 return true;
         }
         // When far from an elevated goal, walk on the CURRENT level
@@ -191,8 +231,18 @@ final class BuilderWaypointTravel {
         if(now>=p.nextSurvey){
             p.nextSurvey=now+75;
             Set<BlockPos> connected=WorkerNavigation.groundReachableFrom(level,worker,here);
-            BlockPos candidate=chooseStage(here,destination,connected,
-                    new ArrayList<>(p.visited));
+            List<BlockPos> recent=new ArrayList<>(p.visited);
+            // Never require horizontal proximity while trapped BELOW a
+            // roof. Going outward to find unobstructed sky is real progress.
+            BlockPos candidate=high&&!level.canSeeSky(here.above())
+                    ?chooseExposedGateway(here,destination,connected,recent,
+                            at->level.canSeeSky(at.above())):null;
+            if(candidate!=null)
+                System.out.println("[NN WAYPOINT ROOF GATEWAY] worker="+worker.getUUID()
+                        +" from="+here+" exterior="+candidate
+                        +" target="+destination+" distanceDetour="
+                        +flatDistance(candidate,destination));
+            if(candidate==null)candidate=chooseStage(here,destination,connected,recent);
             if(candidate!=null){
                 p.stage=candidate.immutable();p.stageTick=now;
                 p.best=Double.POSITIVE_INFINITY;
