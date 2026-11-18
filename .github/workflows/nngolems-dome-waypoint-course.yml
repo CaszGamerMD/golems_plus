@@ -1,5 +1,5 @@
 name: NNGolems finished Dome waypoint traversal test
-# Physical rerun after eager GameTest onEachTick scheduler OOM was fixed.
+# Re-run with connected grounded approach stages and explicit descent-first navigation.
 run-name: "Finished Dome 24-waypoint navigation A/B (${{ github.sha }})"
 on:
   push:
@@ -32,7 +32,8 @@ jobs:
         run: |
           gradle --no-daemon test --tests '*BuilderNNRoofManeuverPolicyTest' \
             --tests '*BuilderNNDetourTrainingTest' \
-            --tests '*BuilderNeuralFrontierPolicyTest'
+            --tests '*BuilderNeuralFrontierPolicyTest' \
+            --tests '*BuilderWaypointTravelTest'
 
   traverse:
     name: "24 checkpoints × 8 golems – ${{ matrix.mode }}"
