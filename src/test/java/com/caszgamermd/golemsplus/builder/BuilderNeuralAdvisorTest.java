@@ -41,4 +41,20 @@ class BuilderNeuralAdvisorTest {
     @Test void geometryPrecedesEnvironment(){
         assertArrayEquals(new double[]{1,2,3,4},BuilderNeuralAdvisor.combine(new double[]{1,2},new double[]{3,4}));
     }
+    @Test void livePolicyOnlySelectsConfidentShorterVerifiedAlternatives(){
+        assertEquals(1,BuilderNeuralAdvisor.liveChoice(
+                new double[]{.55,.81},new double[]{4.,4.7},.47));
+        assertEquals(0,BuilderNeuralAdvisor.liveChoice(
+                new double[]{.55,.61},new double[]{4.,4.1},.47)); // insufficient gain
+        assertEquals(0,BuilderNeuralAdvisor.liveChoice(
+                new double[]{.55,.88},new double[]{4.,5.8},.47)); // too long
+        assertEquals(0,BuilderNeuralAdvisor.liveChoice(
+                new double[]{.12,.32},new double[]{4.,4.2},.47)); // below model threshold
+        assertEquals(0,BuilderNeuralAdvisor.liveChoice(
+                new double[]{.6,Double.NaN},new double[]{4.,4.1},.47));
+        assertEquals(0,BuilderNeuralAdvisor.liveChoice(
+                new double[]{.6,.9},new double[]{4.,-1},.47));
+        assertEquals(0,BuilderNeuralAdvisor.liveChoice(
+                new double[]{.5,.9},new double[]{4.},.47));
+    }
 }
