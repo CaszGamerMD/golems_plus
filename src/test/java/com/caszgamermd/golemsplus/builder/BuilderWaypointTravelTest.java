@@ -25,6 +25,30 @@ class BuilderWaypointTravelTest {
         assertNull(BuilderWaypointTravel.chooseStage(from,goal,
                 Set.of(from,new BlockPos(150,20,150)),List.of()));
     }
+    @Test void roofGatewayCanLegitimatelyLeadAwayFromTargetFirst(){
+        BlockPos start=new BlockPos(0,10,0),roofAbove=new BlockPos(0,34,0);
+        BlockPos underCeiling=new BlockPos(5,10,0);
+        BlockPos exterior=new BlockPos(-13,10,0);
+        assertEquals(exterior,BuilderWaypointTravel.chooseExposedGateway(
+                start,roofAbove,Set.of(start,underCeiling,exterior),
+                List.of(),p->p.equals(exterior)),
+                "A connected open-sky exterior pose must outrank the blocked direct route");
+        assertNull(BuilderWaypointTravel.chooseExposedGateway(
+                start,roofAbove,Set.of(start,underCeiling),
+                List.of(),p->false));
+        assertNull(BuilderWaypointTravel.chooseExposedGateway(
+                start,roofAbove,Set.of(start,underCeiling,exterior),
+                List.of(exterior),p->p.equals(exterior)),
+                "Do not repeat a known exhausted exterior gateway");
+    }
+    @Test void roofGatewayCannotInventUnsupportedOrDistantStandingPositions(){
+        BlockPos start=new BlockPos(0,10,0),roofAbove=new BlockPos(1,30,0);
+        BlockPos distant=new BlockPos(45,10,0);
+        BlockPos high=new BlockPos(-8,16,0);
+        assertNull(BuilderWaypointTravel.chooseExposedGateway(
+                start,roofAbove,Set.of(start,distant,high),
+                List.of(),p->true));
+    }
     @Test void groundDestinationsShouldNotNeedHorizontalFlight(){
         BlockPos ground=new BlockPos(0,10,0);
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,
