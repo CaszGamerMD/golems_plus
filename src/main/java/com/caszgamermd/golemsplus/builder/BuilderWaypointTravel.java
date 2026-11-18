@@ -120,7 +120,7 @@ final class BuilderWaypointTravel {
         double bestScore=Double.POSITIVE_INFINITY;
         int checked=0;
         for(BlockPos launch:options){
-            if(++checked>64)break;
+            if(++checked>40)break;
             // Candidate ascents must be to genuine supported full-foot
             // positions above this launch or within the 2m propeller
             // envelope. Never authorize arbitrary horizontal flight.
