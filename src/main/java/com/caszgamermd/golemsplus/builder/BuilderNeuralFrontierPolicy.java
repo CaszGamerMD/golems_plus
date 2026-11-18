@@ -5,6 +5,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.WallBlock;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.StairBlock;
+import com.caszgamermd.golemsplus.worker.WorkerNavigation;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -35,13 +42,16 @@ final class BuilderNeuralFrontierPolicy {
             "golems.nn.frontierControl",
             System.getenv().getOrDefault("GOLEMS_NN_FRONTIER_CONTROL","false")));
     private static final Gson JSON=new Gson();
-    private static final int INPUTS=12,HIDDEN=8,MAX_POOL=8;
+    private static final int INPUTS=20,LEGACY_INPUTS=12,HIDDEN=8,MAX_POOL=8;
     private static final double MAX_EXTRA_COST=64.0;
     private static final int SAVE_EVERY=16;
     private static final Map<UUID,Proposal> proposed=new HashMap<>();
     private static final Map<UUID,Pending> claimed=new HashMap<>();
     private static final Network MODEL=Network.initial();
     private static int decisions,changes,updates,successes,failures;
+    private static final int MAX_NEGATIVE_MEMORY=32;
+    private static final List<double[]> recentRealFailures=new ArrayList<>();
+    private static int replaySteps;
     private static long lastPersistTick=-1;
 
     record Candidate(BuilderConstructionPlanner.Choice choice,BlockPos target,
@@ -71,6 +81,7 @@ final class BuilderNeuralFrontierPolicy {
             return net;
         }
         double score(double[] x){
+            if(x==null||x.length!=INPUTS)throw new IllegalArgumentException("terrain input shape");
             double z=c;
             for(int j=0;j<HIDDEN;j++){
                 double h=b[j];
@@ -79,9 +90,12 @@ final class BuilderNeuralFrontierPolicy {
             }
             return 1/(1+Math.exp(-Math.clamp(z,-40,40)));
         }
-        void learn(double[] x,double reward){
-            if(x.length!=INPUTS||!Double.isFinite(reward))return;
+        void learn(double[] x,double reward){learnWeighted(x,reward,1.0);}
+        void learnWeighted(double[] x,double reward,double weight){
+            if(x==null||x.length!=INPUTS||!Double.isFinite(reward)
+                    ||!Double.isFinite(weight)||weight<=0)return;
             double target=Math.clamp(reward,0,1);
+            double effectiveWeight=Math.min(4.0,weight);
             // Multiple small online gradients per ACTUAL task outcome. No
             // optimization uses hypothetical/counterfactual outcomes.
             for(int epoch=0;epoch<3;epoch++){
@@ -93,7 +107,7 @@ final class BuilderNeuralFrontierPolicy {
                     hidden[j]=Math.tanh(a);z+=v[j]*hidden[j];
                 }
                 double probability=1/(1+Math.exp(-Math.clamp(z,-40,40)));
-                double grad=probability-target;
+                double grad=(probability-target)*effectiveWeight;
                 double lr=.022;
                 for(int j=0;j<HIDDEN;j++){
                     v[j]-=lr*grad*hidden[j];
@@ -107,20 +121,22 @@ final class BuilderNeuralFrontierPolicy {
         Saved snapshot(int updates,int successes,int failures){
             double[][] weights=new double[HIDDEN][];
             for(int j=0;j<HIDDEN;j++)weights[j]=w[j].clone();
-            return new Saved(1,updates,successes,failures,weights,b.clone(),v.clone(),c);
+            return new Saved(2,updates,successes,failures,weights,b.clone(),v.clone(),c);
         }
         boolean restore(Saved saved){
-            if(saved==null||saved.schema()!=1||saved.w()==null||saved.w().length!=HIDDEN
+            if(saved==null||(saved.schema()!=1&&saved.schema()!=2)
+                    ||saved.w()==null||saved.w().length!=HIDDEN
                     ||saved.b()==null||saved.b().length!=HIDDEN
                     ||saved.v()==null||saved.v().length!=HIDDEN
                     ||!Double.isFinite(saved.c()))return false;
             for(int j=0;j<HIDDEN;j++){
-                if(saved.w()[j]==null||saved.w()[j].length!=INPUTS
+                if(saved.w()[j]==null||saved.w()[j].length!=(saved.schema()==1?LEGACY_INPUTS:INPUTS)
                         ||!Double.isFinite(saved.b()[j])||!Double.isFinite(saved.v()[j]))return false;
                 for(double val:saved.w()[j])if(!Double.isFinite(val))return false;
             }
             for(int j=0;j<HIDDEN;j++){
-                System.arraycopy(saved.w()[j],0,w[j],0,INPUTS);
+                Arrays.fill(w[j],0.0);
+                System.arraycopy(saved.w()[j],0,w[j],0,saved.w()[j].length);
                 b[j]=saved.b()[j];v[j]=saved.v()[j];
             }
             c=saved.c();return true;
@@ -151,7 +167,7 @@ final class BuilderNeuralFrontierPolicy {
             }catch(Exception e){
                 System.out.println("[NN FRONTIER LOAD] fresh policy; "+e.getMessage());
             }
-            System.out.println("[NN FRONTIER ENABLED] trainable=12x8x1"
+            System.out.println("[NN FRONTIER ENABLED] trainable=20x8x1 terrain=8"
                     +" safety=verified_frontier_same_tier model_updates="+updates);
         }
     }
@@ -175,8 +191,46 @@ final class BuilderNeuralFrontierPolicy {
     private static double bounded(double x,double limit){
         return Math.clamp(x/limit,0,1);
     }
+    /** Eight live-world terrain features. Never grant route permission. */
+    static double[] terrain(ServerLevel level,BuilderGolem worker,BlockPos target,BlockPos stance){
+        int standable=0,obstructed=0,thin=0,low=0,fluids=0,loaded=0;
+        BlockPos base=stance==null?worker.blockPosition():stance;
+        for(Direction direction:Direction.Plane.HORIZONTAL){
+            BlockPos near=base.relative(direction);
+            if(!level.hasChunkAt(near))continue;
+            loaded++;
+            if(WorkerNavigation.canStandOn(level,worker,near))standable++;
+            var state=level.getBlockState(near);
+            if(!state.getCollisionShape(level,near).isEmpty())obstructed++;
+            if(state.getBlock() instanceof FenceBlock||state.getBlock() instanceof WallBlock)thin++;
+            if(state.getBlock() instanceof SlabBlock||state.getBlock() instanceof StairBlock)low++;
+            if(!state.getFluidState().isEmpty())fluids++;
+        }
+        for(Direction direction:Direction.Plane.HORIZONTAL){
+            BlockPos near=target.relative(direction);
+            if(!level.hasChunkAt(near))continue;
+            loaded++;
+            var state=level.getBlockState(near);
+            if(!state.getCollisionShape(level,near).isEmpty())obstructed++;
+            if(state.getBlock() instanceof FenceBlock||state.getBlock() instanceof WallBlock)thin++;
+            if(state.getBlock() instanceof SlabBlock||state.getBlock() instanceof StairBlock)low++;
+            if(!state.getFluidState().isEmpty())fluids++;
+        }
+        double feet=stance==null?worker.getY():WorkerNavigation.surveyFloorHeight(level,stance);
+        if(!Double.isFinite(feet))feet=base.getY();
+        return new double[]{
+            standable/4.0,
+            loaded==0?1:obstructed/(double)loaded,
+            loaded==0?0:thin/(double)loaded,
+            loaded==0?0:low/(double)loaded,
+            Math.clamp(Math.abs(feet-base.getY()),0,1),
+            Math.clamp((feet-worker.getY())/32.0,-1,1),
+            standable<=1?1:0,
+            loaded==0?0:fluids/(double)loaded
+        };
+    }
     static Candidate candidate(BuilderConstructionPlanner.Choice choice,
-            BuilderGolem worker,BlockPos target,BlockPos stance,
+            ServerLevel world,BuilderGolem worker,BlockPos target,BlockPos stance,
             int touch,int risk,int stockRank,int tier,double cost,
             boolean sky,boolean grapple,boolean scaffold,boolean propeller){
         BlockPos from=worker.blockPosition(),feet=stance==null?target:stance;
@@ -194,7 +248,9 @@ final class BuilderNeuralFrontierPolicy {
             Math.clamp((target.getY()-from.getY())/32.0,-1,1),
             bounded(Math.abs(cost),500)
         };
-        return new Candidate(choice,target.immutable(),stockRank,tier,cost,x);
+        double[] expanded=Arrays.copyOf(x,INPUTS);
+        System.arraycopy(terrain(world,worker,target,stance),0,expanded,LEGACY_INPUTS,8);
+        return new Candidate(choice,target.immutable(),stockRank,tier,cost,expanded);
     }
     static boolean eligible(Candidate baseline,Candidate other){
         return baseline!=null&&other!=null
@@ -287,7 +343,19 @@ final class BuilderNeuralFrontierPolicy {
         feedback(worker,old,Math.max(0,now-old.tick()),0.0,"HANDOFF_"+reason);
     }
     private static void feedback(UUID worker,Pending chosen,long ticks,double reward,String outcome){
-        MODEL.learn(chosen.features(),reward);updates++;
+        MODEL.learnWeighted(chosen.features(),reward,reward==0?4.0:1.0);
+        updates++;
+        if(reward==0){
+            if(recentRealFailures.size()>=MAX_NEGATIVE_MEMORY)recentRealFailures.removeFirst();
+            recentRealFailures.add(chosen.features().clone());
+        }else if(updates%8==0&&!recentRealFailures.isEmpty()){
+            // Replay only *observed* failed handoffs, not hypothetical labels.
+            MODEL.learnWeighted(recentRealFailures.get(
+                    replaySteps%recentRealFailures.size()),0,2.0);
+            if(++replaySteps%16==0)
+                System.out.println("[NN TERRAIN REPLAY] actualFailures="+failures
+                        +" replayGradients="+replaySteps+" updates="+updates);
+        }
         if(reward>0)successes++;else failures++;
         System.out.println("[NN FRONTIER FEEDBACK] "+JSON.toJson(new Feedback(
                 1,worker.toString(),chosen.index(),ticks,reward,outcome,
