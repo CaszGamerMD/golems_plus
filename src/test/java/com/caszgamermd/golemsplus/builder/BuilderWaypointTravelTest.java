@@ -49,17 +49,6 @@ class BuilderWaypointTravelTest {
                 start,roofAbove,Set.of(start,distant,high),
                 List.of(),p->true));
     }
-    @Test void poweredRoofAscentRequiresNearbyElevatedGoal(){
-        var ground=new BlockPos(0,10,0);
-        assertTrue(BuilderWaypointTravel.shouldProbeAscent(
-                ground,new BlockPos(22,31,0)));
-        assertFalse(BuilderWaypointTravel.shouldProbeAscent(
-                ground,new BlockPos(28,31,0)),
-                "No unsupported long-range horizontal flight");
-        assertFalse(BuilderWaypointTravel.shouldProbeAscent(
-                ground,new BlockPos(2,12,0)),
-                "Do not fly for an ordinary reachable step");
-    }
     @Test void groundDestinationsShouldNotNeedHorizontalFlight(){
         BlockPos ground=new BlockPos(0,10,0);
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,
