@@ -140,15 +140,23 @@ final class BuilderMultiLegTravel {
         for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
             if(dx*dx+dz*dz>4)continue;
             for(int y=y0;y<=y1;y++){
-                if(Math.abs(y-launch.getY())<2)continue;
+                // Traversal-only Dome routes must bridge roof seams at
+                // the SAME elevation, or across a one-block roof lip.
+                // Previously every same-level/one-level landing was
+                // discarded BEFORE the physical flight checker ran,
+                // making isolated full-block roof islands unreachable.
+                // Only attempt a supported DIFFERENT tile; canFlyBetween
+                // still checks the complete swept 2m powered maneuver.
+                if(goal.kind()!=Kind.STAND&&Math.abs(y-launch.getY())<2)continue;
                 BlockPos p=new BlockPos(launch.getX()+dx,y,launch.getZ()+dz);
+                if(p.equals(launch))continue;
                 if(!level.hasChunkAt(p)||!WorkerNavigation.canStandOn(level,worker,p))continue;
                 result.add(p);
             }
         }
         result.sort(Comparator.comparingDouble((BlockPos p)->score(goal,p))
                 .thenComparingDouble(launch::distSqr));
-        if(LONG_DETOUR&&BuilderNNRoofManeuverPolicy.ENABLED&&goal.kind()==Kind.WORK){
+        if(LONG_DETOUR&&(goal.kind()==Kind.WORK||goal.kind()==Kind.STAND)){
             // Earlier "closest first" searches used up the bounded probe
             // budget before considering a high roof or the far side.
             // Interleave already-supported candidates; no safety predicate
@@ -200,9 +208,9 @@ final class BuilderMultiLegTravel {
         queue.add(new Node(start,List.of(),score(goal,start)));
         var seen=new HashMap<BlockPos,Integer>();seen.put(start,0);
         int expanded=0,probes=0;
-        int expandedLimit=LONG_DETOUR?36:18;
-        int probeLimit=LONG_DETOUR?240:120;
-        int checkedLimit=LONG_DETOUR?18:10;
+        int expandedLimit=LONG_DETOUR?(goal.kind()==Kind.STAND?48:36):18;
+        int probeLimit=LONG_DETOUR?(goal.kind()==Kind.STAND?320:240):120;
+        int checkedLimit=LONG_DETOUR?(goal.kind()==Kind.STAND?24:18):10;
         int maxLegs=LONG_DETOUR?6:4;
         Node bestPartial=null;
         var completed=new ArrayList<BuilderNNRoofManeuverPolicy.Candidate>();
