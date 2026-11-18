@@ -1,0 +1,203 @@
+name: NNGolems live neural decision pilot - Dome
+run-name: "NN live-flight A/B Dome (${{ github.sha }})"
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-neural-dome-pilot.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: nn-live-dome-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    name: Verify frozen neural inference and decision gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Check model shape, route bounds and candidate decision rules
+        run: gradle --no-daemon test --tests '*BuilderNeuralAdvisorTest'
+      - name: Verify frozen, exact flight-arrival network
+        run: |
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('experiments/nngolems/2026-11-16-rotation-learning/flight_environment-model.json')
+          d=json.loads(p.read_text())
+          assert len(d['features'])==24 and len(d['w'])==8
+          assert all(len(w)==24 for w in d['w'])
+          assert d['target']=='accepted_flight_arrives' and d['symmetry']=='c4_y'
+          assert 0 < d['threshold'] < 1
+          print('[NN PILOT MODEL] sha256='+hashlib.sha256(p.read_bytes()).hexdigest())
+          PY
+  build:
+    name: "Dome physical - ${{ matrix.mode }}"
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        mode: [baseline, neural]
+    env:
+      MATRIX_TEST_MODE: controlled
+      NN_COURSE: dome
+      NN_REPEAT_TRIAL: '1'
+      NN_TEAM_SIZE: '8'
+      NN_DOME_MODE: AUTO8
+      NN_SPEED_TEST: 'true'
+      NN_SPEED_TICK_LIMIT: '180000'
+      NN_COURSE_SECONDS: '900'
+      NN_TEAM_STALL_TICKS: '2400'
+      GOLEMS_NN_RECORD: 'true'
+      GOLEMS_NN_TEAM_RECORD: 'true'
+      GOLEMS_NN_SHADOW: 'true'
+      GOLEMS_NN_CONTROL: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
+      GOLEMS_NN_MODEL: ${{ github.workspace }}/experiments/nngolems/2026-11-16-rotation-learning/flight_environment-model.json
+      GOLEMS_NN_CEILING_TAIL: 'false'
+      GOLEMS_NN_REACHABLE_HANDOFF: 'false'
+      GOLEMS_NN_PARTIAL_YIELD: 'false'
+      GOLEMS_NN_TEAM_LOCAL: 'false'
+      GOLEMS_NN_FRONTIER_STAGING: 'true'
+      GOLEMS_NN_ROOF_FRONTIER: 'true'
+      GOLEMS_NN_ROOF_RADIUS: '24'
+      GOLEMS_NN_MULTI_LEG_ROOF: 'true'
+      GOLEMS_NN_SHAPE_EXIT: 'true'
+      GOLEMS_NN_SCAFFOLD_CHAIN: 'true'
+      GOLEMS_NN_STRUCTURES: 'true'
+      GOLEMS_NN_STRUCTURE_LOOKAHEAD: 'true'
+      GOLEMS_NN_PROJECT_YIELD: 'true'
+      GOLEMS_NN_AUTO: 'true'
+      GOLEMS_NN_STRIP_PILOT: 'false'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Validate original Dome and select the real physical GameTest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderNNDomeStrategyGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Test physical construction with selected controller
+        shell: bash
+        run: |
+          mkdir -p build/nn-pilot
+          set +e
+          set -o pipefail
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-pilot/server.log
+          echo "exit=${PIPESTATUS[0]}" > build/nn-pilot/exit.txt
+          exit "$(sed -n 's/^exit=//p' build/nn-pilot/exit.txt)"
+      - name: Summarize original schematic completion and actual model influence
+        if: always()
+        shell: bash
+        env:
+          PILOT_MODE: ${{ matrix.mode }}
+          PILOT_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          p=Path('build/nn-pilot')
+          p.mkdir(parents=True,exist_ok=True)
+          lines=(p/'server.log').read_text(errors='replace').splitlines() if (p/'server.log').exists() else []
+          term=next((line.split('[NN DOME RESULT] ',1)[1] for line in reversed(lines)
+                     if '[NN DOME RESULT] mode=AUTO8 ' in line),None)
+          fields=dict(re.findall(r'(\w+)=([^\s]+)',term)) if term else {}
+          control=[]
+          for line in lines:
+              if '[NNGOLEMS_CONTROL] ' in line:
+                  try:control.append(json.loads(line.split('[NNGOLEMS_CONTROL] ',1)[1]))
+                  except ValueError:pass
+          model=[line for line in lines if '[NNGOLEMS_MODEL] ' in line]
+          mode=os.environ['PILOT_MODE']
+          result=dict(schema=1,course='dome',mode=mode,commit=os.environ['PILOT_SHA'],
+                      physical_result=fields,terminal_present=bool(term),
+                      model_loaded=bool(model),model_records=model[:3],
+                      neural_decisions=len(control),
+                      changed_paths=sum(bool(x.get('changed')) for x in control),
+                      multi_candidate_decisions=sum(x.get('alternatives',0)>1 for x in control),
+                      first_changes=[x for x in control if x.get('changed')][:3],
+                      outcome=fields.get('outcome','NO_TERMINAL_RESULT'),
+                      correct=int(fields.get('correct','-1')),
+                      total=int(fields.get('total','3493')),
+                      elapsed_ticks=int(fields.get('ticks','-1')))
+          (p/'result.json').write_text(json.dumps(result,indent=2)+'\n')
+          print('[NN PILOT RESULT] '+json.dumps(result))
+          Path(os.environ['GITHUB_STEP_SUMMARY']).open('a').write(
+              '## Dome '+mode+'\n'+
+              'Correct: '+str(result['correct'])+'/'+str(result['total'])+
+              ', outcome: '+result['outcome']+
+              ', decisions: '+str(result['neural_decisions'])+
+              ', changed paths: '+str(result['changed_paths'])+'\n')
+          if not term:raise SystemExit('Missing physical GameTest result')
+          if mode=='neural' and not any('live=true' in m for m in model):
+              raise SystemExit('Neural pilot did NOT load live model')
+          if mode=='baseline' and control:
+              raise SystemExit('Conventional baseline unexpectedly made neural decisions')
+          PY
+      - name: Preserve physical gameplay log and metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-dome-live-${{ matrix.mode }}
+          path: build/nn-pilot
+          retention-days: 30
+          if-no-files-found: warn
+  compare:
+    name: Compare same-build baseline and neural decisions
+    needs: [validate, build]
+    if: always() && needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nn-dome-live-*
+          path: build/nn-dome-comparison
+      - name: Compare actual world-correct block counts
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('build/nn-dome-comparison')
+          data={}
+          for name in ['baseline','neural']:
+              p=root/('nn-dome-live-'+name)/'result.json'
+              data[name]=json.loads(p.read_text()) if p.exists() else None
+          a,b=data['baseline'],data['neural']
+          data['delta_correct_blocks']=(b['correct']-a['correct']) if a and b else None
+          data['same_schematic']=bool(a and b and a['course']==b['course']=='dome' and
+                                      a['total']==b['total']==3493)
+          (root/'comparison.json').write_text(json.dumps(data,indent=2)+'\n')
+          print('[NN PILOT COMPARISON] '+json.dumps(data))
+          PY
+      - name: Save verified A/B comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-dome-live-comparison
+          path: build/nn-dome-comparison/comparison.json
+          retention-days: 30
