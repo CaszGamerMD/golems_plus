@@ -31,6 +31,14 @@ class BuilderNNDetourTrainingTest {
         assertTrue(BuilderMultiLegTravel.usefulPartial(40,35,from,target,
                 new BlockPos(2,10,2),false),"ordinary forward progress stays legal");
     }
+    @Test void stoppedPhysicalFlightMustBeRejectedBeforeWholeWaypointTimesOut(){
+        assertFalse(BuilderMultiLegTravel.staleFlightLeg(true,200),
+                "a genuinely moving flight retains its certified destination");
+        assertFalse(BuilderMultiLegTravel.staleFlightLeg(false,24),
+                "brief landing transition is not a failed route");
+        assertTrue(BuilderMultiLegTravel.staleFlightLeg(false,25),
+                "a non-moving flight must be replanned rather than wasting 400 ticks");
+    }
     @Test void longSuccessfulWorldPlacementIsStrongPositiveNotFailure(){
         assertEquals(1,BuilderNeuralFrontierPolicy.successfulTraversalReward(0),1e-12);
         assertTrue(BuilderNeuralFrontierPolicy.successfulTraversalReward(5000)>=.70);
