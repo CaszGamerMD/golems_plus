@@ -108,12 +108,15 @@ final class BuilderWaypointTravel {
      * then plan the rest of the trip from that roof. This never targets
      * arbitrary open air and never skips the two-block horizontal envelope.
      */
+    static boolean shouldProbeAscent(BlockPos from,BlockPos goal){
+        return from!=null&&goal!=null&&goal.getY()-from.getY()>=5
+                &&flatDistance(from,goal)<=27;
+    }
     private static boolean directAscent(ServerLevel level,BuilderGolem worker,
             BlockPos finalGoal){
         if(!worker.onGround()||BuilderFlight.active(worker))return false;
         BlockPos from=worker.blockPosition();
-        if(finalGoal.getY()-from.getY()<5
-                ||flatDistance(from,finalGoal)>27)return false;
+        if(!shouldProbeAscent(from,finalGoal))return false;
         BlockPos best=null;
         double bestScore=Double.NEGATIVE_INFINITY;
         int top=Math.min(level.getMaxY()-3,
