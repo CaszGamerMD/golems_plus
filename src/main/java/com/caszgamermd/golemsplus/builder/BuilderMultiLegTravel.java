@@ -249,7 +249,9 @@ final class BuilderMultiLegTravel {
             if(completed.size()>1)
                 return BuilderNNRoofManeuverPolicy.choose(
                         level,worker,goal.target(),completed,0);
-            if(completed.size()==1)return completed.getFirst().legs();
+            if(completed.size()==1)
+                return BuilderNNRoofManeuverPolicy.choose(
+                        level,worker,goal.target(),completed,0);
             if(bestPartial!=null){
                 alternatePartials.sort(Comparator.comparingDouble(Node::score));
                 var choices=new ArrayList<BuilderNNRoofManeuverPolicy.Candidate>();
@@ -283,9 +285,8 @@ final class BuilderMultiLegTravel {
                         }
                     }
                 }
-                if(choices.size()>1)
-                    return BuilderNNRoofManeuverPolicy.choose(
-                            level,worker,goal.target(),choices,0);
+                return BuilderNNRoofManeuverPolicy.choose(
+                        level,worker,goal.target(),choices,0);
             }
         }
         if(bestPartial!=null&&LONG_DETOUR&&
