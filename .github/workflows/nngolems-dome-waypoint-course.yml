@@ -1,5 +1,5 @@
 name: NNGolems finished Dome waypoint traversal test
-# Verify multi-leg search accepts supported mid-height flights before exhausting its blocked-flight budget.
+# Verify actual grounded launch and matching collision-certified flight landings on upper Dome.
 run-name: "Finished Dome 24-waypoint navigation A/B (${{ github.sha }})"
 on:
   push:
