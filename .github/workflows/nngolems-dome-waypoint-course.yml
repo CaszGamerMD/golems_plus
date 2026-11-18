@@ -1,5 +1,5 @@
 name: NNGolems finished Dome waypoint traversal test
-# Checkpoint ablation: hold restored physical code fixed, reload 877-update snapshot used by 120-arrival run.
+# Verify collision-certified exterior ascent gateway routing while retaining the current checkpoint/test configuration.
 run-name: "Finished Dome 24-waypoint navigation A/B (${{ github.sha }})"
 on:
   push:
