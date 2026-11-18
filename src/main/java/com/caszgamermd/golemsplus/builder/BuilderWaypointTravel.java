@@ -247,6 +247,12 @@ final class BuilderWaypointTravel {
                         +flatDistance(candidate,destination));
             if(candidate==null)candidate=chooseStage(here,destination,connected,recent);
             if(candidate!=null){
+                // Stage walking owns movement until the worker reaches this
+                // collision-certified standing tile. An abandoned powered
+                // roof trip must NOT wake up later and fight the stage route.
+                // Censor it instead of claiming an unexecuted failure.
+                BuilderMultiLegTravel.clear(worker);
+                BuilderNNRoofManeuverPolicy.handedOff(worker.getUUID());
                 p.stage=candidate.immutable();p.stageTick=now;
                 p.best=Double.POSITIVE_INFINITY;
                 System.out.println("[NN WAYPOINT STAGE PLAN] worker="+worker.getUUID()
