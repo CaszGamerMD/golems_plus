@@ -213,7 +213,10 @@ final class BuilderNNRoofManeuverPolicy {
     }
     static List<BuilderMultiLegTravel.Leg> choose(ServerLevel level,
             BuilderGolem worker,BlockPos target,List<Candidate> options,int baseline){
-        if(!ENABLED||options.size()<2)return options.get(baseline).legs();
+        if(!ENABLED)return options.get(baseline).legs();
+        // Even a SINGLE physically available route supplies genuine landing
+        // and execution-failure labels; the model has nothing to choose
+        // between yet, but it still needs this training signal.
         List<double[]> contexts=new ArrayList<>();
         BlockPos from=worker.blockPosition();
         for(var option:options){
