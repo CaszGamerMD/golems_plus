@@ -30,6 +30,19 @@ public final class BuilderConstructionPlan {
             unsupported=Set.copyOf(unsupported);
         }
     }
+    /** Stable build ordering, independently unit-testable without a world. */
+    static boolean lateCeilingLichen(Step step){
+        return step!=null&&!step.ignorePlant()
+                &&step.requiredItem()!=null
+                &&step.encodedState().startsWith("minecraft:glow_lichen[")
+                &&BuilderCeilingDependencies.ceilingAttachment(step.encodedState());
+    }
+    static void sortForBuild(List<Step> steps,boolean ceilingTail){
+        steps.sort(java.util.Comparator
+                .comparingInt((Step step)->ceilingTail&&lateCeilingLichen(step)?1:0)
+                .thenComparingInt(Step::y)
+                .thenComparingInt(step->BuilderWaterPass.isWaterStep(step.encodedState())?1:0));
+    }
     private BuilderConstructionPlan(){}
     public static Result create(LitematicFileReader.Schematic schematic,BuildSite site){
         return create(schematic,site,false);
@@ -120,8 +133,16 @@ public final class BuilderConstructionPlan {
                 quantities.merge(BuilderWaterPass.WATER_BUCKET,1L,Long::sum);
             }
         }
-        steps.sort(java.util.Comparator.comparingInt(Step::y)
-                .thenComparingInt(s->BuilderWaterPass.isWaterStep(s.encodedState())?1:0));
+        // In the isolated NN Matrix experiment, upside-down lichen must not
+        // permanently gate all later material layers before its overhead
+        // attachment exists. Keep it a REAL paid step and score it only after
+        // real placement; defer its original index to a finishing phase
+        // after every ordinary dry/water layer. Other builds and main retain
+        // the original strict Y schedule.
+        boolean ceilingTail=Boolean.parseBoolean(System.getProperty(
+                "golems.nn.ceilingTail",
+                System.getenv().getOrDefault("GOLEMS_NN_CEILING_TAIL","false")));
+        sortForBuild(steps,ceilingTail);
         if(steps.size()>100_000)
             throw new IllegalArgumentException("At most 100,000 construction steps per build");
         for(String id:java.util.List.copyOf(quantities.keySet()))
