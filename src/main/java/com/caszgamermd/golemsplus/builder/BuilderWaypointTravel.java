@@ -36,7 +36,7 @@ final class BuilderWaypointTravel {
         final ArrayDeque<BlockPos> visited=new ArrayDeque<>();
         BlockPos stage;
         BlockPos verifiedFlightLanding;
-        long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe;
+        long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe, nextSurfaceProbe;
         BlockPos lastAscentLanding;
         double best=Double.POSITIVE_INFINITY;
         int failedStages,stagesCompleted;
@@ -356,6 +356,28 @@ final class BuilderWaypointTravel {
                 return true;
             }
         }
+        // A physically verified walking route beats a powered flight, even
+        // when the destination is several blocks ABOVE or BELOW this tile.
+        // A dome roof is a continuous sloping surface in places: classifying
+        // those destinations as "high" previously skipped all ground A* and
+        // trapped golems one or two supported tiles from their objective.
+        // Only switch ownership if the real grounded route is available;
+        // retain the flight planner for disconnected roof islands.
+        if((high||lower)&&horizontal<=18&&now>=p.nextSurfaceProbe){
+            p.nextSurfaceProbe=now+35;
+            if(WorkerNavigation.canReachExact(level,worker,destination)
+                    &&WorkerNavigation.routeToExact(level,worker,destination,1.0)){
+                BuilderMultiLegTravel.clear(worker);
+                BuilderNNRoofManeuverPolicy.handedOff(worker.getUUID());
+                p.stage=destination.immutable();
+                p.stageTick=now;
+                p.best=Double.POSITIVE_INFINITY;
+                System.out.println("[NN WAYPOINT ROOF WALK] worker="+worker.getUUID()
+                        +" from="+here+" destination="+destination
+                        +" elevation="+(destination.getY()-here.getY()));
+                return true;
+            }
+        }
         if(lower){
             // Downward flights must start from a verified roof edge/launch.
             // Once grounded at courtyard Y, normal long-distance walking
@@ -440,7 +462,7 @@ final class BuilderWaypointTravel {
             if(EXPERIMENTAL_GATEWAY&&high&&destination.getY()-here.getY()>=6)
                 candidate=chooseAscentGateway(
                         level,worker,destination,connected,recent);
-            if(candidate==null&&high&&!level.canSeeSky(here.above()))
+            if(candidate==null&&high)
                 candidate=chooseExposedGateway(here,destination,connected,recent,
                         at->level.canSeeSky(at.above()));
             if(candidate!=null)
