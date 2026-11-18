@@ -509,7 +509,9 @@ public final class BuilderFlight {
      * selecting a takeoff, and the airborne leg keeps the same 2m limit. */
     private static RoofAccess roofPlan(ServerLevel level,BuilderGolem worker,BlockPos target,boolean bodyBlocking){
         if(!enabled(worker)||active(worker)||!worker.onGround()
-                ||target.getY()-worker.getY()<2)return null;
+                ||(target.getY()-worker.getY()<2
+                    &&(!BuilderNNRoofManeuverPolicy.ENABLED
+                        ||worker.getY()-target.getY()<2)))return null;
         long now=level.getGameTime();
         RoofAccess saved=roofAccess.get(worker);
         if(saved!=null&&saved.target().equals(target)&&now<saved.expires()
