@@ -1,4 +1,5 @@
 name: NNGolems finished Dome waypoint traversal test
+# Physical rerun after eager GameTest onEachTick scheduler OOM was fixed.
 run-name: "Finished Dome 24-waypoint navigation A/B (${{ github.sha }})"
 on:
   push:
