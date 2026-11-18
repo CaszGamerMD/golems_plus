@@ -204,4 +204,17 @@ class BuilderWaypointTravelTest {
         assertEquals(List.of(clearExterior,underGlassRoof,directlyUnder),ranked,
                 "Closer x/z is not a good ascent when a collision roof obstructs lift");
     }
+    @Test void slopedLaunchSurveyCannotSkipPhysicalStandingValidation(){
+        BlockPos start=new BlockPos(10,30,10);
+        List<BlockPos> original=BuilderMultiLegTravel.candidateLaunchCells(start,false);
+        assertEquals(13,original.size(),
+                "Ordinary builders retain all twelve original same-Y approaches");
+        assertTrue(original.stream().allMatch(p->p.getY()==start.getY()));
+        List<BlockPos> slopes=BuilderMultiLegTravel.candidateLaunchCells(start,true);
+        assertTrue(slopes.contains(start.offset(1,1,0)));
+        assertTrue(slopes.contains(start.offset(2,-1,1*2)));
+        assertTrue(slopes.contains(start.offset(-3,2,-3)));
+        assertFalse(slopes.contains(start.offset(4,0,0)),
+                "Every candidate remains in the bounded local launch survey");
+    }
 }
