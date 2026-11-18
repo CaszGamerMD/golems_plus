@@ -42,6 +42,8 @@ final class BuilderNeuralFrontierPolicy {
             "golems.nn.frontierControl",
             System.getenv().getOrDefault("GOLEMS_NN_FRONTIER_CONTROL","false")));
     private static final Gson JSON=new Gson();
+    private static final boolean FROZEN=Boolean.parseBoolean(System.getenv()
+            .getOrDefault("GOLEMS_NN_FROZEN","false"));
     private static final int INPUTS=20,LEGACY_INPUTS=12,HIDDEN=8,MAX_POOL=8;
     private static final double MAX_EXTRA_COST=64.0;
     private static final int SAVE_EVERY=16;
@@ -291,7 +293,7 @@ final class BuilderNeuralFrontierPolicy {
             double value=probability-.035*Math.max(0,candidate.cost()-original.cost())/MAX_EXTRA_COST;
             if(value>top){top=value;winner=i;}
         }
-        boolean exploration=feasible.size()>1
+        boolean exploration=!FROZEN&&feasible.size()>1
                 &&decisions<120
                 &&Math.floorMod(decisions,3)==0;
         if(exploration){
@@ -349,6 +351,11 @@ final class BuilderNeuralFrontierPolicy {
         feedback(worker,old,Math.max(0,now-old.tick()),0.0,"HANDOFF_"+reason);
     }
     private static void feedback(UUID worker,Pending chosen,long ticks,double reward,String outcome){
+        if(FROZEN){
+            System.out.println("[NN FRONTIER EVAL] worker="+worker
+                    +" outcome="+outcome+" reward="+reward+" trained=false");
+            return;
+        }
         MODEL.learnWeighted(chosen.features(),reward,reward==0?4.0:1.0);
         updates++;
         if(reward==0){
@@ -367,6 +374,9 @@ final class BuilderNeuralFrontierPolicy {
                 1,worker.toString(),chosen.index(),ticks,reward,outcome,
                 successes,failures,updates)));
         if(updates%SAVE_EVERY==0)save();
+    }
+    static void flush(){
+        if(ENABLED&&!FROZEN)save();
     }
     private BuilderNeuralFrontierPolicy(){}
 }
