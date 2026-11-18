@@ -60,6 +60,19 @@ class BuilderNNRoofManeuverPolicyTest {
         assertEquals(0,BuilderNNRoofManeuverPolicy.partialLegReward(4,4),1e-12,
                 "the final leg is supervised by the whole-trip outcome");
     }
+    @Test void inexperiencedModelCannotOverrideCompleteSafeRouteWithPartialDetour(){
+        var model=BuilderNNRoofManeuverPolicy.Network.initial();
+        double[] good=new double[14];
+        good[13]=1;good[9]=.10;good[10]=.20;
+        double[] partial=new double[14];
+        partial[13]=0;partial[9]=.10;partial[10]=.20;
+        assertFalse(BuilderNNRoofManeuverPolicy.compatibleRoute(partial,good));
+        assertTrue(BuilderNNRoofManeuverPolicy.compatibleRoute(good,partial));
+        for(int i=0;i<200;i++)
+            assertEquals(0,BuilderNNRoofManeuverPolicy.chooseIndex(
+                    model,List.of(good,partial),0,i),
+                    "Never abandon a complete physically verified route for partial exploration");
+    }
     @Test void candidateSelectionCanExploreButAlwaysReturnsExistingIndex(){
         var model=BuilderNNRoofManeuverPolicy.Network.initial();
         double[] a=new double[14],b=new double[14],c=new double[14];
