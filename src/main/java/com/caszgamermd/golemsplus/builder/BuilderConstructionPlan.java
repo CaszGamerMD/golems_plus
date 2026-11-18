@@ -143,6 +143,12 @@ public final class BuilderConstructionPlan {
                 "golems.nn.ceilingTail",
                 System.getenv().getOrDefault("GOLEMS_NN_CEILING_TAIL","false")));
         sortForBuild(steps,ceilingTail);
+        if(ceilingTail){
+            long pendingTail=steps.stream().filter(BuilderConstructionPlan::lateCeilingLichen).count();
+            System.out.println("[NN CEILING TAIL] originalPaidLichen="+pendingTail
+                    +" orderedAfterOtherBlocks="+(pendingTail>0)
+                    +" totalConstructionSteps="+steps.size());
+        }
         if(steps.size()>100_000)
             throw new IllegalArgumentException("At most 100,000 construction steps per build");
         for(String id:java.util.List.copyOf(quantities.keySet()))
