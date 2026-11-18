@@ -17,16 +17,20 @@ final class BuilderMultiLegTravel {
             "golems.nn.longDetour",
             System.getenv().getOrDefault("GOLEMS_NN_LONG_DETOUR","false")));
     private record Goal(Kind kind,BlockPos target,boolean bodyBlocking,BuilderEscapeBox.Bounds box){}
-    private record Leg(BlockPos launch,BlockPos landing){}
+    record Leg(BlockPos launch,BlockPos landing){}
     private record Node(BlockPos at,List<Leg> legs,double score){}
     private static final class Trip {
         final Goal goal;
         final List<Leg> legs;
+        final BuilderNNRoofManeuverPolicy.Selection neural;
         int index;
         boolean flying;
         long progress;
         double best=Double.POSITIVE_INFINITY;
-        Trip(Goal goal,List<Leg> legs,long now){this.goal=goal;this.legs=legs;progress=now;}
+        Trip(Goal goal,List<Leg> legs,long now,
+                BuilderNNRoofManeuverPolicy.Selection neural){
+            this.goal=goal;this.legs=legs;this.neural=neural;progress=now;
+        }
     }
     private static final Map<BuilderGolem,Trip> trips=new WeakHashMap<>();
     private static final Map<BuilderGolem,Long> searchAfter=new WeakHashMap<>();
@@ -46,7 +50,7 @@ final class BuilderMultiLegTravel {
         var old=workProbes.get(worker);
         if(old!=null&&old.goal().equals(goal)&&old.start().equals(worker.blockPosition())&&now<old.expires())
             return old.feasible();
-        var legs=plan(level,worker,goal);
+        var legs=plan(level,worker,goal,false);
         boolean feasible=!legs.isEmpty()&&good(level,worker,goal,legs.getLast().landing());
         workProbes.put(worker,new WorkProbe(goal,worker.blockPosition(),now+60,feasible));
         if(feasible)System.out.println("[NN MULTILEG ACCESS] target="+target+" legs="+legs);
@@ -140,7 +144,10 @@ final class BuilderMultiLegTravel {
                 .thenComparingDouble(launch::distSqr));
         return result;
     }
-    private static List<Leg> plan(ServerLevel level,BuilderGolem worker,Goal goal){
+    private static List<Leg> plan(ServerLevel level,BuilderGolem worker,Goal goal,
+            boolean commit){
+        boolean neural=commit&&BuilderNNRoofManeuverPolicy.ENABLED
+                &&goal.kind()==Kind.WORK;
         BlockPos start=worker.blockPosition();
         // Exact landings may be a few floating-point units below the
         // integer tile. Do not discard the next leg because floor() picked
@@ -159,10 +166,17 @@ final class BuilderMultiLegTravel {
         int checkedLimit=LONG_DETOUR?18:10;
         int maxLegs=LONG_DETOUR?6:4;
         Node bestPartial=null;
+        var completed=new ArrayList<BuilderNNRoofManeuverPolicy.Candidate>();
+        var alternatePartials=new ArrayList<Node>();
         double startScore=score(goal,start);
-        while(!queue.isEmpty()&&expanded++<expandedLimit&&probes<probeLimit){
+        search: while(!queue.isEmpty()&&expanded++<expandedLimit&&probes<probeLimit){
             Node n=queue.remove();
-            if(!n.legs().isEmpty()&&good(level,worker,goal,n.at()))return n.legs();
+            if(!n.legs().isEmpty()&&good(level,worker,goal,n.at())){
+                if(!neural)return n.legs();
+                completed.add(new BuilderNNRoofManeuverPolicy.Candidate(n.legs(),true));
+                if(completed.size()>=6)break;
+                continue;
+            }
             if(n.legs().size()>=maxLegs)continue;
             for(BlockPos launch:launches(level,worker,n.at())){
                 boolean walkChecked=launch.equals(n.at()),walkOK=walkChecked;
@@ -177,7 +191,13 @@ final class BuilderMultiLegTravel {
                     }
                     if(!walkOK)break;
                     var next=new ArrayList<>(n.legs());next.add(new Leg(launch,land));
-                    if(good(level,worker,goal,land))return List.copyOf(next);
+                    if(good(level,worker,goal,land)){
+                        if(!neural)return List.copyOf(next);
+                        completed.add(new BuilderNNRoofManeuverPolicy.Candidate(
+                                List.copyOf(next),true));
+                        if(completed.size()>=6)break search;
+                        continue;
+                    }
                     seen.put(land,next.size());
                     Node candidate=new Node(land,List.copyOf(next),score(goal,land)+next.size()*2);
                     queue.add(candidate);
@@ -185,11 +205,57 @@ final class BuilderMultiLegTravel {
                     // commit an incomplete chain if it ends on real support
                     // with a strictly better goal score; no sideways cycle.
                     if(usefulPartial(startScore,score(goal,land),start,
-                            goal.target(),land,LONG_DETOUR)
-                            &&(bestPartial==null||candidate.score()<bestPartial.score()))
-                        bestPartial=candidate;
+                            goal.target(),land,LONG_DETOUR)){
+                        if(bestPartial==null||candidate.score()<bestPartial.score())
+                            bestPartial=candidate;
+                        if(neural&&alternatePartials.size()<40)
+                            alternatePartials.add(candidate);
+                    }
                 }
                 if(probes>=probeLimit)break;
+            }
+        }
+        if(neural){
+            if(completed.size()>1)
+                return BuilderNNRoofManeuverPolicy.choose(
+                        level,worker,goal.target(),completed,0);
+            if(completed.size()==1)return completed.getFirst().legs();
+            if(bestPartial!=null){
+                alternatePartials.sort(Comparator.comparingDouble(Node::score));
+                var choices=new ArrayList<BuilderNNRoofManeuverPolicy.Candidate>();
+                choices.add(new BuilderNNRoofManeuverPolicy.Candidate(
+                        bestPartial.legs(),false));
+                // The baseline closest valid partial must remain available.
+                // Distinct outcomes include uphill, over-X/Z and lower-roof
+                // supported landings. Do not expand physical probe budgets.
+                boolean aboveAdded=false,overshootAdded=false,belowAdded=false;
+                for(Node option:alternatePartials){
+                    if(choices.size()>=8)break;
+                    if(option.legs().equals(bestPartial.legs()))continue;
+                    boolean above=option.at().getY()>goal.target().getY()+1;
+                    boolean overshoot=(start.getX()<goal.target().getX()
+                                    &&option.at().getX()>goal.target().getX()+1)
+                            ||(start.getX()>goal.target().getX()
+                                    &&option.at().getX()<goal.target().getX()-1)
+                            ||(start.getZ()<goal.target().getZ()
+                                    &&option.at().getZ()>goal.target().getZ()+1)
+                            ||(start.getZ()>goal.target().getZ()
+                                    &&option.at().getZ()<goal.target().getZ()-1);
+                    boolean below=option.at().getY()<goal.target().getY()-1;
+                    if((above&&!aboveAdded)||(overshoot&&!overshootAdded)
+                            ||(below&&!belowAdded)||choices.size()<4){
+                        if(choices.stream().noneMatch(prev->
+                                prev.legs().getLast().landing().equals(option.at()))){
+                            choices.add(new BuilderNNRoofManeuverPolicy.Candidate(
+                                    option.legs(),false));
+                            aboveAdded|=above;overshootAdded|=overshoot;
+                            belowAdded|=below;
+                        }
+                    }
+                }
+                if(choices.size()>1)
+                    return BuilderNNRoofManeuverPolicy.choose(
+                            level,worker,goal.target(),choices,0);
             }
         }
         if(bestPartial!=null&&LONG_DETOUR&&
@@ -209,9 +275,11 @@ final class BuilderMultiLegTravel {
         if(t==null){
             if(BuilderFlight.active(worker)||!worker.onGround()||now<searchAfter.getOrDefault(worker,0L))return false;
             searchAfter.put(worker,now+60);
-            var legs=plan(level,worker,goal);
+            var legs=plan(level,worker,goal,true);
             if(legs.isEmpty())return false;
-            t=new Trip(goal,legs,now);trips.put(worker,t);
+            var selection=goal.kind()==Kind.WORK
+                    ?BuilderNNRoofManeuverPolicy.committed(worker,goal.target(),legs):null;
+            t=new Trip(goal,legs,now,selection);trips.put(worker,t);
             BuilderTrace.decision(level,worker,"MULTI_TRIP_COMMIT",goal.target(),"verified flight legs="+legs);
         }
         if(t.index>=t.legs.size()){trips.remove(worker);return false;}
@@ -223,7 +291,10 @@ final class BuilderMultiLegTravel {
                 t.index++;t.flying=false;t.progress=now;t.best=Double.POSITIVE_INFINITY;
                 if(t.index==t.legs.size()){
                     trips.remove(worker);searchAfter.remove(worker);
-                    if(good(level,worker,goal,leg.landing()))return false;
+                    boolean reachedGoal=good(level,worker,goal,leg.landing());
+                    BuilderNNRoofManeuverPolicy.finished(
+                            level,worker,t.neural,reachedGoal);
+                    if(reachedGoal)return false;
                     BuilderTrace.decision(level,worker,"MULTI_TRIP_CONTINUE",leg.landing(),"intermediate chain complete; search onward from real support");
                     return true;
                 }
@@ -255,6 +326,7 @@ final class BuilderMultiLegTravel {
             }
         }
         BuilderTrace.decision(level,worker,"MULTI_TRIP_REPLAN",leg.landing(),"blocked support or physical leg stopped");
+        BuilderNNRoofManeuverPolicy.failed(level,worker,t.neural,"stalled_or_blocked_leg");
         trips.remove(worker);searchAfter.put(worker,now+60);
         if(!BuilderFlight.active(worker))WorkerNavigation.stop(worker);
         return false;
