@@ -39,6 +39,9 @@ final class BuilderMultiLegTravel {
     // This is per-worker, temporary, and never bypasses collision checks.
     private static final Map<BuilderGolem,Map<Leg,Long>> rejectedLegs=new WeakHashMap<>();
     private static final long FAILED_LEG_RETRY_TICKS=240;
+    static boolean staleFlightLeg(boolean moving,long elapsed){
+        return !moving&&elapsed>=25;
+    }
     private static boolean rejected(BuilderGolem worker,Leg leg,long now){
         Map<Leg,Long> bad=rejectedLegs.get(worker);
         return bad!=null&&bad.getOrDefault(leg,-1L)>now;
@@ -381,7 +384,7 @@ final class BuilderMultiLegTravel {
             // its promised landing. The old controller waited 400 ticks
             // after a dead leg, spending half of a 750-tick training trial
             // without finding another route.
-            if(!BuilderFlight.moving(worker)&&now-t.progress>=25){
+            if(staleFlightLeg(BuilderFlight.moving(worker),now-t.progress)){
                 reject(worker,leg,now,"flight_ended_short");
                 BuilderNNRoofManeuverPolicy.failed(
                         level,worker,t.neural,"flight_ended_short");
