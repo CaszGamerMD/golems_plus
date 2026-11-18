@@ -195,21 +195,38 @@ final class BuilderNNRoofManeuverPolicy {
             complete?1:0
         };
     }
+    /** Neural rankings are noisy before enough real route successes exist.
+     * A detour can still climb or overshoot, but should not replace a more
+     * complete baseline plan merely on a tiny predicted probability delta. */
+    static boolean compatibleRoute(double[] candidate,double[] baseline){
+        if(candidate==null||baseline==null||candidate.length!=INPUTS
+                ||baseline.length!=INPUTS)return false;
+        if(candidate[13]+.01<baseline[13])return false;
+        if(candidate[9]>baseline[9]+.24&&candidate[13]<.5)return false;
+        if(candidate[10]>baseline[10]+.50&&candidate[13]<.5)return false;
+        return true;
+    }
     static int chooseIndex(Network model,List<double[]> contexts,int baseline,
             int decisionNumber){
         if(contexts==null||contexts.size()<2)return Math.max(0,baseline);
+        double[] standard=contexts.get(baseline);
+        double reference=model.predict(standard)-.018*standard[9];
         int winner=baseline;
-        double best=Double.NEGATIVE_INFINITY;
+        double best=reference+.10; // require an actual confidence margin
         for(int i=0;i<contexts.size();i++){
-            // Verified successful placements dominate small route-length costs.
+            if(i==baseline||!compatibleRoute(contexts.get(i),standard))continue;
             double score=model.predict(contexts.get(i))-.018*contexts.get(i)[9];
             if(score>best){best=score;winner=i;}
         }
-        // Small bounded exploration helps discover whether rising above the
-        // roof or crossing X/Z can lead to a safer supported landing.
-        if(decisionNumber<120&&decisionNumber%4==0){
-            int pick=(decisionNumber/4)%(contexts.size()-1);
-            return pick>=baseline?pick+1:pick;
+        // Limited exploration is reserved for comparable, physically
+        // certified routes. Never trade a complete route for a speculative
+        // incomplete landing just because the network is inexperienced.
+        if(decisionNumber<80&&decisionNumber%8==0){
+            for(int offset=1;offset<contexts.size();offset++){
+                int pick=(baseline+offset+decisionNumber/8)%contexts.size();
+                if(pick!=baseline&&compatibleRoute(contexts.get(pick),standard))
+                    return pick;
+            }
         }
         return winner;
     }
@@ -231,7 +248,8 @@ final class BuilderNNRoofManeuverPolicy {
         }
         int attempt=decisions++;
         int selected=chooseIndex(MODEL,contexts,baseline,FROZEN?200:attempt);
-        boolean explore=!FROZEN&&attempt<120&&attempt%4==0;
+        boolean explore=!FROZEN&&attempt<80&&attempt%8==0
+                &&selected!=baseline;
         if(selected!=baseline)changes++;
         if(explore)explorations++;
         var chosen=options.get(selected);
