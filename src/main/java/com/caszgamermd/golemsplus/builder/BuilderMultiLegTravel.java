@@ -137,11 +137,43 @@ final class BuilderMultiLegTravel {
         if(goal.kind()==Kind.EXIT)return p.distSqr(goal.target())+Math.max(0,dy)*Math.max(0,dy)*4;
         return p.distSqr(goal.target())+dy*dy;
     }
-    private static List<BlockPos> launches(ServerLevel level,BuilderGolem worker,BlockPos at){
-        var result=new ArrayList<BlockPos>();result.add(at);
-        for(int d=1;d<=3;d++)for(int[] v:new int[][]{{1,0},{-1,0},{0,1},{0,-1}}){
-            BlockPos p=at.offset(d*v[0],0,d*v[1]);
-            if(WorkerNavigation.canStandOn(level,worker,p))result.add(p);
+    /**
+     * The original flight planner considered only SAME-Y launch sites.
+     * On a stepped Dome, the usable takeoff may be one level up around
+     * the corner. Nominate physically supported sites across nearby roof
+     * slopes, but a site still requires a genuine ground route from the
+     * current leg's landing before it may ever launch.
+     */
+    static List<BlockPos> nearbyLaunchOffsets(BlockPos at,boolean roofTraversal){
+        var offsets=new LinkedHashSet<BlockPos>();
+        offsets.add(at);
+        if(roofTraversal){
+            int[][] directions={{1,0},{-1,0},{0,1},{0,-1},
+                    {1,1},{1,-1},{-1,1},{-1,-1}};
+            for(int distance=1;distance<=2;distance++)
+                for(int[] d:directions)
+                    for(int rise:new int[]{1,-1,0})
+                        offsets.add(at.offset(distance*d[0],rise,distance*d[1]));
+        }else for(int d=1;d<=3;d++)
+            for(int[] v:new int[][]{{1,0},{-1,0},{0,1},{0,-1}})
+                offsets.add(at.offset(d*v[0],0,d*v[1]));
+        return List.copyOf(offsets);
+    }
+    private static List<BlockPos> launches(ServerLevel level,BuilderGolem worker,
+            BlockPos at,Goal goal){
+        boolean slopes=LONG_DETOUR&&goal.kind()==Kind.STAND;
+        var result=new ArrayList<BlockPos>();
+        for(BlockPos p:nearbyLaunchOffsets(at,slopes))
+            if(p.equals(at)||WorkerNavigation.canStandOn(level,worker,p))
+                result.add(p);
+        if(slopes&&result.size()>14){
+            result.remove(at);
+            result.sort(Comparator.comparingDouble((BlockPos p)->score(goal,p)
+                    +.1*at.distSqr(p)));
+            result.addFirst(at);
+            // The physical path checker is the authority; we merely bound
+            // the number of different slope takeoffs surveyed per expansion.
+            return new ArrayList<>(result.subList(0,14));
         }
         return result;
     }
@@ -244,7 +276,7 @@ final class BuilderMultiLegTravel {
                 continue;
             }
             if(n.legs().size()>=maxLegs)continue;
-            for(BlockPos launch:launches(level,worker,n.at())){
+            for(BlockPos launch:launches(level,worker,n.at(),goal)){
                 boolean walkChecked=launch.equals(n.at()),walkOK=walkChecked;
                 int checked=0;
                 for(BlockPos land:landings(level,worker,goal,launch)){
