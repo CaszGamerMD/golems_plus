@@ -129,7 +129,7 @@ public final class BuilderNNDomeWaypointGameTest {
         if(BuilderFlight.active(w.entity)||!w.entity.onGround())
             w.recoveringAt=tick;
         else{
-            BuilderMultiLegTravel.clear(w.entity);
+            BuilderWaypointTravel.clear(w.entity);
             WorkerNavigation.stop(w.entity);
         }
     }
@@ -344,16 +344,12 @@ public final class BuilderNNDomeWaypointGameTest {
                             +" target="+target.feet()+" elapsed="+elapsed
                             +" multileg="+BuilderMultiLegTravel.traceStatus(worker)
                             +" flight="+BuilderFlight.traceStatus(worker)
-                            +" nav="+WorkerNavigation.debugStatus(worker));
+                            +" nav="+WorkerNavigation.debugStatus(worker)
+                            +" waypointStage="+BuilderWaypointTravel.debug(worker));
                     finishVisit(level,w,target,now,false,"PER_GOAL_TIMEOUT");
                     continue;
                 }
-                if(now%7==0){
-                    boolean multiLeg=BuilderMultiLegTravel.stand(level,worker,target.feet());
-                    if(!multiLeg&&!BuilderFlight.active(worker)
-                            &&!BuilderGrappleAccess.active(worker))
-                        WorkerNavigation.routeToExact(level,worker,target.feet(),1.0);
-                }
+                if(now%7==0)BuilderWaypointTravel.tick(level,worker,target.feet());
             }
             boolean complete=workers.stream().allMatch(w->w.retired||w.attempt>=route.size());
             boolean timeout=now-start>=maxTicks
