@@ -36,7 +36,7 @@ final class BuilderWaypointTravel {
         final ArrayDeque<BlockPos> visited=new ArrayDeque<>();
         BlockPos stage;
         BlockPos verifiedFlightLanding;
-        long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe, nextSurfaceProbe;
+        long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe, nextSurfaceProbe, nextHoverRecovery;
         BlockPos lastAscentLanding;
         double best=Double.POSITIVE_INFINITY;
         int failedStages,stagesCompleted;
@@ -303,7 +303,25 @@ final class BuilderWaypointTravel {
             BuilderMultiLegTravel.stand(level,worker,destination);
             return true;
         }
-        if(!worker.onGround())return BuilderFlight.active(worker);
+        if(!worker.onGround()){
+            // An aborted powered flight can leave the golem hovering above
+            // an unsupported roof lip with no remaining flight path. The
+            // usual ground/flight planner never runs from that state, so it
+            // previously burned the rest of the 750-tick attempt in place.
+            // Recover only through the existing collision-certified landing
+            // search, constrained to the SAME 2m takeoff envelope.
+            if(BuilderFlight.active(worker)&&!BuilderFlight.moving(worker)
+                    &&now>=p.nextHoverRecovery){
+                p.nextHoverRecovery=now+20;
+                BuilderMultiLegTravel.abortWaypoint(
+                        level,worker,"stopped_hover_landing_recovery");
+                boolean accepted=BuilderFlight.land(level,worker,false);
+                System.out.println("[NN WAYPOINT HOVER RECOVERY] worker="
+                        +worker.getUUID()+" from="+worker.position()
+                        +" destination="+destination+" landingAccepted="+accepted);
+            }
+            return BuilderFlight.active(worker);
+        }
         boolean high=destination.getY()>here.getY()+2;
         boolean lower=here.getY()>destination.getY()+2;
         double horizontal=flatDistance(here,destination);
