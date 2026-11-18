@@ -181,8 +181,18 @@ final class BuilderMultiLegTravel {
             // Interleave already-supported candidates; no safety predicate
             // or maximum search budget is relaxed.
             List<BlockPos> roof=new ArrayList<>(),below=new ArrayList<>(),
-                    farSide=new ArrayList<>();
+                    farSide=new ArrayList<>(),progressive=new ArrayList<>();
+            // A 26-block climb cannot begin with a high roof pose if a
+            // solid overhang blocks that vertical shaft. A landing near
+            // +16 Y often forms the first physically possible ascent.
+            int remaining=goal.target().getY()-launch.getY();
+            int firstLegDelta=Math.clamp(remaining,-16,16);
             for(BlockPos landing:result){
+                if(remaining>2&&landing.getY()>launch.getY()+2
+                        ||remaining< -2&&landing.getY()<launch.getY()-2
+                        ||Math.abs(remaining)<=2
+                            &&Math.abs(landing.getY()-launch.getY())<=1)
+                    progressive.add(landing);
                 if(landing.getY()>=goal.target().getY()+2)roof.add(landing);
                 if(landing.getY()<=goal.target().getY()-2)below.add(landing);
                 if((launch.getX()<goal.target().getX()
@@ -195,12 +205,18 @@ final class BuilderMultiLegTravel {
                             &&landing.getZ()<goal.target().getZ()-1))
                     farSide.add(landing);
             }
+            progressive.sort(Comparator
+                    .comparingDouble((BlockPos p)->
+                            Math.abs((p.getY()-launch.getY())-firstLegDelta)*3.0
+                            +.04*p.distSqr(goal.target()))
+                    .thenComparingDouble(launch::distSqr));
             var mixed=new LinkedHashSet<BlockPos>();
-            for(int i=0;i<Math.min(result.size(),18);i++){
-                if(i<6)mixed.add(result.get(i));
-                if(i<roof.size())mixed.add(roof.get(i));
+            for(int i=0;i<Math.min(result.size(),30);i++){
+                if(i<progressive.size())mixed.add(progressive.get(i));
+                if(i<result.size())mixed.add(result.get(i));
                 if(i<farSide.size())mixed.add(farSide.get(i));
                 if(i<below.size())mixed.add(below.get(i));
+                if(i<roof.size())mixed.add(roof.get(i));
             }
             mixed.addAll(result);
             result.clear();result.addAll(mixed);
@@ -249,10 +265,15 @@ final class BuilderMultiLegTravel {
                 int checked=0;
                 for(BlockPos land:landings(level,worker,goal,launch)){
                     if(seen.getOrDefault(land,Integer.MAX_VALUE)<=n.legs().size()+1)continue;
-                    if(++checked>checkedLimit||++probes>probeLimit)break;
+                    if(++probes>probeLimit)break;
                     Leg physical=new Leg(launch,land);
                     if(rejected(worker,physical,level.getGameTime())
                             ||!BuilderFlight.canFlyBetween(level,worker,launch,land))continue;
+                    // Count only collision-verified candidate branches here.
+                    // Previously 24 physically impossible high landings
+                    // consumed the entire per-launch quota before lower,
+                    // genuinely executable roof entrances were considered.
+                    if(++checked>checkedLimit)break;
                     if(!walkChecked){
                         walkChecked=true;
                         walkOK=WorkerNavigation.hasGroundRouteFrom(level,worker,n.at(),List.of(launch));
