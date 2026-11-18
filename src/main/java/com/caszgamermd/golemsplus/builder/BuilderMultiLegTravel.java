@@ -57,6 +57,13 @@ final class BuilderMultiLegTravel {
     static void abortWaypoint(ServerLevel level,BuilderGolem worker,String reason){
         Trip t=trips.remove(worker);
         searchAfter.remove(worker);
+        // A flight that ended in unsupported hover demonstrably did NOT
+        // complete its chosen leg. Do not propose that same physically
+        // fragile maneuver again immediately after rescue; the next search
+        // must try another supported route instead of looping in place.
+        if(t!=null&&"stopped_hover_landing_recovery".equals(reason)
+                &&t.flying&&t.index<t.legs.size())
+            reject(worker,t.legs.get(t.index),level.getGameTime(),reason);
         if(t!=null&&t.goal.kind()==Kind.STAND)
             BuilderNNRoofManeuverPolicy.failed(level,worker,t.neural,reason);
     }
