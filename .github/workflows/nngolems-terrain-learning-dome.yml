@@ -1,4 +1,5 @@
 name: NNGolems terrain-aware neural Dome teaching
+# Rerun after corrected legacy-checkpoint migration test; maintain same Dome A/B physics.
 # Full fresh run after NN initializer regression fix; always test branch HEAD.
 run-name: "NN terrain-AI A/B Dome (${{ github.sha }})"
 on:
