@@ -461,6 +461,19 @@ public final class BuilderFlight {
     }
     private static final Map<BuilderGolem,Map<BlockPos,Long>> roofRetry=new WeakHashMap<>();
     private static final Map<BuilderGolem,Long> roofSearchBudget=new WeakHashMap<>();
+    private static final Map<BuilderGolem,Long> roofReasonAt=new WeakHashMap<>();
+    private static void roofReject(ServerLevel level,BuilderGolem worker,BlockPos target,
+            String stage,int workCount,int supports,int flightLegs,int groundRoutes){
+        if(!BuilderNNRoofFrontier.enabled())return;
+        long now=level.getGameTime();
+        if(now<roofReasonAt.getOrDefault(worker,0L))return;
+        roofReasonAt.put(worker,now+160);
+        System.out.println("[NN ROOF ROUTE REJECT] stage="+stage
+                +" worker="+worker.getUUID()+" target="+target
+                +" realWorkStances="+workCount+" standableLandings="+supports
+                +" physicallyClearFlights="+flightLegs
+                +" connectedGroundRoutes="+groundRoutes);
+    }
     /** Find an actual walk-lift-walk route around a completed roof, not
      * a vertical flight through it. Both grounded legs are checked before
      * selecting a takeoff, and the airborne leg keeps the same 2m limit. */
@@ -494,7 +507,11 @@ public final class BuilderFlight {
                         pose.distanceToSqr(Vec3.atCenterOf(target))<=25
                         &&clear(level,worker,pose)))work.add(at);
         }
-        if(work.isEmpty())return null;
+        if(work.isEmpty()){
+            roofReject(level,worker,target,"no_collision_safe_work_pose",0,0,0,0);
+            return null;
+        }
+        int physicalSupports=0,physicalLegs=0,connectedRoutes=0;
         var launches=new ArrayList<BlockPos>();
         var byLaunch=new HashMap<BlockPos,BlockPos>();
         int baseY=worker.blockPosition().getY();
@@ -524,6 +541,7 @@ public final class BuilderFlight {
                 Vec3 landingPose=supportedFeet(level,landing);
                 if(!Double.isFinite(landingPose.y)
                         ||!clear(level,worker,landingPose))continue;
+                physicalSupports++;
                 // Walk from a clear exterior column to the roof's lip.
                 for(int distance:new int[]{1,2}){
                     BlockPos launch=new BlockPos(landing.getX()+distance*axis[0],
@@ -535,18 +553,28 @@ public final class BuilderFlight {
                             ||!clear(level,worker,launchPose)
                             ||!inEnvelope(launchPose,landingPose)
                             ||path(level,worker,launchPose,landingPose,launchPose).isEmpty())continue;
-                    if(++probes>12)break roofSearch;
+                    physicalLegs++;
+                    if(++probes>24)break roofSearch;
                     if(!WorkerNavigation.hasGroundRouteFrom(level,worker,landing,work))continue;
+                    connectedRoutes++;
                     launches.add(launch);byLaunch.put(launch,landing);
                 }
             }
             if(launches.size()>=8)break roofSearch;
             }
         }
-        if(launches.isEmpty())return null;
+        if(launches.isEmpty()){
+            roofReject(level,worker,target,"no_executable_roof_entry",
+                    work.size(),physicalSupports,physicalLegs,connectedRoutes);
+            return null;
+        }
         launches.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(supportedFeet(level,at))));
         BlockPos launch=WorkerNavigation.selectExecutableStand(level,worker,launches);
-        if(launch==null)return null;
+        if(launch==null){
+            roofReject(level,worker,target,"no_reachable_launch_from_worker",
+                    work.size(),physicalSupports,physicalLegs,connectedRoutes);
+            return null;
+        }
         var result=new RoofAccess(target.immutable(),launch,byLaunch.get(launch),now,worker.position());
         roofAccess.put(worker,result);return result;
     }
