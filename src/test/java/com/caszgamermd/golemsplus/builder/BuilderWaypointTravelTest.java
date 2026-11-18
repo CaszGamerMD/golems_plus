@@ -106,6 +106,19 @@ class BuilderWaypointTravelTest {
                 "repeated_centered_launch_reject",false));
     }
 
+    @Test void strandedFlightGetsOnlyOneSafeEmergencyEnvelope(){
+        assertTrue(BuilderFlight.canReanchorStoppedHover(true,false,false,false),
+                "A stopped powered hover may rescue within a new physical envelope");
+        assertFalse(BuilderFlight.canReanchorStoppedHover(true,true,false,false),
+                "Never interrupt an in-progress collision-certified flight");
+        assertFalse(BuilderFlight.canReanchorStoppedHover(true,false,true,false),
+                "Do not add horizontal distance after genuine ground contact");
+        assertFalse(BuilderFlight.canReanchorStoppedHover(false,false,false,false),
+                "Only an existing powered flight can use the emergency recovery");
+        assertFalse(BuilderFlight.canReanchorStoppedHover(true,false,false,true),
+                "No chained airborne hops without landing");
+    }
+
     @Test void groundDestinationsShouldNotNeedHorizontalFlight(){
         BlockPos ground=new BlockPos(0,10,0);
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,

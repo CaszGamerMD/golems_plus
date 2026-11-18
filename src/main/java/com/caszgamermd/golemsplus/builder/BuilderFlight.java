@@ -18,6 +18,15 @@ public final class BuilderFlight {
     // clearance. In ordinary builds the established two-block limit remains.
     private static final boolean WIDE_ROOF_HOPS=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_ROOF_WIDE_HOPS","false"));
+    // Experimental, one-time stationary-hover rescue. A failed collision-certified
+    // flight may end far from its ORIGINAL takeoff. The old landing scan probes
+    // that old takeoff footprint, even when a real supported tile is next to
+    // the stranded golem. Re-anchor ONCE at its actual, collision-free hover
+    // position, and only after the original envelope has no legal landing.
+    // Never chain airborne re-anchors: every rescue still requires a swept,
+    // collision-certified route to a supported block.
+    private static final boolean HOVER_ANCHOR_RESCUE=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_HOVER_ANCHOR_RESCUE","false"));
     public static final double HORIZONTAL_LIMIT = WIDE_ROOF_HOPS ? 3.5 : 2.0;
     private static final double HORIZONTAL_LIMIT_SQUARED = HORIZONTAL_LIMIT * HORIZONTAL_LIMIT;
     private static final Map<BuilderGolem, Flight> flights = new WeakHashMap<>();
@@ -33,6 +42,7 @@ public final class BuilderFlight {
         long landingRetryAt;
         Vec3 lastFailedDestination;
         long failedUntil;
+        boolean emergencyAnchorUsed;
     }
 
     /** Read-only destination for experimental observations. */
@@ -695,6 +705,37 @@ public final class BuilderFlight {
     static boolean atEscapeAir(BuilderGolem worker,BlockPos air){
         return worker.position().distanceToSqr(feet(air))<.04;
     }
+    /** One emergency envelope change at most, never during a moving flight or
+     * after a safe landing. This gate is also independently unit-tested. */
+    static boolean canReanchorStoppedHover(boolean active,boolean moving,
+            boolean grounded,boolean alreadyUsed){
+        return active&&!moving&&!grounded&&!alreadyUsed;
+    }
+    /** Recover a stopped powered hover. First try the original takeoff
+     * envelope; only if it has NO supported collision-free destination do
+     * we permit one fresh, short envelope from the worker's real position.
+     * Both searches use requestSupportedLanding, with NO teleport or forced
+     * grounded state. An unsuccessful re-anchor is never repeated in flight. */
+    static boolean recoverStoppedHover(ServerLevel level,BuilderGolem worker){
+        Flight flight=flights.get(worker);
+        if(flight==null||moving(worker)||worker.onGround()
+                ||level.getGameTime()<flight.landingRetryAt)return false;
+        if(land(level,worker,false))return true;
+        if(!HOVER_ANCHOR_RESCUE
+                ||!canReanchorStoppedHover(true,moving(worker),worker.onGround(),
+                        flight.emergencyAnchorUsed)
+                ||!clear(level,worker,worker.position()))return false;
+        flight.emergencyAnchorUsed=true;
+        flight.origin=worker.position();
+        // The first attempt just set the normal cooldown. Allow the
+        // physically distinct new envelope to be checked immediately.
+        flight.landingRetryAt=0;
+        boolean accepted=land(level,worker,false);
+        System.out.println("[NN WAYPOINT HOVER REANCHOR] worker="+worker.getUUID()
+                +" anchor="+flight.origin+" accepted="+accepted);
+        return accepted;
+    }
+
     /** Find a real floor below this local column, or a nearby clear column.
      * A failed attempt never turns gravity on while hovering in open air. */
     public static boolean land(ServerLevel level, BuilderGolem worker, boolean below) {
