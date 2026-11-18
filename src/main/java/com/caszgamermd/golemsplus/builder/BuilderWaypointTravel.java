@@ -36,6 +36,8 @@ final class BuilderWaypointTravel {
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_ROOF_RETREAT","false"));
     private static final boolean ISLAND_EGRESS=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_ISLAND_EGRESS","false"));
+    private static final boolean TARGETED_BRIDGE_RESCUE=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_BRIDGE_RESCUE","false"));
     private static final boolean EXPERIMENTAL_DIRECT_ASCENT=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_DIRECT_ASCENT","false"));
     private static final boolean EXPERIMENTAL_GATEWAY=Boolean.parseBoolean(
@@ -243,7 +245,14 @@ final class BuilderWaypointTravel {
                     ||!level.hasChunkAt(at))continue;
             launches.add(at);
         }
-        launches.sort(Comparator.comparingDouble((BlockPos a)->flatDistance(a,destination))
+        // Never spend the 48 expensive flight probes on the closest
+        // ground tiles directly UNDER the solid roof. Prefer physically
+        // connected open-sky launch positions on the outside of the dome,
+        // and failing that the reachable ground near a lower roof edge.
+        launches.sort(Comparator
+                .comparing((BlockPos a)->!level.canSeeSky(a.above()))
+                .thenComparingInt(a->Math.abs(roofHeadroom(level,a)-14))
+                .thenComparingDouble(a->flatDistance(a,destination))
                 .thenComparingDouble(a->flatDistance(a,from)));
         VerifiedBridge best=null;
         int inspected=0;
@@ -615,7 +624,16 @@ final class BuilderWaypointTravel {
             // Never require horizontal proximity while trapped BELOW a
             // roof. Going outward to find unobstructed sky is real progress.
             BlockPos candidate=null;
-            if(VERIFIED_BRIDGE_ENABLED&&high&&destination.getY()-here.getY()>=6){
+            // Late-stage roof rescue only: the earlier always-on bridge
+            // experiment regressed, but a worker repeatedly trapped under a
+            // solid roof needs an actual certified exterior launch.
+            boolean rescueBridge=TARGETED_BRIDGE_RESCUE&&high
+                    &&destination.getY()-here.getY()>=8
+                    &&p.stagesCompleted>=2
+                    &&now-p.lastGoalImprovement>=140
+                    &&!level.canSeeSky(here.above());
+            if((VERIFIED_BRIDGE_ENABLED||rescueBridge)&&high
+                    &&destination.getY()-here.getY()>=6){
                 var bridge=ascentBridge(level,worker,destination,connected,recent);
                 if(bridge!=null){
                     candidate=bridge.launch();
@@ -623,7 +641,8 @@ final class BuilderWaypointTravel {
                     System.out.println("[NN WAYPOINT BRIDGE PLAN] worker="
                             +worker.getUUID()+" from="+here
                             +" launch="+candidate+" landing="+bridge.landing()
-                            +" target="+destination+" score="+bridge.score());
+                            +" target="+destination+" score="+bridge.score()
+                            +" rescue="+rescueBridge);
                 }
             }
             // On an upper-roof assignment a 1-block horizontal separation
