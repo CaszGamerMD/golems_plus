@@ -270,6 +270,19 @@ final class BuilderNNRoofManeuverPolicy {
                 selected.legs().size(),selected.complete(),x[8]>0,
                 x[6]>0||x[7]>0,reward,updates,successfulRoutes,failedRoutes)));
     }
+    /** Reward a leg ONLY when the real entity arrives grounded at the
+     * verified landing. A leg is useful evidence, not a complete route. */
+    static double partialLegReward(int completed,int total){
+        if(total<=0||completed<=0||completed>=total)return 0;
+        return .15+.30*completed/(double)total;
+    }
+    static void legLanded(ServerLevel level,BuilderGolem worker,
+            Selection selection,int completed){
+        if(selection==null||!ENABLED||completed>=selection.legs().size()
+                ||completed<1||!worker.onGround())return;
+        double reward=partialLegReward(completed,selection.legs().size());
+        if(reward>0)learn(level,worker,selection,reward,"SUPPORTED_LEG_LANDING");
+    }
     static void finished(ServerLevel level,BuilderGolem worker,Selection selected,
             boolean atGoal){
         if(selected==null)return;
