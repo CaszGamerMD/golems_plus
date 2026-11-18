@@ -26,6 +26,11 @@ final class BuilderWaypointTravel {
     private static final int STAGE_RADIUS=18;
     private static final boolean GRAPPLE_TRAINING=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_GRAPPLE","false"));
+    // Physical final approach, independent of the multi-leg roof planner.
+    // An opt-in test aid for stranded roof-island approaches, not a grant
+    // of long-range flight or an unverified target arrival.
+    private static final boolean DIRECT_FINAL_HOP=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_FINAL_HOP","false"));
     private static final boolean EXPERIMENTAL_DIRECT_ASCENT=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_DIRECT_ASCENT","false"));
     private static final boolean EXPERIMENTAL_GATEWAY=Boolean.parseBoolean(
@@ -44,7 +49,7 @@ final class BuilderWaypointTravel {
         BlockPos stage;
         BlockPos verifiedFlightLanding;
         long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe, nextSurfaceProbe,
-                nextHoverRecovery, nextGrappleProbe;
+                nextHoverRecovery, nextGrappleProbe, nextFinalHopProbe;
         BlockPos lastAscentLanding;
         double best=Double.POSITIVE_INFINITY;
         int failedStages,stagesCompleted;
@@ -380,6 +385,27 @@ final class BuilderWaypointTravel {
             }else{
                 if(dist<p.best-.04){p.best=dist;p.stageTick=now;}
                 WorkerNavigation.routeToExact(level,worker,p.stage,1.0);
+                return true;
+            }
+        }
+        // A close roof destination may be separated by a one-to-three
+        // block seam that native walking cannot span. Request a DIRECT
+        // collision-swept landing from the actual current feet, rather than
+        // needlessly centering on an old estimated takeoff tile or waiting
+        // for a six-leg plan. Flight itself checks the real landing support,
+        // full body sweep, 2m/experimental 3.5m envelope and loaded chunks.
+        if(DIRECT_FINAL_HOP&&now>=p.nextFinalHopProbe
+                &&horizontal<=BuilderFlight.HORIZONTAL_LIMIT+.05
+                &&!BuilderFlight.active(worker)
+                &&!BuilderGrappleAccess.active(worker)
+                &&WorkerNavigation.canStandOn(level,worker,destination)){
+            p.nextFinalHopProbe=now+40;
+            if(BuilderFlight.requestSupportedLanding(level,worker,destination)){
+                BuilderMultiLegTravel.clear(worker);
+                BuilderNNRoofManeuverPolicy.handedOff(worker.getUUID());
+                System.out.println("[NN WAYPOINT DIRECT FINAL HOP] worker="
+                        +worker.getUUID()+" from="+here+" destination="+destination
+                        +" deltaY="+(destination.getY()-here.getY()));
                 return true;
             }
         }
