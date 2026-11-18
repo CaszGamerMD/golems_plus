@@ -44,6 +44,10 @@ final class BuilderWaypointTravel {
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_DIRECT_ASCENT","false"));
     private static final boolean EXPERIMENTAL_GATEWAY=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_CERTIFIED_GATEWAY","false"));
+    // Recover only an orphaned unsupported hover: no active flight or rope.
+    // Landing remains subject to actual block collision and support checks.
+    private static final boolean ORPHAN_HOVER_RECOVERY=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_ORPHAN_HOVER_RECOVERY","false"));
     // The first fixed-Dome bridge trial regressed from 72/82 failures
     // (baseline/neural) to 92/87. Keep its code for focused ablations,
     // but do not make the unvalidated bridge the default route controller.
@@ -62,7 +66,7 @@ final class BuilderWaypointTravel {
         BlockPos verifiedFlightLanding;
         long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe, nextSurfaceProbe,
                 nextHoverRecovery, nextGrappleProbe, nextFinalHopProbe,
-                nextIslandEscape, lastGoalImprovement;
+                nextIslandEscape, nextOrphanHoverRecovery, lastGoalImprovement;
         double bestGoalScore=Double.POSITIVE_INFINITY;
         BlockPos lastAscentLanding;
         double best=Double.POSITIVE_INFINITY;
@@ -407,7 +411,10 @@ final class BuilderWaypointTravel {
         int connected=WorkerNavigation.groundReachableFrom(level,worker,here).size();
         boolean direct=WorkerNavigation.canStandOn(level,worker,here)
                 &&BuilderFlight.canFlyBetween(level,worker,here,p.goal);
-        return core+" stagnant="+(level.getGameTime()-p.lastGoalImprovement)
+        return core+" grounded="+worker.onGround()
+                +" noGravity="+worker.isNoGravity()
+                +" grapple="+BuilderGrappleAccess.debug(worker)
+                +" stagnant="+(level.getGameTime()-p.lastGoalImprovement)
                 +" bestGoalDist="+Math.sqrt(Math.max(0,p.bestGoalScore))
                 +" component="+connected
                 +" roofHeadroom="+roofHeadroom(level,here)
@@ -437,6 +444,22 @@ final class BuilderWaypointTravel {
         if(!worker.onGround()&&!BuilderFlight.active(worker))
             BuilderFlight.restoreVerifiedGroundContact(level,worker);
         if(!worker.onGround()){
+            if(ORPHAN_HOVER_RECOVERY&&!BuilderFlight.active(worker)
+                    &&!BuilderGrappleAccess.active(worker)
+                    &&now>=p.nextOrphanHoverRecovery){
+                p.nextOrphanHoverRecovery=now+30;
+                // No invented grounded flag or world movement: the propeller
+                // must obtain a real collision-certified supported landing.
+                if(BuilderFlight.land(level,worker,false)){
+                    BuilderMultiLegTravel.abortWaypoint(
+                            level,worker,"orphan_hover_safe_landing");
+                    System.out.println("[NN WAYPOINT ORPHAN HOVER LAND] worker="
+                            +worker.getUUID()+" at="+worker.position()
+                            +" target="+destination+" landing="
+                            +BuilderFlight.observedDestination(worker));
+                    return true;
+                }
+            }
             // An aborted powered flight can leave the golem hovering above
             // an unsupported roof lip with no remaining flight path. The
             // usual ground/flight planner never runs from that state, so it
