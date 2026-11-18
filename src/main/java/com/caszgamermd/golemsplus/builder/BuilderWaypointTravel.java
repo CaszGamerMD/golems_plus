@@ -28,6 +28,11 @@ final class BuilderWaypointTravel {
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_DIRECT_ASCENT","false"));
     private static final boolean EXPERIMENTAL_GATEWAY=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_CERTIFIED_GATEWAY","false"));
+    // The first fixed-Dome bridge trial regressed from 72/82 failures
+    // (baseline/neural) to 92/87. Keep its code for focused ablations,
+    // but do not make the unvalidated bridge the default route controller.
+    private static final boolean VERIFIED_BRIDGE_ENABLED=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_VERIFIED_BRIDGE","false"));
     private static final int STAGE_TTL=105;
     private static final int RETAIN=12;
     private static final Map<BuilderGolem,Plan> plans=new WeakHashMap<>();
@@ -463,7 +468,7 @@ final class BuilderWaypointTravel {
             // Never require horizontal proximity while trapped BELOW a
             // roof. Going outward to find unobstructed sky is real progress.
             BlockPos candidate=null;
-            if(high&&destination.getY()-here.getY()>=6){
+            if(VERIFIED_BRIDGE_ENABLED&&high&&destination.getY()-here.getY()>=6){
                 var bridge=ascentBridge(level,worker,destination,connected,recent);
                 if(bridge!=null){
                     candidate=bridge.launch();
