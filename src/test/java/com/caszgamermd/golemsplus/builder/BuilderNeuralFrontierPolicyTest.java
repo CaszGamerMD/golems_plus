@@ -52,9 +52,10 @@ class BuilderNeuralFrontierPolicyTest {
         double[] feature=new double[20];
         feature[0]=.5;feature[1]=.25;feature[11]=.3;
         assertEquals(old.score(feature),restored.score(feature),1e-13);
+        double legacyPrediction=restored.score(feature);
         feature[14]=1;
-        assertEquals(old.score(feature),restored.score(feature),1e-13,
-                "New terrain inputs start at zero weight, without erasing training");
+        assertEquals(legacyPrediction,restored.score(feature),1e-13,
+                "Migrated terrain inputs start at zero weight, without erasing training");
     }
     @Test void correlatedBadTerrainCanBeLearned(){
         var net=BuilderNeuralFrontierPolicy.Network.initial();
