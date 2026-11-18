@@ -415,6 +415,11 @@ final class BuilderWaypointTravel {
             BuilderMultiLegTravel.stand(level,worker,destination);
             return true;
         }
+        // Reconcile stale onGround only if the motionless physical body is
+        // exactly centered on a real supported surface. This unblocks a
+        // stranded multileg trip without inventing a waypoint arrival.
+        if(!worker.onGround()&&!BuilderFlight.active(worker))
+            BuilderFlight.restoreVerifiedGroundContact(level,worker);
         if(!worker.onGround()){
             // An aborted powered flight can leave the golem hovering above
             // an unsupported roof lip with no remaining flight path. The

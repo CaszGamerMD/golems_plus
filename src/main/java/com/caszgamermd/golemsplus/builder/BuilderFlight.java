@@ -27,6 +27,8 @@ public final class BuilderFlight {
     // collision-certified route to a supported block.
     private static final boolean HOVER_ANCHOR_RESCUE=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_HOVER_ANCHOR_RESCUE","false"));
+    private static final boolean VERIFIED_GROUND_CONTACT=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_VERIFIED_GROUND_CONTACT","false"));
     public static final double HORIZONTAL_LIMIT = WIDE_ROOF_HOPS ? 3.5 : 2.0;
     private static final double HORIZONTAL_LIMIT_SQUARED = HORIZONTAL_LIMIT * HORIZONTAL_LIMIT;
     private static final Map<BuilderGolem, Flight> flights = new WeakHashMap<>();
@@ -786,6 +788,38 @@ public final class BuilderFlight {
         System.out.println("[NN WAYPOINT HOVER REANCHOR] worker="+worker.getUUID()
                 +" anchor="+flight.origin+" accepted="+accepted);
         return accepted;
+    }
+
+    /** Entity.onGround can stay false after an interrupted powered descent
+     * even when the physical feet are resting exactly on real collision
+     * support. Never mark a worker grounded just because it is near a roof:
+     * require known support, a nearly stationary body, and full centered
+     * contact with the surveyed surface. */
+    static boolean validGroundContact(boolean support,boolean powered,
+            boolean grapple,double yError,double dx,double dz,double speed){
+        return support&&!powered&&!grapple
+                &&Double.isFinite(yError)&&Math.abs(yError)<=.012
+                &&Double.isFinite(dx)&&Math.abs(dx)<=.18
+                &&Double.isFinite(dz)&&Math.abs(dz)<=.18
+                &&Double.isFinite(speed)&&speed<=.04;
+    }
+    static boolean restoreVerifiedGroundContact(ServerLevel level,BuilderGolem worker){
+        if(!VERIFIED_GROUND_CONTACT||worker.onGround()||active(worker)
+                ||BuilderGrappleAccess.active(worker))return false;
+        BlockPos feet=BlockPos.containing(worker.getX(),
+                worker.getY()+.001,worker.getZ());
+        if(!level.hasChunkAt(feet)
+                ||!WorkerNavigation.canStandOn(level,worker,feet))return false;
+        Vec3 floor=supportedFeet(level,feet);
+        Vec3 at=worker.position();
+        if(!validGroundContact(true,false,false,at.y-floor.y,
+                at.x-floor.x,at.z-floor.z,worker.getDeltaMovement().length()))
+            return false;
+        worker.setNoGravity(false);
+        worker.setOnGround(true);
+        System.out.println("[NN VERIFIED GROUND CONTACT] worker="
+                +worker.getUUID()+" feet="+at+" support="+feet);
+        return true;
     }
 
     /** Find a real floor below this local column, or a nearby clear column.

@@ -144,6 +144,26 @@ class BuilderWaypointTravelTest {
                 220,56,8,2,true,true,true));
     }
 
+    @Test void staleGroundFlagRequiresExactStationaryPhysicalContact(){
+        assertTrue(BuilderFlight.validGroundContact(
+                true,false,false,.001,.12,-.15,.001));
+        assertFalse(BuilderFlight.validGroundContact(
+                false,false,false,0,0,0,0));
+        assertFalse(BuilderFlight.validGroundContact(
+                true,true,false,0,0,0,0));
+        assertFalse(BuilderFlight.validGroundContact(
+                true,false,true,0,0,0,0));
+        assertFalse(BuilderFlight.validGroundContact(
+                true,false,false,.09,0,0,0),
+                "Near a roof is not physical contact");
+        assertFalse(BuilderFlight.validGroundContact(
+                true,false,false,0,.25,0,0),
+                "An unsupported edge cannot be treated as grounded");
+        assertFalse(BuilderFlight.validGroundContact(
+                true,false,false,0,0,0,.2),
+                "Do not interfere with falling or moving golems");
+    }
+
     @Test void groundDestinationsShouldNotNeedHorizontalFlight(){
         BlockPos ground=new BlockPos(0,10,0);
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,
