@@ -62,6 +62,7 @@ jobs:
       GOLEMS_NN_ROOF_MANEUVER_POLICY: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
       GOLEMS_NN_FROZEN: 'false'
       GOLEMS_NN_LONG_DETOUR: 'true'
+      GOLEMS_NN_DIVERSE_HOVER_RECOVERY: 'true'
       GOLEMS_NN_MULTI_LEG_ROOF: 'true'
       GOLEMS_NN_ROOF_FRONTIER: 'true'
       GOLEMS_NN_DETOUR_TRAINING: 'false'
@@ -231,7 +232,7 @@ jobs:
                 f"| Learned route choices | {x['route_choices']} | {y['route_choices']} |",
                 f"| Routes changed | {x['route_changes']} | {y['route_changes']} |",
                 f"| Positive roof maneuver rewards | {x['training_updates']} | {y['training_updates']} |",
-                f"| Target: 50 or fewer failures | {'Met' if x['failed']<=50 else 'Not yet'} | {'Met' if y['failed']<=50 else 'Not yet'} |",
+                f"| Target: 10 or fewer failures | {'Met' if x['failed']<=10 else 'Not yet'} | {'Met' if y['failed']<=10 else 'Not yet'} |",
                 '',
                 'All destinations are genuine full-cube supported feet poses on a prebuilt Dome.',
                 'A workflow success confirms recorded results, not successful navigation of every target.']
