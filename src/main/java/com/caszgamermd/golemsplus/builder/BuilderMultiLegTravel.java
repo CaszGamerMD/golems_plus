@@ -163,8 +163,14 @@ final class BuilderMultiLegTravel {
             if(goal.target().getY()>launch.getY())y1=y0+48;
             else y0=y1-48;
         }
-        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
-            if(dx*dx+dz*dz>4)continue;
+        // The optional 3.5m short roof-gap hop can land across a wider
+        // separation, but every edge is still validated by the same real
+        // collision-swept propeller path and a grounded landing. Normal
+        // builder work keeps the legacy 2m envelope.
+        int radius=BuilderFlight.HORIZONTAL_LIMIT>3.0?3:2;
+        int radiusSq=radius*radius;
+        for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++){
+            if(dx*dx+dz*dz>radiusSq)continue;
             for(int y=y0;y<=y1;y++){
                 // Traversal-only Dome routes must bridge roof seams at
                 // the SAME elevation, or across a one-block roof lip.
