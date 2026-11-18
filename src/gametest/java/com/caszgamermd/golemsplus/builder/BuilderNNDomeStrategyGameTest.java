@@ -26,6 +26,8 @@ public final class BuilderNNDomeStrategyGameTest {
     }
     private void run(GameTestHelper h)throws Exception{
         String mode=System.getenv().getOrDefault("NN_DOME_MODE","AUTO4");
+        long trialSeed=Long.parseLong(System.getenv().getOrDefault("NN_DOME_TRIAL_SEED","0"));
+        if(trialSeed<0||trialSeed>1000000)throw new IllegalArgumentException("Dome trial seed");
         // A preconstructed lower Dome provides its REAL roof geometry at
         // once so short, repeatable physical episodes can train the upper
         // roof without rebuilding thousands of easy foundation blocks.
@@ -115,13 +117,13 @@ public final class BuilderNNDomeStrategyGameTest {
             var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
             var from=planner.offset(-2-i%2,0,1+i/2);
             worker.setUUID(new UUID(0x4e4e444f4d455354L,i+1));worker.setId(100000+i);
-            worker.getRandom().setSeed(260215377L+i);
+            worker.getRandom().setSeed(260215377L+i+trialSeed);
             worker.setPos(from.getX()+.5,from.getY(),from.getZ()+.5);
             worker.assign(planner,id);level.addFreshEntity(worker);
             if(!table.registerBuilderWorker(worker.getUUID()))throw new IllegalStateException("Register builder");
             crew.add(worker);
         }
-        level.getRandom().setSeed(260215376L);
+        level.getRandom().setSeed(260215376L+trialSeed);
         if(!table.startPlacedBuilder(id))throw new IllegalStateException("Start Dome");
         var steps=plan.steps();
         int vertical=0;
@@ -135,7 +137,8 @@ public final class BuilderNNDomeStrategyGameTest {
         final int eligible=vertical;
         System.out.println("[NN DOME START] mode="+mode+" axis="+axis+" workers="+workers
                 +" source=3537 required=3493 ignored=44 verticalTasks="+eligible+" depot="+depot+" origin="+origin
-                +" prebuilt="+prefabricated+" tickBudget="+tickLimit+" wallBudget="+wallLimit);
+                +" prebuilt="+prefabricated+" tickBudget="+tickLimit+" wallBudget="+wallLimit
+                +" trialSeed="+trialSeed);
         final long start=h.getTick(),startNs=System.nanoTime();
         final int[] best={0};final double[] distance={0};
         var teamTrace=new BuilderNNTeamTrace("dome",mode,workers,3493);
@@ -198,7 +201,7 @@ public final class BuilderNNDomeStrategyGameTest {
             BuilderNNRoofManeuverPolicy.flush();
             BuilderNeuralFrontierPolicy.flush();
             System.out.println("[NN DOME RESULT] mode="+mode+" outcome="+outcome+" correct="+correct+" best="+best[0]
-                    +" total=3493 prebuilt="+prefabricated+" newCorrect="+Math.max(0,correct-prefabricated)
+                    +" total=3493 trialSeed="+trialSeed+" prebuilt="+prefabricated+" newCorrect="+Math.max(0,correct-prefabricated)
                     +" ticks="+elapsed+" distance="+distance[0]+" workers="+workers+" alive="+alive
                     +" verticalTasks="+eligible+" selected="+table.builderNNStrategy()+" problem="+table.problem());
             done[0]=true;h.succeed(); // finished assessment, not proof of completion
