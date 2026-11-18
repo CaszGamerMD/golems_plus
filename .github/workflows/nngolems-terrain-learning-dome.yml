@@ -1,5 +1,5 @@
 name: NNGolems long-detour traversal Dome teaching
-# Rerun after corrected legacy-checkpoint migration test; maintain same Dome A/B physics.
+# Rerun: detour progress must expire after 120 ticks without a newly traversed tile.
 # Full fresh run after NN initializer regression fix; always test branch HEAD.
 run-name: "NN detour-navigation A/B Dome (${{ github.sha }})"
 on:
