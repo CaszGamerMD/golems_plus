@@ -62,6 +62,8 @@ public final class BuilderConstructionPlanner {
     private static final Map<BuilderGolem,BlockPos> lastPlaced=
             new WeakHashMap<>();
     static void noteCompleted(BuilderGolem worker,BlockPos target){
+        // Reward the context only after real-world placement/repair.
+        BuilderNeuralFrontierPolicy.completed(worker,target);
         lastPlaced.put(worker,target.immutable());
         // Re-evaluate the new edge after each confirmed world placement.
         // Keep the rotating search window while merely trying (and
@@ -649,6 +651,9 @@ public final class BuilderConstructionPlanner {
         int bestStock=Integer.MAX_VALUE;
         int bestContact=0;
         double bestScore=Double.POSITIVE_INFINITY;
+        List<BuilderNeuralFrontierPolicy.Candidate> neuralCandidates=
+                BuilderNeuralFrontierPolicy.ENABLED&&!lookahead
+                        ?new ArrayList<>():List.of();
         SearchWindow previous=lookahead?null:windows.get(worker);
         int offset=lookahead
                 ?(pending.isEmpty()?0:Math.floorMod(lookaheadOffset,pending.size()))
@@ -820,12 +825,17 @@ public final class BuilderConstructionPlanner {
                     -touch*6+risk*250
                     +(scaffold?BuilderFrontierTuning.GRAPPLE_PENALTY*2:0);
             int stockRank=stocked.contains(idx)?0:1;
+            Choice safeChoice=new Choice(idx,stance,grapple,sky,examined);
+            if(BuilderNeuralFrontierPolicy.ENABLED&&!lookahead)
+                neuralCandidates.add(BuilderNeuralFrontierPolicy.candidate(
+                        safeChoice,worker,target,stance,touch,risk,stockRank,tier,cost,
+                        sky,grapple,scaffold,propeller));
             if(stockRank<bestStock||stockRank==bestStock&&(tier<bestTier||tier==bestTier&&cost<bestScore)){
                 bestStock=stockRank;
                 bestTier=tier;
                 bestContact=touch;
                 bestScore=cost;
-                best=new Choice(idx,stance,grapple,sky,examined);
+                best=safeChoice;
             }
             if(++feasible>=(lookahead?1:MAX_FEASIBLE))break;
         }
@@ -841,6 +851,7 @@ public final class BuilderConstructionPlanner {
                     (offset+Math.max(1,examined))%Math.max(1,pending.size()),
                     pending.size(),examined,feasible,best==null?-1:best.index(),
                     offset,connected,bestContact));
-        return best;
+        return lookahead?best:BuilderNeuralFrontierPolicy.select(
+                world,worker,neuralCandidates,best);
     }
 }
