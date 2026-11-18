@@ -1,0 +1,355 @@
+name: NNGolems continuous physical Dome training curriculum
+run-name: "NN Dome roof 45-run curriculum (${{ github.sha }})"
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - ".github/workflows/nngolems-roof-curriculum-series.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: nn-dome-curriculum-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Validate and seed both trained networks
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Check physical GameTest build and policy regressions
+        run: |
+          python3 -m py_compile scripts/nngolems/run_roof_series.py
+          gradle --no-daemon test --tests '*BuilderNNRoofManeuverPolicyTest' \
+            --tests '*BuilderNeuralFrontierPolicyTest' \
+            --tests '*BuilderNNDetourTrainingTest'
+      - name: Import the actual previous 3401-block Dome trained checkpoints
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/nn-series/seed build/nn-series/state
+          gh run download 44272487461 --repo CaszGamerMD/golems_plus \
+            --name nn-roof-dome-neural --dir build/nn-series/seed
+          test -s build/nn-series/seed/learned-frontier-policy.json
+          test -s build/nn-series/seed/roof-maneuver-policy.json
+          cp build/nn-series/seed/learned-frontier-policy.json \
+             build/nn-series/state/frontier-policy.json
+          cp build/nn-series/seed/roof-maneuver-policy.json \
+             build/nn-series/state/roof-maneuver-policy.json
+          python3 - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          base=Path('build/nn-series/state')
+          f=json.loads((base/'frontier-policy.json').read_text())
+          r=json.loads((base/'roof-maneuver-policy.json').read_text())
+          assert f['schema']==2 and f['updates']>=3000
+          assert r['schema']==1 and r['updates']>=100
+          assert len(f['w'])==8 and all(len(row)==20 for row in f['w'])
+          assert len(r['w'])==8 and all(len(row)==14 for row in r['w'])
+          for name in ('frontier-policy.json','roof-maneuver-policy.json'):
+              p=base/name
+              print('[NN SERIES INITIAL] '+name+' sha256='+
+                    hashlib.sha256(p.read_bytes()).hexdigest())
+          print('[NN SERIES INITIAL] frontier updates='+str(f['updates'])+
+                ' roof updates='+str(r['updates']))
+          PY
+      - name: Save authentic initial model state
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-roof-series-state-initial
+          path: build/nn-series/state
+          retention-days: 90
+          if-no-files-found: error
+
+  ascent:
+    name: "Training 01/05: roof climb from constructed lower Dome (10)"
+    needs: bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '25'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '9.7.0'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: nn-roof-series-state-initial
+          path: build/nn-series/state
+      - name: Prepare isolated physical Dome GameTest
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          j=json.loads(p.read_text())
+          j['entrypoints']['fabric-gametest']=[
+              'com.caszgamermd.golemsplus.builder.BuilderNNDomeStrategyGameTest']
+          p.write_text(json.dumps(j,indent=2)+'\n')
+          PY
+      - name: Run 10 physically grounded ascent training courses
+        run: python3 scripts/nngolems/run_roof_series.py --stage roof-ascent --count 10 --prefill 21 --wall-seconds 160 --tick-limit 52000 --git-sha "$GITHUB_SHA"
+      - name: Save checkpoint for next training stage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-roof-series-state-ascent
+          path: build/nn-series/state
+          retention-days: 90
+      - name: Preserve per-trial physical records
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-roof-series-results-ascent
+          path: build/nn-series/results
+          retention-days: 90
+
+  far_side:
+    name: "Training 02/05: far-side traversals and overshoots (10)"
+    needs: ascent
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '25'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '9.7.0'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: nn-roof-series-state-ascent
+          path: build/nn-series/state
+      - name: Prepare isolated physical Dome GameTest
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          j=json.loads(p.read_text())
+          j['entrypoints']['fabric-gametest']=[
+              'com.caszgamermd.golemsplus.builder.BuilderNNDomeStrategyGameTest']
+          p.write_text(json.dumps(j,indent=2)+'\n')
+          PY
+      - name: Run 10 far-side physical traversal episodes
+        run: python3 scripts/nngolems/run_roof_series.py --stage far-side --count 10 --prefill 27 --wall-seconds 160 --tick-limit 52000 --git-sha "$GITHUB_SHA"
+      - name: Preserve updated checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-roof-series-state-far-side
+          path: build/nn-series/state
+          retention-days: 90
+      - name: Preserve trial logs and outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-roof-series-results-far-side
+          path: build/nn-series/results
+          retention-days: 90
+
+  roof_cap:
+    name: "Training 03/05: cap, slabs, stairs, fences and landing (10)"
+    needs: far_side
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '25'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '9.7.0'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: nn-roof-series-state-far-side
+          path: build/nn-series/state
+      - name: Prepare isolated physical Dome GameTest
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          j=json.loads(p.read_text())
+          j['entrypoints']['fabric-gametest']=[
+              'com.caszgamermd.golemsplus.builder.BuilderNNDomeStrategyGameTest']
+          p.write_text(json.dumps(j,indent=2)+'\n')
+          PY
+      - name: Run 10 upper Dome cap approach episodes
+        run: python3 scripts/nngolems/run_roof_series.py --stage roof-cap --count 10 --prefill 32 --wall-seconds 160 --tick-limit 52000 --git-sha "$GITHUB_SHA"
+      - name: Preserve updated checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-roof-series-state-roof-cap
+          path: build/nn-series/state
+          retention-days: 90
+      - name: Preserve trial logs and outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-roof-series-results-roof-cap
+          path: build/nn-series/results
+          retention-days: 90
+
+  full_dome:
+    name: "Training 04/05: five complete Dome attempts"
+    needs: roof_cap
+    runs-on: ubuntu-latest
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '25'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '9.7.0'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: nn-roof-series-state-roof-cap
+          path: build/nn-series/state
+      - name: Prepare isolated physical Dome GameTest
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          j=json.loads(p.read_text())
+          j['entrypoints']['fabric-gametest']=[
+              'com.caszgamermd.golemsplus.builder.BuilderNNDomeStrategyGameTest']
+          p.write_text(json.dumps(j,indent=2)+'\n')
+          PY
+      - name: Run five full 3493-block Dome tests with continued training
+        run: python3 scripts/nngolems/run_roof_series.py --stage full-dome --count 5 --prefill -1 --wall-seconds 480 --tick-limit 160000 --git-sha "$GITHUB_SHA"
+      - name: Preserve trained final checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-roof-series-state-final
+          path: build/nn-series/state
+          retention-days: 90
+      - name: Preserve trial logs and outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-roof-series-results-full-dome
+          path: build/nn-series/results
+          retention-days: 90
+
+  evaluation:
+    name: "Training 05/05: 5 frozen-model matched baseline pairs (10)"
+    needs: full_dome
+    runs-on: ubuntu-latest
+    timeout-minutes: 160
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '25'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '9.7.0'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: nn-roof-series-state-final
+          path: build/nn-series/state
+      - name: Prepare isolated physical Dome GameTest
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          j=json.loads(p.read_text())
+          j['entrypoints']['fabric-gametest']=[
+              'com.caszgamermd.golemsplus.builder.BuilderNNDomeStrategyGameTest']
+          p.write_text(json.dumps(j,indent=2)+'\n')
+          PY
+      - name: Run 5 matched seed baselines and trained frozen-model comparisons
+        run: python3 scripts/nngolems/run_roof_series.py --stage evaluation --count 5 --prefill -1 --wall-seconds 480 --tick-limit 160000 --git-sha "$GITHUB_SHA"
+      - name: Confirm frozen model checkpoints were NOT changed
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('build/nn-series/results/evaluation')
+          x=[json.loads(a.read_text()) for a in p.glob('*.json')]
+          assert len(x)==10
+          assert all(t['valid'] and t['frozen'] and t['state_before']==t['state_after'] for t in x)
+          print('[NN FROZEN VALIDATION] all 10 trials used unchanged model state')
+          PY
+      - name: Preserve full records and exact frozen checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-roof-series-results-evaluation
+          path: build/nn-series/results
+          retention-days: 90
+
+  report:
+    name: Summarize all 45 real Dome trials, or explain missing stages
+    needs: [bootstrap,ascent,far_side,roof_cap,full_dome,evaluation]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nn-roof-series-results-*
+          merge-multiple: true
+          path: training-results
+      - name: Report actual complete-data and learning status
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,statistics
+          from pathlib import Path
+          root=Path('training-results')
+          phases=['roof-ascent','far-side','roof-cap','full-dome','evaluation']
+          rows=[]
+          for phase in phases:
+              p=root/(phase+'-summary.json')
+              if not p.exists():
+                  rows.append((phase,None));continue
+              rows.append((phase,json.loads(p.read_text())))
+          lines=['# Physical Dome neural curriculum','',
+                 '| Stage | Real trials | Mean correct blocks | Roof choices | Safe landings | Outcome |',
+                 '|---|---:|---:|---:|---:|---|']
+          for phase,data in rows:
+              if data is None:
+                  lines.append(f'| {phase} | 0 | — | — | — | Not completed |')
+              else:
+                  lines.append(f"| {phase} | {data['total_trials']} | {data['avg_correct']:.1f} | {data['roof_choices']} | {data['roof_landings']} | Recorded |")
+          evals=list((root/'evaluation').glob('*.json'))
+          data=[json.loads(p.read_text()) for p in evals]
+          pairs=[]
+          for i in range(1,6):
+              a=next((x for x in data if x.get('run')==i and x.get('mode')=='baseline'),None)
+              b=next((x for x in data if x.get('run')==i and x.get('mode')=='neural'),None)
+              if a and b and a['valid'] and b['valid']:
+                  pairs.append((i,a,b))
+          lines.extend(['',f'## Held-out paired evaluation: {len(pairs)}/5 completed pairs',''])
+          if pairs:
+              lines.extend(['| Pair | Baseline correct | Frozen neural correct | Delta |',
+                            '|---|---:|---:|---:|'])
+              for i,a,b in pairs:
+                  lines.append(f"| {i} | {a['correct']} | {b['correct']} | {b['correct']-a['correct']:+d} |")
+              diffs=[b['correct']-a['correct'] for _,a,b in pairs]
+              lines.append(f"Mean matched block advantage: {statistics.mean(diffs):+.1f}")
+          lines.extend(['','Actual test data only. Runs stopped or missing are NOT imputed.'])
+          report='\n'.join(lines)+'\n'
+          Path('roof-curriculum-report.md').write_text(report)
+          print(report)
+          summary=Path(__import__('os').environ['GITHUB_STEP_SUMMARY'])
+          summary.open('a').write(report)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nn-roof-series-overall-report
+          path: roof-curriculum-report.md
+          retention-days: 90
