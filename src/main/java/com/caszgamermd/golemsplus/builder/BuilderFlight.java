@@ -12,7 +12,13 @@ import net.minecraft.world.phys.Vec3;
 public final class BuilderFlight {
     private BuilderFlight() {}
     private static final double SPEED = .20;
-    public static final double HORIZONTAL_LIMIT = 2.0;
+    // Experimental roof-gap crossing: 3.5m is a short, bounded powered
+    // adjustment, NOT sustained horizontal flight. Every proposed maneuver
+    // still requires a real supported landing and continuous swept-AABB
+    // clearance. In ordinary builds the established two-block limit remains.
+    private static final boolean WIDE_ROOF_HOPS=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_ROOF_WIDE_HOPS","false"));
+    public static final double HORIZONTAL_LIMIT = WIDE_ROOF_HOPS ? 3.5 : 2.0;
     private static final double HORIZONTAL_LIMIT_SQUARED = HORIZONTAL_LIMIT * HORIZONTAL_LIMIT;
     private static final Map<BuilderGolem, Flight> flights = new WeakHashMap<>();
 
