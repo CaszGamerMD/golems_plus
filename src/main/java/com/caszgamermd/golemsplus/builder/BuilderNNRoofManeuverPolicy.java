@@ -300,6 +300,24 @@ final class BuilderNNRoofManeuverPolicy {
         System.out.println("[NN ROOF PLACEMENT] worker="+worker.getUUID()
                 +" target="+target+" updates="+updates+" totalPlacements="+placements);
     }
+    /** A waypoint is a physical arrival, not a pretend block placement.
+     * Only a maneuver the NN actually committed can receive this reward. */
+    static boolean waypointReached(ServerLevel level,BuilderGolem worker,BlockPos feet){
+        if(!ENABLED)return false;
+        Recent route=recent.remove(worker.getUUID());
+        if(route==null||!route.target().equals(feet)
+                ||level.getGameTime()-route.time()>2000)return false;
+        if(!FROZEN){
+            MODEL.learn(route.features(),1.0,1.5);
+            updates++;
+            if(updates%SAVE_EVERY==0)save();
+        }
+        System.out.println("[NN ROOF WAYPOINT REWARD] worker="+worker.getUUID()
+                +" target="+feet+" above="+(route.features()[8]>0)
+                +" farSide="+(route.features()[6]>0||route.features()[7]>0)
+                +" updates="+updates+" trained="+!FROZEN);
+        return true;
+    }
     static void flush(){
         if(ENABLED&&!FROZEN)save();
     }
