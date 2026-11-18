@@ -276,6 +276,13 @@ public final class BuilderNNDomeWaypointGameTest {
             BlockPos spawn=arena.offset(6,2,10+i*6);
             golem.setUUID(new UUID(0x4E4E574159504F49L,100+i));
             golem.getRandom().setSeed(seed+111+i);
+            // Match the Builder's standard grapple-equipped toolbelt in
+            // this separate movement-toolkit ablation. No tool is created
+            // by the worker during a route attempt.
+            if(Boolean.parseBoolean(System.getenv().getOrDefault(
+                    "GOLEMS_NN_WAYPOINT_GRAPPLE","false")))
+                golem.setItem(0,new net.minecraft.world.item.ItemStack(
+                        WorksiteContent.GRAPPLE_HOOK));
             golem.setPos(spawn.getX()+.5,spawn.getY(),spawn.getZ()+.5);
             level.addFreshEntity(golem);
             workers.add(new Walker(i,golem));
