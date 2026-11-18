@@ -160,8 +160,7 @@ final class BuilderMultiLegTravel {
         return List.copyOf(offsets);
     }
     private static List<BlockPos> launches(ServerLevel level,BuilderGolem worker,
-            BlockPos at,Goal goal){
-        boolean slopes=LONG_DETOUR&&goal.kind()==Kind.STAND;
+            BlockPos at,Goal goal,boolean slopes){
         var result=new ArrayList<BlockPos>();
         for(BlockPos p:nearbyLaunchOffsets(at,slopes))
             if(p.equals(at)||WorkerNavigation.canStandOn(level,worker,p))
@@ -239,8 +238,36 @@ final class BuilderMultiLegTravel {
         }
         return result;
     }
+    /**
+     * Conservative two-stage search: preserve any complete physically
+     * executable traditional route. Only a missing/incomplete result may
+     * unlock diagonal and +/-1 roof-slope takeoffs. This avoids trading
+     * an easy complete roof route for an exploratory dead-end.
+     */
     private static List<Leg> plan(ServerLevel level,BuilderGolem worker,Goal goal,
             boolean commit){
+        List<Leg> normal=searchPlan(level,worker,goal,commit,false);
+        if(!LONG_DETOUR||goal.kind()!=Kind.STAND
+                ||!normal.isEmpty()&&good(level,worker,goal,normal.getLast().landing()))
+            return normal;
+        List<Leg> slope=searchPlan(level,worker,goal,false,true);
+        if(slope.isEmpty())return normal;
+        boolean completed=good(level,worker,goal,slope.getLast().landing());
+        boolean meaningful=normal.isEmpty()||completed
+                ||score(goal,slope.getLast().landing())+10
+                    <score(goal,normal.getLast().landing());
+        if(!meaningful)return normal;
+        System.out.println("[NN WAYPOINT SLOPE FALLBACK] worker="+worker.getUUID()
+                +" target="+goal.target()+" ordinaryLegs="+normal.size()
+                +" alternativeLegs="+slope.size()+" complete="+completed);
+        if(commit&&BuilderNNRoofManeuverPolicy.ENABLED)
+            return BuilderNNRoofManeuverPolicy.choose(level,worker,goal.target(),
+                    List.of(new BuilderNNRoofManeuverPolicy.Candidate(
+                            slope,completed)),0);
+        return slope;
+    }
+    private static List<Leg> searchPlan(ServerLevel level,BuilderGolem worker,Goal goal,
+            boolean commit,boolean slopes){
         // A navigation-only waypoint is an actual safe landing objective,
         // not a fake block-placement task. Let the same route model learn
         // from successful physical arrival at this standing location.
@@ -276,7 +303,7 @@ final class BuilderMultiLegTravel {
                 continue;
             }
             if(n.legs().size()>=maxLegs)continue;
-            for(BlockPos launch:launches(level,worker,n.at(),goal)){
+            for(BlockPos launch:launches(level,worker,n.at(),goal,slopes)){
                 boolean walkChecked=launch.equals(n.at()),walkOK=walkChecked;
                 int checked=0;
                 for(BlockPos land:landings(level,worker,goal,launch)){
