@@ -32,6 +32,8 @@ final class BuilderNNRoofManeuverPolicy {
             "golems.nn.roofManeuverPolicy",
             System.getenv().getOrDefault("GOLEMS_NN_ROOF_MANEUVER_POLICY","false")));
     private static final Gson JSON=new Gson();
+    private static final boolean FROZEN=Boolean.parseBoolean(System.getenv()
+            .getOrDefault("GOLEMS_NN_FROZEN","false"));
     private static final int INPUTS=14, HIDDEN=8, SAVE_EVERY=8;
     private static final Network MODEL=Network.initial();
     private static final Map<UUID,Selection> proposed=new HashMap<>();
@@ -228,8 +230,8 @@ final class BuilderNNRoofManeuverPolicy {
             contexts.add(features(from,target,option.legs(),option.complete(),exits));
         }
         int attempt=decisions++;
-        int selected=chooseIndex(MODEL,contexts,baseline,attempt);
-        boolean explore=attempt<120&&attempt%4==0;
+        int selected=chooseIndex(MODEL,contexts,baseline,FROZEN?200:attempt);
+        boolean explore=!FROZEN&&attempt<120&&attempt%4==0;
         if(selected!=baseline)changes++;
         if(explore)explorations++;
         var chosen=options.get(selected);
@@ -254,12 +256,14 @@ final class BuilderNNRoofManeuverPolicy {
     private static void learn(ServerLevel level,BuilderGolem worker,Selection selected,
             double reward,String outcome){
         if(selected==null||!ENABLED)return;
-        MODEL.learn(selected.features(),reward,reward<=0?2.5:1.0);
-        updates++;
+        if(!FROZEN){
+            MODEL.learn(selected.features(),reward,reward<=0?2.5:1.0);
+            updates++;
+        }
         if("WORLD_PLACED".equals(outcome))placements++;
         else if(reward==0)failedRoutes++;
         else successfulRoutes++;
-        if(updates%SAVE_EVERY==0)save();
+        if(!FROZEN&&updates%SAVE_EVERY==0)save();
         double[] x=selected.features();
         System.out.println("[NN ROOF OUTCOME] "+JSON.toJson(new OutcomeLog(
                 1,worker.getUUID().toString(),level.getGameTime(),outcome,
@@ -287,11 +291,17 @@ final class BuilderNNRoofManeuverPolicy {
         Recent result=recent.remove(worker.getUUID());
         if(result==null||!result.target().equals(target)
                 ||level.getGameTime()-result.time()>2000)return;
-        MODEL.learn(result.features(),1.0,1.5);
-        updates++;placements++;
-        if(updates%SAVE_EVERY==0)save();
+        if(!FROZEN){
+            MODEL.learn(result.features(),1.0,1.5);
+            updates++;
+        }
+        placements++;
+        if(!FROZEN&&updates%SAVE_EVERY==0)save();
         System.out.println("[NN ROOF PLACEMENT] worker="+worker.getUUID()
                 +" target="+target+" updates="+updates+" totalPlacements="+placements);
+    }
+    static void flush(){
+        if(ENABLED&&!FROZEN)save();
     }
     static void handedOff(UUID worker){
         if(ENABLED)recent.remove(worker);
