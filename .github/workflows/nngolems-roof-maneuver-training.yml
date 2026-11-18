@@ -1,4 +1,5 @@
 name: NNGolems advanced roof maneuver neural training
+# Include executed single-candidate roof routes as training episodes.
 # Rerun: detour progress must expire after 120 ticks without a newly traversed tile.
 # Full fresh run after NN initializer regression fix; always test branch HEAD.
 run-name: "NN roof-maneuver A/B Dome (${{ github.sha }})"
