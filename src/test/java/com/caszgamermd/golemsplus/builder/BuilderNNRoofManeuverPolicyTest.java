@@ -51,6 +51,15 @@ class BuilderNNRoofManeuverPolicyTest {
         assertTrue(restored.restore(net.snapshot(200,100,100,0)));
         assertEquals(net.predict(good),restored.predict(good),1e-13);
     }
+    @Test void realIntermediateLandingsEarnOnlyPartialCredit(){
+        double first=BuilderNNRoofManeuverPolicy.partialLegReward(1,4);
+        double second=BuilderNNRoofManeuverPolicy.partialLegReward(2,4);
+        double third=BuilderNNRoofManeuverPolicy.partialLegReward(3,4);
+        assertTrue(first>0&&first<second&&second<third);
+        assertTrue(third<.60,"a partial flight is not a completed journey");
+        assertEquals(0,BuilderNNRoofManeuverPolicy.partialLegReward(4,4),1e-12,
+                "the final leg is supervised by the whole-trip outcome");
+    }
     @Test void candidateSelectionCanExploreButAlwaysReturnsExistingIndex(){
         var model=BuilderNNRoofManeuverPolicy.Network.initial();
         double[] a=new double[14],b=new double[14],c=new double[14];
