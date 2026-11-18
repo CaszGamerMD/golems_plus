@@ -165,6 +165,12 @@ final class BuilderMultiLegTravel {
     }
     static List<BlockPos> candidateLaunchCells(BlockPos at,boolean slopes){
         var result=new LinkedHashSet<BlockPos>();result.add(at);
+        if(!slopes){
+            for(int radius=1;radius<=3;radius++)
+                for(int[] v:new int[][]{{1,0},{-1,0},{0,1},{0,-1}})
+                    result.add(at.offset(radius*v[0],0,radius*v[1]));
+            return List.copyOf(result);
+        }
         int[][] compass={{1,0},{-1,0},{0,1},{0,-1},
                 {1,1},{1,-1},{-1,1},{-1,-1}};
         for(int radius=1;radius<=3;radius++){
