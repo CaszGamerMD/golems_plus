@@ -1,5 +1,5 @@
 name: NNGolems finished Dome waypoint traversal test
-# Sixth test: traditional complete route first, stepped roof takeoffs only for incomplete routes; <=52 failures goal.
+# Confirm known-good 120/192 code after reverting regressive ascent and slope experiments; goal <=52 failures.
 run-name: "Finished Dome 24-waypoint navigation A/B (${{ github.sha }})"
 on:
   push:
@@ -161,7 +161,6 @@ jobs:
             'route_choices':len(roof),'route_changes':sum(bool(x.get('changed')) for x in roof),
             'visits_recorded':len(visits),
             'training_updates':sum('[NN ROOF WAYPOINT REWARD] ' in x for x in lines),
-            'direct_ascents':sum('[NN WAYPOINT DIRECT ASCENT] ' in x for x in lines),
             'timeouts':sum(x.get('outcome')=='PER_GOAL_TIMEOUT' for x in visits),
             'sample_failures':[x for x in visits if not x.get('arrived')][:8]}
           (p/'result.json').write_text(json.dumps(summary,indent=2)+'\n')
@@ -169,7 +168,7 @@ jobs:
           print('[NN WAYPOINT ASSESSMENT] '+json.dumps({k:summary[k] for k in
               ('mode','targets','crew','success','failed','roof_success',
                'ground_success','route_choices','route_changes','visits_recorded',
-               'training_updates','direct_ascents','timeouts')}))
+               'training_updates','timeouts')}))
           out=Path(os.environ['GITHUB_STEP_SUMMARY'])
           out.open('a').write('## Finished Dome navigation – '+summary['mode']+
               '\n'+str(summary['success'])+' reached, '+str(summary['failed'])+
@@ -229,7 +228,6 @@ jobs:
                 f"| Learned route choices | {x['route_choices']} | {y['route_choices']} |",
                 f"| Routes changed | {x['route_changes']} | {y['route_changes']} |",
                 f"| Positive roof maneuver rewards | {x['training_updates']} | {y['training_updates']} |",
-                f"| Certified direct ascents | {x['direct_ascents']} | {y['direct_ascents']} |",
                 f"| Target: 52 or fewer failures | {'Met' if x['failed']<=52 else 'Not yet'} | {'Met' if y['failed']<=52 else 'Not yet'} |",
                 '',
                 'All destinations are genuine full-cube supported feet poses on a prebuilt Dome.',
