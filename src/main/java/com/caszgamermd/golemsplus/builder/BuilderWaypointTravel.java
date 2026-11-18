@@ -198,6 +198,18 @@ final class BuilderWaypointTravel {
      * not a guessed skylight line or a virtual entity. The chosen launch is
      * reached by ordinary grounded A* before taking off.
      */
+    /** Transparent or non-occluding roof materials can report sky access
+     * while the golem still has a solid collision obstacle overhead. Rank
+     * collision-clear exterior shafts ahead of blocked interior columns;
+     * every proposed roof landing is separately swept and support-checked. */
+    static List<BlockPos> rankAscentGatewayColumns(BlockPos target,
+            List<BlockPos> ground,ToIntFunction<BlockPos> headroom){
+        List<BlockPos> ordered=new ArrayList<>(ground);
+        ordered.sort(Comparator.comparingInt((BlockPos at)->
+                        -Math.clamp(headroom.applyAsInt(at),0,36))
+                .thenComparingDouble(at->flatDistance(at,target)));
+        return ordered;
+    }
     static BlockPos chooseAscentGateway(ServerLevel level,BuilderGolem worker,
             BlockPos target,Set<BlockPos> connected,List<BlockPos> recent){
         BlockPos start=worker.blockPosition();
@@ -209,7 +221,8 @@ final class BuilderWaypointTravel {
                     ||!level.canSeeSky(candidate.above()))continue;
             options.add(candidate);
         }
-        options.sort(Comparator.comparingDouble(p->flatDistance(p,target)));
+        options=rankAscentGatewayColumns(target,options,
+                p->roofHeadroom(level,p));
         BlockPos best=null;
         double bestScore=Double.POSITIVE_INFINITY;
         int checked=0;
@@ -733,7 +746,8 @@ final class BuilderWaypointTravel {
             // On an upper-roof assignment a 1-block horizontal separation
             // can still mean 23 blocks of solid ceiling in between. Probe
             // the connected exterior, not a greedy near-target tile.
-            if(EXPERIMENTAL_GATEWAY&&high&&destination.getY()-here.getY()>=6)
+            if(candidate==null&&EXPERIMENTAL_GATEWAY&&high
+                &&destination.getY()-here.getY()>=6)
                 candidate=chooseAscentGateway(
                         level,worker,destination,connected,recent);
             if(candidate==null&&high)
