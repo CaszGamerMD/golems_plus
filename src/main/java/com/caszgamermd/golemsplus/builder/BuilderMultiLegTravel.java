@@ -329,6 +329,8 @@ final class BuilderMultiLegTravel {
             if(arrived(level,worker,leg.landing())){
                 BuilderTrace.decision(level,worker,"MULTI_TRIP_LAND",leg.landing(),"finished leg "+(t.index+1)+"/"+t.legs.size());
                 t.index++;t.flying=false;t.progress=now;t.best=Double.POSITIVE_INFINITY;
+                if(t.index<t.legs.size())
+                    BuilderNNRoofManeuverPolicy.legLanded(level,worker,t.neural,t.index);
                 if(t.index==t.legs.size()){
                     trips.remove(worker);searchAfter.remove(worker);
                     boolean reachedGoal=good(level,worker,goal,leg.landing());
