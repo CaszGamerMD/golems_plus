@@ -34,6 +34,8 @@ final class BuilderWaypointTravel {
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_FINAL_HOP","false"));
     private static final boolean RETREAT_FROM_ROOF_POCKET=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_ROOF_RETREAT","false"));
+    private static final boolean ISLAND_EGRESS=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_ISLAND_EGRESS","false"));
     private static final boolean EXPERIMENTAL_DIRECT_ASCENT=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_DIRECT_ASCENT","false"));
     private static final boolean EXPERIMENTAL_GATEWAY=Boolean.parseBoolean(
@@ -52,13 +54,22 @@ final class BuilderWaypointTravel {
         BlockPos stage;
         BlockPos verifiedFlightLanding;
         long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe, nextSurfaceProbe,
-                nextHoverRecovery, nextGrappleProbe, nextFinalHopProbe;
+                nextHoverRecovery, nextGrappleProbe, nextFinalHopProbe,
+                nextIslandEscape, lastGoalImprovement;
+        double bestGoalScore=Double.POSITIVE_INFINITY;
         BlockPos lastAscentLanding;
         double best=Double.POSITIVE_INFINITY;
         int failedStages,stagesCompleted;
         Plan(BlockPos goal){this.goal=goal.immutable();}
     }
     private BuilderWaypointTravel(){}
+    static boolean shouldEscapeRoofIsland(int stagnantTicks,int groundedCells,
+            double horizontal,int verticalDelta,boolean grounded,
+            boolean powered){
+        return stagnantTicks>=170&&groundedCells<=12
+                &&horizontal<=12&&Math.abs(verticalDelta)<=3
+                &&grounded&&!powered;
+    }
     static boolean needsElevation(BlockPos here,BlockPos goal){
         return Math.abs(here.getY()-goal.getY())>=3;
     }
@@ -385,6 +396,49 @@ final class BuilderWaypointTravel {
         boolean high=destination.getY()>here.getY()+2;
         boolean lower=here.getY()>destination.getY()+2;
         double horizontal=flatDistance(here,destination);
+        // Track actual net approach to the final supported feet pose,
+        // NOT merely total motion: repeated laps on one isolated roof island
+        // used to look like progress until the entire episode timed out.
+        double floor=WorkerNavigation.surveyFloorHeight(level,destination);
+        double goalScore=worker.position().distanceToSqr(
+                destination.getX()+.5,floor,destination.getZ()+.5);
+        if(p.lastGoalImprovement==0){
+            p.lastGoalImprovement=now;
+            p.bestGoalScore=goalScore;
+        }else if(goalScore+1.0<p.bestGoalScore){
+            p.bestGoalScore=goalScore;p.lastGoalImprovement=now;
+        }
+        if(ISLAND_EGRESS&&now>=p.nextIslandEscape
+                &&now-p.lastGoalImprovement>=170&&horizontal<=12
+                &&Math.abs(here.getY()-destination.getY())<=3
+                &&worker.onGround()&&!BuilderFlight.active(worker)
+                &&!BuilderGrappleAccess.active(worker)){
+            p.nextIslandEscape=now+220;
+            Set<BlockPos> island=WorkerNavigation.groundReachableFrom(level,worker,here);
+            if(shouldEscapeRoofIsland((int)(now-p.lastGoalImprovement),
+                    island.size(),horizontal,destination.getY()-here.getY(),
+                    worker.onGround(),BuilderFlight.active(worker))){
+                BuilderMultiLegTravel.abortWaypoint(
+                        level,worker,"roof_island_no_goal_progress");
+                boolean escaped=GRAPPLE_TRAINING
+                        &&BuilderGrappleAccess.escapePerch(
+                                level,worker,null,destination);
+                if(!escaped){
+                    var blocked=new java.util.HashSet<BlockPos>(p.visited);
+                    blocked.add(here);
+                    escaped=BuilderFlight.land(level,worker,true,blocked);
+                }
+                System.out.println("[NN WAYPOINT ISLAND EGRESS] worker="
+                        +worker.getUUID()+" from="+here+" target="+destination
+                        +" connected="+island.size()+" escapeAccepted="+escaped);
+                if(escaped){
+                    mark(p,here);p.lastGoalImprovement=now;
+                    p.bestGoalScore=Double.POSITIVE_INFINITY;
+                    p.stage=null;p.verifiedFlightLanding=null;
+                    return true;
+                }
+            }
+        }
         if(p.stage!=null){
             double dist=worker.position().distanceToSqr(
                     p.stage.getX()+.5,WorkerNavigation.surveyFloorHeight(level,p.stage),
