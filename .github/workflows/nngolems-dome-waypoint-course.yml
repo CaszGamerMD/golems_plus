@@ -1,5 +1,5 @@
 name: NNGolems finished Dome waypoint traversal test
-# Retest verified safe direct descent and physical intermediate-flight learning feedback.
+# Roof-navigation challenge: sky-exposed exterior gateways and flat roof hops; target <=52/192 failures.
 run-name: "Finished Dome 24-waypoint navigation A/B (${{ github.sha }})"
 on:
   push:
