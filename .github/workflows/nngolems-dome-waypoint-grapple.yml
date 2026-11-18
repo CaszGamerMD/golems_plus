@@ -1,5 +1,5 @@
 name: NNGolems full-toolkit grapple Dome waypoint traversal
-# Verify actual grounded launch and matching collision-certified flight landings on upper Dome.
+# Held-out frozen maneuver policy with full grapple toolkit; resume latest real training checkpoint.
 run-name: "Grapple-assisted 24-waypoint Dome navigation A/B (${{ github.sha }})"
 on:
   push:
@@ -60,7 +60,7 @@ jobs:
       GOLEMS_NN_RECORD: 'true'
       GOLEMS_NN_FRONTIER_CONTROL: 'false'
       GOLEMS_NN_ROOF_MANEUVER_POLICY: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
-      GOLEMS_NN_FROZEN: 'false'
+      GOLEMS_NN_FROZEN: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
       GOLEMS_NN_LONG_DETOUR: 'true'
       GOLEMS_NN_WAYPOINT_GRAPPLE: 'true'
       GOLEMS_NN_MULTI_LEG_ROOF: 'true'
@@ -98,10 +98,10 @@ jobs:
           set -euo pipefail
           mkdir -p build/nn-waypoints/state build/nn-waypoints/seed
           # The former workflow restarted at 120 updates every run.
-          # This trial resumes the ACTUAL 877-update checkpoint from the
-          # immediately preceding 192-waypoint episode, not random weights.
-          gh run download 44298694091 --repo CaszGamerMD/golems_plus \
-            --name nn-finished-dome-waypoints-neural --dir build/nn-waypoints/seed
+          # This evaluation resumes the latest physically trained checkpoint from the
+          # grapple-equipped episode. The neural policy must not explore or update.
+          gh run download 44314918987 --repo CaszGamerMD/golems_plus \
+            --name nn-grapple-dome-waypoints-neural --dir build/nn-waypoints/seed
           test -s build/nn-waypoints/seed/state/roof-maneuver-policy.json
           cp build/nn-waypoints/seed/state/roof-maneuver-policy.json \
              build/nn-waypoints/state/roof-maneuver-policy.json
