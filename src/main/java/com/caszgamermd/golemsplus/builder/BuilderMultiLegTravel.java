@@ -39,6 +39,18 @@ final class BuilderMultiLegTravel {
     // This is per-worker, temporary, and never bypasses collision checks.
     private static final Map<BuilderGolem,Map<Leg,Long>> rejectedLegs=new WeakHashMap<>();
     private static final long FAILED_LEG_RETRY_TICKS=240;
+    private static final boolean STICKY_PHYSICAL_REJECTIONS=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_STICKY_ROOF_REJECTIONS","false"));
+    static long rejectionWindow(String reason,boolean sticky){
+        // Repeated launch geometry failures and abandoned powered hovers
+        // cannot become passable merely by checking the same blocks again
+        // 240 ticks later. Within one waypoint trial retain the failure,
+        // but never apply this experimental exclusion to ordinary builds.
+        if(sticky&&("repeated_centered_launch_reject".equals(reason)
+                ||"stopped_hover_landing_recovery".equals(reason)
+                ||"flight_ended_short".equals(reason)))return 850;
+        return FAILED_LEG_RETRY_TICKS;
+    }
     static boolean staleFlightLeg(boolean moving,long elapsed){
         return !moving&&elapsed>=25;
     }
@@ -47,13 +59,15 @@ final class BuilderMultiLegTravel {
         return bad!=null&&bad.getOrDefault(leg,-1L)>now;
     }
     private static void reject(BuilderGolem worker,Leg leg,long now,String reason){
+        long expiry=now+rejectionWindow(reason,STICKY_PHYSICAL_REJECTIONS);
         rejectedLegs.computeIfAbsent(worker,k->new HashMap<>())
-                .put(leg,now+FAILED_LEG_RETRY_TICKS);
+                .put(leg,expiry);
         System.out.println("[NN WAYPOINT BAD LEG] worker="+worker.getUUID()
                 +" launch="+leg.launch()+" landing="+leg.landing()
-                +" reason="+reason+" retryAfter="+(now+FAILED_LEG_RETRY_TICKS));
+                +" reason="+reason+" retryAfter="+expiry);
     }
     static void clear(BuilderGolem worker){trips.remove(worker);searchAfter.remove(worker);}
+    static void resetRejections(BuilderGolem worker){rejectedLegs.remove(worker);}
     static void abortWaypoint(ServerLevel level,BuilderGolem worker,String reason){
         Trip t=trips.remove(worker);
         searchAfter.remove(worker);
