@@ -49,6 +49,28 @@ class BuilderWaypointTravelTest {
                 start,roofAbove,Set.of(start,distant,high),
                 List.of(),p->true));
     }
+    @Test void blockedRoofCanRetreatToARealEdgeRatherThanStallingUnderTarget(){
+        BlockPos start=new BlockPos(0,10,0),goal=new BlockPos(0,34,0);
+        BlockPos interior=start.offset(5,0,0);
+        BlockPos lowRoofEdge=start.offset(-12,0,0);
+        BlockPos exterior=start.offset(16,0,0);
+        Set<BlockPos> connected=Set.of(start,interior,lowRoofEdge,exterior);
+        assertEquals(exterior,BuilderWaypointTravel.chooseRoofRetreat(
+                start,goal,connected,List.of(),
+                p->p.equals(interior)?24:p.equals(lowRoofEdge)?12:36,
+                p->p.equals(exterior)),
+                "Reachable sky-exposed ground is a legal outward detour");
+        assertEquals(lowRoofEdge,BuilderWaypointTravel.chooseRoofRetreat(
+                start,goal,connected,List.of(exterior),
+                p->p.equals(interior)?24:p.equals(lowRoofEdge)?12:36,
+                p->false),
+                "A shorter real roof edge outranks a blocked interior column");
+        assertNull(BuilderWaypointTravel.chooseRoofRetreat(
+                start,goal,connected,List.of(interior,lowRoofEdge,exterior),
+                p->15,p->true),
+                "Visited or absent ground stances must never be fabricated");
+    }
+
     @Test void groundDestinationsShouldNotNeedHorizontalFlight(){
         BlockPos ground=new BlockPos(0,10,0);
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,
