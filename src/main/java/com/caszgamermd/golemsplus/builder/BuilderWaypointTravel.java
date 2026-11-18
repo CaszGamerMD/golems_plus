@@ -55,6 +55,9 @@ final class BuilderWaypointTravel {
     private static final class Plan {
         final BlockPos goal;
         final ArrayDeque<BlockPos> visited=new ArrayDeque<>();
+        // Recovery memory belongs to a single physical waypoint. Keep only
+        // recent real landing requests to avoid cycling one roof island.
+        final ArrayDeque<BlockPos> hoverLandings=new ArrayDeque<>();
         BlockPos stage;
         BlockPos verifiedFlightLanding;
         long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe, nextSurfaceProbe,
@@ -435,10 +438,20 @@ final class BuilderWaypointTravel {
                 boolean accepted=BuilderFlight.recoverStoppedHover(
                         level,worker,destination,
                         p.lastGoalImprovement>0
-                                &&now-p.lastGoalImprovement>=120);
+                                &&now-p.lastGoalImprovement>=120,
+                        Set.copyOf(p.hoverLandings));
+                if(accepted){
+                    BlockPos landing=BuilderFlight.observedDestination(worker);
+                    if(landing!=null){
+                        p.hoverLandings.remove(landing);
+                        p.hoverLandings.addLast(landing.immutable());
+                        while(p.hoverLandings.size()>12)p.hoverLandings.removeFirst();
+                    }
+                }
                 System.out.println("[NN WAYPOINT HOVER RECOVERY] worker="
                         +worker.getUUID()+" from="+worker.position()
-                        +" destination="+destination+" landingAccepted="+accepted);
+                        +" destination="+destination+" landingAccepted="+accepted
+                        +" recoveryHistory="+p.hoverLandings.size());
             }
             return BuilderFlight.active(worker);
         }
@@ -456,6 +469,7 @@ final class BuilderWaypointTravel {
             p.bestGoalScore=goalScore;
         }else if(goalScore+1.0<p.bestGoalScore){
             p.bestGoalScore=goalScore;p.lastGoalImprovement=now;
+            p.hoverLandings.clear(); // genuine goal progress unlocks old landings
         }
         if(ISLAND_EGRESS&&now>=p.nextIslandEscape
                 &&now-p.lastGoalImprovement>=170&&horizontal<=12
