@@ -24,6 +24,10 @@ import net.minecraft.server.level.ServerLevel;
  */
 final class BuilderWaypointTravel {
     private static final int STAGE_RADIUS=18;
+    private static final boolean EXPERIMENTAL_DIRECT_ASCENT=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_DIRECT_ASCENT","false"));
+    private static final boolean EXPERIMENTAL_GATEWAY=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_CERTIFIED_GATEWAY","false"));
     private static final int STAGE_TTL=105;
     private static final int RETAIN=12;
     private static final Map<BuilderGolem,Plan> plans=new WeakHashMap<>();
@@ -296,7 +300,7 @@ final class BuilderWaypointTravel {
             // six-flight commitment that fails after three legs. The actual
             // support and the complete flight sweep are checked afresh for
             // every intermediate landing, including awkward roof lips.
-            if(now>=p.nextAscentProbe
+            if(EXPERIMENTAL_DIRECT_ASCENT&&now>=p.nextAscentProbe
                     &&(horizontal<=25||level.canSeeSky(here.above()))){
                 p.nextAscentProbe=now+35;
                 BlockPos landing=chooseDirectAscent(
@@ -350,7 +354,7 @@ final class BuilderWaypointTravel {
             // On an upper-roof assignment a 1-block horizontal separation
             // can still mean 23 blocks of solid ceiling in between. Probe
             // the connected exterior, not a greedy near-target tile.
-            if(high&&destination.getY()-here.getY()>=6)
+            if(EXPERIMENTAL_GATEWAY&&high&&destination.getY()-here.getY()>=6)
                 candidate=chooseAscentGateway(
                         level,worker,destination,connected,recent);
             if(candidate==null&&high&&!level.canSeeSky(here.above()))
