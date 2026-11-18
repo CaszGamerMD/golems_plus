@@ -828,7 +828,7 @@ public final class BuilderConstructionPlanner {
             Choice safeChoice=new Choice(idx,stance,grapple,sky,examined);
             if(BuilderNeuralFrontierPolicy.ENABLED&&!lookahead)
                 neuralCandidates.add(BuilderNeuralFrontierPolicy.candidate(
-                        safeChoice,worker,target,stance,touch,risk,stockRank,tier,cost,
+                        safeChoice,world,worker,target,stance,touch,risk,stockRank,tier,cost,
                         sky,grapple,scaffold,propeller));
             if(stockRank<bestStock||stockRank==bestStock&&(tier<bestTier||tier==bestTier&&cost<bestScore)){
                 bestStock=stockRank;
