@@ -64,8 +64,10 @@ public final class BuilderConstructionPlanner {
     static void noteCompleted(BuilderGolem worker,BlockPos target){
         // Long physically valid detours are success when the WORLD block
         // matches, even if the route climbed above Y or overshot X/Z.
-        if(worker.level() instanceof ServerLevel server)
+        if(worker.level() instanceof ServerLevel server){
             BuilderNNDetourTraining.finish(server,worker,target,true,"WORLD_PLACED");
+            BuilderNNRoofManeuverPolicy.worldPlaced(server,worker,target);
+        }
         BuilderNeuralFrontierPolicy.completed(worker,target);
         lastPlaced.put(worker,target.immutable());
         // Re-evaluate the new edge after each confirmed world placement.
