@@ -1,5 +1,5 @@
 name: NNGolems finished Dome waypoint traversal test
-# Roof-navigation challenge: sky-exposed exterior gateways and flat roof hops; target <=52/192 failures.
+# Second roof-routing retest: expire dead physical legs, avoid repeated invalid takeoffs; target <=52/192 failures.
 run-name: "Finished Dome 24-waypoint navigation A/B (${{ github.sha }})"
 on:
   push:
@@ -225,6 +225,7 @@ jobs:
                 f"| Learned route choices | {x['route_choices']} | {y['route_choices']} |",
                 f"| Routes changed | {x['route_changes']} | {y['route_changes']} |",
                 f"| Positive roof maneuver rewards | {x['training_updates']} | {y['training_updates']} |",
+                f"| Target: 52 or fewer failures | {'Met' if x['failed']<=52 else 'Not yet'} | {'Met' if y['failed']<=52 else 'Not yet'} |",
                 '',
                 'All destinations are genuine full-cube supported feet poses on a prebuilt Dome.',
                 'A workflow success confirms recorded results, not successful navigation of every target.']
