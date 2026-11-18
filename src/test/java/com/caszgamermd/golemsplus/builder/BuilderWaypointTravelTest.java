@@ -193,4 +193,15 @@ class BuilderWaypointTravelTest {
         assertEquals(List.of(),
                 BuilderFlight.prioritizeRecoveryLandings(List.of(),Set.of(repeated)));
     }
+    @Test void exteriorCollisionClearGatewayBeatsSkyVisibleBlockedRoof(){
+        BlockPos goal=new BlockPos(0,36,0);
+        BlockPos directlyUnder=new BlockPos(0,10,0);
+        BlockPos underGlassRoof=new BlockPos(3,10,0);
+        BlockPos clearExterior=new BlockPos(17,10,0);
+        List<BlockPos> ranked=BuilderWaypointTravel.rankAscentGatewayColumns(goal,
+                List.of(underGlassRoof,directlyUnder,clearExterior),
+                p->p.equals(clearExterior)?36:p.equals(underGlassRoof)?24:22);
+        assertEquals(List.of(clearExterior,underGlassRoof,directlyUnder),ranked,
+                "Closer x/z is not a good ascent when a collision roof obstructs lift");
+    }
 }
