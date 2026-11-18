@@ -117,7 +117,7 @@ jobs:
           set -euo pipefail
           mkdir -p build/nn-seed build/nn-pilot
           gh run download 44248779872 --repo CaszGamerMD/golems_plus \
-            --name nn-frontier-dome-neural --dir build/nn-seed
+            --name nn-frontier-home-neural --dir build/nn-seed
           test -s build/nn-seed/learned-frontier-policy.json
           cp build/nn-seed/learned-frontier-policy.json build/nn-pilot/learned-frontier-policy.json
           python3 - <<'PY'
