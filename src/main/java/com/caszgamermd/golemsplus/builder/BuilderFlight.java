@@ -180,6 +180,24 @@ public final class BuilderFlight {
         }
         return List.of();
     }
+    /** Final immutable physical certificate for every AI-selected powered
+     * route. Model predictions never grant permission to cross blocks,
+     * escape the 2m takeoff envelope, or land in an unloaded chunk. */
+    static boolean verifiedFlightRoute(ServerLevel level,BuilderGolem worker,
+            List<Vec3> proposed,Vec3 destination){
+        if(proposed==null||proposed.isEmpty()||destination==null
+                ||proposed.getLast().distanceToSqr(destination)>.000001
+                ||!clear(level,worker,destination))return false;
+        Vec3 anchor=origin(worker),previous=worker.position();
+        if(!inEnvelope(anchor,previous))return false;
+        for(Vec3 next:proposed){
+            if(next==null||!Double.isFinite(next.x)||!Double.isFinite(next.y)
+                    ||!Double.isFinite(next.z)||!inEnvelope(anchor,next)
+                    ||!sweep(level,worker,previous,next))return false;
+            previous=next;
+        }
+        return true;
+    }
     /** Shadow only: enumerate legal same-destination alternatives to the
      * already accepted path. No motion, destination or claim writes. */
     static List<List<Vec3>> shadowAlternatives(ServerLevel level, BuilderGolem worker,
@@ -344,6 +362,11 @@ public final class BuilderFlight {
             }
             return false;
         }
+        // The neural pilot may choose a DIFFERENT, collision-checked
+        // sequence to this exact target. Safety remains fully deterministic:
+        // failed inference or revalidation always uses the old route.
+        List<Vec3> aiPath=BuilderNeuralAdvisor.decideLive(level,worker,path,destination);
+        if(verifiedFlightRoute(level,worker,aiPath,destination))path=aiPath;
         if (flight == null) {
             flight = new Flight();
             flight.origin = worker.position();
