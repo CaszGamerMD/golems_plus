@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -31,6 +32,8 @@ final class BuilderWaypointTravel {
     // of long-range flight or an unverified target arrival.
     private static final boolean DIRECT_FINAL_HOP=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_FINAL_HOP","false"));
+    private static final boolean RETREAT_FROM_ROOF_POCKET=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_ROOF_RETREAT","false"));
     private static final boolean EXPERIMENTAL_DIRECT_ASCENT=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_DIRECT_ASCENT","false"));
     private static final boolean EXPERIMENTAL_GATEWAY=Boolean.parseBoolean(
@@ -114,6 +117,49 @@ final class BuilderWaypointTravel {
         }
         return best;
     }
+    /**
+     * A destination almost directly above the worker can be a local
+     * minimum: going four or more blocks AWAY from that target may be the
+     * only way to reach a roof edge. Existing stages reject this detour.
+     * Choose a REAL connected ground stance with more accessible roof
+     * geometry (sky or <=20 blocks of overhead), never an invented pose.
+     *
+     * Candidates are already established by the physical ground survey.
+     * This only selects an intermediate walking destination, not a
+     * successful arrival or permission to fly through anything.
+     */
+    static BlockPos chooseRoofRetreat(BlockPos start,BlockPos goal,
+            Set<BlockPos> connected,List<BlockPos> recent,
+            ToIntFunction<BlockPos> roofHeadroom,
+            Predicate<BlockPos> openSky){
+        BlockPos best=null;
+        double bestScore=Double.POSITIVE_INFINITY;
+        for(BlockPos at:connected){
+            if(at.equals(start)||recent.contains(at)
+                    ||Math.abs(at.getY()-start.getY())>2)continue;
+            double travel=flatDistance(start,at);
+            if(travel<4||travel>STAGE_RADIUS)continue;
+            int clearance=Math.max(0,roofHeadroom.applyAsInt(at));
+            boolean sky=openSky.test(at);
+            // A 12-18 block overhead surface offers an actual grapple
+            // opportunity; completely open sky is a valid exterior escape.
+            double score=(sky?-18:Math.abs(clearance-15)*1.1)
+                    +.09*flatDistance(at,goal)+.03*travel;
+            if(score<bestScore){bestScore=score;best=at;}
+        }
+        return best;
+    }
+    /** Only inspect loaded, collision-bearing blocks in the real column. */
+    private static int roofHeadroom(ServerLevel level,BlockPos feet){
+        for(int delta=2;delta<=36;delta++){
+            BlockPos at=feet.above(delta);
+            if(!level.hasChunkAt(at))return 36;
+            if(!level.getBlockState(at).getCollisionShape(level,at).isEmpty())
+                return delta;
+        }
+        return 36;
+    }
+
     /**
      * Find an exterior grounded launch which can execute a real collision-
      * swept upward flight to a FULL supported landing. A nearer x/z point
@@ -543,6 +589,17 @@ final class BuilderWaypointTravel {
             if(candidate==null){
                 p.verifiedFlightLanding=null;
                 candidate=chooseStage(here,destination,connected,recent);
+            }
+            if(candidate==null&&RETREAT_FROM_ROOF_POCKET
+                    &&(high||(!lower&&connected.size()<=12))){
+                candidate=chooseRoofRetreat(here,destination,connected,recent,
+                        at->roofHeadroom(level,at),
+                        at->level.canSeeSky(at.above()));
+                if(candidate!=null)
+                    System.out.println("[NN WAYPOINT ROOF RETREAT] worker="
+                            +worker.getUUID()+" from="+here+" toward="+candidate
+                            +" eventual="+destination+" headroom="
+                            +roofHeadroom(level,candidate));
             }
             if(candidate!=null){
                 // Stage walking owns movement until the worker reaches this
