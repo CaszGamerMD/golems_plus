@@ -302,6 +302,7 @@ public final class BuilderBuildService {
         // An explicit failed handoff is genuine negative supervised data.
         // Never label a merely parked/unloaded worker as failed.
         BuilderNeuralFrontierPolicy.failed(worker,index,now,reason);
+        BuilderNNDetourTraining.failed(worker,now,reason);
     }
     /** A stationary worker on an unreachable supply route must release
      * its placement so an available teammate can collect the material. */
@@ -2038,6 +2039,12 @@ public final class BuilderBuildService {
                     activity.lastTargetProgressTick=now;activity.phase=Action.MOVE_TO_WORK;return;
                 }
                 double distance=worker.distanceToSqr(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+                // A verified walk/flight may initially climb OVER the
+                // intended roof block or overshoot X/Z to reach its back.
+                // Only physical movement on a currently certified leg
+                // extends the timeout, with a bounded no-loop budget.
+                boolean verifiedDetour=BuilderNNDetourTraining.observe(level,worker,pos);
+                if(verifiedDetour)activity.lastTargetProgressTick=now;
                 if(activity.lastTargetProgressTick<0||distance<activity.bestTargetDistance-.5){
                     activity.lastTargetProgressTick=now;
                     activity.bestTargetDistance=distance;
@@ -2114,6 +2121,11 @@ public final class BuilderBuildService {
             // interrupted merely because it takes longer than 180 ticks.
             double targetDistance=worker.distanceToSqr(
                     pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5);
+            // Track path-relative progress independently of Euclidean
+            // distance to target; legitimate detours may temporarily move
+            // farther away or cross the block's X/Z coordinates.
+            boolean verifiedDetour=BuilderNNDetourTraining.observe(level,worker,pos);
+            if(verifiedDetour)activity.lastTargetProgressTick=now;
             if(activity.lastTargetProgressTick<0
                     ||targetDistance<activity.bestTargetDistance-1.0){
                 activity.bestTargetDistance=targetDistance;
@@ -2170,10 +2182,10 @@ public final class BuilderBuildService {
                     &&!BuilderGrappleAccess.active(worker)
                     &&!BuilderScaffoldPlanA.hasPlan(worker)
                     &&!BuilderScaffolding.isControllingMovement(worker)){
-                // A golem may move continuously while circling the same
-                // roof gap. Actual distance to its goal must improve
-                // eventually. Release the exact step for another crew
-                // member rather than treating motion as progress forever.
+                // The independent route-episode tracker has already
+                // protected verified, advancing detours. Reaching this
+                // watchdog means the route isn't progressing or exceeded
+                // its bounded detour budget. A moving loop is NOT success.
                 if(scaffoldBlockedWork(level,worker,table,owner,pos,
                         plan.steps())){
                     activity.lastTargetProgressTick=now;
@@ -2183,7 +2195,7 @@ public final class BuilderBuildService {
                 BuilderPlacementSpace.invalidateApproach(worker,pos);
                 com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                 table.waitForBuilderAccess(worker.getUUID(),index,now,
-                        TARGET_PROGRESS_STALL_TICKS+" ticks without target-distance progress");
+                        TARGET_PROGRESS_STALL_TICKS+" ticks without route or target progress");
                 activity.lastFailedStep=index;
                 activity.retreatUntil=now+100;
                 if(activity.alternateSideAttempts<3){
@@ -2191,7 +2203,7 @@ public final class BuilderBuildService {
                     activity.alternateSideRequested=true;
                 }
                 publishHandoff(table,worker.getUUID(),index,now,
-                        "circling without approaching work cell");
+                        "circling without verified route progress");
                 System.out.println("[BUILDER HANDOFF] worker="
                         +worker.getName().getString()+" released="+index
                         +" noCloserFor="+(now-activity.lastTargetProgressTick)
