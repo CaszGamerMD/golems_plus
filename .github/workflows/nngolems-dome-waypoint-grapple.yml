@@ -1,0 +1,248 @@
+name: NNGolems full-toolkit grapple Dome waypoint traversal
+# Verify actual grounded launch and matching collision-certified flight landings on upper Dome.
+run-name: "Grapple-assisted 24-waypoint Dome navigation A/B (${{ github.sha }})"
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - ".github/workflows/nngolems-dome-waypoint-grapple.yml"
+      - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderWaypointTravel.java"
+      - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderMultiLegTravel.java"
+      - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNRoofManeuverPolicy.java"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: nngolems-grapple-dome-waypoints-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Check navigation and roof learning regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Compile test code and verify neural safety checks
+        run: |
+          gradle --no-daemon test --tests '*BuilderNNRoofManeuverPolicyTest' \
+            --tests '*BuilderNNDetourTrainingTest' \
+            --tests '*BuilderNeuralFrontierPolicyTest' \
+            --tests '*BuilderWaypointTravelTest'
+
+  traverse:
+    name: "24 checkpoints × 8 golems – ${{ matrix.mode }}"
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [baseline, neural]
+    env:
+      NN_WAYPOINT_MODE: ${{ matrix.mode }}
+      NN_WAYPOINT_COUNT: '24'
+      NN_WAYPOINT_CREW: '8'
+      NN_WAYPOINT_SEED: '260218'
+      NN_WAYPOINT_EPISODE_TICKS: '750'
+      NN_WAYPOINT_TOTAL_TICKS: '24000'
+      NN_WAYPOINT_WALL_SECONDS: '480'
+      GOLEMS_NN_CONTROL: 'false'
+      GOLEMS_NN_SHADOW: 'false'
+      GOLEMS_NN_RECORD: 'true'
+      GOLEMS_NN_FRONTIER_CONTROL: 'false'
+      GOLEMS_NN_ROOF_MANEUVER_POLICY: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
+      GOLEMS_NN_FROZEN: 'false'
+      GOLEMS_NN_LONG_DETOUR: 'true'
+      GOLEMS_NN_WAYPOINT_GRAPPLE: 'true'
+      GOLEMS_NN_MULTI_LEG_ROOF: 'true'
+      GOLEMS_NN_ROOF_FRONTIER: 'true'
+      GOLEMS_NN_DETOUR_TRAINING: 'false'
+      GOLEMS_NN_ROOF_POLICY_PATH: ${{ github.workspace }}/build/nn-waypoints/state/roof-maneuver-policy.json
+      GOLEMS_NN_FRONTIER_MODEL_PATH: ${{ github.workspace }}/build/nn-waypoints/state/frontier-policy.json
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Select actual finished Dome waypoint GameTest only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          j=json.loads(p.read_text())
+          j['entrypoints']['fabric-gametest']=[
+              'com.caszgamermd.golemsplus.builder.BuilderNNDomeWaypointGameTest']
+          p.write_text(json.dumps(j,indent=2)+'\n')
+          PY
+      - name: Resume neural maneuver learning from last completed physical waypoint trial
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/nn-waypoints/state build/nn-waypoints/seed
+          # The former workflow restarted at 120 updates every run.
+          # This trial resumes the ACTUAL 877-update checkpoint from the
+          # immediately preceding 192-waypoint episode, not random weights.
+          gh run download 44298694091 --repo CaszGamerMD/golems_plus \
+            --name nn-finished-dome-waypoints-neural --dir build/nn-waypoints/seed
+          test -s build/nn-waypoints/seed/state/roof-maneuver-policy.json
+          cp build/nn-waypoints/seed/state/roof-maneuver-policy.json \
+             build/nn-waypoints/state/roof-maneuver-policy.json
+          if test -s build/nn-waypoints/seed/state/frontier-policy.json; then
+            cp build/nn-waypoints/seed/state/frontier-policy.json \
+               build/nn-waypoints/state/frontier-policy.json
+          fi
+          python3 - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          p=Path('build/nn-waypoints/state/roof-maneuver-policy.json')
+          d=json.loads(p.read_text())
+          assert d['schema']==1 and d['updates']>=877 and len(d['w'])==8
+          assert all(len(v)==14 for v in d['w'])
+          print('[NN WAYPOINT SEED] trained_roof_updates='+str(d['updates'])+
+                ' sha256='+hashlib.sha256(p.read_bytes()).hexdigest())
+          PY
+      - name: Execute real golem traversal and collect full server trace
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/nn-waypoints/output
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-waypoints/output/server.log
+      - name: Check assessment validity and per-waypoint evidence
+        if: always()
+        shell: bash
+        env:
+          TEST_MODE: ${{ matrix.mode }}
+        run: |
+          python3 - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          p=Path('build/nn-waypoints/output')
+          p.mkdir(exist_ok=True,parents=True)
+          lines=(p/'server.log').read_text(errors='replace').splitlines() if (p/'server.log').exists() else []
+          start=next((s.split('[NN DOME WAYPOINT START] ',1)[1]
+                      for s in lines if '[NN DOME WAYPOINT START] ' in s),None)
+          term=next((s.split('[NN DOME WAYPOINT RESULT] ',1)[1]
+                     for s in reversed(lines) if '[NN DOME WAYPOINT RESULT] ' in s),None)
+          def fields(s): return dict(re.findall(r'([A-Za-z]\w*)=([^\s]+)',s)) if s else {}
+          initial=fields(start);result=fields(term)
+          visits=[]
+          for line in lines:
+              if '[NN DOME WAYPOINT VISIT] ' in line:
+                  try:visits.append(json.loads(line.split('[NN DOME WAYPOINT VISIT] ',1)[1]))
+                  except ValueError:pass
+          roof=[]
+          for line in lines:
+              if '[NN ROOF CHOICE] ' in line:
+                  try:roof.append(json.loads(line.split('[NN ROOF CHOICE] ',1)[1]))
+                  except ValueError:pass
+          summary={'schema':1,'mode':os.environ['TEST_MODE'],'started':bool(start),
+            'terminal':bool(term),'start_fields':initial,'result_fields':result,
+            'targets':int(initial.get('targets','0')),
+            'crew':int(initial.get('workers','0')),
+            'success':int(result.get('success','-1')),
+            'failed':int(result.get('failed','-1')),
+            'roof_success':int(result.get('roofSuccess','-1')),
+            'ground_success':int(result.get('groundSuccess','-1')),
+            'neural_rewarded_waypoints':int(result.get('rewardedNeuralManeuvers','0')),
+            'route_choices':len(roof),'route_changes':sum(bool(x.get('changed')) for x in roof),
+            'visits_recorded':len(visits),
+            'training_updates':sum('[NN ROOF WAYPOINT REWARD] ' in x for x in lines),
+            'timeouts':sum(x.get('outcome')=='PER_GOAL_TIMEOUT' for x in visits),
+            'sample_failures':[x for x in visits if not x.get('arrived')][:8]}
+          (p/'result.json').write_text(json.dumps(summary,indent=2)+'\n')
+          (p/'visits.json').write_text(json.dumps(visits,indent=2)+'\n')
+          print('[NN WAYPOINT ASSESSMENT] '+json.dumps({k:summary[k] for k in
+              ('mode','targets','crew','success','failed','roof_success',
+               'ground_success','route_choices','route_changes','visits_recorded',
+               'training_updates','timeouts')}))
+          out=Path(os.environ['GITHUB_STEP_SUMMARY'])
+          out.open('a').write('## Finished Dome navigation – '+summary['mode']+
+              '\n'+str(summary['success'])+' reached, '+str(summary['failed'])+
+              ' failed, '+str(summary['route_choices'])+' roof decisions.\n')
+          if not start or not term:
+              raise SystemExit('Missing actual completed navigation GameTest')
+          if summary['targets']!=24 or summary['crew']!=8:
+              raise SystemExit('Incorrect physical navigation course dimensions')
+          if initial.get('verified')!='3493':
+              raise SystemExit('The original Dome was not completely built before navigation')
+          if result.get('verifiedDomeIntact')!='3493/3493':
+              raise SystemExit('The navigation run changed or damaged the Dome')
+          if summary['visits_recorded']==0:
+              raise SystemExit('No golem actually attempted any physical waypoint')
+          if summary['mode']=='neural' and not any('[NN ROOF POLICY ENABLED] ' in x for x in lines):
+              raise SystemExit('Neural roof maneuver policy did not activate')
+          if summary['mode']=='baseline' and roof:
+              raise SystemExit('Baseline unexpectedly exercised neural roof policy')
+          PY
+      - name: Preserve per-golem attempts, full logs and learned policy
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nn-grapple-dome-waypoints-${{ matrix.mode }}
+          path: |
+            build/nn-waypoints/output
+            build/nn-waypoints/state
+          retention-days: 90
+          if-no-files-found: error
+
+  compare:
+    name: Compare 192 matched navigation attempts
+    needs: traverse
+    if: always() && needs.traverse.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nn-grapple-dome-waypoints-*
+          path: comparisons
+      - name: Compare physical waypoint arrivals against the same targets
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          a=Path('comparisons/nn-grapple-dome-waypoints-baseline/output/result.json')
+          b=Path('comparisons/nn-grapple-dome-waypoints-neural/output/result.json')
+          x=json.loads(a.read_text());y=json.loads(b.read_text())
+          assert x['targets']==y['targets']==24 and x['crew']==y['crew']==8
+          rows=['# Fully built Dome navigation comparison','','| Metric | Conventional | Neural |',
+                '|---|---:|---:|',
+                f"| Reached / 192 | {x['success']} | {y['success']} |",
+                f"| Failed | {x['failed']} | {y['failed']} |",
+                f"| Upper Dome reached | {x['roof_success']} | {y['roof_success']} |",
+                f"| Ground reached | {x['ground_success']} | {y['ground_success']} |",
+                f"| Learned route choices | {x['route_choices']} | {y['route_choices']} |",
+                f"| Routes changed | {x['route_changes']} | {y['route_changes']} |",
+                f"| Positive roof maneuver rewards | {x['training_updates']} | {y['training_updates']} |",
+                f"| Target: 50 or fewer failures | {'Met' if x['failed']<=50 else 'Not yet'} | {'Met' if y['failed']<=50 else 'Not yet'} |",
+                '',
+                'All destinations are genuine full-cube supported feet poses on a prebuilt Dome.',
+                'A workflow success confirms recorded results, not successful navigation of every target.']
+          text='\n'.join(rows)+'\n'
+          Path('waypoint-comparison.md').write_text(text)
+          Path(__import__('os').environ['GITHUB_STEP_SUMMARY']).open('a').write(text)
+          print(text)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nn-grapple-dome-waypoints-comparison
+          path: waypoint-comparison.md
+          retention-days: 90
