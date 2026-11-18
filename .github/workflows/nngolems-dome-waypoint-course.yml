@@ -1,5 +1,5 @@
 name: NNGolems finished Dome waypoint traversal test
-# Re-run with connected grounded approach stages and explicit descent-first navigation.
+# Retest verified safe direct descent and physical intermediate-flight learning feedback.
 run-name: "Finished Dome 24-waypoint navigation A/B (${{ github.sha }})"
 on:
   push:
