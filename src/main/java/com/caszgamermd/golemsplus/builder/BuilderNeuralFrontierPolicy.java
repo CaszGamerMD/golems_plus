@@ -65,7 +65,7 @@ final class BuilderNeuralFrontierPolicy {
             Network net=new Network();
             Random random=new Random(26021177L);
             for(int j=0;j<HIDDEN;j++){
-                v[j]=(random.nextDouble()-.5)*.3;
+                net.v[j]=(random.nextDouble()-.5)*.3;
                 for(int i=0;i<INPUTS;i++)net.w[j][i]=(random.nextDouble()-.5)*.3;
             }
             return net;
