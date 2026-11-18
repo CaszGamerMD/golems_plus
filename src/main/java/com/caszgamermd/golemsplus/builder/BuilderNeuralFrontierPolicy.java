@@ -326,13 +326,19 @@ final class BuilderNeuralFrontierPolicy {
             System.out.println("[NN FRONTIER CENSORED] worker="+worker.getUUID()
                     +" abandoned="+old.index()+" no labeled outcome");
     }
+    static double successfulTraversalReward(long ticks){
+        return .70+.30/(1.0+Math.max(0,ticks)/350.0);
+    }
     static void completed(BuilderGolem worker,BlockPos pos){
         if(!ENABLED)return;
         Pending old=claimed.get(worker.getUUID());
         if(old==null||!old.target().equals(pos))return;
         claimed.remove(worker.getUUID());
         long ticks=Math.max(0,worker.level().getGameTime()-old.tick());
-        double reward=1.0/(1.0+ticks/350.0);
+        // A longer collision-safe detour is preferable to a deadlocked
+        // short route. Any verified WORLD placement must remain a strong
+        // positive sample; elapsed ticks provide only a secondary signal.
+        double reward=successfulTraversalReward(ticks);
         feedback(worker.getUUID(),old,ticks,reward,"WORLD_COMPLETED");
     }
     static void failed(UUID worker,int index,long now,String reason){
