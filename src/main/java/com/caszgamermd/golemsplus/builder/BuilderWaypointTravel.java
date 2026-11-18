@@ -414,7 +414,10 @@ final class BuilderWaypointTravel {
                 p.nextHoverRecovery=now+20;
                 BuilderMultiLegTravel.abortWaypoint(
                         level,worker,"stopped_hover_landing_recovery");
-                boolean accepted=BuilderFlight.recoverStoppedHover(level,worker);
+                boolean accepted=BuilderFlight.recoverStoppedHover(
+                        level,worker,destination,
+                        p.lastGoalImprovement>0
+                                &&now-p.lastGoalImprovement>=120);
                 System.out.println("[NN WAYPOINT HOVER RECOVERY] worker="
                         +worker.getUUID()+" from="+worker.position()
                         +" destination="+destination+" landingAccepted="+accepted);

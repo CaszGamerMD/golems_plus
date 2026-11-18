@@ -705,30 +705,82 @@ public final class BuilderFlight {
     static boolean atEscapeAir(BuilderGolem worker,BlockPos air){
         return worker.position().distanceToSqr(feet(air))<.04;
     }
-    /** One emergency envelope change at most, never during a moving flight or
-     * after a safe landing. This gate is also independently unit-tested. */
+    /** Never create a second ungrounded takeoff. An emergency envelope
+     * is allowed only for a stopped hover that has exhausted progress. */
     static boolean canReanchorStoppedHover(boolean active,boolean moving,
             boolean grounded,boolean alreadyUsed){
         return active&&!moving&&!grounded&&!alreadyUsed;
     }
-    /** Recover a stopped powered hover. First try the original takeoff
-     * envelope; only if it has NO supported collision-free destination do
-     * we permit one fresh, short envelope from the worker's real position.
-     * Both searches use requestSupportedLanding, with NO teleport or forced
-     * grounded state. An unsuccessful re-anchor is never repeated in flight. */
-    static boolean recoverStoppedHover(ServerLevel level,BuilderGolem worker){
+    static boolean worthwhileHoverProgress(double current,double candidate){
+        return Double.isFinite(current)&&Double.isFinite(candidate)
+                &&candidate+2.0<current;
+    }
+    /** Search physically supported landing tiles near the CURRENT stranded
+     * hover, not only the original takeoff. Prior logs showed 503 recoveries
+     * and ALL accepted the old nearest landing, repeatedly returning to the
+     * same roof pocket. An alternative is attempted only after 120 ticks
+     * without net target progress, only once per airborne flight, and only
+     * when it actually approaches the goal. Every candidate uses the same
+     * collision-swept, supported-landing validator. */
+    static boolean recoverStoppedHover(ServerLevel level,BuilderGolem worker,
+            BlockPos ultimateGoal,boolean stagnant){
         Flight flight=flights.get(worker);
         if(flight==null||moving(worker)||worker.onGround()
                 ||level.getGameTime()<flight.landingRetryAt)return false;
+        if(HOVER_ANCHOR_RESCUE&&stagnant&&ultimateGoal!=null
+                &&canReanchorStoppedHover(true,false,worker.onGround(),
+                        flight.emergencyAnchorUsed)
+                &&clear(level,worker,worker.position())){
+            flight.emergencyAnchorUsed=true;
+            Vec3 previous=flight.origin;
+            Vec3 hover=worker.position();
+            Vec3 goalFeet=supportedFeet(level,ultimateGoal);
+            double startScore=goalFeet.distanceToSqr(hover);
+            List<BlockPos> candidates=new ArrayList<>();
+            BlockPos center=BlockPos.containing(hover);
+            // The first actual supporting floor in a column: do not
+            // invent a mid-air station or tunnel through a roof.
+            for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+                BlockPos column=center.offset(dx,0,dz);
+                if(!inEnvelope(hover,feet(column)))continue;
+                for(int y=Math.min(level.getMaxY()-2,center.getY()+4);
+                        y>=Math.max(level.getMinY()+1,center.getY()-30);y--){
+                    BlockPos at=column.atY(y);
+                    if(!level.hasChunkAt(at))break;
+                    if(WorkerNavigation.canStandOn(level,worker,at)){
+                        Vec3 supported=supportedFeet(level,at);
+                        if(worthwhileHoverProgress(startScore,
+                                supported.distanceToSqr(goalFeet)))
+                            candidates.add(at);
+                        break;
+                    }
+                }
+            }
+            candidates.sort(Comparator.comparingDouble(p->
+                    supportedFeet(level,p).distanceToSqr(goalFeet)));
+            flight.origin=hover;
+            for(BlockPos landing:candidates){
+                if(requestSupportedLanding(level,worker,landing)){
+                    System.out.println("[NN WAYPOINT HOVER GOAL RESCUE] worker="
+                            +worker.getUUID()+" from="+hover+" landing="+landing
+                            +" goal="+ultimateGoal);
+                    return true;
+                }
+            }
+            // Restore the old anchor if no certified goal-progress route
+            // exists. The ordinary safest fallback must remain available.
+            flight.origin=previous;
+        }
         if(land(level,worker,false))return true;
+        // Only the isolated experimental branch permits a final, one-time
+        // stationary emergency reroot after the old envelope fails. It is
+        // still collision-verified and ends on actual support.
         if(!HOVER_ANCHOR_RESCUE
-                ||!canReanchorStoppedHover(true,moving(worker),worker.onGround(),
+                ||!canReanchorStoppedHover(true,false,worker.onGround(),
                         flight.emergencyAnchorUsed)
                 ||!clear(level,worker,worker.position()))return false;
         flight.emergencyAnchorUsed=true;
         flight.origin=worker.position();
-        // The first attempt just set the normal cooldown. Allow the
-        // physically distinct new envelope to be checked immediately.
         flight.landingRetryAt=0;
         boolean accepted=land(level,worker,false);
         System.out.println("[NN WAYPOINT HOVER REANCHOR] worker="+worker.getUUID()

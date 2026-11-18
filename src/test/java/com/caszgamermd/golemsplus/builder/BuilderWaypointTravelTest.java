@@ -119,6 +119,14 @@ class BuilderWaypointTravelTest {
                 "No chained airborne hops without landing");
     }
 
+    @Test void emergencyRecoveryOnlyChoosesRealGoalProgress(){
+        assertTrue(BuilderFlight.worthwhileHoverProgress(30,25));
+        assertFalse(BuilderFlight.worthwhileHoverProgress(30,29));
+        assertFalse(BuilderFlight.worthwhileHoverProgress(30,30));
+        assertFalse(BuilderFlight.worthwhileHoverProgress(Double.POSITIVE_INFINITY,1));
+        assertFalse(BuilderFlight.worthwhileHoverProgress(1,Double.NaN));
+    }
+
     @Test void groundDestinationsShouldNotNeedHorizontalFlight(){
         BlockPos ground=new BlockPos(0,10,0);
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,
