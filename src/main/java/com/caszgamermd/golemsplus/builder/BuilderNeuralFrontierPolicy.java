@@ -128,6 +128,11 @@ final class BuilderNeuralFrontierPolicy {
     }
 
     private static Path file(){
+        // An explicit path is useful for reproducible multi-build training
+        // and shipping a frozen checkpoint into a fresh physical GameTest.
+        // Normal gameplay writes to its regular Fabric config directory.
+        String override=System.getenv().getOrDefault("GOLEMS_NN_FRONTIER_MODEL_PATH","");
+        if(!override.isBlank())return Path.of(override);
         return FabricLoader.getInstance().getConfigDir()
                 .resolve("golems_plus").resolve("nn-frontier-policy.json");
     }
