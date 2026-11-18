@@ -31,7 +31,7 @@ final class BuilderWaypointTravel {
         final BlockPos goal;
         final ArrayDeque<BlockPos> visited=new ArrayDeque<>();
         BlockPos stage;
-        long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe;
+        long stageTick, nextSurvey, nextDescentProbe;
         double best=Double.POSITIVE_INFINITY;
         int failedStages,stagesCompleted;
         Plan(BlockPos goal){this.goal=goal.immutable();}
@@ -100,50 +100,6 @@ final class BuilderWaypointTravel {
         plan.visited.remove(cell);
         plan.visited.addLast(cell.immutable());
         while(plan.visited.size()>RETAIN)plan.visited.removeFirst();
-    }
-    /**
-     * A full Dome roof can be directly above a grounded golem, with a
-     * COLLIDING CEILING between its feet and the objective. Ascend from
-     * a real sky-exposed perimeter pose to a nearby supported roof tile,
-     * then plan the rest of the trip from that roof. This never targets
-     * arbitrary open air and never skips the two-block horizontal envelope.
-     */
-    static boolean shouldProbeAscent(BlockPos from,BlockPos goal){
-        return from!=null&&goal!=null&&goal.getY()-from.getY()>=5
-                &&flatDistance(from,goal)<=27;
-    }
-    private static boolean directAscent(ServerLevel level,BuilderGolem worker,
-            BlockPos finalGoal){
-        if(!worker.onGround()||BuilderFlight.active(worker))return false;
-        BlockPos from=worker.blockPosition();
-        if(!shouldProbeAscent(from,finalGoal))return false;
-        BlockPos best=null;
-        double bestScore=Double.NEGATIVE_INFINITY;
-        int top=Math.min(level.getMaxY()-3,
-                Math.min(from.getY()+42,finalGoal.getY()+4));
-        for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
-            if(dx*dx+dz*dz>4)continue;
-            for(int y=from.getY()+3;y<=top;y++){
-                BlockPos landing=from.offset(dx,y-from.getY(),dz);
-                if(!level.hasChunkAt(landing))break;
-                if(!WorkerNavigation.canStandOn(level,worker,landing))continue;
-                if(!BuilderFlight.canFlyBetween(level,worker,from,landing))continue;
-                double score=2.8*(landing.getY()-from.getY())
-                        -1.0*flatDistance(landing,finalGoal)
-                        -0.15*Math.abs(landing.getY()-finalGoal.getY());
-                if(score>bestScore){best=landing;bestScore=score;}
-            }
-        }
-        if(best==null||!BuilderFlight.requestSupportedLanding(level,worker,best))
-            return false;
-        // The powered leg itself owns the worker until a real landing.
-        // A superseded multi-leg trip should not seize control afterward.
-        BuilderMultiLegTravel.clear(worker);
-        BuilderNNRoofManeuverPolicy.handedOff(worker.getUUID());
-        System.out.println("[NN WAYPOINT DIRECT ASCENT] worker="+worker.getUUID()
-                +" from="+from+" landing="+best+" target="+finalGoal
-                +" elevation="+(best.getY()-from.getY()));
-        return true;
     }
     /** Try a genuine swept, collision-certified downward flight from the
      * real stance. A whole roof often has no path to its far-side ground
@@ -246,10 +202,6 @@ final class BuilderWaypointTravel {
             if(horizontal<=12&&BuilderMultiLegTravel.stand(level,worker,destination))
                 return true;
         }else if(high){
-            if(now>=p.nextAscentProbe){
-                p.nextAscentProbe=now+50;
-                if(directAscent(level,worker,destination))return true;
-            }
             // A rooftop waypoint often lies directly ABOVE a solid roof.
             // The takeoff must be from a physically clear exterior pose;
             // planning straight up through the ceiling is never legal.
