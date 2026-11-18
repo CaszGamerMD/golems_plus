@@ -142,6 +142,36 @@ final class BuilderMultiLegTravel {
         }
         result.sort(Comparator.comparingDouble((BlockPos p)->score(goal,p))
                 .thenComparingDouble(launch::distSqr));
+        if(LONG_DETOUR&&BuilderNNRoofManeuverPolicy.ENABLED&&goal.kind()==Kind.WORK){
+            // Earlier "closest first" searches used up the bounded probe
+            // budget before considering a high roof or the far side.
+            // Interleave already-supported candidates; no safety predicate
+            // or maximum search budget is relaxed.
+            List<BlockPos> roof=new ArrayList<>(),below=new ArrayList<>(),
+                    farSide=new ArrayList<>();
+            for(BlockPos landing:result){
+                if(landing.getY()>=goal.target().getY()+2)roof.add(landing);
+                if(landing.getY()<=goal.target().getY()-2)below.add(landing);
+                if((launch.getX()<goal.target().getX()
+                            &&landing.getX()>goal.target().getX()+1)
+                        ||(launch.getX()>goal.target().getX()
+                            &&landing.getX()<goal.target().getX()-1)
+                        ||(launch.getZ()<goal.target().getZ()
+                            &&landing.getZ()>goal.target().getZ()+1)
+                        ||(launch.getZ()>goal.target().getZ()
+                            &&landing.getZ()<goal.target().getZ()-1))
+                    farSide.add(landing);
+            }
+            var mixed=new LinkedHashSet<BlockPos>();
+            for(int i=0;i<Math.min(result.size(),18);i++){
+                if(i<6)mixed.add(result.get(i));
+                if(i<roof.size())mixed.add(roof.get(i));
+                if(i<farSide.size())mixed.add(farSide.get(i));
+                if(i<below.size())mixed.add(below.get(i));
+            }
+            mixed.addAll(result);
+            result.clear();result.addAll(mixed);
+        }
         return result;
     }
     private static List<Leg> plan(ServerLevel level,BuilderGolem worker,Goal goal,
