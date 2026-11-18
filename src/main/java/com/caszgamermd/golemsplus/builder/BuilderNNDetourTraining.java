@@ -56,7 +56,7 @@ final class BuilderNNDetourTraining {
             boolean physicalRoute){
         return physicalRoute&&unique>=2
                 &&now>=start&&now-start<=MAX_DETOUR_TICKS
-                &&now>=lastNew&&now-lastNew<=MAX_NO_NEW_CELL_TICKS;
+                &&now>=lastNew&&now-lastNew<MAX_NO_NEW_CELL_TICKS;
     }
     /**
      * This observes only the worker's ACTUAL motion. It never assumes an
