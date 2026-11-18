@@ -93,6 +93,19 @@ class BuilderWaypointTravelTest {
                 "Never interrupt a collision-certified powered flight");
     }
 
+    @Test void rejectBadPoweredLegForWholeAttemptWithoutPoisoningTransientTraffic(){
+        assertEquals(850,BuilderMultiLegTravel.rejectionWindow(
+                "repeated_centered_launch_reject",true));
+        assertEquals(850,BuilderMultiLegTravel.rejectionWindow(
+                "stopped_hover_landing_recovery",true));
+        assertEquals(850,BuilderMultiLegTravel.rejectionWindow(
+                "flight_ended_short",true));
+        assertEquals(240,BuilderMultiLegTravel.rejectionWindow(
+                "timeout_or_blocked",true));
+        assertEquals(240,BuilderMultiLegTravel.rejectionWindow(
+                "repeated_centered_launch_reject",false));
+    }
+
     @Test void groundDestinationsShouldNotNeedHorizontalFlight(){
         BlockPos ground=new BlockPos(0,10,0);
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,
