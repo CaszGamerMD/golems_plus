@@ -455,7 +455,7 @@ public final class BuilderFlight {
     public static boolean roofAccessProgress(ServerLevel level,BuilderGolem worker,BlockPos target){
         RoofAccess r=roofAccess.get(worker);
         if(r==null||!r.target().equals(target)||level.getGameTime()>=r.expires())return false;
-        double distance=worker.position().distanceToSqr(feet(r.launch()));
+        double distance=worker.position().distanceToSqr(supportedFeet(level,r.launch()));
         if(distance<r.bestDistance-.04){r.bestDistance=distance;r.lastProgress=level.getGameTime();}
         return level.getGameTime()-r.lastProgress<=90;
     }
@@ -485,10 +485,14 @@ public final class BuilderFlight {
         var work=new ArrayList<BlockPos>();
         for(int dy=-1;dy<=3;dy++)for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
             BlockPos at=target.offset(dx,dy,dz);
+            // The dome has slabs/stairs/fences with real fractional-height
+            // foot surfaces. Never test an invented integer-Y body pose.
+            Vec3 pose=supportedFeet(level,at);
             if(WorkerNavigation.canStandOn(level,worker,at)
-                    &&(bodyBlocking?safeWorkPose(level,worker,target,feet(at)):
-                        feet(at).distanceToSqr(Vec3.atCenterOf(target))<=25
-                        &&clear(level,worker,feet(at))))work.add(at);
+                    &&Double.isFinite(pose.y)
+                    &&(bodyBlocking?safeWorkPose(level,worker,target,pose):
+                        pose.distanceToSqr(Vec3.atCenterOf(target))<=25
+                        &&clear(level,worker,pose)))work.add(at);
         }
         if(work.isEmpty())return null;
         var launches=new ArrayList<BlockPos>();
@@ -513,16 +517,24 @@ public final class BuilderFlight {
             else if(Math.abs(off[1])>Math.abs(off[0]))axis[0]=0;
             for(int dy:new int[]{0,1,-1,2}){
                 BlockPos landing=target.offset(off[0],dy,off[1]);
-                if(!WorkerNavigation.canStandOn(level,worker,landing)
-                        ||Math.abs(WorkerNavigation.surveyFloorHeight(level,landing)-landing.getY())>.1)continue;
+                // A half slab or low stair is legitimate real terrain.
+                // The worker navigation and flight-sweep checks decide
+                // safety using the exact loaded-world voxel collision.
+                if(!WorkerNavigation.canStandOn(level,worker,landing))continue;
+                Vec3 landingPose=supportedFeet(level,landing);
+                if(!Double.isFinite(landingPose.y)
+                        ||!clear(level,worker,landingPose))continue;
                 // Walk from a clear exterior column to the roof's lip.
                 for(int distance:new int[]{1,2}){
                     BlockPos launch=new BlockPos(landing.getX()+distance*axis[0],
                             baseY,landing.getZ()+distance*axis[1]);
-                    if(byLaunch.containsKey(launch)||!inEnvelope(feet(launch),feet(landing))
-                            ||!WorkerNavigation.canStandOn(level,worker,launch)
-                            ||Math.abs(WorkerNavigation.surveyFloorHeight(level,launch)-launch.getY())>.1
-                            ||path(level,worker,feet(launch),feet(landing),feet(launch)).isEmpty())continue;
+                    if(byLaunch.containsKey(launch)
+                            ||!WorkerNavigation.canStandOn(level,worker,launch))continue;
+                    Vec3 launchPose=supportedFeet(level,launch);
+                    if(!Double.isFinite(launchPose.y)
+                            ||!clear(level,worker,launchPose)
+                            ||!inEnvelope(launchPose,landingPose)
+                            ||path(level,worker,launchPose,landingPose,launchPose).isEmpty())continue;
                     if(++probes>12)break roofSearch;
                     if(!WorkerNavigation.hasGroundRouteFrom(level,worker,landing,work))continue;
                     launches.add(launch);byLaunch.put(launch,landing);
@@ -532,7 +544,7 @@ public final class BuilderFlight {
             }
         }
         if(launches.isEmpty())return null;
-        launches.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(feet(at))));
+        launches.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(supportedFeet(level,at))));
         BlockPos launch=WorkerNavigation.selectExecutableStand(level,worker,launches);
         if(launch==null)return null;
         var result=new RoofAccess(target.immutable(),launch,byLaunch.get(launch),now,worker.position());
@@ -544,7 +556,7 @@ public final class BuilderFlight {
     public static boolean approachRoofWork(ServerLevel level,BuilderGolem worker,BlockPos target,boolean bodyBlocking){
         RoofAccess plan=roofPlan(level,worker,target,bodyBlocking);
         if(plan==null)return false;
-        if(worker.position().distanceToSqr(feet(plan.launch()))<.04){
+        if(worker.position().distanceToSqr(supportedFeet(level,plan.launch()))<.04){
             if(requestSupportedLanding(level,worker,plan.landing())){
                 roofAccess.remove(worker);return true;
             }
