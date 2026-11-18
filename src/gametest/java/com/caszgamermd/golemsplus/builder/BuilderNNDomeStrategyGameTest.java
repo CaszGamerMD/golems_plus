@@ -26,6 +26,20 @@ public final class BuilderNNDomeStrategyGameTest {
     }
     private void run(GameTestHelper h)throws Exception{
         String mode=System.getenv().getOrDefault("NN_DOME_MODE","AUTO4");
+        // A preconstructed lower Dome provides its REAL roof geometry at
+        // once so short, repeatable physical episodes can train the upper
+        // roof without rebuilding thousands of easy foundation blocks.
+        // Full-build benchmarks leave this at -1 (no prefab whatsoever).
+        int prefillBelow=Integer.parseInt(System.getenv().getOrDefault(
+                "NN_DOME_PREFILL_BELOW_REL_Y","-1"));
+        if(prefillBelow>35||prefillBelow< -1)
+            throw new IllegalArgumentException("Dome training prefill Y");
+        long tickLimit=Long.parseLong(System.getenv().getOrDefault(
+                "NN_DOME_RUN_TICKS","180000"));
+        long wallLimit=Long.parseLong(System.getenv().getOrDefault(
+                "NN_DOME_WALL_SECONDS","900"));
+        if(tickLimit<1000||tickLimit>180000||wallLimit<15||wallLimit>900)
+            throw new IllegalArgumentException("Dome training resource budget");
         if(!Set.of("AUTO4","AUTO8","Y1","X1","Z1").contains(mode))throw new IllegalArgumentException("Dome mode");
         int workers=mode.equals("AUTO8")?8:mode.equals("AUTO4")?4:1;
         String axis=mode.equals("X1")?"X":mode.equals("Z1")?"Z":"Y";
@@ -78,6 +92,15 @@ public final class BuilderNNDomeStrategyGameTest {
         }
         if(expected.size()!=3493||ignored!=44||!plan.unsupported().isEmpty())
             throw new IllegalStateException("Dome target mismatch required="+expected.size()+" ignored="+ignored+" unsupported="+plan.unsupported());
+        if(prefillBelow>=0){
+            for(var e:expected)if(e.pos().getY()-origin.getY()<prefillBelow)
+                level.setBlock(e.pos(),e.state(),2);
+            System.out.println("[NN DOME CURRICULUM] prefillBelowRelativeY="+prefillBelow
+                    +" stage="+System.getenv().getOrDefault("NN_TRAINING_STAGE","unknown")
+                    +" physics=real_world_blocks");
+        }
+        final int prefabricated=(int)expected.stream().filter(e->
+                BuilderPistonWork.sourceMatches(level.getBlockState(e.pos()),e.state())).count();
         String file="placed-nn-dome.gpb";
         Path dir=FabricLoader.getInstance().getConfigDir().resolve("golems_plus").resolve("schematics");
         Files.createDirectories(dir);Files.write(dir.resolve(file),BuilderPlacementSnapshot.encode(source.name(),solids,air));
@@ -111,7 +134,8 @@ public final class BuilderNNDomeStrategyGameTest {
         }
         final int eligible=vertical;
         System.out.println("[NN DOME START] mode="+mode+" axis="+axis+" workers="+workers
-                +" source=3537 required=3493 ignored=44 verticalTasks="+eligible+" depot="+depot+" origin="+origin);
+                +" source=3537 required=3493 ignored=44 verticalTasks="+eligible+" depot="+depot+" origin="+origin
+                +" prebuilt="+prefabricated+" tickBudget="+tickLimit+" wallBudget="+wallLimit);
         final long start=h.getTick(),startNs=System.nanoTime();
         final int[] best={0};final double[] distance={0};
         var teamTrace=new BuilderNNTeamTrace("dome",mode,workers,3493);
@@ -125,7 +149,7 @@ public final class BuilderNNDomeStrategyGameTest {
                 var pos=crew.get(i).position();distance[0]+=pos.distanceTo(previous[i]);previous[i]=pos;
             }
             boolean complete=table.phase()==WorkerPhase.COMPLETE;
-            boolean timeout=elapsed>=180000||(System.nanoTime()-startNs)/1000000000L>=900;
+            boolean timeout=elapsed>=tickLimit||(System.nanoTime()-startNs)/1000000000L>=wallLimit;
             if(tick%200!=0&&!complete&&!timeout)return;
             int correct=0;for(var b:expected)if(BuilderPistonWork.sourceMatches(level.getBlockState(b.pos()),b.state()))correct++;
             best[0]=Math.max(best[0],correct);
@@ -140,7 +164,7 @@ public final class BuilderNNDomeStrategyGameTest {
             if(!complete&&!timeout&&!stall)return;
             long alive=crew.stream().filter(BuilderGolem::isAlive).count();
             String outcome=complete?(correct==3493&&alive==workers?"COMPLETE":"MISMATCH"):
-                    stall?"NO_WORK_PROGRESS":elapsed>=180000?"TICK_LIMIT":"TIME_LIMIT";
+                    stall?"NO_WORK_PROGRESS":elapsed>=tickLimit?"TICK_LIMIT":"TIME_LIMIT";
             for(var w:crew)System.out.println("[NN DOME WORKER] mode="+mode+" feet="+w.position()
                     +" alive="+w.isAlive()+" claim="+table.claimedStep(w.getUUID())+" "+BuilderBuildService.debugStatus(level,w));
             // Diagnostic only: inspect the real remaining phase, batch and
@@ -169,8 +193,13 @@ public final class BuilderNNDomeStrategyGameTest {
                 }
             }
             BuilderTrace.dump(level,table,"Dome "+mode+" "+outcome);
+            // These are actual weights, not an inferred improvement. Exact
+            // final-period updates must survive into the next physical run.
+            BuilderNNRoofManeuverPolicy.flush();
+            BuilderNeuralFrontierPolicy.flush();
             System.out.println("[NN DOME RESULT] mode="+mode+" outcome="+outcome+" correct="+correct+" best="+best[0]
-                    +" total=3493 ticks="+elapsed+" distance="+distance[0]+" workers="+workers+" alive="+alive
+                    +" total=3493 prebuilt="+prefabricated+" newCorrect="+Math.max(0,correct-prefabricated)
+                    +" ticks="+elapsed+" distance="+distance[0]+" workers="+workers+" alive="+alive
                     +" verticalTasks="+eligible+" selected="+table.builderNNStrategy()+" problem="+table.problem());
             done[0]=true;h.succeed(); // finished assessment, not proof of completion
         });
