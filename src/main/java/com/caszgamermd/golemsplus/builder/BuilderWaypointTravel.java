@@ -363,9 +363,24 @@ final class BuilderWaypointTravel {
     }
     static String debug(BuilderGolem worker){
         Plan p=plans.get(worker);
-        return p==null?"none":"goal="+p.goal+" stage="+p.stage
+        if(p==null)return "none";
+        String core="goal="+p.goal+" stage="+p.stage
                 +" stageAge="+p.stageTick+" failed="+p.failedStages
                 +" completed="+p.stagesCompleted+" seen="+p.visited.size();
+        // Called by the physical waypoint watchdog on timeout. Diagnose the
+        // *actual* supported connected component and flight admission so
+        // repeated roof misses do not get misdiagnosed as random model noise.
+        if(!(worker.level() instanceof ServerLevel level))return core;
+        BlockPos here=worker.blockPosition();
+        int connected=WorkerNavigation.groundReachableFrom(level,worker,here).size();
+        boolean direct=WorkerNavigation.canStandOn(level,worker,here)
+                &&BuilderFlight.canFlyBetween(level,worker,here,p.goal);
+        return core+" stagnant="+(level.getGameTime()-p.lastGoalImprovement)
+                +" bestGoalDist="+Math.sqrt(Math.max(0,p.bestGoalScore))
+                +" component="+connected
+                +" roofHeadroom="+roofHeadroom(level,here)
+                +" sky="+level.canSeeSky(here.above())
+                +" directFlight="+direct;
     }
     static boolean tick(ServerLevel level,BuilderGolem worker,BlockPos destination){
         if(destination==null)return false;
