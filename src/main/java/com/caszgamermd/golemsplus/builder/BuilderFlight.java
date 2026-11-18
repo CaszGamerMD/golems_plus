@@ -460,12 +460,17 @@ public final class BuilderFlight {
                 || launchPose(level, worker, target,bodyBlocking) != null;
     }
     private static final class RoofAccess {
-        final BlockPos target,launch,landing;
+        final BlockPos target;
+        BlockPos launch,landing;
         final long expires;
+        final List<BuilderNNRoofManeuverPolicy.Candidate> alternatives;
+        BuilderNNRoofManeuverPolicy.Selection neural;
         long lastProgress;
         double bestDistance;
-        RoofAccess(BlockPos target,BlockPos launch,BlockPos landing,long now,Vec3 start){
+        RoofAccess(BlockPos target,BlockPos launch,BlockPos landing,long now,Vec3 start,
+                List<BuilderNNRoofManeuverPolicy.Candidate> alternatives){
             this.target=target;this.launch=launch;this.landing=landing;
+            this.alternatives=alternatives;
             this.expires=now+400;this.lastProgress=now;
             this.bestDistance=start.distanceToSqr(feet(launch));
         }
@@ -475,6 +480,8 @@ public final class BuilderFlight {
         long expires(){return expires;}
     }
     private static final Map<BuilderGolem,RoofAccess> roofAccess=new WeakHashMap<>();
+    /** Chosen roof entry is trained ONLY after its physical flight ends. */
+    private static final Map<BuilderGolem,RoofAccess> executingRoofEntries=new WeakHashMap<>();
     public static boolean roofAccessProgress(ServerLevel level,BuilderGolem worker,BlockPos target){
         RoofAccess r=roofAccess.get(worker);
         if(r==null||!r.target().equals(target)||level.getGameTime()>=r.expires())return false;
@@ -598,7 +605,28 @@ public final class BuilderFlight {
                     work.size(),physicalSupports,physicalLegs,connectedRoutes);
             return null;
         }
-        var result=new RoofAccess(target.immutable(),launch,byLaunch.get(launch),now,worker.position());
+        var alternatives=new ArrayList<BuilderNNRoofManeuverPolicy.Candidate>();
+        if(BuilderNNRoofManeuverPolicy.ENABLED){
+            // Every alternative must be a REAL accessible launch, collision-
+            // checked flight, and a landing with a confirmed grounded route
+            // to a physically safe work stance. Baseline passed the normal
+            // selectExecutableStand validator above.
+            alternatives.add(new BuilderNNRoofManeuverPolicy.Candidate(
+                    List.of(new BuilderMultiLegTravel.Leg(launch,byLaunch.get(launch))),false));
+            for(BlockPos other:launches){
+                if(other.equals(launch)||alternatives.size()>=8)continue;
+                BlockPos landing=byLaunch.get(other);
+                if(landing==null
+                        ||!WorkerNavigation.canStandOn(level,worker,other)
+                        ||!WorkerNavigation.canStandOn(level,worker,landing)
+                        ||!WorkerNavigation.hasGroundRouteFrom(
+                                level,worker,worker.blockPosition(),List.of(other)))continue;
+                alternatives.add(new BuilderNNRoofManeuverPolicy.Candidate(
+                        List.of(new BuilderMultiLegTravel.Leg(other,landing)),false));
+            }
+        }
+        var result=new RoofAccess(target.immutable(),launch,byLaunch.get(launch),
+                now,worker.position(),List.copyOf(alternatives));
         roofAccess.put(worker,result);return result;
     }
     public static boolean canAccessRoofWork(ServerLevel level,BuilderGolem worker,BlockPos target,boolean bodyBlocking){
@@ -607,8 +635,23 @@ public final class BuilderFlight {
     public static boolean approachRoofWork(ServerLevel level,BuilderGolem worker,BlockPos target,boolean bodyBlocking){
         RoofAccess plan=roofPlan(level,worker,target,bodyBlocking);
         if(plan==null)return false;
+        if(BuilderNNRoofManeuverPolicy.ENABLED&&plan.neural==null
+                &&!plan.alternatives.isEmpty()){
+            List<BuilderMultiLegTravel.Leg> selected=BuilderNNRoofManeuverPolicy.choose(
+                    level,worker,target,plan.alternatives,0);
+            var token=BuilderNNRoofManeuverPolicy.committed(worker,target,selected);
+            if(token!=null){
+                plan.neural=token;
+                plan.launch=selected.getFirst().launch();
+                plan.landing=selected.getFirst().landing();
+                plan.bestDistance=worker.position().distanceToSqr(
+                        supportedFeet(level,plan.launch()));
+                plan.lastProgress=level.getGameTime();
+            }
+        }
         if(worker.position().distanceToSqr(supportedFeet(level,plan.launch()))<.04){
             if(requestSupportedLanding(level,worker,plan.landing())){
+                if(plan.neural!=null)executingRoofEntries.put(worker,plan);
                 roofAccess.remove(worker);return true;
             }
             // Keep a valid walking plan if takeoff was rejected. The
@@ -890,6 +933,7 @@ public final class BuilderFlight {
     public static boolean tick(ServerLevel level, BuilderGolem worker) {
         if (!enabled(worker)) {
             BuilderNeuralRecorder.finishFlight(level, worker, "DISABLED");
+            executingRoofEntries.remove(worker);
             flights.remove(worker); worker.setPropellerSpinning(false); return false; }
         Flight flight = flights.get(worker);
         // Ordinary walking, falling, and furniture visits retain their controller
@@ -923,6 +967,14 @@ public final class BuilderFlight {
             worker.setNoGravity(false);
             worker.setPropellerSpinning(false);
             BuilderTrace.decision(level,worker,"FLIGHT_LAND",flight.goal,"support/contact verified");
+            RoofAccess learned=executingRoofEntries.remove(worker);
+            if(learned!=null){
+                if(atLanding&&flight.goal!=null&&flight.goal.equals(learned.landing()))
+                    BuilderNNRoofManeuverPolicy.finished(level,worker,learned.neural,false);
+                else
+                    BuilderNNRoofManeuverPolicy.failed(
+                            level,worker,learned.neural,"diverted_landing");
+            }
             flights.remove(worker);
             return false;
         }
@@ -941,6 +993,9 @@ public final class BuilderFlight {
         } else if (++flight.stuckTicks > 40) {
             BuilderTrace.decision(level,worker,"FLIGHT_ABORT",flight.goal,"no physical displacement for 40 ticks");
             BuilderNeuralRecorder.finishFlight(level, worker, "NO_DISPLACEMENT");
+            RoofAccess failedRoof=executingRoofEntries.remove(worker);
+            if(failedRoof!=null)BuilderNNRoofManeuverPolicy.failed(
+                    level,worker,failedRoof.neural,"flight_no_displacement");
             flight.lastFailedDestination=flight.path.getLast();
             flight.failedUntil=level.getGameTime()+100;
             stop(worker);
@@ -963,6 +1018,9 @@ public final class BuilderFlight {
             if (BuilderNeuralRecorder.ENABLED)
                 BuilderNeuralRecorder.finishFlight(level, worker, "BLOCKED",
                         observedBlockage(level,worker,worker.position().add(velocity),flight.origin));
+            RoofAccess blockedRoof=executingRoofEntries.remove(worker);
+            if(blockedRoof!=null)BuilderNNRoofManeuverPolicy.failed(
+                    level,worker,blockedRoof.neural,"flight_collision_blocked");
             flight.lastFailedDestination=flight.path.getLast();
             flight.failedUntil=level.getGameTime()+100;
             stop(worker);
