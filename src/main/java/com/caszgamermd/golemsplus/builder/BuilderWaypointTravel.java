@@ -42,6 +42,11 @@ final class BuilderWaypointTravel {
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_BRIDGE_RESCUE","false"));
     private static final boolean EXPERIMENTAL_DIRECT_ASCENT=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_DIRECT_ASCENT","false"));
+    // Waypoint-only: when a roof walk repeatedly stalls, hop from the
+    // CURRENT grounded pose to another real supported roof cell. No
+    // invented stations or free horizontal flying; each hop is swept.
+    private static final boolean PROGRESS_ROOF_HOPS=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_PROGRESS_HOPS","false"));
     private static final boolean EXPERIMENTAL_GATEWAY=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_CERTIFIED_GATEWAY","false"));
     // Recover only an orphaned unsupported hover: no active flight or rope.
@@ -66,7 +71,8 @@ final class BuilderWaypointTravel {
         BlockPos verifiedFlightLanding;
         long stageTick, nextSurvey, nextDescentProbe, nextAscentProbe, nextSurfaceProbe,
                 nextHoverRecovery, nextGrappleProbe, nextFinalHopProbe,
-                nextIslandEscape, nextOrphanHoverRecovery, lastGoalImprovement;
+                nextIslandEscape, nextOrphanHoverRecovery, nextRoofHopProbe,
+                lastGoalImprovement;
         double bestGoalScore=Double.POSITIVE_INFINITY;
         BlockPos lastAscentLanding;
         double best=Double.POSITIVE_INFINITY;
@@ -390,6 +396,45 @@ final class BuilderWaypointTravel {
         }
         return best;
     }
+    /** Admits only useful, bounded local roof transfers. The physical
+     * validator is still required for every shortlisted supported cell. */
+    static boolean usefulRoofHop(BlockPos from,BlockPos goal,BlockPos landing){
+        if(from==null||goal==null||landing==null)return false;
+        double gain=flatDistance(from,goal)-flatDistance(landing,goal);
+        return gain>=1.5&&landing.getY()>=from.getY()-1
+                &&landing.getY()<=from.getY()+5;
+    }
+    static BlockPos chooseProgressRoofHop(ServerLevel level,BuilderGolem worker,
+            BlockPos goal,Set<BlockPos> avoid){
+        if(!worker.onGround()||BuilderFlight.active(worker)
+                ||BuilderGrappleAccess.active(worker))return null;
+        BlockPos from=worker.blockPosition();
+        int radius=(int)Math.ceil(BuilderFlight.HORIZONTAL_LIMIT);
+        var candidates=new ArrayList<BlockPos>();
+        for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++){
+            if(dx*dx+dz*dz>BuilderFlight.HORIZONTAL_LIMIT
+                    *BuilderFlight.HORIZONTAL_LIMIT+1e-6)continue;
+            for(int dy=-1;dy<=5;dy++){
+                BlockPos p=from.offset(dx,dy,dz);
+                if(!usefulRoofHop(from,goal,p)||avoid.contains(p)
+                        ||!level.hasChunkAt(p)
+                        ||!WorkerNavigation.canStandOn(level,worker,p))continue;
+                candidates.add(p);
+            }
+        }
+        candidates.sort(Comparator.comparingDouble((BlockPos p)->
+                flatDistance(p,goal)+.8*Math.abs(goal.getY()-p.getY()))
+                .thenComparingDouble(from::distSqr));
+        int checked=0;
+        for(BlockPos candidate:candidates){
+            if(++checked>40)break;
+            // The planner may suggest a hop; only the collision-swept
+            // physical controller can certify or execute that transfer.
+            if(BuilderFlight.canFlyBetween(level,worker,from,candidate))
+                return candidate;
+        }
+        return null;
+    }
     static void clear(BuilderGolem worker){
         plans.remove(worker);
         BuilderMultiLegTravel.clear(worker);
@@ -510,6 +555,28 @@ final class BuilderWaypointTravel {
         }else if(goalScore+1.0<p.bestGoalScore){
             p.bestGoalScore=goalScore;p.lastGoalImprovement=now;
             p.hoverLandings.clear(); // genuine goal progress unlocks old landings
+        }
+        // Escalate only after genuine lack of objective progress.
+        // A valid short roof hop can bypass a proven unexecutable A* walk
+        // while preserving full 3-D collision and real landing support.
+        if(PROGRESS_ROOF_HOPS&&high&&horizontal<=18
+                &&now>=p.nextRoofHopProbe
+                &&now-p.lastGoalImprovement>=110
+                &&worker.onGround()&&!BuilderFlight.active(worker)
+                &&!BuilderGrappleAccess.active(worker)){
+            p.nextRoofHopProbe=now+45;
+            BlockPos landing=chooseProgressRoofHop(
+                    level,worker,destination,Set.copyOf(p.visited));
+            if(landing!=null&&BuilderFlight.requestSupportedLanding(level,worker,landing)){
+                BuilderMultiLegTravel.clear(worker);
+                BuilderNNRoofManeuverPolicy.handedOff(worker.getUUID());
+                System.out.println("[NN WAYPOINT PROGRESS ROOF HOP] worker="
+                        +worker.getUUID()+" from="+here+" landing="+landing
+                        +" target="+destination);
+                mark(p,landing);
+                p.stage=null;p.verifiedFlightLanding=null;p.nextSurvey=now+15;
+                return true;
+            }
         }
         if(ISLAND_EGRESS&&now>=p.nextIslandEscape
                 &&now-p.lastGoalImprovement>=170&&horizontal<=12

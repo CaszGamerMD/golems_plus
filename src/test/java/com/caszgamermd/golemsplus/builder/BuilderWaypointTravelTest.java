@@ -173,6 +173,24 @@ class BuilderWaypointTravelTest {
                 "Do not interfere with falling or moving golems");
     }
 
+    @Test void progressiveRoofHopRequiresActualLateralGainAndBoundedElevation(){
+        BlockPos from=new BlockPos(1057,-28,1047);
+        BlockPos goal=new BlockPos(1046,-23,1048);
+        assertTrue(BuilderWaypointTravel.usefulRoofHop(from,goal,
+                new BlockPos(1053,-26,1047)));
+        assertFalse(BuilderWaypointTravel.usefulRoofHop(from,goal,
+                new BlockPos(1057,-25,1047)),
+                "Climbing without passing a roof seam does not solve a stalled walk");
+        assertFalse(BuilderWaypointTravel.usefulRoofHop(from,goal,
+                new BlockPos(1060,-25,1047)),
+                "Do not send the worker farther into an unhelpful roof pocket");
+        assertFalse(BuilderWaypointTravel.usefulRoofHop(from,goal,
+                new BlockPos(1052,-22,1047)),
+                "No new unsupported high station");
+        assertFalse(BuilderWaypointTravel.usefulRoofHop(from,goal,
+                new BlockPos(1052,-31,1047)),
+                "Do not hop downward off the roof to make horizontal progress");
+    }
     @Test void groundDestinationsShouldNotNeedHorizontalFlight(){
         BlockPos ground=new BlockPos(0,10,0);
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,
