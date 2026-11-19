@@ -181,6 +181,13 @@ class BuilderWaypointTravelTest {
         assertEquals(3.5,BuilderFlight.roofHopLimit(true,false));
         assertEquals(4.5,BuilderFlight.roofHopLimit(true,true));
     }
+    @Test void waypointGrappleRejectsFrozenApproachesWithoutPunishingMotion(){
+        assertFalse(BuilderGrappleAccess.stationaryApproachExpired(44,true));
+        assertTrue(BuilderGrappleAccess.stationaryApproachExpired(45,true));
+        assertFalse(BuilderGrappleAccess.stationaryApproachExpired(200,false));
+        assertEquals(900,BuilderGrappleAccess.rejectionTicks(true));
+        assertEquals(300,BuilderGrappleAccess.rejectionTicks(false));
+    }
     @Test void recoveryPrefersUntriedSupportedLandingButRetainsFallback(){
         BlockPos repeated=new BlockPos(4,20,5);
         BlockPos alternate=new BlockPos(5,20,6);

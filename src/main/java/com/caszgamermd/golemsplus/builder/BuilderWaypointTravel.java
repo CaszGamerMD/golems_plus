@@ -396,6 +396,7 @@ final class BuilderWaypointTravel {
         // A new destination is a new episode. Avoid learning that a
         // previously blocked roof launch is permanently forbidden.
         BuilderMultiLegTravel.resetRejections(worker);
+        BuilderGrappleAccess.clearWaypointRecovery(worker);
     }
     static String debug(BuilderGolem worker){
         Plan p=plans.get(worker);
@@ -425,7 +426,10 @@ final class BuilderWaypointTravel {
         if(destination==null)return false;
         Plan p=plans.get(worker);
         if(p==null||!p.goal.equals(destination)){
-            if(p!=null)BuilderMultiLegTravel.abortWaypoint(level,worker,"new_destination");
+            if(p!=null){
+                BuilderMultiLegTravel.abortWaypoint(level,worker,"new_destination");
+                BuilderGrappleAccess.clearWaypointRecovery(worker);
+            }
             BuilderMultiLegTravel.resetRejections(worker);
             p=new Plan(destination);
             plans.put(worker,p);

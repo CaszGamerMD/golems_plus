@@ -41,6 +41,16 @@ public final class BuilderGrappleAccess {
     // The timer resets on real ground movement; a long but moving approach
     // is never punished for distance alone.
     private static final int TRAVEL_TIMEOUT=100;
+    // Waypoint-only: do not spend a 750-tick training attempt repeatedly
+    // walking toward the same unreachable rope entry.
+    private static final boolean WAYPOINT_GRAPPLE_RECOVERY=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_GRAPPLE_RECOVERY","false"));
+    static boolean stationaryApproachExpired(long ticks,boolean enabled){
+        return enabled&&ticks>=STUCK_TICKS;
+    }
+    static int rejectionTicks(boolean waypointRecovery){
+        return waypointRecovery?900:300;
+    }
     private static final class Rope {
         final BlockPos anchor,column,landing,goal;
         final Direction side;
@@ -55,6 +65,8 @@ public final class BuilderGrappleAccess {
         long lastWalkProgress;
         double bestWalkDistance=Double.POSITIVE_INFINITY;
         double initialWalkDistance=Double.NaN;
+        double approachX=Double.NaN,approachY,approachZ;
+        long lastApproachMotion;
         double supportY=Double.NaN,upperX,upperZ;
         Rope(BlockPos anchor,Direction side,BlockPos landing,BlockPos goal,
                 boolean down,long time) {
@@ -66,6 +78,7 @@ public final class BuilderGrappleAccess {
             this.down=down;
             this.started=time;
             this.lastWalkProgress=time;
+            this.lastApproachMotion=time;
             this.phase=down?Phase.WALK_TO_EDGE:Phase.WALK_TO_LINE;
             upperX=anchor.getX()+.5;upperZ=anchor.getZ()+.5;
         }
@@ -165,10 +178,11 @@ public final class BuilderGrappleAccess {
         List<FailedAnchor> old=blockedAnchors.getOrDefault(mob,List.of());
         List<FailedAnchor> next=new ArrayList<>();
         for(FailedAnchor b:old)
-            if(b.until()>level.getGameTime()&&next.size()<7)
+            if(b.until()>level.getGameTime()
+                    &&next.size()<(WAYPOINT_GRAPPLE_RECOVERY?23:7))
                 next.add(b);
         next.add(new FailedAnchor(rope.anchor,rope.side,
-                level.getGameTime()+300));
+                level.getGameTime()+rejectionTicks(WAYPOINT_GRAPPLE_RECOVERY)));
         blockedAnchors.put(mob,next);
     }
     private static void release(BuilderGolem mob,Rope rope,String event){
@@ -212,6 +226,13 @@ public final class BuilderGrappleAccess {
         Rope old=active.remove(worker);
         if(old!=null&&old.visibleLine!=null)old.visibleLine.close();
         worker.setNoGravity(false);
+    }
+    /** A new physical waypoint may use an anchor rejected by the previous
+     * goal, but must never inherit its unthrown grapple command. */
+    static void clearWaypointRecovery(BuilderGolem worker){
+        if(!WAYPOINT_GRAPPLE_RECOVERY)return;
+        cancel(worker); // cancel only when real ground contact is present
+        blockedAnchors.remove(worker);
     }
     private static boolean solidTop(ServerLevel world,BlockPos p){
         return world.hasChunkAt(p)
@@ -640,7 +661,9 @@ public final class BuilderGrappleAccess {
     private static boolean startAscent(ServerLevel level,BuilderGolem worker,
             Rope route){
         if(BuilderFlight.active(worker))return false;
-        if(!WorkerNavigation.routeToExact(level,worker,route.landing,1.0)){
+        if((WAYPOINT_GRAPPLE_RECOVERY
+                    &&!WorkerNavigation.canReachExact(level,worker,route.landing))
+                ||!WorkerNavigation.routeToExact(level,worker,route.landing,1.0)){
             reject(level,worker,route); // try a different physical face next time
             return false;
         }
@@ -943,11 +966,31 @@ public final class BuilderGrappleAccess {
                 r.lastWalkProgress=level.getGameTime();
             }
             long now=level.getGameTime();
+            // Track ACTUAL displacement, not a repeated path intention.
+            // Sideways detours remain valid while physically moving.
+            if(!Double.isFinite(r.approachX)){
+                r.approachX=mob.getX();r.approachY=mob.getY();
+                r.approachZ=mob.getZ();r.lastApproachMotion=now;
+            }else{
+                double mx=mob.getX()-r.approachX,my=mob.getY()-r.approachY,
+                        mz=mob.getZ()-r.approachZ;
+                if(mx*mx+my*my+mz*mz>=.18*.18){
+                    r.approachX=mob.getX();r.approachY=mob.getY();
+                    r.approachZ=mob.getZ();r.lastApproachMotion=now;
+                }
+            }
+            boolean physicallyStalled=stationaryApproachExpired(
+                    now-r.lastApproachMotion,WAYPOINT_GRAPPLE_RECOVERY);
             if(now-r.lastWalkProgress>=TRAVEL_TIMEOUT
-                    ||now-r.started>=600||distance>r.initialWalkDistance+12){
+                    ||now-r.started>=600||distance>r.initialWalkDistance+12
+                    ||physicallyStalled){
                 reject(level,mob,r);
-                // No line has been thrown, so even an airborne approach
-                // can be cancelled without releasing a suspended rope.
+                if(physicallyStalled)
+                    System.out.println("[NN GRAPPLE APPROACH STALL] worker="
+                            +mob.getUUID()+" entry="+entry+" at="+mob.position()
+                            +" immobileTicks="+(now-r.lastApproachMotion));
+                // The hook has not been thrown; release the obsolete
+                // approach and let the normal physical route planner retry.
                 release(mob,r,"ATTACHMENT ROUTE TIMED OUT");
                 return false;
             }

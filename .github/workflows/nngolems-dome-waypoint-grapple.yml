@@ -9,6 +9,7 @@ on:
       - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderWaypointTravel.java"
       - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderFlight.java"
       - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderMultiLegTravel.java"
+      - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderGrappleAccess.java"
       - "src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNRoofManeuverPolicy.java"
   workflow_dispatch:
 permissions:
@@ -65,6 +66,7 @@ jobs:
       GOLEMS_NN_LONG_DETOUR: 'true'
       GOLEMS_NN_SLOPED_ROOF_LAUNCHES: 'false'
       GOLEMS_NN_WAYPOINT_GRAPPLE: 'true'
+      GOLEMS_NN_WAYPOINT_GRAPPLE_RECOVERY: 'true'
       GOLEMS_NN_ROOF_WIDE_HOPS: 'true'
       GOLEMS_NN_EXTENDED_ROOF_SEAM: 'true'
       GOLEMS_NN_WAYPOINT_FINAL_HOP: 'true'
