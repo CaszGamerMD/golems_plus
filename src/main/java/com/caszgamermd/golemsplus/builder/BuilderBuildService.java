@@ -152,6 +152,13 @@ public final class BuilderBuildService {
         // let repeated failed requests become a multi-minute crew stall.
         int rejectedWorkRoutes;
         long firstRejectedWorkRouteTick=-1;
+        long noWorkPoseSince=-1;
+        void resetNoWorkPose(){noWorkPoseSince=-1;}
+        boolean noWorkPoseTimedOut(long now){
+            if(noWorkPoseSince<0)noWorkPoseSince=now;
+            return BuilderNNProductiveWork.missingWorkPoseTimedOut(
+                    now-noWorkPoseSince);
+        }
         void resetRejectedWorkRoutes(){
             rejectedWorkRoutes=0;
             firstRejectedWorkRouteTick=-1;
@@ -187,12 +194,14 @@ public final class BuilderBuildService {
             lastFailedStep=-1;
             retreatUntil=-1;
             resetRejectedWorkRoutes();
+            resetNoWorkPose();
         }
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
                 blockedSince=-1;workTravelSince=-1;
                 resetRejectedWorkRoutes();
+                resetNoWorkPose();
                     bestTargetDistance=Double.POSITIVE_INFINITY;
                 lastTargetProgressTick=-1;
                 lastMovementTick=-1;lastPerchEscapeTick=-1000;
@@ -2393,6 +2402,7 @@ public final class BuilderBuildService {
                         at->BuilderConstructionPlanner.safeStandForStep(
                                 level,worker,pos,at,step.encodedState(),state.state()));
                 if(approach!=null){
+                    activity.resetNoWorkPose();
                     boolean moving=com.caszgamermd.golemsplus.worker
                             .WorkerNavigation.routeToExact(
                                     level,worker,approach,1.0);
@@ -2442,6 +2452,33 @@ public final class BuilderBuildService {
                 // and has a checked path back to its ground/roof exit.
                 if(scaffoldBlockedWork(level,worker,table,owner,pos,plan.steps()))
                     return;
+                // An approximate beacon can be approached endlessly without
+                // yielding a SAFE exact stance from which a block can be
+                // placed. Only after all validated stance and paid platform
+                // checks fail for 100 ticks do we defer the actual unfinished
+                // cell. A genuinely moving flight, rope or scaffold is still
+                // owned by its physical controller.
+                if(BuilderNNProductiveWork.ENABLED
+                        &&!BuilderGrappleAccess.active(worker)
+                        &&!BuilderScaffoldPlanA.hasPlan(worker)
+                        &&!BuilderScaffolding.isControllingMovement(worker)
+                        &&!BuilderFlight.moving(worker)
+                        &&activity.noWorkPoseTimedOut(level.getGameTime())){
+                    long now=level.getGameTime();
+                    table.waitForBuilderAccess(worker.getUUID(),index,now,
+                            "100 ticks without an executable exact work pose");
+                    publishHandoff(table,worker.getUUID(),index,now,
+                            "no usable exact work pose");
+                    activity.lastFailedStep=index;
+                    activity.failedApproachFrom=worker.blockPosition();
+                    activity.alternateSideRequested=
+                            activity.alternateSideAttempts<3;
+                    activity.retreatUntil=now+100;
+                    activity.resetNoWorkPose();
+                    System.out.println("[NN PRODUCTIVE NO POSE] worker="
+                            +worker.getUUID()+" step="+index+" target="+pos);
+                    return;
+                }
                 if(yDiff>0){
                     var access=BuilderGrappleAccess.reachWork(level,worker,table,pos);
                     if(access==BuilderGrappleAccess.Result.NEED_HOOK)
@@ -2488,6 +2525,8 @@ public final class BuilderBuildService {
             // physical feet height, never the crew-wide Y work gate.
             }
             activity.phase=Action.PLACE;
+            activity.resetNoWorkPose();
+            activity.resetRejectedWorkRoutes();
             // Travel and placement are mutually exclusive for THIS worker:
             // stop the previous A* path and horizontal momentum before a
             // freshly placed block can appear in its upcoming route.
