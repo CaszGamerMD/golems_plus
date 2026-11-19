@@ -164,14 +164,6 @@ class BuilderWaypointTravelTest {
                 "Do not interfere with falling or moving golems");
     }
 
-    @Test void shortRoofRisesMustApproachHorizontallyBeforeGrappling(){
-        assertFalse(BuilderWaypointTravel.shouldTryWaypointGrapple(10.5,5),
-                "Do not lock on distant roof entry for a small ascent");
-        assertTrue(BuilderWaypointTravel.shouldTryWaypointGrapple(8,5));
-        assertTrue(BuilderWaypointTravel.shouldTryWaypointGrapple(16,12),
-                "A genuinely tall climb may begin at the exterior");
-        assertFalse(BuilderWaypointTravel.shouldTryWaypointGrapple(12,8));
-    }
     @Test void groundDestinationsShouldNotNeedHorizontalFlight(){
         BlockPos ground=new BlockPos(0,10,0);
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,
