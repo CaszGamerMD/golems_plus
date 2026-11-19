@@ -180,6 +180,19 @@ class BuilderWaypointTravelTest {
         assertEquals(-20.0,BuilderFlight.roofArcPeakHeight(to,
                 new net.minecraft.world.phys.Vec3(1050.5,-22,1049.5)));
     }
+    @Test void downhillRoofHopRequiresActualSupportAndShortDescent(){
+        BlockPos from=new BlockPos(1049,-26,1055);
+        BlockPos goal=new BlockPos(1055,-30,1041);
+        assertTrue(BuilderWaypointTravel.usefulRoofHop(from,goal,
+                new BlockPos(1052,-28,1051)),
+                "Short downward roof transitions can avoid an unexecutable walk");
+        assertFalse(BuilderWaypointTravel.usefulRoofHop(from,goal,
+                new BlockPos(1052,-32,1051)),
+                "A descent greater than four blocks is not a local hop");
+        assertFalse(BuilderWaypointTravel.usefulRoofHop(from,goal,
+                new BlockPos(1048,-28,1057)),
+                "The drop must also progress toward its horizontal goal");
+    }
     @Test void progressiveRoofHopRequiresActualLateralGainAndBoundedElevation(){
         BlockPos from=new BlockPos(1057,-28,1047);
         BlockPos goal=new BlockPos(1046,-23,1048);

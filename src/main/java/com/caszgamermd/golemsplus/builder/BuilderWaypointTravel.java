@@ -401,8 +401,13 @@ final class BuilderWaypointTravel {
     static boolean usefulRoofHop(BlockPos from,BlockPos goal,BlockPos landing){
         if(from==null||goal==null||landing==null)return false;
         double gain=flatDistance(from,goal)-flatDistance(landing,goal);
-        return gain>=1.5&&landing.getY()>=from.getY()-1
-                &&landing.getY()<=from.getY()+5;
+        // A lower roof destination may require stepping down before
+        // traversing sideways. Never generalize this to a free fall:
+        // the collision-swept controller still certifies each floor.
+        int minDelta=goal.getY()<from.getY()?-4:-1;
+        int maxDelta=goal.getY()<from.getY()?3:5;
+        return gain>=1.5&&landing.getY()>=from.getY()+minDelta
+                &&landing.getY()<=from.getY()+maxDelta;
     }
     static BlockPos chooseProgressRoofHop(ServerLevel level,BuilderGolem worker,
             BlockPos goal,Set<BlockPos> avoid){
@@ -414,7 +419,9 @@ final class BuilderWaypointTravel {
         for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++){
             if(dx*dx+dz*dz>BuilderFlight.HORIZONTAL_LIMIT
                     *BuilderFlight.HORIZONTAL_LIMIT+1e-6)continue;
-            for(int dy=-1;dy<=5;dy++){
+            int minDelta=goal.getY()<from.getY()?-4:-1;
+            int maxDelta=goal.getY()<from.getY()?3:5;
+            for(int dy=minDelta;dy<=maxDelta;dy++){
                 BlockPos p=from.offset(dx,dy,dz);
                 if(!usefulRoofHop(from,goal,p)||avoid.contains(p)
                         ||!level.hasChunkAt(p)
@@ -559,9 +566,13 @@ final class BuilderWaypointTravel {
         // Escalate only after genuine lack of objective progress.
         // A valid short roof hop can bypass a proven unexecutable A* walk
         // while preserving full 3-D collision and real landing support.
-        if(PROGRESS_ROOF_HOPS&&high&&horizontal<=18
-                &&now>=p.nextRoofHopProbe
-                &&now-p.lastGoalImprovement>=110
+        boolean stalledUp=high&&now-p.lastGoalImprovement>=110;
+        boolean stalledAcrossOrDown=!high
+                &&destination.getY()>=here.getY()-4
+                &&destination.getY()<=here.getY()+2
+                &&(now-p.lastGoalImprovement>=135||p.failedStages>=2);
+        if(PROGRESS_ROOF_HOPS&&(stalledUp||stalledAcrossOrDown)
+                &&horizontal<=18&&now>=p.nextRoofHopProbe
                 &&worker.onGround()&&!BuilderFlight.active(worker)
                 &&!BuilderGrappleAccess.active(worker)){
             p.nextRoofHopProbe=now+45;
