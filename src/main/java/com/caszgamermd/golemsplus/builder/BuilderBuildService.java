@@ -2576,6 +2576,9 @@ public final class BuilderBuildService {
                     BuilderPlacementSpace.cancelYield(worker);
                     table.waitForBuilderAccess(worker.getUUID(),index,
                             level.getGameTime(),"100-tick placement body-occupancy timeout");
+                    if(BuilderNNProductiveWork.ENABLED)
+                        publishHandoff(table,worker.getUUID(),index,level.getGameTime(),
+                                "placement stance remained occupied");
                     BuilderPlacementSpace.invalidateApproach(worker,pos);
                     com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                     activity.lastFailedStep=index;
