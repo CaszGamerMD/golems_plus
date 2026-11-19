@@ -185,7 +185,9 @@ jobs:
             'visits_recorded':len(visits),
             'training_updates':sum('[NN ROOF WAYPOINT REWARD] ' in x for x in lines),
             'timeouts':sum(x.get('outcome')=='PER_GOAL_TIMEOUT' for x in visits),
-            'sample_failures':[x for x in visits if not x.get('arrived')][:8]}
+            'sample_failures':[x for x in visits if not x.get('arrived')][:8],
+            'failure_destinations':sorted({x['destination'] for x in visits
+                                           if not x.get('arrived')})}
           (p/'result.json').write_text(json.dumps(summary,indent=2)+'\n')
           (p/'visits.json').write_text(json.dumps(visits,indent=2)+'\n')
           print('[NN WAYPOINT ASSESSMENT] '+json.dumps({k:summary[k] for k in
@@ -195,7 +197,8 @@ jobs:
           out=Path(os.environ['GITHUB_STEP_SUMMARY'])
           out.open('a').write('## Finished Dome navigation – '+summary['mode']+
               '\n'+str(summary['success'])+' reached, '+str(summary['failed'])+
-              ' failed, '+str(summary['route_choices'])+' roof decisions.\n')
+              ' failed, '+str(summary['route_choices'])+' roof decisions.\n'+
+              'Failed destination IDs: '+str(summary['failure_destinations'])+'\n')
           if not start or not term:
               raise SystemExit('Missing actual completed navigation GameTest')
           if summary['targets']!=24 or summary['crew']!=8:
@@ -204,8 +207,13 @@ jobs:
               raise SystemExit('The original Dome was not completely built before navigation')
           if result.get('verifiedDomeIntact')!='3493/3493':
               raise SystemExit('The navigation run changed or damaged the Dome')
-          if summary['visits_recorded']==0:
-              raise SystemExit('No golem actually attempted any physical waypoint')
+          if summary['visits_recorded']!=summary['targets']*summary['crew']:
+              raise SystemExit('Missing physical waypoint attempts: '
+                               +str(summary['visits_recorded']))
+          if summary['success']+summary['failed']!=summary['visits_recorded']:
+              raise SystemExit('Waypoint result totals do not match the recorded visits')
+          if summary['failed']!=sum(not v.get('arrived') for v in visits):
+              raise SystemExit('Reported failure count disagrees with individual visits')
           if summary['mode']=='neural' and not any('[NN ROOF POLICY ENABLED] ' in x for x in lines):
               raise SystemExit('Neural roof maneuver policy did not activate')
           if summary['mode']=='baseline' and roof:
@@ -251,7 +259,7 @@ jobs:
                 f"| Learned route choices | {x['route_choices']} | {y['route_choices']} |",
                 f"| Routes changed | {x['route_changes']} | {y['route_changes']} |",
                 f"| Positive roof maneuver rewards | {x['training_updates']} | {y['training_updates']} |",
-                f"| Target: 10 or fewer failures | {'Met' if x['failed']<=10 else 'Not yet'} | {'Met' if y['failed']<=10 else 'Not yet'} |",
+                f"| Target: fewer than 5 failures | {'Met' if x['failed']<5 else 'Not yet'} | {'Met' if y['failed']<5 else 'Not yet'} |",
                 '',
                 'All destinations are genuine full-cube supported feet poses on a prebuilt Dome.',
                 'A workflow success confirms recorded results, not successful navigation of every target.']
@@ -259,8 +267,14 @@ jobs:
           Path('waypoint-comparison.md').write_text(text)
           Path(__import__('os').environ['GITHUB_STEP_SUMMARY']).open('a').write(text)
           print(text)
+          # Lock in the current 2/192 result. A green workflow must mean
+          # the experimental controller still meets the user's <5 target.
+          if y['failed']>=5:
+              raise SystemExit(f"NNGolems regression: {y['failed']} of 192 "
+                               "roof-course attempts failed (target <5)")
           PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: nn-grapple-dome-waypoints-comparison
           path: waypoint-comparison.md
