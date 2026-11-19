@@ -1,5 +1,5 @@
 name: NNGolems productive Dome construction reliability
-run-name: "NN navigation-to-placement Dome A/B (${{ github.sha }})"
+run-name: "NN six-run navigation-to-placement Dome A/B (${{ github.sha }})"
 on:
   push:
     branches: [NNGolems]
@@ -42,10 +42,10 @@ jobs:
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 3
       matrix:
         mode: [baseline, productive]
-        seed: [1, 2]
+        seed: [1, 2, 3]
     env:
       MATRIX_TEST_MODE: controlled
       NN_COURSE: dome
@@ -184,7 +184,7 @@ jobs:
           results={}
           for mode in ('baseline','productive'):
               results[mode]=[]
-              for seed in (1,2):
+              for seed in (1,2,3):
                   p=root/f'nn-productive-{mode}-{seed}'/'result.json'
                   if not p.exists():raise SystemExit('Missing physical assessment '+str(p))
                   r=json.loads(p.read_text())
@@ -198,7 +198,7 @@ jobs:
                   'median_nonproductive_gap_ticks':statistics.median(
                       r['longest_without_new_block_ticks'] for r in rows)}
           report['delta_median_correct']=report['productive']['median_correct']-report['baseline']['median_correct']
-          report['acceptance_met']=report['productive']['complete']==2 and all(
+          report['acceptance_met']=report['productive']['complete']==3 and all(
               r['longest_without_new_block_ticks']<2400 for r in results['productive'])
           (root/'report.json').write_text(json.dumps(report,indent=2)+'\n')
           print('[NN PRODUCTIVE COMPARISON] '+json.dumps(report))

@@ -2464,16 +2464,16 @@ public final class BuilderBuildService {
                         &&!BuilderScaffolding.isControllingMovement(worker)
                         &&!BuilderFlight.moving(worker)
                         &&activity.noWorkPoseTimedOut(level.getGameTime())){
-                    long now=level.getGameTime();
-                    table.waitForBuilderAccess(worker.getUUID(),index,now,
+                    long noPoseTick=level.getGameTime();
+                    table.waitForBuilderAccess(worker.getUUID(),index,noPoseTick,
                             "100 ticks without an executable exact work pose");
-                    publishHandoff(table,worker.getUUID(),index,now,
+                    publishHandoff(table,worker.getUUID(),index,noPoseTick,
                             "no usable exact work pose");
                     activity.lastFailedStep=index;
                     activity.failedApproachFrom=worker.blockPosition();
                     activity.alternateSideRequested=
                             activity.alternateSideAttempts<3;
-                    activity.retreatUntil=now+100;
+                    activity.retreatUntil=noPoseTick+100;
                     activity.resetNoWorkPose();
                     System.out.println("[NN PRODUCTIVE NO POSE] worker="
                             +worker.getUUID()+" step="+index+" target="+pos);

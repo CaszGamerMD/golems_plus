@@ -45,7 +45,7 @@ GitHub Actions workflow:
 `.github/workflows/nngolems-productive-building.yml`
 
 Uses the existing `BuilderNNDomeStrategyGameTest` against the **original**
-Dome with 0 prefabricated blocks and two matched seeds in both groups.
+Dome with 0 prefabricated blocks and three matched seeds in both groups.
 Both groups use the same NNGolems navigation/frontier/detour configuration;
 only `GOLEMS_NN_PRODUCTIVE_BUILD` differs. Full server logs and per-run
 JSON artifacts are retained to investigate every stall.
@@ -60,7 +60,7 @@ Track:
 
 Workflow-success means **the physical tests executed and produced valid
 source-world observations**. It does not imply any Dome finished.
-Construction acceptance is a stricter reported gate: **2/2 productive
+Construction acceptance is a stricter reported gate: **3/3 productive
 trials finish the entire Dome, and neither goes 2,400 ticks without a new
 correct block**. Until measurements demonstrate this, the result is
 `NOT YET`. Treat the <5 failed navigation waypoints milestone as a
