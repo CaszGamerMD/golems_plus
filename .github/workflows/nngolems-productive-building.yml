@@ -1,0 +1,221 @@
+name: NNGolems productive Dome construction reliability
+run-name: "NN navigation-to-placement Dome A/B (${{ github.sha }})"
+on:
+  push:
+    branches: [NNGolems]
+    paths:
+      - '.github/workflows/nngolems-productive-building.yml'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderNNProductiveWork.java'
+      - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderNNProductiveWorkTest.java'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: nngolems-productive-building-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Compile and exercise construction and navigation safety
+        run: |
+          gradle --no-daemon test --tests '*BuilderNNProductiveWorkTest' \
+            --tests '*BuilderNNDetourTrainingTest' \
+            --tests '*BuilderNeuralFrontierPolicyTest' \
+            --tests '*BuilderNNRoofFrontierTest'
+
+  physical:
+    needs: validate
+    name: "Original Dome – ${{ matrix.mode }} / seed ${{ matrix.seed }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        mode: [baseline, productive]
+        seed: [1, 2]
+    env:
+      MATRIX_TEST_MODE: controlled
+      NN_COURSE: dome
+      NN_DOME_MODE: AUTO8
+      NN_DOME_TRIAL_SEED: ${{ matrix.seed }}
+      NN_DOME_PREFILL_BELOW_REL_Y: '-1'
+      NN_DOME_RUN_TICKS: '180000'
+      NN_DOME_WALL_SECONDS: '900'
+      NN_TEAM_STALL_TICKS: '2400'
+      GOLEMS_NN_PRODUCTIVE_BUILD: ${{ matrix.mode == 'productive' && 'true' || 'false' }}
+      GOLEMS_NN_FRONTIER_CONTROL: 'true'
+      GOLEMS_NN_DETOUR_TRAINING: 'true'
+      GOLEMS_NN_LONG_DETOUR: 'true'
+      GOLEMS_NN_CONTROL: 'false'
+      GOLEMS_NN_SHADOW: 'false'
+      GOLEMS_NN_RECORD: 'true'
+      GOLEMS_NN_TEAM_RECORD: 'true'
+      GOLEMS_NN_FRONTIER_STAGING: 'true'
+      GOLEMS_NN_ROOF_FRONTIER: 'true'
+      GOLEMS_NN_ROOF_RADIUS: '24'
+      GOLEMS_NN_MULTI_LEG_ROOF: 'true'
+      GOLEMS_NN_SHAPE_EXIT: 'true'
+      GOLEMS_NN_SCAFFOLD_CHAIN: 'true'
+      GOLEMS_NN_STRUCTURES: 'true'
+      GOLEMS_NN_STRUCTURE_LOOKAHEAD: 'true'
+      GOLEMS_NN_PROJECT_YIELD: 'true'
+      GOLEMS_NN_AUTO: 'true'
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Run eight real golems against unprefilled original Dome
+        shell: bash
+        run: |
+          mkdir -p build/nn-productive
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          j=json.loads(p.read_text())
+          j['entrypoints']['fabric-gametest']=[
+            'com.caszgamermd.golemsplus.builder.BuilderNNDomeStrategyGameTest']
+          p.write_text(json.dumps(j,indent=2)+'\n')
+          PY
+          set +e
+          set -o pipefail
+          gradle --no-daemon runGameTest 2>&1 | tee build/nn-productive/server.log
+          printf '%s\n' "${PIPESTATUS[0]}" > build/nn-productive/gradle-exit.txt
+      - name: Validate terminal physical measurements and count stalls
+        if: always()
+        env:
+          MODE: ${{ matrix.mode }}
+          SEED: ${{ matrix.seed }}
+          SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          p=Path('build/nn-productive');p.mkdir(exist_ok=True,parents=True)
+          lines=(p/'server.log').read_text(errors='replace').splitlines() if (p/'server.log').exists() else []
+          term=next((s.split('[NN DOME RESULT] ',1)[1] for s in reversed(lines)
+                     if '[NN DOME RESULT] mode=AUTO8 ' in s),None)
+          fields=dict(re.findall(r'(\w+)=([^\s]+)',term or ''))
+          points=[]
+          for s in lines:
+              if '[NN DOME PROGRESS] mode=AUTO8 ' not in s:continue
+              data=dict(re.findall(r'(\w+)=([^\s]+)',s.split('[NN DOME PROGRESS] ',1)[1]))
+              try:points.append((int(data['tick']),int(data['correct'])))
+              except (ValueError,KeyError):pass
+          points.sort()
+          last_tick,last_correct=0,int(fields.get('prebuilt','0'))
+          longest_gap=0;progress_windows=0
+          for tick,correct in points:
+              if correct>last_correct:
+                  longest_gap=max(longest_gap,tick-last_tick)
+                  progress_windows+=1;last_tick,last_correct=tick,correct
+          if 'ticks' in fields:
+              longest_gap=max(longest_gap,int(fields['ticks'])-last_tick)
+          result=dict(schema=1,mode=os.environ['MODE'],seed=int(os.environ['SEED']),
+              sha=os.environ['SHA'],game_test_exit=int((p/'gradle-exit.txt').read_text().strip())
+                  if (p/'gradle-exit.txt').exists() else -1,
+              outcome=fields.get('outcome','NO_TERMINAL_RESULT'),
+              correct=int(fields.get('correct','-1')),
+              prebuilt=int(fields.get('prebuilt','-1')),
+              total=int(fields.get('total','-1')),
+              new_correct=int(fields.get('newCorrect','-1')),
+              elapsed_ticks=int(fields.get('ticks','-1')),
+              progress_windows=progress_windows,longest_without_new_block_ticks=longest_gap,
+              worker_handoffs=sum('[BUILDER HANDOFF] ' in s for s in lines),
+              productive_handoffs=sum('[NN PRODUCTIVE HANDOFF] ' in s for s in lines),
+              propeller_handoffs=sum('[PROPELLER HANDOFF] ' in s for s in lines),
+              neural_placement_rewards=sum('WORLD_COMPLETED' in s and
+                  '[NN FRONTIER FEEDBACK]' in s for s in lines))
+          result['valid']=result['game_test_exit']==0 and term is not None and (
+                  result['total']==3493 and result['prebuilt']==0 and
+                  0<=result['correct']<=3493 and result['new_correct']==result['correct'])
+          (p/'result.json').write_text(json.dumps(result,indent=2)+'\n')
+          print('[NN PRODUCTIVE CONSTRUCTION RESULT] '+json.dumps(result))
+          with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a') as out:
+              out.write('## '+result['mode']+' / seed '+str(result['seed'])+'\n\n')
+              out.write('Real blocks: '+str(result['correct'])+'/3493; '+result['outcome']+
+                        '; longest nonproductive gap '+str(result['longest_without_new_block_ticks'])+
+                        ' ticks; exact-route handoffs '+str(result['productive_handoffs'])+'\n')
+          if not result['valid']:
+              raise SystemExit('Invalid physical assessment: missing or nonphysical Dome result')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nn-productive-${{ matrix.mode }}-${{ matrix.seed }}
+          path: build/nn-productive
+          retention-days: 30
+          if-no-files-found: warn
+
+  compare:
+    if: always() && needs.validate.result == 'success'
+    needs: [validate, physical]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nn-productive-*
+          path: build/comparison
+      - name: Compare real placements and report construction acceptance
+        run: |
+          python3 - <<'PY'
+          import json,statistics
+          from pathlib import Path
+          root=Path('build/comparison')
+          results={}
+          for mode in ('baseline','productive'):
+              results[mode]=[]
+              for seed in (1,2):
+                  p=root/f'nn-productive-{mode}-{seed}'/'result.json'
+                  if not p.exists():raise SystemExit('Missing physical assessment '+str(p))
+                  r=json.loads(p.read_text())
+                  if not r['valid'] or r['seed']!=seed or r['mode']!=mode:
+                      raise SystemExit('Corrupt/unverified comparison '+str(p))
+                  results[mode].append(r)
+          report={'schema':1,'runs':results}
+          for mode,rows in results.items():
+              report[mode]={'median_correct':statistics.median(r['correct'] for r in rows),
+                  'complete':sum(r['outcome']=='COMPLETE' and r['correct']==3493 for r in rows),
+                  'median_nonproductive_gap_ticks':statistics.median(
+                      r['longest_without_new_block_ticks'] for r in rows)}
+          report['delta_median_correct']=report['productive']['median_correct']-report['baseline']['median_correct']
+          report['acceptance_met']=report['productive']['complete']==2 and all(
+              r['longest_without_new_block_ticks']<2400 for r in results['productive'])
+          (root/'report.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('[NN PRODUCTIVE COMPARISON] '+json.dumps(report))
+          with Path(__import__('os').environ['GITHUB_STEP_SUMMARY']).open('a') as out:
+              out.write('## Verified construction A/B\n\n')
+              out.write('| Metric | Baseline | Productive |\n|---|---:|---:|\n')
+              for name,key in [('Median correct blocks','median_correct'),
+                               ('Full Dome completions','complete'),
+                               ('Median no-block gap (ticks)','median_nonproductive_gap_ticks')]:
+                  out.write('| '+name+' | '+str(report['baseline'][key])+' | '+
+                            str(report['productive'][key])+' |\n')
+              out.write('\nFull completion + no >=2400 tick gap: **'+
+                        ('PASS' if report['acceptance_met'] else 'NOT YET')+'**\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nn-productive-comparison
+          path: build/comparison/report.json
+          retention-days: 30
