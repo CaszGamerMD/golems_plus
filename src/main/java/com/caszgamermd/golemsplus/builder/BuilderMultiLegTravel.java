@@ -209,7 +209,8 @@ final class BuilderMultiLegTravel {
         // separation, but every edge is still validated by the same real
         // collision-swept propeller path and a grounded landing. Normal
         // builder work keeps the legacy 2m envelope.
-        int radius=BuilderFlight.HORIZONTAL_LIMIT>3.0?3:2;
+        int radius=BuilderFlight.HORIZONTAL_LIMIT>4.0?4
+                :BuilderFlight.HORIZONTAL_LIMIT>3.0?3:2;
         int radiusSq=radius*radius;
         for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++){
             if(dx*dx+dz*dz>radiusSq)continue;
