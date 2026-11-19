@@ -92,6 +92,13 @@ final class BuilderWaypointTravel {
                 &&horizontal<=12&&Math.abs(verticalDelta)<=3
                 &&grounded&&!powered&&disconnected;
     }
+    /** When the roof is only slightly higher, first close the horizontal
+     * gap using actual walking/flight. A distant grapple attachment would
+     * steal hundreds of ticks attempting to walk to an unreachable line.
+     * Large climbs may start farther away to find a viable exterior anchor. */
+    static boolean shouldTryWaypointGrapple(double horizontal,int rise){
+        return horizontal<=8.0||rise>=9;
+    }
     static boolean needsElevation(BlockPos here,BlockPos goal){
         return Math.abs(here.getY()-goal.getY())>=3;
     }
@@ -677,7 +684,9 @@ final class BuilderWaypointTravel {
             if(horizontal<=12&&BuilderMultiLegTravel.stand(level,worker,destination))
                 return true;
         }else if(high){
-            if(GRAPPLE_TRAINING&&horizontal<=16&&now>=p.nextGrappleProbe){
+            if(GRAPPLE_TRAINING&&horizontal<=16
+                    &&shouldTryWaypointGrapple(horizontal,destination.getY()-here.getY())
+                    &&now>=p.nextGrappleProbe){
                 p.nextGrappleProbe=now+85;
                 int rise=destination.getY()-here.getY();
                 for(int targetRise:new int[]{16,12,8,20}){
