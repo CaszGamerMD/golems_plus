@@ -21,5 +21,8 @@ class BuilderNNProductiveWorkTest {
         assertFalse(BuilderNNProductiveWork.exhaustedRejectedRoute(4,5));
         assertTrue(BuilderNNProductiveWork.exhaustedRejectedRoute(4,15));
         assertTrue(BuilderNNProductiveWork.exhaustedRejectedRoute(8,60));
+        assertFalse(BuilderNNProductiveWork.missingWorkPoseTimedOut(0));
+        assertFalse(BuilderNNProductiveWork.missingWorkPoseTimedOut(99));
+        assertTrue(BuilderNNProductiveWork.missingWorkPoseTimedOut(100));
     }
 }
