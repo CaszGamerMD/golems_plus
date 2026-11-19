@@ -86,12 +86,6 @@ final class BuilderMultiLegTravel {
         if(t!=null&&t.goal.kind()==Kind.STAND)
             BuilderNNRoofManeuverPolicy.failed(level,worker,t.neural,reason);
     }
-    /** Preserve a committed waypoint flight chain across grounded controller ticks.
-     * Otherwise a transient A* result can preempt it between safe landings. */
-    static boolean committedStand(BuilderGolem worker,BlockPos target){
-        Trip t=trips.get(worker);
-        return t!=null&&t.goal.kind()==Kind.STAND&&t.goal.target().equals(target);
-    }
     static boolean working(BuilderGolem worker,BlockPos target){
         Trip t=trips.get(worker);return t!=null&&t.goal.kind()==Kind.WORK&&t.goal.target().equals(target);
     }

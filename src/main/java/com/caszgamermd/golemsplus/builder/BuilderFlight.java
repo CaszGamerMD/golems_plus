@@ -33,6 +33,8 @@ public final class BuilderFlight {
     // hover loop. The original safe landing sequence remains a fallback.
     private static final boolean DIVERSE_HOVER_RECOVERY=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_DIVERSE_HOVER_RECOVERY","false"));
+    private static final boolean ROOF_CLEARANCE_FLIGHT=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_ROOF_CLEARANCE_FLIGHT","false"));
     public static final double HORIZONTAL_LIMIT = WIDE_ROOF_HOPS ? 3.5 : 2.0;
     private static final double HORIZONTAL_LIMIT_SQUARED = HORIZONTAL_LIMIT * HORIZONTAL_LIMIT;
     private static final Map<BuilderGolem, Flight> flights = new WeakHashMap<>();
@@ -179,12 +181,33 @@ public final class BuilderFlight {
         double dx = point.x - origin.x, dz = point.z - origin.z;
         return dx * dx + dz * dz <= HORIZONTAL_LIMIT_SQUARED + 1e-6;
     }
+    /** Preserve ordinary flights: only ascending near-level roof crossings
+     * with meaningful lateral motion merit a clearance arc. */
+    static boolean preferRoofClearance(Vec3 from,Vec3 to){
+        double rise=to.y-from.y;
+        return rise>=.85&&rise<=4.0
+                &&Math.hypot(to.x-from.x,to.z-from.z)>=1.5;
+    }
     // Vertical first, or a short sideways adjustment followed by vertical.
     // No unrestricted 3D search, repeated horizontal hops, or grapple anchor.
     private static List<Vec3> path(ServerLevel level, BuilderGolem worker,
             Vec3 from, Vec3 to, Vec3 anchor) {
         if (!inEnvelope(anchor, from) || !inEnvelope(anchor, to)
                 || !clear(level, worker, to)) return List.of();
+        // On an ascending roof hop, a nominal sideward move at the
+        // landing elevation can graze an uneven roof lip. Prefer an extra
+        // two-block clearance arc only when its entire swept body is clear.
+        // The same takeoff envelope and certified supported destination
+        // still apply; failed checks fall back to the original path.
+        if(ROOF_CLEARANCE_FLIGHT&&preferRoofClearance(from,to)){
+            double height=Math.max(from.y,to.y)+2;
+            Vec3 up=new Vec3(from.x,height,from.z);
+            Vec3 across=new Vec3(to.x,height,to.z);
+            if(sweep(level,worker,from,up)
+                    &&sweep(level,worker,up,across)
+                    &&sweep(level,worker,across,to))
+                return List.of(up,across,to);
+        }
         Vec3 upper = new Vec3(from.x, to.y, from.z);
         if (sweep(level, worker, from, upper) && sweep(level, worker, upper, to))
             return upper.distanceToSqr(to) < .0001 ? List.of(to) : List.of(upper, to);

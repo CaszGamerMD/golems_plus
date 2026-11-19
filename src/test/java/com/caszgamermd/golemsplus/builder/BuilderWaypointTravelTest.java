@@ -175,6 +175,19 @@ class BuilderWaypointTravelTest {
         assertTrue(BuilderWaypointTravel.shouldApproachOnFoot(ground,
                 new BlockPos(38,30,0)));
     }
+    @Test void clearanceArcDoesNotAlterOrdinaryWalksOrDescents(){
+        var from=new net.minecraft.world.phys.Vec3(0.5,10,0.5);
+        assertTrue(BuilderFlight.preferRoofClearance(from,
+                new net.minecraft.world.phys.Vec3(2.5,12,2.5)));
+        assertFalse(BuilderFlight.preferRoofClearance(from,
+                new net.minecraft.world.phys.Vec3(2.5,10,2.5)));
+        assertFalse(BuilderFlight.preferRoofClearance(from,
+                new net.minecraft.world.phys.Vec3(2.5,7,2.5)));
+        assertFalse(BuilderFlight.preferRoofClearance(from,
+                new net.minecraft.world.phys.Vec3(.5,13,.5)));
+        assertFalse(BuilderFlight.preferRoofClearance(from,
+                new net.minecraft.world.phys.Vec3(2.5,20,2.5)));
+    }
     @Test void recoveryPrefersUntriedSupportedLandingButRetainsFallback(){
         BlockPos repeated=new BlockPos(4,20,5);
         BlockPos alternate=new BlockPos(5,20,6);
