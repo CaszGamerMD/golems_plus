@@ -93,6 +93,15 @@ class BuilderWaypointTravelTest {
                 "Never interrupt a collision-certified powered flight");
     }
 
+    @Test void stagnantWaypointWalkToCertifiedLaunchMustReplanQuickly(){
+        assertEquals(115,BuilderMultiLegTravel.launchProgressTimeout(true,true));
+        assertEquals(400,BuilderMultiLegTravel.launchProgressTimeout(false,true));
+        assertEquals(400,BuilderMultiLegTravel.launchProgressTimeout(true,false));
+        assertEquals(850,BuilderMultiLegTravel.rejectionWindow(
+                "stalled_launch_approach",true));
+        assertEquals(240,BuilderMultiLegTravel.rejectionWindow(
+                "stalled_launch_approach",false));
+    }
     @Test void rejectBadPoweredLegForWholeAttemptWithoutPoisoningTransientTraffic(){
         assertEquals(850,BuilderMultiLegTravel.rejectionWindow(
                 "repeated_centered_launch_reject",true));

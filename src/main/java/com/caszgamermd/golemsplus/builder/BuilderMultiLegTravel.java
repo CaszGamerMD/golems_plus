@@ -44,6 +44,13 @@ final class BuilderMultiLegTravel {
     // This is per-worker, temporary, and never bypasses collision checks.
     private static final Map<BuilderGolem,Map<Leg,Long>> rejectedLegs=new WeakHashMap<>();
     private static final long FAILED_LEG_RETRY_TICKS=240;
+    // Navigation-only experiment: a physical walk that cannot reach the
+    // certified flight launch must not consume half of a short waypoint trial.
+    private static final boolean WAYPOINT_LAUNCH_RECOVERY=Boolean.parseBoolean(
+            System.getenv().getOrDefault("GOLEMS_NN_WAYPOINT_LAUNCH_RECOVERY","false"));
+    static int launchProgressTimeout(boolean waypointRecovery,boolean stand){
+        return waypointRecovery&&stand?115:400;
+    }
     private static final boolean STICKY_PHYSICAL_REJECTIONS=Boolean.parseBoolean(
             System.getenv().getOrDefault("GOLEMS_NN_STICKY_ROOF_REJECTIONS","false"));
     static long rejectionWindow(String reason,boolean sticky){
@@ -53,7 +60,8 @@ final class BuilderMultiLegTravel {
         // but never apply this experimental exclusion to ordinary builds.
         if(sticky&&("repeated_centered_launch_reject".equals(reason)
                 ||"stopped_hover_landing_recovery".equals(reason)
-                ||"flight_ended_short".equals(reason)))return 850;
+                ||"flight_ended_short".equals(reason)
+                ||"stalled_launch_approach".equals(reason)))return 850;
         return FAILED_LEG_RETRY_TICKS;
     }
     static boolean staleFlightLeg(boolean moving,long elapsed){
@@ -473,7 +481,9 @@ final class BuilderMultiLegTravel {
         }else{
             double d=worker.position().distanceToSqr(feet(level,leg.launch()));
             if(d<t.best-.04){t.best=d;t.progress=now;}
-            if(now-t.progress<400&&WorkerNavigation.canStandOn(level,worker,leg.launch())
+            if(now-t.progress<launchProgressTimeout(
+                    WAYPOINT_LAUNCH_RECOVERY,goal.kind()==Kind.STAND)
+                    &&WorkerNavigation.canStandOn(level,worker,leg.launch())
                     &&WorkerNavigation.canStandOn(level,worker,leg.landing())){
                 if(centeredLaunch(level,worker,leg.launch())){
                     if(BuilderFlight.requestSupportedLanding(level,worker,leg.landing())){
@@ -495,8 +505,13 @@ final class BuilderMultiLegTravel {
             }
         }
         BuilderTrace.decision(level,worker,"MULTI_TRIP_REPLAN",leg.landing(),"blocked support or physical leg stopped");
-        reject(worker,leg,now,"timeout_or_blocked");
-        BuilderNNRoofManeuverPolicy.failed(level,worker,t.neural,"stalled_or_blocked_leg");
+        boolean exhaustedLaunch=WAYPOINT_LAUNCH_RECOVERY
+                &&goal.kind()==Kind.STAND&&!t.flying
+                &&now-t.progress>=launchProgressTimeout(true,true);
+        reject(worker,leg,now,exhaustedLaunch
+                ?"stalled_launch_approach":"timeout_or_blocked");
+        BuilderNNRoofManeuverPolicy.failed(level,worker,t.neural,
+                exhaustedLaunch?"stalled_launch_approach":"stalled_or_blocked_leg");
         trips.remove(worker);searchAfter.put(worker,now+60);
         if(!BuilderFlight.active(worker))WorkerNavigation.stop(worker);
         return false;
