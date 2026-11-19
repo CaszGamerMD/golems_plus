@@ -29,5 +29,15 @@ final class BuilderNNProductiveWork {
         return attempts >= 4 && elapsedTicks >= 10;
     }
 
+    /**
+     * Reaching an approximate location is not a usable construction pose.
+     * Once safe exact work-stance and paid access alternatives have failed
+     * for five seconds of game time, hand the unchanged cell to another
+     * worker. The normal watchdog handles real moving routes separately.
+     */
+    static boolean missingWorkPoseTimedOut(long elapsedTicks) {
+        return elapsedTicks >= 100;
+    }
+
     private BuilderNNProductiveWork() {}
 }
