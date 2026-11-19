@@ -507,6 +507,12 @@ final class BuilderWaypointTravel {
             p.bestGoalScore=goalScore;p.lastGoalImprovement=now;
             p.hoverLandings.clear(); // genuine goal progress unlocks old landings
         }
+        // A committed multi-flight route owns its intermediate grounded legs.
+        // Reconcile the real landing and attempt its next certified leg BEFORE
+        // trying a new native walk or stage route. A failed/stale leg returns
+        // false and falls through to the normal independent recovery planner.
+        if(BuilderMultiLegTravel.committedStand(worker,destination)
+                &&BuilderMultiLegTravel.stand(level,worker,destination))return true;
         if(ISLAND_EGRESS&&now>=p.nextIslandEscape
                 &&now-p.lastGoalImprovement>=170&&horizontal<=12
                 &&Math.abs(here.getY()-destination.getY())<=3
