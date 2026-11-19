@@ -190,8 +190,30 @@ public final class BuilderFlight {
     // No unrestricted 3D search, repeated horizontal hops, or grapple anchor.
     private static List<Vec3> path(ServerLevel level, BuilderGolem worker,
             Vec3 from, Vec3 to, Vec3 anchor) {
+        return path(level,worker,from,to,anchor,false);
+    }
+    static double roofArcPeakHeight(Vec3 from,Vec3 to){
+        return Math.max(from.y,to.y)+2.0;
+    }
+    private static List<Vec3> path(ServerLevel level, BuilderGolem worker,
+            Vec3 from, Vec3 to, Vec3 anchor,boolean roofClearance) {
         if (!inEnvelope(anchor, from) || !inEnvelope(anchor, to)
                 || !clear(level, worker, to)) return List.of();
+        // A failed short roof-seam flight can skim a ridge after physical
+        // movement starts, despite a minimal path from the earlier pose.
+        // The explicit roof-recovery caller may request a higher arc.
+        // Every segment is swept; it cannot jump through a ceiling.
+        if(roofClearance){
+            double peak=roofArcPeakHeight(from,to);
+            if(peak+2<=level.getMaxY()){
+                Vec3 up=new Vec3(from.x,peak,from.z);
+                Vec3 across=new Vec3(to.x,peak,to.z);
+                if(sweep(level,worker,from,up)
+                        &&sweep(level,worker,up,across)
+                        &&sweep(level,worker,across,to))
+                    return List.of(up,across,to);
+            }
+        }
         Vec3 upper = new Vec3(from.x, to.y, from.z);
         if (sweep(level, worker, from, upper) && sweep(level, worker, upper, to))
             return upper.distanceToSqr(to) < .0001 ? List.of(to) : List.of(upper, to);
@@ -338,6 +360,16 @@ public final class BuilderFlight {
      * A nominal two-metre center-to-center leg may be 2.025m from the
      * physical walking endpoint. Trim the landing point, NOT the envelope. */
     static boolean requestSupportedLanding(ServerLevel level,BuilderGolem worker,BlockPos goal){
+        return requestSupportedLanding(level,worker,goal,false);
+    }
+    /** The safe extra-clearance arc is opt-in for physical roof progress
+     * rescue, never ordinary builder or long-range flight. */
+    static boolean requestSupportedRoofProgressHop(
+            ServerLevel level,BuilderGolem worker,BlockPos goal){
+        return requestSupportedLanding(level,worker,goal,true);
+    }
+    private static boolean requestSupportedLanding(ServerLevel level,
+            BuilderGolem worker,BlockPos goal,boolean roofClearance){
         if(goal==null||!enabled(worker)||BuilderGrappleAccess.active(worker)
                 ||!WorkerNavigation.canStandOn(level,worker,goal))return false;
         // A legal stand may be a bottom slab, stair, soul sand or
@@ -359,7 +391,7 @@ public final class BuilderFlight {
             if(!level.getBlockState(floor).isFaceSturdy(level,floor,Direction.UP)
                     ||!clear(level,worker,landing))return false;
         }
-        return requestPosition(level,worker,goal,landing);
+        return requestPosition(level,worker,goal,landing,roofClearance);
     }
     static boolean canFlyBetween(ServerLevel level,BuilderGolem worker,BlockPos from,BlockPos to){
         if(!WorkerNavigation.canStandOn(level,worker,from)||!WorkerNavigation.canStandOn(level,worker,to))return false;
@@ -369,7 +401,12 @@ public final class BuilderFlight {
     private static Vec3 supportedFeet(ServerLevel level,BlockPos stand){
         return new Vec3(stand.getX()+.5,WorkerNavigation.surveyFloorHeight(level,stand),stand.getZ()+.5);
     }
-    private static boolean requestPosition(ServerLevel level,BuilderGolem worker,BlockPos goal,Vec3 destination){
+    private static boolean requestPosition(ServerLevel level,BuilderGolem worker,
+            BlockPos goal,Vec3 destination){
+        return requestPosition(level,worker,goal,destination,false);
+    }
+    private static boolean requestPosition(ServerLevel level,BuilderGolem worker,
+            BlockPos goal,Vec3 destination,boolean roofClearance){
         if(BuilderGrappleAccess.active(worker)||!inEnvelope(origin(worker),destination)){
             BuilderTrace.decision(level,worker,"FLIGHT_REJECT",goal,
                     BuilderGrappleAccess.active(worker)?"grapple owns motion":"outside horizontal envelope");
@@ -384,7 +421,8 @@ public final class BuilderFlight {
         if (flight != null && goal.equals(flight.goal) && level.getGameTime() < flight.retryAt
                 && flight.lastFailedDestination!=null) return false;
         BuilderChunkTickets.destination(level, worker, goal);
-        List<Vec3> path = path(level,worker,worker.position(),destination,origin(worker));
+        List<Vec3> path = path(level,worker,worker.position(),destination,
+                origin(worker),roofClearance);
         if(flight!=null&&flight.lastFailedDestination!=null
                 &&level.getGameTime()<flight.failedUntil
                 &&destination.distanceToSqr(flight.lastFailedDestination)<.04)return false;

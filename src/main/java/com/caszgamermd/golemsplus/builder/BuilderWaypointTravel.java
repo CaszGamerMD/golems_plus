@@ -567,7 +567,8 @@ final class BuilderWaypointTravel {
             p.nextRoofHopProbe=now+45;
             BlockPos landing=chooseProgressRoofHop(
                     level,worker,destination,Set.copyOf(p.visited));
-            if(landing!=null&&BuilderFlight.requestSupportedLanding(level,worker,landing)){
+            if(landing!=null&&BuilderFlight.requestSupportedRoofProgressHop(
+                    level,worker,landing)){
                 BuilderMultiLegTravel.clear(worker);
                 BuilderNNRoofManeuverPolicy.handedOff(worker.getUUID());
                 System.out.println("[NN WAYPOINT PROGRESS ROOF HOP] worker="

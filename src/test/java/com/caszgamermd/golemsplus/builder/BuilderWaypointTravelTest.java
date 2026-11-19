@@ -173,6 +173,13 @@ class BuilderWaypointTravelTest {
                 "Do not interfere with falling or moving golems");
     }
 
+    @Test void roofProgressArcKeepsVerticalClearanceWithoutExpandingHorizontally(){
+        var from=new net.minecraft.world.phys.Vec3(1056.5,-27,1048.5);
+        var to=new net.minecraft.world.phys.Vec3(1052.5,-23,1048.5);
+        assertEquals(-21.0,BuilderFlight.roofArcPeakHeight(from,to));
+        assertEquals(-20.0,BuilderFlight.roofArcPeakHeight(to,
+                new net.minecraft.world.phys.Vec3(1050.5,-22,1049.5)));
+    }
     @Test void progressiveRoofHopRequiresActualLateralGainAndBoundedElevation(){
         BlockPos from=new BlockPos(1057,-28,1047);
         BlockPos goal=new BlockPos(1046,-23,1048);
