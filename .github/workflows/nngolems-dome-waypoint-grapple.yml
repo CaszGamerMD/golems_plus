@@ -64,7 +64,7 @@ jobs:
       GOLEMS_NN_ROOF_MANEUVER_POLICY: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
       GOLEMS_NN_FROZEN: ${{ matrix.mode == 'neural' && 'true' || 'false' }}
       GOLEMS_NN_LONG_DETOUR: 'true'
-      GOLEMS_NN_SLOPED_ROOF_LAUNCHES: 'false'
+      GOLEMS_NN_SLOPED_ROOF_LAUNCHES: 'true'
       GOLEMS_NN_WAYPOINT_GRAPPLE: 'true'
       GOLEMS_NN_WAYPOINT_GRAPPLE_RECOVERY: 'true'
       GOLEMS_NN_WAYPOINT_LAUNCH_RECOVERY: 'true'
