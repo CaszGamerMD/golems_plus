@@ -147,6 +147,24 @@ public final class BuilderBuildService {
         int lookaheadScanned;
         boolean lookaheadFinished;
         boolean fastFollowup;
+        // Rejected exact work routes may have alternate executable poses.
+        // Test a few before relinquishing the unfinished cell, but never
+        // let repeated failed requests become a multi-minute crew stall.
+        int rejectedWorkRoutes;
+        long firstRejectedWorkRouteTick=-1;
+        void resetRejectedWorkRoutes(){
+            rejectedWorkRoutes=0;
+            firstRejectedWorkRouteTick=-1;
+        }
+        boolean noteRejectedWorkRoute(long now){
+            if(firstRejectedWorkRouteTick<0
+                    ||now-firstRejectedWorkRouteTick>80){
+                rejectedWorkRoutes=0;
+                firstRejectedWorkRouteTick=now;
+            }
+            return BuilderNNProductiveWork.exhaustedRejectedRoute(
+                    ++rejectedWorkRoutes,now-firstRejectedWorkRouteTick);
+        }
         // A completed or idle-layer Builder must PHYSICALLY reach OnSite
         // before another rooftop rescue assignment may recruit it.
         // Otherwise the six-second assist watchdog can keep a "finished"
@@ -168,11 +186,13 @@ public final class BuilderBuildService {
             failedApproachFrom=null;
             lastFailedStep=-1;
             retreatUntil=-1;
+            resetRejectedWorkRoutes();
         }
         void setStep(int next){
             if(index!=next){
                 index=next;phase=Action.STAGE_MATERIALS;
                 blockedSince=-1;workTravelSince=-1;
+                resetRejectedWorkRoutes();
                     bestTargetDistance=Double.POSITIVE_INFINITY;
                 lastTargetProgressTick=-1;
                 lastMovementTick=-1;lastPerchEscapeTick=-1000;
@@ -612,13 +632,21 @@ public final class BuilderBuildService {
             var step=steps.get(idx);
             double dx=step.x()-previous.x(),dz=step.z()-previous.z();
             double locality=dx*dx+dz*dz;
-            if(locality>9||locality>=bestDistance)continue;
+            // The old 3-block strip cutoff missed other in-reach cells
+            // on the SAME real roof stance. Never broaden the reach or
+            // collision check; only remove this extra locality cutoff.
+            if(!BuilderNNProductiveWork.ENABLED&&locality>9)continue;
             BlockPos target=new BlockPos(step.x(),step.y(),step.z());
-            if(!level.hasChunkAt(target)
+            double handDistance=worker.distanceToSqr(target.getX()+.5,
+                    target.getY()+.5,target.getZ()+.5);
+            double priority=BuilderNNProductiveWork.ENABLED
+                    ?BuilderNNProductiveWork.samePoseScore(handDistance,locality)
+                    :locality;
+            if(priority>=bestDistance
+                    ||!level.hasChunkAt(target)
                     ||!hovering&&(!BuilderPlacementSpace.placementHeight(target,worker)
                         ||!BuilderPlacementSpace.horizontalClear(target,worker))
-                    ||worker.distanceToSqr(target.getX()+.5,
-                            target.getY()+.5,target.getZ()+.5)>BuilderConstructionPlanner.REACH_SQUARED)continue;
+                    ||handDistance>BuilderConstructionPlanner.REACH_SQUARED)continue;
             var resolved=BuilderBlockResolver.resolve(step.encodedState(),
                     BuildSite.Rotation.values()[table.builderRotation()/90],
                     BuildSite.Mirror.values()[table.builderMirror()]);
@@ -634,7 +662,7 @@ public final class BuilderBuildService {
                         :BuilderPlacementSpace.safeFractionalCapPose(level,worker,target)
                             ||BuilderConstructionPlanner.safeStand(level,worker,target,pose)))continue;
             best=idx;
-            bestDistance=locality;
+            bestDistance=priority;
         }
         return best<0?null:
                 new BuilderConstructionPlanner.Choice(best,hovering?null:pose,false,
@@ -2368,19 +2396,44 @@ public final class BuilderBuildService {
                     boolean moving=com.caszgamermd.golemsplus.worker
                             .WorkerNavigation.routeToExact(
                                     level,worker,approach,1.0);
-                    if(!moving){
-                        // Approximate routeTo() may stop short of the EXACT
-                        // 0.8m-clearance pose on narrow roofs. It reported
-                        // success while the worker repeatedly missed its
-                        // actual placement stance. Never use it as a
-                        // fallback for an exact construction destination.
-                        BuilderPlacementSpace.invalidateApproach(worker,pos);
+                    if(moving){
+                        activity.resetRejectedWorkRoutes();
+                        return;
                     }
-                    if(!moving&&scaffoldBlockedWork(
-                            level,worker,table,owner,pos,plan.steps()))return;
-                    if(!moving)
+                    // The trained route may reject this exact stance even
+                    // though the planner had certified it earlier. Try a
+                    // DIFFERENT safe stance rather than retrying one failed
+                    // endpoint. Do not use approximate routeTo() to bypass
+                    // the real 0.8 m placement clearance.
+                    BuilderPlacementSpace.invalidateApproach(worker,pos);
+                    if(scaffoldBlockedWork(
+                            level,worker,table,owner,pos,plan.steps())){
+                        activity.resetRejectedWorkRoutes();
+                        return;
+                    }
+                    long rejectedAt=level.getGameTime();
+                    if(!BuilderNNProductiveWork.ENABLED
+                            ||activity.noteRejectedWorkRoute(rejectedAt)){
                         table.waitForBuilderAccess(worker.getUUID(),index,
-                                level.getGameTime(),"trained routes rejected work pose and scaffold");
+                                rejectedAt,"trained exact work stances rejected");
+                        if(BuilderNNProductiveWork.ENABLED){
+                            // Failure is attached to the real block and
+                            // recorded for neural training. Another builder
+                            // may attempt it; no material is consumed and
+                            // the existing schematic gate stays unchanged.
+                            publishHandoff(table,worker.getUUID(),index,
+                                    rejectedAt,"exact work routes rejected");
+                            activity.lastFailedStep=index;
+                            activity.failedApproachFrom=worker.blockPosition();
+                            activity.alternateSideRequested=
+                                    activity.alternateSideAttempts<3;
+                            activity.retreatUntil=rejectedAt+100;
+                            System.out.println("[NN PRODUCTIVE HANDOFF] worker="
+                                    +worker.getUUID()+" step="+index
+                                    +" exactRoutesRejected="+activity.rejectedWorkRoutes);
+                        }
+                        activity.resetRejectedWorkRoutes();
+                    }
                     return;
                 }
                 // An enclosed or connected roof cell can need temporary
