@@ -1,5 +1,5 @@
 name: NNGolems live neural decision pilot - Dome
-run-name: "NN live-flight A/B Dome (${{ github.sha }})"
+run-name: "NN full Dome current-build baseline vs live neural (${{ github.sha }})"
 on:
   push:
     branches: [NNGolems]
@@ -57,10 +57,19 @@ jobs:
       NN_REPEAT_TRIAL: '1'
       NN_TEAM_SIZE: '8'
       NN_DOME_MODE: AUTO8
+      NN_DOME_PREFILL_BELOW_REL_Y: '-1'
+      NN_DOME_RUN_TICKS: '180000'
+      NN_DOME_WALL_SECONDS: '900'
       NN_SPEED_TEST: 'true'
       NN_SPEED_TICK_LIMIT: '180000'
       NN_COURSE_SECONDS: '900'
       NN_TEAM_STALL_TICKS: '2400'
+      GOLEMS_NN_PRODUCTIVE_BUILD: 'true'
+      GOLEMS_NN_ROOF_WIDE_HOPS: 'true'
+      GOLEMS_NN_EXTENDED_ROOF_SEAM: 'true'
+      GOLEMS_NN_FRONTIER_CONTROL: 'true'
+      GOLEMS_NN_DETOUR_TRAINING: 'true'
+      GOLEMS_NN_LONG_DETOUR: 'true'
       GOLEMS_NN_RECORD: 'true'
       GOLEMS_NN_TEAM_RECORD: 'true'
       GOLEMS_NN_SHADOW: 'true'
