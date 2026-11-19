@@ -118,6 +118,19 @@ public final class BuilderNNDomeWaypointGameTest {
                 w.rewarded++;
         }else{
             w.failed++;
+            // Capture the real controller state BEFORE abortWaypoint clears
+            // its legs and the next attempt overwrites the destination.
+            // A missed roof waypoint must be diagnosable as blocked flight,
+            // disconnected support, or a route-progress loop.
+            System.out.println("[NN DOME WAYPOINT FAILURE DIAGNOSTIC] worker="+w.id
+                    +" attempt="+w.attempt+" destination="+target.id()
+                    +" targetFeet="+target.feet()
+                    +" actualFeet="+w.entity.position()
+                    +" waypoint="+BuilderWaypointTravel.debug(w.entity)
+                    +" multiLeg="+BuilderMultiLegTravel.traceStatus(w.entity)
+                    +" grapple="+BuilderGrappleAccess.debug(w.entity)
+                    +" flightActive="+BuilderFlight.active(w.entity)
+                    +" flightMoving="+BuilderFlight.moving(w.entity));
             BuilderMultiLegTravel.abortWaypoint(level,w.entity,"waypoint_"+reason);
             BuilderNNRoofManeuverPolicy.handedOff(w.entity.getUUID());
         }
