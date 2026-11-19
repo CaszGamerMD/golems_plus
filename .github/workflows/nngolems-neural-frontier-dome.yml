@@ -1,5 +1,6 @@
 name: NNGolems trained frontier transfer pilot - Dome
 # Full fresh run after NN initializer regression fix; always test branch HEAD.
+# 2026-11-18: matched full Dome construction run before target-five waypoint work.
 run-name: "NN transferred-frontier A/B Dome (${{ github.sha }})"
 on:
   push:
