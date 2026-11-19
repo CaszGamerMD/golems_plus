@@ -1475,8 +1475,25 @@ public final class BuilderBuildService {
                 }
                 zone=expanded;
             }
+            // A published failure is an immediate call for help, even
+            // before the normal ten-second roof-rescue watchdog expires.
+            boolean teammateRequested=false;
+            var requests=handoffBoard.get(table);
+            if(currentClaim<0&&requests!=null)
+                for(var request:requests.entrySet()){
+                    int requested=request.getKey();
+                    if(request.getValue().until()>level.getGameTime()
+                            &&!request.getValue().failedWorker().equals(worker.getUUID())
+                            &&requested>=0&&requested<plan.steps().size()
+                            &&table.builderStepInActivePhase(plan.steps(),requested)
+                            &&!table.builderStepClaimedByOther(worker.getUUID(),requested)
+                            &&table.builderStepReadyForClaim(requested)){
+                        teammateRequested=true;break;
+                    }
+                }
+            boolean localHandoff=BuilderNNProductiveWork.ENABLED&&teammateRequested;
             boolean stalledRoof=roofNeedsHelp(level,table);
-            if(materialOffers.isEmpty()&&shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim,
+            if(!localHandoff&&materialOffers.isEmpty()&&shouldParkFinishedZone(table.builderZoneDone(zone),currentClaim,
                     stalledRoof)){
                 activityForFinished(worker);
                 boolean parked=parkAtOnSite(level,worker,table);
@@ -1505,7 +1522,7 @@ public final class BuilderBuildService {
             // This keeps finished Builders out of the placement envelopes
             // seen in the narrow dome cap test. It can rejoin once it
             // has actually arrived at OnSite; no claimed rescue is lost.
-            if(ownLayerClear&&index<0&&materialOffers.isEmpty()){
+            if(ownLayerClear&&index<0&&!localHandoff&&materialOffers.isEmpty()){
                 BlockPos depot=table.builderUnloadingStorage();
                 if(depot==null)depot=table.getBlockPos();
                 if(shouldEvacuateIdleLayer(true,index,
@@ -1515,21 +1532,6 @@ public final class BuilderBuildService {
                     return;
                 }
             }
-            // A published failure is an immediate call for help, even
-            // before the normal ten-second roof-rescue watchdog expires.
-            boolean teammateRequested=false;
-            var requests=handoffBoard.get(table);
-            if(requests!=null)
-                for(var request:requests.entrySet()){
-                    int requested=request.getKey();
-                    if(request.getValue().until()>level.getGameTime()
-                            &&!request.getValue().failedWorker().equals(worker.getUUID())
-                            &&requested>=0&&requested<plan.steps().size()
-                            &&table.builderStepInActivePhase(plan.steps(),requested)
-                            &&table.builderStepReadyForClaim(requested)){
-                        teammateRequested=true;break;
-                    }
-                }
             boolean emergencyRoofAssist=ownLayerClear&&(teammateRequested||stalledRoof)
                     ||index>=0&&!zone.contains(index);
             if(!materialOffers.isEmpty()){
