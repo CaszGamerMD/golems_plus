@@ -1096,16 +1096,40 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private int[] dependencyLayers,dependencyOrder;
     private UUID dependencyJob;
     private int dependencyPointer,dependencyCursor=-1;
+    private UUID lateFluidJob;
+    private final java.util.Set<Integer> lateFluidSteps=new java.util.HashSet<>();
+    private void checkLateFluidJob(){
+        if(!java.util.Objects.equals(lateFluidJob,activeOrder)){
+            lateFluidJob=activeOrder;lateFluidSteps.clear();dependencyPlan=null;
+        }
+    }
+    /** Keep the real unfinished index, but let other physical layers
+     * close a leak before trying a non-structural attachment again. */
+    public boolean deferBuilderFluid(UUID worker,int index,
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,long tick){
+        checkLateFluidJob();
+        if(activeOrder==null||builderCommissioning()||builderClaims.getOrDefault(worker,-1)!=index
+                ||lateFluidSteps.contains(index)||builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN)return false;
+        boolean other=false;
+        for(int i=builderCursor;i<steps.size();i++)if(i!=index&&!builderFinishedSteps.contains(i)&&!lateFluidSteps.contains(i)
+                &&!steps.get(i).ignorePlant()&&!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(i).encodedState())){other=true;break;}
+        if(!other)return false;
+        lateFluidSteps.add(index);dependencyPlan=null;
+        waitForBuilderAccess(worker,index,tick,"fluid attachment deferred for final repair");
+        System.out.println("[BUILDER FLOW DEFERRED] index="+index);
+        return true;
+    }
     private void ensureDependencySchedule(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        checkLateFluidJob();
         if(dependencyPlan==steps&&java.util.Objects.equals(dependencyJob,activeOrder)&&dependencyCursor<=builderCursor)return;
         dependencyPlan=steps;dependencyJob=activeOrder;dependencyCursor=builderCursor;dependencyPointer=0;dependencyLayers=null;dependencyOrder=null;
         if(steps==null||builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN)return;
-        if(steps.stream().noneMatch(s->!s.ignorePlant()&&overheadAttachment(s.encodedState())))return;
+        if(lateFluidSteps.isEmpty()&&steps.stream().noneMatch(s->!s.ignorePlant()&&overheadAttachment(s.encodedState())))return;
         var supports=new java.util.HashSet<BlockPos>();
         for(var step:steps)if(!step.ignorePlant()&&!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(step.encodedState())
                 &&!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(step.encodedState())&&step.requiredItem()!=null)
             supports.add(new BlockPos(step.x(),step.y(),step.z()));
-        int[] layers=new int[steps.size()];boolean changed=false;
+        int[] layers=new int[steps.size()];boolean changed=!lateFluidSteps.isEmpty();
         var order=new java.util.ArrayList<Integer>(steps.size());
         for(int i=0;i<steps.size();i++){
             var step=steps.get(i);int y=step.y();
@@ -1113,7 +1137,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             layers[i]=y;order.add(i);
         }
         if(!changed)return;
-        order.sort(java.util.Comparator.comparingInt((Integer i)->com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(i).encodedState())?1:0)
+        order.sort(java.util.Comparator.comparingInt((Integer i)->com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(i).encodedState())?2:lateFluidSteps.contains(i)?1:0)
                 .thenComparingInt(i->layers[i])
                 .thenComparingInt(i->com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(steps.get(i).encodedState())?1:0)
                 .thenComparingInt(i->steps.get(i).y()==layers[i]?0:1).thenComparingInt(Integer::intValue));
@@ -1172,6 +1196,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             int index){
         int active=builderActiveStepIndex(steps);
         return active>=0&&index>=builderCursor&&index<steps.size()
+                &&lateFluidSteps.contains(index)==lateFluidSteps.contains(active)
                 &&builderSchedulingLayer(steps,index)==builderSchedulingLayer(steps,active)
                 &&com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
                         steps.get(index).encodedState(),steps.get(active).encodedState());
@@ -1538,8 +1563,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private UUID commissioningJob;
     private boolean commissioning;
     public boolean builderCommissioning(){return commissioning&&java.util.Objects.equals(commissioningJob,activeOrder);}
-    /** Reopen only already-paid blocks with a genuine stable manual
-     * control mismatch after construction. Original indices survive save,
+    /** Reopen already-paid blocks with stable manual control mismatches
+     * and dry targets lost to incidental fluid after construction. Original indices survive save,
      * reload, and the dependency schedule. Dynamic signal states are never
      * forced or treated as a manual click target. */
     private boolean reopenBuilderInteractions(){
@@ -1558,7 +1583,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
             if(wetCells.contains(at)&&!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState()))continue;
             if(!server.hasChunkAt(at))continue;
             var desired=com.caszgamermd.golemsplus.builder.BuilderBlockResolver.resolve(step.encodedState(),rotation,mirror);
-            if(desired!=null&&com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.needsInteraction(server.getBlockState(at),desired.state()))reopen.add(i);
+            if(desired==null)continue;
+            var actual=server.getBlockState(at);
+            if(com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.needsInteraction(actual,desired.state())
+                    ||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.recheck(actual,desired.state()))reopen.add(i);
         }
         if(reopen.isEmpty())return false;
         commissioningJob=activeOrder;commissioning=true;
@@ -1568,7 +1596,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderMissingRetries.clear();
         builderWorkDone=Math.max(0,builderWorkDone-reopen.size());
         dependencyPlan=null;activeScanPlan=null;
-        setProblem("Commissioning: "+reopen.size()+" paid manual settings to revisit");
+        setProblem("Commissioning: "+reopen.size()+" interaction or fluid-obstructed cells to revisit");
         System.out.println("[BUILDER COMMISSIONING] reopening="+reopen.size());
         return true;
     }

@@ -1,5 +1,5 @@
 name: Full Villager Matrix - 4 real Builders
-# Retest dynamic redstone waterlogging and final paid interaction reconciliation.
+# Retest paid flowing-water displacement and deferred fluid attachment repair.
 on:
   push:
     branches: [main]

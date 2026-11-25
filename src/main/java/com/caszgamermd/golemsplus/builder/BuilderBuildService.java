@@ -576,7 +576,7 @@ public final class BuilderBuildService {
                     BuildSite.Mirror.values()[table.builderMirror()]);
             if(resolved==null
                     ||!resolved.state().canSurvive(level,target)
-                    ||!level.getBlockState(target).isAir()
+                    ||!level.getBlockState(target).isAir()&&!BuilderFluidObstruction.displaceable(level.getBlockState(target),resolved.state())
                     ||step.requiredItem()!=null
                         &&worker.carriedCount(resolved.item())==0
                     ||!(hovering
@@ -615,9 +615,10 @@ public final class BuilderBuildService {
                     ||BuilderWaterPass.isWaterlogPass(step.encodedState())||BuilderWaterPass.isBubbleColumn(step.encodedState())
                     ||step.requiredItem()==null)continue;
             BlockPos at=new BlockPos(step.x(),step.y(),step.z());
-            if(at.equals(target)||at.distSqr(target)>64||!level.hasChunkAt(at)||!level.getBlockState(at).isAir())continue;
+            if(at.equals(target)||at.distSqr(target)>64||!level.hasChunkAt(at))continue;
             var resolved=BuilderBlockResolver.resolve(step.encodedState(),rotation,mirror);
-            if(resolved==null||!resolved.state().getFluidState().isEmpty()||!resolved.state().canSurvive(level,at)
+            if(resolved==null||!resolved.state().getFluidState().isEmpty()
+                    ||!level.getBlockState(at).isAir()&&!BuilderFluidObstruction.displaceable(level.getBlockState(at),resolved.state())||!resolved.state().canSurvive(level,at)
                     ||BuilderRailSlope.needsExtraStock(step.encodedState())||worker.carriedCount(resolved.item())<=0)continue;
             group.add(at);
         }
@@ -1959,14 +1960,27 @@ public final class BuilderBuildService {
                     &&level.getBlockState(raisedRail).isAir()
                     &&(temporaryRailFoundation
                         ||BuilderRailSlope.hasRaisedEndSupport(level,pos,state.state()));
-            if(!existing.isAir()&&!waterlog&&!reShapeRail
+            boolean displacingFlow=!waterlog&&!repairingBubbleBase
+                    &&BuilderFluidObstruction.displaceable(existing,state.state());
+            if(displacingFlow&&(table.isTrackedScaffold(pos)||level.getBlockEntity(pos)!=null))displacingFlow=false;
+            if(!existing.isAir()&&!waterlog&&!reShapeRail&&!displacingFlow
                     &&!interactionCorrection&&!repairPartner&&!repairingBubbleBase
                     &&!(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
                             ||existing.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN)))){
                 // A player may add a block after the initial site-clear
                 // phase. Never destroy it until its planned replacement
                 // has support. This protects physical build progress.
-                BuilderClearance.clear(level,worker,table,owner,pos,existing);
+                if(BuilderFluidObstruction.waterObstruction(existing,state.state())
+                        &&BuilderFluidObstruction.deferable(state.state())
+                        &&table.deferBuilderFluid(worker.getUUID(),index,plan.steps(),level.getGameTime())){
+                    table.setProblem("Attachment deferred until surrounding construction is finished at "+pos);return;
+                }
+                var clearance=BuilderClearance.clear(level,worker,table,owner,pos,existing);
+                if(clearance==BuilderClearance.Result.BLOCKED){
+                    String reason=table.problem();
+                    table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),reason);
+                    publishHandoff(table,worker.getUUID(),index,level.getGameTime(),reason);
+                }
                 return;
             }
             // Get the complete kit before ordinary material loading:
@@ -2580,7 +2594,7 @@ public final class BuilderBuildService {
                     return;
                 }
                 if(!level.mayInteract(owner,partnerPos)
-                        ||!partnerExisting.isAir()
+                        ||!partnerExisting.isAir()&&!BuilderFluidObstruction.displaceable(partnerExisting,partnerResolved.state())
                         ||table.isTrackedScaffold(partnerPos)
                         ||level.getBlockEntity(partnerPos)!=null){
                     // A companion is never permission to overwrite a
@@ -2721,6 +2735,23 @@ public final class BuilderBuildService {
                         +pos+" -> "+level.getBlockState(pos)
                         +" and "+partnerPos+" -> "+level.getBlockState(partnerPos));
                 return;
+            }
+            if(displacingFlow){
+                BlockState now=level.getBlockState(pos);
+                if(now.getBlock()!=state.state().getBlock()
+                        ||BuilderFluidObstruction.waterObstruction(now,state.state())){
+                    // A successful setBlock may still have been washed
+                    // out by vanilla updates. Never refund a potentially
+                    // dropped item or mark this cell complete. Let other
+                    // work seal the leak before revisiting thin attachments.
+                    if(!BuilderFluidObstruction.deferable(state.state())
+                            ||!table.deferBuilderFluid(worker.getUUID(),index,plan.steps(),level.getGameTime())){
+                        table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),"flow returned after placement");
+                        publishHandoff(table,worker.getUUID(),index,level.getGameTime(),"flow returned after placement");
+                    }
+                    table.setProblem("Flow returned at paid construction cell "+pos);return;
+                }
+                System.out.println("[BUILDER FLOW DISPLACED] index="+index+" pos="+pos);
             }
             if(waterlog&&level.getBlockState(pos).getFluidState().isSource())
                 level.scheduleTick(pos,net.minecraft.world.level.material.Fluids.WATER,5);
