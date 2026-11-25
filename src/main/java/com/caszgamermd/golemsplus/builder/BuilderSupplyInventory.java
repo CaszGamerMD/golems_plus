@@ -272,6 +272,43 @@ public final class BuilderSupplyInventory {
         }
         return amount-remaining;
     }
+    static boolean courierExcluded(Item item){
+        String id=BuiltInRegistries.ITEM.getKey(item).toString();
+        return beltItem(id)||BuilderBlockResolver.reusableSupply(id);
+    }
+    /** Restock only at the actual depot; keep existing construction cargo
+     * unless space is required for a real delivery. No synthetic stacks. */
+    static void loadCourier(WorkerStationBlockEntity table,BuilderGolem courier,Map<Item,Integer> wanted){
+        if(!BuilderReturnService.withinStorageReach(courier,table.builderUnloadingStorage()))return;
+        Container storage=selectedStorage(table);if(storage==null)return;
+        for(var row:wanted.entrySet()){
+            Item item=row.getKey();if(courierExcluded(item))continue;
+            int need=Math.max(0,row.getValue()-courier.carriedCount(item));
+            if(need<=0)continue;
+            if(room(courier,new ItemStack(item))==0){
+                for(int i=0;i<BuilderGolem.SCAFFOLD_BELT_SLOT;i++){
+                    ItemStack held=courier.getItem(i);
+                    if(held.isEmpty()||wanted.containsKey(held.getItem()))continue;
+                    int left=storeSurplus(storage,held,held.getCount());
+                    courier.setItem(i,held.copyWithCount(left));storage.setChanged();
+                    if(left==0)break;
+                }
+            }
+            drawFromSources(table,courier,item,need);
+        }
+    }
+    static int deliverCourier(BuilderGolem courier,BuilderGolem recipient,Item item,int quantity){
+        if(quantity<=0||courierExcluded(item)||!courier.isAlive()||!recipient.isAlive()
+                ||courier.distanceToSqr(recipient)>4||Math.abs(courier.getY()-recipient.getY())>1.5
+                ||!courier.hasLineOfSight(recipient))return 0;
+        int remaining=quantity;
+        for(int slot=0;slot<BuilderGolem.SCAFFOLD_BELT_SLOT&&remaining>0;slot++){
+            ItemStack stack=courier.getItem(slot);if(!stack.is(item))continue;
+            int moved=tryPocket(recipient,stack,Math.min(remaining,stack.getCount()));
+            if(moved>0){courier.setItem(slot,stack.copyWithCount(stack.getCount()-moved));remaining-=moved;}
+        }
+        return quantity-remaining;
+    }
     static boolean containsInSources(WorkerStationBlockEntity table,Item item){
         if(creativeSupply(table))return true;
         for(Container source:sources(table))

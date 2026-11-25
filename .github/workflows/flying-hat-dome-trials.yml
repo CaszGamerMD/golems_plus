@@ -1,5 +1,5 @@
 name: Flying construction hats - three physical dome trials
-# Benchmark group construction from one hover pose; courier unchanged.
+# Benchmark dynamic physical local supply hat with group construction.
 on:
   push:
     branches: [main]

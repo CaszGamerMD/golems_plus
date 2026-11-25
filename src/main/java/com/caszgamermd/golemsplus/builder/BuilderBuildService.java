@@ -1131,7 +1131,7 @@ public final class BuilderBuildService {
             return;
         }
         worker.setDeliveryRole(table.activeOrder()!=null
-                &&worker.getUUID().equals(table.supplyRunner()));
+                &&(worker.getUUID().equals(table.supplyRunner())||BuilderLocalCourier.active(table,worker.getUUID())));
         if(!table.builderWorkerIds().contains(worker.getUUID())){
             // Never discard inventory-bearing entities: a misconfigured
             // workstation must not silently destroy delivered shulker cargo.
@@ -1156,6 +1156,7 @@ public final class BuilderBuildService {
         // descend, walk to OnSite and empty every real inventory slot.
         // This must precede dropped-item pickup, courier and work logic.
         if(table.phase()==WorkerPhase.PAUSED){
+            BuilderLocalCourier.clear(table);
             WorkerAction paused=workerActions.computeIfAbsent(worker,
                     unused->new WorkerAction());
             if(!paused.pauseHandled){
@@ -1427,6 +1428,7 @@ public final class BuilderBuildService {
                 BuilderWarehouseCoordinator.request(level,worker,table,owner,plan.steps());
                 return;
             }
+            if(BuilderLocalCourier.tick(level,worker,table,plan.steps()))return;
             // All positions for each X/Z zone were pre-assigned as one
             // immutable ordered execution plan. The Planner does NOT
             // arbitrate between Builders on each move or block placement.
@@ -1869,6 +1871,12 @@ public final class BuilderBuildService {
             // inventory rather than repeatedly rappelling back to OnSite.
             // The normal per-step load below will still require a genuine
             // depot visit when a later item is actually missing.
+            if(step.requiredItem()!=null&&!interactionCorrection&&!repairPartner&&!reShapeRail){
+                BuilderLocalCourier.noteDemand(level,worker,table,plan.steps(),zone,state.item());
+                if(worker.carriedCount(state.item())<=0&&BuilderLocalCourier.waitForDelivery(level,worker,table,state.item())){
+                    activity.phase=Action.STAGE_MATERIALS;return;
+                }
+            }
             if(step.requiredItem()!=null&&worker.carriedCount(state.item())<=0
                     &&!interactionCorrection&&!repairPartner&&!reShapeRail)
                 BuilderSupplyInventory.borrowNearby(level,worker,table,state.item(),plan.steps(),1);
