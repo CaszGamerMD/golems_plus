@@ -440,7 +440,7 @@ public final class BuilderSupplyInventory {
             for(var row:ranked){
                 if(types>=8)break;
                 if(materials.containsKey(row.getKey())||beltItem(row.getKey()))continue;
-                var key=Identifier.tryParse(row.getKey());
+                var key=net.minecraft.resources.Identifier.tryParse(row.getKey());
                 if(key==null||!BuiltInRegistries.ITEM.containsKey(key))continue;
                 int max=new ItemStack(BuiltInRegistries.ITEM.getValue(key)).getMaxStackSize();
                 materials.put(row.getKey(),Math.min(max,row.getValue()));types++;

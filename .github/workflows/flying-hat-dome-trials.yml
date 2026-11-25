@@ -1,5 +1,5 @@
 name: Flying construction hats - three physical dome trials
-# Repeat after dedicated exterior resupply flight and roof approach improvements.
+# Repeat after correcting the material-staging Identifier reference.
 on:
   push:
     branches: [main]
