@@ -75,6 +75,9 @@ public final class BuilderPlacementSpace {
      * a Builder could keep its feet directly over the future block.
      */
     public static boolean horizontalClear(BlockPos target,BuilderGolem worker){
+        // Flying hats have no standing/footing requirement. The same
+        // three-dimensional envelope is used by flight and final placement.
+        if(BuilderFlight.creative(worker))return !worker.getBoundingBox().intersects(new AABB(target).inflate(.10));
         return edgeDistance(target,worker.getX(),worker.getZ())
                 >=MIN_EDGE_CLEARANCE-.015;
     }
@@ -173,6 +176,7 @@ public final class BuilderPlacementSpace {
     private static boolean occupied(BlockPos target,BuilderGolem worker,
             boolean placingWorker){
         if(!worker.isAlive())return false;
+        if(BuilderFlight.creative(worker))return !horizontalClear(target,worker);
         boolean overlapsHeight=worker.getBoundingBox().maxY>target.getY()
                 &&worker.getBoundingBox().minY<target.getY()+1;
         // The placing worker needs room for its downward approach. A
@@ -305,11 +309,11 @@ public final class BuilderPlacementSpace {
         // Hovering workers cannot obey a ground-only escape order.
         // Keep their existing flight envelope and hold this reservation
         // until the other Builder has actually placed its block.
-        if(BuilderFlight.active(worker)){
+        if(BuilderFlight.creative(worker)||BuilderFlight.active(worker)){
             if(occupied(hold.target(),worker,hold.placingWorker())){
                 BlockPos pose=BuilderFlight.workPose(level,worker,hold.target());
                 if(pose!=null&&BuilderFlight.request(level,worker,pose))return true;
-                BuilderFlight.land(level,worker,true);
+                if(!BuilderFlight.creative(worker))BuilderFlight.land(level,worker,true);
             }
             return true;
         }
@@ -713,6 +717,13 @@ public final class BuilderPlacementSpace {
             // When standing adjacent on real ground, do a precise
             // horizontal edge-clearance move instead of targeting a tile
             // center that still intersects the future placement cube.
+            if(BuilderFlight.creative(blocker)){
+                BlockPos hover=BuilderFlight.workPose(level,blocker,target);
+                if(hover!=null&&BuilderFlight.request(level,blocker,hover)){
+                    yielding.put(blocker,new Yield(target,hover,level.getGameTime()+100,blocker==placing,false));
+                }else found=false;
+                continue;
+            }
             boolean precision=!BuilderFlight.active(blocker)&&canPrecisionStep(level,blocker,target);
             BlockPos destination=precision?blocker.blockPosition():escape(level,blocker,target);
             if(BuilderFlight.enabled(blocker)&&!precision

@@ -1,4 +1,5 @@
 name: Flying construction hats - three physical dome trials
+# Repeat after 3D placement clearance and individual recovery fixes.
 on:
   push:
     branches: [main]

@@ -379,7 +379,7 @@ public final class ProfessionGolemModel
                 .texOffs(75,24).addBox(-4.7f,-7.2f,-3.8f,9.4f,4,7.6f)
                 .texOffs(0,59).addBox(-5,-3.9f,-5,10,1.1f,10)
                 .texOffs(53,76).addBox(-.7f,-7.7f,-4.2f,1.4f,1,8.4f)
-                .texOffs(72,67).addBox(-3.5f,-2.8f,-3,7,2.3f,6),PartPose.offset(0,9,0));
+                .texOffs(72,67).addBox(-3.5f,-2.8f,-3,7,2.3f,6),PartPose.offset(0,14.5f,0));
         hat.addOrReplaceChild("propeller",CubeListBuilder.create()
                 .texOffs(7,0).addBox(-1,-2,-1,2,3,2)
                 .texOffs(42,41).addBox(-7,-2.5f,-1,14,1,2)
@@ -387,7 +387,7 @@ public final class ProfessionGolemModel
         for(int side:new int[]{-1,1}){
             PartDefinition arm=root.addOrReplaceChild(side==1?"left_arm":"right_arm",CubeListBuilder.create()
                     .texOffs(72,67).addBox(-1,-1,-1,2,7,2)
-                    .texOffs(108,0).addBox(-1.5f,5,-1.5f,3,2,3),PartPose.offset(side*3,8,0));
+                    .texOffs(108,0).addBox(-1.5f,5,-1.5f,3,2,3),PartPose.offset(side*3,13.5f,0));
             for(int jaw:new int[]{-1,1})arm.addOrReplaceChild(jaw==1?"jaw_right":"jaw_left",CubeListBuilder.create()
                     .texOffs(107,15).addBox(-.65f,0,-.8f,1.3f,4,1.6f)
                     .texOffs(107,15).addBox(jaw==1?-1.5f:-.65f,3,-.8f,2.15f,1,1.6f),PartPose.offset(jaw*1.45f,6.5f,0));

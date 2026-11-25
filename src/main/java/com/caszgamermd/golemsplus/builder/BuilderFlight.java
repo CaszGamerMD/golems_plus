@@ -297,7 +297,7 @@ public final class BuilderFlight {
                 // Idempotent arrival: a repeated request at the endpoint
                 // must not create a zero-length flight and reclaim control.
                 boolean same=worker.position().distanceToSqr(destination)<ARRIVAL_SQUARED;
-                releaseLanding(level,worker,existing);
+                if(!creative(worker))releaseLanding(level,worker,existing);
                 if(same)return true;
             }
         }
@@ -874,6 +874,15 @@ public final class BuilderFlight {
                 }
         return select(level, worker, candidates);
     }
+    static boolean reposition(ServerLevel level,BuilderGolem worker,BlockPos target){
+        var candidates=new ArrayList<BlockPos>();
+        for(int dy=-3;dy<=3;dy++)for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
+            BlockPos p=target.offset(dx,dy,dz);
+            if(worker.position().distanceToSqr(feet(p))>=2.25&&safeWorkPose(level,worker,target,feet(p),true))candidates.add(p);
+        }
+        BlockPos pose=select(level,worker,candidates);
+        return pose!=null&&request(level,worker,pose);
+    }
     public static boolean tick(ServerLevel level, BuilderGolem worker) {
         if (!enabled(worker)) { flights.remove(worker); worker.setPropellerSpinning(false); return false; }
         Flight flight = flights.get(worker);
@@ -881,13 +890,19 @@ public final class BuilderFlight {
         // until an actual flight request has established powered hover.
         if (flight == null) {
             worker.setPropellerSpinning(creative(worker));
-            if(creative(worker))worker.setNoGravity(true);
+            if(creative(worker)){
+                worker.setNoGravity(true);
+                worker.fallDistance=0;
+                worker.getNavigation().stop();
+                worker.setDeltaMovement(Vec3.ZERO);
+                return true;
+            }
             return false;
         }
         // Resolve arrival BEFORE any caller can request another flight.
         // The previous tick physically moved the entity to its endpoint.
         advanceReached(worker,flight);
-        if(releaseLanding(level,worker,flight))return false;
+        if(!creative(worker)&&releaseLanding(level,worker,flight))return false;
         boolean moving = moving(worker);
         worker.setPropellerSpinning(true);
         worker.setNoGravity(true);

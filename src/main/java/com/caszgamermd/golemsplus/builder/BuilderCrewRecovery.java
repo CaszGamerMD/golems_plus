@@ -106,6 +106,25 @@ final class BuilderCrewRecovery {
             List<BuilderConstructionPlan.Step> steps){
         State s=state(table);long now=level.getGameTime();
         int layer=table.builderActiveLayer(steps),work=table.builderWorkDone();
+        if(BuilderFlight.creative(worker)){
+            // Reset a single stalled hat, not the entire crew or material network.
+            // Normal pause/return and material accounting remain unchanged.
+            if(s.layer!=layer||work>s.best){s.layer=layer;s.best=work;s.lastProgress=now;}
+            if(layer==Integer.MAX_VALUE||now-s.lastProgress<STALL||now<s.graceUntil
+                    ||BuilderFlight.moving(worker)||worker.hasSupplyBox()
+                    ||BuilderDroppedBlockRecovery.busy(worker))return false;
+            int claim=table.claimedStep(worker.getUUID());
+            if(claim<0||claim>=steps.size())return false;
+            var step=steps.get(claim);
+            BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+            table.waitForBuilderAccess(worker.getUUID(),claim,now,"individual flight recovery");
+            table.releaseBuilderWorkOrder(worker.getUUID());
+            BuilderBuildService.resetFlyingWorker(worker,table);
+            BuilderFlight.reposition(level,worker,target);
+            s.graceUntil=now+80;
+            System.out.println("[HAT INDIVIDUAL RECOVERY] worker="+worker.getUUID()+" target="+target+" layer="+layer);
+            return true;
+        }
         if(!s.recalling&&s.recovering.contains(worker.getUUID())){
             // This worker remains registered, retains its inventory and
             // completes its physical return while the safe crew works.

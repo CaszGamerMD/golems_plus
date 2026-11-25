@@ -697,6 +697,15 @@ public final class BuilderBuildService {
      *
      * @return true only after the worker physically reaches OnSite.
      */
+    static void resetFlyingWorker(BuilderGolem worker,WorkerStationBlockEntity table){
+        workerActions.remove(worker);
+        BuilderPlacementSpace.cancelYield(worker);
+        BuilderReturnService.resetApproach(worker);
+        BuilderEscapeBox.clear(worker);
+        BuilderMultiLegTravel.clear(worker);
+        BuilderFlight.stop(worker);
+        com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
+    }
     static void resetCrewActions(ServerLevel level,WorkerStationBlockEntity table){
         resetCrewActions(level,table,java.util.Set.of());
     }
@@ -1229,7 +1238,7 @@ public final class BuilderBuildService {
                     else alternate.alternateSideRequested=false;
                 }
                 if(waypoint!=null){
-                    if(worker.onGround()&&worker.distanceToSqr(
+                    if((BuilderFlight.creative(worker)||worker.onGround())&&worker.distanceToSqr(
                             waypoint.getX()+.5,waypoint.getY(),
                             waypoint.getZ()+.5)<4){
                         alternate.alternateSideTarget=null;
@@ -2390,13 +2399,13 @@ public final class BuilderBuildService {
                     BuilderPlacementSpace.invalidateApproach(worker,pos);
                     com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
                     activity.lastFailedStep=index;
-                    activity.retreatUntil=level.getGameTime()+100;
-                    if(activity.alternateSideAttempts<3){
+                    activity.retreatUntil=BuilderFlight.creative(worker)?-1:level.getGameTime()+100;
+                    if(!BuilderFlight.creative(worker)&&activity.alternateSideAttempts<3){
                         activity.failedApproachFrom=worker.blockPosition();
                         activity.alternateSideRequested=true;
                     }
                     table.setProblem("Deferred block "+pos
-                            +" until a safe 0.8m placement stance is reachable");
+                            +(BuilderFlight.creative(worker)?" until a clear flight pose is reachable":" until a safe 0.8m placement stance is reachable"));
                     activity.blockedSince=-1;
                 }
                 return;
@@ -2404,9 +2413,9 @@ public final class BuilderBuildService {
             activity.blockedSince=-1;
             if(bodyBlockingWork
                     &&!BuilderPlacementSpace.horizontalClear(pos,worker)){
-                // Defense-in-depth against a self-collision regression.
-                // Vertical separation NEVER waives the X/Z 0.8 margin.
-                table.setProblem("Builder still within 0.8 X/Z of "+pos);
+                // Hats use actual 3D body clearance; legacy builders retain the edge margin.
+                table.setProblem(BuilderFlight.creative(worker)?"Hat body overlaps future block "+pos:
+                        "Builder still within 0.8 X/Z of "+pos);
                 return;
             }
             // Upper door halves do not consume another door item; the
