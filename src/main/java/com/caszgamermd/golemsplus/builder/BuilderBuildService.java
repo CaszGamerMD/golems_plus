@@ -106,6 +106,8 @@ public final class BuilderBuildService {
         int lookaheadScanned;
         boolean lookaheadFinished;
         boolean fastFollowup;
+        int groupPlacements,groupPoseMoves,groupChain;
+        net.minecraft.world.phys.Vec3 groupAnchor;
         // A completed or idle-layer Builder must PHYSICALLY reach OnSite
         // before another rooftop rescue assignment may recruit it.
         // Otherwise the six-second assist watchdog can keep a "finished"
@@ -547,6 +549,7 @@ public final class BuilderBuildService {
                 ||BuilderGrappleAccess.active(worker)
                 ||completed<0||completed>=steps.size())return null;
         var previous=steps.get(completed);
+        boolean group=BuilderFlight.creative(worker);
         int layer=table.builderActiveLayer(steps);
         BlockPos pose=worker.blockPosition();
         int best=-1;
@@ -561,7 +564,7 @@ public final class BuilderBuildService {
             var step=steps.get(idx);
             double dx=step.x()-previous.x(),dz=step.z()-previous.z();
             double locality=dx*dx+dz*dz;
-            if(locality>9||locality>=bestDistance)continue;
+            if(!group&&(locality>9||locality>=bestDistance))continue;
             BlockPos target=new BlockPos(step.x(),step.y(),step.z());
             if(!level.hasChunkAt(target)
                     ||!hovering&&(!BuilderPlacementSpace.placementHeight(target,worker)
@@ -582,12 +585,80 @@ public final class BuilderBuildService {
                                     BuilderWaterPass.isWaterlogPass(step.encodedState())))
                         :BuilderPlacementSpace.safeFractionalCapPose(level,worker,target)
                             ||BuilderConstructionPlanner.safeStand(level,worker,target,pose)))continue;
+            // For hats the entire five-block reach sphere is a work
+            // group, not merely the three-block radius of the last cell.
+            // Prefer nearby connected work without moving the hover pose.
+            double rank=group?locality+.15*worker.distanceToSqr(target.getX()+.5,target.getY()+.5,target.getZ()+.5):locality;
+            if(rank>=bestDistance)continue;
             best=idx;
-            bestDistance=locality;
+            bestDistance=rank;
         }
         return best<0?null:
                 new BuilderConstructionPlanner.Choice(best,hovering?null:pose,false,
                         level.canSeeSky(pose.above()),1);
+    }
+    /** A bounded, inventory-backed same-phase group around the current
+     * target. Only ordinary independent blocks participate in pose scoring;
+     * special-state blocks continue through the existing planner. */
+    private static List<BlockPos> hoverGroup(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,List<Integer> zone,BlockPos target){
+        var group=new java.util.ArrayList<BlockPos>();
+        long now=level.getGameTime();
+        var rotation=BuildSite.Rotation.values()[table.builderRotation()/90];
+        var mirror=BuildSite.Mirror.values()[table.builderMirror()];
+        for(int idx:zone){
+            if(idx<0||idx>=steps.size()||!table.builderStepInActivePhase(steps,idx)
+                    ||!table.builderStepReadyForClaim(idx)||table.builderStepClaimedByOther(worker.getUUID(),idx)
+                    ||reservedForTeammate(table,worker.getUUID(),idx,now))continue;
+            var step=steps.get(idx);
+            if(step.ignorePlant()||step.companion()!=null||BuilderDeferredState.verification(step.encodedState())
+                    ||BuilderWaterPass.isWaterlogPass(step.encodedState())||BuilderWaterPass.isBubbleColumn(step.encodedState())
+                    ||step.requiredItem()==null)continue;
+            BlockPos at=new BlockPos(step.x(),step.y(),step.z());
+            if(at.equals(target)||at.distSqr(target)>64||!level.hasChunkAt(at)||!level.getBlockState(at).isAir())continue;
+            var resolved=BuilderBlockResolver.resolve(step.encodedState(),rotation,mirror);
+            if(resolved==null||!resolved.state().getFluidState().isEmpty()||!resolved.state().canSurvive(level,at)
+                    ||BuilderRailSlope.needsExtraStock(step.encodedState())||worker.carriedCount(resolved.item())<=0)continue;
+            group.add(at);
+        }
+        group.sort(java.util.Comparator.comparingDouble(at->at.distSqr(target)));
+        return group.size()>24?List.copyOf(group.subList(0,24)):group;
+    }
+    private static int hoverCoverage(ServerLevel level,BuilderGolem worker,List<BlockPos> group,BlockPos pose){
+        var at=new net.minecraft.world.phys.Vec3(pose.getX()+.5,pose.getY(),pose.getZ()+.5);
+        int count=0;
+        for(BlockPos cell:group)if(at.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(cell))<=BuilderConstructionPlanner.REACH_SQUARED
+                &&BuilderFlight.safeWorkPose(level,worker,cell,at,true))count++;
+        return count;
+    }
+    private record HoverChoice(BlockPos pose,int coverage,double travel){}
+    private static BlockPos groupedWorkPose(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
+            List<BuilderConstructionPlan.Step> steps,List<Integer> zone,BlockPos target,boolean bodyBlocking,BlockPos baseline){
+        if(baseline==null||!bodyBlocking)return baseline;
+        var group=hoverGroup(level,worker,table,steps,zone,target);
+        if(group.size()<3)return baseline;
+        int original=hoverCoverage(level,worker,group,baseline);
+        if(original>=group.size()-1)return baseline;
+        var choices=new java.util.ArrayList<HoverChoice>();
+        double baseTravel=worker.distanceToSqr(baseline.getX()+.5,baseline.getY(),baseline.getZ()+.5);
+        // Keep the proven above-roof preference. Never select an underside
+        // pose just because it has more geometric reach.
+        for(int dy:new int[]{1,2,3})for(int dx:new int[]{-2,0,2})for(int dz:new int[]{-2,0,2}){
+            BlockPos pose=target.offset(dx,dy,dz);
+            if(pose.equals(baseline))continue;
+            var at=new net.minecraft.world.phys.Vec3(pose.getX()+.5,pose.getY(),pose.getZ()+.5);
+            double travel=worker.position().distanceToSqr(at);
+            if(Math.sqrt(travel)>Math.sqrt(baseTravel)+4||!BuilderFlight.safeWorkPose(level,worker,target,at,true))continue;
+            int coverage=hoverCoverage(level,worker,group,pose);
+            if(coverage>=original+2)choices.add(new HoverChoice(pose,coverage,travel));
+        }
+        choices.sort(java.util.Comparator.comparingInt(HoverChoice::coverage).reversed().thenComparingDouble(HoverChoice::travel));
+        // At most two extra route probes; retain the tested baseline on failure.
+        for(int i=0;i<Math.min(2,choices.size());i++){
+            var pick=choices.get(i);
+            if(BuilderFlight.canRouteExact(level,worker,pick.pose()))return pick.pose();
+        }
+        return baseline;
     }
     /** After a REAL placement, consume the speculative choice only if
      * the same Y gate, claim ownership, support and safe pose STILL hold.
@@ -602,6 +673,12 @@ public final class BuilderBuildService {
         // pose. In particular, hovering Builders can lay a short run
         // without a needless landing, new A* probe or supply journey.
         var choice=nearbyDirectFollowup(level,worker,table,steps,zone,completed);
+        boolean direct=choice!=null;
+        if(BuilderFlight.creative(worker)){
+            if(direct){activity.groupChain++;activity.groupPlacements++;}
+            else{activity.groupChain=0;}
+            if(direct&&activity.groupPlacements%50==0)System.out.println("[HAT GROUP] worker="+worker.getUUID()+" directFollowups="+activity.groupPlacements+" optimizedMoves="+activity.groupPoseMoves+" chain="+activity.groupChain);
+        }
         if(choice==null&&activity.lookaheadFor==completed)choice=activity.lookahead;
         if(choice==null)return;
         int next=choice.index();
@@ -1500,6 +1577,9 @@ public final class BuilderBuildService {
                 if(!BuilderCrewSchedule.frontierTurn(level.getGameTime(),
                         planningCrew.indexOf(worker.getUUID()),
                         planningCrew.size()))return;
+                // A stocked same-hover placement is useful immediately,
+                // even after a layer transition or a batch boundary. Only
+                // use the ordinary expensive frontier probe if none exists.
                 var next=materialOffers.isEmpty()?null:BuilderConstructionPlanner.chooseLookahead(
                         level,worker,table,plan.steps(),materialOffers,0,1);
                 if(next==null)next=BuilderConstructionPlanner.choose(
@@ -1972,8 +2052,12 @@ public final class BuilderBuildService {
             boolean hoverPose=propellerWork
                     &&BuilderFlight.safeWorkPose(level,worker,pos,worker.position(),bodyBlockingWork);
             if(BuilderFlight.creative(worker)&&!hoverPose){
-                BlockPos pose=BuilderFlight.workPose(level,worker,pos,bodyBlockingWork);
-                if(pose!=null&&BuilderFlight.request(level,worker,pose)){
+                BlockPos baseline=BuilderFlight.workPose(level,worker,pos,bodyBlockingWork);
+                BlockPos pose=groupedWorkPose(level,worker,table,plan.steps(),zone,pos,bodyBlockingWork,baseline);
+                if(pose!=null&&!pose.equals(baseline)&&BuilderFlight.request(level,worker,pose)){
+                    activity.groupPoseMoves++;activity.phase=Action.MOVE_TO_WORK;return;
+                }
+                if(baseline!=null&&BuilderFlight.request(level,worker,baseline)){
                     activity.phase=Action.MOVE_TO_WORK;return;
                 }
                 table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),"no clear 3D flight route");
