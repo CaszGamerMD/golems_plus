@@ -32,40 +32,55 @@ final class BuilderLocalCourier {
         return s;
     }
     static void clear(WorkerStationBlockEntity table){states.remove(table);}
+    static UUID dedicated(ServerLevel level,WorkerStationBlockEntity table){
+        if(!ENABLED||table.activeOrder()==null||table.crewTarget()<5||table.builderUnloadingStorage()==null)return null;
+        var roster=table.builderWorkerIds();
+        if(roster.size()<5)return null;
+        // Exactly four primary constructors; the fifth registered live
+        // flying hat is logistics. Extra registered workers are not spawned.
+        for(int i=0;i<5;i++)if(!(level.getEntity(roster.get(i)) instanceof BuilderGolem hat)||!hat.isAlive()||!BuilderFlight.creative(hat))return null;
+        return roster.get(4);
+    }
+    static boolean dedicatedWorker(WorkerStationBlockEntity table,UUID id){
+        return table.getLevel() instanceof ServerLevel level&&id.equals(dedicated(level,table));
+    }
     static boolean active(WorkerStationBlockEntity table,UUID id){
-        return ENABLED&&id.equals(state(table).courier);
+        return ENABLED&&(dedicatedWorker(table,id)||id.equals(state(table).courier));
     }
     private static boolean eligible(ServerLevel level,WorkerStationBlockEntity table){
-        if(!ENABLED||table.activeOrder()==null||table.builderWorkerIds().size()<4
-                ||table.builderUnloadingStorage()==null||table.supplyRequest()!=null)return false;
-        int count=0;
-        for(UUID id:table.builderWorkerIds())
-            if(level.getEntity(id) instanceof BuilderGolem hat&&hat.isAlive()&&BuilderFlight.creative(hat)&&!hat.hasSupplyBox())count++;
-        return count>=4;
+        return dedicated(level,table)!=null&&table.supplyRequest()==null;
     }
     static void noteDemand(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,Item item){
         if(!BuilderFlight.creative(worker)||!eligible(level,table)||item==null||active(table,worker.getUUID())
-                ||worker.carriedCount(item)>4||BuilderSupplyInventory.courierExcluded(item))return;
+                ||worker.carriedCount(item)>16||BuilderSupplyInventory.courierExcluded(item))return;
         BlockPos depot=table.builderUnloadingStorage();
         if(worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,depot.getZ()+.5)<64)return;
         State s=state(table);long now=level.getGameTime();UUID id=worker.getUUID();
         if(now<s.retryAfter.getOrDefault(id,0L))return;
         Request prior=s.requests.get(id);
-        if(prior!=null&&prior.item()==item&&prior.until()>now)return;
+        if(prior!=null&&prior.until()>now){
+            // A different current item cannot replace a more urgent
+            // already queued need; an in-flight delivery is independent.
+            if(prior.item()==item||worker.carriedCount(prior.item())<=worker.carriedCount(item))return;
+        }
         if(!BuilderSupplyInventory.containsInSources(table,item))return;
         int layer=table.builderActiveLayer(steps),demand=0;
+        if(layer==Integer.MAX_VALUE)return;
         for(int idx:zone){
-            if(idx<0||idx>=steps.size()||!table.builderStepInActivePhase(steps,idx)
-                    ||table.builderStepCompletedForMaterials(idx))continue;
-            if(BuilderMaterialNetwork.required(steps.get(idx))==item&&++demand>=32)break;
+            if(idx<0||idx>=steps.size()||table.builderStepCompletedForMaterials(idx))continue;
+            var step=steps.get(idx);
+            if(step.y()!=layer&&!((long)step.y()==(long)layer+1&&table.builderHeightMode()!=BuilderMaterialRules.FROM_Y_DOWN))continue;
+            if(step.ignorePlant()||BuilderDeferredState.verification(step.encodedState()))continue;
+            if(BuilderMaterialNetwork.required(step)==item&&++demand>=64)break;
         }
         // Avoid sending a hat across the whole build for a single rare item.
         // Such a block still uses the ordinary individual resupply path.
-        if(demand<6)return;
+        if(demand<8)return;
         int desired=Math.min(new ItemStack(item).getMaxStackSize(),demand);
-        if(desired<=worker.carriedCount(item))return;
-        s.requests.put(id,new Request(item,desired,now+180,layer));
+        if(desired-worker.carriedCount(item)<8)return;
+        s.requests.put(id,new Request(item,desired,now+300,layer));
+        System.out.println("[HAT COURIER REQUEST] worker="+id+" have="+worker.carriedCount(item)+" want="+desired);
     }
     static boolean waitForDelivery(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,Item item){
         State s=state(table);UUID id=worker.getUUID();long now=level.getGameTime();
@@ -88,28 +103,35 @@ final class BuilderLocalCourier {
         }
         long now=level.getGameTime();
         for(UUID id:s.batch.keySet()){s.requests.remove(id);s.retryAfter.put(id,now+100);}
-        s.courier=null;s.batch.clear();s.urgentUntil.clear();s.loaded=false;s.nextDispatch=now+40;
+        s.courier=null;s.batch.clear();s.urgentUntil.clear();s.loaded=false;s.nextDispatch=now+10;
     }
     static boolean tick(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps){
         State s=state(table);long now=level.getGameTime();UUID id=worker.getUUID();
-        if(!eligible(level,table)){if(s.courier!=null)finish(level,table,s,true);return false;}
+        UUID dedicated=dedicated(level,table);
+        if(!eligible(level,table)){if(s.courier!=null)finish(level,table,s,true);return dedicated!=null&&dedicated.equals(id);}
+        if(!id.equals(dedicated))return false;
         int layer=table.builderActiveLayer(steps);
-        s.requests.entrySet().removeIf(e->e.getValue().until()<=now||e.getValue().layer()!=layer);
+        s.requests.entrySet().removeIf(e->e.getValue().until()<=now||Math.abs((long)e.getValue().layer()-layer)>1
+                ||!(level.getEntity(e.getKey()) instanceof BuilderGolem target)||!target.isAlive()||target.carriedCount(e.getValue().item())>=e.getValue().desired());
         if(s.courier!=null){
             if(now>=s.deadline||!(level.getEntity(s.courier) instanceof BuilderGolem current)||!current.isAlive()){
-                finish(level,table,s,true);return false;
+                finish(level,table,s,true);return true;
             }
             if(!id.equals(s.courier))return false;
         }else{
             if(now<s.nextDispatch||s.requests.isEmpty()||!BuilderFlight.creative(worker)
-                    ||worker.hasSupplyBox()||BuilderFlight.moving(worker))return false;
+                    ||worker.hasSupplyBox()||BuilderFlight.moving(worker)){
+                worker.setDeliveryRole(true);
+                // Stay ready at the depot rather than stealing a construction zone.
+                BuilderBuildService.parkAtOnSite(level,worker,table);return true;
+            }
             BlockPos depot=table.builderUnloadingStorage();
             // Recruit from hats already at/near OnSite (including one with
             // a just-staged claim), or an otherwise idle nearby hat. Never
             // pull an active stocked builder away from a productive roof.
             boolean atDepot=BuilderReturnService.withinStorageReach(worker,depot);
-            if(!atDepot&&(table.claimedStep(id)>=0||worker.distanceToSqr(depot.getX()+.5,depot.getY()+.5,depot.getZ()+.5)>36))return false;
+            if(table.claimedStep(id)>=0)table.releaseBuilderWorkOrder(id);
             var candidates=new ArrayList<Map.Entry<UUID,Request>>();
             for(var e:s.requests.entrySet()){
                 if(e.getKey().equals(id)||!(level.getEntity(e.getKey()) instanceof BuilderGolem recipient)
@@ -118,13 +140,13 @@ final class BuilderLocalCourier {
             }
             // Only spend a worker on useful combined deliveries, or one
             // substantial request. Low demand leaves all four building.
-            int units=candidates.stream().mapToInt(e->e.getValue().desired()).sum();
-            if(candidates.isEmpty()||units<16)return false;
+            int units=candidates.stream().mapToInt(e->Math.max(0,e.getValue().desired()-((BuilderGolem)level.getEntity(e.getKey())).carriedCount(e.getValue().item()))).sum();
+            if(candidates.isEmpty()||units<8){BuilderBuildService.parkAtOnSite(level,worker,table);return true;}
             candidates.sort(Comparator.comparingInt((Map.Entry<UUID,Request> e)->e.getValue().desired()).reversed());
-            for(var e:candidates.subList(0,Math.min(3,candidates.size())))s.batch.put(e.getKey(),e.getValue());
+            for(var e:candidates.subList(0,Math.min(4,candidates.size())))s.batch.put(e.getKey(),e.getValue());
             table.releaseBuilderWorkOrder(id);
             BuilderBuildService.resetFlyingWorker(worker,table);
-            s.courier=id;s.loaded=false;s.deadline=now+300;s.nextProbe=now;s.trips++;
+            s.courier=id;s.loaded=false;s.deadline=now+400;s.nextProbe=now;s.trips++;
             worker.setDeliveryRole(true);
             System.out.println("[HAT COURIER START] worker="+id+" requests="+s.batch.size()+" units="+units);
         }
@@ -143,24 +165,24 @@ final class BuilderLocalCourier {
         }
         s.batch.entrySet().removeIf(e->{
             Request r=e.getValue();
-            return r.layer()!=layer||!(level.getEntity(e.getKey()) instanceof BuilderGolem target)
+            return Math.abs((long)r.layer()-layer)>1||!(level.getEntity(e.getKey()) instanceof BuilderGolem target)
                     ||!target.isAlive()||target.carriedCount(r.item())>=r.desired()||worker.carriedCount(r.item())<=0;
         });
-        if(s.batch.isEmpty()){finish(level,table,s,false);return false;}
+        if(s.batch.isEmpty()){finish(level,table,s,false);return true;}
         BuilderGolem recipient=null;Request request=null;double distance=Double.POSITIVE_INFINITY;
         for(var e:s.batch.entrySet()){
             if(!(level.getEntity(e.getKey()) instanceof BuilderGolem target))continue;
             double d=worker.distanceToSqr(target);
             if(d<distance){distance=d;recipient=target;request=e.getValue();}
         }
-        if(recipient==null){finish(level,table,s,false);return false;}
+        if(recipient==null){finish(level,table,s,false);return true;}
         int moved=BuilderSupplyInventory.deliverCourier(worker,recipient,request.item(),
                 Math.max(0,request.desired()-recipient.carriedCount(request.item())));
         if(moved>0){
             s.delivered+=moved;s.batch.remove(recipient.getUUID());s.requests.remove(recipient.getUUID());
-            s.retryAfter.put(recipient.getUUID(),now+80);
+            s.retryAfter.put(recipient.getUUID(),now+20);
             System.out.println("[HAT COURIER DELIVERY] worker="+id+" to="+recipient.getUUID()+" items="+moved);
-            if(s.batch.isEmpty()){finish(level,table,s,false);return false;}
+            if(s.batch.isEmpty()){finish(level,table,s,false);return true;}
             return true;
         }
         if(now<s.nextProbe)return true;

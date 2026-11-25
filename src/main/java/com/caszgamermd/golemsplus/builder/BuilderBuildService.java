@@ -2965,6 +2965,10 @@ public final class BuilderBuildService {
         List<UUID> roster=table.builderWorkerIds();
         if(roster.size()>table.crewTarget())
             roster=roster.subList(0,table.crewTarget());
+        if(table.getLevel() instanceof ServerLevel level){
+            UUID courier=BuilderLocalCourier.dedicated(level,table);
+            if(courier!=null)roster=roster.stream().filter(id->!id.equals(courier)).toList();
+        }
         ScheduledZones found=schedules.get(table);
         if(found!=null&&found.job().equals(table.activeOrder())
                 &&found.cache()==cache&&found.roster().equals(roster))
