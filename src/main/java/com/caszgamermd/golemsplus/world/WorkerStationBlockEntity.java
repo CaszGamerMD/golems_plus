@@ -1090,10 +1090,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private UUID activeScanJob;
     private int activeScanCursor=-1,activeScanIndex=-1;
     // Scheduling order is separate from saved physical step indices.
-    // Only overhead lichen whose supporting cell is included in this job
-    // moves to the next dry layer. Existing saves retain every claim index.
+    // Native survival dependencies are scheduled after their planned
+    // anchors, at any height. Existing saves retain every claim index.
     private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> dependencyPlan;
-    private int[] dependencyLayers,dependencyOrder;
+    private int[] dependencyLayers,dependencyOrder,dependencyDemand;
+    private int[][] dependencyAnchors;
     private UUID dependencyJob;
     private int dependencyPointer,dependencyCursor=-1;
     private UUID lateFluidJob;
@@ -1122,30 +1123,23 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private void ensureDependencySchedule(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         checkLateFluidJob();
         if(dependencyPlan==steps&&java.util.Objects.equals(dependencyJob,activeOrder)&&dependencyCursor<=builderCursor)return;
-        dependencyPlan=steps;dependencyJob=activeOrder;dependencyCursor=builderCursor;dependencyPointer=0;dependencyLayers=null;dependencyOrder=null;
-        if(steps==null||builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN)return;
-        if(lateFluidSteps.isEmpty()&&steps.stream().noneMatch(s->!s.ignorePlant()&&overheadAttachment(s.encodedState())))return;
-        var supports=new java.util.HashSet<BlockPos>();
-        for(var step:steps)if(!step.ignorePlant()&&!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(step.encodedState())
-                &&!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(step.encodedState())&&step.requiredItem()!=null)
-            supports.add(new BlockPos(step.x(),step.y(),step.z()));
-        int[] layers=new int[steps.size()];boolean changed=!lateFluidSteps.isEmpty();
-        var order=new java.util.ArrayList<Integer>(steps.size());
-        for(int i=0;i<steps.size();i++){
-            var step=steps.get(i);int y=step.y();
-            if(!step.ignorePlant()&&overheadAttachment(step.encodedState())&&supports.contains(new BlockPos(step.x(),y+1,step.z()))){y++;changed=true;}
-            layers[i]=y;order.add(i);
-        }
-        if(!changed)return;
-        order.sort(java.util.Comparator.comparingInt((Integer i)->com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(i).encodedState())?2:lateFluidSteps.contains(i)?1:0)
-                .thenComparingInt(i->layers[i])
-                .thenComparingInt(i->com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(steps.get(i).encodedState())?1:0)
-                .thenComparingInt(i->steps.get(i).y()==layers[i]?0:1).thenComparingInt(Integer::intValue));
-        dependencyLayers=layers;dependencyOrder=order.stream().mapToInt(Integer::intValue).toArray();
+        dependencyPlan=steps;dependencyJob=activeOrder;dependencyCursor=builderCursor;dependencyPointer=0;
+        dependencyLayers=null;dependencyOrder=null;dependencyAnchors=null;dependencyDemand=null;
+        if(steps==null||!(level instanceof net.minecraft.server.level.ServerLevel server))return;
+        var plan=com.caszgamermd.golemsplus.builder.BuilderAnchorSchedule.compile(server,steps,
+                com.caszgamermd.golemsplus.builder.BuildSite.Rotation.values()[builderRotation()/90],
+                com.caszgamermd.golemsplus.builder.BuildSite.Mirror.values()[builderMirror()],
+                builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN,lateFluidSteps);
+        dependencyLayers=plan.layers();dependencyOrder=plan.order();dependencyAnchors=plan.anchors();dependencyDemand=plan.demand();
     }
-    private static boolean overheadAttachment(String encoded){
-        String state=com.caszgamermd.golemsplus.builder.BuilderWaterPass.originalState(encoded);
-        return state!=null&&state.startsWith("minecraft:glow_lichen[")&&state.contains("up=true");
+    private boolean builderAnchorsReady(int index){
+        if(dependencyAnchors==null)return true;
+        for(int a:dependencyAnchors[index])if(a>=builderCursor&&!builderFinishedSteps.contains(a))return false;
+        return true;
+    }
+    public int builderAnchorDemand(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,int index){
+        ensureDependencySchedule(steps);
+        return dependencyDemand==null?0:dependencyDemand[index];
     }
     public int builderSchedulingLayer(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,int index){
         ensureDependencySchedule(steps);
@@ -1240,6 +1234,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         int active=builderActiveStepIndex(steps);
         return active>=0&&index>=builderCursor&&index<steps.size()
                 &&lateFluidSteps.contains(index)==lateFluidSteps.contains(active)
+                &&builderAnchorsReady(index)
                 &&builderSchedulingLayer(steps,index)==builderSchedulingLayer(steps,active)
                 &&(com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
                         steps.get(index).encodedState(),steps.get(active).encodedState())

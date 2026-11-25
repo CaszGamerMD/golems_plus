@@ -1,5 +1,5 @@
 name: Full Villager Matrix - 4 real Builders
-# Retest rail-kit poses, bounded individual rescue and local water progress.
+# Test generalized native-survival anchor scheduling with the full Matrix.
 on:
   push:
     branches: [main]

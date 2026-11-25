@@ -1,5 +1,5 @@
 name: Matrix reliability - three independent builds
-# Three physical trials with rail rescue, local water and real hat UV validation.
+# Repeat three controlled trials with generalized anchor dependency scheduling.
 on:
   push:
     branches: [main]

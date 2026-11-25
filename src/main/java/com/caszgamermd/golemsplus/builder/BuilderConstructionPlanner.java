@@ -772,6 +772,7 @@ public final class BuilderConstructionPlanner {
                     -Math.min(24,connectedPlacementBonus(
                             world,target,builtSchematic))
                     -touch*6+risk*250
+                    -Math.min(4,table.builderAnchorDemand(steps,idx))*12
                     +(scaffold?BuilderFrontierTuning.GRAPPLE_PENALTY*2:0);
             int stockRank=stocked.contains(idx)?0:1;
             if(stockRank<bestStock||stockRank==bestStock&&(tier<bestTier||tier==bestTier&&cost<bestScore)){

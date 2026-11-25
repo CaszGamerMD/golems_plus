@@ -1,0 +1,183 @@
+package com.caszgamermd.golemsplus.builder;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
+import java.util.*;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+
+/**
+ * Compile genuine placement-support dependencies without modifying the
+ * world or the persisted step indices. Vanilla (and compatible modded)
+ * canSurvive is evaluated against a read-only view of planned neighbors.
+ * A normal floating full cube has no artificial support dependency.
+ */
+public final class BuilderAnchorSchedule {
+    private BuilderAnchorSchedule(){}
+    private record Cell(int index,BlockState state){}
+    public record Plan(int[] layers,int[] order,int[][] anchors,int[] demand){}
+    private static final class Probe implements InvocationHandler {
+        final LevelReader world,view;
+        final Map<BlockPos,Cell> cells;
+        final Set<Integer> reads=new HashSet<>(),removed=new HashSet<>();
+        boolean usePlan;
+        int self=-1;
+        Probe(LevelReader world,Map<BlockPos,Cell> cells){
+            this.world=world;this.cells=cells;
+            view=(LevelReader)Proxy.newProxyInstance(LevelReader.class.getClassLoader(),
+                    new Class<?>[]{LevelReader.class},this);
+        }
+        public Object invoke(Object proxy,java.lang.reflect.Method method,Object[] args) throws Throwable {
+            if(args!=null&&args.length==1&&args[0] instanceof BlockPos pos){
+                String name=method.getName();
+                if(name.equals("getBlockState")||name.equals("getFluidState")||name.equals("isEmptyBlock")
+                        ||name.equals("getBlockEntity")){
+                    Cell cell=cells.get(pos);
+                    if(cell!=null){
+                        if(cell.index()!=self)reads.add(cell.index());
+                        BlockState state=cell.index()==self||usePlan&&!removed.contains(cell.index())
+                                ?cell.state():Blocks.AIR.defaultBlockState();
+                        return switch(name){
+                            case "getBlockState"->state;
+                            case "getFluidState"->state.getFluidState();
+                            case "isEmptyBlock"->state.isAir();
+                            default->null;
+                        };
+                    }
+                }
+            }
+            try{
+                if(method.isDefault())return InvocationHandler.invokeDefault(proxy,method,args==null?new Object[0]:args);
+                return method.invoke(world,args);
+            }catch(InvocationTargetException failure){throw failure.getCause();}
+        }
+        boolean survives(BlockState state,BlockPos pos){return state.canSurvive(view,pos);}
+        /** Select a sufficient set of planned supports. Try removing
+         * higher anchors first in an upward build (and the reverse for
+         * downward builds), so alternative faces do not create cycles. */
+        Set<Integer> needed(BlockState state,BlockPos pos,int index,
+                List<BuilderConstructionPlan.Step> steps,boolean descending){
+            self=index;removed.clear();reads.clear();usePlan=false;
+            if(survives(state,pos))return Set.of();
+            usePlan=true;reads.clear();
+            if(!survives(state,pos))return Set.of();
+            var candidates=new ArrayList<Integer>(reads);
+            candidates.sort(Comparator.comparingInt((Integer i)->descending?steps.get(i).y():-steps.get(i).y())
+                    .thenComparingInt(Integer::intValue));
+            for(int i:candidates){
+                removed.add(i);
+                if(!survives(state,pos))removed.remove(i);
+            }
+            var required=new HashSet<Integer>(candidates);
+            required.removeAll(removed);required.remove(index);
+            removed.clear();return required;
+        }
+    }
+    public static Plan compile(LevelReader world,List<BuilderConstructionPlan.Step> steps,
+            BuildSite.Rotation rotation,BuildSite.Mirror mirror,boolean descending,Set<Integer> late){
+        int n=steps.size();
+        var cells=new HashMap<BlockPos,Cell>();
+        BlockState[] states=new BlockState[n];
+        int[] layers=new int[n],rank=new int[n],degree=new int[n],demand=new int[n];
+        int[][] anchors=new int[n][];
+        var dependents=new ArrayList<List<Integer>>(n);
+        for(int i=0;i<n;i++){
+            var s=steps.get(i);layers[i]=s.y();dependents.add(new ArrayList<>());
+            if(s.ignorePlant()||s.requiredItem()==null||BuilderDeferredState.verification(s.encodedState())
+                    ||BuilderWaterPass.isWaterlogPass(s.encodedState()))continue;
+            var resolved=BuilderBlockResolver.resolve(s.encodedState(),rotation,mirror);
+            if(resolved==null)continue;
+            states[i]=resolved.state();
+            // Fluid hosts have their own water/physics scheduling.
+            if(!BuilderWaterPass.isWaterStep(s.encodedState())){
+                cells.put(new BlockPos(s.x(),s.y(),s.z()),new Cell(i,states[i]));
+                if(s.companion()!=null){
+                    var c=s.companion();
+                    var second=BuilderBlockResolver.resolve(c.encodedState(),rotation,mirror);
+                    if(second!=null)cells.put(new BlockPos(c.x(),c.y(),c.z()),new Cell(i,second.state()));
+                }
+            }
+        }
+        Probe probe=world==null?null:new Probe(world,cells);
+        int edges=0,probeFailures=0;
+        for(int i=0;i<n;i++){
+            var s=steps.get(i);
+            BlockPos at=new BlockPos(s.x(),s.y(),s.z());
+            Set<Integer> needed=new HashSet<>();
+            if(!s.ignorePlant()&&BuilderWaterPass.isWaterlogPass(s.encodedState())){
+                Cell host=cells.get(at);if(host!=null&&host.index()!=i)needed.add(host.index());
+            }else if(probe!=null&&states[i]!=null&&!BuilderWaterPass.isWaterStep(s.encodedState())){
+                try{
+                    needed.addAll(probe.needed(states[i],at,i,steps,descending));
+                    if(s.companion()!=null){
+                        var c=s.companion();BlockPos second=new BlockPos(c.x(),c.y(),c.z());
+                        Cell part=cells.get(second);
+                        if(part!=null)needed.addAll(probe.needed(part.state(),second,i,steps,descending));
+                    }
+                    // Preserve every explicitly selected attachment face
+                    // for multiface decorations, even when vanilla
+                    // canSurvive accepts any one of several faces.
+                    if(states[i].is(Blocks.GLOW_LICHEN)||states[i].is(Blocks.SCULK_VEIN)){
+                        for(Direction direction:Direction.values()){
+                            boolean attached=states[i].getValues().anyMatch(v->v.property().getName().equals(direction.getName())&&v.valueName().equals("true"));
+                            if(attached){Cell support=cells.get(at.relative(direction));if(support!=null&&support.index()!=i)needed.add(support.index());}
+                        }
+                    }
+                    // Ascending rails need a second real support at
+                    // their raised endpoint when the plan includes one.
+                    BlockPos raised=BuilderRailSlope.raisedEnd(at,states[i]);
+                    if(raised!=null){
+                        Cell support=cells.get(raised.below());
+                        if(support!=null&&support.index()!=i){
+                            probe.self=i;probe.removed.clear();probe.usePlan=true;
+                            if(states[i].getBlock().defaultBlockState().canSurvive(probe.view,raised))
+                                needed.add(support.index());
+                        }
+                    }
+                }catch(RuntimeException|LinkageError ex){
+                    // A modded survival check may demand a concrete world.
+                    // Keep its normal runtime support check; do not invent
+                    // an anchor or bypass placement validation.
+                    probeFailures++;
+                }
+            }
+            needed.remove(i);
+            anchors[i]=needed.stream().mapToInt(Integer::intValue).sorted().toArray();
+            degree[i]=anchors[i].length;edges+=degree[i];
+            for(int a:anchors[i]){dependents.get(a).add(i);demand[a]++;}
+        }
+        var ready=new PriorityQueue<Integer>();
+        for(int i=0;i<n;i++)if(degree[i]==0)ready.add(i);
+        int next=0;
+        while(!ready.isEmpty()){
+            int i=ready.remove();rank[i]=next++;
+            for(int child:dependents.get(i)){
+                layers[child]=descending?Math.min(layers[child],layers[i]):Math.max(layers[child],layers[i]);
+                if(--degree[child]==0)ready.add(child);
+            }
+        }
+        int unresolved=n-next;
+        if(unresolved>0){
+            // Cyclic/ambiguous arrangements retain real canSurvive gates
+            // instead of imposing an artificial circular claim barrier.
+            for(int i=0;i<n;i++)if(degree[i]>0){
+                final int idx=i;
+                anchors[i]=Arrays.stream(anchors[i]).filter(a->degree[a]==0).toArray();
+                for(int a:anchors[i])layers[i]=descending?Math.min(layers[i],layers[a]):Math.max(layers[i],layers[a]);
+                rank[i]=next++;
+            }
+        }
+        var order=new ArrayList<Integer>(n);
+        for(int i=0;i<n;i++)order.add(i);
+        order.sort(Comparator.comparingInt((Integer i)->BuilderDeferredState.verification(steps.get(i).encodedState())?2:late.contains(i)?1:0)
+                .thenComparingInt(i->descending?-layers[i]:layers[i])
+                .thenComparingInt(i->BuilderWaterPass.isWaterStep(steps.get(i).encodedState())?1:0)
+                .thenComparingInt(i->rank[i]));
+        if(edges>0||probeFailures>0)System.out.println("[BUILDER ANCHORS] edges="+edges+" unresolved="+unresolved+" probeFallbacks="+probeFailures);
+        return new Plan(layers,order.stream().mapToInt(Integer::intValue).toArray(),anchors,demand);
+    }
+}
