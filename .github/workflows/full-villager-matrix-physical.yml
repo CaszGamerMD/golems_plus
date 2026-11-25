@@ -1,5 +1,5 @@
 name: Full Villager Matrix - 4 real Builders
-# Retest paid flowing-water displacement and deferred fluid attachment repair.
+# Retest rail-kit poses, bounded individual rescue and local water progress.
 on:
   push:
     branches: [main]

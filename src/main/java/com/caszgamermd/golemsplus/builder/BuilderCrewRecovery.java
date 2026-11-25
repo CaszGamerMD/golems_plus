@@ -21,6 +21,11 @@ final class BuilderCrewRecovery {
         final Map<UUID,Long> retry=new HashMap<>(), lastReturnProgress=new HashMap<>();
         final Map<UUID,Double> bestReturnDistance=new HashMap<>();
         final Map<UUID,BlockPos> parking=new HashMap<>();
+        final Map<UUID,Integer> hatClaim=new HashMap<>();
+        final Map<UUID,Long> hatClaimSince=new HashMap<>();
+        final Map<Integer,Set<UUID>> hatTried=new HashMap<>();
+        final Map<Integer,Long> hatRetry=new HashMap<>();
+        final Map<Integer,UUID> railRetained=new HashMap<>();
     }
     private static final Map<WorkerStationBlockEntity,State> states=new WeakHashMap<>();
     private static State state(WorkerStationBlockEntity table){
@@ -109,21 +114,37 @@ final class BuilderCrewRecovery {
         if(BuilderFlight.creative(worker)){
             // Reset a single stalled hat, not the entire crew or material network.
             // Normal pause/return and material accounting remain unchanged.
-            if(s.layer!=layer||work>s.best){s.layer=layer;s.best=work;s.lastProgress=now;}
+            if(s.layer!=layer||work>s.best){
+                s.layer=layer;s.best=work;s.lastProgress=now;
+                s.hatTried.clear();s.hatRetry.clear();s.railRetained.clear();
+            }
+            int claim=table.claimedStep(worker.getUUID());UUID id=worker.getUUID();
+            if(s.hatClaim.getOrDefault(id,-2)!=claim){s.hatClaim.put(id,claim);s.hatClaimSince.put(id,now);}
             if(layer==Integer.MAX_VALUE||now-s.lastProgress<STALL||now<s.graceUntil
+                    ||now-s.hatClaimSince.getOrDefault(id,now)<160
                     ||BuilderFlight.moving(worker)||worker.hasSupplyBox()
                     ||!BuilderBuildService.canRecoverFlyingWorker(worker)
                     ||BuilderDroppedBlockRecovery.busy(worker))return false;
-            int claim=table.claimedStep(worker.getUUID());
             if(claim<0||claim>=steps.size())return false;
             var step=steps.get(claim);
             BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+            if(BuilderRailSlope.needsExtraStock(step.encodedState())&&!s.railRetained.containsKey(claim)){
+                s.railRetained.put(claim,id);
+                if(BuilderFlight.reposition(level,worker,target)){
+                    s.hatClaimSince.put(id,now);s.graceUntil=now+120;
+                    System.out.println("[HAT RAIL RECOVERY] retained claim="+claim+" worker="+id);return true;
+                }
+            }
+            var tried=s.hatTried.computeIfAbsent(claim,k->new HashSet<>());
+            if(tried.contains(id)&&now<s.hatRetry.getOrDefault(claim,0L))return false;
+            if(now>=s.hatRetry.getOrDefault(claim,0L)){tried.clear();s.hatRetry.put(claim,now+600);}
+            tried.add(id);
             table.waitForBuilderAccess(worker.getUUID(),claim,now,"individual flight recovery");
             table.releaseBuilderWorkOrder(worker.getUUID());
             BuilderBuildService.handoffFlyingWorker(table,worker,claim,now);
             BuilderBuildService.resetFlyingWorker(worker,table);
             BuilderFlight.reposition(level,worker,target);
-            s.graceUntil=now+200;
+            s.graceUntil=now+100;
             System.out.println("[HAT INDIVIDUAL RECOVERY] worker="+worker.getUUID()+" target="+target+" layer="+layer);
             return true;
         }

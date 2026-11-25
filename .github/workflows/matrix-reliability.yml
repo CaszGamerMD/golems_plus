@@ -1,4 +1,5 @@
 name: Matrix reliability - three independent builds
+# Three physical trials with rail rescue, local water and real hat UV validation.
 on:
   push:
     branches: [main]

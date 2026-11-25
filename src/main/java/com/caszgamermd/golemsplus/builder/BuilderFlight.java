@@ -1080,6 +1080,22 @@ public final class BuilderFlight {
         }
         return null;
     }
+    static BlockPos railKitPose(ServerLevel level,BuilderGolem worker,BlockPos target,BlockPos footing,boolean bodyBlocking){
+        var candidates=new ArrayList<BlockPos>();
+        for(int dy=0;dy<=4;dy++)for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
+            BlockPos at=target.offset(dx,dy,dz);Vec3 pose=feet(at);
+            if(safeWorkPose(level,worker,target,pose,bodyBlocking)
+                    &&safeWorkPose(level,worker,footing,pose,true))candidates.add(at);
+        }
+        BlockPos found=select(level,worker,candidates);if(found!=null)return found;
+        candidates.clear();
+        for(int dy=-3;dy<0;dy++)for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
+            BlockPos at=target.offset(dx,dy,dz);Vec3 pose=feet(at);
+            if(safeWorkPose(level,worker,target,pose,bodyBlocking)
+                    &&safeWorkPose(level,worker,footing,pose,true))candidates.add(at);
+        }
+        return select(level,worker,candidates);
+    }
     static boolean requestFractionalWork(ServerLevel level,BuilderGolem worker,BlockPos target,boolean bodyBlocking){
         Vec3 at=fractionalWork(level,worker,target,bodyBlocking);
         return at!=null&&requestPosition(level,worker,BlockPos.containing(at),at);

@@ -1448,7 +1448,10 @@ public final class BuilderBuildService {
             // The others stay at OnSite; any in-flight claim is finished
             // safely rather than discarding its paid materials mid-step.
             boolean hatRescue=BuilderFlight.creative(worker)&&roofNeedsHelp(level,table);
-            if(hatRescue)layerStaff=assigned.roster();
+            if(hatRescue){
+                layerStaff=assigned.roster();
+                table.enableLocalWaterRescue(plan.steps());
+            }
             if(!layerStaff.contains(worker.getUUID())&&currentClaim<0
                     &&materialOffers.isEmpty()&&!worker.hasSupplyBox()){
                 boolean parked=parkAtOnSite(level,worker,table);
@@ -2077,6 +2080,18 @@ public final class BuilderBuildService {
                                 level,worker,pos,at,step.encodedState()))==null);
             boolean hoverPose=propellerWork
                     &&BuilderFlight.safeWorkPose(level,worker,pos,worker.position(),bodyBlockingWork);
+            // A temporary solid rail footing is a second physical target.
+            // Select a pose safe for BOTH cells rather than repeatedly
+            // hovering where the jig itself would trap its own builder.
+            if(BuilderFlight.creative(worker)&&railJig&&temporaryRailFoundation
+                    &&(!hoverPose||!BuilderFlight.safeWorkPose(level,worker,raisedRail.below(),worker.position(),true))){
+                BlockPos railPose=BuilderFlight.railKitPose(level,worker,pos,raisedRail.below(),bodyBlockingWork);
+                if(railPose!=null&&BuilderFlight.request(level,worker,railPose)){
+                    activity.phase=Action.MOVE_TO_WORK;return;
+                }
+                table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),"no clear two-cell rail kit pose");
+                publishHandoff(table,worker.getUUID(),index,level.getGameTime(),"rail kit approach blocked");return;
+            }
             if(BuilderFlight.creative(worker)&&!hoverPose){
                 BlockPos baseline=BuilderFlight.workPose(level,worker,pos,bodyBlockingWork);
                 BlockPos pose=groupedWorkPose(level,worker,table,plan.steps(),zone,pos,bodyBlockingWork,baseline);

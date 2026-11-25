@@ -71,7 +71,13 @@ class GolemUvFaceCoverageTest {
         List<String> bad=new ArrayList<>();
         for(String profession:new String[]{"beekeeper","builder","trader","chef","fisher"}){
             String segment=bee;
-            if(!profession.equals("beekeeper")){
+            if(profession.equals("builder")){
+                int begin=professions.indexOf("private static LayerDefinition constructionHatLayer(");
+                int end=professions.indexOf("@Override public void setupAnim",begin);
+                assertTrue(begin>=0&&end>begin,"Missing construction hat geometry");
+                segment=professions.substring(begin,end);
+                assertTrue(CUBE.matcher(segment).find(),"No actual hat cuboids found");
+            }else if(!profession.equals("beekeeper")){
                 String marker="case "+profession.toUpperCase()+" -> {";
                 int begin=professions.indexOf(marker),end=professions.indexOf("\n            case ",begin+marker.length());
                 if(begin<0)throw new IllegalStateException("Missing "+marker);
