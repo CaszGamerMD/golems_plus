@@ -91,6 +91,25 @@ public final class BuilderWaterPass {
         return new BuilderConstructionPlan.Step(below.getX(),below.getY(),below.getZ(),id,id);
     }
 
+    /** A continuous real source chain is sufficient for placing the next
+     * water source even while vanilla has not yet converted lower water.
+     * No synthetic bubble state is written. A blocked/missing base or
+     * flowing water still requires the ordinary physical repair action. */
+    static boolean sourceReady(Level level,BlockPos pos,BlockState desired){
+        if(!desired.is(Blocks.BUBBLE_COLUMN))return false;
+        boolean down=desired.getValue(BubbleColumnBlock.DRAG_DOWN);
+        var generator=down?Blocks.MAGMA_BLOCK:Blocks.SOUL_SAND;
+        BlockPos at=pos.below();
+        while(at.getY()>=level.getMinY()&&level.hasChunkAt(at)){
+            BlockState actual=level.getBlockState(at);
+            if(actual.is(generator))return true;
+            if(actual.is(Blocks.BUBBLE_COLUMN)){
+                if(actual.getValue(BubbleColumnBlock.DRAG_DOWN)!=down)return false;
+            }else if(!actual.is(Blocks.WATER)||!actual.getFluidState().isSource())return false;
+            at=at.below();
+        }
+        return false;
+    }
     /** Wake the genuine generator at the bottom of a contiguous source
      * column, rather than scheduling a no-op tick on an ordinary water block. */
     static boolean refreshBubble(net.minecraft.server.level.ServerLevel level,BlockPos pos,BlockState desired){

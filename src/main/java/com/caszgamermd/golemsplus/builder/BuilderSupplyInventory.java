@@ -399,7 +399,7 @@ public final class BuilderSupplyInventory {
                 if(idx<0||idx>=steps.size())continue;
                 var cell=steps.get(idx);
                 String item=cell.requiredItem();
-                if(cell.y()!=layer||item==null
+                if(table.builderSchedulingLayer(steps,idx)!=layer||item==null
                         ||cell.ignorePlant()||table.builderStepCompletedForMaterials(idx)
                         ||!table.builderStepInActivePhase(steps,idx))continue;
                 activeDemand.merge(item,1,Integer::sum);
@@ -407,8 +407,15 @@ public final class BuilderSupplyInventory {
             }
         }
         // Keep the reusable footing through other work on this layer.
-        if(layerHasSlopes&&worker.carriedCount(net.minecraft.world.item.Items.COBBLESTONE)>0)
+        if(layerHasSlopes){
+            // Reserve a real reusable footing even before the first rail
+            // claim. Existing pocket stock is kept and new stock is paid
+            // from the depot before other optional varieties.
             materials.merge("minecraft:cobblestone",1,Math::max);
+            var priority=new LinkedHashMap<String,Integer>();
+            priority.put("minecraft:cobblestone",materials.get("minecraft:cobblestone"));
+            priority.putAll(materials);materials.clear();materials.putAll(priority);
+        }
         // Preserve useful already-carried stock on this Y before unloading.
         // Fill at most eight of nine material slots with optional varieties;
         // the ninth remains available for a rare next claim. Required batch
@@ -1031,9 +1038,12 @@ public final class BuilderSupplyInventory {
             ItemStack old=worker.getItem(slot);
             if(old.isEmpty()||protectedItems.contains(old.getItem()))continue;
             for(Container source:sources(table)){
-                // Creative supply is infinite but must not void actual
-                // inventory. Only use normal finite exchange below.
-                if(source instanceof CreativeCrateBlockEntity)continue;
+                // Creative Crates explicitly accept returned cargo. Use
+                // the same physical return contract as returnPouch; no
+                // finite chest stock is lost or invented.
+                if(source instanceof CreativeCrateBlockEntity){
+                    worker.setItem(slot,ItemStack.EMPTY);return true;
+                }
                 int left=storeSurplus(source,old,old.getCount());
                 worker.setItem(slot,old.copyWithCount(left));
                 if(left==0)return true;

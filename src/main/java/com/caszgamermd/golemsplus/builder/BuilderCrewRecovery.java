@@ -68,7 +68,7 @@ final class BuilderCrewRecovery {
         int count=0;
         for(int i=0;i<steps.size();i++){
             var step=steps.get(i);
-            if(step.y()==layer&&!step.ignorePlant()
+            if(table.builderSchedulingLayer(steps,i)==layer&&!step.ignorePlant()
                     &&!BuilderDeferredState.verification(step.encodedState())
                     &&!table.builderStepCompletedForMaterials(i))count++;
         }

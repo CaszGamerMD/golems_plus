@@ -406,7 +406,7 @@ public final class BuilderConstructionPlanner {
         List<String> examples=new ArrayList<>();
         for(int idx:zone){
             if(idx<0||idx>=steps.size()
-                    ||steps.get(idx).y()!=layer
+                    ||table.builderSchedulingLayer(steps,idx)!=layer
                     ||table.builderZoneDone(List.of(idx)))continue;
             pending++;
             if(examples.size()>=4)continue;
@@ -460,7 +460,7 @@ public final class BuilderConstructionPlanner {
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone){
         int y=table.builderActiveLayer(steps);
         for(int idx:zone){
-            if(idx<0||idx>=steps.size()||steps.get(idx).y()!=y
+            if(idx<0||idx>=steps.size()||table.builderSchedulingLayer(steps,idx)!=y
                     ||table.builderZoneDone(List.of(idx))
                     ||steps.get(idx).ignorePlant())continue;
             var step=steps.get(idx);
@@ -681,7 +681,8 @@ public final class BuilderConstructionPlanner {
                     &&actual.is(net.minecraft.world.level.block.Blocks.WATER)
                     &&actual.getFluidState().isSource())
                 return new Choice(idx,null,false,true,examined);
-            if(!state.state().canSurvive(world,target)){
+            if(!state.state().canSurvive(world,target)&&!(BuilderWaterPass.isBubbleColumn(step.encodedState())
+                    &&BuilderWaterPass.sourceReady(world,target,state.state()))){
                 // A source-filled lower chain can be waiting for its
                 // generator tick. Allow the execution service to wake it.
                 if(BuilderWaterPass.isBubbleColumn(step.encodedState()))

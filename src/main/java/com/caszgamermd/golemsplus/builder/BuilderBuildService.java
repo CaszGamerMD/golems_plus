@@ -743,7 +743,7 @@ public final class BuilderBuildService {
         // zone, so a waiting worker cannot occupy a teammate's target.
         for(int idx=0;idx<steps.size();idx++){
             var step=steps.get(idx);
-            if(step.y()!=layer||step.ignorePlant()
+            if(table.builderSchedulingLayer(steps,idx)!=layer||step.ignorePlant()
                     ||table.builderZoneDone(List.of(idx)))continue;
             BlockPos target=new BlockPos(step.x(),step.y(),step.z());
             // Waiting beside a future cap is NOT a placement attempt:
@@ -1567,7 +1567,7 @@ public final class BuilderBuildService {
             }
             if(index<0||index>=plan.steps().size()
                     ||!zone.contains(index)
-                    ||plan.steps().get(index).y()!=layer
+                    ||!table.builderStepInActivePhase(plan.steps(),index)
                     ||!table.builderStepReadyForClaim(index)){
                 // Expensive frontier probes are spread across the crew's
                 // five-tick work cadence. Their walking/path execution
@@ -1673,8 +1673,7 @@ public final class BuilderBuildService {
             activity.frontierWaitSince=-1;
             var claimedStep=plan.steps().get(index);
             int activeLayer=table.builderActiveLayer(plan.steps());
-            if(claimedStep.y()!=activeLayer
-                    ||!table.builderStepInActivePhase(plan.steps(),index)){
+            if(!table.builderStepInActivePhase(plan.steps(),index)){
                 // Defensive execution guard: even a stale claim from a
                 // previous build version must not break the Y-layer rule.
                 table.setProblem("Builder waiting for completion of Y="+activeLayer
@@ -1844,7 +1843,7 @@ public final class BuilderBuildService {
             }
             if(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
                     &&existing.getFluidState().isSource()
-                    ||!state.state().canSurvive(level,pos))){
+                    ||!state.state().canSurvive(level,pos)&&!BuilderWaterPass.sourceReady(level,pos,state.state()))){
                 BuilderWaterPass.refreshBubble(level,pos,state.state());
                 // The Builder already supplied this source. Don't mine it
                 // or repeatedly place the same water block while vanilla
@@ -1909,7 +1908,7 @@ public final class BuilderBuildService {
             // block. Clearing first destroyed a useful piece of completed
             // cobblestone/support, then deadlocked on "Missing supporting
             // blocks" after the now-unsupported target turned to air.
-            if(!state.state().canSurvive(level,pos)){
+            if(!state.state().canSurvive(level,pos)&&!(bubble&&BuilderWaterPass.sourceReady(level,pos,state.state()))){
                 // A door, wall torch, rail or other dependent schematic
                 // cell may be queued before its supporting neighbour in
                 // this same layer. Yield the cell without consuming an
@@ -2058,6 +2057,9 @@ public final class BuilderBuildService {
                     activity.groupPoseMoves++;activity.phase=Action.MOVE_TO_WORK;return;
                 }
                 if(baseline!=null&&BuilderFlight.request(level,worker,baseline)){
+                    activity.phase=Action.MOVE_TO_WORK;return;
+                }
+                if(BuilderFlight.requestFractionalWork(level,worker,pos,bodyBlockingWork)){
                     activity.phase=Action.MOVE_TO_WORK;return;
                 }
                 table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),"no clear 3D flight route");
@@ -2970,7 +2972,7 @@ public final class BuilderBuildService {
                 java.util.ArrayList<Integer>>();
         for(int i=0;i<cache.steps().size();i++){
             var step=cache.steps().get(i);
-            mutableLayers.computeIfAbsent(step.y(),unused->new java.util.ArrayList<>())
+            mutableLayers.computeIfAbsent(table.builderSchedulingLayer(cache.steps(),i),unused->new java.util.ArrayList<>())
                     .add(i);
         }
         mutableLayers.forEach((y,indices)->layers.put(y,List.copyOf(indices)));
@@ -2981,7 +2983,7 @@ public final class BuilderBuildService {
         for(int w=0;w<roster.size();w++)
             for(int i:tasks.steps(roster.get(w))){
                 var step=cache.steps().get(i);
-                if(!step.ignorePlant())ownership.computeIfAbsent(step.y(),
+                if(!step.ignorePlant())ownership.computeIfAbsent(table.builderSchedulingLayer(cache.steps(),i),
                         unused->new int[crewSize])[w]++;
             }
         var staff=new java.util.HashMap<Integer,List<UUID>>();

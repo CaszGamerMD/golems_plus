@@ -86,10 +86,15 @@ public final class BuilderBlockResolver {
         boolean vanillaContainer=id.equals("minecraft:chest")||id.equals("minecraft:trapped_chest")
                 ||id.equals("minecraft:hopper")||id.equals("minecraft:dispenser")
                 ||id.equals("minecraft:dropper");
+        // Paid vanilla heads retain rotation/powered state. Custom profile
+        // NBT is not imported; only the ordinary inventory-backed head.
+        boolean vanillaHead=id.equals("minecraft:zombie_head")||id.equals("minecraft:player_head")
+                ||id.equals("minecraft:skeleton_skull")||id.equals("minecraft:wither_skeleton_skull")
+                ||id.equals("minecraft:creeper_head")||id.equals("minecraft:dragon_head")||id.equals("minecraft:piglin_head");
         if((item==Items.AIR && !(expectedOnly&&id.equals("minecraft:piston_head")))
                 || block instanceof EntityBlock
                 &&!sign&&!vanillaComparator&&!vanillaDaylightDetector
-                &&!vanillaBed&&!vanillaContainer)return null;
+                &&!vanillaBed&&!vanillaContainer&&!vanillaHead)return null;
         // The constructor groups each valid double-plant, door and bed
         // pair into one claimed item-backed job. Neither companion is a
         // stand-alone material, and crops/fire/portals still require

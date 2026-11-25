@@ -655,7 +655,7 @@ public final class BuilderFlight {
         if (!enabled(worker) || BuilderGrappleAccess.active(worker)
                 || BuilderScaffolding.isControllingMovement(worker)) return false;
         if(creative(worker))return safeWorkPose(level,worker,target,worker.position(),bodyBlocking)
-                ||workPose(level,worker,target,bodyBlocking)!=null;
+                ||workPose(level,worker,target,bodyBlocking)!=null||fractionalWork(level,worker,target,bodyBlocking)!=null;
         return verticalWorkPose(level,worker,target,bodyBlocking)!=null
                 || workPose(level, worker, target,bodyBlocking) != null
                 || launchPose(level, worker, target,bodyBlocking) != null;
@@ -1052,6 +1052,37 @@ public final class BuilderFlight {
             if(above!=null)return above;
         }
         return select(level, worker, candidates);
+    }
+    /** Fallback for half-slab floors and confined machine corridors.
+     * Only used after integer work poses fail; same reach, clearance and
+     * swept path checks apply. Bound expensive probes to two per attempt. */
+    private static Vec3 fractionalWork(ServerLevel level,BuilderGolem worker,BlockPos target,boolean bodyBlocking){
+        if(!creative(worker))return null;
+        var candidates=new ArrayList<Vec3>();
+        for(int dy=-2;dy<=3;dy++)for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
+            BlockPos cell=target.offset(dx,dy,dz);
+            for(double y:new double[]{.5,.25,.75}){
+                Vec3 at=feet(cell).add(0,y,0);
+                if(safeWorkPose(level,worker,target,at,bodyBlocking))candidates.add(at);
+            }
+        }
+        candidates.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(at)));
+        for(int i=0;i<Math.min(24,candidates.size());i++){
+            Vec3 at=candidates.get(i);if(recentlyFailed(worker,at,level.getGameTime()))continue;
+            if(!simpleCreativePath(level,worker,worker.position(),at).isEmpty())return at;
+        }
+        if(!candidates.isEmpty()){
+            int offset=Math.floorMod((int)(level.getGameTime()/20)+worker.getId(),candidates.size());
+            for(int j=0;j<Math.min(2,candidates.size());j++){
+                Vec3 at=candidates.get((offset+j)%candidates.size());
+                if(!recentlyFailed(worker,at,level.getGameTime())&&!gridPath(level,worker,worker.position(),at).isEmpty())return at;
+            }
+        }
+        return null;
+    }
+    static boolean requestFractionalWork(ServerLevel level,BuilderGolem worker,BlockPos target,boolean bodyBlocking){
+        Vec3 at=fractionalWork(level,worker,target,bodyBlocking);
+        return at!=null&&requestPosition(level,worker,BlockPos.containing(at),at);
     }
     static boolean reposition(ServerLevel level,BuilderGolem worker,BlockPos target){
         var candidates=new ArrayList<BlockPos>();
