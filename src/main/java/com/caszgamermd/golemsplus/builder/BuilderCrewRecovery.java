@@ -26,6 +26,7 @@ final class BuilderCrewRecovery {
         final Map<Integer,Set<UUID>> hatTried=new HashMap<>();
         final Map<Integer,Long> hatRetry=new HashMap<>();
         final Map<Integer,UUID> railRetained=new HashMap<>();
+        long lastLeafCheck=Long.MIN_VALUE;
     }
     private static final Map<WorkerStationBlockEntity,State> states=new WeakHashMap<>();
     private static State state(WorkerStationBlockEntity table){
@@ -117,6 +118,23 @@ final class BuilderCrewRecovery {
             if(s.layer!=layer||work>s.best){
                 s.layer=layer;s.best=work;s.lastProgress=now;
                 s.hatTried.clear();s.hatRetry.clear();s.railRetained.clear();
+            }
+            if(now-s.lastProgress>=STALL&&table.repairMissingBuilderAnchors(steps)){
+                s.lastProgress=now;return true;
+            }
+            // After a sustained no-progress window, preserve troublesome
+            // leaf tasks for final construction. Not marked complete.
+            // Bounded to one leaf per 120 ticks; supports never postponed.
+            if(now-s.lastProgress>=600&&(s.lastLeafCheck==Long.MIN_VALUE||now-s.lastLeafCheck>=120)){
+                s.lastLeafCheck=now;
+                int active=table.builderActiveStepIndex(steps);
+                if(table.postponeStalledBuilderLeaf(steps,active)){
+                    s.lastProgress=now;return true;
+                }
+                for(int candidate=0;candidate<steps.size();candidate++)if(table.builderStepInActivePhase(steps,candidate)
+                        &&table.postponeStalledBuilderLeaf(steps,candidate)){
+                    s.lastProgress=now;return true;
+                }
             }
             int claim=table.claimedStep(worker.getUUID());UUID id=worker.getUUID();
             if(s.hatClaim.getOrDefault(id,-2)!=claim){s.hatClaim.put(id,claim);s.hatClaimSince.put(id,now);}

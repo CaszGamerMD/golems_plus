@@ -1096,6 +1096,37 @@ public final class BuilderFlight {
         }
         return select(level,worker,candidates);
     }
+    /** Rail recovery explores genuine off-center corridors and a longer
+     * route budget only after ordinary integer flight fails. Reuse the
+     * validated route instead of discarding it and searching again. */
+    static boolean requestRailWork(ServerLevel level,BuilderGolem worker,BlockPos target,BlockPos footing,boolean bodyBlocking){
+        BlockPos integer=footing==null?workPose(level,worker,target,bodyBlocking):railKitPose(level,worker,target,footing,bodyBlocking);
+        if(integer!=null&&request(level,worker,integer))return true;
+        var candidates=new ArrayList<Vec3>();
+        for(int dy=-3;dy<=4;dy++)for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
+            BlockPos cell=target.offset(dx,dy,dz);
+            for(double fy:new double[]{.25,.5,.75})for(double[] lateral:new double[][]{{0,0},{.2,0},{-.2,0},{0,.2},{0,-.2}}){
+                Vec3 at=feet(cell).add(lateral[0],fy,lateral[1]);
+                if(safeWorkPose(level,worker,target,at,bodyBlocking)
+                        &&(footing==null||safeWorkPose(level,worker,footing,at,true))
+                        &&!recentlyFailed(worker,at,level.getGameTime()))candidates.add(at);
+            }
+        }
+        candidates.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(at)));
+        int size=candidates.size();if(size==0)return false;
+        int offset=Math.floorMod((int)(level.getGameTime()/20)+worker.getId(),size);
+        for(int i=0;i<Math.min(32,size);i++){
+            Vec3 at=candidates.get(i<16?i:(offset+i-16)%size);
+            var route=simpleCreativePath(level,worker,worker.position(),at);
+            if(!route.isEmpty()&&commitRoute(level,worker,BlockPos.containing(at),at,route))return true;
+        }
+        for(int i=0;i<Math.min(3,size);i++){
+            Vec3 at=candidates.get((offset+i)%size);
+            var route=gridPath(level,worker,worker.position(),at,4800);
+            if(!route.isEmpty()&&commitRoute(level,worker,BlockPos.containing(at),at,route))return true;
+        }
+        return false;
+    }
     static boolean requestFractionalWork(ServerLevel level,BuilderGolem worker,BlockPos target,boolean bodyBlocking){
         Vec3 at=fractionalWork(level,worker,target,bodyBlocking);
         return at!=null&&requestPosition(level,worker,BlockPos.containing(at),at);

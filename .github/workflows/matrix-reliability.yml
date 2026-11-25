@@ -1,5 +1,5 @@
 name: Matrix reliability - three independent builds
-# Repeat three controlled trials with generalized anchor dependency scheduling.
+# Repeat controlled Matrix trials with cached anchors, physical repair and bounded rail recovery.
 on:
   push:
     branches: [main]

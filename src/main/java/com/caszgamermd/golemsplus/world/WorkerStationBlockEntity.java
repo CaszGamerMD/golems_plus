@@ -1095,6 +1095,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> dependencyPlan;
     private int[] dependencyLayers,dependencyOrder,dependencyDemand;
     private int[][] dependencyAnchors;
+    // A diagnostics view and the worker's immutable job plan can be
+    // separate List instances. Never rebuild the graph just to inspect
+    // another view, or when a saved completion cursor moves backwards.
+    private final java.util.IdentityHashMap<java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step>,com.caszgamermd.golemsplus.builder.BuilderAnchorSchedule.Plan> anchorGraphs=new java.util.IdentityHashMap<>();
+    private UUID anchorGraphJob;
+    private long anchorRepairTick=Long.MIN_VALUE;
+    private final java.util.Map<Integer,Integer> anchorRepairAttempts=new java.util.HashMap<>();
     private UUID dependencyJob;
     private int dependencyPointer,dependencyCursor=-1;
     private UUID lateFluidJob;
@@ -1102,6 +1109,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private void checkLateFluidJob(){
         if(!java.util.Objects.equals(lateFluidJob,activeOrder)){
             lateFluidJob=activeOrder;lateFluidSteps.clear();dependencyPlan=null;
+            anchorRepairAttempts.clear();anchorRepairTick=Long.MIN_VALUE;
         }
     }
     /** Keep the real unfinished index, but let other physical layers
@@ -1109,7 +1117,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean deferBuilderFluid(UUID worker,int index,
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,long tick){
         checkLateFluidJob();
+        ensureDependencySchedule(steps);
         if(activeOrder==null||builderCommissioning()||builderClaims.getOrDefault(worker,-1)!=index
+                ||dependencyDemand!=null&&dependencyDemand[index]>0
                 ||lateFluidSteps.contains(index)||builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN)return false;
         boolean other=false;
         for(int i=builderCursor;i<steps.size();i++)if(i!=index&&!builderFinishedSteps.contains(i)&&!lateFluidSteps.contains(i)
@@ -1122,15 +1132,103 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     private void ensureDependencySchedule(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         checkLateFluidJob();
-        if(dependencyPlan==steps&&java.util.Objects.equals(dependencyJob,activeOrder)&&dependencyCursor<=builderCursor)return;
+        // Cache by job and actual immutable plan content. Rule revisions
+        // sometimes change on reload without changing a single cell.
+        if(!java.util.Objects.equals(anchorGraphJob,activeOrder)){
+            anchorGraphs.clear();anchorGraphJob=activeOrder;dependencyPlan=null;
+        }
+        if(dependencyPlan==steps&&java.util.Objects.equals(dependencyJob,activeOrder)){
+            if(builderCursor<dependencyCursor){dependencyPointer=0;dependencyCursor=builderCursor;}
+            return;
+        }
         dependencyPlan=steps;dependencyJob=activeOrder;dependencyCursor=builderCursor;dependencyPointer=0;
         dependencyLayers=null;dependencyOrder=null;dependencyAnchors=null;dependencyDemand=null;
         if(steps==null||!(level instanceof net.minecraft.server.level.ServerLevel server))return;
-        var plan=com.caszgamermd.golemsplus.builder.BuilderAnchorSchedule.compile(server,steps,
-                com.caszgamermd.golemsplus.builder.BuildSite.Rotation.values()[builderRotation()/90],
-                com.caszgamermd.golemsplus.builder.BuildSite.Mirror.values()[builderMirror()],
-                builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN,lateFluidSteps);
-        dependencyLayers=plan.layers();dependencyOrder=plan.order();dependencyAnchors=plan.anchors();dependencyDemand=plan.demand();
+        var graph=anchorGraphs.get(steps);
+        if(graph==null){
+            for(var entry:anchorGraphs.entrySet())if(entry.getKey().equals(steps)){graph=entry.getValue();break;}
+            if(graph==null)graph=com.caszgamermd.golemsplus.builder.BuilderAnchorSchedule.compile(server,steps,
+                    com.caszgamermd.golemsplus.builder.BuildSite.Rotation.values()[builderRotation()/90],
+                    com.caszgamermd.golemsplus.builder.BuildSite.Mirror.values()[builderMirror()],
+                    builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN,java.util.Set.of());
+            if(anchorGraphs.size()>=8)anchorGraphs.clear();
+            anchorGraphs.put(steps,graph);
+        }
+        dependencyLayers=graph.layers();dependencyAnchors=graph.anchors();dependencyDemand=graph.demand();
+        dependencyOrder=com.caszgamermd.golemsplus.builder.BuilderAnchorSchedule.withLateOrder(graph,steps,lateFluidSteps);
+    }
+    /** Repair only a known, previously completed anchor that is now
+     * physically missing. Preserve all other finished bits, and never
+     * authorize replacing unrelated solid blocks or source fluids. */
+    public boolean repairMissingBuilderAnchors(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(activeOrder==null||!(level instanceof net.minecraft.server.level.ServerLevel server))return false;
+        long now=server.getGameTime();
+        if(anchorRepairTick!=Long.MIN_VALUE&&now-anchorRepairTick<100)return false;
+        anchorRepairTick=now;
+        int active=builderActiveStepIndex(steps);
+        if(active<0||dependencyAnchors==null)return false;
+        int y=builderSchedulingLayer(steps,active);
+        var rotation=com.caszgamermd.golemsplus.builder.BuildSite.Rotation.values()[builderRotation()/90];
+        var mirror=com.caszgamermd.golemsplus.builder.BuildSite.Mirror.values()[builderMirror()];
+        var reopen=new java.util.HashSet<Integer>();
+        for(int i=builderCursor;i<steps.size();i++){
+            var step=steps.get(i);
+            if(builderFinishedSteps.contains(i)||step.ignorePlant()||builderSchedulingLayer(steps,i)!=y
+                    ||dependencyAnchors[i].length==0)continue;
+            BlockPos target=new BlockPos(step.x(),step.y(),step.z());
+            if(!server.hasChunkAt(target))continue;
+            var desired=com.caszgamermd.golemsplus.builder.BuilderBlockResolver.resolve(step.encodedState(),rotation,mirror);
+            if(desired==null||desired.state().canSurvive(server,target))continue;
+            for(int a:dependencyAnchors[i]){
+                if(!builderStepCompletedForMaterials(a)||anchorRepairAttempts.getOrDefault(a,0)>=3)continue;
+                var anchor=steps.get(a);
+                if(anchor.ignorePlant()||anchor.requiredItem()==null)continue;
+                BlockPos pos=new BlockPos(anchor.x(),anchor.y(),anchor.z());
+                if(!server.hasChunkAt(pos))continue;
+                var expected=com.caszgamermd.golemsplus.builder.BuilderBlockResolver.resolve(anchor.encodedState(),rotation,mirror);
+                if(expected==null)continue;
+                var actual=server.getBlockState(pos);
+                if(actual.isAir()||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.displaceable(actual,expected.state())){
+                    reopen.add(a);
+                    System.out.println("[BUILDER ANCHOR REPAIR] index="+a+" anchor="+pos+" dependent="+target);
+                }
+            }
+        }
+        if(reopen.isEmpty())return false;
+        int previous=builderCursor;
+        int restart=reopen.stream().mapToInt(Integer::intValue).min().orElse(previous);
+        for(int i=restart;i<previous;i++)if(!reopen.contains(i))builderFinishedSteps.add(i);
+        builderCursor=Math.min(previous,restart);
+        builderFinishedSteps.removeAll(reopen);
+        for(int a:reopen)anchorRepairAttempts.merge(a,1,Integer::sum);
+        builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderMissingRetries.clear();
+        builderWorkDone=Math.max(0,builderWorkDone-reopen.size());
+        dependencyPointer=0;dependencyCursor=builderCursor;activeScanPlan=null;
+        reconcileBuilderMaterialsFromPlan(steps);
+        setProblem("Repairing "+reopen.size()+" missing physical anchor blocks");
+        sync();return true;
+    }
+    /** Last-resort leaf retry, not a completed placement. Only rails and
+     * nonstructural attachments with no dependents may leave a stalled
+     * layer. Never postpone load-bearing or fluid-host cells. */
+    public boolean postponeStalledBuilderLeaf(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,int index){
+        ensureDependencySchedule(steps);
+        if(activeOrder==null||builderCommissioning()||dependencyDemand==null||index<builderCursor||index>=steps.size()
+                ||builderFinishedSteps.contains(index)||lateFluidSteps.contains(index)||dependencyDemand[index]>0)return false;
+        var step=steps.get(index);String state=step.encodedState();
+        if(step.ignorePlant()||step.companion()!=null||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(state))return false;
+        boolean leaf=state.contains("rail[")||state.startsWith("minecraft:glow_lichen[")
+                ||state.contains("pressure_plate[")||state.startsWith("minecraft:lever[")||state.contains("_button[");
+        if(!leaf)return false;
+        boolean other=false;
+        for(int i=builderCursor;i<steps.size();i++)if(i!=index&&!builderFinishedSteps.contains(i)&&!lateFluidSteps.contains(i)
+                &&!steps.get(i).ignorePlant()&&!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(i).encodedState())){other=true;break;}
+        if(!other)return false;
+        lateFluidSteps.add(index);dependencyPlan=null;
+        builderClaims.entrySet().removeIf(entry->entry.getValue()==index);
+        builderMissingRetries.remove(index);
+        System.out.println("[BUILDER LEAF DEFERRED] index="+index+" state="+state);
+        setChanged();return true;
     }
     private boolean builderAnchorsReady(int index){
         if(dependencyAnchors==null)return true;

@@ -20,6 +20,10 @@ public final class BuilderAnchorSchedule {
     private BuilderAnchorSchedule(){}
     private record Cell(int index,BlockState state){}
     public record Plan(int[] layers,int[] order,int[][] anchors,int[] demand){}
+    public static int[] withLateOrder(Plan graph,List<BuilderConstructionPlan.Step> steps,Set<Integer> late){
+        if(late.isEmpty())return graph.order();
+        return Arrays.stream(graph.order()).boxed().sorted(Comparator.comparingInt(i->BuilderDeferredState.verification(steps.get(i).encodedState())?2:late.contains(i)?1:0)).mapToInt(Integer::intValue).toArray();
+    }
     private static final class Probe implements InvocationHandler {
         final LevelReader world,view;
         final Map<BlockPos,Cell> cells;
@@ -161,32 +165,45 @@ public final class BuilderAnchorSchedule {
         }
         var ready=new PriorityQueue<Integer>();
         for(int i=0;i<n;i++)if(degree[i]==0)ready.add(i);
-        int next=0;
-        while(!ready.isEmpty()){
-            int i=ready.remove();rank[i]=next++;
+        int next=0,cycleBreaks=0;
+        boolean[] emitted=new boolean[n];
+        while(next<n){
+            if(ready.isEmpty()){
+                // Only relax the cyclic node's unresolved incoming
+                // edges, then continue ordinary topological processing.
+                // Keep all downstream edges and let real canSurvive
+                // reject an impossible physical placement.
+                int choice=-1;
+                for(int i=0;i<n;i++)if(!emitted[i]&&(choice<0
+                        ||degree[i]<degree[choice]
+                        ||degree[i]==degree[choice]&&(descending?layers[i]>layers[choice]:layers[i]<layers[choice])))choice=i;
+                if(choice<0)break;
+                int chosen=choice;
+                int[] before=anchors[choice];
+                anchors[choice]=Arrays.stream(before).filter(a->emitted[a]).toArray();
+                for(int anchor:before)if(!emitted[anchor]){
+                    dependents.get(anchor).remove(Integer.valueOf(chosen));
+                    demand[anchor]=Math.max(0,demand[anchor]-1);
+                }
+                degree[choice]=0;ready.add(choice);cycleBreaks++;
+                System.out.println("[BUILDER ANCHOR CYCLE] index="+choice+" state="+steps.get(choice).encodedState()+" relaxed="+(before.length-anchors[choice].length));
+            }
+            int i=ready.remove();if(emitted[i])continue;
+            emitted[i]=true;rank[i]=next++;
             for(int child:dependents.get(i)){
+                if(emitted[child])continue;
                 layers[child]=descending?Math.min(layers[child],layers[i]):Math.max(layers[child],layers[i]);
                 if(--degree[child]==0)ready.add(child);
             }
         }
         int unresolved=n-next;
-        if(unresolved>0){
-            // Cyclic/ambiguous arrangements retain real canSurvive gates
-            // instead of imposing an artificial circular claim barrier.
-            for(int i=0;i<n;i++)if(degree[i]>0){
-                final int idx=i;
-                anchors[i]=Arrays.stream(anchors[i]).filter(a->degree[a]==0).toArray();
-                for(int a:anchors[i])layers[i]=descending?Math.min(layers[i],layers[a]):Math.max(layers[i],layers[a]);
-                rank[i]=next++;
-            }
-        }
         var order=new ArrayList<Integer>(n);
         for(int i=0;i<n;i++)order.add(i);
         order.sort(Comparator.comparingInt((Integer i)->BuilderDeferredState.verification(steps.get(i).encodedState())?2:late.contains(i)?1:0)
                 .thenComparingInt(i->descending?-layers[i]:layers[i])
                 .thenComparingInt(i->BuilderWaterPass.isWaterStep(steps.get(i).encodedState())?1:0)
                 .thenComparingInt(i->rank[i]));
-        if(edges>0||probeFailures>0)System.out.println("[BUILDER ANCHORS] edges="+edges+" unresolved="+unresolved+" probeFallbacks="+probeFailures);
+        if(edges>0||probeFailures>0)System.out.println("[BUILDER ANCHORS] edges="+edges+" unresolved="+unresolved+" cycleBreaks="+cycleBreaks+" probeFallbacks="+probeFailures);
         return new Plan(layers,order.stream().mapToInt(Integer::intValue).toArray(),anchors,demand);
     }
 }

@@ -2085,14 +2085,16 @@ public final class BuilderBuildService {
             // hovering where the jig itself would trap its own builder.
             if(BuilderFlight.creative(worker)&&railJig&&temporaryRailFoundation
                     &&(!hoverPose||!BuilderFlight.safeWorkPose(level,worker,raisedRail.below(),worker.position(),true))){
-                BlockPos railPose=BuilderFlight.railKitPose(level,worker,pos,raisedRail.below(),bodyBlockingWork);
-                if(railPose!=null&&BuilderFlight.request(level,worker,railPose)){
+                if(BuilderFlight.requestRailWork(level,worker,pos,raisedRail.below(),bodyBlockingWork)){
                     activity.phase=Action.MOVE_TO_WORK;return;
                 }
                 table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),"no clear two-cell rail kit pose");
                 publishHandoff(table,worker.getUUID(),index,level.getGameTime(),"rail kit approach blocked");return;
             }
             if(BuilderFlight.creative(worker)&&!hoverPose){
+                if(needsRailPlacement&&BuilderFlight.requestRailWork(level,worker,pos,null,bodyBlockingWork)){
+                    activity.phase=Action.MOVE_TO_WORK;return;
+                }
                 BlockPos baseline=BuilderFlight.workPose(level,worker,pos,bodyBlockingWork);
                 BlockPos pose=groupedWorkPose(level,worker,table,plan.steps(),zone,pos,bodyBlockingWork,baseline);
                 if(pose!=null&&!pose.equals(baseline)&&BuilderFlight.request(level,worker,pose)){
@@ -2651,7 +2653,14 @@ public final class BuilderBuildService {
                 if(temporaryRailFoundation){
                     if(!BuilderPlacementSpace.readyForState(level,worker,table,
                             raisedRail.below(),net.minecraft.world.level.block.Blocks.COBBLESTONE
-                                    .defaultBlockState()))return;
+                                    .defaultBlockState())){
+                        if(activity.blockedSince<0)activity.blockedSince=level.getGameTime();
+                        if(level.getGameTime()-activity.blockedSince>=100){
+                            table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),"temporary rail footing occupied");
+                            publishHandoff(table,worker.getUUID(),index,level.getGameTime(),"temporary rail footing occupied");
+                        }
+                        return;
+                    }
                 }
             }
             BuilderSupplyInventory.Receipt payment=freeHalf||reusableFluid?null:
@@ -3089,14 +3098,8 @@ public final class BuilderBuildService {
 
     private static Cache cache(WorkerStationBlockEntity table,BuilderGolem worker)
             throws Exception {
-        Cache previous=cached.get(worker);
-        if(previous!=null&&previous.file().equals(table.builderFile())
-                &&previous.rotation()==table.builderRotation()
-                &&previous.mirror()==table.builderMirror()
-                &&previous.origin().equals(table.builderOrigin())
-                &&previous.ignorePlants()==table.builderIgnorePlants()
-                &&previous.rulesRevision()==table.builderRuleRevision())
-            return previous;
+        // Always use the station's canonical cache, never a stale worker
+        // copy that can alternate dependency views across ticks.
         // Share the same immutable validated work plan among all eight
         // Builders. A different Litematica parse per worker caused pauses
         // when several workers started the job at once.

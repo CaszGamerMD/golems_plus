@@ -1,5 +1,5 @@
 name: Full Villager Matrix - 4 real Builders
-# Test generalized native-survival anchor scheduling with the full Matrix.
+# Test cached anchors, physical support repair and bounded rail recovery.
 on:
   push:
     branches: [main]
