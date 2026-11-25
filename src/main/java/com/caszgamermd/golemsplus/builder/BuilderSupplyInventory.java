@@ -431,6 +431,21 @@ public final class BuilderSupplyInventory {
             if(max>1)materials.computeIfPresent(row.getKey(),(id,amount)->
                     Math.max(amount,Math.min(max,row.getValue())));
         }
+        if(BuilderFlight.creative(worker)){
+            // Stock additional high-demand active-layer types while already
+            // at the real depot, reducing difficult high-roof supply trips.
+            int types=(int)materials.keySet().stream().filter(id->!beltItem(id)).count();
+            var ranked=new ArrayList<>(activeDemand.entrySet());
+            ranked.sort((a,b)->Integer.compare(b.getValue(),a.getValue()));
+            for(var row:ranked){
+                if(types>=8)break;
+                if(materials.containsKey(row.getKey())||beltItem(row.getKey()))continue;
+                var key=Identifier.tryParse(row.getKey());
+                if(key==null||!BuiltInRegistries.ITEM.containsKey(key))continue;
+                int max=new ItemStack(BuiltInRegistries.ITEM.getValue(key)).getMaxStackSize();
+                materials.put(row.getKey(),Math.min(max,row.getValue()));types++;
+            }
+        }
         // A reusable fluid source is one tool for the whole work order,
         // independent of how many fluid cells are assigned.
         for(String item:java.util.List.copyOf(materials.keySet()))

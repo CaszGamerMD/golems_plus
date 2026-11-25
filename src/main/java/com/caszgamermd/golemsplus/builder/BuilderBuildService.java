@@ -170,6 +170,14 @@ public final class BuilderBuildService {
         siteFootprints.put(table,result);
         return result;
     }
+    static BuilderEscapeBox.Bounds flightBounds(ServerLevel level,BuilderGolem worker){
+        if(!(level.getBlockEntity(worker.home()) instanceof WorkerStationBlockEntity table))return null;
+        try{Cache plan=table.activeOrder()==null?cached.get(worker):cache(table,worker);return plan==null?null:siteFootprint(table,plan).escapeBox();}catch(Exception e){return null;}
+    }
+    static int flightActiveY(ServerLevel level,BuilderGolem worker){
+        if(!(level.getBlockEntity(worker.home()) instanceof WorkerStationBlockEntity table))return worker.blockPosition().getY();
+        try{Cache plan=table.activeOrder()==null?cached.get(worker):cache(table,worker);int y=plan==null?worker.blockPosition().getY():table.builderActiveLayer(plan.steps());return y==Integer.MAX_VALUE?worker.blockPosition().getY():y;}catch(Exception e){return worker.blockPosition().getY();}
+    }
     /** East, south, west, north. Other-side order is shared by all crew,
      * but a different worker starts with a different perimeter approach.
      * In particular, never send all four workers back to the failed side.
@@ -277,6 +285,14 @@ public final class BuilderBuildService {
                 ||BuilderGrappleAccess.active(worker)
                 ||BuilderFlight.moving(worker)
                 ||BuilderFlight.descentMakingProgress(level,worker,depot))return;
+        if(BuilderFlight.creative(worker)){
+            // Keep the resupply mission alive while its dedicated 3D
+            // escape search rotates candidates. Never swap a material-
+            // dependent claim between four equally stranded hats.
+            table.setProblem("Hat seeking safe airborne supply route to "+depot);
+            activity.supplyProgressTick=now;
+            return;
+        }
         String reason="no physical progress toward OnSite Storage";
         table.waitForBuilderAccess(worker.getUUID(),index,now,reason);
         publishHandoff(table,worker.getUUID(),index,now,reason);
