@@ -65,14 +65,23 @@ public final class BuilderAnchorSchedule {
             if(survives(state,pos))return Set.of();
             usePlan=true;reads.clear();
             if(!survives(state,pos))return Set.of();
-            var candidates=new ArrayList<Integer>(reads);
-            candidates.sort(Comparator.comparingInt((Integer i)->descending?steps.get(i).y():-steps.get(i).y())
-                    .thenComparingInt(Integer::intValue));
-            for(int i:candidates){
-                removed.add(i);
-                if(!survives(state,pos))removed.remove(i);
+            var tested=new HashSet<Integer>();
+            // Native survival checks may short-circuit at the first valid
+            // face. Removing that face can reveal a previously unread
+            // alternative. Continue until every discovered candidate has
+            // been tested, so a surviving alternative is not lost.
+            while(true){
+                var candidates=new ArrayList<Integer>(reads);
+                candidates.removeAll(tested);
+                if(candidates.isEmpty())break;
+                candidates.sort(Comparator.comparingInt((Integer i)->descending?steps.get(i).y():-steps.get(i).y())
+                        .thenComparingInt(Integer::intValue));
+                for(int i:candidates){
+                    tested.add(i);removed.add(i);
+                    if(!survives(state,pos))removed.remove(i);
+                }
             }
-            var required=new HashSet<Integer>(candidates);
+            var required=new HashSet<Integer>(tested);
             required.removeAll(removed);required.remove(index);
             removed.clear();return required;
         }
