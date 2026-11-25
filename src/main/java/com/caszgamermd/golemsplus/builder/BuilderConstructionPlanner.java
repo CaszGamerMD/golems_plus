@@ -702,10 +702,11 @@ public final class BuilderConstructionPlanner {
             boolean bodyBlocking=BuilderPlacementSpace.stepNeedsVacating(
                     world,target,state.state(),
                     BuilderWaterPass.isWaterlogPass(step.encodedState()));
-            BlockPos stance=BuilderPlacementSpace.approachForStep(
+            boolean creative=BuilderFlight.creative(worker);
+            BlockPos stance=creative?null:BuilderPlacementSpace.approachForStep(
                     world,worker,target,bodyBlocking,lookahead,
                     at->safeStandForStep(world,worker,target,at,step.encodedState()));
-            if(stance==null&&(BuilderPlacementSpace.safeFractionalCapPose(
+            if(!creative&&stance==null&&(BuilderPlacementSpace.safeFractionalCapPose(
                     world,worker,target)
                     ||BuilderPlacementSpace.canRetreatToFractionalCap(
                             world,worker,target)))
@@ -717,7 +718,8 @@ public final class BuilderConstructionPlanner {
             // stance null so speculative handoff never sends A* into midair.
             boolean propeller=stance==null
                     &&(BuilderFlight.canAccessWork(world,worker,target,bodyBlocking)
-                        ||pending.size()<=24&&BuilderFlight.canAccessRoofWork(world,worker,target,bodyBlocking));
+                        ||!creative&&pending.size()<=24&&BuilderFlight.canAccessRoofWork(world,worker,target,bodyBlocking));
+            if(creative&&!propeller)continue;
             // An elevated unsupported block needs construction footing.
             // Prefer a real, item-paid scaffold platform if one can be
             // built. A grapple is an access tool, not a replacement for a

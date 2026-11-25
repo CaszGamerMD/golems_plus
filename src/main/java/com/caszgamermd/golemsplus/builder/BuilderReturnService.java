@@ -70,6 +70,12 @@ public final class BuilderReturnService {
     public static boolean approach(ServerLevel level,BuilderGolem worker,
             BlockPos target,double speed){
         if(target==null)return true;
+        if(BuilderFlight.creative(worker)){
+            if(withinStorageReach(worker,target)){
+                BuilderFlight.stop(worker);return false;
+            }
+            BuilderFlight.towardStorage(level,worker,target);return true;
+        }
         long now=level.getGameTime();
         ReturnHistory history=history(worker,target,now);
         var rejected=history.rejected.keySet();

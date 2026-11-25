@@ -8,10 +8,14 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-/** Anchor-free vertical lift, with a small fixed horizontal envelope per takeoff. */
+/** Collision-checked powered movement. Construction hats use unrestricted 3D flight; legacy propeller tests can opt out. */
 public final class BuilderFlight {
     private BuilderFlight() {}
     private static final double SPEED = .20;
+    private static final double CREATIVE_SPEED = .55; // nominal 11 blocks/sec
+    public static boolean creative(BuilderGolem worker) {
+        return enabled(worker) && worker.creativeFlightEnabled();
+    }
     public static final double HORIZONTAL_LIMIT = 2.0;
     private static final double HORIZONTAL_LIMIT_SQUARED = HORIZONTAL_LIMIT * HORIZONTAL_LIMIT;
     private static final Map<BuilderGolem, Flight> flights = new WeakHashMap<>();
@@ -82,16 +86,50 @@ public final class BuilderFlight {
         Flight flight = flights.get(worker);
         return flight == null ? worker.position() : flight.origin;
     }
-    private static boolean inEnvelope(Vec3 origin, Vec3 point) {
+    private static boolean inEnvelope(BuilderGolem worker, Vec3 origin, Vec3 point) {
+        if (creative(worker)) return true;
         double dx = point.x - origin.x, dz = point.z - origin.z;
         return dx * dx + dz * dz <= HORIZONTAL_LIMIT_SQUARED + 1e-6;
+    }
+    /** A diagonal is checked in short swept segments rather than treating the
+     * entire diagonal's enclosing rectangle as solid. */
+    private static boolean airSegment(ServerLevel level, BuilderGolem worker, Vec3 a, Vec3 b) {
+        int steps=Math.max(1,(int)Math.ceil(a.distanceTo(b)/.75));
+        Vec3 prev=a;
+        for(int i=1;i<=steps;i++) {
+            Vec3 next=a.add(b.subtract(a).scale((double)i/steps));
+            if(!sweep(level,worker,prev,next))return false;
+            prev=next;
+        }
+        return true;
+    }
+    private static List<Vec3> creativePath(ServerLevel level,BuilderGolem worker,Vec3 from,Vec3 to) {
+        if(airSegment(level,worker,from,to))return List.of(to);
+        // Try direct vertical or horizontal bends, then bounded over/under
+        // and side detours. Never teleport or fly through a solid block.
+        for(Vec3 bend:List.of(new Vec3(from.x,to.y,from.z),new Vec3(to.x,from.y,to.z)))
+            if(airSegment(level,worker,from,bend)&&airSegment(level,worker,bend,to))return List.of(bend,to);
+        for(int offset:new int[]{1,2,4,8,16,32,-1,-2,-4,-8,-16,-32}) {
+            double y=offset>0?Math.max(from.y,to.y)+offset:Math.min(from.y,to.y)+offset;
+            Vec3 a=new Vec3(from.x,y,from.z),b=new Vec3(to.x,y,to.z);
+            if(airSegment(level,worker,from,a)&&airSegment(level,worker,a,b)&&airSegment(level,worker,b,to))return List.of(a,b,to);
+        }
+        for(int offset:new int[]{1,-1,2,-2,4,-4,8,-8,16,-16,32,-32}) {
+            for(boolean xAxis:new boolean[]{true,false}) {
+                Vec3 shift=new Vec3(xAxis?offset:0,0,xAxis?0:offset);
+                Vec3 a=from.add(shift),b=to.add(shift);
+                if(airSegment(level,worker,from,a)&&airSegment(level,worker,a,b)&&airSegment(level,worker,b,to))return List.of(a,b,to);
+            }
+        }
+        return List.of();
     }
     // Vertical first, or a short sideways adjustment followed by vertical.
     // No unrestricted 3D search, repeated horizontal hops, or grapple anchor.
     private static List<Vec3> path(ServerLevel level, BuilderGolem worker,
             Vec3 from, Vec3 to, Vec3 anchor) {
-        if (!inEnvelope(anchor, from) || !inEnvelope(anchor, to)
+        if (!inEnvelope(worker, anchor, from) || !inEnvelope(worker, anchor, to)
                 || !clear(level, worker, to)) return List.of();
+        if(creative(worker))return creativePath(level,worker,from,to);
         Vec3 upper = new Vec3(from.x, to.y, from.z);
         if (sweep(level, worker, from, upper) && sweep(level, worker, upper, to))
             return upper.distanceToSqr(to) < .0001 ? List.of(to) : List.of(upper, to);
@@ -112,7 +150,7 @@ public final class BuilderFlight {
     private static List<Vec3> search(ServerLevel level, BuilderGolem worker, List<BlockPos> candidates) {
         Vec3 anchor = origin(worker);
         return candidates.stream().filter(Objects::nonNull)
-                .filter(p -> inEnvelope(anchor, feet(p)))
+                .filter(p -> inEnvelope(worker, anchor, feet(p)))
                 .filter(p -> {
                     Flight flight=flights.get(worker);
                     return flight==null||flight.lastFailedDestination==null
@@ -120,6 +158,7 @@ public final class BuilderFlight {
                             ||feet(p).distanceToSqr(flight.lastFailedDestination)>.04;
                 })
                 .sorted(Comparator.comparingDouble(p -> worker.position().distanceToSqr(feet(p))))
+                .limit(creative(worker)?24:Long.MAX_VALUE)
                 .map(p -> path(level, worker, worker.position(), feet(p), anchor))
                 .filter(p -> !p.isEmpty()).findFirst().orElse(List.of());
     }
@@ -168,7 +207,7 @@ public final class BuilderFlight {
             Vec3 to=new Vec3(from.x,target.getY()+dy,from.z);
             double distance=Math.abs(to.y-from.y);
             if (distance<.02 || distance>=bestDistance
-                    || !inEnvelope(origin(worker),to)
+                    || !inEnvelope(worker, origin(worker),to)
                     || !safeWorkPose(level,worker,target,to,bodyBlocking)
                     || !sweep(level,worker,from,to)) continue;
             best=to;bestDistance=distance;
@@ -194,6 +233,7 @@ public final class BuilderFlight {
         // Use that exact collision surface for the entire powered leg.
         Vec3 center=supportedFeet(level,goal),anchor=origin(worker);
         if(!Double.isFinite(center.y)||!clear(level,worker,center))return false;
+        if(creative(worker))return requestPosition(level,worker,goal,center);
         double dx=center.x-anchor.x,dz=center.z-anchor.z;
         double length=Math.hypot(dx,dz);
         Vec3 landing=center;
@@ -261,7 +301,7 @@ public final class BuilderFlight {
                 if(same)return true;
             }
         }
-        if(BuilderGrappleAccess.active(worker)||!inEnvelope(origin(worker),destination)){
+        if(BuilderGrappleAccess.active(worker)||!inEnvelope(worker, origin(worker),destination)){
             BuilderTrace.decision(level,worker,"FLIGHT_REJECT",goal,
                     BuilderGrappleAccess.active(worker)?"grapple owns motion":"outside horizontal envelope");
             return false;
@@ -310,8 +350,41 @@ public final class BuilderFlight {
         worker.setPropellerSpinning(true);
         return true;
     }
+    /** Exact air coordinates are also valid work and transport destinations. */
+    public static boolean canRouteExact(ServerLevel level,BuilderGolem worker,BlockPos target) {
+        return target!=null&&!path(level,worker,worker.position(),feet(target),origin(worker)).isEmpty();
+    }
+    public static boolean routeExact(ServerLevel level,BuilderGolem worker,BlockPos target) {
+        if(target==null)return false;
+        if(WorkerNavigation.canStandOn(level,worker,target)) {
+            Vec3 supported=supportedFeet(level,target);
+            if(Double.isFinite(supported.y)&&clear(level,worker,supported))
+                return requestPosition(level,worker,target,supported);
+        }
+        return request(level,worker,target);
+    }
+    /** Storage reach remains one block, with no requirement for a floor. */
+    public static boolean towardStorage(ServerLevel level,BuilderGolem worker,BlockPos target) {
+        if(target==null)return false;
+        if(BuilderReturnService.withinStorageReach(worker,target))return true;
+        if(moving(worker))return true;
+        BuilderChunkTickets.destination(level,worker,target);
+        var candidates=new ArrayList<BlockPos>();
+        for(int dy=-1;dy<=2;dy++)for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++) {
+            BlockPos p=target.offset(dx,dy,dz);
+            Vec3 at=feet(p);
+            if(BuilderReturnService.withinStorageReach(at.x,at.y,at.z,target)&&clear(level,worker,at))candidates.add(p);
+        }
+        BlockPos pose=select(level,worker,candidates);
+        return pose!=null&&request(level,worker,pose);
+    }
     public static boolean toward(ServerLevel level, BuilderGolem worker, BlockPos target) {
         if (target == null) return false;
+        if(creative(worker)) {
+            if(moving(worker))return true;
+            if(clear(level,worker,feet(target))&&routeExact(level,worker,target))return true;
+            return towardStorage(level,worker,target);
+        }
         if (clear(level, worker, feet(target))) return request(level, worker, target);
         var candidates = new ArrayList<BlockPos>();
         for (int dy = 0; dy <= 1; dy++)
@@ -336,7 +409,7 @@ public final class BuilderFlight {
             BlockPos p=here.offset(dx,dy,dz);
             if(!level.hasChunkAt(p)||!WorkerNavigation.canStandOn(level,worker,p))continue;
             Vec3 to=supportedFeet(level,p);
-            if(!Double.isFinite(to.y)||!inEnvelope(from,to)||to.distanceToSqr(from)<.25)continue;
+            if(!Double.isFinite(to.y)||!inEnvelope(worker, from,to)||to.distanceToSqr(from)<.25)continue;
             double old=from.distanceToSqr(Vec3.atBottomCenterOf(target));
             if(to.distanceToSqr(Vec3.atBottomCenterOf(target))>=old-.25)continue;
             if(path(level,worker,from,to,from).isEmpty())continue;
@@ -407,6 +480,8 @@ public final class BuilderFlight {
     public static boolean canAccessWork(ServerLevel level, BuilderGolem worker, BlockPos target,boolean bodyBlocking) {
         if (!enabled(worker) || BuilderGrappleAccess.active(worker)
                 || BuilderScaffolding.isControllingMovement(worker)) return false;
+        if(creative(worker))return safeWorkPose(level,worker,target,worker.position(),bodyBlocking)
+                ||workPose(level,worker,target,bodyBlocking)!=null;
         return verticalWorkPose(level,worker,target,bodyBlocking)!=null
                 || workPose(level, worker, target,bodyBlocking) != null
                 || launchPose(level, worker, target,bodyBlocking) != null;
@@ -494,7 +569,7 @@ public final class BuilderFlight {
                 for(int distance:new int[]{1,2}){
                     BlockPos launch=new BlockPos(landing.getX()+distance*axis[0],
                             baseY,landing.getZ()+distance*axis[1]);
-                    if(byLaunch.containsKey(launch)||!inEnvelope(feet(launch),feet(landing))
+                    if(byLaunch.containsKey(launch)||!inEnvelope(worker, feet(launch),feet(landing))
                             ||!WorkerNavigation.canStandOn(level,worker,launch)
                             ||Math.abs(WorkerNavigation.surveyFloorHeight(level,launch)-launch.getY())>.1
                             ||path(level,worker,feet(launch),feet(landing),feet(launch)).isEmpty())continue;
@@ -566,7 +641,7 @@ public final class BuilderFlight {
         var columns = new ArrayList<BlockPos>();
         for (int dx = -2; dx <= 2; dx++) for (int dz = -2; dz <= 2; dz++) {
             BlockPos p = center.offset(dx, 0, dz);
-            if (inEnvelope(anchor, feet(p))) columns.add(p);
+            if (inEnvelope(worker, anchor, feet(p))) columns.add(p);
         }
         columns.sort(Comparator.comparingDouble(p -> {
             double dx = p.getX() + .5 - worker.getX(), dz = p.getZ() + .5 - worker.getZ();
@@ -612,7 +687,7 @@ public final class BuilderFlight {
         var landings=new ArrayList<BlockPos>();
         for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
             BlockPos column=here.offset(dx,0,dz);
-            if(!inEnvelope(anchor,feet(column)))continue;
+            if(!inEnvelope(worker, anchor,feet(column)))continue;
             for(int y=here.getY()+3;y>level.getMinY();y--){
                 BlockPos at=column.atY(y);
                 if(!level.hasChunkAt(at))break;
@@ -644,7 +719,7 @@ public final class BuilderFlight {
         var candidates=new ArrayList<BlockPos>();
         for(int dy=1;dy<=5;dy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
             BlockPos p=here.offset(dx,dy,dz);
-            if(rejected.contains(p)||!inEnvelope(anchor,feet(p))||p.getY()<=anchor.y+.6
+            if(rejected.contains(p)||!inEnvelope(worker, anchor,feet(p))||p.getY()<=anchor.y+.6
                     ||!WorkerNavigation.canStandOn(level,worker,p)
                     ||Math.abs(WorkerNavigation.surveyFloorHeight(level,p)-p.getY())>.1)continue;
             if(!path(level,worker,anchor,feet(p),anchor).isEmpty())candidates.add(p);
@@ -769,7 +844,7 @@ public final class BuilderFlight {
         if(!bodyBlocking)return !BlockPos.containing(position).equals(target);
         double dx = Math.max(0, Math.max(target.getX() - position.x, position.x - target.getX() - 1));
         double dz = Math.max(0, Math.max(target.getZ() - position.z, position.z - target.getZ() - 1));
-        if (dx * dx + dz * dz < .8 * .8) return false;
+        if (!creative(worker) && dx * dx + dz * dz < .8 * .8) return false;
         AABB future = new AABB(target).inflate(.10);
         if (body(worker, position).intersects(future)) return false;
         for (Direction direction : Direction.values()) {
@@ -785,16 +860,16 @@ public final class BuilderFlight {
     }
     public static BlockPos workPose(ServerLevel level, BuilderGolem worker, BlockPos target,boolean bodyBlocking) {
         if (safeWorkPose(level, worker, target, worker.position(),bodyBlocking)
-                && inEnvelope(origin(worker), feet(worker.blockPosition()))
+                && inEnvelope(worker, origin(worker), feet(worker.blockPosition()))
                 && safeWorkPose(level, worker, target, feet(worker.blockPosition()),bodyBlocking)
                 && sweep(level, worker, worker.position(), feet(worker.blockPosition())))
             return worker.blockPosition();
         var candidates = new ArrayList<BlockPos>();
-        for (int dy = -2; dy <= 1; dy++)
+        for (int dy = creative(worker)?-4:-2; dy <= (creative(worker)?4:1); dy++)
             for (int dx = -4; dx <= 4; dx++)
                 for (int dz = -4; dz <= 4; dz++) {
                     BlockPos pose = target.offset(dx, dy, dz);
-                    if (inEnvelope(origin(worker), feet(pose))
+                    if (inEnvelope(worker, origin(worker), feet(pose))
                             && safeWorkPose(level, worker, target, feet(pose),bodyBlocking)) candidates.add(pose);
                 }
         return select(level, worker, candidates);
@@ -805,7 +880,8 @@ public final class BuilderFlight {
         // Ordinary walking, falling, and furniture visits retain their controller
         // until an actual flight request has established powered hover.
         if (flight == null) {
-            worker.setPropellerSpinning(false);
+            worker.setPropellerSpinning(creative(worker));
+            if(creative(worker))worker.setNoGravity(true);
             return false;
         }
         // Resolve arrival BEFORE any caller can request another flight.
@@ -835,8 +911,8 @@ public final class BuilderFlight {
             return true;
         }
         Vec3 delta = flight.path.get(flight.next).subtract(worker.position());
-        Vec3 velocity = delta.scale(Math.min(1, SPEED / delta.length()));
-        if (inEnvelope(flight.origin, worker.position().add(velocity))
+        Vec3 velocity = delta.scale(Math.min(1, (creative(worker)?CREATIVE_SPEED:SPEED) / delta.length()));
+        if (inEnvelope(worker, flight.origin, worker.position().add(velocity))
                 && sweep(level, worker, worker.position(), worker.position().add(velocity)))
             worker.setDeltaMovement(velocity);
         else {

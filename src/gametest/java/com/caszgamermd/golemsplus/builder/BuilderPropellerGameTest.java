@@ -11,6 +11,29 @@ import net.minecraft.world.phys.Vec3;
 
 /** Real entity physics exercises flight beyond the old 20-block grapple range. */
 public final class BuilderPropellerGameTest {
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=400,skyAccess=true)
+    public void constructionHatFliesAroundWallAndHovers(GameTestHelper h){
+        var world=h.getLevel();
+        BlockPos start=h.absolutePos(new BlockPos(5,7,5));
+        BlockPos end=h.absolutePos(new BlockPos(20,9,5));
+        world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
+        for(int x=4;x<=21;x++)for(int y=6;y<=16;y++)for(int z=3;z<=7;z++)h.setBlock(x,y,z,Blocks.AIR);
+        for(int y=6;y<=11;y++)for(int z=3;z<=7;z++)h.setBlock(12,y,z,Blocks.STONE);
+        var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
+        world.addFreshEntity(worker);
+        Vec3[] last={worker.position()};
+        h.onEachTick(()->{
+            if(worker.position().distanceTo(last[0])>.85){h.fail("Flight teleported");return;}
+            last[0]=worker.position();
+            if(h.getTick()==5&&!BuilderFlight.request(world,worker,end)){h.fail("No 3D wall detour");return;}
+            if(h.getTick()>5&&!BuilderFlight.moving(worker)&&worker.position().distanceToSqr(Vec3.atBottomCenterOf(end))<.04){
+                if(!worker.isNoGravity()||!worker.propellerSpinning()){h.fail("Hat did not hover");return;}
+                h.succeed();
+            }
+        });
+    }
+
     @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=1400,skyAccess=true)
     public void propellerClimbsHundredBlocksAndReturnsWithoutAnAnchor(GameTestHelper h) {
         var world=h.getLevel();
@@ -19,6 +42,7 @@ public final class BuilderPropellerGameTest {
         world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
         h.setBlock(12,2,12,Blocks.STONE);
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setCreativeFlightEnabled(false);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         world.addFreshEntity(worker);
         boolean[] descending={false};
@@ -56,6 +80,7 @@ public final class BuilderPropellerGameTest {
         BlockPos far=start.east(8).above(4);
         world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setCreativeFlightEnabled(false);
         h.setBlock(10,3,10,Blocks.STONE);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         world.addFreshEntity(worker);
@@ -88,6 +113,7 @@ public final class BuilderPropellerGameTest {
             for(int y=4;y<=20;y++)h.setBlock(x,y,z,Blocks.AIR);
         h.setBlock(10,18,10,Blocks.STONE);
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setCreativeFlightEnabled(false);
         worker.setPos(start.getX()+.475,start.getY(),start.getZ()+.6);
         world.addFreshEntity(worker);
         int[] stage={0};
@@ -173,6 +199,7 @@ public final class BuilderPropellerGameTest {
             }
             table.setBuilderMaterialsForFile(filename,plan.required());
             var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setCreativeFlightEnabled(false);
             worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
             worker.assign(station,id);
             world.addFreshEntity(worker);
@@ -208,6 +235,7 @@ public final class BuilderPropellerGameTest {
         h.setBlock(11,4,10,Blocks.STONE);
         world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setCreativeFlightEnabled(false);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         world.addFreshEntity(worker);
         boolean[] climbed={false};
@@ -233,6 +261,7 @@ public final class BuilderPropellerGameTest {
         BlockPos depot=h.absolutePos(new BlockPos(5,2,5));
         world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setCreativeFlightEnabled(false);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         world.addFreshEntity(worker);
         boolean[] walked={false},flew={false};
@@ -263,6 +292,7 @@ public final class BuilderPropellerGameTest {
         BlockPos depot=h.absolutePos(new BlockPos(3,2,18));
         world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setCreativeFlightEnabled(false);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         world.addFreshEntity(worker);
         boolean[] flew={false};
@@ -298,6 +328,7 @@ public final class BuilderPropellerGameTest {
         BlockPos start=h.absolutePos(new BlockPos(11,3,11));
         world.getChunkSource().addTicketWithRadius(TicketType.FORCED,new ChunkPos(start.getX()>>4,start.getZ()>>4),3);
         var worker=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,world);
+        worker.setCreativeFlightEnabled(false);
         worker.setPos(start.getX()+.5,start.getY(),start.getZ()+.5);
         world.addFreshEntity(worker);
         h.onEachTick(()->{

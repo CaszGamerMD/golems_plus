@@ -554,6 +554,9 @@ public final class WorkerNavigation {
     }
     public static boolean canReachExact(ServerLevel level,PathfinderMob mob,
                                         BlockPos target){
+        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&com.caszgamermd.golemsplus.builder.BuilderFlight.creative(builder))
+            return com.caszgamermd.golemsplus.builder.BuilderFlight.canRouteExact(level,builder,target);
         if(target==null||!level.hasChunkAt(target))return false;
         // Exact in-place standing must work even before Minecraft has
         // produced its first navigation path for this real entity.
@@ -1460,6 +1463,9 @@ public final class WorkerNavigation {
     }
     public static boolean routeToExact(ServerLevel level,PathfinderMob mob,
                                        BlockPos target,double speed){
+        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&com.caszgamermd.golemsplus.builder.BuilderFlight.creative(builder))
+            return com.caszgamermd.golemsplus.builder.BuilderFlight.routeExact(level,builder,target);
         Progress progress=state(mob);
         if(progress.centering!=null){
             if(target!=null&&target.equals(progress.requested)
@@ -1596,6 +1602,9 @@ public final class WorkerNavigation {
 
     public static boolean routeTo(ServerLevel level,PathfinderMob mob,BlockPos target,
                                   double speed){
+        if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder
+                &&com.caszgamermd.golemsplus.builder.BuilderFlight.creative(builder))
+            return com.caszgamermd.golemsplus.builder.BuilderFlight.toward(level,builder,target);
         if(mob instanceof com.caszgamermd.golemsplus.builder.BuilderGolem builder){
             com.caszgamermd.golemsplus.builder.BuilderChunkTickets
                     .destination(level,builder,target);

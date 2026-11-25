@@ -67,8 +67,9 @@ public final class ProfessionGolemRenderer<T extends PathfinderMob>
         state.courier=entity instanceof BuilderGolem builder&&builder.deliveryRole();
         state.carrying=(entity instanceof BuilderGolem builder&&builder.hasSupplyBox())
                 || (entity instanceof TraderGolem trader&&trader.busy());
-        state.working=(entity instanceof BuilderGolem
-                &&!entity.getNavigation().isDone())
+        state.working=(entity instanceof BuilderGolem builder
+                &&(builder.propellerSpinning()&&builder.getDeltaMovement().lengthSqr()>.002
+                    ||!entity.getNavigation().isDone()))
                 ||(entity instanceof ChefGolem chef&&chef.preparing());
         state.presenting=entity instanceof TraderGolem trader&&trader.presenting();
         itemModelResolver.updateForTopItem(state.tradeItem,

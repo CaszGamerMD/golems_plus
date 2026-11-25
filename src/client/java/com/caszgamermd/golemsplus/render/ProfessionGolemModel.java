@@ -21,8 +21,6 @@ public final class ProfessionGolemModel
     public enum Profession { BUILDER, TRADER, CHEF, FISHER }
 
     private final ModelPart head,leftArm,rightArm,leftLeg,rightLeg;
-    private final ModelPart[] safetyGear;
-    private final ModelPart courierScalp,courierShirt;
     private final ModelPart traderClosed,traderOpen,fisherRod,fisherFish,foldingChair;
     private final Profession profession;
     private final ModelPart propeller;
@@ -42,14 +40,6 @@ public final class ProfessionGolemModel
         fisherRod=profession==Profession.FISHER?rightArm.getChild("fishing_rod"):null;
         fisherFish=profession==Profession.FISHER?fisherRod.getChild("caught_fish"):null;
         foldingChair=profession==Profession.FISHER?root.getChild("folding_chair"):null;
-        safetyGear=profession==Profession.BUILDER?new ModelPart[]{
-                head.getChild("helmet_crown"),head.getChild("helmet_brim"),
-                head.getChild("helmet_ridge"),torso.getChild("hi_vis_vest"),
-                torso.getChild("vest_strap_l"),torso.getChild("vest_strap_r"),
-                torso.getChild("vest_belt"),torso.getChild("utility_belt"),
-                torso.getChild("tool_pouch")}:new ModelPart[0];
-        courierScalp=profession==Profession.BUILDER?head.getChild("bald_patch"):null;
-        courierShirt=profession==Profession.BUILDER?torso.getChild("dirty_shirt"):null;
     }
 
     public static LayerDefinition builderLayer(){return layer(Profession.BUILDER);}
@@ -60,6 +50,7 @@ public final class ProfessionGolemModel
     private static LayerDefinition layer(Profession type){
         MeshDefinition mesh=new MeshDefinition();
         PartDefinition root=mesh.getRoot();
+        if(type==Profession.BUILDER)return constructionHatLayer(mesh,root);
 
         PartDefinition torso=root.addOrReplaceChild("body",CubeListBuilder.create()
                 .texOffs(0,0).addBox(-5,-6,-3.5f,10,11,7),
@@ -81,63 +72,7 @@ public final class ProfessionGolemModel
                 PartPose.offset(-3,16,0));
 
         switch(type){
-            case BUILDER -> {
-                // Courier attire is physically separate cuboids toggled by
-                // the server-owned role: bald patch and dirty work shirt.
-                head.addOrReplaceChild("bald_patch",CubeListBuilder.create()
-                        .texOffs(0,26).addBox(-4,-4,-3,8,7,6,
-                                new net.minecraft.client.model.geom.builders.CubeDeformation(.10f)),
-                        PartPose.ZERO);
-                torso.addOrReplaceChild("dirty_shirt",CubeListBuilder.create()
-                        .texOffs(0,0).addBox(-5,-6,-3.5f,10,11,7,
-                                new net.minecraft.client.model.geom.builders.CubeDeformation(.13f)),PartPose.ZERO);
-                head.addOrReplaceChild("propeller",CubeListBuilder.create()
-                        .texOffs(7,0).addBox(-1,-2,-1,2,3,2)
-                        .texOffs(42,41).addBox(-8,-2.5f,-1,16,1,2)
-                        .texOffs(42,34).addBox(-1,-2.5f,-8,2,1,16),
-                        PartPose.offset(0,-7,0));
-                // Raised hard-hat bowl, brow brim, rear flap and center rib.
-                head.addOrReplaceChild("helmet_crown",CubeListBuilder.create()
-                        .texOffs(75,24).addBox(-4.7f,-7.2f,-3.8f,9.4f,4,7.6f),
-                        PartPose.ZERO);
-                head.addOrReplaceChild("helmet_brim",CubeListBuilder.create()
-                        .texOffs(0,59).addBox(-6,-3.9f,-5,12,1.1f,10),
-                        PartPose.ZERO);
-                head.addOrReplaceChild("helmet_ridge",CubeListBuilder.create()
-                        .texOffs(53,76).addBox(-.7f,-7.7f,-4.2f,1.4f,1,8.4f),
-                        PartPose.ZERO);
-                torso.addOrReplaceChild("hi_vis_vest",CubeListBuilder.create()
-                        .texOffs(42,34).addBox(-5.45f,-6.25f,-3.95f,
-                                10.9f,10.7f,7.9f),PartPose.ZERO);
-                // Reflective bands sit outside the vest, not inside it.
-                torso.addOrReplaceChild("vest_strap_l",CubeListBuilder.create()
-                        .texOffs(86,52).addBox(-4.1f,-6.45f,-4.14f,
-                                1.6f,8.4f,.45f),PartPose.ZERO);
-                torso.addOrReplaceChild("vest_strap_r",CubeListBuilder.create()
-                        .texOffs(86,52).addBox(2.5f,-6.45f,-4.14f,
-                                1.6f,8.4f,.45f),PartPose.ZERO);
-                torso.addOrReplaceChild("vest_belt",CubeListBuilder.create()
-                        .texOffs(94,52).addBox(-5.6f,1.6f,-4.2f,
-                                11.2f,1.4f,.5f),PartPose.ZERO);
-                torso.addOrReplaceChild("utility_belt",CubeListBuilder.create()
-                        .texOffs(72,67).addBox(-5.4f,4.3f,-3.95f,
-                                10.8f,2.0f,7.9f),PartPose.ZERO);
-                torso.addOrReplaceChild("tool_pouch",CubeListBuilder.create()
-                        .texOffs(109,80).addBox(4.2f,3.0f,-4.3f,
-                                2.3f,3.7f,3.2f),PartPose.ZERO);
-                left.addOrReplaceChild("work_glove",CubeListBuilder.create()
-                        .texOffs(108,0).addBox(-2.6f,6.2f,-2.6f,
-                                5.2f,3.2f,5.2f),PartPose.ZERO);
-                right.addOrReplaceChild("work_glove",CubeListBuilder.create()
-                        .texOffs(108,0).addBox(-2.6f,6.2f,-2.6f,
-                                5.2f,3.2f,5.2f),PartPose.ZERO);
-                leftLeg.addOrReplaceChild("work_boot",CubeListBuilder.create()
-                        .texOffs(107,15).addBox(-2.2f,5.6f,-2.8f,
-                                4.4f,2.4f,5.6f),PartPose.ZERO);
-                rightLeg.addOrReplaceChild("work_boot",CubeListBuilder.create()
-                        .texOffs(107,15).addBox(-2.2f,5.6f,-2.8f,
-                                4.4f,2.4f,5.6f),PartPose.ZERO);
-            }
+            case BUILDER -> throw new IllegalStateException("Hat layer handled separately");
             case TRADER -> {
                 // Tailored overcoat, lapels, crisp white shirt and red tie.
                 torso.addOrReplaceChild("suit_jacket",CubeListBuilder.create()
@@ -434,6 +369,32 @@ public final class ProfessionGolemModel
         return LayerDefinition.create(mesh,256,128);
     }
 
+    /** Bodyless hard hat with two articulated mechanical claws. Existing
+     * builder atlas supplies the safety-yellow and tool-metal surfaces. */
+    private static LayerDefinition constructionHatLayer(MeshDefinition mesh,PartDefinition root){
+        root.addOrReplaceChild("body",CubeListBuilder.create(),PartPose.ZERO);
+        root.addOrReplaceChild("left_leg",CubeListBuilder.create(),PartPose.ZERO);
+        root.addOrReplaceChild("right_leg",CubeListBuilder.create(),PartPose.ZERO);
+        PartDefinition hat=root.addOrReplaceChild("head",CubeListBuilder.create()
+                .texOffs(75,24).addBox(-4.7f,-7.2f,-3.8f,9.4f,4,7.6f)
+                .texOffs(0,59).addBox(-5,-3.9f,-5,10,1.1f,10)
+                .texOffs(53,76).addBox(-.7f,-7.7f,-4.2f,1.4f,1,8.4f)
+                .texOffs(72,67).addBox(-3.5f,-2.8f,-3,7,2.3f,6),PartPose.offset(0,9,0));
+        hat.addOrReplaceChild("propeller",CubeListBuilder.create()
+                .texOffs(7,0).addBox(-1,-2,-1,2,3,2)
+                .texOffs(42,41).addBox(-7,-2.5f,-1,14,1,2)
+                .texOffs(42,34).addBox(-1,-2.5f,-7,2,1,14),PartPose.offset(0,-7,0));
+        for(int side:new int[]{-1,1}){
+            PartDefinition arm=root.addOrReplaceChild(side==1?"left_arm":"right_arm",CubeListBuilder.create()
+                    .texOffs(72,67).addBox(-1,-1,-1,2,7,2)
+                    .texOffs(108,0).addBox(-1.5f,5,-1.5f,3,2,3),PartPose.offset(side*3,8,0));
+            for(int jaw:new int[]{-1,1})arm.addOrReplaceChild(jaw==1?"jaw_right":"jaw_left",CubeListBuilder.create()
+                    .texOffs(107,15).addBox(-.65f,0,-.8f,1.3f,4,1.6f)
+                    .texOffs(107,15).addBox(jaw==1?-1.5f:-.65f,3,-.8f,2.15f,1,1.6f),PartPose.offset(jaw*1.45f,6.5f,0));
+        }
+        return LayerDefinition.create(mesh,256,128);
+    }
+
     @Override public void setupAnim(ProfessionGolemRenderState state){
         super.setupAnim(state);
         head.xRot=state.xRot*Mth.DEG_TO_RAD;
@@ -447,17 +408,17 @@ public final class ProfessionGolemModel
         rightArm.xRot=leftLeg.xRot*.52f;
         leftArm.zRot=rightArm.zRot=0;
         if(profession==Profession.BUILDER){
-            propeller.yRot=state.ageInTicks*(state.propellerSpinning?1.4f:.04f);
-            for(ModelPart part:safetyGear)part.visible=!state.courier;
-            courierScalp.visible=state.courier;
-            courierShirt.visible=state.courier;
-            // A construction worker carries a shulker using both hands.
-            if(state.carrying){
-                leftArm.xRot=rightArm.xRot=-1.10f;
-                leftArm.zRot=-.10f;rightArm.zRot=.10f;
-            }else if(state.working&&swing==0){
-                rightArm.xRot=-.72f;
+            head.xRot=0;head.yRot=0;
+            propeller.yRot=state.ageInTicks*1.6f;
+            float reach=state.carrying?-.45f:state.working?-.16f:0;
+            leftArm.xRot=rightArm.xRot=reach;
+            leftArm.zRot=-.08f;rightArm.zRot=.08f;
+            for(ModelPart arm:new ModelPart[]{leftArm,rightArm}){
+                float grip=state.carrying?.12f:.32f;
+                arm.getChild("jaw_left").zRot=grip;
+                arm.getChild("jaw_right").zRot=-grip;
             }
+            return; // Flying claws do not play humanoid walking/sitting poses.
         }else if(profession==Profession.TRADER){
             traderClosed.visible=!state.presenting;
             traderOpen.visible=state.presenting;

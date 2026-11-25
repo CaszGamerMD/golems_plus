@@ -524,7 +524,7 @@ public final class BuilderBuildService {
             ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,
             List<BuilderConstructionPlan.Step> steps,List<Integer> zone,
             int completed){
-        boolean hovering=BuilderFlight.active(worker)&&!BuilderFlight.moving(worker);
+        boolean hovering=(BuilderFlight.creative(worker)||BuilderFlight.active(worker))&&!BuilderFlight.moving(worker);
         if((!hovering&&(!worker.onGround()||worker.isNoGravity()))
                 ||BuilderScaffoldPlanA.hasPlan(worker)
                 ||BuilderGrappleAccess.active(worker)
@@ -680,6 +680,8 @@ public final class BuilderBuildService {
      */
     private static boolean atOnSite(ServerLevel level,BuilderGolem worker,
             BlockPos depot){
+        if(BuilderFlight.creative(worker))return !BuilderFlight.moving(worker)
+                &&BuilderReturnService.withinStorageReach(worker,depot);
         return worker.onGround()&&!worker.isNoGravity()
                 &&!BuilderScaffoldPlanA.hasPlan(worker)
                 &&!BuilderScaffolding.isControllingMovement(worker)
@@ -730,6 +732,13 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table){
         BlockPos depot=table.builderUnloadingStorage();
         if(depot==null)depot=table.getBlockPos();
+        if(BuilderFlight.creative(worker)){
+            if(atOnSite(level,worker,depot)){
+                BuilderEscapeBox.clear(worker);BuilderMultiLegTravel.clear(worker);
+                BuilderFlight.stop(worker);return true;
+            }
+            BuilderReturnService.approach(level,worker,depot,.8);return false;
+        }
         if(atOnSite(level,worker,depot)){BuilderEscapeBox.clear(worker);BuilderMultiLegTravel.clear(worker);}
         else if(escapeBeforeReturn(level,worker,table,depot))return false;
         if(BuilderFlight.enabled(worker)&&BuilderFlight.active(worker)){
@@ -1110,9 +1119,9 @@ public final class BuilderBuildService {
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE){
             BlockPos exitDepot=table.builderUnloadingStorage();
             if(exitDepot==null)exitDepot=table.getBlockPos();
-            if(!atOnSite(level,worker,exitDepot)&&escapeBeforeReturn(level,worker,table,exitDepot))return;
+            if(!BuilderFlight.creative(worker)&&!atOnSite(level,worker,exitDepot)&&escapeBeforeReturn(level,worker,table,exitDepot))return;
             if(atOnSite(level,worker,exitDepot))BuilderEscapeBox.clear(worker);
-            if(BuilderFlight.active(worker)){
+            if(!BuilderFlight.creative(worker)&&BuilderFlight.active(worker)){
                 if(!BuilderFlight.land(level,worker,true))BuilderFlight.land(level,worker,false);
                 return;
             }
@@ -1201,7 +1210,7 @@ public final class BuilderBuildService {
             Cache plan=cache(table,worker);
             WorkerAction alternate=workerActions.get(worker);
             if(alternate!=null&&alternate.alternateSideRequested){
-                if(BuilderFlight.active(worker)){
+                if(!BuilderFlight.creative(worker)&&BuilderFlight.active(worker)){
                     if(!BuilderFlight.land(level,worker,true))BuilderFlight.land(level,worker,false);
                     return;
                 }
@@ -1910,7 +1919,7 @@ public final class BuilderBuildService {
                     &&(!bodyBlockingWork||BuilderPlacementSpace.horizontalClear(pos,worker))
                     &&BuilderConstructionPlanner.safeStandForStep(level,worker,pos,
                             worker.blockPosition(),step.encodedState());
-            boolean propellerWork=BuilderFlight.enabled(worker)
+            boolean propellerWork=BuilderFlight.creative(worker)||BuilderFlight.enabled(worker)
                     &&!localGroundPose
                     &&!BuilderGrappleAccess.active(worker)
                     &&!BuilderScaffolding.isControllingMovement(worker)
@@ -1922,6 +1931,15 @@ public final class BuilderBuildService {
                                 level,worker,pos,at,step.encodedState()))==null);
             boolean hoverPose=propellerWork
                     &&BuilderFlight.safeWorkPose(level,worker,pos,worker.position(),bodyBlockingWork);
+            if(BuilderFlight.creative(worker)&&!hoverPose){
+                BlockPos pose=BuilderFlight.workPose(level,worker,pos,bodyBlockingWork);
+                if(pose!=null&&BuilderFlight.request(level,worker,pose)){
+                    activity.phase=Action.MOVE_TO_WORK;return;
+                }
+                table.waitForBuilderAccess(worker.getUUID(),index,level.getGameTime(),"no clear 3D flight route");
+                publishHandoff(table,worker.getUUID(),index,level.getGameTime(),"blocked flight approach");
+                return;
+            }
             if(propellerWork&&!hoverPose){
                 long now=level.getGameTime();
                 if(BuilderMultiLegTravel.working(worker,pos)

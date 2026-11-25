@@ -39,6 +39,10 @@ public final class BuilderGolem extends PathfinderMob implements Container {
             net.minecraft.network.syncher.SynchedEntityData.defineId(
                     BuilderGolem.class,net.minecraft.network.syncher.EntityDataSerializers.BOOLEAN);
     private boolean propellerEnabled=true;
+    private boolean creativeFlightEnabled=true;
+    public boolean creativeFlightEnabled(){return creativeFlightEnabled;}
+    /** Explicit compatibility mode for old propeller physics tests. */
+    public void setCreativeFlightEnabled(boolean enabled){creativeFlightEnabled=enabled;}
     public boolean propellerEnabled(){return propellerEnabled;}
     public void setPropellerEnabled(boolean enabled){propellerEnabled=enabled;}
     public boolean propellerSpinning(){return entityData.get(PROPELLER);}
@@ -255,7 +259,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
         // Never retain the old no-gravity state after switching jobs,
         // unloading, leaving a tower, or reloading an entity from disk.
         if(level() instanceof ServerLevel server
-                &&!flying&&!BuilderFlight.active(this)
+                &&!BuilderFlight.creative(this)&&!flying&&!BuilderFlight.active(this)
                 &&(isNoGravity()||isShiftKeyDown())
                 &&!BuilderGrappleAccess.active(this)
                 &&!BuilderScaffolding.isControllingMovement(this)){
@@ -264,6 +268,7 @@ public final class BuilderGolem extends PathfinderMob implements Container {
             var velocity=getDeltaMovement();
             setDeltaMovement(velocity.x,Math.min(velocity.y,0),velocity.z);
         }
+        if(BuilderFlight.creative(this))setNoGravity(true);
         super.tick();
         // Also covers Golems created with a spawn egg, command or an older save.
         if(tickCount==1){
