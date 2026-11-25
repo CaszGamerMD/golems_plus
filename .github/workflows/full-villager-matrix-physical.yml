@@ -1,5 +1,5 @@
 name: Full Villager Matrix - 4 real Builders
-# Reassess dependency-aware lichen, bubble source chains, rail kits and vanilla heads.
+# Retest dynamic redstone waterlogging and final paid interaction reconciliation.
 on:
   push:
     branches: [main]

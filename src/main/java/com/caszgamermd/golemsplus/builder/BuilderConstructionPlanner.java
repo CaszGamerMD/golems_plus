@@ -677,6 +677,9 @@ public final class BuilderConstructionPlanner {
             // match; a preexisting foot/lower must not hide its partner.
             if(!repairingBubbleBase&&primaryMatches&&companionMatches)
                 return new Choice(idx,null,false,true,examined);
+            if(BuilderWaterPass.isWaterlogPass(step.encodedState())&&!table.builderCommissioning()
+                    &&actual.getFluidState().isSource()&&BuilderWaterPass.hostMatches(actual,state.state().setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED,false)))
+                return new Choice(idx,null,false,true,examined);
             if(BuilderWaterPass.isBubbleColumn(step.encodedState())
                     &&actual.is(net.minecraft.world.level.block.Blocks.WATER)
                     &&actual.getFluidState().isSource())

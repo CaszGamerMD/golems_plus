@@ -38,6 +38,20 @@ public final class BuilderWaterPass {
         return "minecraft:bubble_column".equals(encoded)
                 ||encoded!=null&&encoded.startsWith("minecraft:bubble_column[");
     }
+    /** A water pass checks the actual paid host, not its transient open
+     * or powered state. Orientation/half/type and real fluid still matter. */
+    public static boolean hostMatches(BlockState actual,BlockState dry){
+        if(actual.getBlock()!=dry.getBlock()||!actual.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED))return false;
+        BlockState host=actual.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED,false);
+        if(host.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.OPEN)){
+            var open=net.minecraft.world.level.block.state.properties.BlockStateProperties.OPEN;
+            host=host.setValue(open,dry.getValue(open));
+        }
+        return BuilderPlacementState.matches(host,dry);
+    }
+    static BlockState wetHost(BlockState actual){
+        return actual.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED,true);
+    }
     /** The effective action keeps the original column's saved claim index. */
     static BuilderConstructionPlan.Step bubbleAction(
             Level world, BlockPos column, BuilderConstructionPlan.Step step,

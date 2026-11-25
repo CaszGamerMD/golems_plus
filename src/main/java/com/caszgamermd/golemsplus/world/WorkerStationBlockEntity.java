@@ -1521,7 +1521,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             phase=WorkerPhase.READY;
             changed=true;
         }
-        if(activeOrder!=null&&builderCursor>=builderBlocks){
+        if(activeOrder!=null&&builderCursor>=builderBlocks&&!reopenBuilderInteractions()){
             phase=WorkerPhase.COMPLETE;activeOrder=null;
             if(supplyRequest!=null)builderCancelShipment=true;
             builderClaims.clear();builderWorkOrders.clear();
@@ -1535,6 +1535,43 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
     }
 
+    private UUID commissioningJob;
+    private boolean commissioning;
+    public boolean builderCommissioning(){return commissioning&&java.util.Objects.equals(commissioningJob,activeOrder);}
+    /** Reopen only already-paid blocks with a genuine stable manual
+     * control mismatch after construction. Original indices survive save,
+     * reload, and the dependency schedule. Dynamic signal states are never
+     * forced or treated as a manual click target. */
+    private boolean reopenBuilderInteractions(){
+        if(!(level instanceof net.minecraft.server.level.ServerLevel server)||builderProgressPlan==null
+                ||builderProgressPlan.size()!=builderBlocks||activeOrder==null)return false;
+        var steps=builderProgressPlan;
+        var wetCells=new java.util.HashSet<BlockPos>();
+        for(var step:steps)if(!step.ignorePlant()&&com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState()))
+            wetCells.add(new BlockPos(step.x(),step.y(),step.z()));
+        var reopen=new java.util.HashSet<Integer>();
+        var rotation=com.caszgamermd.golemsplus.builder.BuildSite.Rotation.values()[builderRotation()/90];
+        var mirror=com.caszgamermd.golemsplus.builder.BuildSite.Mirror.values()[builderMirror()];
+        for(int i=0;i<steps.size();i++){
+            var step=steps.get(i);if(step.ignorePlant()||step.requiredItem()==null)continue;
+            BlockPos at=new BlockPos(step.x(),step.y(),step.z());
+            if(wetCells.contains(at)&&!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState()))continue;
+            if(!server.hasChunkAt(at))continue;
+            var desired=com.caszgamermd.golemsplus.builder.BuilderBlockResolver.resolve(step.encodedState(),rotation,mirror);
+            if(desired!=null&&com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.needsInteraction(server.getBlockState(at),desired.state()))reopen.add(i);
+        }
+        if(reopen.isEmpty())return false;
+        commissioningJob=activeOrder;commissioning=true;
+        builderCursor=reopen.stream().mapToInt(Integer::intValue).min().orElse(builderBlocks);
+        builderFinishedSteps.clear();
+        for(int i=builderCursor;i<builderBlocks;i++)if(!reopen.contains(i))builderFinishedSteps.add(i);
+        builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderMissingRetries.clear();
+        builderWorkDone=Math.max(0,builderWorkDone-reopen.size());
+        dependencyPlan=null;activeScanPlan=null;
+        setProblem("Commissioning: "+reopen.size()+" paid manual settings to revisit");
+        System.out.println("[BUILDER COMMISSIONING] reopening="+reopen.size());
+        return true;
+    }
     public boolean completeBuilderStep(UUID worker,int index){
         if(builderClaims.getOrDefault(worker,-1)!=index)return false;
         builderClaims.remove(worker);
@@ -1553,7 +1590,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(builderWorkTotal>=0&&!builderAutoSkippedPlants.contains(index))
             builderWorkDone=Math.min(builderWorkTotal,builderWorkDone+1);
         while(builderFinishedSteps.remove(builderCursor))builderCursor++;
-        if(builderCursor>=builderBlocks){
+        if(builderCursor>=builderBlocks&&!reopenBuilderInteractions()){
             phase=WorkerPhase.COMPLETE;activeOrder=null;
             if(supplyRequest!=null)builderCancelShipment=true;
             builderClaims.clear();

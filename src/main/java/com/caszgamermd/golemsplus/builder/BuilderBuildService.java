@@ -1832,13 +1832,26 @@ public final class BuilderBuildService {
                         existing=level.getBlockState(pos);
                 }
                 if(!rebuildMissingWetRail&&(dryWaterlog==null
-                        ||!BuilderPlacementState.matches(existing,dryWaterlog.state()))){
+                        ||!BuilderWaterPass.hostMatches(existing,dryWaterlog.state()))){
                     table.waitForBuilderSupport(worker.getUUID(),index,
                             level.getGameTime());
                     table.setProblem("Water pass waiting for dry block at "+pos
                             +" actual="+existing+" expected="
                             +(dryWaterlog==null?"unsupported":dryWaterlog.state()));
                     return;
+                }
+                if(!rebuildMissingWetRail){
+                    // An existing source is already paid for. The optional
+                    // final manual-setting pass owns any remaining clicks.
+                    if(existing.getFluidState().isSource()&&!table.builderCommissioning()){
+                        table.recordBuilderPlacement(step.requiredItem());
+                        table.completeBuilderStep(worker.getUUID(),index);
+                        activity.phase=Action.COMPLETE;return;
+                    }
+                    // A DRY host is a water action, never a right-click
+                    // correction which would leave the fluid missing.
+                    interactionCorrection=existing.getFluidState().isSource()
+                            &&BuilderBlockInteractions.needsInteraction(existing,state.state());
                 }
             }
             if(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
@@ -2544,7 +2557,8 @@ public final class BuilderBuildService {
             // was already paid for; never debit or destroy it again.
             if(interactionCorrection){
                 if(!(chestJoin?BuilderChestWork.join(level,pos,state.state(),chestPlan,owner)
-                        :BuilderBlockInteractions.interact(level,pos,state.state(),owner))){
+                        :BuilderBlockInteractions.interact(level,pos,state.state(),owner))
+                        &&(chestJoin||table.builderCommissioning()||!BuilderBlockInteractions.needsInteraction(level.getBlockState(pos),state.state()))){
                     table.waitForBuilderSupport(worker.getUUID(),index,
                             level.getGameTime());
                     table.setProblem("Interactive state waiting at "+pos
@@ -2668,6 +2682,7 @@ public final class BuilderBuildService {
             }
             BlockState toPlace=bubble
                     ?net.minecraft.world.level.block.Blocks.WATER.defaultBlockState()
+                    :waterlog&&!rebuildMissingWetRail?BuilderWaterPass.wetHost(level.getBlockState(pos))
                     :BuilderBlockInteractions.placementState(state.state());
             // A real multi-cell item is one transaction and one payment.
             // The world may keep a placed lower/foot cell even if the
@@ -2707,6 +2722,8 @@ public final class BuilderBuildService {
                         +" and "+partnerPos+" -> "+level.getBlockState(partnerPos));
                 return;
             }
+            if(waterlog&&level.getBlockState(pos).getFluidState().isSource())
+                level.scheduleTick(pos,net.minecraft.world.level.material.Fluids.WATER,5);
             // Only after spending the physical block item and placing
             // its neutral state may the Builder click its real controls.
             // The resulting neighbor updates are genuine vanilla behavior.
@@ -2714,7 +2731,8 @@ public final class BuilderBuildService {
                     &&!BuilderPlacementState.matches(
                             level.getBlockState(pos),state.state())
                     &&!BuilderBlockInteractions.interact(level,pos,
-                            state.state(),owner)){
+                            state.state(),owner)
+                    &&(table.builderCommissioning()||!BuilderBlockInteractions.needsInteraction(level.getBlockState(pos),state.state()))){
                 // The item has been paid for, but the actual click setting
                 // could not be reached. The next attempt uses the SAME
                 // physical block and does not charge its item again.
@@ -2735,6 +2753,10 @@ public final class BuilderBuildService {
                         level.getGameTime());
                 table.setProblem("Ascending rail awaiting stable slope at "+pos);
                 return;
+            }
+            if(waterlog&&!level.getBlockState(pos).getFluidState().isSource()){
+                table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
+                table.setProblem("Waterlogging has not retained source water at "+pos);return;
             }
             if(bubble)BuilderWaterPass.refreshBubble(level,pos,state.state());
             if(repairingBubbleBase){
