@@ -74,13 +74,13 @@ public final class BuilderFlight {
     }
     public static boolean clear(ServerLevel level, BuilderGolem worker, Vec3 position) {
         AABB box = body(worker, position);
-        return loaded(level, box) && level.noCollision(worker, box);
+        return loaded(level, box) && (creative(worker)?!level.getBlockCollisions(worker,box).iterator().hasNext():level.noCollision(worker, box));
     }
     private static boolean sweep(ServerLevel level, BuilderGolem worker, Vec3 from, Vec3 to) {
         // The swept AABB conservatively checks the whole segment, including
         // narrow corners. No velocity can cross an unchecked wall or chunk.
         AABB box = body(worker, from).minmax(body(worker, to));
-        return loaded(level, box) && level.noCollision(worker, box);
+        return loaded(level, box) && (creative(worker)?!level.getBlockCollisions(worker,box).iterator().hasNext():level.noCollision(worker, box));
     }
     private static Vec3 origin(BuilderGolem worker) {
         Flight flight = flights.get(worker);
@@ -103,7 +103,7 @@ public final class BuilderFlight {
         }
         return true;
     }
-    private static List<Vec3> creativePath(ServerLevel level,BuilderGolem worker,Vec3 from,Vec3 to) {
+    private static List<Vec3> simpleCreativePath(ServerLevel level,BuilderGolem worker,Vec3 from,Vec3 to) {
         if(airSegment(level,worker,from,to))return List.of(to);
         // Try direct vertical or horizontal bends, then bounded over/under
         // and side detours. Never teleport or fly through a solid block.
@@ -122,6 +122,53 @@ public final class BuilderFlight {
             }
         }
         return List.of();
+    }
+    // Bounded 3D A* for winding roof and interior corridors.
+    private record AirNode(BlockPos pos,double cost,double priority){}
+    private static List<Vec3> gridPath(ServerLevel level,BuilderGolem worker,Vec3 from,Vec3 to){
+        BlockPos start=BlockPos.containing(from),goal=BlockPos.containing(to);
+        int minX=Math.min(start.getX(),goal.getX())-8,maxX=Math.max(start.getX(),goal.getX())+8;
+        int minY=Math.min(start.getY(),goal.getY())-8,maxY=Math.max(start.getY(),goal.getY())+12;
+        int minZ=Math.min(start.getZ(),goal.getZ())-8,maxZ=Math.max(start.getZ(),goal.getZ())+8;
+        var queue=new PriorityQueue<AirNode>(Comparator.comparingDouble(AirNode::priority));
+        var cost=new HashMap<BlockPos,Double>();var parent=new HashMap<BlockPos,BlockPos>();
+        var passable=new HashMap<BlockPos,Boolean>();
+        for(int dy=-1;dy<=1;dy++)for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++){
+            BlockPos at=start.offset(dx,dy,dz);
+            if(!airSegment(level,worker,from,feet(at)))continue;
+            double g=from.distanceTo(feet(at));cost.put(at,g);
+            queue.add(new AirNode(at,g,g+1.35*feet(at).distanceTo(to)));
+        }
+        int expanded=0;
+        while(!queue.isEmpty()&&expanded<1800){
+            AirNode node=queue.poll();BlockPos at=node.pos();
+            if(node.cost()>cost.getOrDefault(at,Double.POSITIVE_INFINITY)+1e-6)continue;
+            expanded++;
+            if(feet(at).distanceToSqr(to)<=9&&airSegment(level,worker,feet(at),to)){
+                var reversed=new ArrayList<Vec3>();reversed.add(to);
+                for(BlockPos cur=at;cur!=null;cur=parent.get(cur))reversed.add(feet(cur));
+                Collections.reverse(reversed);var result=new ArrayList<Vec3>();Vec3 anchor=from;
+                for(int i=0;i<reversed.size();){int furthest=i;
+                    for(int j=Math.min(reversed.size()-1,i+12);j>i;j--)
+                        if(airSegment(level,worker,anchor,reversed.get(j))){furthest=j;break;}
+                    anchor=reversed.get(furthest);result.add(anchor);i=furthest+1;
+                }
+                return result;
+            }
+            for(Direction direction:Direction.values()){
+                BlockPos next=at.relative(direction);
+                if(next.getX()<minX||next.getX()>maxX||next.getY()<minY||next.getY()>maxY||next.getZ()<minZ||next.getZ()>maxZ)continue;
+                double g=node.cost()+1;
+                if(g>=cost.getOrDefault(next,Double.POSITIVE_INFINITY))continue;
+                if(!passable.computeIfAbsent(next,k->clear(level,worker,feet(k)))||!sweep(level,worker,feet(at),feet(next)))continue;
+                cost.put(next,g);parent.put(next,at);queue.add(new AirNode(next,g,g+1.35*feet(next).distanceTo(to)));
+            }
+        }
+        return List.of();
+    }
+    private static List<Vec3> creativePath(ServerLevel level,BuilderGolem worker,Vec3 from,Vec3 to){
+        List<Vec3> simple=simpleCreativePath(level,worker,from,to);
+        return simple.isEmpty()?gridPath(level,worker,from,to):simple;
     }
     // Vertical first, or a short sideways adjustment followed by vertical.
     // No unrestricted 3D search, repeated horizontal hops, or grapple anchor.
@@ -149,7 +196,7 @@ public final class BuilderFlight {
     }
     private static List<Vec3> search(ServerLevel level, BuilderGolem worker, List<BlockPos> candidates) {
         Vec3 anchor = origin(worker);
-        return candidates.stream().filter(Objects::nonNull)
+        var ordered=candidates.stream().filter(Objects::nonNull)
                 .filter(p -> inEnvelope(worker, anchor, feet(p)))
                 .filter(p -> {
                     Flight flight=flights.get(worker);
@@ -158,9 +205,23 @@ public final class BuilderFlight {
                             ||feet(p).distanceToSqr(flight.lastFailedDestination)>.04;
                 })
                 .sorted(Comparator.comparingDouble(p -> worker.position().distanceToSqr(feet(p))))
-                .limit(creative(worker)?24:Long.MAX_VALUE)
-                .map(p -> path(level, worker, worker.position(), feet(p), anchor))
-                .filter(p -> !p.isEmpty()).findFirst().orElse(List.of());
+                .limit(creative(worker)?48:Long.MAX_VALUE).toList();
+        if(creative(worker)){
+            for(BlockPos p:ordered){
+                var route=simpleCreativePath(level,worker,worker.position(),feet(p));
+                if(!route.isEmpty())return route;
+            }
+            if(!ordered.isEmpty()){
+                int offset=(int)Math.floorMod(level.getGameTime()/20+worker.getId(),ordered.size());
+                for(int j=0;j<Math.min(2,ordered.size());j++){
+                    var route=gridPath(level,worker,worker.position(),feet(ordered.get((offset+j)%ordered.size())));
+                    if(!route.isEmpty())return route;
+                }
+            }
+            return List.of();
+        }
+        return ordered.stream().map(p->path(level,worker,worker.position(),feet(p),anchor))
+                .filter(p->!p.isEmpty()).findFirst().orElse(List.of());
     }
     public static BlockPos select(ServerLevel level, BuilderGolem worker, List<BlockPos> candidates) {
         List<Vec3> path = search(level, worker, candidates);
@@ -376,7 +437,15 @@ public final class BuilderFlight {
             if(BuilderReturnService.withinStorageReach(at.x,at.y,at.z,target)&&clear(level,worker,at))candidates.add(p);
         }
         BlockPos pose=select(level,worker,candidates);
-        return pose!=null&&request(level,worker,pose);
+        if(pose!=null&&request(level,worker,pose))return true;
+        var fractional=new ArrayList<Vec3>();
+        for(double dy:new double[]{.15,.6,1.2,1.65})for(double dx:new double[]{-1.0,-.55,0,.55,1.0})for(double dz:new double[]{-1.0,-.55,0,.55,1.0}){
+            Vec3 at=new Vec3(target.getX()+.5+dx,target.getY()+dy,target.getZ()+.5+dz);
+            if(BuilderReturnService.withinStorageReach(at.x,at.y,at.z,target)&&clear(level,worker,at))fractional.add(at);
+        }
+        fractional.sort(Comparator.comparingDouble(at->at.distanceToSqr(worker.position())));
+        for(Vec3 at:fractional)if(!simpleCreativePath(level,worker,worker.position(),at).isEmpty()&&requestPosition(level,worker,BlockPos.containing(at),at))return true;
+        return false;
     }
     public static boolean toward(ServerLevel level, BuilderGolem worker, BlockPos target) {
         if (target == null) return false;

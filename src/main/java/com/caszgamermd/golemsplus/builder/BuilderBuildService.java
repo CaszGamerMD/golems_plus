@@ -284,7 +284,7 @@ public final class BuilderBuildService {
         // materials remain in the real pouch, and the retry delay remains
         // attached to the exact failed index.
         table.releaseBuilderWorkOrder(worker.getUUID());
-        activity.returningToSite=true;
+        activity.returningToSite=!BuilderFlight.creative(worker);
         activity.returnProgress=now;
         activity.returnBest=distance;
         activity.returnScanOffset=0;
@@ -299,10 +299,10 @@ public final class BuilderBuildService {
             WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,int offset){
         if(table.claimedStep(worker.getUUID())>=0||worker.hasSupplyBox()
                 ||BuilderMaterialNetwork.recalling(table,worker.getUUID())
-                ||BuilderFlight.active(worker)||BuilderGrappleAccess.active(worker)
+                ||(BuilderFlight.creative(worker)?BuilderFlight.moving(worker):BuilderFlight.active(worker)||!worker.onGround())
+                ||BuilderGrappleAccess.active(worker)
                 ||BuilderScaffolding.isControllingMovement(worker)
-                ||BuilderScaffoldPlanA.hasPlan(worker)
-                ||!worker.onGround())return -1;
+                ||BuilderScaffoldPlanA.hasPlan(worker))return -1;
         var eligible=new java.util.ArrayList<Integer>();
         for(int idx=0;idx<steps.size();idx++){
             var step=steps.get(idx);
@@ -345,7 +345,7 @@ public final class BuilderBuildService {
         if(now-action.returnProgress<180||now<action.returnProbeAfter
                 ||!roofNeedsHelp(level,table)
                 ||BuilderMaterialNetwork.recalling(table,worker.getUUID())
-                ||BuilderFlight.active(worker)||BuilderGrappleAccess.active(worker)
+                ||(BuilderFlight.creative(worker)?BuilderFlight.moving(worker):BuilderFlight.active(worker))||BuilderGrappleAccess.active(worker)
                 ||BuilderScaffolding.isControllingMovement(worker)
                 ||BuilderEscapeBox.escaping(worker)
                 ||BuilderFlight.descentMakingProgress(level,worker,depot))return false;
@@ -377,7 +377,8 @@ public final class BuilderBuildService {
             board.remove(index);return false;
         }
         return record.failedWorker().equals(worker)
-                &&table.builderWorkerIds().size()>1;
+                &&table.builderWorkerIds().size()>1
+                &&(!(table.getLevel() instanceof ServerLevel server)||!(server.getEntity(worker) instanceof BuilderGolem hat)||!BuilderFlight.creative(hat)||now<record.until()-1080);
     }
     private static final Map<BuilderGolem,WorkerAction> workerActions=
             new WeakHashMap<>();
@@ -697,6 +698,13 @@ public final class BuilderBuildService {
      *
      * @return true only after the worker physically reaches OnSite.
      */
+    static boolean canRecoverFlyingWorker(BuilderGolem worker){
+        WorkerAction a=workerActions.get(worker);
+        return a!=null&&a.phase!=Action.STAGE_MATERIALS&&a.phase!=Action.COMPLETE;
+    }
+    static void handoffFlyingWorker(WorkerStationBlockEntity table,BuilderGolem worker,int index,long now){
+        publishHandoff(table,worker.getUUID(),index,now,"individual flight recovery");
+    }
     static void resetFlyingWorker(BuilderGolem worker,WorkerStationBlockEntity table){
         workerActions.remove(worker);
         BuilderPlacementSpace.cancelYield(worker);
@@ -1112,6 +1120,9 @@ public final class BuilderBuildService {
         if(table.activeOrder()!=null&&table.phase()!=WorkerPhase.COMPLETE){
             WorkerAction returning=workerActions.get(worker);
             if(returning!=null&&returning.returningToSite){
+                if(BuilderFlight.creative(worker)&&roofNeedsHelp(level,table)){
+                    returning.returningToSite=false;
+                }else{
                 boolean arrived=parkAtOnSite(level,worker,table);
                 if(shouldContinueEvacuation(true,arrived)){
                     // A physical return remains preferred. Only a bounded,
@@ -1122,6 +1133,7 @@ public final class BuilderBuildService {
                     returning.returnProgress=-1;
                     returning.returnBest=Double.POSITIVE_INFINITY;
                     returning.returnScanOffset=0;
+                }
                 }
             }
         }
@@ -1341,6 +1353,8 @@ public final class BuilderBuildService {
             // Small Y slices need only one Builder per ten real blocks.
             // The others stay at OnSite; any in-flight claim is finished
             // safely rather than discarding its paid materials mid-step.
+            boolean hatRescue=BuilderFlight.creative(worker)&&roofNeedsHelp(level,table);
+            if(hatRescue)layerStaff=assigned.roster();
             if(!layerStaff.contains(worker.getUUID())&&currentClaim<0
                     &&materialOffers.isEmpty()&&!worker.hasSupplyBox()){
                 boolean parked=parkAtOnSite(level,worker,table);
@@ -1386,7 +1400,7 @@ public final class BuilderBuildService {
             // This keeps finished Builders out of the placement envelopes
             // seen in the narrow dome cap test. It can rejoin once it
             // has actually arrived at OnSite; no claimed rescue is lost.
-            if(ownLayerClear&&index<0&&materialOffers.isEmpty()){
+            if(ownLayerClear&&index<0&&materialOffers.isEmpty()&&!hatRescue){
                 BlockPos depot=table.builderUnloadingStorage();
                 if(depot==null)depot=table.getBlockPos();
                 if(shouldEvacuateIdleLayer(true,index,
@@ -1411,7 +1425,7 @@ public final class BuilderBuildService {
                         teammateRequested=true;break;
                     }
                 }
-            boolean emergencyRoofAssist=ownLayerClear&&(teammateRequested||stalledRoof)
+            boolean emergencyRoofAssist=ownLayerClear&&(teammateRequested||stalledRoof)||hatRescue&&index<0
                     ||index>=0&&!zone.contains(index);
             if(!materialOffers.isEmpty()){
                 var stockedZone=new java.util.ArrayList<Integer>(materialOffers);
@@ -1516,6 +1530,7 @@ public final class BuilderBuildService {
                             level,worker,table,plan.zones());
                     return;
                 }
+                if(hatRescue)return; // Stay near the frontier during retry/handoff.
                 // This worker still has unfinished current-layer work, but
                 // no safe pose was found. Keep a genuine elevated foothold
                 // briefly while its own retry search explores new routes.

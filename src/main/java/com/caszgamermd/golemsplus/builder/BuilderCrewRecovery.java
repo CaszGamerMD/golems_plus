@@ -112,6 +112,7 @@ final class BuilderCrewRecovery {
             if(s.layer!=layer||work>s.best){s.layer=layer;s.best=work;s.lastProgress=now;}
             if(layer==Integer.MAX_VALUE||now-s.lastProgress<STALL||now<s.graceUntil
                     ||BuilderFlight.moving(worker)||worker.hasSupplyBox()
+                    ||!BuilderBuildService.canRecoverFlyingWorker(worker)
                     ||BuilderDroppedBlockRecovery.busy(worker))return false;
             int claim=table.claimedStep(worker.getUUID());
             if(claim<0||claim>=steps.size())return false;
@@ -119,9 +120,10 @@ final class BuilderCrewRecovery {
             BlockPos target=new BlockPos(step.x(),step.y(),step.z());
             table.waitForBuilderAccess(worker.getUUID(),claim,now,"individual flight recovery");
             table.releaseBuilderWorkOrder(worker.getUUID());
+            BuilderBuildService.handoffFlyingWorker(table,worker,claim,now);
             BuilderBuildService.resetFlyingWorker(worker,table);
             BuilderFlight.reposition(level,worker,target);
-            s.graceUntil=now+80;
+            s.graceUntil=now+200;
             System.out.println("[HAT INDIVIDUAL RECOVERY] worker="+worker.getUUID()+" target="+target+" layer="+layer);
             return true;
         }

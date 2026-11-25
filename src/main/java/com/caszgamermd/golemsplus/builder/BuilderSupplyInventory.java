@@ -690,7 +690,7 @@ public final class BuilderSupplyInventory {
         if(beltItem(BuiltInRegistries.ITEM.getKey(target).toString()))return false;
         for(var id:table.builderWorkerIds()){
             if(id.equals(worker.getUUID())||!(level.getEntity(id) instanceof BuilderGolem donor)
-                    ||!donor.isAlive()||!worker.onGround()||!donor.onGround()
+                    ||!donor.isAlive()||(!BuilderFlight.creative(worker)&&!worker.onGround())||(!BuilderFlight.creative(donor)&&!donor.onGround())
                     ||worker.distanceToSqr(donor)>4||Math.abs(worker.getY()-donor.getY())>.6
                     ||!worker.hasLineOfSight(donor))continue;
             int surplus=donor.carriedCount(target)-donorReserved(table,donor,target,steps);
@@ -727,7 +727,7 @@ public final class BuilderSupplyInventory {
         if(meet!=null){
             if(meet.material()==target&&now<meet.deadline()
                     &&level.getEntity(meet.donor()) instanceof BuilderGolem donor
-                    &&donor.isAlive()&&donor.onGround()
+                    &&donor.isAlive()&&(BuilderFlight.creative(donor)?!BuilderFlight.moving(donor):donor.onGround())
                     &&donor.distanceToSqr(meet.stand().getX()+.5,
                             meet.stand().getY(),meet.stand().getZ()+.5)<=4
                     &&donor.carriedCount(target)>donorReserved(table,donor,target,steps)
@@ -736,14 +736,13 @@ public final class BuilderSupplyInventory {
                 return LoadStatus.MOVING;
             borrowMeets.remove(worker);borrowRetry.put(worker,now+120);
         }
-        if(now<borrowRetry.getOrDefault(worker,0L)||!worker.onGround()
-                ||BuilderFlight.active(worker))return LoadStatus.MISSING;
+        if(now<borrowRetry.getOrDefault(worker,0L)||(BuilderFlight.creative(worker)?BuilderFlight.moving(worker):!worker.onGround()||BuilderFlight.active(worker)))return LoadStatus.MISSING;
         BuilderGolem donor=null;
         double nearest=Double.MAX_VALUE;
         for(var id:table.builderWorkerIds()){
             if(id.equals(worker.getUUID()))continue;
             if(!(level.getEntity(id) instanceof BuilderGolem peer)
-                    ||!peer.isAlive()||!peer.onGround()||BuilderFlight.active(peer)
+                    ||!peer.isAlive()||(BuilderFlight.creative(peer)?BuilderFlight.moving(peer):!peer.onGround()||BuilderFlight.active(peer))
                     ||!peer.getNavigation().isDone()
                     ||peer.carriedCount(target)<=donorReserved(table,peer,target,steps))continue;
             double distance=worker.distanceToSqr(peer);
@@ -754,10 +753,10 @@ public final class BuilderSupplyInventory {
         BlockPos at=donor.blockPosition();
         for(Direction side:Direction.Plane.HORIZONTAL){
             BlockPos p=at.relative(side);
-            if(com.caszgamermd.golemsplus.worker.WorkerNavigation.canStandOn(level,worker,p))
-                candidates.add(p);
+            if(BuilderFlight.creative(worker)?BuilderFlight.clear(level,worker,new net.minecraft.world.phys.Vec3(p.getX()+.5,p.getY(),p.getZ()+.5)):
+                    com.caszgamermd.golemsplus.worker.WorkerNavigation.canStandOn(level,worker,p))candidates.add(p);
         }
-        BlockPos stand=com.caszgamermd.golemsplus.worker.WorkerNavigation
+        BlockPos stand=BuilderFlight.creative(worker)?BuilderFlight.select(level,worker,candidates):com.caszgamermd.golemsplus.worker.WorkerNavigation
                 .selectExecutableStand(level,worker,candidates);
         if(stand==null){borrowRetry.put(worker,now+120);return LoadStatus.MISSING;}
         borrowMeets.put(worker,new BorrowMeet(target,donor.getUUID(),stand,now+100));

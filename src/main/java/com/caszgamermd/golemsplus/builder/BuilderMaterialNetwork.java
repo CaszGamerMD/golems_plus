@@ -113,6 +113,7 @@ final class BuilderMaterialNetwork {
             List<BuilderConstructionPlan.Step> steps){
         State s=state(table);long now=level.getGameTime();
         if(!s.recall.isEmpty()||now<s.nextCheck)return;
+        if(table.builderWorkerIds().stream().anyMatch(id->level.getEntity(id) instanceof BuilderGolem hat&&BuilderFlight.creative(hat)))return;
         s.nextCheck=now+40;
         int layer=table.builderActiveLayer(steps);
         var needs=new HashSet<Item>();
