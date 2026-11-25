@@ -1,0 +1,104 @@
+name: Flying construction hats - three physical dome trials
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/flying-hat-dome-trials.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dome:
+    name: Dome trial ${{ matrix.trial }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        trial: [1, 2, 3]
+    env:
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Isolate physical dome and adapt legacy movement assertions
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderDomeConstructionGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          p=Path('src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderDomeConstructionGameTest.java')
+          s=p.read_text()
+          assert 'if(scaffolds<20||scaffolds>64||!hook||!bucket' in s
+          s=s.replace('if(scaffolds<20||scaffolds>64||!hook||!bucket','if(!worker.creativeFlightEnabled()&&(scaffolds<20||scaffolds>64||!hook||!bucket').replace('||!materialsReady){','||!materialsReady)){',1)
+          s=s.replace('int sharedY=table.builderActiveLayer(steps);','''int sharedY=table.builderActiveLayer(steps);
+              System.out.println("[HAT DOME COUNT] tick="+tick+" blocks="+physicalCount+"/"+requiredBlocks+" layer="+(sharedY-table.builderOrigin().getY()));
+              if(physicalCount==requiredBlocks||tick>=30000){
+                  System.out.println("[HAT DOME RESULT] tick="+tick+" blocks="+physicalCount+"/"+requiredBlocks+" layer="+(sharedY-table.builderOrigin().getY()));
+                  if(physicalCount==requiredBlocks)helper.succeed();
+                  else helper.fail("25-minute simulated-time cutoff");
+                  return;
+              }''')
+          p.write_text(s)
+          PY
+      - name: Run real construction and capture counts
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/dome.log"
+          code=${PIPESTATUS[0]}
+          set -e
+          python3 - "$RUNNER_TEMP/dome.log" "$RUNNER_TEMP/result.json" "${{ matrix.trial }}" "$code" <<'PY'
+          import json,re,sys
+          from pathlib import Path
+          log=Path(sys.argv[1]).read_text(errors='replace')
+          counts=re.findall(r'\[HAT DOME COUNT\] tick=(\d+) blocks=(\d+)/(\d+) layer=(-?\d+)',log)
+          result={'trial':int(sys.argv[3]),'gradle_exit':int(sys.argv[4]),'samples':len(counts)}
+          if counts:
+              tick,blocks,total,layer=map(int,counts[-1])
+              result.update(tick=tick,blocks=blocks,total=total,layer=layer,peak=max(int(x[1]) for x in counts))
+          else:
+              result['error']='No physical block-count sample; inspect log'
+          Path(sys.argv[2]).write_text(json.dumps(result)+'\n')
+          print('[HAT TRIAL SUMMARY]',json.dumps(result))
+          assert counts, result
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hat-dome-trial-${{ matrix.trial }}
+          path: |
+            ${{ runner.temp }}/dome.log
+            ${{ runner.temp }}/result.json
+  compare:
+    name: Report three independent block counts
+    needs: dome
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hat-dome-trial-*
+          path: results
+      - name: Print results
+        run: |
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          rows=[json.loads(p.read_text()) for p in sorted(Path('results').rglob('result.json'))]
+          print('[HAT DOME THREE TRIALS]',json.dumps(rows))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('| Trial | Physical blocks | Active layer | Tick |\\n|---|---|---|---|\\n'.replace('\\n','\n'))
+              for r in rows:
+                  f.write(f"| {r['trial']} | {r.get('blocks','unavailable')}/{r.get('total','?')} | {r.get('layer','?')} | {r.get('tick','?')} |\n")
+          assert len(rows)==3 and all('blocks' in r for r in rows), rows
+          PY
