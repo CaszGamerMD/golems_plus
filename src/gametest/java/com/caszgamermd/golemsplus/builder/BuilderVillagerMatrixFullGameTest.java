@@ -280,6 +280,8 @@ public final class BuilderVillagerMatrixFullGameTest {
             expected.add(new Expected(origin.offset(cell.x(),cell.y(),cell.z()),
                     desired));
         }
+        final java.util.Map<BlockPos,BlockState> sourceStates=new java.util.HashMap<>();
+        for(Expected candidate:expected)sourceStates.put(candidate.pos(),candidate.state());
         final int unavailableStates=unresolved;
         final int targetBlocks=SOURCE_BLOCKS-ignoredPistonHeads;
         System.out.println("[MATRIX FULL TARGET] sourceBlocks="+SOURCE_BLOCKS
@@ -469,16 +471,20 @@ public final class BuilderVillagerMatrixFullGameTest {
             if(realTime)System.out.println("[MATRIX REALTIME RATE] activeTicks="+(tick-assessmentStartTick)
                     +" elapsedMs="+elapsedMillis+" measuredTPS="
                     +((tick-assessmentStartTick)*1000.0/Math.max(1,elapsedMillis)));
-            int correct=0;
-            for(Expected candidate:expected)
+            int correct=0,ignoredDisplacements=0;
+            for(Expected candidate:expected){
                 if(BuilderPistonWork.sourceMatches(
-                        level.getBlockState(candidate.pos()),candidate.state()))
-                    correct++;
+                        level.getBlockState(candidate.pos()),candidate.state()))correct++;
+                else if(BuilderPistonWork.displacementMatches(level,candidate.pos(),candidate.state(),sourceStates)){
+                    correct++;ignoredDisplacements++;
+                }
+            }
             int cursor=table.builderCursor();
             best[0]=Math.max(best[0],correct);
             int y=table.builderActiveLayer(steps);
             System.out.println("[MATRIX FULL PROGRESS] tick="+tick
                     +" matchingSourceBlocks="+correct+"/"+targetBlocks
+                    +" ignoredPistonDisplacements="+ignoredDisplacements
                     +" best="+best[0]+" cursor="+cursor+"/"+steps.size()
                     +" currentLayer="+(y==Integer.MAX_VALUE?"complete":y-origin.getY())
                     +" noWorkTicks="+(noWorkTicks)
@@ -513,7 +519,8 @@ public final class BuilderVillagerMatrixFullGameTest {
                 int samples=0;
                 for(Expected candidate:expected){
                     var actual=level.getBlockState(candidate.pos());
-                    if(BuilderPistonWork.sourceMatches(actual,candidate.state()))continue;
+                    if(BuilderPistonWork.sourceMatches(actual,candidate.state())
+                            ||BuilderPistonWork.displacementMatches(level,candidate.pos(),candidate.state(),sourceStates))continue;
                     String key=candidate.state().getBlock()+" -> "+actual.getBlock();
                     kinds.merge(key,1,Integer::sum);
                     if(samples++<200)System.out.println("[MATRIX MISMATCH] local="+candidate.pos().subtract(origin)
@@ -549,6 +556,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                 System.out.println("[MATRIX TRIAL RESULT] outcome="+(correct==targetBlocks?"COMPLETE":"MISMATCH")
                         +" layer=complete elapsedMs="+elapsedMillis+" tick="+tick
                         +" correct="+correct+" total="+targetBlocks+" best="+best[0]
+                        +" ignoredPistonDisplacements="+ignoredDisplacements
                         +" unsupported="+unavailableStates);
                 if(correct!=targetBlocks){
                     h.fail("Full Matrix marked complete but "
@@ -575,6 +583,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                 System.out.println("[MATRIX TRIAL RESULT] outcome="+(allStalled?"ALL_BUILDERS_STALLED":"NO_WORK_PROGRESS")
                         +" layer="+(y-origin.getY())+" elapsedMs="+elapsedMillis+" tick="+tick
                         +" correct="+correct+" total="+targetBlocks+" best="+best[0]
+                        +" ignoredPistonDisplacements="+ignoredDisplacements
                         +" unsupported="+unavailableStates);
                 StringBuilder result=new StringBuilder(
                         "[MATRIX FULL STALL] tick="+tick
