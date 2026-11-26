@@ -1835,12 +1835,18 @@ public final class BuilderBuildService {
                                 &&existing.getFluidState().isSource())
                         &&dryWaterlog.state().getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock
                         &&dryWaterlog.state().canSurvive(level,pos);
+                // Repair every paid rail shape (including flat and curved)
+                // while preserving the actual fluid. A wet rail cannot be
+                // reshaped against a dry target, and vice versa.
                 if(dryWaterlog!=null
-                        &&BuilderRailSlope.raisedEnd(pos,dryWaterlog.state())!=null
-                        &&!existing.isAir()
-                        &&!BuilderPlacementState.matches(existing,dryWaterlog.state())){
-                    if(BuilderRailSlope.restorePaidSlope(
-                            level,pos,dryWaterlog.state()))
+                        &&dryWaterlog.state().getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock
+                        &&existing.getBlock()==dryWaterlog.state().getBlock()
+                        &&!BuilderWaterPass.hostMatches(existing,dryWaterlog.state())
+                        &&!table.isTrackedScaffold(pos)
+                        &&level.getBlockEntity(pos)==null){
+                    var railTarget=existing.getFluidState().isSource()
+                            ?state.state():dryWaterlog.state();
+                    if(BuilderRailSlope.restorePaidSlope(level,pos,railTarget))
                         existing=level.getBlockState(pos);
                 }
                 if(!rebuildMissingWetRail&&(dryWaterlog==null
