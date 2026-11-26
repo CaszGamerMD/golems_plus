@@ -1140,6 +1140,29 @@ public final class BuilderFlight {
         Vec3 at=fractionalWork(level,worker,target,bodyBlocking);
         return at!=null&&requestPosition(level,worker,BlockPos.containing(at),at);
     }
+    /** Traffic escape need not be a work pose: the worker is yielding,
+     * not placing. Find a short collision-checked exit from the future
+     * block and retain the ordinary flight controller. */
+    static boolean requestVacate(ServerLevel level,BuilderGolem worker,BlockPos target){
+        if(!creative(worker)||moving(worker))return false;
+        Vec3 from=worker.position();
+        AABB future=new AABB(target).inflate(.12);
+        var candidates=new ArrayList<Vec3>();
+        for(double distance:new double[]{.5,1,1.5,2,3,4}){
+            for(Direction direction:Direction.values()){
+                Vec3 at=from.add(direction.getStepX()*distance,direction.getStepY()*distance,direction.getStepZ()*distance);
+                if(!body(worker,at).intersects(future)&&clear(level,worker,at))candidates.add(at);
+            }
+        }
+        candidates.sort(Comparator.comparingDouble(from::distanceToSqr));
+        for(Vec3 at:candidates)if(airSegment(level,worker,from,at)
+                &&commitRoute(level,worker,BlockPos.containing(at),at,List.of(at)))return true;
+        for(Vec3 at:candidates){
+            var route=simpleCreativePath(level,worker,from,at);
+            if(!route.isEmpty()&&commitRoute(level,worker,BlockPos.containing(at),at,route))return true;
+        }
+        return requestRailWork(level,worker,target,null,true);
+    }
     static boolean reposition(ServerLevel level,BuilderGolem worker,BlockPos target){
         var candidates=new ArrayList<BlockPos>();
         for(int dy=-3;dy<=3;dy++)for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){

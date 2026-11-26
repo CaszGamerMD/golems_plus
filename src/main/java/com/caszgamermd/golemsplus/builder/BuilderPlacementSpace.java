@@ -311,9 +311,13 @@ public final class BuilderPlacementSpace {
         // until the other Builder has actually placed its block.
         if(BuilderFlight.creative(worker)||BuilderFlight.active(worker)){
             if(occupied(hold.target(),worker,hold.placingWorker())){
-                BlockPos pose=BuilderFlight.workPose(level,worker,hold.target());
-                if(pose!=null&&BuilderFlight.request(level,worker,pose))return true;
-                if(!BuilderFlight.creative(worker))BuilderFlight.land(level,worker,true);
+                if(BuilderFlight.creative(worker)){
+                    if(!BuilderFlight.moving(worker))BuilderFlight.requestVacate(level,worker,hold.target());
+                }else{
+                    BlockPos pose=BuilderFlight.workPose(level,worker,hold.target());
+                    if(pose!=null&&BuilderFlight.request(level,worker,pose))return true;
+                    BuilderFlight.land(level,worker,true);
+                }
             }
             return true;
         }
@@ -718,10 +722,12 @@ public final class BuilderPlacementSpace {
             // horizontal edge-clearance move instead of targeting a tile
             // center that still intersects the future placement cube.
             if(BuilderFlight.creative(blocker)){
-                BlockPos hover=BuilderFlight.workPose(level,blocker,target);
-                if(hover!=null&&BuilderFlight.request(level,blocker,hover)){
-                    yielding.put(blocker,new Yield(target,hover,level.getGameTime()+100,blocker==placing,false));
-                }else found=false;
+                // Reserve the escape even if a route was already active.
+                // Ordinary work cannot re-enter the cell before this hold
+                // releases; collision checks remain mandatory.
+                yielding.put(blocker,new Yield(target,blocker.blockPosition(),level.getGameTime()+100,blocker==placing,false));
+                BuilderFlight.stop(blocker);
+                if(!BuilderFlight.requestVacate(level,blocker,target))found=false;
                 continue;
             }
             boolean precision=!BuilderFlight.active(blocker)&&canPrecisionStep(level,blocker,target);

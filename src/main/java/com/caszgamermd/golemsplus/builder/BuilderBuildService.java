@@ -2798,7 +2798,7 @@ public final class BuilderBuildService {
                         +" wanted="+state.state());
                 return;
             }
-            if(BuilderRailSlope.raisedEnd(pos,state.state())!=null
+            if(state.state().getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock
                     &&!BuilderRailSlope.restorePaidSlope(level,pos,state.state())){
                 // A vanilla update may flatten the rail after a jig is
                 // recovered. A support-safe correction is attempted on
@@ -2806,7 +2806,7 @@ public final class BuilderBuildService {
                 // hold its state, defer instead of falsely finishing it.
                 table.waitForBuilderSupport(worker.getUUID(),index,
                         level.getGameTime());
-                table.setProblem("Ascending rail awaiting stable slope at "+pos);
+                table.setProblem("Rail awaiting stable shape at "+pos);
                 return;
             }
             if(waterlog&&!level.getBlockState(pos).getFluidState().isSource()){

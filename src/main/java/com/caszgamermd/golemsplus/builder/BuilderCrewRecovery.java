@@ -160,7 +160,7 @@ final class BuilderCrewRecovery {
                     }
                 }
             }
-            if(now-s.lastProgress>=140&&(s.lastAudit==Long.MIN_VALUE||now-s.lastAudit>=120)){
+            if(now-s.lastProgress>=200&&(s.lastAudit==Long.MIN_VALUE||now-s.lastAudit>=120)){
                 s.lastAudit=now;
                 if(table.repairCompletedBuilderCells(steps)){s.lastProgress=now;return true;}
             }

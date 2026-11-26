@@ -48,9 +48,10 @@ public final class BuilderRailSlope {
      */
     public static boolean canReshapePaidSlope(Level world,BlockPos pos,
             BlockState desired){
-        return raisedEnd(pos,desired)!=null
+        return desired.getBlock() instanceof BaseRailBlock
                 &&world.getBlockState(pos).getBlock()==desired.getBlock()
-                &&desired.canSurvive(world,pos);
+                &&desired.canSurvive(world,pos)
+                &&world.getBlockState(pos).getFluidState().isSource()==desired.getFluidState().isSource();
     }
 
     /** The source schematic can encode an ascending rail whose elevated
@@ -64,12 +65,18 @@ public final class BuilderRailSlope {
      * verification must still detect that, rather than faking success. */
     public static boolean restorePaidSlope(Level world,BlockPos pos,
             BlockState desired){
-        if(raisedEnd(pos,desired)==null)return false;
+        if(!canReshapePaidSlope(world,pos,desired))return false;
         BlockState actual=world.getBlockState(pos);
-        if(actual.getBlock()!=desired.getBlock()
-                ||!desired.canSurvive(world,pos))return false;
         if(BuilderPlacementState.matches(actual,desired))return true;
-        if(!world.setBlock(pos,desired,2))return false;
+        // Correct only the geometry of an existing paid rail. Preserve
+        // actual power and fluid, never manufacture an energized rail.
+        String shape=desired.getValues().filter(v->v.property().getName().equals("shape"))
+                .map(v->v.valueName()).findFirst().orElse("");
+        BlockState corrected=actual;
+        for(var property:actual.getProperties())if(property.getName().equals("shape")){
+            corrected=withValue(actual,property,shape);break;
+        }
+        if(corrected==actual||!world.setBlock(pos,corrected,Block.UPDATE_CLIENTS|Block.UPDATE_KNOWN_SHAPE))return false;
         return BuilderPlacementState.matches(world.getBlockState(pos),desired);
     }
 
