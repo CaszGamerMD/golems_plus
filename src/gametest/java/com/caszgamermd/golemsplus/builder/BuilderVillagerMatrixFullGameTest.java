@@ -229,6 +229,12 @@ public final class BuilderVillagerMatrixFullGameTest {
         final LitematicFileReader.Schematic schematic;
         final BuilderConstructionPlan.Result plan;
         final boolean controlled="controlled".equals(System.getenv("MATRIX_TEST_MODE"));
+        final boolean realTime="20".equals(System.getenv("MATRIX_TEST_TPS"));
+        final long assessmentSeconds=Long.parseLong(
+                System.getenv().getOrDefault("MATRIX_ASSESSMENT_SECONDS","300"));
+        if(assessmentSeconds<1||assessmentSeconds>(realTime?3600:1800)){
+            h.fail("Invalid assessment time ceiling");return;
+        }
         if(controlled&&level.getSeed()!=CONTROLLED_SEED){
             h.fail("Controlled Matrix seed mismatch: "+level.getSeed());return;
         }
@@ -387,7 +393,8 @@ public final class BuilderVillagerMatrixFullGameTest {
                     .append(';');
             String manifest="seed="+level.getSeed()+" origin="+origin.toShortString().replace(" ","")
                     +" arena=62x26x70 floor=stone depot="+supplyPos.toShortString().replace(" ","")
-                    +" crew="+roster+" supply=creative_crate cap=1500"
+                    +" crew="+roster+" supply=creative_crate cap="+assessmentSeconds
+                    +" targetTPS="+(realTime?"20":"unlimited")
                     +" temporaryScaffolding="+BuilderGolem.temporaryScaffoldingEnabled();
             System.out.println("[MATRIX CONTROLLED ENV] "+manifest);
             System.out.println("[MATRIX CLOCK] worldTick="+level.getGameTime()+" testTick="+h.getTick());
@@ -400,11 +407,9 @@ public final class BuilderVillagerMatrixFullGameTest {
         // The standard five-minute benchmark stays unchanged. Reliability
         // trials opt into a longer ceiling; elapsed time starts only when
         // the actual construction job starts, not Gradle/server startup.
-        final long assessmentSeconds=Long.parseLong(
-                System.getenv().getOrDefault("MATRIX_ASSESSMENT_SECONDS","300"));
-        if(assessmentSeconds<1||assessmentSeconds>1800){
-            h.fail("Invalid assessment time ceiling");return;
-        }
+        final long assessmentStartTick=h.getTick();
+        final long[] lastPacedTick={assessmentStart};
+        System.out.println("[MATRIX TICK RATE] target="+(realTime?"20":"unlimited"));
         System.out.println("[MATRIX TRIAL START] limitSeconds="+assessmentSeconds
                 +" origin="+origin.toShortString()+" workers="+WORKERS);
         var watchdog=new MatrixWorkWatchdog(h.getTick(),
@@ -416,6 +421,20 @@ public final class BuilderVillagerMatrixFullGameTest {
         // A sequence keeps one repeating event for this open-ended assessment.
         h.startSequence().thenExecuteFor(1_000_000_000,()->{
             long tick=h.getTick();
+            // The GameTest server normally runs without a real-time wait.
+            // Pace the isolated server thread, not builder logic. Do not
+            // catch up in bursts after a slow tick, and retain vanilla ticks.
+            if(realTime){
+                long deadline=lastPacedTick[0]+50_000_000L;
+                long remaining;
+                while((remaining=deadline-System.nanoTime())>0){
+                    if(Thread.currentThread().isInterrupted()){
+                        h.fail("Real-time Matrix pacing interrupted");return;
+                    }
+                    java.util.concurrent.locks.LockSupport.parkNanos(remaining);
+                }
+                lastPacedTick[0]=System.nanoTime();
+            }
             if(!BuilderGolem.temporaryScaffoldingEnabled()&&tick%100==0){
                 for(var worker:crew){
                     if(!worker.getItem(BuilderGolem.SCAFFOLD_BELT_SLOT).isEmpty()
@@ -447,6 +466,9 @@ public final class BuilderVillagerMatrixFullGameTest {
                     &&stalls.size()==WORKERS
                     &&stalls.stream().allMatch(stall->stall!=MatrixMovementWindow.Stall.MOVING);
             if(!report&&!allStalled&&!noWorkTimeout&&!timeLimit&&table.phase()!=WorkerPhase.COMPLETE)return;
+            if(realTime)System.out.println("[MATRIX REALTIME RATE] activeTicks="+(tick-assessmentStartTick)
+                    +" elapsedMs="+elapsedMillis+" measuredTPS="
+                    +((tick-assessmentStartTick)*1000.0/Math.max(1,elapsedMillis)));
             int correct=0;
             for(Expected candidate:expected)
                 if(BuilderPistonWork.sourceMatches(
