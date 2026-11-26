@@ -21,6 +21,22 @@ import net.minecraft.world.level.block.Blocks;
 public final class BuilderPlacementState {
     private BuilderPlacementState(){}
 
+    /** Ordinary rail junctions switch between flat curves and straights.
+     * A different ascending slope or two perpendicular straight rails are
+     * not a switch-state exception. Waterlogging is checked separately. */
+    private static boolean switchedFlatRail(BlockState actual,BlockState schematic){
+        String live=actual.getValues().filter(v->v.property().getName().equals("shape"))
+                .map(v->v.valueName()).findFirst().orElse("");
+        String saved=schematic.getValues().filter(v->v.property().getName().equals("shape"))
+                .map(v->v.valueName()).findFirst().orElse("");
+        if(live.isEmpty()||saved.isEmpty()||live.startsWith("ascending_")||saved.startsWith("ascending_"))return false;
+        return corner(live)||corner(saved);
+    }
+    private static boolean corner(String shape){
+        return shape.equals("north_east")||shape.equals("north_west")
+                ||shape.equals("south_east")||shape.equals("south_west");
+    }
+
     public static boolean matches(BlockState actual,BlockState schematic){
         if(actual.equals(schematic))return true;
         // Bubble activity and drag direction are transient. Construction
@@ -71,6 +87,8 @@ public final class BuilderPlacementState {
                             ||id.equals("podzol")))
                     ||(actual.getBlock() instanceof BaseRailBlock
                         &&name.equals("powered"))
+                    ||(actual.is(Blocks.RAIL)&&name.equals("shape")
+                        &&switchedFlatRail(actual,schematic))
                     ||(actual.is(Blocks.REDSTONE_WIRE)
                         &&(name.equals("power")||name.equals("north")
                             ||name.equals("south")||name.equals("east")
