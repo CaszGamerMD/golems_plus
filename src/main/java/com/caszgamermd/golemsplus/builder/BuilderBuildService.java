@@ -1961,7 +1961,21 @@ public final class BuilderBuildService {
             }
             BlockPos raisedRail=BuilderRailSlope.raisedEnd(pos,state.state());
             boolean needsRailPlacement=raisedRail!=null&&(!waterlog||rebuildMissingWetRail);
-            boolean temporaryRailFoundation=needsRailPlacement
+            var railPlan=needsRailPlacement?BuilderConstructionPlanner.schematicStates(plan.steps(),
+                    BuildSite.Rotation.values()[table.builderRotation()/90],
+                    BuildSite.Mirror.values()[table.builderMirror()]):java.util.Map.<BlockPos,BlockState>of();
+            BlockState plannedConnector=needsRailPlacement?railPlan.get(raisedRail):null;
+            boolean permanentConnector=plannedConnector!=null
+                    &&plannedConnector.getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock;
+            // The upper rail has its own paid work index. Never substitute,
+            // temporarily remove, or refund it as a construction jig.
+            if(permanentConnector&&!reShapeRail&&(!level.hasChunkAt(raisedRail)
+                    ||level.getBlockState(raisedRail).getBlock()!=plannedConnector.getBlock())){
+                table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
+                table.setProblem("Waiting for planned permanent rail at "+raisedRail);
+                return;
+            }
+            boolean temporaryRailFoundation=needsRailPlacement&&!permanentConnector
                     &&!BuilderRailSlope.hasRaisedEndSupport(level,pos,state.state())
                     &&BuilderRailSlope.canStageFoundation(level,pos,state.state(),
                         BuilderConstructionPlanner.schematicStates(plan.steps(),
@@ -1976,7 +1990,7 @@ public final class BuilderBuildService {
                 return;
             }
             var railItem=state.state().getBlock().asItem();
-            boolean railJig=needsRailPlacement&&!reShapeRail&&level.hasChunkAt(raisedRail)
+            boolean railJig=needsRailPlacement&&!permanentConnector&&!reShapeRail&&level.hasChunkAt(raisedRail)
                     &&level.getBlockState(raisedRail).isAir()
                     &&(temporaryRailFoundation
                         ||BuilderRailSlope.hasRaisedEndSupport(level,pos,state.state()));
