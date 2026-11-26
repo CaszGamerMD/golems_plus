@@ -1782,6 +1782,15 @@ public final class BuilderBuildService {
                         BuildSite.Mirror.values()[table.builderMirror()]):java.util.Map.<BlockPos,BlockState>of();
             boolean primaryComplete=BuilderPlacementState.matches(
                     existing,state.state())||BuilderChestWork.pendingHalf(level,pos,existing,state.state(),chestPlan);
+            if(!primaryComplete&&state.state().getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock
+                    &&!BuilderWaterPass.isWaterlogPass(step.encodedState())&&existing.getFluidState().isSource()){
+                var finalRail=BuilderConstructionPlanner.schematicStates(plan.steps(),
+                        BuildSite.Rotation.values()[table.builderRotation()/90],
+                        BuildSite.Mirror.values()[table.builderMirror()]).get(pos);
+                // A finished wet rail also satisfies its dry precursor.
+                primaryComplete=finalRail!=null&&finalRail.getBlock()==state.state().getBlock()
+                        &&BuilderPlacementState.matches(existing,finalRail);
+            }
             boolean partnerComplete=partner==null||BuilderPlacementState.matches(
                     partnerExisting,partnerResolved.state());
             boolean delayedLever=!table.builderCommissioning()
@@ -1832,8 +1841,7 @@ public final class BuilderBuildService {
                 // for; the replacement itself also consumes a real rail.
                 rebuildMissingWetRail=dryWaterlog!=null
                         &&(existing.isAir()
-                            ||existing.is(net.minecraft.world.level.block.Blocks.WATER)
-                                &&existing.getFluidState().isSource())
+                            ||existing.is(net.minecraft.world.level.block.Blocks.WATER))
                         &&dryWaterlog.state().getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock
                         &&dryWaterlog.state().canSurvive(level,pos);
                 // Repair every paid rail shape (including flat and curved)
@@ -2107,7 +2115,8 @@ public final class BuilderBuildService {
                 publishHandoff(table,worker.getUUID(),index,level.getGameTime(),"rail kit approach blocked");return;
             }
             if(BuilderFlight.creative(worker)&&!hoverPose){
-                if(needsRailPlacement&&BuilderFlight.requestRailWork(level,worker,pos,null,bodyBlockingWork)){
+                if(state.state().getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock
+                        &&BuilderFlight.requestRailWork(level,worker,pos,null,bodyBlockingWork)){
                     activity.phase=Action.MOVE_TO_WORK;return;
                 }
                 BlockPos baseline=BuilderFlight.workPose(level,worker,pos,bodyBlockingWork);

@@ -660,6 +660,12 @@ public final class BuilderConstructionPlanner {
             BlockState actual=world.getBlockState(target);
             boolean primaryMatches=BuilderPlacementState.matches(
                     actual,state.state())||BuilderChestWork.pendingHalf(world,target,actual,state.state(),builtSchematic);
+            if(!primaryMatches&&state.state().getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock
+                    &&!BuilderWaterPass.isWaterlogPass(step.encodedState())&&actual.getFluidState().isSource()){
+                BlockState finalRail=builtSchematic.get(target);
+                primaryMatches=finalRail!=null&&finalRail.getBlock()==state.state().getBlock()
+                        &&BuilderPlacementState.matches(actual,finalRail);
+            }
             var partner=step.companion();
             boolean companionMatches=true;
             if(partner!=null){
@@ -723,6 +729,9 @@ public final class BuilderConstructionPlanner {
             // stance null so speculative handoff never sends A* into midair.
             boolean propeller=stance==null
                     &&(BuilderFlight.canAccessWork(world,worker,target,bodyBlocking)
+                        ||creative&&!lookahead&&pending.size()<=32
+                            &&state.state().getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock
+                            &&BuilderFlight.canAccessRailWork(world,worker,target,bodyBlocking)
                         ||!creative&&pending.size()<=24&&BuilderFlight.canAccessRoofWork(world,worker,target,bodyBlocking));
             if(creative&&!propeller)continue;
             // An elevated unsupported block needs construction footing.

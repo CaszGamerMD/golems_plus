@@ -521,6 +521,27 @@ public final class BuilderVillagerMatrixFullGameTest {
                             +" below="+level.getBlockState(candidate.pos().below())
                             +" above="+level.getBlockState(candidate.pos().above()));
                 }
+                // Strict source scoring stays unchanged. Capture the actual
+                // piston power neighborhood for the next physical fix.
+                for(Expected candidate:expected){
+                    var planned=candidate.state();
+                    if(!planned.is(net.minecraft.world.level.block.Blocks.PISTON)
+                            &&!planned.is(net.minecraft.world.level.block.Blocks.STICKY_PISTON))continue;
+                    var at=candidate.pos();
+                    var actual=level.getBlockState(at);
+                    if(actual.getBlock()!=planned.getBlock())continue;
+                    var facing=actual.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING);
+                    var front=at.relative(facing);
+                    var line=new java.util.ArrayList<String>();
+                    for(int k=1;k<=3;k++)line.add(level.getBlockState(at.relative(facing,k)).toString());
+                    var neighbors=new java.util.ArrayList<String>();
+                    for(var dir:net.minecraft.core.Direction.values()){
+                        neighbors.add(dir+":"+level.getBlockState(at.relative(dir)));
+                        neighbors.add("above/"+dir+":"+level.getBlockState(at.above().relative(dir)));
+                    }
+                    System.out.println("[MATRIX PISTON DIAGNOSTIC] local="+at.subtract(origin)
+                            +" planned="+planned+" live="+actual+" pushLine="+line+" powerNeighborhood="+neighbors);
+                }
                 System.out.println("[MATRIX MISMATCH TOTALS] "+kinds);
             }
             if(table.phase()==WorkerPhase.COMPLETE){

@@ -199,20 +199,31 @@ public final class BuilderAnchorSchedule {
                     probeFailures++;
                 }
             }
-            // Place the planned push-line solids before introducing a
-            // piston that could already be powered by a neighboring block.
-            // Keep vanilla motion; no forced extension state or fake head.
-            if(!s.ignorePlant()&&states[i]!=null&&(states[i].is(Blocks.PISTON)||states[i].is(Blocks.STICKY_PISTON))){
-                Direction facing=states[i].getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING);
-                for(int k=1;k<=12;k++){
-                    Cell front=cells.get(at.relative(facing,k));
-                    if(front==null)break;
-                    String id=net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(front.state().getBlock()).getPath();
-                    // Only common full, movable construction blocks;
-                    // never impose this edge on an attachment or another piston.
-                    if(!(id.equals("smooth_stone")||id.equals("redstone_block")||id.endsWith("_concrete")))break;
-                    needed.add(front.index());
+            // Do not force the whole push line in front of a powered
+            // piston: that reliably moved paid blocks out of their cells.
+            // Place redstone blocks only after any nearby planned piston
+            // base, so direct power is introduced as late as the local
+            // dependency schedule permits. Manual levers remain delayed.
+            if(states[i]!=null&&states[i].is(Blocks.REDSTONE_BLOCK)){
+                for(Direction side:Direction.values()){
+                    for(BlockPos base:new BlockPos[]{at.relative(side),at.relative(side).below()}){
+                        Cell piston=cells.get(base);
+                        if(piston!=null&&(piston.state().is(Blocks.PISTON)||piston.state().is(Blocks.STICKY_PISTON)))
+                            needed.add(piston.index());
+                    }
                 }
+            }
+            // A low tunnel can close before its thin paid track is laid.
+            // Keep the directly overlying roof block behind the track
+            // (including wall torches and other circuit attachments).
+            // No blocks are removed after closing the tunnel.
+            if(states[i]!=null&&!descending){
+                Cell under=cells.get(at.below());
+                if(under!=null&&(under.state().getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock
+                        ||under.state().is(Blocks.REDSTONE_WALL_TORCH))
+                        &&(states[i].is(Blocks.GLASS)||states[i].is(Blocks.SMOOTH_STONE)
+                            ||states[i].is(Blocks.STONE)||states[i].is(Blocks.SMOOTH_STONE_SLAB)))
+                    needed.add(under.index());
             }
             needed.remove(i);
             anchors[i]=needed.stream().mapToInt(Integer::intValue).sorted().toArray();
