@@ -1,11 +1,14 @@
 name: Full Villager Matrix - 4 real Builders
-# Test cached anchors, physical support repair and bounded rail recovery.
+# Test scaffold and bubble support ordering plus bounded stalled-group recovery.
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/full-villager-matrix-physical.yml'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewSchedule.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderCrewRecovery.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderAnchorSchedule.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/world/WorkerStationBlockEntity.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderBuildService.java'
       - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderSupplyInventory.java'
       - 'src/test/java/com/caszgamermd/golemsplus/builder/BuilderWaterPassTest.java'

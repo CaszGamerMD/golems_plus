@@ -124,6 +124,7 @@ public final class BuilderAnchorSchedule {
             BuildSite.Rotation rotation,BuildSite.Mirror mirror,boolean descending,Set<Integer> late){
         int n=steps.size();
         var cells=new HashMap<BlockPos,Cell>();
+        var bubbles=new HashMap<BlockPos,Integer>();
         BlockState[] states=new BlockState[n];
         int[] layers=new int[n],rank=new int[n],degree=new int[n],demand=new int[n];
         int[][] anchors=new int[n][];
@@ -135,6 +136,7 @@ public final class BuilderAnchorSchedule {
             var resolved=BuilderBlockResolver.resolve(s.encodedState(),rotation,mirror);
             if(resolved==null)continue;
             states[i]=resolved.state();
+            if(BuilderWaterPass.isBubbleColumn(s.encodedState()))bubbles.put(new BlockPos(s.x(),s.y(),s.z()),i);
             // Fluid hosts have their own water/physics scheduling.
             if(!BuilderWaterPass.isWaterStep(s.encodedState())){
                 cells.put(new BlockPos(s.x(),s.y(),s.z()),new Cell(i,states[i]));
@@ -153,6 +155,13 @@ public final class BuilderAnchorSchedule {
             Set<Integer> needed=new HashSet<>();
             if(!s.ignorePlant()&&BuilderWaterPass.isWaterlogPass(s.encodedState())){
                 Cell host=cells.get(at);if(host!=null&&host.index()!=i)needed.add(host.index());
+            }else if(!s.ignorePlant()&&BuilderWaterPass.isBubbleColumn(s.encodedState())){
+                Integer lower=bubbles.get(at.below());
+                if(lower!=null&&lower!=i)needed.add(lower);
+                else{
+                    Cell base=cells.get(at.below());
+                    if(base!=null&&(base.state().is(Blocks.SOUL_SAND)||base.state().is(Blocks.MAGMA_BLOCK)))needed.add(base.index());
+                }
             }else if(probe!=null&&states[i]!=null&&!BuilderWaterPass.isWaterStep(s.encodedState())){
                 try{
                     Integer scaffold=states[i].is(Blocks.SCAFFOLDING)?scaffoldAnchor(probe,cells,at,i,states[i]):null;
