@@ -1345,7 +1345,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
                     &&com.caszgamermd.golemsplus.builder.BuilderRailSlope.canReshapePaidSlope(server,at,desired.state());
             boolean bubble=com.caszgamermd.golemsplus.builder.BuilderWaterPass.isBubbleColumn(step.encodedState())
                     &&(actual.is(net.minecraft.world.level.block.Blocks.WATER)||actual.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN));
-            if(missing||manual||dryHost||rail||bubble)reopen.add(i);
+            // Piston extension is deliberately ignored, but the block
+            // variant and facing must still match the original paid cell.
+            boolean piston=(desired.state().is(net.minecraft.world.level.block.Blocks.PISTON)
+                    ||desired.state().is(net.minecraft.world.level.block.Blocks.STICKY_PISTON))
+                    &&(actual.is(net.minecraft.world.level.block.Blocks.PISTON)
+                    ||actual.is(net.minecraft.world.level.block.Blocks.STICKY_PISTON));
+            if(missing||manual||dryHost||rail||bubble||piston)reopen.add(i);
         }
         if(reopen.isEmpty())return false;
         // Waterlogging must be revisited whenever its dry host was lost.
@@ -1919,6 +1925,11 @@ public final class WorkerStationBlockEntity extends BlockEntity
             if(com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.needsInteraction(actual,desired.state())
                     ||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.recheck(actual,desired.state())
                     ||actual.isAir()&&!desired.state().isAir()
+                    ||(desired.state().is(net.minecraft.world.level.block.Blocks.PISTON)
+                        ||desired.state().is(net.minecraft.world.level.block.Blocks.STICKY_PISTON))
+                        &&(actual.is(net.minecraft.world.level.block.Blocks.PISTON)
+                        ||actual.is(net.minecraft.world.level.block.Blocks.STICKY_PISTON))
+                        &&!com.caszgamermd.golemsplus.builder.BuilderPlacementState.matches(actual,desired.state())
                     ||com.caszgamermd.golemsplus.builder.BuilderRailSlope.canReshapePaidSlope(server,at,desired.state())
                         &&!com.caszgamermd.golemsplus.builder.BuilderPlacementState.matches(actual,desired.state())
                     ||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isBubbleColumn(step.encodedState())
