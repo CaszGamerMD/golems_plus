@@ -95,8 +95,7 @@ public final class BuilderWaterPass {
             }
             for(int k=lower.size()-1;k>=0;k--){
                 BlockPos at=lower.get(k);BlockState live=world.getBlockState(at);
-                if(live.is(Blocks.BUBBLE_COLUMN)&&live.getValue(BubbleColumnBlock.DRAG_DOWN)==downward
-                        ||live.is(Blocks.WATER)&&live.getFluidState().isSource())continue;
+                if(BuilderPlacementState.matches(live,schematic.get(at)))continue;
                 return new BuilderConstructionPlan.Step(at.getX(),at.getY(),at.getZ(),step.encodedState(),WATER_BUCKET);
             }
             // All source water exists. A real generator tick can restore
@@ -104,7 +103,7 @@ public final class BuilderWaterPass {
             return step;
         }
         if(planned==null&&actual.is(Blocks.BUBBLE_COLUMN)
-                &&actual.getValue(BubbleColumnBlock.DRAG_DOWN)==downward)return step;
+                &&actual.getFluidState().isSource())return step;
         if(planned==null&&!actual.isAir()&&!actual.is(Blocks.MAGMA_BLOCK)
                 &&!actual.is(Blocks.SOUL_SAND))return null;
         String id=BuiltInRegistries.BLOCK.getKey(base).toString();
@@ -123,9 +122,8 @@ public final class BuilderWaterPass {
         while(at.getY()>=level.getMinY()&&level.hasChunkAt(at)){
             BlockState actual=level.getBlockState(at);
             if(actual.is(generator))return true;
-            if(actual.is(Blocks.BUBBLE_COLUMN)){
-                if(actual.getValue(BubbleColumnBlock.DRAG_DOWN)!=down)return false;
-            }else if(!actual.is(Blocks.WATER)||!actual.getFluidState().isSource())return false;
+            if(!(actual.is(Blocks.BUBBLE_COLUMN)||actual.is(Blocks.WATER))
+                    ||!actual.getFluidState().isSource())return false;
             at=at.below();
         }
         return false;
