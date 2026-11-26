@@ -26,6 +26,16 @@ public final class BuilderDeferredState {
             }
             var fluid=level.getFluidState(pos);
             if(!fluid.isEmpty())level.scheduleTick(pos,fluid.getType(),1);
+            // An empty flow cell may be several blocks downstream from
+            // the last real source. Wake nearby existing sources and
+            // waterlogged hosts, not synthetic source blocks in air.
+            for(int dy=0;dy<=2;dy++)for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
+                if(Math.abs(dx)+Math.abs(dz)+dy>5)continue;
+                BlockPos at=pos.offset(dx,dy,dz);
+                if(!level.hasChunkAt(at)||!level.mayInteract(owner,at))continue;
+                var source=level.getFluidState(at);
+                if(source.isSource())level.scheduleTick(at,source.getType(),1);
+            }
             return;
         }
         if(!BuilderPistonWork.verification(state))return;

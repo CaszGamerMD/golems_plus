@@ -1778,7 +1778,10 @@ public final class BuilderBuildService {
                     existing,state.state())||BuilderChestWork.pendingHalf(level,pos,existing,state.state(),chestPlan);
             boolean partnerComplete=partner==null||BuilderPlacementState.matches(
                     partnerExisting,partnerResolved.state());
-            if(primaryComplete&&partnerComplete){
+            boolean delayedLever=!table.builderCommissioning()
+                    &&BuilderBlockInteractions.delayPoweredLever(state.state(),plan.steps());
+            if((primaryComplete||delayedLever&&BuilderPlacementState.matches(existing,
+                    BuilderBlockInteractions.placementState(state.state())))&&partnerComplete){
                 if(repairingBubbleBase)return; // Original upper claim is still pending.
                 // Auto-connected walls/fences/panes and stair corner shapes
                 // may differ from the saved palette after neighbouring
@@ -2782,7 +2785,7 @@ public final class BuilderBuildService {
             // Only after spending the physical block item and placing
             // its neutral state may the Builder click its real controls.
             // The resulting neighbor updates are genuine vanilla behavior.
-            if(BuilderBlockInteractions.hasManualControl(state.state())
+            if(!delayedLever&&BuilderBlockInteractions.hasManualControl(state.state())
                     &&!BuilderPlacementState.matches(
                             level.getBlockState(pos),state.state())
                     &&!BuilderBlockInteractions.interact(level,pos,

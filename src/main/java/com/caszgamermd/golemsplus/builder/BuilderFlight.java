@@ -136,7 +136,11 @@ public final class BuilderFlight {
         return gridPath(level,worker,from,to,1800);
     }
     private static List<Vec3> gridPath(ServerLevel level,BuilderGolem worker,Vec3 from,Vec3 to,int budget){
-        BlockPos start=BlockPos.containing(from),goal=BlockPos.containing(to);
+        return gridPath(level,worker,from,to,budget,Vec3.ZERO);
+    }
+    private static Vec3 gridFeet(BlockPos pos,Vec3 offset){return feet(pos).add(offset);}
+    private static List<Vec3> gridPath(ServerLevel level,BuilderGolem worker,Vec3 from,Vec3 to,int budget,Vec3 offset){
+        BlockPos start=BlockPos.containing(from.subtract(offset)),goal=BlockPos.containing(to.subtract(offset));
         int minX=Math.min(start.getX(),goal.getX())-8,maxX=Math.max(start.getX(),goal.getX())+8;
         int minY=Math.min(start.getY(),goal.getY())-8,maxY=Math.max(start.getY(),goal.getY())+12;
         int minZ=Math.min(start.getZ(),goal.getZ())-8,maxZ=Math.max(start.getZ(),goal.getZ())+8;
@@ -145,18 +149,18 @@ public final class BuilderFlight {
         var passable=new HashMap<BlockPos,Boolean>();
         for(int dy=-1;dy<=1;dy++)for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++){
             BlockPos at=start.offset(dx,dy,dz);
-            if(!airSegment(level,worker,from,feet(at)))continue;
-            double g=from.distanceTo(feet(at));cost.put(at,g);
-            queue.add(new AirNode(at,g,g+1.35*feet(at).distanceTo(to)));
+            if(!airSegment(level,worker,from,gridFeet(at,offset)))continue;
+            double g=from.distanceTo(gridFeet(at,offset));cost.put(at,g);
+            queue.add(new AirNode(at,g,g+1.35*gridFeet(at,offset).distanceTo(to)));
         }
         int expanded=0;
         while(!queue.isEmpty()&&expanded<budget){
             AirNode node=queue.poll();BlockPos at=node.pos();
             if(node.cost()>cost.getOrDefault(at,Double.POSITIVE_INFINITY)+1e-6)continue;
             expanded++;
-            if(feet(at).distanceToSqr(to)<=9&&airSegment(level,worker,feet(at),to)){
+            if(gridFeet(at,offset).distanceToSqr(to)<=9&&airSegment(level,worker,gridFeet(at,offset),to)){
                 var reversed=new ArrayList<Vec3>();reversed.add(to);
-                for(BlockPos cur=at;cur!=null;cur=parent.get(cur))reversed.add(feet(cur));
+                for(BlockPos cur=at;cur!=null;cur=parent.get(cur))reversed.add(gridFeet(cur,offset));
                 Collections.reverse(reversed);var result=new ArrayList<Vec3>();Vec3 anchor=from;
                 for(int i=0;i<reversed.size();){int furthest=i;
                     for(int j=Math.min(reversed.size()-1,i+12);j>i;j--)
@@ -170,8 +174,8 @@ public final class BuilderFlight {
                 if(next.getX()<minX||next.getX()>maxX||next.getY()<minY||next.getY()>maxY||next.getZ()<minZ||next.getZ()>maxZ)continue;
                 double g=node.cost()+1;
                 if(g>=cost.getOrDefault(next,Double.POSITIVE_INFINITY))continue;
-                if(!passable.computeIfAbsent(next,k->clear(level,worker,feet(k)))||!sweep(level,worker,feet(at),feet(next)))continue;
-                cost.put(next,g);parent.put(next,at);queue.add(new AirNode(next,g,g+1.35*feet(next).distanceTo(to)));
+                if(!passable.computeIfAbsent(next,k->clear(level,worker,gridFeet(k,offset)))||!sweep(level,worker,gridFeet(at,offset),gridFeet(next,offset)))continue;
+                cost.put(next,g);parent.put(next,at);queue.add(new AirNode(next,g,g+1.35*gridFeet(next,offset).distanceTo(to)));
             }
         }
         return List.of();
@@ -1081,6 +1085,18 @@ public final class BuilderFlight {
                 Vec3 at=candidates.get((offset+j)%candidates.size());
                 if(recentlyFailed(worker,at,level.getGameTime()))continue;
                 var route=gridPath(level,worker,worker.position(),at,4800);
+                if(!route.isEmpty()){
+                    planned.put(worker,new Planned(BlockPos.containing(at),worker.position(),route,level.getGameTime()));
+                    return at;
+                }
+            }
+            // A full-block-center lattice cannot enter low slabs or
+            // off-center corridors. Try one aligned lattice as a bounded
+            // last resort; every edge still passes the collision sweep.
+            Vec3 at=candidates.get(offset);
+            Vec3 alignment=at.subtract(feet(BlockPos.containing(at)));
+            if(!recentlyFailed(worker,at,level.getGameTime())){
+                var route=gridPath(level,worker,worker.position(),at,3200,alignment);
                 if(!route.isEmpty()){
                     planned.put(worker,new Planned(BlockPos.containing(at),worker.position(),route,level.getGameTime()));
                     return at;

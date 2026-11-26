@@ -118,11 +118,15 @@ final class BuilderCrewRecovery {
         if(BuilderFlight.creative(worker)){
             // Reset a single stalled hat, not the entire crew or material network.
             // Normal pause/return and material accounting remain unchanged.
-            if(s.layer!=layer||work>s.best){
+            if(s.layer!=layer||work!=s.best){
                 s.layer=layer;s.best=work;s.lastProgress=now;
                 s.hatTried.clear();s.hatRetry.clear();s.railRetained.clear();
             }
             int commissioning=table.builderActiveStepIndex(steps);
+            if(commissioning>=0&&BuilderDeferredState.verification(steps.get(commissioning).encodedState())
+                    &&table.beginBuilderControlCommissioning(steps)){
+                s.lastProgress=now;return true;
+            }
             if(commissioning>=0&&BuilderDeferredState.verification(steps.get(commissioning).encodedState())
                     &&!BuilderFlight.moving(worker)&&!worker.hasSupplyBox()
                     &&!BuilderDroppedBlockRecovery.busy(worker)){
@@ -160,7 +164,11 @@ final class BuilderCrewRecovery {
                     }
                 }
             }
-            if(now-s.lastProgress>=200&&(s.lastAudit==Long.MIN_VALUE||now-s.lastAudit>=120)){
+            if(now-s.lastProgress>=200&&(s.lastAudit==Long.MIN_VALUE||now-s.lastAudit>=400)
+                    &&table.builderWorkerIds().stream().noneMatch(id->{
+                        var entity=level.getEntity(id);
+                        return entity instanceof BuilderGolem hat&&BuilderFlight.moving(hat);
+                    })){
                 s.lastAudit=now;
                 if(table.repairCompletedBuilderCells(steps)){s.lastProgress=now;return true;}
             }

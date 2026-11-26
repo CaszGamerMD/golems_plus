@@ -77,6 +77,16 @@ public final class BuilderBlockInteractions {
         return manualProperty(desired)!=null;
     }
 
+    /** Delay only manually switched power, never the physical piston or
+     * a powered block that serves as structural support. Other builds
+     * retain immediate interaction semantics. */
+    public static boolean delayPoweredLever(BlockState desired,java.util.List<BuilderConstructionPlan.Step> steps){
+        if(desired==null||!desired.is(net.minecraft.world.level.block.Blocks.LEVER)
+                ||!hasValue(desired,"powered","true"))return false;
+        for(var step:steps)if(!step.ignorePlant()&&BuilderPistonWork.verification(step.encodedState()))return true;
+        return false;
+    }
+
     /** Shape/orientation/attachment stay exact; click-settings start in
      * their normal unactivated state, with real items paid separately. */
     public static BlockState placementState(BlockState desired){

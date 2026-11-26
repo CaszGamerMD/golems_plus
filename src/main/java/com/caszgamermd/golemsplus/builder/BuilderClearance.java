@@ -57,6 +57,11 @@ public final class BuilderClearance{
                 // construction. A lift needs no fabricated grapple anchor.
                 BlockPos pose=BuilderFlight.workPose(level,worker,pos);
                 if(pose!=null&&BuilderFlight.request(level,worker,pose))return Result.MOVING;
+                if(BuilderFlight.creative(worker)){
+                    if(BuilderFlight.requestFractionalWork(level,worker,pos,true))return Result.MOVING;
+                    table.setProblem("CLEARING: no collision-safe flight approach to "+pos);
+                    return Result.BLOCKED;
+                }
                 if(BuilderFlight.active(worker)){
                     BuilderFlight.land(level,worker,false);
                     return Result.MOVING;

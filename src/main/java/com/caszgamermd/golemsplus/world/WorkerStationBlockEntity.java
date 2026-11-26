@@ -1110,13 +1110,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.Map<Integer,Integer> lateRetryAttempts=new java.util.HashMap<>();
     private final java.util.Map<Integer,Integer> completedRepairAttempts=new java.util.HashMap<>();
     private int lateRetrySequence;
-    private final java.util.Set<Integer> pistonFinishSteps=new java.util.HashSet<>();
-    private boolean pistonFinishInitialized;
+
     private void checkLateFluidJob(){
         if(!java.util.Objects.equals(lateFluidJob,activeOrder)){
             lateFluidJob=activeOrder;lateFluidSteps.clear();dependencyPlan=null;
             lateRetryRank.clear();lateRetryAttempts.clear();completedRepairAttempts.clear();lateRetrySequence=0;
-            pistonFinishSteps.clear();pistonFinishInitialized=false;
+
             anchorRepairAttempts.clear();anchorRepairTick=Long.MIN_VALUE;
         }
     }
@@ -1163,35 +1162,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             anchorGraphs.put(steps,graph);
         }
         dependencyLayers=graph.layers();dependencyAnchors=graph.anchors();dependencyDemand=graph.demand();
-        // Keep the actual piston absent until surrounding physical work
-        // is assembled. This prevents early power from shifting unfinished
-        // structure. Any cell needing a piston as its anchor follows it.
-        if(!pistonFinishInitialized){
-            pistonFinishInitialized=true;
-            if(builderHeightMode()!=com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN){
-                for(int i=0;i<steps.size();i++){
-                    var step=steps.get(i);String state=step.encodedState();
-                    if(!step.ignorePlant()&&step.requiredItem()!=null
-                            &&(state.startsWith("minecraft:piston[")||state.startsWith("minecraft:sticky_piston[")))
-                        pistonFinishSteps.add(i);
-                }
-                boolean changed;
-                do{
-                    changed=false;
-                    for(int i=0;i<steps.size();i++)if(!pistonFinishSteps.contains(i)
-                            &&!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(i).encodedState())){
-                        for(int a:dependencyAnchors[i])if(pistonFinishSteps.contains(a)){
-                            pistonFinishSteps.add(i);changed=true;break;
-                        }
-                    }
-                }while(changed);
-                lateFluidSteps.addAll(pistonFinishSteps);
-                if(!pistonFinishSteps.isEmpty())System.out.println("[BUILDER PISTON FINISH] delayed="+pistonFinishSteps.size());
-            }
-        }
         dependencyOrder=com.caszgamermd.golemsplus.builder.BuilderAnchorSchedule.withLateOrder(graph,steps,lateFluidSteps);
-        if(!lateRetryRank.isEmpty()||!pistonFinishSteps.isEmpty())dependencyOrder=java.util.Arrays.stream(dependencyOrder).boxed()
-                .sorted(java.util.Comparator.comparingInt((Integer i)->com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(i).encodedState())?3:pistonFinishSteps.contains(i)?2:lateFluidSteps.contains(i)?1:0)
+        if(!lateRetryRank.isEmpty())dependencyOrder=java.util.Arrays.stream(dependencyOrder).boxed()
+                .sorted(java.util.Comparator.comparingInt((Integer i)->com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(i).encodedState())?2:lateFluidSteps.contains(i)?1:0)
                         .thenComparingInt(i->lateRetryRank.getOrDefault(i,0)))
                 .mapToInt(Integer::intValue).toArray();
     }
@@ -1274,14 +1247,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean deferStalledBuilderGroup(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         int active=builderActiveStepIndex(steps);
         if(active<0||activeOrder==null||builderCommissioning()||dependencyAnchors==null
-                ||pistonFinishSteps.contains(active)||builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN)return false;
+                ||builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN)return false;
         boolean rotating=lateFluidSteps.contains(active);
         int rank=lateRetryRank.getOrDefault(active,0);
         int y=dependencyLayers[active];
         var pending=new java.util.HashSet<Integer>();
         for(int i=builderCursor;i<steps.size();i++){
             if(builderFinishedSteps.contains(i)||lateFluidSteps.contains(i)!=rotating
-                    ||pistonFinishSteps.contains(i)!=pistonFinishSteps.contains(active)||dependencyLayers[i]!=y
+                    ||dependencyLayers[i]!=y
                     ||rotating&&lateRetryRank.getOrDefault(i,0)!=rank
                     ||!com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(steps.get(i).encodedState(),steps.get(active).encodedState()))continue;
             if(!stallGroupCell(steps.get(i)))return false;
@@ -1331,7 +1304,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(state)
                 ||state.startsWith("minecraft:scaffolding[")||state.contains("rail[")
                 ||state.startsWith("minecraft:glow_lichen[")||state.contains("pressure_plate[")
-                ||state.startsWith("minecraft:lever[")||state.contains("_button[");
+                ||state.startsWith("minecraft:lever[")||state.contains("_button[")
+                ||state.startsWith("minecraft:redstone_wire[")||state.startsWith("minecraft:redstone_torch[")
+                ||state.startsWith("minecraft:redstone_wall_torch[");
     }
     /** Audit actual completed cells when the remaining pass stalls. Reopen
      * only missing, washed-out or uncommissioned paid work; never mark a
@@ -1357,9 +1332,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
             boolean waterlog=com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState());
             boolean missing=actual.isAir()&&!waterlog
                     ||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.displaceable(actual,desired.state());
-            boolean manual=com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.needsInteraction(actual,desired.state());
+            boolean manual=com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.needsInteraction(actual,desired.state())
+                    &&(builderCommissioning()||!com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.delayPoweredLever(desired.state(),steps));
             boolean dryHost=waterlog&&actual.getBlock()==desired.state().getBlock()&&!actual.getFluidState().isSource();
-            boolean rail=com.caszgamermd.golemsplus.builder.BuilderRailSlope.canReshapePaidSlope(server,at,desired.state());
+            // Reorient rails only after ordinary/late physical work,
+            // so neighboring construction cannot immediately undo the fix.
+            boolean rail=com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(active).encodedState())
+                    &&com.caszgamermd.golemsplus.builder.BuilderRailSlope.canReshapePaidSlope(server,at,desired.state());
             boolean bubble=com.caszgamermd.golemsplus.builder.BuilderWaterPass.isBubbleColumn(step.encodedState())
                     &&(actual.is(net.minecraft.world.level.block.Blocks.WATER)||actual.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN));
             if(missing||manual||dryHost||rail||bubble)reopen.add(i);
@@ -1378,7 +1357,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         for(int i=restart;i<previous;i++)if(!reopen.contains(i))builderFinishedSteps.add(i);
         builderCursor=Math.min(previous,restart);
         builderFinishedSteps.removeAll(reopen);
-        for(int i:reopen){completedRepairAttempts.merge(i,1,Integer::sum);if(!pistonFinishSteps.contains(i))lateFluidSteps.remove(i);lateRetryRank.remove(i);}
+        for(int i:reopen){completedRepairAttempts.merge(i,1,Integer::sum);lateFluidSteps.remove(i);lateRetryRank.remove(i);}
         builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderMissingRetries.clear();
         builderWorkDone=Math.max(0,builderWorkDone-reopen.size());
         dependencyPlan=null;activeScanPlan=null;
@@ -1491,7 +1470,6 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 &&com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(active).encodedState()))
             return com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(index).encodedState())&&builderAnchorsReady(index);
         return active>=0&&index>=builderCursor&&index<steps.size()
-                &&pistonFinishSteps.contains(index)==pistonFinishSteps.contains(active)
                 &&lateFluidSteps.contains(index)==lateFluidSteps.contains(active)
                 &&(!lateFluidSteps.contains(active)||lateRetryRank.getOrDefault(index,0).equals(lateRetryRank.getOrDefault(active,0)))
                 &&builderAnchorsReady(index)
@@ -1866,6 +1844,40 @@ public final class WorkerStationBlockEntity extends BlockEntity
      * and dry targets lost to incidental fluid after construction. Original indices survive save,
      * reload, and the dependency schedule. Dynamic signal states are never
      * forced or treated as a manual click target. */
+    /** Powered levers are installed unpowered during construction of a
+     * piston circuit. Before evaluating derived states, reopen their
+     * original paid indices for a real click by a worker in range. */
+    public boolean beginBuilderControlCommissioning(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(builderCommissioning()||activeOrder==null||!(level instanceof net.minecraft.server.level.ServerLevel server))return false;
+        var rotation=com.caszgamermd.golemsplus.builder.BuildSite.Rotation.values()[builderRotation()/90];
+        var mirror=com.caszgamermd.golemsplus.builder.BuildSite.Mirror.values()[builderMirror()];
+        var reopen=new java.util.HashSet<Integer>();
+        for(int i=0;i<steps.size();i++){
+            var step=steps.get(i);
+            if(step.ignorePlant()||!step.encodedState().startsWith("minecraft:lever[")
+                    ||!builderStepCompletedForMaterials(i))continue;
+            var desired=com.caszgamermd.golemsplus.builder.BuilderBlockResolver.resolve(step.encodedState(),rotation,mirror);
+            BlockPos at=new BlockPos(step.x(),step.y(),step.z());
+            if(desired!=null&&server.hasChunkAt(at)
+                    &&com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.delayPoweredLever(desired.state(),steps)
+                    &&com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.needsInteraction(server.getBlockState(at),desired.state()))
+                reopen.add(i);
+        }
+        if(reopen.isEmpty())return false;
+        commissioningJob=activeOrder;commissioning=true;
+        int previous=builderCursor;
+        int restart=reopen.stream().mapToInt(Integer::intValue).min().orElse(previous);
+        for(int i=restart;i<previous;i++)if(!reopen.contains(i))builderFinishedSteps.add(i);
+        builderCursor=Math.min(previous,restart);
+        builderFinishedSteps.removeAll(reopen);
+        for(int i:reopen){lateFluidSteps.remove(i);lateRetryRank.remove(i);}
+        builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderMissingRetries.clear();
+        builderWorkDone=Math.max(0,builderWorkDone-reopen.size());
+        dependencyPlan=null;activeScanPlan=null;
+        setProblem("Commissioning: activating "+reopen.size()+" paid lever controls");
+        System.out.println("[BUILDER CONTROL COMMISSIONING] reopening="+reopen.size());
+        sync();return true;
+    }
     private boolean reopenBuilderInteractions(){
         if(!(level instanceof net.minecraft.server.level.ServerLevel server)||builderProgressPlan==null
                 ||builderProgressPlan.size()!=builderBlocks||activeOrder==null)return false;
@@ -1885,7 +1897,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 continue;
             }
             if(step.requiredItem()==null)continue;
-            if(wetCells.contains(at)&&!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState()))continue;
+            if(wetCells.contains(at)&&!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState())
+                    &&!server.getBlockState(at).isAir()
+                    &&!server.getBlockState(at).is(net.minecraft.world.level.block.Blocks.WATER))continue;
             if(!server.hasChunkAt(at))continue;
             var desired=com.caszgamermd.golemsplus.builder.BuilderBlockResolver.resolve(step.encodedState(),rotation,mirror);
             if(desired==null)continue;
@@ -1902,7 +1916,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         if(reopen.isEmpty())return false;
         commissioningJob=activeOrder;commissioning=true;
-        for(int i:reopen){if(!pistonFinishSteps.contains(i))lateFluidSteps.remove(i);lateRetryRank.remove(i);}
+        for(int i:reopen){lateFluidSteps.remove(i);lateRetryRank.remove(i);}
         builderCursor=reopen.stream().mapToInt(Integer::intValue).min().orElse(builderBlocks);
         builderFinishedSteps.clear();
         for(int i=builderCursor;i<builderBlocks;i++)if(!reopen.contains(i))builderFinishedSteps.add(i);

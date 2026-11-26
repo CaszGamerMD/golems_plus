@@ -30,6 +30,16 @@ final class BuilderBlockInteractionsTest {
                 state("minecraft:lever[face=wall,facing=north,powered=false]"),target));
     }
 
+    @Test void onlyPoweredLeversInPistonBuildsDelayActivation(){
+        var on=state("minecraft:lever[face=floor,facing=north,powered=true]");
+        var off=state("minecraft:lever[face=floor,facing=north,powered=false]");
+        var piston=java.util.List.of(new BuilderConstructionPlan.Step(0,1,0,
+                BuilderPistonWork.verificationStep("minecraft:piston_head[facing=up,short=false,type=normal]"),null));
+        assertTrue(BuilderBlockInteractions.delayPoweredLever(on,piston));
+        assertFalse(BuilderBlockInteractions.delayPoweredLever(off,piston));
+        assertFalse(BuilderBlockInteractions.delayPoweredLever(on,java.util.List.of()));
+    }
+
     @Test void repeaterAndComparatorModesAreManualNotBlockVariants(){
         var repeater=state("minecraft:repeater[delay=4,facing=north,locked=false,powered=false]");
         var defaultRepeater=BuilderBlockInteractions.placementState(repeater);
