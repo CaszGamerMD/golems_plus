@@ -1342,6 +1342,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             if(desired==null)continue;
             var actual=server.getBlockState(at);
             if(com.caszgamermd.golemsplus.builder.BuilderPlacementState.matches(actual,desired.state()))continue;
+            // Paid blocks physically moved by a planned piston are not missing materials.
+            if(com.caszgamermd.golemsplus.builder.BuilderPistonWork.displacementMatches(
+                    server,at,desired.state(),steps,rotation,mirror))continue;
             boolean waterlog=com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState());
             // A dry precursor and its wet final state are one physical
             // host. Never reopen a correct wet host just to dry it.
