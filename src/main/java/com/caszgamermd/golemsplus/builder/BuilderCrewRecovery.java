@@ -13,6 +13,7 @@ final class BuilderCrewRecovery {
         UUID job;
         int layer=Integer.MIN_VALUE,best=-1,attempts,epochWork=-1,hatPeakWork=-1;
         long lastNewHatWork;
+        long finishingAuditGraceUntil;
         final Set<UUID> tried=new HashSet<>();
         long lastProgress,started,graceUntil;
         boolean recalling;
@@ -55,7 +56,8 @@ final class BuilderCrewRecovery {
     static boolean recalling(WorkerStationBlockEntity table){return state(table).recalling;}
     static boolean assessmentGrace(ServerLevel level,WorkerStationBlockEntity table){
         State s=state(table);long now=level.getGameTime();
-        return s.recalling&&now-s.started<RETURN_BUDGET||now<s.graceUntil;
+        return s.recalling&&now-s.started<RETURN_BUDGET||now<s.graceUntil
+                ||now<s.finishingAuditGraceUntil;
     }
     static List<UUID> staff(WorkerStationBlockEntity table,int layer,List<UUID> normal){
         State s=state(table);
@@ -130,7 +132,8 @@ final class BuilderCrewRecovery {
             // Vanilla may fill a column after a hat has released its claim.
             // Observe only actual matching states; never demand a flight
             // pose or a second bucket for a cell that is already correct.
-            if(commissioning>=0&&BuilderWaterPass.isWaterStep(steps.get(commissioning).encodedState())
+            if(commissioning>=0&&(BuilderWaterPass.isWaterStep(steps.get(commissioning).encodedState())
+                    ||table.builderCommissioning())
                     &&now-s.lastProgress>=80
                     &&(s.lastBubbleScan==Long.MIN_VALUE||now-s.lastBubbleScan>=20)
                     &&table.claimedStep(worker.getUUID())<0&&!BuilderFlight.moving(worker)
@@ -183,7 +186,7 @@ final class BuilderCrewRecovery {
             // Repeated handoffs can keep one hat moving forever while
             // the actual build never advances. Audit on a bounded timer
             // even then; do not reset it on mere phase/claim churn.
-            if(table.builderInFinishingPass(steps)
+            if((table.builderInFinishingPass(steps)||table.builderCommissioning())
                     &&(s.lastAudit==Long.MIN_VALUE||now-s.lastAudit>=600)
                     &&(now-s.lastNewHatWork>=500||now-s.lastProgress>=200
                         &&table.builderWorkerIds().stream().noneMatch(id->{
@@ -191,7 +194,16 @@ final class BuilderCrewRecovery {
                             return entity instanceof BuilderGolem hat&&BuilderFlight.moving(hat);
                         }))){
                 s.lastAudit=now;
-                if(table.repairCompletedBuilderCells(steps)){s.lastProgress=now;return true;}
+                if(table.repairCompletedBuilderCells(steps)){
+                    // An actual world-state audit reopened paid cells. Give
+                    // their workers a bounded repair window, but do not
+                    // renew it indefinitely on repeated failed repairs.
+                    long deadline=Math.min(now+1200,s.lastNewHatWork+3000);
+                    s.finishingAuditGraceUntil=Math.max(s.finishingAuditGraceUntil,deadline);
+                    s.lastProgress=now;
+                    System.out.println("[HAT AUDIT GRACE] until="+s.finishingAuditGraceUntil);
+                    return true;
+                }
             }
             if(now-s.lastProgress>=STALL&&table.repairMissingBuilderAnchors(steps)){
                 s.lastProgress=now;return true;
