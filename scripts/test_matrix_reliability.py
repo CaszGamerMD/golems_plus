@@ -1,6 +1,6 @@
 """Regression checks for observed Matrix progress comparison."""
 import unittest
-from matrix_reliability import progress, compare_progress
+from matrix_reliability import progress, compare_progress, extract
 
 def timeline(*points):
     return progress("\n".join(
@@ -9,6 +9,14 @@ def timeline(*points):
         for tick, count in points))
 
 class TestProgress(unittest.TestCase):
+    def test_displacement_counter(self):
+        result=extract("[MATRIX TRIAL RESULT] outcome=COMPLETE layer=complete elapsedMs=1000 tick=500 correct=15006 total=15006 best=15006 ignoredPistonDisplacements=5 unsupported=0")
+        self.assertEqual(result["outcome"],"COMPLETE")
+        self.assertEqual(result["ignoredPistonDisplacements"],5)
+        rows=progress("[MATRIX FULL PROGRESS] tick=400 matchingSourceBlocks=100/15006 ignoredPistonDisplacements=3 best=100 cursor=101/15383 currentLayer=4 noWorkTicks=0 crewAlive=4")
+        self.assertEqual(rows[400]["ignoredPistonDisplacements"],3)
+        old=extract("[MATRIX TRIAL RESULT] outcome=COMPLETE layer=complete elapsedMs=1000 tick=500 correct=15006 total=15006 best=15006 unsupported=0")
+        self.assertEqual(old["ignoredPistonDisplacements"],0)
     def test_sustained(self):
         a=timeline((100,100),(200,300),(300,450))
         b=timeline((100,100),(200,150),(300,200))
