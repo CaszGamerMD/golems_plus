@@ -1,5 +1,5 @@
 name: Matrix reliability - three independent builds
-# Repeat controlled Matrix trials with cached anchors, physical repair and bounded rail recovery.
+# Repeat three controlled Matrix trials after wet/curved rail and piston-facing audit repairs (e23afc3).
 on:
   push:
     branches: [main]
