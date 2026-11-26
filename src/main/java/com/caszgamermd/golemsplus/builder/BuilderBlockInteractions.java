@@ -26,7 +26,6 @@ public final class BuilderBlockInteractions {
     static String manualProperty(BlockState state){
         if(state==null)return null;
         String id=BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
-        if(id.equals("lever"))return "powered";
         if(id.equals("repeater"))return "delay";
         if(id.equals("comparator"))return "mode";
         // Tuning a note block requires as many as 24 real right-clicks.
@@ -35,12 +34,6 @@ public final class BuilderBlockInteractions {
         // The power signal tracks the sun; only the inverse-daylight
         // mode is a stable user-selected switch.
         if(id.equals("daylight_detector"))return "inverted";
-        if(id.endsWith("_fence_gate"))
-            return hasValue(state,"powered","true")?null:"open";
-        // Iron trapdoors need a redstone signal, not a player's hand.
-        // Copper and wood trapdoors are manually operable when unpowered.
-        if(id.endsWith("_trapdoor")&&!id.equals("iron_trapdoor"))
-            return hasValue(state,"powered","true")?null:"open";
         return null;
     }
 
@@ -75,7 +68,7 @@ public final class BuilderBlockInteractions {
     /** A planned closed upper wooden trapdoor can support a pressure plate
      * even when adjacent redstone has opened it during construction.
      * Only offer this repair for the exact schematic host, never an iron
-     * trapdoor, an intentional open trapdoor, or an unrelated block. */
+     * trapdoor or an unrelated block. A saved open state is not binding. */
     static boolean canRestorePlateSupport(ServerLevel level,BlockPos plate,
             BlockState desired,java.util.Map<BlockPos,BlockState> planned){
         if(!BuiltInRegistries.BLOCK.getKey(desired.getBlock()).getPath().endsWith("_pressure_plate")
@@ -85,7 +78,7 @@ public final class BuilderBlockInteractions {
         if(expected==null||actual.getBlock()!=expected.getBlock())return false;
         String id=BuiltInRegistries.BLOCK.getKey(actual.getBlock()).getPath();
         if(!id.endsWith("_trapdoor")||id.equals("iron_trapdoor")
-                ||!hasValue(actual,"open","true")||!hasValue(expected,"open","false")
+                ||!hasValue(actual,"open","true")
                 ||!hasValue(actual,"half","top")||!hasValue(expected,"half","top"))return false;
         return BuilderPlacementState.matches(set(actual,"open","false"),expected);
     }
@@ -113,17 +106,8 @@ public final class BuilderBlockInteractions {
         return manualProperty(desired)!=null;
     }
 
-    /** Delay only manually switched power, never the physical piston or
-     * a powered block that serves as structural support. Other builds
-     * retain immediate interaction semantics. */
+    /** Saved lever power is no longer a commissioning requirement. */
     public static boolean delayPoweredLever(BlockState desired,java.util.List<BuilderConstructionPlan.Step> steps){
-        if(desired==null||!desired.is(net.minecraft.world.level.block.Blocks.LEVER)
-                ||!hasValue(desired,"powered","true"))return false;
-        for(var step:steps){
-            String id=BuilderMultiblock.blockId(step.encodedState());
-            if(BuilderPistonWork.verification(step.encodedState())||id.equals("minecraft:piston")
-                    ||id.equals("minecraft:sticky_piston"))return true;
-        }
         return false;
     }
 
@@ -135,7 +119,14 @@ public final class BuilderBlockInteractions {
         // Live redstone energy is NOT a property a Builder can choose by
         // holding a powered item. Start with an unpowered wire/rail/device
         // and let real placed neighbors propagate signals afterward.
-        if(id.equals("redstone_wire")){
+        if(id.equals("lever")||id.endsWith("_button")||id.endsWith("_pressure_plate")){
+            neutral=set(neutral,"powered","false");
+            neutral=set(neutral,"power","0");
+        }else if(id.endsWith("_door")||id.endsWith("_trapdoor")||id.endsWith("_fence_gate")){
+            // Start with safe closed supports. Actual redstone may reopen them.
+            neutral=set(neutral,"powered","false");
+            neutral=set(neutral,"open","false");
+        }else if(id.equals("redstone_wire")){
             neutral=set(neutral,"power","0");
             // A placed wire starts as a cross unless the schematic is an
             // intentional dot. Starting every wire as a dot suppresses
