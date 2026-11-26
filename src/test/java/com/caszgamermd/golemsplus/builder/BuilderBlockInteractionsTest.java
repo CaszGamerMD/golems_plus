@@ -65,21 +65,23 @@ final class BuilderBlockInteractionsTest {
         }
     }
 
-    @Test void leverRequiresARealClickButKeepsItsMounting(){
+    @Test void leverActivityIsIgnoredButMountingIsRequired(){
         var target=state("minecraft:lever[face=floor,facing=north,powered=true]");
         var neutral=BuilderBlockInteractions.placementState(target);
         assertEquals(state("minecraft:lever[face=floor,facing=north,powered=false]"),neutral);
-        assertTrue(BuilderBlockInteractions.needsInteraction(neutral,target));
+        assertFalse(BuilderBlockInteractions.needsInteraction(neutral,target));
+        assertTrue(BuilderPlacementState.matches(neutral,target));
+        assertFalse(BuilderPlacementState.matches(state("minecraft:lever[face=wall,facing=north,powered=false]"),target));
         assertFalse(BuilderBlockInteractions.needsInteraction(
                 state("minecraft:lever[face=wall,facing=north,powered=false]"),target));
     }
 
-    @Test void onlyPoweredLeversInPistonBuildsDelayActivation(){
+    @Test void savedLeverPowerNeverRequiresCommissioning(){
         var on=state("minecraft:lever[face=floor,facing=north,powered=true]");
         var off=state("minecraft:lever[face=floor,facing=north,powered=false]");
         var piston=java.util.List.of(new BuilderConstructionPlan.Step(0,1,0,
                 BuilderPistonWork.verificationStep("minecraft:piston_head[facing=up,short=false,type=normal]"),null));
-        assertTrue(BuilderBlockInteractions.delayPoweredLever(on,piston));
+        assertFalse(BuilderBlockInteractions.delayPoweredLever(on,piston));
         assertFalse(BuilderBlockInteractions.delayPoweredLever(off,piston));
         assertFalse(BuilderBlockInteractions.delayPoweredLever(on,java.util.List.of()));
     }
@@ -106,18 +108,21 @@ final class BuilderBlockInteractionsTest {
         assertFalse(BuilderPlacementState.matches(normal,comparator));
     }
 
-    @Test void trapdoorsAndFenceGatesClickWithoutLosingOrientation(){
+    @Test void trapdoorsAndFenceGatesIgnoreActivityButKeepOrientation(){
         var trapdoor=state("minecraft:oak_trapdoor[facing=north,half=bottom,open=true,powered=false,waterlogged=false]");
         var closed=BuilderBlockInteractions.placementState(trapdoor);
-        assertTrue(BuilderBlockInteractions.needsInteraction(closed,trapdoor));
+        assertFalse(BuilderBlockInteractions.needsInteraction(closed,trapdoor));
+        assertTrue(BuilderPlacementState.matches(closed,trapdoor));
+        assertFalse(BuilderPlacementState.matches(state("minecraft:oak_trapdoor[facing=south,half=bottom,open=false,powered=false,waterlogged=false]"),trapdoor));
         assertFalse(BuilderBlockInteractions.needsInteraction(
                 state("minecraft:oak_trapdoor[facing=south,half=bottom,open=false,powered=false,waterlogged=false]"),
                 trapdoor));
         var gate=state("minecraft:oak_fence_gate[facing=east,in_wall=false,open=true,powered=false]");
-        assertTrue(BuilderBlockInteractions.needsInteraction(
+        assertFalse(BuilderBlockInteractions.needsInteraction(
                 BuilderBlockInteractions.placementState(gate),gate));
+        assertTrue(BuilderPlacementState.matches(BuilderBlockInteractions.placementState(gate),gate));
         var iron=state("minecraft:iron_trapdoor[facing=north,half=bottom,open=true,powered=false,waterlogged=false]");
-        assertEquals(iron,BuilderBlockInteractions.placementState(iron));
+        assertTrue(BuilderPlacementState.matches(BuilderBlockInteractions.placementState(iron),iron));
         assertFalse(BuilderBlockInteractions.needsInteraction(
                 state("minecraft:iron_trapdoor[facing=north,half=bottom,open=false,powered=false,waterlogged=false]"),
                 iron));
@@ -196,6 +201,7 @@ final class BuilderBlockInteractionsTest {
         var stone=state("minecraft:stone");
         assertEquals(stone,BuilderBlockInteractions.placementState(stone));
         var button=state("minecraft:oak_button[face=floor,facing=north,powered=true]");
-        assertEquals(button,BuilderBlockInteractions.placementState(button));
+        assertEquals(state("minecraft:oak_button[face=floor,facing=north,powered=false]"),BuilderBlockInteractions.placementState(button));
+        assertTrue(BuilderPlacementState.matches(BuilderBlockInteractions.placementState(button),button));
     }
 }
