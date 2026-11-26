@@ -11,7 +11,8 @@ final class BuilderCrewRecovery {
     private static final int STALL=240, RETURN_BUDGET=1800, RESUME_GRACE=400;
     private static final class State {
         UUID job;
-        int layer=Integer.MIN_VALUE,best=-1,attempts,epochWork=-1;
+        int layer=Integer.MIN_VALUE,best=-1,attempts,epochWork=-1,hatPeakWork=-1;
+        long lastNewHatWork;
         final Set<UUID> tried=new HashSet<>();
         long lastProgress,started,graceUntil;
         boolean recalling;
@@ -120,6 +121,7 @@ final class BuilderCrewRecovery {
         if(BuilderFlight.creative(worker)){
             // Reset a single stalled hat, not the entire crew or material network.
             // Normal pause/return and material accounting remain unchanged.
+            if(work>s.hatPeakWork){s.hatPeakWork=work;s.lastNewHatWork=now;}
             if(s.layer!=layer||work!=s.best){
                 s.layer=layer;s.best=work;s.lastProgress=now;
                 s.hatTried.clear();s.hatRetry.clear();s.railRetained.clear();
@@ -178,11 +180,16 @@ final class BuilderCrewRecovery {
                     }
                 }
             }
-            if(now-s.lastProgress>=200&&(s.lastAudit==Long.MIN_VALUE||now-s.lastAudit>=400)
-                    &&table.builderWorkerIds().stream().noneMatch(id->{
-                        var entity=level.getEntity(id);
-                        return entity instanceof BuilderGolem hat&&BuilderFlight.moving(hat);
-                    })){
+            // Repeated handoffs can keep one hat moving forever while
+            // the actual build never advances. Audit on a bounded timer
+            // even then; do not reset it on mere phase/claim churn.
+            if(table.builderInFinishingPass(steps)
+                    &&(s.lastAudit==Long.MIN_VALUE||now-s.lastAudit>=600)
+                    &&(now-s.lastNewHatWork>=500||now-s.lastProgress>=200
+                        &&table.builderWorkerIds().stream().noneMatch(id->{
+                            var entity=level.getEntity(id);
+                            return entity instanceof BuilderGolem hat&&BuilderFlight.moving(hat);
+                        }))){
                 s.lastAudit=now;
                 if(table.repairCompletedBuilderCells(steps)){s.lastProgress=now;return true;}
             }
@@ -194,7 +201,10 @@ final class BuilderCrewRecovery {
             // Bounded to one leaf per 120 ticks; supports never postponed.
             // The all-worker watchdog can stop after 300 idle ticks.
             // Give the crew an independent frontier before that deadline.
-            if(now-s.lastProgress>=160&&(s.lastLeafCheck==Long.MIN_VALUE||now-s.lastLeafCheck>=120)){
+            // A finishing group often needs a real depot round trip.
+            // Give it more time before rotating and invalidating its orders.
+            int groupWait=table.builderInFinishingPass(steps)||table.builderCommissioning()?320:160;
+            if(now-s.lastProgress>=groupWait&&(s.lastLeafCheck==Long.MIN_VALUE||now-s.lastLeafCheck>=120)){
                 if(table.deferStalledBuilderGroup(steps)){
                     s.lastLeafCheck=now;s.lastProgress=now;return true;
                 }
