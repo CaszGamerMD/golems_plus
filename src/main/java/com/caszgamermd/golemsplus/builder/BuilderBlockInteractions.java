@@ -87,8 +87,15 @@ public final class BuilderBlockInteractions {
         // and let real placed neighbors propagate signals afterward.
         if(id.equals("redstone_wire")){
             neutral=set(neutral,"power","0");
+            // A placed wire starts as a cross unless the schematic is an
+            // intentional dot. Starting every wire as a dot suppresses
+            // horizontal power to nearby pistons. Native neighbor updates
+            // determine the actual arms and signal strength.
+            boolean dot=true;
             for(String side:new String[]{"north","south","east","west"})
-                neutral=set(neutral,side,"none");
+                dot&=hasValue(desired,side,"none");
+            for(String side:new String[]{"north","south","east","west"})
+                neutral=set(neutral,side,dot?"none":"side");
         }else if(id.equals("note_block")){
             // Instrument and power are determined by real supporting
             // blocks and redstone. The note is subsequently tuned with

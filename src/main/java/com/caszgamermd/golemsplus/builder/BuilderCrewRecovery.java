@@ -28,6 +28,8 @@ final class BuilderCrewRecovery {
         final Map<Integer,UUID> railRetained=new HashMap<>();
         long lastLeafCheck=Long.MIN_VALUE;
         long lastAudit=Long.MIN_VALUE;
+        long lastPhysics=Long.MIN_VALUE;
+        int physicsOffset;
     }
     private static final Map<WorkerStationBlockEntity,State> states=new WeakHashMap<>();
     private static State state(WorkerStationBlockEntity table){
@@ -119,6 +121,44 @@ final class BuilderCrewRecovery {
             if(s.layer!=layer||work>s.best){
                 s.layer=layer;s.best=work;s.lastProgress=now;
                 s.hatTried.clear();s.hatRetry.clear();s.railRetained.clear();
+            }
+            int commissioning=table.builderActiveStepIndex(steps);
+            if(commissioning>=0&&BuilderDeferredState.verification(steps.get(commissioning).encodedState())
+                    &&!BuilderFlight.moving(worker)&&!worker.hasSupplyBox()
+                    &&!BuilderDroppedBlockRecovery.busy(worker)){
+                // Verification is read-only: no travel, materials or
+                // standing pose is needed to observe an actual world result.
+                var owner=level.getServer().getPlayerList().getPlayer(worker.owner());
+                if(owner!=null&&owner.level()==level){
+                    var rotation=BuildSite.Rotation.values()[table.builderRotation()/90];
+                    var mirror=BuildSite.Mirror.values()[table.builderMirror()];
+                    var unresolved=new ArrayList<Integer>();
+                    for(int i=table.builderCursor();i<steps.size();i++){
+                        var step=steps.get(i);
+                        if(!BuilderDeferredState.verification(step.encodedState())
+                                ||!table.builderStepReadyForClaim(i)||table.builderStepClaimedByOther(worker.getUUID(),i))continue;
+                        BlockPos at=new BlockPos(step.x(),step.y(),step.z());
+                        if(!level.hasChunkAt(at)||!level.mayInteract(owner,at))continue;
+                        if(BuilderDeferredState.matches(level,at,step.encodedState(),rotation,mirror)){
+                            if(table.claimPreferredBuilderZoneStep(worker.getUUID(),List.of(i),steps,i)==i){
+                                table.completeBuilderStep(worker.getUUID(),i);
+                                return true;
+                            }
+                        }else unresolved.add(i);
+                    }
+                    // Refresh only real neighbors, in bounded rotating
+                    // slices. Never write a piston head or a flow level.
+                    if(!unresolved.isEmpty()&&(s.lastPhysics==Long.MIN_VALUE||now-s.lastPhysics>=20)){
+                        s.lastPhysics=now;
+                        int count=Math.min(8,unresolved.size());
+                        for(int k=0;k<count;k++){
+                            int i=unresolved.get(Math.floorMod(s.physicsOffset+k,unresolved.size()));
+                            var step=steps.get(i);
+                            BuilderDeferredState.refresh(level,new BlockPos(step.x(),step.y(),step.z()),step.encodedState(),rotation,mirror,owner);
+                        }
+                        s.physicsOffset+=count;
+                    }
+                }
             }
             if(now-s.lastProgress>=140&&(s.lastAudit==Long.MIN_VALUE||now-s.lastAudit>=120)){
                 s.lastAudit=now;

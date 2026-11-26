@@ -481,6 +481,21 @@ public final class BuilderVillagerMatrixFullGameTest {
                             &&resolved.state().canSurvive(level,at))
                         +" fluid="+level.getFluidState(at));
             }
+            if((allStalled||noWorkTimeout||timeLimit||table.phase()==WorkerPhase.COMPLETE)&&correct!=SOURCE_BLOCKS){
+                var kinds=new java.util.TreeMap<String,Integer>();
+                int samples=0;
+                for(Expected candidate:expected){
+                    var actual=level.getBlockState(candidate.pos());
+                    if(BuilderPistonWork.sourceMatches(actual,candidate.state()))continue;
+                    String key=candidate.state().getBlock()+" -> "+actual.getBlock();
+                    kinds.merge(key,1,Integer::sum);
+                    if(samples++<200)System.out.println("[MATRIX MISMATCH] local="+candidate.pos().subtract(origin)
+                            +" expected="+candidate.state()+" actual="+actual
+                            +" below="+level.getBlockState(candidate.pos().below())
+                            +" above="+level.getBlockState(candidate.pos().above()));
+                }
+                System.out.println("[MATRIX MISMATCH TOTALS] "+kinds);
+            }
             if(table.phase()==WorkerPhase.COMPLETE){
                 BuilderTrace.dump(level,table,"matrix complete");
                 System.out.println("[MATRIX TRIAL RESULT] outcome="+(correct==SOURCE_BLOCKS?"COMPLETE":"MISMATCH")

@@ -1454,6 +1454,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
             int index){
         int active=builderActiveStepIndex(steps);
+        if(active>=0&&index>=builderCursor&&index<steps.size()
+                &&com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(active).encodedState()))
+            return com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(index).encodedState())&&builderAnchorsReady(index);
         return active>=0&&index>=builderCursor&&index<steps.size()
                 &&lateFluidSteps.contains(index)==lateFluidSteps.contains(active)
                 &&(!lateFluidSteps.contains(active)||lateRetryRank.getOrDefault(index,0).equals(lateRetryRank.getOrDefault(active,0)))
@@ -1840,18 +1843,30 @@ public final class WorkerStationBlockEntity extends BlockEntity
         var rotation=com.caszgamermd.golemsplus.builder.BuildSite.Rotation.values()[builderRotation()/90];
         var mirror=com.caszgamermd.golemsplus.builder.BuildSite.Mirror.values()[builderMirror()];
         for(int i=0;i<steps.size();i++){
-            var step=steps.get(i);if(step.ignorePlant()||step.requiredItem()==null)continue;
+            var step=steps.get(i);if(step.ignorePlant())continue;
             BlockPos at=new BlockPos(step.x(),step.y(),step.z());
+            if(!server.hasChunkAt(at))continue;
+            if(com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(step.encodedState())){
+                if(!com.caszgamermd.golemsplus.builder.BuilderDeferredState.matches(server,at,step.encodedState(),rotation,mirror))reopen.add(i);
+                continue;
+            }
+            if(step.requiredItem()==null)continue;
             if(wetCells.contains(at)&&!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState()))continue;
             if(!server.hasChunkAt(at))continue;
             var desired=com.caszgamermd.golemsplus.builder.BuilderBlockResolver.resolve(step.encodedState(),rotation,mirror);
             if(desired==null)continue;
             var actual=server.getBlockState(at);
             if(com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.needsInteraction(actual,desired.state())
-                    ||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.recheck(actual,desired.state()))reopen.add(i);
+                    ||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.recheck(actual,desired.state())
+                    ||actual.isAir()&&!desired.state().isAir()
+                    ||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isBubbleColumn(step.encodedState())
+                        &&!com.caszgamermd.golemsplus.builder.BuilderPlacementState.matches(actual,desired.state())
+                    ||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState())
+                        &&actual.getBlock()==desired.state().getBlock()&&!actual.getFluidState().isSource())reopen.add(i);
         }
         if(reopen.isEmpty())return false;
         commissioningJob=activeOrder;commissioning=true;
+        for(int i:reopen){lateFluidSteps.remove(i);lateRetryRank.remove(i);}
         builderCursor=reopen.stream().mapToInt(Integer::intValue).min().orElse(builderBlocks);
         builderFinishedSteps.clear();
         for(int i=builderCursor;i<builderBlocks;i++)if(!reopen.contains(i))builderFinishedSteps.add(i);

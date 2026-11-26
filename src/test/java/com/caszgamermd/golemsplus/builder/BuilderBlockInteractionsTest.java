@@ -72,7 +72,7 @@ final class BuilderBlockInteractionsTest {
     @Test void energyAndWireConnectionsBeginNeutralUntilWorldUpdates(){
         var wire=state("minecraft:redstone_wire[east=side,north=up,power=12,south=side,west=none]");
         var unpowered=BuilderBlockInteractions.placementState(wire);
-        assertEquals(state("minecraft:redstone_wire[east=none,north=none,power=0,south=none,west=none]"),
+        assertEquals(state("minecraft:redstone_wire[east=side,north=side,power=0,south=side,west=side]"),
                 unpowered);
         var rail=state("minecraft:powered_rail[powered=true,shape=ascending_west,waterlogged=false]");
         assertEquals(state("minecraft:powered_rail[powered=false,shape=ascending_west,waterlogged=false]"),

@@ -12,6 +12,39 @@ public final class BuilderDeferredState {
     public static String flowStep(String state){return FLOW+state;}
     public static boolean flowVerification(String state){return state!=null&&state.startsWith(FLOW);}
     public static boolean verification(String state){return flowVerification(state)||BuilderPistonWork.verification(state);}
+    /** Ask the existing vanilla machinery to reevaluate itself; no
+     * synthetic source, power, piston head or flowing state is written. */
+    static void refresh(ServerLevel level,BlockPos pos,String state,BuildSite.Rotation rotation,BuildSite.Mirror mirror,
+            net.minecraft.server.level.ServerPlayer owner){
+        if(!level.hasChunkAt(pos)||!level.mayInteract(owner,pos))return;
+        if(flowVerification(state)){
+            for(var direction:net.minecraft.core.Direction.values()){
+                BlockPos at=pos.relative(direction);
+                if(!level.hasChunkAt(at)||!level.mayInteract(owner,at))continue;
+                var fluid=level.getFluidState(at);
+                if(!fluid.isEmpty())level.scheduleTick(at,fluid.getType(),1);
+            }
+            var fluid=level.getFluidState(pos);
+            if(!fluid.isEmpty())level.scheduleTick(pos,fluid.getType(),1);
+            return;
+        }
+        if(!BuilderPistonWork.verification(state))return;
+        var desired=BuilderBlockResolver.expectedState(BuilderPistonWork.original(state),rotation,mirror);
+        if(desired==null||!desired.is(net.minecraft.world.level.block.Blocks.PISTON_HEAD))return;
+        var facing=desired.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING);
+        BlockPos base=pos.relative(facing.getOpposite());
+        if(!level.hasChunkAt(base)||!level.mayInteract(owner,base))return;
+        var actual=level.getBlockState(base);
+        if(!actual.is(net.minecraft.world.level.block.Blocks.PISTON)
+                &&!actual.is(net.minecraft.world.level.block.Blocks.STICKY_PISTON))return;
+        // Notify from neighboring real blocks, including the block above
+        // for quasi-connectivity. Vanilla alone decides whether to extend.
+        for(var direction:net.minecraft.core.Direction.values()){
+            BlockPos neighbor=base.relative(direction);
+            if(level.hasChunkAt(neighbor)&&level.mayInteract(owner,neighbor))
+                level.updateNeighborsAt(neighbor,level.getBlockState(neighbor).getBlock());
+        }
+    }
     public static boolean matches(ServerLevel level,BlockPos pos,String state,BuildSite.Rotation rotation,BuildSite.Mirror mirror){
         if(!flowVerification(state))return BuilderPistonWork.matches(level,pos,state,rotation,mirror);
         var desired=BuilderBlockResolver.expectedState(state.substring(FLOW.length()),rotation,mirror);
