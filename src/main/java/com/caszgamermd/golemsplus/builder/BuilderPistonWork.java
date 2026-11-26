@@ -75,8 +75,10 @@ public final class BuilderPistonWork {
                 &&actual.getValue(BlockStateProperties.EXTENDED);
     }
     public static boolean sourceMatches(BlockState actual,BlockState desired){
-        if(desired.is(Blocks.PISTON)||desired.is(Blocks.STICKY_PISTON)
-                ||desired.is(Blocks.PISTON_HEAD))return actual.equals(desired);
+        // Extension is live redstone behavior, not construction fidelity.
+        // The normal placement matcher still requires the exact block
+        // (normal versus sticky) and facing, including vertical directions.
+        if(desired.is(Blocks.PISTON_HEAD))return actual.equals(desired);
         return BuilderPlacementState.matches(actual,desired);
     }
 }

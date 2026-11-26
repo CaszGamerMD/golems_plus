@@ -21,6 +21,26 @@ final class BuilderBlockInteractionsTest {
         return result.state();
     }
 
+    @Test void pistonCompletionIgnoresExtensionButRequiresTypeAndFacing(){
+        for(var block:java.util.List.of(net.minecraft.world.level.block.Blocks.PISTON,
+                net.minecraft.world.level.block.Blocks.STICKY_PISTON)){
+            var other=block==net.minecraft.world.level.block.Blocks.PISTON
+                    ?net.minecraft.world.level.block.Blocks.STICKY_PISTON
+                    :net.minecraft.world.level.block.Blocks.PISTON;
+            var facing=net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING;
+            var extended=net.minecraft.world.level.block.state.properties.BlockStateProperties.EXTENDED;
+            for(var direction:net.minecraft.core.Direction.values()){
+                var retracted=block.defaultBlockState().setValue(facing,direction).setValue(extended,false);
+                var active=retracted.setValue(extended,true);
+                assertTrue(BuilderPistonWork.sourceMatches(retracted,active));
+                assertTrue(BuilderPistonWork.sourceMatches(active,retracted));
+                assertFalse(BuilderPistonWork.sourceMatches(retracted.setValue(facing,direction.getOpposite()),active));
+                assertFalse(BuilderPistonWork.sourceMatches(other.defaultBlockState().setValue(facing,direction),active));
+                assertFalse(BuilderPistonWork.sourceMatches(net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),active));
+            }
+        }
+    }
+
     @Test void leverRequiresARealClickButKeepsItsMounting(){
         var target=state("minecraft:lever[face=floor,facing=north,powered=true]");
         var neutral=BuilderBlockInteractions.placementState(target);
