@@ -74,6 +74,64 @@ public final class BuilderPistonWork {
                 &&actual.getValue(BlockStateProperties.FACING)==facing
                 &&actual.getValue(BlockStateProperties.EXTENDED);
     }
+    /** Final verification only: recognize a full line of real blocks shifted
+     * by one piston stroke. Never treat a missing block or fluid as displaced
+     * just because it is near a piston. */
+    public static boolean displacementMatches(ServerLevel level,BlockPos at,BlockState desired,
+            Map<BlockPos,BlockState> planned){
+        if(!desired.getFluidState().isEmpty()||desired.isAir()||desired.is(Blocks.PISTON_HEAD)
+                ||!level.hasChunkAt(at))return false;
+        if(BuilderPlacementState.matches(level.getBlockState(at),desired))return false;
+        for(Direction direction:Direction.values()){
+            for(int distance=1;distance<=13;distance++){
+                BlockPos base=at.relative(direction.getOpposite(),distance);
+                BlockState wanted=planned.get(base);
+                if(wanted==null||!piston(wanted)
+                        ||wanted.getValue(BlockStateProperties.FACING)!=direction
+                        ||!level.hasChunkAt(base))continue;
+                BlockState actual=level.getBlockState(base);
+                if(!BuilderPlacementState.matches(actual,wanted))continue;
+                BlockPos front=base.relative(direction);
+                if(!level.hasChunkAt(front))continue;
+                BlockState first=planned.get(front);
+                boolean plannedHead=first==null||first.is(Blocks.PISTON_HEAD);
+                if(distance==2&&actual.is(Blocks.STICKY_PISTON)
+                        &&!actual.getValue(BlockStateProperties.EXTENDED)
+                        &&plannedHead&&wanted.getValue(BlockStateProperties.EXTENDED)
+                        &&level.getBlockState(at).isAir()
+                        &&BuilderPlacementState.matches(level.getBlockState(front),desired))
+                    return true;
+                if(!actual.getValue(BlockStateProperties.EXTENDED))continue;
+                BlockState head=level.getBlockState(front);
+                if(!head.is(Blocks.PISTON_HEAD)
+                        ||head.getValue(BlockStateProperties.FACING)!=direction)continue;
+                int start=plannedHead?2:1;
+                if(distance<start)continue;
+                for(int i=start;i<=start+11;i++){
+                    BlockPos source=base.relative(direction,i);
+                    BlockState expected=planned.get(source);
+                    if(expected==null||expected.isAir()){
+                        if(i>distance)return true;
+                        break;
+                    }
+                    if(!expected.getFluidState().isEmpty()||expected.is(Blocks.PISTON_HEAD))break;
+                    BlockPos destination=source.relative(direction);
+                    if(!level.hasChunkAt(destination)
+                            ||!BuilderPlacementState.matches(level.getBlockState(destination),expected))break;
+                    if(i==start+11&&i>=distance&&planned.get(destination)==null)return true;
+                }
+            }
+        }
+        return false;
+    }
+    public static boolean displacementMatches(ServerLevel level,BlockPos at,BlockState desired,
+            java.util.List<BuilderConstructionPlan.Step> steps,BuildSite.Rotation rotation,BuildSite.Mirror mirror){
+        return displacementMatches(level,at,desired,
+                BuilderConstructionPlanner.schematicStates(steps,rotation,mirror));
+    }
+    private static boolean piston(BlockState state){
+        return state.is(Blocks.PISTON)||state.is(Blocks.STICKY_PISTON);
+    }
     public static boolean sourceMatches(BlockState actual,BlockState desired){
         // Extension is live redstone behavior, not construction fidelity.
         // The normal placement matcher still requires the exact block
