@@ -143,7 +143,7 @@ final class BuilderBlockInteractionsTest {
                 BuilderBlockInteractions.placementState(comparator));
     }
 
-    @Test void noteTuningUsesRealClicksWhileInstrumentTracksSupport(){
+    @Test void noteBlocksNeverRequireTuningOrInteraction(){
         var note=state("minecraft:note_block[instrument=harp,note=24,powered=false]");
         var untuned=BuilderBlockInteractions.placementState(note);
         assertEquals(state("minecraft:note_block[instrument=harp,note=0,powered=false]"),
@@ -152,12 +152,14 @@ final class BuilderBlockInteractionsTest {
         // on the block under the placed note block.
         var bassTarget=state("minecraft:note_block[instrument=basedrum,note=24,powered=true]");
         assertEquals(untuned,BuilderBlockInteractions.placementState(bassTarget));
-        assertTrue(BuilderBlockInteractions.needsInteraction(untuned,note));
+        assertFalse(BuilderBlockInteractions.needsInteraction(untuned,note));
+        assertFalse(BuilderBlockInteractions.hasManualControl(note));
         // Note sounds come from the actual supporting block, not the
-        // schematic item; tuning and facing remain exact.
+        // schematic item; saved pitch is not a construction requirement.
         var onStone=state("minecraft:note_block[instrument=basedrum,note=24,powered=true]");
         assertTrue(BuilderPlacementState.matches(onStone,note));
-        assertFalse(BuilderPlacementState.matches(untuned,note));
+        assertTrue(BuilderPlacementState.matches(untuned,note));
+        assertFalse(BuilderPlacementState.matches(net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),note));
     }
 
     @Test void daylightInversionIsManualButPowerComesFromTheSky(){
