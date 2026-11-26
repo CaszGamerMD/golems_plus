@@ -96,7 +96,9 @@ public final class BuilderPlacementState {
                     ||(id.equals("scaffolding")&&(name.equals("bottom")||name.equals("distance")))
                     ||((id.equals("tripwire")||id.equals("tripwire_hook"))
                         &&(name.equals("powered")||name.equals("attached")))
-                    ||(id.equals("target")&&name.equals("power"));
+                    ||(id.equals("target")&&name.equals("power"))
+                    ||(id.endsWith("_pressure_plate")
+                        &&(name.equals("power")||name.equals("powered")));
             if(!dynamic)return false;
         }
         return true;

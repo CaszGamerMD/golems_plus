@@ -72,6 +72,42 @@ public final class BuilderBlockInteractions {
         return property==null?state:setValue(state,property,value);
     }
 
+    /** A planned closed upper wooden trapdoor can support a pressure plate
+     * even when adjacent redstone has opened it during construction.
+     * Only offer this repair for the exact schematic host, never an iron
+     * trapdoor, an intentional open trapdoor, or an unrelated block. */
+    static boolean canRestorePlateSupport(ServerLevel level,BlockPos plate,
+            BlockState desired,java.util.Map<BlockPos,BlockState> planned){
+        if(!BuiltInRegistries.BLOCK.getKey(desired.getBlock()).getPath().endsWith("_pressure_plate")
+                ||!level.hasChunkAt(plate.below()))return false;
+        BlockPos at=plate.below();
+        BlockState actual=level.getBlockState(at),expected=planned.get(at);
+        if(expected==null||actual.getBlock()!=expected.getBlock())return false;
+        String id=BuiltInRegistries.BLOCK.getKey(actual.getBlock()).getPath();
+        if(!id.endsWith("_trapdoor")||id.equals("iron_trapdoor")
+                ||!hasValue(actual,"open","true")||!hasValue(expected,"open","false")
+                ||!hasValue(actual,"half","top")||!hasValue(expected,"half","top"))return false;
+        return BuilderPlacementState.matches(set(actual,"open","false"),expected);
+    }
+
+    /** Use the actual wooden trapdoor's player interaction. Do not
+     * synthesize power or bypass the subsequent survival check. */
+    static boolean restorePlateSupport(ServerLevel level,BlockPos plate,
+            BlockState desired,java.util.Map<BlockPos,BlockState> planned,ServerPlayer actor){
+        if(desired.canSurvive(level,plate))return true;
+        BlockPos at=plate.below();
+        if(actor==null||!canRestorePlateSupport(level,plate,desired,planned)
+                ||!level.mayInteract(actor,at)
+                ||!level.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class,
+                        new net.minecraft.world.phys.AABB(at)).isEmpty())return false;
+        BlockState actual=level.getBlockState(at);
+        actual.useWithoutItem(level,actor,new BlockHitResult(
+                Vec3.atCenterOf(at),Direction.UP,at,false));
+        boolean supported=desired.canSurvive(level,plate);
+        if(supported)System.out.println("[BUILDER PLATE SUPPORT RESTORED] "+at);
+        return supported;
+    }
+
     /** Whether the desired target has a stable player-click control. */
     public static boolean hasManualControl(BlockState desired){
         return manualProperty(desired)!=null;

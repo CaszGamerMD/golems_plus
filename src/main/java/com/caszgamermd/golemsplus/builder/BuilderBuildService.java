@@ -1939,7 +1939,13 @@ public final class BuilderBuildService {
             // block. Clearing first destroyed a useful piece of completed
             // cobblestone/support, then deadlocked on "Missing supporting
             // blocks" after the now-unsupported target turned to air.
-            if(!state.state().canSurvive(level,pos)&&!(bubble&&BuilderWaterPass.sourceReady(level,pos,state.state()))){
+            var plateSupportPlan=BuilderConstructionPlanner.schematicStates(plan.steps(),
+                    BuildSite.Rotation.values()[table.builderRotation()/90],
+                    BuildSite.Mirror.values()[table.builderMirror()]);
+            boolean restorePlateSupport=BuilderBlockInteractions.canRestorePlateSupport(
+                    level,pos,state.state(),plateSupportPlan);
+            if(!state.state().canSurvive(level,pos)&&!(bubble&&BuilderWaterPass.sourceReady(level,pos,state.state()))
+                    &&!restorePlateSupport){
                 // A door, wall torch, rail or other dependent schematic
                 // cell may be queued before its supporting neighbour in
                 // this same layer. Yield the cell without consuming an
@@ -2592,6 +2598,20 @@ public final class BuilderBuildService {
                 return;
             }
             activity.blockedSince=-1;
+            // Recheck support after physical travel. A redstone-opened
+            // planned wooden trapdoor is closed by a native click before
+            // the plate's material can be consumed.
+            if(!state.state().canSurvive(level,pos)&&!(bubble&&BuilderWaterPass.sourceReady(level,pos,state.state()))){
+                BlockPos support=pos.below();
+                if(!restorePlateSupport
+                        ||worker.distanceToSqr(support.getX()+.5,support.getY()+.5,support.getZ()+.5)
+                            >BuilderConstructionPlanner.REACH_SQUARED
+                        ||!BuilderBlockInteractions.restorePlateSupport(level,pos,state.state(),plateSupportPlan,owner)){
+                    table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
+                    table.setProblem("Support not ready at final placement pose "+pos);
+                    return;
+                }
+            }
             if(bodyBlockingWork
                     &&!BuilderPlacementSpace.horizontalClear(pos,worker)){
                 // Hats use actual 3D body clearance; legacy builders retain the edge margin.

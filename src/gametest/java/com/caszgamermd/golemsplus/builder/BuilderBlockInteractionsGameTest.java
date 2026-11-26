@@ -12,6 +12,38 @@ import net.minecraft.world.level.block.state.BlockState;
  * this is NOT a test that fakes the requested state with setBlock. */
 public final class BuilderBlockInteractionsGameTest {
     @GameTest(maxTicks=90,skyAccess=true)
+    public void weightedPlateOnPoweredWoodenTrapdoorCanBeRepaired(GameTestHelper h){
+        var level=h.getLevel();
+        var player=h.makeMockServerPlayerInLevel();
+        BlockPos support=h.absolutePos(new BlockPos(4,2,4)),plate=support.above();
+        var desired=BuilderBlockResolver.resolve(
+                "minecraft:oak_trapdoor[facing=north,half=top,open=false,powered=true,waterlogged=true]",
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE).state();
+        var open=desired.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.OPEN,true);
+        var pressure=Blocks.LIGHT_WEIGHTED_PRESSURE_PLATE.defaultBlockState();
+        level.setBlock(support,open,3);
+        h.setBlock(5,2,4,Blocks.REDSTONE_BLOCK);
+        var plan=Map.of(support,desired);
+        if(pressure.canSurvive(level,plate)
+                ||!BuilderBlockInteractions.canRestorePlateSupport(level,plate,pressure,plan)
+                ||BuilderBlockInteractions.canRestorePlateSupport(level,plate,pressure,Map.of(support,open))
+                ||!BuilderBlockInteractions.restorePlateSupport(level,plate,pressure,plan,player)
+                ||!pressure.canSurvive(level,plate)
+                ||!level.setBlock(plate,pressure,3)){
+            h.fail("Real trapdoor click failed to restore the pressure plate's planned support: "+level.getBlockState(support));return;
+        }
+        h.onEachTick(()->{
+            if(h.getTick()!=20)return;
+            if(!level.getBlockState(plate).is(Blocks.LIGHT_WEIGHTED_PRESSURE_PLATE)
+                    ||!pressure.canSurvive(level,plate)
+                    ||level.getBlockState(support).getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.OPEN)){
+                h.fail("Pressure plate support did not survive neighbor ticks");return;
+            }
+            h.succeed();
+        });
+    }
+
+    @GameTest(maxTicks=90,skyAccess=true)
     public void lampOutputComesFromRealRedstoneNeighbor(GameTestHelper h){
         var level=h.getLevel();
         BlockPos pos=h.absolutePos(new BlockPos(4,2,4));

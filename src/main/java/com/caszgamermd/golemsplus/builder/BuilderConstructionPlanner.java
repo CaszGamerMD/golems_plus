@@ -685,7 +685,8 @@ public final class BuilderConstructionPlanner {
                     &&actual.getFluidState().isSource())
                 return new Choice(idx,null,false,true,examined);
             if(!state.state().canSurvive(world,target)&&!(BuilderWaterPass.isBubbleColumn(step.encodedState())
-                    &&BuilderWaterPass.sourceReady(world,target,state.state()))){
+                    &&BuilderWaterPass.sourceReady(world,target,state.state()))
+                    &&!BuilderBlockInteractions.canRestorePlateSupport(world,target,state.state(),builtSchematic)){
                 // A source-filled lower chain can be waiting for its
                 // generator tick. Allow the execution service to wake it.
                 if(BuilderWaterPass.isBubbleColumn(step.encodedState()))

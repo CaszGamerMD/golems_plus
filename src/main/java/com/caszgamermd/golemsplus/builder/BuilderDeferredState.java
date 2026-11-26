@@ -32,12 +32,15 @@ public final class BuilderDeferredState {
             // A vanilla source can feed up to seven horizontal cells,
             // and water can fall from above before spreading. Search the
             // complete horizontal reach plus nearby vertical feeds.
+            // Wake the downstream flowing chain too. A source tick
+            // alone need not reschedule a previously unchanged intermediate
+            // flow cell after a late obstruction has been removed.
             for(int dy=0;dy<=4;dy++)for(int dx=-7;dx<=7;dx++)for(int dz=-7;dz<=7;dz++){
                 if(Math.abs(dx)+Math.abs(dz)>7)continue;
                 BlockPos at=pos.offset(dx,dy,dz);
                 if(!level.hasChunkAt(at)||!level.mayInteract(owner,at))continue;
                 var source=level.getFluidState(at);
-                if(source.isSource())level.scheduleTick(at,source.getType(),1);
+                if(!source.isEmpty())level.scheduleTick(at,source.getType(),1);
             }
             return;
         }
