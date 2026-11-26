@@ -1,5 +1,5 @@
 name: Matrix reliability - three independent builds
-# Repeat three controlled Matrix trials after wet/curved rail and piston-facing audit repairs (e23afc3).
+# Repeat controlled trials with full-source-only bubble column completion and regression checks.
 on:
   push:
     branches: [main]
