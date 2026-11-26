@@ -1247,7 +1247,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
      * their unfinished dependents. Never move an ordinary structural cell. */
     public boolean deferStalledBuilderGroup(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         int active=builderActiveStepIndex(steps);
-        if(active<0||activeOrder==null||builderCommissioning()||dependencyAnchors==null
+        if(active<0||activeOrder==null||dependencyAnchors==null
+                ||builderCommissioning()&&!lateFluidSteps.contains(active)
                 ||builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN)return false;
         boolean rotating=lateFluidSteps.contains(active);
         int rank=lateRetryRank.getOrDefault(active,0);
@@ -1333,13 +1334,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
             if(com.caszgamermd.golemsplus.builder.BuilderPlacementState.matches(actual,desired.state()))continue;
             boolean waterlog=com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState());
             boolean missing=actual.isAir()&&!waterlog
-                    ||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.displaceable(actual,desired.state());
+                    ||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.displaceable(actual,desired.state())
+                    ||!waterlog&&com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.plannedWaterRepair(actual,desired.state());
             boolean manual=com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.needsInteraction(actual,desired.state())
                     &&(builderCommissioning()||!com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.delayPoweredLever(desired.state(),steps));
             boolean dryHost=waterlog&&actual.getBlock()==desired.state().getBlock()&&!actual.getFluidState().isSource();
             // Reorient rails only after ordinary/late physical work,
             // so neighboring construction cannot immediately undo the fix.
-            boolean rail=com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(active).encodedState())
+            boolean rail=(builderCommissioning()||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(active).encodedState()))
                     &&com.caszgamermd.golemsplus.builder.BuilderRailSlope.canReshapePaidSlope(server,at,desired.state());
             boolean bubble=com.caszgamermd.golemsplus.builder.BuilderWaterPass.isBubbleColumn(step.encodedState())
                     &&(actual.is(net.minecraft.world.level.block.Blocks.WATER)||actual.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN));
@@ -1849,6 +1851,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
     /** Powered levers are installed unpowered during construction of a
      * piston circuit. Before evaluating derived states, reopen their
      * original paid indices for a real click by a worker in range. */
+    /** Normal structure must finish before delayed controls are enabled.
+     * Late attachment/fluid work may remain; don't require those repairs
+     * to finish before controls needed by natural fluid/redstone results. */
+    public boolean builderInFinishingPass(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        int active=builderActiveStepIndex(steps);
+        return active>=0&&(lateFluidSteps.contains(active)
+                ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(active).encodedState()));
+    }
     public boolean beginBuilderControlCommissioning(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(builderCommissioning()||activeOrder==null||!(level instanceof net.minecraft.server.level.ServerLevel server))return false;
         var rotation=com.caszgamermd.golemsplus.builder.BuildSite.Rotation.values()[builderRotation()/90];

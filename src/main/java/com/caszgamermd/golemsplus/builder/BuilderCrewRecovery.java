@@ -136,7 +136,8 @@ final class BuilderCrewRecovery {
                 s.lastBubbleScan=now;
                 if(observeBubbleFrontier(level,worker,table,steps,s))return true;
             }
-            if(commissioning>=0&&BuilderDeferredState.verification(steps.get(commissioning).encodedState())
+            if(commissioning>=0&&table.builderInFinishingPass(steps)
+                    &&(BuilderDeferredState.verification(steps.get(commissioning).encodedState())||now-s.lastProgress>=160)
                     &&table.beginBuilderControlCommissioning(steps)){
                 s.lastProgress=now;return true;
             }

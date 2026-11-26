@@ -13,6 +13,16 @@ public final class BuilderFluidObstruction {
         return actual.is(Blocks.WATER)&&!actual.getFluidState().isSource()
                 &&!desired.isAir()&&desired.getFluidState().isEmpty();
     }
+    /** A source occupying an exact planned generator or rail cell is not
+     * an intended water cell. Allow physical replacement only when the
+     * caller confirms the original schematic target and normal protection,
+     * inventory and reach checks. Never remove waterlogged foreign hosts. */
+    public static boolean plannedWaterRepair(BlockState actual,BlockState desired){
+        return actual.is(Blocks.WATER)
+                &&desired.getFluidState().isEmpty()
+                &&(desired.is(Blocks.SOUL_SAND)||desired.is(Blocks.MAGMA_BLOCK)
+                    ||desired.getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock);
+    }
     /** Only non-load-bearing attachments can safely wait for the entire
      * surrounding structure to be completed. Never postpone a support,
      * rail, container, water source, or fluid-dependent structural cell. */

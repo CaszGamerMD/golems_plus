@@ -88,7 +88,8 @@ public final class BuilderWaterPass {
             BlockState wanted=schematic.get(scan);
             if(wanted!=null&&!wanted.is(base))return null;
             if(!support.is(base)){
-                if(!support.isAir()&&!support.is(Blocks.SOUL_SAND)&&!support.is(Blocks.MAGMA_BLOCK))return null;
+                if(!support.isAir()&&!support.is(Blocks.SOUL_SAND)&&!support.is(Blocks.MAGMA_BLOCK)
+                        &&!(wanted!=null&&wanted.is(base)&&support.is(Blocks.WATER)))return null;
                 String id=BuiltInRegistries.BLOCK.getKey(base).toString();
                 return new BuilderConstructionPlan.Step(scan.getX(),scan.getY(),scan.getZ(),id,id);
             }

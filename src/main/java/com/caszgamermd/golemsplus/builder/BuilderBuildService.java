@@ -288,11 +288,16 @@ public final class BuilderBuildService {
                 ||BuilderFlight.moving(worker)
                 ||BuilderFlight.descentMakingProgress(level,worker,depot))return;
         if(BuilderFlight.creative(worker)){
-            // Keep the resupply mission alive while its dedicated 3D
-            // escape search rotates candidates. Never swap a material-
-            // dependent claim between four equally stranded hats.
-            table.setProblem("Hat seeking safe airborne supply route to "+depot);
-            activity.supplyProgressTick=now;
+            // A stationary hat has already exhausted the physical
+            // supply-progress window. Hand its claim to the crew rather
+            // than resetting the watchdog forever. Retain all real cargo.
+            table.waitForBuilderAccess(worker.getUUID(),index,now,"stalled airborne supply trip");
+            publishHandoff(table,worker.getUUID(),index,now,"stalled airborne supply trip");
+            table.releaseBuilderWorkOrder(worker.getUUID());
+            activity.setStep(-1);
+            activity.returningToSite=true;
+            activity.supplyProgressTick=-1;
+            table.setProblem("Hat handed off placement after blocked supply return");
             return;
         }
         String reason="no physical progress toward OnSite Storage";
@@ -1828,7 +1833,7 @@ public final class BuilderBuildService {
                         &&(existing.isAir()
                             ||existing.is(net.minecraft.world.level.block.Blocks.WATER)
                                 &&existing.getFluidState().isSource())
-                        &&BuilderRailSlope.raisedEnd(pos,dryWaterlog.state())!=null
+                        &&dryWaterlog.state().getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock
                         &&dryWaterlog.state().canSurvive(level,pos);
                 if(dryWaterlog!=null
                         &&BuilderRailSlope.raisedEnd(pos,dryWaterlog.state())!=null
@@ -1966,8 +1971,14 @@ public final class BuilderBuildService {
                     &&level.getBlockState(raisedRail).isAir()
                     &&(temporaryRailFoundation
                         ||BuilderRailSlope.hasRaisedEndSupport(level,pos,state.state()));
-            boolean displacingFlow=!waterlog&&!repairingBubbleBase
-                    &&BuilderFluidObstruction.displaceable(existing,state.state());
+            var plannedAt=BuilderConstructionPlanner.schematicStates(plan.steps(),
+                    BuildSite.Rotation.values()[table.builderRotation()/90],
+                    BuildSite.Mirror.values()[table.builderMirror()]).get(pos);
+            boolean plannedWaterRepair=!waterlog&&plannedAt!=null
+                    &&plannedAt.getBlock()==state.state().getBlock()
+                    &&BuilderFluidObstruction.plannedWaterRepair(existing,state.state());
+            boolean displacingFlow=!waterlog&&(!repairingBubbleBase
+                    &&BuilderFluidObstruction.displaceable(existing,state.state())||plannedWaterRepair);
             if(displacingFlow&&(table.isTrackedScaffold(pos)||level.getBlockEntity(pos)!=null))displacingFlow=false;
             if(!existing.isAir()&&!waterlog&&!reShapeRail&&!displacingFlow
                     &&!interactionCorrection&&!repairPartner&&!repairingBubbleBase
@@ -2052,7 +2063,7 @@ public final class BuilderBuildService {
                     return;
                 }
             }
-            if(repairingBubbleBase&&!existing.isAir()
+            if(repairingBubbleBase&&!existing.isAir()&&!displacingFlow
                     &&!(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
                         ||existing.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN)))){
                 BuilderClearance.clear(level,worker,table,owner,pos,existing);
