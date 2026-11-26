@@ -1324,7 +1324,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean repairCompletedBuilderCells(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         if(!(level instanceof net.minecraft.server.level.ServerLevel server)||activeOrder==null)return false;
         int active=builderActiveStepIndex(steps);
-        if(active<0||!lateFluidSteps.contains(active)
+        if(active<0||!builderCommissioning()&&!lateFluidSteps.contains(active)
                 &&!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(active).encodedState()))return false;
         var rotation=com.caszgamermd.golemsplus.builder.BuildSite.Rotation.values()[builderRotation()/90];
         var mirror=com.caszgamermd.golemsplus.builder.BuildSite.Mirror.values()[builderMirror()];
@@ -1380,8 +1380,16 @@ public final class WorkerStationBlockEntity extends BlockEntity
         for(int i=restart;i<previous;i++)if(!reopen.contains(i))builderFinishedSteps.add(i);
         builderCursor=Math.min(previous,restart);
         builderFinishedSteps.removeAll(reopen);
-        for(int i:reopen){completedRepairAttempts.merge(i,1,Integer::sum);lateFluidSteps.remove(i);lateRetryRank.remove(i);}
-        builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderMissingRetries.clear();
+        for(int i:reopen){completedRepairAttempts.merge(i,1,Integer::sum);lateFluidSteps.remove(i);lateRetryRank.remove(i);builderMissingRetries.remove(i);}
+        // Keep unrelated stocked batches and live claims. Normal active
+        // phase validation rejects any claim that is no longer executable.
+        builderClaims.entrySet().removeIf(entry->reopen.contains(entry.getValue()));
+        for(var entry:new java.util.ArrayList<>(builderWorkOrders.entrySet())){
+            if(entry.getValue().stream().anyMatch(reopen::contains)){
+                builderWorkOrders.remove(entry.getKey());
+                builderPreparedOrders.remove(entry.getKey());
+            }
+        }
         builderWorkDone=Math.max(0,builderWorkDone-reopen.size());
         dependencyPlan=null;activeScanPlan=null;
         reconcileBuilderMaterialsFromPlan(steps);
