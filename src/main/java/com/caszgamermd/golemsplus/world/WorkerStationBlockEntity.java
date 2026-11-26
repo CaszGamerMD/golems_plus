@@ -1199,7 +1199,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 var expected=com.caszgamermd.golemsplus.builder.BuilderBlockResolver.resolve(anchor.encodedState(),rotation,mirror);
                 if(expected==null)continue;
                 var actual=server.getBlockState(pos);
-                if(actual.isAir()||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.displaceable(actual,expected.state())){
+                if(actual.isAir()||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.displaceable(actual,expected.state())
+                        ||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.plannedWaterRepair(actual,expected.state())){
                     reopen.add(a);
                     System.out.println("[BUILDER ANCHOR REPAIR] index="+a+" anchor="+pos+" dependent="+target);
                 }
@@ -1248,7 +1249,6 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean deferStalledBuilderGroup(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         int active=builderActiveStepIndex(steps);
         if(active<0||activeOrder==null||dependencyAnchors==null
-                ||builderCommissioning()&&!lateFluidSteps.contains(active)
                 ||builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN)return false;
         boolean rotating=lateFluidSteps.contains(active);
         int rank=lateRetryRank.getOrDefault(active,0);
@@ -1293,7 +1293,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
         lateFluidSteps.addAll(pending);
         dependencyPlan=null;activeScanPlan=null;
         builderClaims.entrySet().removeIf(entry->pending.contains(entry.getValue()));
-        builderWorkOrders.clear();builderPreparedOrders.clear();
+        // Only invalidate orders affected by this deferred group. The
+        // ordinary phase/claim validation still rejects stale targets.
+        for(var entry:new java.util.ArrayList<>(builderWorkOrders.entrySet())){
+            if(entry.getValue().stream().anyMatch(pending::contains)){
+                builderWorkOrders.remove(entry.getKey());
+                builderPreparedOrders.remove(entry.getKey());
+            }
+        }
         for(int i:pending)builderMissingRetries.remove(i);
         System.out.println("[BUILDER GROUP DEFERRED] layer="+y+" cells="+pending.size()+" rotating="+rotating+" indices="+pending);
         setProblem("Retrying "+pending.size()+" blocked attachment/fluid actions in final construction pass");
@@ -1322,6 +1329,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
         var rotation=com.caszgamermd.golemsplus.builder.BuildSite.Rotation.values()[builderRotation()/90];
         var mirror=com.caszgamermd.golemsplus.builder.BuildSite.Mirror.values()[builderMirror()];
         var reopen=new java.util.HashSet<Integer>();
+        var wetCells=new java.util.HashSet<BlockPos>();
+        for(var step:steps)if(!step.ignorePlant()&&com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState()))
+            wetCells.add(new BlockPos(step.x(),step.y(),step.z()));
         for(int i=0;i<steps.size()&&reopen.size()<32;i++){
             var step=steps.get(i);
             if(!builderStepCompletedForMaterials(i)||step.ignorePlant()||step.requiredItem()==null
@@ -1333,6 +1343,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
             var actual=server.getBlockState(at);
             if(com.caszgamermd.golemsplus.builder.BuilderPlacementState.matches(actual,desired.state()))continue;
             boolean waterlog=com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState());
+            // A dry precursor and its wet final state are one physical
+            // host. Never reopen a correct wet host just to dry it.
+            if(!waterlog&&wetCells.contains(at)&&actual.getBlock()==desired.state().getBlock()
+                    &&actual.getFluidState().isSource())continue;
             boolean missing=actual.isAir()&&!waterlog
                     ||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.displaceable(actual,desired.state())
                     ||!waterlog&&com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.plannedWaterRepair(actual,desired.state());
@@ -1341,8 +1355,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             boolean dryHost=waterlog&&actual.getBlock()==desired.state().getBlock()&&!actual.getFluidState().isSource();
             // Reorient rails only after ordinary/late physical work,
             // so neighboring construction cannot immediately undo the fix.
-            boolean rail=(builderCommissioning()||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(active).encodedState()))
-                    &&com.caszgamermd.golemsplus.builder.BuilderRailSlope.canReshapePaidSlope(server,at,desired.state());
+            boolean rail=com.caszgamermd.golemsplus.builder.BuilderRailSlope.canReshapePaidSlope(server,at,desired.state());
             boolean bubble=com.caszgamermd.golemsplus.builder.BuilderWaterPass.isBubbleColumn(step.encodedState())
                     &&(actual.is(net.minecraft.world.level.block.Blocks.WATER)||actual.is(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN));
             // Piston extension is deliberately ignored, but the block
