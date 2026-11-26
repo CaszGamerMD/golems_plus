@@ -1061,21 +1061,30 @@ public final class BuilderFlight {
         var candidates=new ArrayList<Vec3>();
         for(int dy=-2;dy<=3;dy++)for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
             BlockPos cell=target.offset(dx,dy,dz);
-            for(double y:new double[]{.5,.25,.75}){
-                Vec3 at=feet(cell).add(0,y,0);
+            for(double y:new double[]{.5,.25,.75})for(double[] lateral:new double[][]{{0,0},{.2,0},{-.2,0},{0,.2},{0,-.2}}){
+                Vec3 at=feet(cell).add(lateral[0],y,lateral[1]);
                 if(safeWorkPose(level,worker,target,at,bodyBlocking))candidates.add(at);
             }
         }
         candidates.sort(Comparator.comparingDouble(at->worker.position().distanceToSqr(at)));
         for(int i=0;i<Math.min(24,candidates.size());i++){
             Vec3 at=candidates.get(i);if(recentlyFailed(worker,at,level.getGameTime()))continue;
-            if(!simpleCreativePath(level,worker,worker.position(),at).isEmpty())return at;
+            var route=simpleCreativePath(level,worker,worker.position(),at);
+            if(!route.isEmpty()){
+                planned.put(worker,new Planned(BlockPos.containing(at),worker.position(),route,level.getGameTime()));
+                return at;
+            }
         }
         if(!candidates.isEmpty()){
             int offset=Math.floorMod((int)(level.getGameTime()/20)+worker.getId(),candidates.size());
-            for(int j=0;j<Math.min(2,candidates.size());j++){
+            for(int j=0;j<Math.min(3,candidates.size());j++){
                 Vec3 at=candidates.get((offset+j)%candidates.size());
-                if(!recentlyFailed(worker,at,level.getGameTime())&&!gridPath(level,worker,worker.position(),at).isEmpty())return at;
+                if(recentlyFailed(worker,at,level.getGameTime()))continue;
+                var route=gridPath(level,worker,worker.position(),at,4800);
+                if(!route.isEmpty()){
+                    planned.put(worker,new Planned(BlockPos.containing(at),worker.position(),route,level.getGameTime()));
+                    return at;
+                }
             }
         }
         return null;

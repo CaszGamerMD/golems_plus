@@ -14,7 +14,7 @@ assert "nearest.size()<32" in build
 assert "return List.copyOf(result)" in build
 assert "var choice=nearbyDirectFollowup(" in build
 assert "if(choice==null&&activity.lookaheadFor==completed)choice=activity.lookahead;" in build
-assert "boolean hovering=BuilderFlight.active(worker)&&!BuilderFlight.moving(worker);" in build
+assert "boolean hovering=(BuilderFlight.creative(worker)||BuilderFlight.active(worker))&&!BuilderFlight.moving(worker);" in build
 assert "BuilderFlight.safeWorkPose(level,worker,target,worker.position()," in build
 assert "new BuilderConstructionPlanner.Choice(best,hovering?null:pose,false," in build
 assert "BuilderConstructionPlanner.safeStand(" in build

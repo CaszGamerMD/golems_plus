@@ -65,8 +65,10 @@ public final class BuilderWaterPass {
                     &&Blocks.BUBBLE_COLUMN.defaultBlockState().getValue(BubbleColumnBlock.DRAG_DOWN);
         var base=downward?Blocks.MAGMA_BLOCK:Blocks.SOUL_SAND;
         if(planned!=null&&!planned.is(base)&&!planned.is(Blocks.BUBBLE_COLUMN))return null;
-        if(actual.is(base)||actual.is(Blocks.BUBBLE_COLUMN)
-                &&actual.getValue(BubbleColumnBlock.DRAG_DOWN)==downward)return step;
+        if(actual.is(base))return step;
+        // A lower live bubble is not proof the original base and source
+        // chain still exist. Inspect the complete planned column before
+        // deciding whether this upper cell can be filled.
         // A previously finished lower bubble may have fallen back to
         // source water, flowing water or air. Rebuild the *lowest* missing
         // source in the original column before finishing the upper claim.
@@ -92,13 +94,16 @@ public final class BuilderWaterPass {
             }
             for(int k=lower.size()-1;k>=0;k--){
                 BlockPos at=lower.get(k);BlockState live=world.getBlockState(at);
-                if(live.is(Blocks.BUBBLE_COLUMN)||live.is(Blocks.WATER)&&live.getFluidState().isSource())continue;
+                if(live.is(Blocks.BUBBLE_COLUMN)&&live.getValue(BubbleColumnBlock.DRAG_DOWN)==downward
+                        ||live.is(Blocks.WATER)&&live.getFluidState().isSource())continue;
                 return new BuilderConstructionPlan.Step(at.getX(),at.getY(),at.getZ(),step.encodedState(),WATER_BUCKET);
             }
             // All source water exists. A real generator tick can restore
             // the whole chain; there is no artificial bubble placement.
             return step;
         }
+        if(planned==null&&actual.is(Blocks.BUBBLE_COLUMN)
+                &&actual.getValue(BubbleColumnBlock.DRAG_DOWN)==downward)return step;
         if(planned==null&&!actual.isAir()&&!actual.is(Blocks.MAGMA_BLOCK)
                 &&!actual.is(Blocks.SOUL_SAND))return null;
         String id=BuiltInRegistries.BLOCK.getKey(base).toString();
@@ -131,13 +136,21 @@ public final class BuilderWaterPass {
         boolean down=desired.getValue(BubbleColumnBlock.DRAG_DOWN);
         var generator=down?Blocks.MAGMA_BLOCK:Blocks.SOUL_SAND;
         BlockPos at=pos.below();
+        BlockPos liveBubble=null;
         while(at.getY()>=level.getMinY()&&level.hasChunkAt(at)){
             BlockState actual=level.getBlockState(at);
             if(actual.is(generator)){
-                level.scheduleTick(at,generator,1);return true;
+                // Vanilla can propagate from both the real base and an
+                // existing lower bubble. Wake the nearest bubble as well
+                // as the generator; do not manufacture a block state.
+                level.scheduleTick(at,generator,1);
+                if(liveBubble!=null)level.scheduleTick(liveBubble,Blocks.BUBBLE_COLUMN,1);
+                return true;
             }
-            if(!actual.is(Blocks.BUBBLE_COLUMN)
-                    &&!(actual.is(Blocks.WATER)&&actual.getFluidState().isSource()))return false;
+            if(actual.is(Blocks.BUBBLE_COLUMN)){
+                if(actual.getValue(BubbleColumnBlock.DRAG_DOWN)!=down)return false;
+                if(liveBubble==null)liveBubble=at.immutable();
+            }else if(!(actual.is(Blocks.WATER)&&actual.getFluidState().isSource()))return false;
             at=at.below();
         }
         return false;

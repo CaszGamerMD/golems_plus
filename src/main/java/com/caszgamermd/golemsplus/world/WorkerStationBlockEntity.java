@@ -1106,9 +1106,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private int dependencyPointer,dependencyCursor=-1;
     private UUID lateFluidJob;
     private final java.util.Set<Integer> lateFluidSteps=new java.util.HashSet<>();
+    private final java.util.Map<Integer,Integer> lateRetryRank=new java.util.HashMap<>();
+    private final java.util.Map<Integer,Integer> lateRetryAttempts=new java.util.HashMap<>();
+    private final java.util.Map<Integer,Integer> completedRepairAttempts=new java.util.HashMap<>();
+    private int lateRetrySequence;
     private void checkLateFluidJob(){
         if(!java.util.Objects.equals(lateFluidJob,activeOrder)){
             lateFluidJob=activeOrder;lateFluidSteps.clear();dependencyPlan=null;
+            lateRetryRank.clear();lateRetryAttempts.clear();completedRepairAttempts.clear();lateRetrySequence=0;
             anchorRepairAttempts.clear();anchorRepairTick=Long.MIN_VALUE;
         }
     }
@@ -1156,6 +1161,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }
         dependencyLayers=graph.layers();dependencyAnchors=graph.anchors();dependencyDemand=graph.demand();
         dependencyOrder=com.caszgamermd.golemsplus.builder.BuilderAnchorSchedule.withLateOrder(graph,steps,lateFluidSteps);
+        if(!lateRetryRank.isEmpty())dependencyOrder=java.util.Arrays.stream(dependencyOrder).boxed()
+                .sorted(java.util.Comparator.comparingInt((Integer i)->com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(i).encodedState())?2:lateFluidSteps.contains(i)?1:0)
+                        .thenComparingInt(i->lateRetryRank.getOrDefault(i,0)))
+                .mapToInt(Integer::intValue).toArray();
     }
     /** Repair only a known, previously completed anchor that is now
      * physically missing. Preserve all other finished bits, and never
@@ -1236,12 +1245,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean deferStalledBuilderGroup(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
         int active=builderActiveStepIndex(steps);
         if(active<0||activeOrder==null||builderCommissioning()||dependencyAnchors==null
-                ||lateFluidSteps.contains(active)
                 ||builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN)return false;
+        boolean rotating=lateFluidSteps.contains(active);
+        int rank=lateRetryRank.getOrDefault(active,0);
         int y=dependencyLayers[active];
         var pending=new java.util.HashSet<Integer>();
         for(int i=builderCursor;i<steps.size();i++){
-            if(builderFinishedSteps.contains(i)||lateFluidSteps.contains(i)||dependencyLayers[i]!=y
+            if(builderFinishedSteps.contains(i)||lateFluidSteps.contains(i)!=rotating||dependencyLayers[i]!=y
+                    ||rotating&&lateRetryRank.getOrDefault(i,0)!=rank
                     ||!com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(steps.get(i).encodedState(),steps.get(active).encodedState()))continue;
             if(!stallGroupCell(steps.get(i)))return false;
             pending.add(i);
@@ -1253,7 +1264,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         do{
             changed=false;
             for(int i=builderCursor;i<steps.size();i++){
-                if(builderFinishedSteps.contains(i)||lateFluidSteps.contains(i)||pending.contains(i))continue;
+                if(builderFinishedSteps.contains(i)||pending.contains(i)
+                        ||!rotating&&lateFluidSteps.contains(i))continue;
                 for(int a:dependencyAnchors[i])if(pending.contains(a)){
                     if(!stallGroupCell(steps.get(i)))return false;
                     pending.add(i);changed=true;break;
@@ -1262,18 +1274,23 @@ public final class WorkerStationBlockEntity extends BlockEntity
         }while(changed);
         boolean independent=false;
         for(int i=builderCursor;i<steps.size();i++){
-            if(!builderFinishedSteps.contains(i)&&!pending.contains(i)&&!lateFluidSteps.contains(i)
+            if(!builderFinishedSteps.contains(i)&&!pending.contains(i)&&lateFluidSteps.contains(i)==rotating
                     &&!steps.get(i).ignorePlant()&&!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(i).encodedState())){
                 independent=true;break;
             }
         }
         if(!independent)return false;
+        if(rotating){
+            for(int i:pending)if(lateRetryAttempts.getOrDefault(i,0)>=2)return false;
+            int next=++lateRetrySequence;
+            for(int i:pending){lateRetryRank.put(i,next);lateRetryAttempts.merge(i,1,Integer::sum);}
+        }
         lateFluidSteps.addAll(pending);
         dependencyPlan=null;activeScanPlan=null;
         builderClaims.entrySet().removeIf(entry->pending.contains(entry.getValue()));
         builderWorkOrders.clear();builderPreparedOrders.clear();
         for(int i:pending)builderMissingRetries.remove(i);
-        System.out.println("[BUILDER GROUP DEFERRED] layer="+y+" cells="+pending.size()+" indices="+pending);
+        System.out.println("[BUILDER GROUP DEFERRED] layer="+y+" cells="+pending.size()+" rotating="+rotating+" indices="+pending);
         setProblem("Retrying "+pending.size()+" blocked attachment/fluid actions in final construction pass");
         setChanged();return true;
     }
@@ -1285,6 +1302,57 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||state.startsWith("minecraft:scaffolding[")||state.contains("rail[")
                 ||state.startsWith("minecraft:glow_lichen[")||state.contains("pressure_plate[")
                 ||state.startsWith("minecraft:lever[")||state.contains("_button[");
+    }
+    /** Audit actual completed cells when the remaining pass stalls. Reopen
+     * only missing, washed-out or uncommissioned paid work; never mark a
+     * mismatch as complete or alter unrelated existing solid blocks. */
+    public boolean repairCompletedBuilderCells(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(!(level instanceof net.minecraft.server.level.ServerLevel server)||activeOrder==null)return false;
+        int active=builderActiveStepIndex(steps);
+        if(active<0||!lateFluidSteps.contains(active)
+                &&!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(active).encodedState()))return false;
+        var rotation=com.caszgamermd.golemsplus.builder.BuildSite.Rotation.values()[builderRotation()/90];
+        var mirror=com.caszgamermd.golemsplus.builder.BuildSite.Mirror.values()[builderMirror()];
+        var reopen=new java.util.HashSet<Integer>();
+        for(int i=0;i<steps.size()&&reopen.size()<32;i++){
+            var step=steps.get(i);
+            if(!builderStepCompletedForMaterials(i)||step.ignorePlant()||step.requiredItem()==null
+                    ||completedRepairAttempts.getOrDefault(i,0)>=2)continue;
+            BlockPos at=new BlockPos(step.x(),step.y(),step.z());
+            if(!server.hasChunkAt(at))continue;
+            var desired=com.caszgamermd.golemsplus.builder.BuilderBlockResolver.resolve(step.encodedState(),rotation,mirror);
+            if(desired==null)continue;
+            var actual=server.getBlockState(at);
+            if(com.caszgamermd.golemsplus.builder.BuilderPlacementState.matches(actual,desired.state()))continue;
+            boolean waterlog=com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState());
+            boolean missing=actual.isAir()&&!waterlog
+                    ||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.displaceable(actual,desired.state());
+            boolean manual=com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.needsInteraction(actual,desired.state());
+            boolean dryHost=waterlog&&actual.getBlock()==desired.state().getBlock()&&!actual.getFluidState().isSource();
+            if(missing||manual||dryHost)reopen.add(i);
+        }
+        if(reopen.isEmpty())return false;
+        // Waterlogging must be revisited whenever its dry host was lost.
+        var positions=new java.util.HashSet<BlockPos>();
+        for(int i:reopen){var step=steps.get(i);positions.add(new BlockPos(step.x(),step.y(),step.z()));}
+        for(int i=0;i<steps.size();i++){
+            var step=steps.get(i);
+            if(builderStepCompletedForMaterials(i)&&com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState())
+                    &&positions.contains(new BlockPos(step.x(),step.y(),step.z())))reopen.add(i);
+        }
+        int previous=builderCursor;
+        int restart=reopen.stream().mapToInt(Integer::intValue).min().orElse(previous);
+        for(int i=restart;i<previous;i++)if(!reopen.contains(i))builderFinishedSteps.add(i);
+        builderCursor=Math.min(previous,restart);
+        builderFinishedSteps.removeAll(reopen);
+        for(int i:reopen){completedRepairAttempts.merge(i,1,Integer::sum);lateFluidSteps.remove(i);lateRetryRank.remove(i);}
+        builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderMissingRetries.clear();
+        builderWorkDone=Math.max(0,builderWorkDone-reopen.size());
+        dependencyPlan=null;activeScanPlan=null;
+        reconcileBuilderMaterialsFromPlan(steps);
+        System.out.println("[BUILDER PHYSICAL AUDIT] reopening="+reopen.size()+" indices="+reopen);
+        setProblem("Repairing "+reopen.size()+" completed cells that no longer match");
+        sync();return true;
     }
     private boolean builderAnchorsReady(int index){
         if(dependencyAnchors==null)return true;
@@ -1388,6 +1456,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         int active=builderActiveStepIndex(steps);
         return active>=0&&index>=builderCursor&&index<steps.size()
                 &&lateFluidSteps.contains(index)==lateFluidSteps.contains(active)
+                &&(!lateFluidSteps.contains(active)||lateRetryRank.getOrDefault(index,0).equals(lateRetryRank.getOrDefault(active,0)))
                 &&builderAnchorsReady(index)
                 &&builderSchedulingLayer(steps,index)==builderSchedulingLayer(steps,active)
                 &&(com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(

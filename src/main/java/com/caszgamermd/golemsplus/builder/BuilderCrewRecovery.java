@@ -27,6 +27,7 @@ final class BuilderCrewRecovery {
         final Map<Integer,Long> hatRetry=new HashMap<>();
         final Map<Integer,UUID> railRetained=new HashMap<>();
         long lastLeafCheck=Long.MIN_VALUE;
+        long lastAudit=Long.MIN_VALUE;
     }
     private static final Map<WorkerStationBlockEntity,State> states=new WeakHashMap<>();
     private static State state(WorkerStationBlockEntity table){
@@ -118,6 +119,10 @@ final class BuilderCrewRecovery {
             if(s.layer!=layer||work>s.best){
                 s.layer=layer;s.best=work;s.lastProgress=now;
                 s.hatTried.clear();s.hatRetry.clear();s.railRetained.clear();
+            }
+            if(now-s.lastProgress>=140&&(s.lastAudit==Long.MIN_VALUE||now-s.lastAudit>=120)){
+                s.lastAudit=now;
+                if(table.repairCompletedBuilderCells(steps)){s.lastProgress=now;return true;}
             }
             if(now-s.lastProgress>=STALL&&table.repairMissingBuilderAnchors(steps)){
                 s.lastProgress=now;return true;
