@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - experiment/builder-dome-starter-toolkit-262
+      - main
+    paths:
+      - '.github/workflows/package-builder-current-jar.yml'
   workflow_dispatch:
 jobs:
   package:
@@ -32,15 +35,15 @@ jobs:
             exit 1
           fi
           mkdir -p dist
-          cp "${jars[0]}" dist/golems-plus-0.3.58-dev-enhanced-scaffolding.jar
+          cp "${jars[0]}" dist/golems-plus-0.3.58-dev-live-test.jar
           sha256sum dist/*.jar > dist/SHA256SUMS.txt
-          printf 'Source commit: %s\nFabric Minecraft: 26.2\nCurrent behavior snapshot; dome and teamwork tests are not yet passing.\n' \
+          printf 'Source commit: %s\nFabric Minecraft: 26.2\nLive testing snapshot; automated construction tests are not passing.\n' \
             "$GITHUB_SHA" > dist/BUILD-INFO.txt
           jar tf dist/*.jar | grep -q 'com/caszgamermd/golemsplus/world/EnhancedScaffoldingBlock.class'
           jar tf dist/*.jar | grep -q 'data/golems_plus/recipe/enhanced_scaffolding.json'
       - uses: actions/upload-artifact@v4
         with:
-          name: golems-plus-current-enhanced-scaffolding
+          name: golems-plus-live-test
           path: dist/
           if-no-files-found: error
       - name: Publish direct-download snapshot release
@@ -49,8 +52,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="builder-snapshot-${GITHUB_SHA:0:12}"
+          tag="live-test-${GITHUB_SHA:0:12}"
           gh release create "$tag" dist/*.jar dist/SHA256SUMS.txt dist/BUILD-INFO.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title "Builder Golems snapshot with Enhanced Scaffolding" \
-            --notes "Fabric 26.2, mod 0.3.58-dev. Exact current behavior snapshot from commit ${GITHUB_SHA}. Enhanced Scaffolding block, recipe and current Builder navigation included. Dome and teamwork GameTests remain unfinished; this is not a verified stable release."
+            --title "Golems Plus — live-test snapshot" \
+            --notes "Fabric 26.2, mod 0.3.58-dev. Exact current behavior snapshot from commit ${GITHUB_SHA}. Includes current flying Builder and piston-displacement changes. Automated construction tests are failing; this is a live-testing snapshot, not a verified stable release."
