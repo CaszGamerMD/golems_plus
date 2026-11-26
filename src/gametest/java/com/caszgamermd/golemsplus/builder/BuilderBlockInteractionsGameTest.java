@@ -11,6 +11,34 @@ import net.minecraft.world.level.block.state.BlockState;
 /** The real server must execute native Minecraft right-click behavior:
  * this is NOT a test that fakes the requested state with setBlock. */
 public final class BuilderBlockInteractionsGameTest {
+    @GameTest(maxTicks=20,skyAccess=true)
+    public void liveRedstoneActivityDoesNotInvalidatePhysicalConstruction(GameTestHelper h){
+        String[][] examples={
+            {"minecraft:lever[face=floor,facing=north,powered=true]",
+             "minecraft:lever[face=floor,facing=north,powered=false]",
+             "minecraft:lever[face=floor,facing=south,powered=false]"},
+            {"minecraft:oak_trapdoor[facing=north,half=top,open=true,powered=false,waterlogged=false]",
+             "minecraft:oak_trapdoor[facing=north,half=top,open=false,powered=false,waterlogged=false]",
+             "minecraft:oak_trapdoor[facing=north,half=bottom,open=false,powered=false,waterlogged=false]"},
+            {"minecraft:repeater[delay=4,facing=north,locked=true,powered=true]",
+             "minecraft:repeater[delay=4,facing=north,locked=false,powered=false]",
+             "minecraft:repeater[delay=1,facing=north,locked=false,powered=false]"}
+        };
+        for(String[] example:examples){
+            BlockState wanted=BuilderBlockResolver.expectedState(example[0],BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+            BlockState inactive=BuilderBlockResolver.expectedState(example[1],BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+            BlockState wrong=BuilderBlockResolver.expectedState(example[2],BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+            if(wanted==null||inactive==null||wrong==null
+                    ||!BuilderPlacementState.matches(inactive,wanted)
+                    ||BuilderPlacementState.matches(wrong,wanted)
+                    ||BuilderPlacementState.matches(Blocks.AIR.defaultBlockState(),wanted)){
+                h.fail("Activity exception must preserve identity, orientation and durable settings: "+example[0]);
+                return;
+            }
+        }
+        h.succeed();
+    }
+
     @GameTest(maxTicks=90,skyAccess=true)
     public void weightedPlateOnPoweredWoodenTrapdoorCanBeRepaired(GameTestHelper h){
         var level=h.getLevel();
@@ -26,7 +54,7 @@ public final class BuilderBlockInteractionsGameTest {
         var plan=Map.of(support,desired);
         if(pressure.canSurvive(level,plate)
                 ||!BuilderBlockInteractions.canRestorePlateSupport(level,plate,pressure,plan)
-                ||BuilderBlockInteractions.canRestorePlateSupport(level,plate,pressure,Map.of(support,open))
+                ||!BuilderBlockInteractions.canRestorePlateSupport(level,plate,pressure,Map.of(support,open))
                 ||!BuilderBlockInteractions.restorePlateSupport(level,plate,pressure,plan,player)
                 ||!pressure.canSurvive(level,plate)
                 ||!level.setBlock(plate,pressure,3)){
@@ -158,9 +186,10 @@ public final class BuilderBlockInteractionsGameTest {
                     BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
             if(parsed==null){h.fail("Unrecognized manual state: "+states[i]);return;}
             var neutral=BuilderBlockInteractions.placementState(parsed.state());
+            boolean stableSetting=i==1||i==2; // delay and comparator mode only
             if(!level.setBlock(pos,neutral,3)
-                    ||!BuilderBlockInteractions.needsInteraction(
-                            level.getBlockState(pos),parsed.state())
+                    ||BuilderBlockInteractions.needsInteraction(
+                            level.getBlockState(pos),parsed.state())!=stableSetting
                     ||!BuilderBlockInteractions.interact(
                             level,pos,parsed.state(),player)
                     ||!BuilderPlacementState.matches(
