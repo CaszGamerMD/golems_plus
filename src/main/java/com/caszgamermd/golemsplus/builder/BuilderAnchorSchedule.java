@@ -91,7 +91,7 @@ public final class BuilderAnchorSchedule {
         }
     }
     private static int scaffoldDistance(BlockState state){
-        return state.getValues().stream()
+        return state.getValues()
                 .filter(v->v.property().getName().equals("distance"))
                 .mapToInt(v->Integer.parseInt(v.valueName())).findFirst().orElse(7);
     }
