@@ -1,0 +1,117 @@
+name: Matrix reliability - three 20 TPS builds
+# Normal-speed diagnostic; accelerated reliability workflow remains separate.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/matrix-reliability-20tps.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    name: 20 TPS Matrix trial ${{ matrix.trial }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    strategy:
+      fail-fast: false
+      matrix:
+        trial: [1, 2, 3]
+    env:
+      MATRIX_ASSESSMENT_SECONDS: '3600'
+      MATRIX_TEST_TPS: '20'
+      GOLEMS_BUILDER_TRACE: 'true'
+      MATRIX_TEST_MODE: controlled
+      GOLEMS_BUILDER_SCAFFOLDING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Verify Matrix analysis regression tests
+        run: python3 scripts/test_matrix_reliability.py
+      - name: Verify identical original source fixture
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib
+          from pathlib import Path
+          root=Path('src/gametest/resources/golems_plus_matrix')
+          data=base64.b64decode(''.join((root/f'segment{i}.txt').read_text().strip() for i in range(4)),validate=True)
+          assert len(data)==7906
+          assert hashlib.sha256(data).hexdigest()=='77fa9731b11b1b666034a9e155c5a56abc173b9f9a974f963f916d7ef7d11816'
+          PY
+      - name: Compile and isolate the full Matrix
+        run: |
+          gradle --no-daemon test compileGametestJava compileClientJava jar
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('src/gametest/resources/fabric.mod.json')
+          d=json.loads(p.read_text())
+          d['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderVillagerMatrixAssessmentGameTest']
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PY
+      - name: Run physical construction until completion or stall
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/matrix-trial.log"
+          code=${PIPESTATUS[0]}
+          python3 scripts/matrix_reliability.py extract "$RUNNER_TEMP/matrix-trial.log" "${{ matrix.trial }}" "$RUNNER_TEMP/result.json"
+          python3 scripts/builder_trace_report.py "$RUNNER_TEMP/matrix-trial.log" "$RUNNER_TEMP/trace-report.json"
+          cat "$RUNNER_TEMP/result.json"
+          echo "GameTest exit status: $code"
+          grep -Fq '[MATRIX FULL IMPORT PASS] 15376' "$RUNNER_TEMP/matrix-trial.log" || exit 1
+          grep -Fq '[MATRIX TRIAL RESULT]' "$RUNNER_TEMP/matrix-trial.log" || exit 1
+          python3 - "$RUNNER_TEMP/matrix-trial.log" <<'PY'
+          import re,sys
+          from pathlib import Path
+          log=Path(sys.argv[1]).read_text(errors='replace')
+          rates=re.findall(r'\[MATRIX REALTIME RATE\] activeTicks=(\d+) elapsedMs=(\d+) measuredTPS=([\d.]+)',log)
+          assert rates,'Missing measured tick-rate diagnostics'
+          ticks,ms,tps=rates[-1]
+          print(f'Final measured TPS: {tps}; active ticks: {ticks}; elapsed ms: {ms}')
+          assert 0 < float(tps) <= 20.5,'Normal-speed test exceeded 20 TPS pacing'
+          if float(tps)<19: print('::warning::Server ran below 19 TPS; inspect lag alongside build progress.')
+          PY
+          rate_code=$?
+          [ "$rate_code" -eq 0 ] || exit "$rate_code"
+          if [ "$MATRIX_TEST_MODE" = controlled ]; then
+            grep -Fq '[MATRIX CONTROLLED ENV]' "$RUNNER_TEMP/matrix-trial.log" || exit 1
+          fi
+      - name: Save trial result and complete trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-trial-${{ matrix.trial }}
+          path: |
+            ${{ runner.temp }}/result.json
+            ${{ runner.temp }}/matrix-trial.log
+            ${{ runner.temp }}/trace-report.json
+          if-no-files-found: warn
+  compare:
+    name: Compare three independent outcomes
+    needs: trial
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: matrix-trial-*
+          path: results
+      - name: Check minimum progress, same stopping layer and maximum five-minute spread
+        env:
+          MATRIX_TEST_MODE: controlled
+        run: python3 scripts/matrix_reliability.py compare results "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: matrix-reliability-summary
+          path: matrix-reliability.json
