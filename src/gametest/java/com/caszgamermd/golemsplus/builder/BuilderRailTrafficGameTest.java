@@ -9,6 +9,29 @@ import net.minecraft.world.level.block.Blocks;
  * Golems are allowed to work within its empty collision volume; solid
  * blocks and active fluids still need full body clearance. */
 public final class BuilderRailTrafficGameTest {
+    @GameTest(maxTicks=20,skyAccess=true)
+    public void plannedUpperRailIsPaidAnchorInsteadOfTemporaryJig(GameTestHelper h){
+        BlockPos lower=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos upper=lower.west().above();
+        h.setBlock(4,1,4,Blocks.STONE);
+        h.setBlock(3,2,4,Blocks.STONE);
+        var steps=java.util.List.of(
+                new BuilderConstructionPlan.Step(lower.getX(),lower.getY(),lower.getZ(),
+                        "minecraft:powered_rail[powered=false,shape=ascending_west,waterlogged=false]",
+                        "minecraft:powered_rail"),
+                new BuilderConstructionPlan.Step(upper.getX(),upper.getY(),upper.getZ(),
+                        "minecraft:detector_rail[powered=false,shape=east_west,waterlogged=false]",
+                        "minecraft:detector_rail"));
+        var graph=BuilderAnchorSchedule.compile(h.getLevel(),steps,
+                BuildSite.Rotation.NONE,BuildSite.Mirror.NONE,false,java.util.Set.of());
+        if(java.util.Arrays.stream(graph.anchors()[0]).noneMatch(i->i==1)
+                ||graph.order()[0]!=1||graph.layers()[0]!=upper.getY()){
+            h.fail("Planned upper detector rail must be built before lower powered ramp");
+            return;
+        }
+        h.succeed();
+    }
+
     @GameTest(maxTicks=70,skyAccess=true)
     public void narrowLedgeAllowsNonCollidingRailWithoutFictionalExit(
             GameTestHelper h){
