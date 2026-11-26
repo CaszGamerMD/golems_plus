@@ -32,6 +32,10 @@ public final class BuilderDeferredState {
             // A vanilla source can feed up to seven horizontal cells,
             // and water can fall from above before spreading. Search the
             // complete horizontal reach plus nearby vertical feeds.
+            // Notify the missing cell's real neighbors so waterlogged
+            // faces can reconsider flow after construction changed them.
+            // Vanilla still decides the resulting fluid and level.
+            level.updateNeighborsAt(pos,level.getBlockState(pos).getBlock());
             // Wake the downstream flowing chain too. A source tick
             // alone need not reschedule a previously unchanged intermediate
             // flow cell after a late obstruction has been removed.
@@ -40,7 +44,12 @@ public final class BuilderDeferredState {
                 BlockPos at=pos.offset(dx,dy,dz);
                 if(!level.hasChunkAt(at)||!level.mayInteract(owner,at))continue;
                 var source=level.getFluidState(at);
-                if(!source.isEmpty())level.scheduleTick(at,source.getType(),1);
+                if(!source.isEmpty()){
+                    level.scheduleTick(at,source.getType(),1);
+                    if(source.isSource()&&!level.getBlockState(at).is(net.minecraft.world.level.block.Blocks.WATER)
+                            &&Math.abs(dx)+Math.abs(dz)+dy<=4)
+                        level.updateNeighborsAt(at,level.getBlockState(at).getBlock());
+                }
             }
             return;
         }

@@ -119,7 +119,11 @@ public final class BuilderBlockInteractions {
     public static boolean delayPoweredLever(BlockState desired,java.util.List<BuilderConstructionPlan.Step> steps){
         if(desired==null||!desired.is(net.minecraft.world.level.block.Blocks.LEVER)
                 ||!hasValue(desired,"powered","true"))return false;
-        for(var step:steps)if(BuilderPistonWork.verification(step.encodedState()))return true;
+        for(var step:steps){
+            String id=BuilderMultiblock.blockId(step.encodedState());
+            if(BuilderPistonWork.verification(step.encodedState())||id.equals("minecraft:piston")
+                    ||id.equals("minecraft:sticky_piston"))return true;
+        }
         return false;
     }
 

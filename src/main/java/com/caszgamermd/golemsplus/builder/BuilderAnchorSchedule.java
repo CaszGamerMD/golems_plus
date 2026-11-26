@@ -199,6 +199,21 @@ public final class BuilderAnchorSchedule {
                     probeFailures++;
                 }
             }
+            // Place the planned push-line solids before introducing a
+            // piston that could already be powered by a neighboring block.
+            // Keep vanilla motion; no forced extension state or fake head.
+            if(!s.ignorePlant()&&states[i]!=null&&(states[i].is(Blocks.PISTON)||states[i].is(Blocks.STICKY_PISTON))){
+                Direction facing=states[i].getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING);
+                for(int k=1;k<=12;k++){
+                    Cell front=cells.get(at.relative(facing,k));
+                    if(front==null)break;
+                    String id=net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(front.state().getBlock()).getPath();
+                    // Only common full, movable construction blocks;
+                    // never impose this edge on an attachment or another piston.
+                    if(!(id.equals("smooth_stone")||id.equals("redstone_block")||id.endsWith("_concrete")))break;
+                    needed.add(front.index());
+                }
+            }
             needed.remove(i);
             anchors[i]=needed.stream().mapToInt(Integer::intValue).sorted().toArray();
             degree[i]=anchors[i].length;edges+=degree[i];

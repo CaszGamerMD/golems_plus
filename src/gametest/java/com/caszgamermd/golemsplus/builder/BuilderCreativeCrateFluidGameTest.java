@@ -258,6 +258,24 @@ public final class BuilderCreativeCrateFluidGameTest {
         }catch(Exception e){h.fail("Piston phase test setup failed "+e);}
     }
 
+    @GameTest(maxTicks=40,skyAccess=true)
+    public void bubbleSourceDoesNotRequireGenerator(GameTestHelper h){
+        var world=h.getLevel();
+        BlockPos at=h.absolutePos(new BlockPos(4,3,4));
+        h.setBlock(4,2,4,Blocks.STONE);
+        h.setBlock(4,3,4,Blocks.AIR);
+        String encoded="minecraft:bubble_column[drag=false]";
+        var wanted=BuilderBlockResolver.resolve(encoded,BuildSite.Rotation.NONE,BuildSite.Mirror.NONE).state();
+        var claim=new BuilderConstructionPlan.Step(at.getX(),at.getY(),at.getZ(),encoded,BuilderWaterPass.WATER_BUCKET);
+        if(BuilderWaterPass.bubbleAction(world,at,claim,Map.of(at,wanted,at.below(),Blocks.STONE.defaultBlockState()))!=claim
+                ||!BuilderWaterPass.sourceReady(world,at,wanted)
+                ||BuilderPlacementState.matches(Blocks.WATER.defaultBlockState().setValue(net.minecraft.world.level.block.LiquidBlock.LEVEL,1),wanted)
+                ||!BuilderPlacementState.matches(Blocks.WATER.defaultBlockState(),wanted)){
+            h.fail("Bubble requirement must be full source water without an invented generator");return;
+        }
+        h.succeed();
+    }
+
     @GameTest(maxTicks=100,skyAccess=true)
     public void recoversMissingLowerBubbleSourcesBeforeFinishingUpperClaim(GameTestHelper h){
         var world=h.getLevel();

@@ -182,7 +182,13 @@ public final class BuilderFlight {
     }
     private static List<Vec3> creativePath(ServerLevel level,BuilderGolem worker,Vec3 from,Vec3 to){
         List<Vec3> simple=simpleCreativePath(level,worker,from,to);
-        return simple.isEmpty()?gridPath(level,worker,from,to):simple;
+        if(!simple.isEmpty())return simple;
+        var normal=gridPath(level,worker,from,to);
+        if(!normal.isEmpty())return normal;
+        // A half-height depot/slab takeoff can have no path on the
+        // integer lattice. Keep the actual starting feet alignment.
+        Vec3 alignment=from.subtract(feet(BlockPos.containing(from)));
+        return alignment.lengthSqr()>.01?gridPath(level,worker,from,to,3200,alignment):List.of();
     }
     // Vertical first, or a short sideways adjustment followed by vertical.
     // No unrestricted 3D search, repeated horizontal hops, or grapple anchor.
@@ -228,7 +234,12 @@ public final class BuilderFlight {
             if(!ordered.isEmpty()){
                 int offset=(int)Math.floorMod(level.getGameTime()/20+worker.getId(),ordered.size());
                 for(int j=0;j<Math.min(2,ordered.size());j++){
-                    var route=gridPath(level,worker,worker.position(),feet(ordered.get((offset+j)%ordered.size())));
+                    Vec3 from=worker.position(),to=feet(ordered.get((offset+j)%ordered.size()));
+                    var route=gridPath(level,worker,from,to);
+                    if(route.isEmpty()){
+                        Vec3 alignment=from.subtract(feet(BlockPos.containing(from)));
+                        if(alignment.lengthSqr()>.01)route=gridPath(level,worker,from,to,3200,alignment);
+                    }
                     if(!route.isEmpty())return route;
                 }
             }
@@ -1065,7 +1076,7 @@ public final class BuilderFlight {
         var candidates=new ArrayList<Vec3>();
         for(int dy=-2;dy<=3;dy++)for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){
             BlockPos cell=target.offset(dx,dy,dz);
-            for(double y:new double[]{.5,.25,.75})for(double[] lateral:new double[][]{{0,0},{.2,0},{-.2,0},{0,.2},{0,-.2}}){
+            for(double y:new double[]{0,.5,.25,.75})for(double[] lateral:new double[][]{{0,0},{.2,0},{-.2,0},{0,.2},{0,-.2}}){
                 Vec3 at=feet(cell).add(lateral[0],y,lateral[1]);
                 if(safeWorkPose(level,worker,target,at,bodyBlocking))candidates.add(at);
             }
@@ -1081,8 +1092,8 @@ public final class BuilderFlight {
         }
         if(!candidates.isEmpty()){
             int offset=Math.floorMod((int)(level.getGameTime()/20)+worker.getId(),candidates.size());
-            for(int j=0;j<Math.min(3,candidates.size());j++){
-                Vec3 at=candidates.get((offset+j)%candidates.size());
+            for(int j=0;j<Math.min(4,candidates.size());j++){
+                Vec3 at=candidates.get((offset+j*Math.max(1,candidates.size()/4))%candidates.size());
                 if(recentlyFailed(worker,at,level.getGameTime()))continue;
                 var route=gridPath(level,worker,worker.position(),at,4800);
                 if(!route.isEmpty()){

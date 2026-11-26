@@ -581,6 +581,7 @@ public final class BuilderBuildService {
                     BuildSite.Mirror.values()[table.builderMirror()]);
             if(resolved==null
                     ||!resolved.state().canSurvive(level,target)
+                        &&!BuilderWaterPass.isBubbleColumn(step.encodedState())
                     ||!level.getBlockState(target).isAir()&&!BuilderFluidObstruction.displaceable(level.getBlockState(target),resolved.state())
                     ||step.requiredItem()!=null
                         &&worker.carriedCount(resolved.item())==0
@@ -1871,18 +1872,6 @@ public final class BuilderBuildService {
                     interactionCorrection=existing.getFluidState().isSource()
                             &&BuilderBlockInteractions.needsInteraction(existing,state.state());
                 }
-            }
-            if(bubble&&(existing.is(net.minecraft.world.level.block.Blocks.WATER)
-                    &&existing.getFluidState().isSource()
-                    ||!state.state().canSurvive(level,pos)&&!BuilderWaterPass.sourceReady(level,pos,state.state()))){
-                BuilderWaterPass.refreshBubble(level,pos,state.state());
-                // The Builder already supplied this source. Don't mine it
-                // or repeatedly place the same water block while vanilla
-                // propagates the upward/downward bubble from below.
-                table.waitForBuilderSupport(worker.getUUID(),index,
-                        level.getGameTime());
-                table.setProblem("Waiting for soul-sand/magma bubble propagation at "+pos);
-                return;
             }
             boolean reShapeRail=!waterlog&&BuilderRailSlope.canReshapePaidSlope(
                     level,pos,state.state());
