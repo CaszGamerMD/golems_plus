@@ -6,22 +6,22 @@ import re
 import sys
 from pathlib import Path
 
-FIELDS = re.compile(r"\[MATRIX TRIAL RESULT\] outcome=(\w+) layer=(\S+) elapsedMs=(\d+) tick=(\d+) correct=(\d+) total=(\d+) best=(\d+) unsupported=(\d+)")
+FIELDS = re.compile(r"\[MATRIX TRIAL RESULT\] outcome=(\w+) layer=(\S+) elapsedMs=(\d+) tick=(\d+) correct=(\d+) total=(\d+) best=(\d+)(?: ignoredPistonDisplacements=(\d+))? unsupported=(\d+)")
 
 
 # Compare only actual observations at equal simulation ticks.
 PROGRESS = re.compile(
     r"\[MATRIX FULL PROGRESS\] tick=(\d+) matchingSourceBlocks=(\d+)/(\d+)"
-    r" best=(\d+) cursor=(\d+)/(\d+) currentLayer=(\S+) noWorkTicks=(\d+)"
+    r"(?: ignoredPistonDisplacements=(\d+))? best=(\d+) cursor=(\d+)/(\d+) currentLayer=(\S+) noWorkTicks=(\d+)"
     r" crewAlive=(\d+)"
 )
 
 def progress(log):
     rows = {}
     for m in PROGRESS.finditer(log):
-        tick, correct, total, best, cursor, steps, layer, idle, alive = m.groups()
+        tick, correct, total, displaced, best, cursor, steps, layer, idle, alive = m.groups()
         rows[int(tick)] = dict(tick=int(tick), correct=int(correct), total=int(total),
-                              best=int(best), cursor=int(cursor), steps=int(steps),
+                              best=int(best), ignoredPistonDisplacements=int(displaced or 0), cursor=int(cursor), steps=int(steps),
                               layer=layer, noWorkTicks=int(idle), crewAlive=int(alive))
     return rows
 
@@ -68,12 +68,13 @@ def extract(log):
     matches = FIELDS.findall(log)
     if not matches:
         return {"outcome": "MISSING_RESULT"}
-    outcome, layer, elapsed, tick, correct, total, best, unsupported = matches[-1]
+    outcome, layer, elapsed, tick, correct, total, best, displaced, unsupported = matches[-1]
     env = re.findall(r"\[MATRIX CONTROLLED ENV\] ([^\r\n]+)", log)
     targets = re.findall(r"\[MATRIX FULL TARGET\] sourceBlocks=(\d+) ignoredPistonHeads=(\d+) requiredBlocks=(\d+)", log)
     source, ignored, required = map(int, targets[-1]) if targets else (15376, 0, 15376)
     return dict(outcome=outcome, layer=layer, elapsedMs=int(elapsed), tick=int(tick),
                 correct=int(correct), total=int(total), best=int(best), unsupported=int(unsupported),
+                ignoredPistonDisplacements=int(displaced or 0),
                 environment=env[-1] if env else None,
                 sourceBlocks=source, ignoredPistonHeads=ignored, requiredBlocks=required)
 
