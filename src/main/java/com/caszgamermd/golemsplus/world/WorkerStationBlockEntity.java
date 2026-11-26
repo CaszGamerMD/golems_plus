@@ -1229,6 +1229,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         var step=steps.get(index);String state=step.encodedState();
         if(step.ignorePlant()||step.companion()!=null||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(state))return false;
         boolean leaf=state.contains("rail[")||state.startsWith("minecraft:glow_lichen[")
+                ||state.startsWith("minecraft:hopper[")
                 ||state.contains("pressure_plate[")||state.startsWith("minecraft:lever[")||state.contains("_button[");
         if(!leaf)return false;
         boolean other=false;
@@ -1253,7 +1254,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         int y=dependencyLayers[active];
         var pending=new java.util.HashSet<Integer>();
         for(int i=builderCursor;i<steps.size();i++){
-            if(builderFinishedSteps.contains(i)||lateFluidSteps.contains(i)!=rotating
+            if(builderFinishedSteps.contains(i)||steps.get(i).ignorePlant()||lateFluidSteps.contains(i)!=rotating
                     ||dependencyLayers[i]!=y
                     ||rotating&&lateRetryRank.getOrDefault(i,0)!=rank
                     ||!com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(steps.get(i).encodedState(),steps.get(active).encodedState()))continue;
@@ -1267,7 +1268,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         do{
             changed=false;
             for(int i=builderCursor;i<steps.size();i++){
-                if(builderFinishedSteps.contains(i)||pending.contains(i)
+                if(builderFinishedSteps.contains(i)||steps.get(i).ignorePlant()||pending.contains(i)
                         ||!rotating&&lateFluidSteps.contains(i))continue;
                 for(int a:dependencyAnchors[i])if(pending.contains(a)){
                     if(!stallGroupCell(steps.get(i)))return false;
@@ -1303,6 +1304,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(state)
                 ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(state)
                 ||state.startsWith("minecraft:scaffolding[")||state.contains("rail[")
+                ||state.startsWith("minecraft:hopper[")
                 ||state.startsWith("minecraft:glow_lichen[")||state.contains("pressure_plate[")
                 ||state.startsWith("minecraft:lever[")||state.contains("_button[")
                 ||state.startsWith("minecraft:redstone_wire[")||state.startsWith("minecraft:redstone_torch[")

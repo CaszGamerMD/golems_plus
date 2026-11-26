@@ -30,6 +30,8 @@ final class BuilderCrewRecovery {
         long lastAudit=Long.MIN_VALUE;
         long lastPhysics=Long.MIN_VALUE;
         int physicsOffset;
+        long lastBubbleScan=Long.MIN_VALUE;
+        int bubbleOffset;
     }
     private static final Map<WorkerStationBlockEntity,State> states=new WeakHashMap<>();
     private static State state(WorkerStationBlockEntity table){
@@ -123,6 +125,17 @@ final class BuilderCrewRecovery {
                 s.hatTried.clear();s.hatRetry.clear();s.railRetained.clear();
             }
             int commissioning=table.builderActiveStepIndex(steps);
+            // Vanilla may fill a column after a hat has released its claim.
+            // Observe only actual matching states; never demand a flight
+            // pose or a second bucket for a cell that is already correct.
+            if(commissioning>=0&&BuilderWaterPass.isWaterStep(steps.get(commissioning).encodedState())
+                    &&now-s.lastProgress>=80
+                    &&(s.lastBubbleScan==Long.MIN_VALUE||now-s.lastBubbleScan>=20)
+                    &&table.claimedStep(worker.getUUID())<0&&!BuilderFlight.moving(worker)
+                    &&!worker.hasSupplyBox()&&!BuilderDroppedBlockRecovery.busy(worker)){
+                s.lastBubbleScan=now;
+                if(observeBubbleFrontier(level,worker,table,steps,s))return true;
+            }
             if(commissioning>=0&&BuilderDeferredState.verification(steps.get(commissioning).encodedState())
                     &&table.beginBuilderControlCommissioning(steps)){
                 s.lastProgress=now;return true;
@@ -306,6 +319,46 @@ final class BuilderCrewRecovery {
             parkAway(level,worker,table,s);return true;
         }
         return false;
+    }
+    private static boolean observeBubbleFrontier(ServerLevel level,BuilderGolem worker,
+            WorkerStationBlockEntity table,List<BuilderConstructionPlan.Step> steps,State s){
+        var owner=level.getServer().getPlayerList().getPlayer(worker.owner());
+        if(owner==null||owner.level()!=level)return false;
+        var rotation=BuildSite.Rotation.values()[table.builderRotation()/90];
+        var mirror=BuildSite.Mirror.values()[table.builderMirror()];
+        int n=steps.size(),refreshed=0,observed=0;
+        if(n==0)return false;
+        int start=Math.floorMod(s.bubbleOffset,n);
+        for(int k=0;k<n;k++){
+            int i=(start+k)%n;
+            var step=steps.get(i);
+            if(step.ignorePlant()||!BuilderWaterPass.isBubbleColumn(step.encodedState())
+                    ||!table.builderStepReadyForClaim(i)||!table.builderStepInActivePhase(steps,i)
+                    ||table.builderStepClaimedByOther(worker.getUUID(),i))continue;
+            BlockPos at=new BlockPos(step.x(),step.y(),step.z());
+            if(!level.hasChunkAt(at)||!level.mayInteract(owner,at))continue;
+            var desired=BuilderBlockResolver.resolve(step.encodedState(),rotation,mirror);
+            if(desired==null)continue;
+            var actual=level.getBlockState(at);
+            if(BuilderPlacementState.matches(actual,desired.state())){
+                if(table.claimPreferredBuilderZoneStep(worker.getUUID(),List.of(i),steps,i)==i){
+                    table.recordBuilderPlacement(step.requiredItem());
+                    if(table.completeBuilderStep(worker.getUUID(),i)){
+                        observed++;
+                        s.bubbleOffset=(i+1)%n;
+                        if(observed>=8||table.activeOrder()==null)break;
+                    }
+                }
+            }else if(refreshed<8&&actual.is(net.minecraft.world.level.block.Blocks.WATER)
+                    &&actual.getFluidState().isSource()
+                    &&BuilderWaterPass.refreshBubble(level,at,desired.state())){
+                refreshed++;
+                s.bubbleOffset=(i+1)%n;
+            }
+            if(refreshed>=8&&observed>0)break;
+        }
+        if(observed>0)System.out.println("[HAT BUBBLE OBSERVED] matched="+observed+" refreshed="+refreshed);
+        return observed>0;
     }
     private static boolean tryUnload(ServerLevel level,BuilderGolem worker,WorkerStationBlockEntity table,State s){
         if(BuilderFlight.moving(worker)||BuilderGrappleAccess.active(worker)

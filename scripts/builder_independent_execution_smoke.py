@@ -33,10 +33,11 @@ assert "(tickCount+getId())%5==0" in worker
 # walk back when another Builder has already placed the required block.
 # Multi-cell objects are complete only after BOTH real world positions match.
 # A correct primary and incorrect companion must not skip the physical repair.
-assert service.index("if(primaryComplete&&partnerComplete)") < service.index(
+assert service.index("if((primaryComplete||delayedLever&&BuilderPlacementState.matches(") < service.index(
     "if(!table.builderOrderPrepared(worker.getUUID())")
 assert "BuilderPlacementState.matches(\n                    existing,state.state())" in service
 assert "BuilderPlacementState.matches(\n                    partnerExisting,partnerResolved.state())" in service
+assert "BuilderBlockInteractions.placementState(state.state())))&&partnerComplete)" in service
 # Never reset a claimed navigation step just because another Builder ticks.
 assert "if(current>=builderCursor&&current<steps.size()" in station
 # Ensure a single builder's transient approach does not overwrite all
