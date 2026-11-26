@@ -41,6 +41,30 @@ final class BuilderBlockInteractionsTest {
         }
     }
 
+    @Test void bubbleColumnCompletionRequiresFullWaterSourceButNotBubbleActivity(){
+        var blocks=net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN;
+        var drag=net.minecraft.world.level.block.BubbleColumnBlock.DRAG_DOWN;
+        var up=blocks.defaultBlockState().setValue(drag,false);
+        var down=up.setValue(drag,true);
+        var source=net.minecraft.world.level.block.Blocks.WATER.defaultBlockState();
+        var flowing=source.setValue(net.minecraft.world.level.block.LiquidBlock.LEVEL,1);
+        var falling=source.setValue(net.minecraft.world.level.block.LiquidBlock.LEVEL,8);
+        var wetHost=net.minecraft.world.level.block.Blocks.OAK_STAIRS.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED,true);
+        for(var wanted:java.util.List.of(up,down)){
+            for(var actual:java.util.List.of(source,up,down)){
+                assertTrue(BuilderPlacementState.matches(actual,wanted));
+                assertTrue(BuilderPistonWork.sourceMatches(actual,wanted));
+            }
+            for(var actual:java.util.List.of(flowing,falling,wetHost,
+                    net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),
+                    net.minecraft.world.level.block.Blocks.LAVA.defaultBlockState())){
+                assertFalse(BuilderPlacementState.matches(actual,wanted));
+                assertFalse(BuilderPistonWork.sourceMatches(actual,wanted));
+            }
+        }
+    }
+
     @Test void leverRequiresARealClickButKeepsItsMounting(){
         var target=state("minecraft:lever[face=floor,facing=north,powered=true]");
         var neutral=BuilderBlockInteractions.placementState(target);
