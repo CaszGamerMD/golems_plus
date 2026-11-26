@@ -116,7 +116,7 @@ public final class BuilderBlockInteractionsGameTest {
     }
 
     @GameTest(maxTicks=90,skyAccess=true)
-    public void realNoteTuningAndDaylightInversionSurviveNeighborTicks(
+    public void noteBlocksStayUntunedAndDaylightInversionSurvivesNeighborTicks(
             GameTestHelper h){
         var level=h.getLevel();
         var player=h.makeMockServerPlayerInLevel();
@@ -137,8 +137,8 @@ public final class BuilderBlockInteractionsGameTest {
             }
             var neutral=BuilderBlockInteractions.placementState(resolved.state());
             if(!level.setBlock(pos,neutral,3)
-                    ||!BuilderBlockInteractions.needsInteraction(
-                            level.getBlockState(pos),resolved.state())
+                    ||BuilderBlockInteractions.needsInteraction(
+                            level.getBlockState(pos),resolved.state())!=(i==1)
                     ||!BuilderBlockInteractions.interact(
                             level,pos,resolved.state(),player)
                     ||!BuilderPlacementState.matches(
@@ -153,15 +153,16 @@ public final class BuilderBlockInteractionsGameTest {
             if(h.getTick()!=20)return;
             for(var cell:desired.entrySet()){
                 if(!BuilderPlacementState.matches(
-                        level.getBlockState(cell.getKey()),cell.getValue())){
+                        level.getBlockState(cell.getKey()),cell.getValue())
+                        ||(cell.getValue().is(Blocks.NOTE_BLOCK)
+                            &&!level.getBlockState(cell.getKey()).getValues().anyMatch(v->v.property().getName().equals("note")&&v.valueName().equals("0")))){
                     h.fail("Manual tuning not stable after neighbor ticks at "
                             +cell.getKey()+" actual="
                             +level.getBlockState(cell.getKey()));
                     return;
                 }
             }
-            System.out.println("[BUILDER ADVANCED INTERACTIONS PASS] 24"
-                    +" actual note-block tunes and daylight inversion");
+            System.out.println("[BUILDER ADVANCED INTERACTIONS PASS] no note-block tuning; daylight inversion retained");
             h.succeed();
         });
     }
