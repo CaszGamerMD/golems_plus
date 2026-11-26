@@ -128,6 +128,23 @@ final class BuilderBlockInteractionsTest {
                 iron));
     }
 
+    @Test void ordinaryRailJunctionsMaySwitchWithoutLosingSlopeOrWaterRequirements(){
+        var saved=state("minecraft:rail[shape=south_east,waterlogged=false]");
+        var alternate=state("minecraft:rail[shape=south_west,waterlogged=false]");
+        var straight=state("minecraft:rail[shape=east_west,waterlogged=false]");
+        var perpendicular=state("minecraft:rail[shape=north_south,waterlogged=false]");
+        var slope=state("minecraft:rail[shape=ascending_east,waterlogged=false]");
+        assertTrue(BuilderPlacementState.matches(alternate,saved));
+        assertTrue(BuilderPlacementState.matches(straight,saved));
+        assertTrue(BuilderPlacementState.matches(saved,straight));
+        assertFalse(BuilderPlacementState.matches(perpendicular,straight));
+        assertFalse(BuilderPlacementState.matches(straight,slope));
+        assertFalse(BuilderPlacementState.matches(slope,saved));
+        assertFalse(BuilderPlacementState.matches(state("minecraft:rail[shape=south_west,waterlogged=true]"),saved));
+        assertFalse(BuilderPlacementState.matches(state("minecraft:powered_rail[powered=false,shape=east_west,waterlogged=false]"),saved));
+        assertFalse(BuilderPlacementState.matches(net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),saved));
+    }
+
     @Test void energyAndWireConnectionsBeginNeutralUntilWorldUpdates(){
         var wire=state("minecraft:redstone_wire[east=side,north=up,power=12,south=side,west=none]");
         var unpowered=BuilderBlockInteractions.placementState(wire);
