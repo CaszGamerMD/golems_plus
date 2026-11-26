@@ -28,9 +28,7 @@ public final class BuilderBlockInteractions {
         String id=BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
         if(id.equals("repeater"))return "delay";
         if(id.equals("comparator"))return "mode";
-        // Tuning a note block requires as many as 24 real right-clicks.
-        // Its instrument comes from the block underneath, NOT the item.
-        if(id.equals("note_block"))return "note";
+        // Note blocks are never clicked: they may drive observers.
         // The power signal tracks the sun; only the inverse-daylight
         // mode is a stable user-selected switch.
         if(id.equals("daylight_detector"))return "inverted";
@@ -48,7 +46,6 @@ public final class BuilderBlockInteractions {
             case "powered","open" -> "false";
             case "delay" -> "1";
             case "mode" -> "compare";
-            case "note" -> "0";
             case "inverted" -> "false";
             default -> throw new IllegalArgumentException(property);
         };
@@ -138,9 +135,8 @@ public final class BuilderBlockInteractions {
             for(String side:new String[]{"north","south","east","west"})
                 neutral=set(neutral,side,dot?"none":"side");
         }else if(id.equals("note_block")){
-            // Instrument and power are determined by real supporting
-            // blocks and redstone. The note is subsequently tuned with
-            // real clicks, not copied from a fake schematic instrument.
+            // Place once at the default pitch. Never play or tune a note
+            // block during construction; native neighbors decide power.
             neutral=desired.getBlock().defaultBlockState();
         }else if(id.equals("daylight_detector")){
             // Solar output is calculated on the actual world tick; only
@@ -197,8 +193,7 @@ public final class BuilderBlockInteractions {
         BlockHitResult hit=new BlockHitResult(
                 new Vec3(pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5),
                 Direction.UP,pos,false);
-        int maxClicks=manualProperty(desired)!=null
-                &&manualProperty(desired).equals("note")?25:4;
+        int maxClicks=4;
         for(int clicks=0;clicks<maxClicks;clicks++){
             BlockState actual=level.getBlockState(pos);
             if(BuilderPlacementState.matches(actual,desired))return true;
