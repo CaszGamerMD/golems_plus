@@ -26,11 +26,12 @@ public final class BuilderPlacementState {
     }
     public static boolean matches(BlockState actual,BlockState schematic){
         if(actual.equals(schematic))return true;
-        // Bubble activity and direction are transient. For construction
-        // a planned column cell needs real water, not a particular flow
-        // or drag state. Air, lava and waterlogged solid hosts never match.
+        // Bubble activity and drag direction are transient. Construction
+        // requires a full source at each planned column cell; flowing
+        // water, air, lava and waterlogged solid hosts never qualify.
         if(schematic.is(Blocks.BUBBLE_COLUMN))
-            return actual.is(Blocks.WATER)||actual.is(Blocks.BUBBLE_COLUMN);
+            return (actual.is(Blocks.WATER)||actual.is(Blocks.BUBBLE_COLUMN))
+                    &&actual.getFluidState().isSource();
         if(actual.getBlock()!=schematic.getBlock())return false;
 
         if(actual.getBlock() instanceof StairBlock)
