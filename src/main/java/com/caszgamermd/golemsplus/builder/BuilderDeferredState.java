@@ -29,8 +29,11 @@ public final class BuilderDeferredState {
             // An empty flow cell may be several blocks downstream from
             // the last real source. Wake nearby existing sources and
             // waterlogged hosts, not synthetic source blocks in air.
-            for(int dy=0;dy<=2;dy++)for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++){
-                if(Math.abs(dx)+Math.abs(dz)+dy>5)continue;
+            // A vanilla source can feed up to seven horizontal cells,
+            // and water can fall from above before spreading. Search the
+            // complete horizontal reach plus nearby vertical feeds.
+            for(int dy=0;dy<=4;dy++)for(int dx=-7;dx<=7;dx++)for(int dz=-7;dz<=7;dz++){
+                if(Math.abs(dx)+Math.abs(dz)>7)continue;
                 BlockPos at=pos.offset(dx,dy,dz);
                 if(!level.hasChunkAt(at)||!level.mayInteract(owner,at))continue;
                 var source=level.getFluidState(at);
