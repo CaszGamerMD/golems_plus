@@ -185,6 +185,12 @@ public final class BuilderAnchorSchedule {
                     // their raised endpoint when the plan includes one.
                     BlockPos raised=BuilderRailSlope.raisedEnd(at,states[i]);
                     if(raised!=null){
+                        // A real planned upper rail is the connector, not a refundable jig.
+                        // Build its own paid step first, even across a layer boundary.
+                        Cell connector=cells.get(raised);
+                        if(connector!=null&&connector.index()!=i
+                                &&connector.state().getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock)
+                            needed.add(connector.index());
                         Cell support=cells.get(raised.below());
                         if(support!=null&&support.index()!=i){
                             probe.self=i;probe.removed.clear();probe.usePlan=true;
