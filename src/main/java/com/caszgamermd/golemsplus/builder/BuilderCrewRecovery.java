@@ -125,7 +125,14 @@ final class BuilderCrewRecovery {
             // After a sustained no-progress window, preserve troublesome
             // leaf tasks for final construction. Not marked complete.
             // Bounded to one leaf per 120 ticks; supports never postponed.
-            if(now-s.lastProgress>=600&&(s.lastLeafCheck==Long.MIN_VALUE||now-s.lastLeafCheck>=120)){
+            // The all-worker watchdog can stop after 300 idle ticks.
+            // Give the crew an independent frontier before that deadline.
+            if(now-s.lastProgress>=160&&(s.lastLeafCheck==Long.MIN_VALUE||now-s.lastLeafCheck>=120)){
+                if(table.deferStalledBuilderGroup(steps)){
+                    s.lastLeafCheck=now;s.lastProgress=now;return true;
+                }
+            }
+            if(now-s.lastProgress>=200&&(s.lastLeafCheck==Long.MIN_VALUE||now-s.lastLeafCheck>=120)){
                 s.lastLeafCheck=now;
                 int active=table.builderActiveStepIndex(steps);
                 if(table.postponeStalledBuilderLeaf(steps,active)){

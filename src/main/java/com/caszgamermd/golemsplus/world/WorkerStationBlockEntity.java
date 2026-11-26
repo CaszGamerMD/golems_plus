@@ -1230,6 +1230,62 @@ public final class WorkerStationBlockEntity extends BlockEntity
         System.out.println("[BUILDER LEAF DEFERRED] index="+index+" state="+state);
         setChanged();return true;
     }
+    /** Move a stalled nonstructural dependency group to the final pass.
+     * Keep all source indices unfinished, including waterlogged hosts and
+     * their unfinished dependents. Never move an ordinary structural cell. */
+    public boolean deferStalledBuilderGroup(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        int active=builderActiveStepIndex(steps);
+        if(active<0||activeOrder==null||builderCommissioning()||dependencyAnchors==null
+                ||lateFluidSteps.contains(active)
+                ||builderHeightMode()==com.caszgamermd.golemsplus.builder.BuilderMaterialRules.FROM_Y_DOWN)return false;
+        int y=dependencyLayers[active];
+        var pending=new java.util.HashSet<Integer>();
+        for(int i=builderCursor;i<steps.size();i++){
+            if(builderFinishedSteps.contains(i)||lateFluidSteps.contains(i)||dependencyLayers[i]!=y
+                    ||!com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(steps.get(i).encodedState(),steps.get(active).encodedState()))continue;
+            if(!stallGroupCell(steps.get(i)))return false;
+            pending.add(i);
+        }
+        if(pending.isEmpty())return false;
+        // Close over outgoing edges, so a deferred support cannot block a
+        // nondeferred child on a later layer.
+        boolean changed;
+        do{
+            changed=false;
+            for(int i=builderCursor;i<steps.size();i++){
+                if(builderFinishedSteps.contains(i)||lateFluidSteps.contains(i)||pending.contains(i))continue;
+                for(int a:dependencyAnchors[i])if(pending.contains(a)){
+                    if(!stallGroupCell(steps.get(i)))return false;
+                    pending.add(i);changed=true;break;
+                }
+            }
+        }while(changed);
+        boolean independent=false;
+        for(int i=builderCursor;i<steps.size();i++){
+            if(!builderFinishedSteps.contains(i)&&!pending.contains(i)&&!lateFluidSteps.contains(i)
+                    &&!steps.get(i).ignorePlant()&&!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(i).encodedState())){
+                independent=true;break;
+            }
+        }
+        if(!independent)return false;
+        lateFluidSteps.addAll(pending);
+        dependencyPlan=null;activeScanPlan=null;
+        builderClaims.entrySet().removeIf(entry->pending.contains(entry.getValue()));
+        builderWorkOrders.clear();builderPreparedOrders.clear();
+        for(int i:pending)builderMissingRetries.remove(i);
+        System.out.println("[BUILDER GROUP DEFERRED] layer="+y+" cells="+pending.size()+" indices="+pending);
+        setProblem("Retrying "+pending.size()+" blocked attachment/fluid actions in final construction pass");
+        setChanged();return true;
+    }
+    private static boolean stallGroupCell(com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step step){
+        if(step.ignorePlant()||step.companion()!=null)return false;
+        String state=step.encodedState();
+        return com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(state)
+                ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(state)
+                ||state.startsWith("minecraft:scaffolding[")||state.contains("rail[")
+                ||state.startsWith("minecraft:glow_lichen[")||state.contains("pressure_plate[")
+                ||state.startsWith("minecraft:lever[")||state.contains("_button[");
+    }
     private boolean builderAnchorsReady(int index){
         if(dependencyAnchors==null)return true;
         for(int a:dependencyAnchors[index])if(a>=builderCursor&&!builderFinishedSteps.contains(a))return false;
