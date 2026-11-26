@@ -70,9 +70,12 @@ def extract(log):
         return {"outcome": "MISSING_RESULT"}
     outcome, layer, elapsed, tick, correct, total, best, unsupported = matches[-1]
     env = re.findall(r"\[MATRIX CONTROLLED ENV\] ([^\r\n]+)", log)
+    targets = re.findall(r"\[MATRIX FULL TARGET\] sourceBlocks=(\d+) ignoredPistonHeads=(\d+) requiredBlocks=(\d+)", log)
+    source, ignored, required = map(int, targets[-1]) if targets else (15376, 0, 15376)
     return dict(outcome=outcome, layer=layer, elapsedMs=int(elapsed), tick=int(tick),
                 correct=int(correct), total=int(total), best=int(best), unsupported=int(unsupported),
-                environment=env[-1] if env else None)
+                environment=env[-1] if env else None,
+                sourceBlocks=source, ignoredPistonHeads=ignored, requiredBlocks=required)
 
 def compare(rows):
     valid = len(rows) == 3 and all("elapsedMs" in r for r in rows)
@@ -85,7 +88,12 @@ def compare(rows):
     environment_ok = not controlled or same_environment
     tick_spread = max(r["tick"] for r in rows)-min(r["tick"] for r in rows) if valid else None
     consistent = bool(environment_ok and same_layer and natural_stop and spread <= 300000)
-    complete = valid and all(r["outcome"]=="COMPLETE" and r["correct"]==r["total"]==15376 for r in rows)
+    def full_target(r):
+        source = r.get("sourceBlocks", 15376)
+        ignored = r.get("ignoredPistonHeads", 0)
+        required = r.get("requiredBlocks", 15376)
+        return source == 15376 and 0 <= ignored < source and required == source-ignored and r["correct"] == r["total"] == required
+    complete = valid and len({r.get("requiredBlocks",15376) for r in rows}) == 1 and all(r["outcome"]=="COMPLETE" and full_target(r) for r in rows)
     # Repeating a very early failure is diagnostic, not a passing build.
     # The current development milestone is at least Y13 and 9,700 correct
     # cells in every trial, with the original same-layer / five-minute rule.

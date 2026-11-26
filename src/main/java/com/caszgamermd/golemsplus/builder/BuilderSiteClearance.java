@@ -60,7 +60,8 @@ public final class BuilderSiteClearance {
             int index=table.claimBuilderClear(worker.getUUID(),plan.size());
             if(index<0)return table.builderClearCursor()>=plan.size();
             Target step=plan.get(index);
-            if(step.state().equals("golems_plus:skip")){
+            if(step.state().equals("golems_plus:skip")
+                    ||BuilderMultiblock.blockId(BuilderPistonWork.original(step.state())).equals("minecraft:piston_head")){
                 table.completeBuilderClear(worker.getUUID(),index,false);
                 continue;
             }

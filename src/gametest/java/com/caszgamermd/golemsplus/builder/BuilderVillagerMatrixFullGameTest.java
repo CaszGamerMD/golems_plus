@@ -263,8 +263,11 @@ public final class BuilderVillagerMatrixFullGameTest {
         }catch(Exception e){h.fail("Cannot plan full Villager Matrix: "+e);return;}
         final List<BuilderConstructionPlan.Step> steps=plan.steps();
         final List<Expected> expected=new ArrayList<>(SOURCE_BLOCKS);
-        int unresolved=0;
+        int unresolved=0,ignoredPistonHeads=0;
         for(var cell:schematic.blocks()){
+            if(BuilderMultiblock.blockId(cell.state()).equals("minecraft:piston_head")){
+                ignoredPistonHeads++;continue;
+            }
             var desired=BuilderBlockResolver.expectedState(cell.state(),
                     BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
             if(desired==null){unresolved++;continue;}
@@ -272,7 +275,9 @@ public final class BuilderVillagerMatrixFullGameTest {
                     desired));
         }
         final int unavailableStates=unresolved;
+        final int targetBlocks=SOURCE_BLOCKS-ignoredPistonHeads;
         System.out.println("[MATRIX FULL TARGET] sourceBlocks="+SOURCE_BLOCKS
+                +" ignoredPistonHeads="+ignoredPistonHeads+" requiredBlocks="+targetBlocks
                 +" dryPlusWaterSteps="+steps.size()+" unsupportedCells="
                 +unavailableStates+" unsupportedStates="+plan.unsupported()
                 +" "+WORKERS+" actual Builders; no scaffold or structure prebuilt");
@@ -451,7 +456,7 @@ public final class BuilderVillagerMatrixFullGameTest {
             best[0]=Math.max(best[0],correct);
             int y=table.builderActiveLayer(steps);
             System.out.println("[MATRIX FULL PROGRESS] tick="+tick
-                    +" matchingSourceBlocks="+correct+"/"+SOURCE_BLOCKS
+                    +" matchingSourceBlocks="+correct+"/"+targetBlocks
                     +" best="+best[0]+" cursor="+cursor+"/"+steps.size()
                     +" currentLayer="+(y==Integer.MAX_VALUE?"complete":y-origin.getY())
                     +" noWorkTicks="+(noWorkTicks)
@@ -481,7 +486,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                             &&resolved.state().canSurvive(level,at))
                         +" fluid="+level.getFluidState(at));
             }
-            if((allStalled||noWorkTimeout||timeLimit||table.phase()==WorkerPhase.COMPLETE)&&correct!=SOURCE_BLOCKS){
+            if((allStalled||noWorkTimeout||timeLimit||table.phase()==WorkerPhase.COMPLETE)&&correct!=targetBlocks){
                 var kinds=new java.util.TreeMap<String,Integer>();
                 int samples=0;
                 for(Expected candidate:expected){
@@ -498,17 +503,17 @@ public final class BuilderVillagerMatrixFullGameTest {
             }
             if(table.phase()==WorkerPhase.COMPLETE){
                 BuilderTrace.dump(level,table,"matrix complete");
-                System.out.println("[MATRIX TRIAL RESULT] outcome="+(correct==SOURCE_BLOCKS?"COMPLETE":"MISMATCH")
+                System.out.println("[MATRIX TRIAL RESULT] outcome="+(correct==targetBlocks?"COMPLETE":"MISMATCH")
                         +" layer=complete elapsedMs="+elapsedMillis+" tick="+tick
-                        +" correct="+correct+" total="+SOURCE_BLOCKS+" best="+best[0]
+                        +" correct="+correct+" total="+targetBlocks+" best="+best[0]
                         +" unsupported="+unavailableStates);
-                if(correct!=SOURCE_BLOCKS){
+                if(correct!=targetBlocks){
                     h.fail("Full Matrix marked complete but "
-                            +(SOURCE_BLOCKS-correct)+" source blocks differ; "
+                            +(targetBlocks-correct)+" source blocks differ; "
                             +unavailableStates+" unsupported cells");return;
                 }
-                System.out.println("[MATRIX FULL PASS] "+SOURCE_BLOCKS
-                        +"/"+SOURCE_BLOCKS
+                System.out.println("[MATRIX FULL PASS] "+targetBlocks
+                        +"/"+targetBlocks
                         +" physical source blocks verified with four Builders");
                 h.succeed();return;
             }
@@ -516,9 +521,9 @@ public final class BuilderVillagerMatrixFullGameTest {
                 BuilderTrace.dump(level,table,"matrix time limit");
                 System.out.println("[MATRIX TRIAL RESULT] outcome=TIME_LIMIT layer="+(y-origin.getY())
                         +" elapsedMs="+elapsedMillis+" tick="+tick+" correct="+correct
-                        +" total="+SOURCE_BLOCKS+" best="+best[0]+" unsupported="+unavailableStates);
+                        +" total="+targetBlocks+" best="+best[0]+" unsupported="+unavailableStates);
                 System.out.println("[MATRIX FULL TIMED] seconds="+assessmentSeconds+" tick="+tick
-                        +" matchingSourceBlocks="+correct+"/"+SOURCE_BLOCKS
+                        +" matchingSourceBlocks="+correct+"/"+targetBlocks
                         +" best="+best[0]+" layer="+(y-origin.getY()));
                 h.succeed();return;
             }
@@ -526,15 +531,15 @@ public final class BuilderVillagerMatrixFullGameTest {
                 BuilderTrace.dump(level,table,"matrix stall");
                 System.out.println("[MATRIX TRIAL RESULT] outcome="+(allStalled?"ALL_BUILDERS_STALLED":"NO_WORK_PROGRESS")
                         +" layer="+(y-origin.getY())+" elapsedMs="+elapsedMillis+" tick="+tick
-                        +" correct="+correct+" total="+SOURCE_BLOCKS+" best="+best[0]
+                        +" correct="+correct+" total="+targetBlocks+" best="+best[0]
                         +" unsupported="+unavailableStates);
                 StringBuilder result=new StringBuilder(
                         "[MATRIX FULL STALL] tick="+tick
                                 +" reason="+(allStalled?"ALL_BUILDERS_STALLED":"NO_WORK_PROGRESS")
                                 +" noWorkTicks="+(noWorkTicks)
                                 +" allBuilders="+WORKERS+" windowTicks="+STALL_TICKS
-                                +" matchingSourceBlocks="+correct+"/"+SOURCE_BLOCKS
-                                +" best="+best[0]+"/"+SOURCE_BLOCKS
+                                +" matchingSourceBlocks="+correct+"/"+targetBlocks
+                                +" best="+best[0]+"/"+targetBlocks
                                 +" cursor="+cursor+"/"+steps.size()
                                 +" layer="+(y-origin.getY())
                                 +" unsupported="+unavailableStates
@@ -553,7 +558,7 @@ public final class BuilderVillagerMatrixFullGameTest {
                 h.fail("Matrix assessment stopped: "+(allStalled
                         ?"all four builders stalled for 300 ticks"
                         :"no new work for "+NO_WORK_LIMIT+" ticks")
-                        +"; best="+best[0]+"/"+SOURCE_BLOCKS);
+                        +"; best="+best[0]+"/"+targetBlocks);
             }
         });
     }

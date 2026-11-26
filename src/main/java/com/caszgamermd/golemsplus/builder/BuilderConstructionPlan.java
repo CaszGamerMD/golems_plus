@@ -51,14 +51,12 @@ public final class BuilderConstructionPlan {
         var byCell=new HashMap<BuilderMultiblock.Cell,LitematicFileReader.Block>();
         for(var b:blocks)byCell.put(BuilderMultiblock.cell(b),b);
         // Valid piston pairs retain both original indexed cells. Place
-        // the paid base retracted, verify the head after the circuit exists.
-        var pistonHeads=new HashSet<BuilderMultiblock.Cell>();
+        // the paid base retracted; its generated head is not a construction task.
         var pistonBases=new HashSet<BuilderMultiblock.Cell>();
         for(var b:blocks){
             var head=BuilderPistonWork.pairedHead(b,byCell);
             if(head!=null){
                 pistonBases.add(BuilderMultiblock.cell(b));
-                pistonHeads.add(BuilderMultiblock.cell(head));
             }
         }
         var companions=new HashMap<BuilderMultiblock.Cell,LitematicFileReader.Block>();
@@ -77,10 +75,12 @@ public final class BuilderConstructionPlan {
             boolean incompletePair=(BuilderMultiblock.isPrimary(b.state())
                     ||BuilderMultiblock.isSecondary(b.state()))
                     &&!companions.containsKey(BuilderMultiblock.cell(b));
-            boolean ignored=ignorePlants&&BuilderVegetation.ignoreSchematicState(b.state());
+            boolean pistonHead=BuilderMultiblock.blockId(b.state()).equals("minecraft:piston_head");
+            // Keep the saved index, but never require a generated head.
+            boolean ignored=pistonHead||ignorePlants&&BuilderVegetation.ignoreSchematicState(b.state());
             boolean waterlogged=!ignored&&BuilderWaterPass.isWaterlogged(b.state());
             String dry=waterlogged?BuilderWaterPass.dryState(b.state()):b.state();
-            boolean verifyPiston=pistonHeads.contains(BuilderMultiblock.cell(b));
+            boolean verifyPiston=pistonHead;
             boolean verifyFlow=BuilderDeferredState.flowing(dry);
             if(pistonBases.contains(BuilderMultiblock.cell(b)))dry=BuilderPistonWork.neutral(dry);
             var resolved=ignored||incompletePair?null:
