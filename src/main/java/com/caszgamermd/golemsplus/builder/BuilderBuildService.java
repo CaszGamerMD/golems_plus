@@ -1791,6 +1791,15 @@ public final class BuilderBuildService {
                 primaryComplete=finalRail!=null&&finalRail.getBlock()==state.state().getBlock()
                         &&BuilderPlacementState.matches(existing,finalRail);
             }
+            if(!repairingBubbleBase&&partner==null&&table.builderRepairingPaidStep(index)
+                    &&BuilderPistonWork.displacementMatches(level,pos,state.state(),plan.steps(),
+                        BuildSite.Rotation.values()[table.builderRotation()/90],
+                        BuildSite.Mirror.values()[table.builderMirror()])){
+                table.recordBuilderPlacement(step.requiredItem());
+                table.completeBuilderStep(worker.getUUID(),index);
+                activity.phase=Action.COMPLETE;
+                return;
+            }
             boolean partnerComplete=partner==null||BuilderPlacementState.matches(
                     partnerExisting,partnerResolved.state());
             boolean delayedLever=!table.builderCommissioning()
