@@ -1456,7 +1456,6 @@ public final class BuilderBuildService {
             boolean hatRescue=BuilderFlight.creative(worker)&&roofNeedsHelp(level,table);
             if(hatRescue){
                 layerStaff=assigned.roster();
-                table.enableLocalWaterRescue(plan.steps());
             }
             if(!layerStaff.contains(worker.getUUID())&&currentClaim<0
                     &&materialOffers.isEmpty()&&!worker.hasSupplyBox()){
@@ -1752,6 +1751,14 @@ public final class BuilderBuildService {
                 }
             }
             final var step=effectiveStep;
+            // An effective bubble repair may target a different physical Y
+            // than its claim. Never release water before that dry layer either.
+            if(BuilderWaterPass.isWaterStep(step.encodedState())
+                    &&!table.builderDryLayerComplete(plan.steps(),step.y())){
+                table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
+                table.setProblem("Water waiting for complete dry layer Y="+step.y());
+                return;
+            }
             final boolean repairingBubbleBase=step!=claimedStep;
             final BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
             var state=BuilderBlockResolver.resolve(step.encodedState(),

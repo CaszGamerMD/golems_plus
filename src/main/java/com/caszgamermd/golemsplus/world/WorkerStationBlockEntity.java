@@ -1034,7 +1034,8 @@ public final class WorkerStationBlockEntity extends BlockEntity
         int preferred=-1,first=-1;
         for(int i:order){
             if((!zoned&&i>=layerExclusive)||builderFinishedSteps.contains(i)
-                    ||builderMissingRetries.getOrDefault(i,0L)>now)continue;
+                    ||builderMissingRetries.getOrDefault(i,0L)>now
+                    ||i<steps.size()&&!builderWaterStepReady(steps,i))continue;
             if(first<0)first=i;
             if(i<steps.size()){
                 String material=steps.get(i).requiredItem();
@@ -1423,7 +1424,21 @@ public final class WorkerStationBlockEntity extends BlockEntity
             dependencyCursor=builderCursor;
             while(dependencyPointer<dependencyOrder.length){
                 int i=dependencyOrder[dependencyPointer];
-                if(i>=builderCursor&&!builderFinishedSteps.contains(i))return i;
+                if(i>=builderCursor&&!builderFinishedSteps.contains(i)){
+                    if(builderWaterStepReady(steps,i))return i;
+                    // Do not advance past a blocked water index permanently.
+                    // A dry anchor/attachment can be later in dependency or
+                    // deferred order. Work on eligible physical tasks first,
+                    // then return to the blocked water when its dry Y is done.
+                    for(int p=dependencyPointer+1;p<dependencyOrder.length;p++){
+                        int candidate=dependencyOrder[p];
+                        if(candidate<builderCursor||builderFinishedSteps.contains(candidate)
+                                ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(candidate).encodedState())
+                                ||!builderWaterStepReady(steps,candidate))continue;
+                        return candidate;
+                    }
+                    return -1;
+                }
                 dependencyPointer++;
             }
             return -1;
@@ -1451,51 +1466,37 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return active<0?Integer.MAX_VALUE:builderSchedulingLayer(steps,active);
     }
 
-    /** The first unfinished index also gates water within its Y layer.
-     * Builders across ALL zones must finish the dry phase before any
-     * source water or waterlogging action can be claimed. */
-    private UUID localWaterJob;
-    private int localWaterLayer=Integer.MIN_VALUE;
-    private long localWaterScanTick=Long.MIN_VALUE;
-    private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> localWaterPlan;
-    private java.util.List<BlockPos> localDryPending=java.util.List.of();
-    /** Rescue only: independent water work can continue after a dry
-     * frontier stalls, but never beside an unfinished local dry cell.
-     * Normal layer ordering and physical water verification stay intact. */
-    public void enableLocalWaterRescue(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
-        int active=builderActiveStepIndex(steps);
-        if(active<0||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(steps.get(active).encodedState()))return;
-        int y=builderSchedulingLayer(steps,active);
-        if(!java.util.Objects.equals(localWaterJob,activeOrder)||localWaterLayer!=y||localWaterPlan!=steps){
-            localWaterJob=activeOrder;localWaterLayer=y;localWaterPlan=steps;localWaterScanTick=Long.MIN_VALUE;
-        }
-    }
-    private boolean localWaterAllowed(java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,int index,int active){
-        if(level==null||localWaterPlan!=steps||!java.util.Objects.equals(localWaterJob,activeOrder)
-                ||localWaterLayer!=builderSchedulingLayer(steps,active)||builderCommissioning())return false;
-        var target=steps.get(index);String state=target.encodedState();
-        if(!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isBubbleColumn(state)
-                &&!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(state))return false;
-        if(com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(steps.get(active).encodedState())
-                ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(active).encodedState()))return false;
-        long now=level.getGameTime();
-        if(localWaterScanTick!=now){
-            var dry=new java.util.ArrayList<BlockPos>();
-            for(int i=builderCursor;i<steps.size();i++){
+    /** Every physical Y has its own crew-wide dry barrier. A postponed
+     * attachment or an anchor shifted to a later scheduling Y is still
+     * unfinished on its original physical layer. A paired block counts
+     * on both occupied heights. Flow/piston verification is not placement. */
+    private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> dryGatePlan;
+    private final java.util.Map<Integer,java.util.List<Integer>> dryGateByY=new java.util.HashMap<>();
+    public boolean builderDryLayerComplete(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,int y){
+        if(dryGatePlan!=steps){
+            dryGatePlan=steps;dryGateByY.clear();
+            for(int i=0;i<steps.size();i++){
                 var step=steps.get(i);
-                if(builderFinishedSteps.contains(i)||step.ignorePlant()||lateFluidSteps.contains(i)
-                        ||builderSchedulingLayer(steps,i)!=localWaterLayer
+                if(step.ignorePlant()
                         ||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(step.encodedState())
                         ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(step.encodedState()))continue;
-                dry.add(new BlockPos(step.x(),step.y(),step.z()));
+                dryGateByY.computeIfAbsent(step.y(),k->new java.util.ArrayList<>()).add(i);
+                if(step.companion()!=null&&step.companion().y()!=step.y())
+                    dryGateByY.computeIfAbsent(step.companion().y(),k->new java.util.ArrayList<>()).add(i);
             }
-            localDryPending=java.util.List.copyOf(dry);localWaterScanTick=now;
         }
-        // Water can spread seven horizontal blocks. Retain an eight-block
-        // exclusion around unfinished dry work, including deferred supports.
-        for(BlockPos dry:localDryPending)if(Math.abs((long)dry.getX()-target.x())<=8
-                &&Math.abs((long)dry.getZ()-target.z())<=8)return false;
-        return !localDryPending.isEmpty();
+        for(int i:dryGateByY.getOrDefault(y,java.util.List.of()))
+            if(i>=builderCursor&&!builderFinishedSteps.contains(i))return false;
+        return true;
+    }
+    private boolean builderWaterStepReady(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,int index){
+        var step=steps.get(index);
+        return step.ignorePlant()
+                ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(step.encodedState())
+                ||!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(step.encodedState())
+                ||builderDryLayerComplete(steps,step.y());
     }
     public boolean builderStepInActivePhase(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
@@ -1509,9 +1510,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 &&(!lateFluidSteps.contains(active)||lateRetryRank.getOrDefault(index,0).equals(lateRetryRank.getOrDefault(active,0)))
                 &&builderAnchorsReady(index)
                 &&builderSchedulingLayer(steps,index)==builderSchedulingLayer(steps,active)
-                &&(com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
+                &&com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
                         steps.get(index).encodedState(),steps.get(active).encodedState())
-                    ||localWaterAllowed(steps,index,active));
+                &&builderWaterStepReady(steps,index);
     }
 
     /** Each Builder owns its X/Z zone. ALL workers must finish ALL

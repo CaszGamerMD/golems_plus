@@ -107,4 +107,57 @@ public final class BuilderLayerGateGameTest {
             helper.succeed();
         });
     }
+    @GameTest(maxTicks=40,skyAccess=true)
+    public void waterWaitsForDeferredDryWorkAcrossCrew(GameTestHelper helper){
+        ServerLevel level=helper.getLevel();
+        for(int x=0;x<8;x++)for(int z=0;z<8;z++)helper.setBlock(x,1,z,Blocks.STONE);
+        helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
+        helper.setBlock(1,2,0,Blocks.CHEST);
+        BlockPos at=helper.absolutePos(new BlockPos(0,2,0));
+        BlockPos storage=helper.absolutePos(new BlockPos(1,2,0));
+        if(!(level.getBlockEntity(at) instanceof WorkerStationBlockEntity table)){
+            helper.fail("Physical Builder Planner missing");return;
+        }
+        var owner=helper.makeMockServerPlayerInLevel();
+        if(!table.claimIfUnowned(owner.getUUID())||!table.setCrewTarget(owner.getUUID(),2)
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),"water-layer-gate.litematic","Water barrier",at,0,0,4,0)
+                ||!table.setBuilderMaterialStorage(owner.getUUID(),storage)){
+            helper.fail("Could not prepare water barrier");return;
+        }
+        BuilderGolem a=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        BuilderGolem b=new BuilderGolem(WorksiteContent.BUILDER_GOLEM,level);
+        a.setPos(at.getX()+2.5,at.getY(),at.getZ()+2.5);
+        b.setPos(at.getX()+5.5,at.getY(),at.getZ()+5.5);
+        level.addFreshEntity(a);level.addFreshEntity(b);
+        if(!table.registerBuilderWorker(a.getUUID())||!table.registerBuilderWorker(b.getUUID())
+                ||!table.startPlacedBuilder(owner.getUUID())){
+            helper.fail("Unable to start crew");return;
+        }
+        int y=at.getY();
+        List<BuilderConstructionPlan.Step> steps=List.of(
+                new BuilderConstructionPlan.Step(at.getX()+2,y,at.getZ()+2,"minecraft:stone","minecraft:stone"),
+                new BuilderConstructionPlan.Step(at.getX()+5,y,at.getZ()+5,"minecraft:rail[shape=north_south,waterlogged=false]","minecraft:rail"),
+                new BuilderConstructionPlan.Step(at.getX()+2,y,at.getZ()+3,"minecraft:water[level=0]",BuilderWaterPass.WATER_BUCKET),
+                new BuilderConstructionPlan.Step(at.getX()+3,y,at.getZ()+3,"minecraft:bubble_column[drag=false]",BuilderWaterPass.WATER_BUCKET));
+        List<Integer> az=List.of(0,2,3),bz=List.of(1);
+        if(table.claimBuilderZoneStep(a.getUUID(),az,steps)!=0
+                ||!table.completeBuilderStep(a.getUUID(),0)
+                ||table.builderDryLayerComplete(steps,y)
+                ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=-1){
+            helper.fail("Finished zone released water before crew dry work finished");return;
+        }
+        if(!table.postponeStalledBuilderLeaf(steps,1)
+                ||table.builderStepInActivePhase(steps,2)||table.builderStepInActivePhase(steps,3)
+                ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=-1
+                ||table.claimBuilderZoneStep(b.getUUID(),bz,steps)!=1){
+            helper.fail("Deferred rail either unlocked water or became unreachable");return;
+        }
+        if(!table.completeBuilderStep(b.getUUID(),1)||!table.builderDryLayerComplete(steps,y)
+                ||!table.builderStepInActivePhase(steps,2)||!table.builderStepInActivePhase(steps,3)
+                ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=2){
+            helper.fail("Water remained locked after every dry step finished");return;
+        }
+        helper.succeed();
+    }
+
 }
