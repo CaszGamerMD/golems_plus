@@ -1348,8 +1348,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             boolean waterlog=com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState());
             // A dry precursor and its wet final state are one physical
             // host. Never reopen a correct wet host just to dry it.
-            if(!waterlog&&wetCells.contains(at)&&actual.getBlock()==desired.state().getBlock()
-                    &&actual.getFluidState().isSource())continue;
+            if(!waterlog&&wetCells.contains(at)
+                    &&actual.getFluidState().isSource()
+                    &&com.caszgamermd.golemsplus.builder.BuilderWaterPass.hostMatches(actual,desired.state()))continue;
             boolean missing=actual.isAir()&&!waterlog
                     ||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.displaceable(actual,desired.state())
                     ||!waterlog&&com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.plannedWaterRepair(actual,desired.state());
@@ -1874,6 +1875,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private UUID commissioningJob;
     private boolean commissioning;
     public boolean builderCommissioning(){return commissioning&&java.util.Objects.equals(commissioningJob,activeOrder);}
+    public boolean builderRepairingPaidStep(int index){return completedRepairAttempts.containsKey(index)||builderCommissioning();}
     /** Reopen already-paid blocks with stable manual control mismatches
      * and dry targets lost to incidental fluid after construction. Original indices survive save,
      * reload, and the dependency schedule. Dynamic signal states are never
@@ -1939,13 +1941,18 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 continue;
             }
             if(step.requiredItem()==null)continue;
-            if(wetCells.contains(at)&&!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState())
-                    &&!server.getBlockState(at).isAir()
-                    &&!server.getBlockState(at).is(net.minecraft.world.level.block.Blocks.WATER))continue;
-            if(!server.hasChunkAt(at))continue;
+
             var desired=com.caszgamermd.golemsplus.builder.BuilderBlockResolver.resolve(step.encodedState(),rotation,mirror);
             if(desired==null)continue;
             var actual=server.getBlockState(at);
+            // The final audit must use the same completion rules as the
+            // placement transaction and the late physical repair audit.
+            if(com.caszgamermd.golemsplus.builder.BuilderPlacementState.matches(actual,desired.state()))continue;
+            if(com.caszgamermd.golemsplus.builder.BuilderPistonWork.displacementMatches(
+                    server,at,desired.state(),steps,rotation,mirror))continue;
+            if(wetCells.contains(at)&&!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterlogPass(step.encodedState())
+                    &&actual.getFluidState().isSource()
+                    &&com.caszgamermd.golemsplus.builder.BuilderWaterPass.hostMatches(actual,desired.state()))continue;
             if(com.caszgamermd.golemsplus.builder.BuilderBlockInteractions.needsInteraction(actual,desired.state())
                     ||com.caszgamermd.golemsplus.builder.BuilderFluidObstruction.recheck(actual,desired.state())
                     ||actual.isAir()&&!desired.state().isAir()
