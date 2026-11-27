@@ -79,7 +79,7 @@ public final class BuilderPistonWork {
      * just because it is near a piston. */
     public static boolean displacementMatches(ServerLevel level,BlockPos at,BlockState desired,
             Map<BlockPos,BlockState> planned){
-        if(!desired.getFluidState().isEmpty()||desired.isAir()||desired.is(Blocks.PISTON_HEAD)
+        if(!desired.getFluidState().isEmpty()||desired.isAir()||piston(desired)||desired.is(Blocks.PISTON_HEAD)
                 ||!level.hasChunkAt(at))return false;
         if(BuilderPlacementState.matches(level.getBlockState(at),desired))return false;
         for(Direction direction:Direction.values()){
@@ -97,14 +97,21 @@ public final class BuilderPistonWork {
                 boolean plannedHead=first==null||first.is(Blocks.PISTON_HEAD);
                 if(distance==2&&actual.is(Blocks.STICKY_PISTON)
                         &&!actual.getValue(BlockStateProperties.EXTENDED)
-                        &&plannedHead&&wanted.getValue(BlockStateProperties.EXTENDED)
+                        &&plannedHead
                         &&level.getBlockState(at).isAir()
                         &&BuilderPlacementState.matches(level.getBlockState(front),desired))
                     return true;
-                if(!actual.getValue(BlockStateProperties.EXTENDED))continue;
-                BlockState head=level.getBlockState(front);
-                if(!head.is(Blocks.PISTON_HEAD)
-                        ||head.getValue(BlockStateProperties.FACING)!=direction)continue;
+                if(actual.getValue(BlockStateProperties.EXTENDED)){
+                    BlockState head=level.getBlockState(front);
+                    if(!head.is(Blocks.PISTON_HEAD)
+                            ||head.getValue(BlockStateProperties.FACING)!=direction)continue;
+                }else{
+                    // A normal piston retracts without pulling its load back.
+                    // Require a real empty gap and the complete shifted line,
+                    // not merely a matching block somewhere near a piston.
+                    if(!actual.is(Blocks.PISTON)||plannedHead
+                            ||!level.getBlockState(front).isAir())continue;
+                }
                 int start=plannedHead?2:1;
                 if(distance<start)continue;
                 for(int i=start;i<=start+11;i++){
