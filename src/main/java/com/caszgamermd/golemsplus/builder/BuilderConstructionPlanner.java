@@ -658,6 +658,9 @@ public final class BuilderConstructionPlanner {
                     BuildSite.Mirror.values()[table.builderMirror()]);
             if(state==null)continue;
             BlockState actual=world.getBlockState(target);
+            if(!repairingBubbleBase&&step.companion()==null&&table.builderRepairingPaidStep(idx)
+                    &&BuilderPistonWork.displacementMatches(world,target,state.state(),builtSchematic))
+                return new Choice(idx,null,false,true,examined);
             boolean primaryMatches=BuilderPlacementState.matches(
                     actual,state.state())||BuilderChestWork.pendingHalf(world,target,actual,state.state(),builtSchematic);
             if(!primaryMatches&&state.state().getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock
