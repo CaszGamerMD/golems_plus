@@ -17,6 +17,33 @@ import net.minecraft.core.Direction;
 
 /** Both fluid tools are one reusable supply, and a placed crate is virtual. */
 public final class BuilderCreativeCrateFluidGameTest {
+    @GameTest(maxTicks=20,skyAccess=true)
+    public void retractedNormalPistonAcceptsOnlyItsCompleteShiftedLoad(GameTestHelper h){
+        var world=h.getLevel();
+        BlockPos base=h.absolutePos(new BlockPos(3,2,3));
+        var piston=Blocks.PISTON.defaultBlockState()
+                .setValue(BlockStateProperties.FACING,Direction.UP);
+        var concrete=Blocks.LIME_CONCRETE.defaultBlockState();
+        var power=Blocks.REDSTONE_BLOCK.defaultBlockState();
+        var plan=Map.of(base,piston,base.above(),concrete,base.above(2),power);
+        // Fixture represents the settled world after an ordinary piston
+        // pushed two blocks and retracted without pulling either back.
+        world.setBlock(base,piston,2);
+        world.setBlock(base.above(),Blocks.AIR.defaultBlockState(),2);
+        world.setBlock(base.above(2),concrete,2);
+        world.setBlock(base.above(3),power,2);
+        if(!BuilderPistonWork.displacementMatches(world,base.above(),concrete,plan)
+                ||!BuilderPistonWork.displacementMatches(world,base.above(2),power,plan)){
+            h.fail("Complete shifted piston load was rejected");return;
+        }
+        world.setBlock(base.above(3),Blocks.AIR.defaultBlockState(),2);
+        if(BuilderPistonWork.displacementMatches(world,base.above(),concrete,plan)
+                ||BuilderPistonWork.displacementMatches(world,base.above(2),power,plan)){
+            h.fail("Incomplete piston load was incorrectly accepted");return;
+        }
+        h.succeed();
+    }
+
     @GameTest(maxTicks=80,skyAccess=true)
     public void retractedUpwardPistonPlacesAsOneRealBlock(GameTestHelper h){
         var piston=BuilderBlockResolver.resolve(
