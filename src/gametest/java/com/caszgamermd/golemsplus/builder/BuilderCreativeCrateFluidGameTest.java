@@ -23,7 +23,7 @@ public final class BuilderCreativeCrateFluidGameTest {
         BlockPos base=h.absolutePos(new BlockPos(3,2,3));
         var piston=Blocks.PISTON.defaultBlockState()
                 .setValue(BlockStateProperties.FACING,Direction.UP);
-        var concrete=Blocks.LIME_CONCRETE.defaultBlockState();
+        var concrete=Blocks.STONE.defaultBlockState();
         var power=Blocks.REDSTONE_BLOCK.defaultBlockState();
         var plan=Map.of(base,piston,base.above(),concrete,base.above(2),power);
         // Fixture represents the settled world after an ordinary piston
