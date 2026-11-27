@@ -108,7 +108,7 @@ public final class BuilderLayerGateGameTest {
         });
     }
     @GameTest(maxTicks=40,skyAccess=true)
-    public void waterWaitsForDeferredDryWorkAcrossCrew(GameTestHelper helper){
+    public void waterWaitsForAdjacentDryWorkOnly(GameTestHelper helper){
         ServerLevel level=helper.getLevel();
         for(int x=0;x<8;x++)for(int z=0;z<8;z++)helper.setBlock(x,1,z,Blocks.STONE);
         helper.setBlock(0,2,0,WorksiteContent.BUILDER_TABLE);
@@ -120,7 +120,7 @@ public final class BuilderLayerGateGameTest {
         }
         var owner=helper.makeMockServerPlayerInLevel();
         if(!table.claimIfUnowned(owner.getUUID())||!table.setCrewTarget(owner.getUUID(),2)
-                ||!table.setPlacedBuilderPlan(owner.getUUID(),"water-layer-gate.litematic","Water barrier",at,0,0,4,0)
+                ||!table.setPlacedBuilderPlan(owner.getUUID(),"water-neighborhood-gate.litematic","Water barrier",at,0,0,5,0)
                 ||!table.setBuilderMaterialStorage(owner.getUUID(),storage)){
             helper.fail("Could not prepare water barrier");return;
         }
@@ -136,41 +136,49 @@ public final class BuilderLayerGateGameTest {
         int y=at.getY();
         List<BuilderConstructionPlan.Step> steps=List.of(
                 new BuilderConstructionPlan.Step(at.getX()+2,y,at.getZ()+2,"minecraft:stone","minecraft:stone"),
-                new BuilderConstructionPlan.Step(at.getX()+5,y,at.getZ()+5,"minecraft:rail[shape=north_south,waterlogged=false]","minecraft:rail"),
+                new BuilderConstructionPlan.Step(at.getX()+6,y,at.getZ()+6,"minecraft:rail[shape=north_south,waterlogged=false]","minecraft:rail"),
                 new BuilderConstructionPlan.Step(at.getX()+2,y,at.getZ()+3,"minecraft:water[level=0]",BuilderWaterPass.WATER_BUCKET),
-                new BuilderConstructionPlan.Step(at.getX()+3,y,at.getZ()+3,"minecraft:bubble_column[drag=false]",BuilderWaterPass.WATER_BUCKET));
-        List<Integer> az=List.of(0,2,3),bz=List.of(1);
-        if(table.claimBuilderZoneStep(a.getUUID(),az,steps)!=0
-                ||!table.completeBuilderStep(a.getUUID(),0)
-                ||table.builderDryLayerComplete(steps,y)
-                ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=-1){
-            helper.fail("Finished zone released water before crew dry work finished");return;
+                new BuilderConstructionPlan.Step(at.getX()+3,y,at.getZ()+3,"minecraft:bubble_column[drag=false]",BuilderWaterPass.WATER_BUCKET),
+                new BuilderConstructionPlan.Step(at.getX()+3,y+1,at.getZ()+3,"minecraft:stone","minecraft:stone"));
+        List<Integer> az=List.of(0,2,3,4),bz=List.of(1);
+        if(table.builderWaterNeighborsReady(steps,steps.get(2))
+                ||table.builderWaterNeighborsReady(steps,steps.get(3))
+                ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=0){
+            helper.fail("Water unlocked before its own planned neighbor");return;
         }
-        for(int i=0;i<128;i++){
-            if(table.builderDryLayerComplete(steps,y)||table.builderActiveStepIndex(steps)!=1
-                    ||table.builderStepInActivePhase(steps,2)||table.builderStepInActivePhase(steps,3)){
-                helper.fail("Repeated cached queries prematurely unlocked water");return;
-            }
-        }
-        if(!table.postponeStalledBuilderLeaf(steps,1)
-                ||table.builderStepInActivePhase(steps,2)||table.builderStepInActivePhase(steps,3)
-                ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=-1
-                ||table.claimBuilderZoneStep(b.getUUID(),bz,steps)!=1){
-            helper.fail("Deferred rail either unlocked water or became unreachable");return;
-        }
-        if(!table.completeBuilderStep(b.getUUID(),1)||!table.builderDryLayerComplete(steps,y)
-                ||!table.builderStepInActivePhase(steps,2)||!table.builderStepInActivePhase(steps,3)
+        helper.setBlock(2,2,2,Blocks.STONE);
+        if(!table.completeBuilderStep(a.getUUID(),0)
+                ||!table.builderWaterNeighborsReady(steps,steps.get(2))
+                ||!table.builderWaterNeighborsPresent(steps,steps.get(2))
+                ||table.builderWaterNeighborsReady(steps,steps.get(3))
+                ||table.builderStepInActivePhase(steps,3)
+                ||!table.builderStepInActivePhase(steps,2)
                 ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=2){
-            helper.fail("Water remained locked after every dry step finished");return;
+            helper.fail("Distant dry work blocked independent water or upper neighbor was ignored");return;
         }
-        for(int i=0;i<128;i++){
-            if(!table.builderDryLayerComplete(steps,y)||!table.builderStepInActivePhase(steps,2)
-                    ||!table.builderStepInActivePhase(steps,3)){
-                helper.fail("Cached dry counter did not stay open");return;
-            }
+        helper.setBlock(2,2,2,Blocks.AIR);
+        if(table.builderWaterNeighborsPresent(steps,steps.get(2))){
+            helper.fail("Missing paid wall passed the live water guard");return;
         }
-        System.out.println("[BUILDER WATER GATE] PASS cached frontier and crew-wide dry counter");
+        helper.setBlock(2,2,2,Blocks.STONE);
+        if(!table.completeBuilderStep(a.getUUID(),2)
+                ||!table.postponeStalledBuilderLeaf(steps,1)
+                ||table.builderStepInActivePhase(steps,3)
+                ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=4){
+            helper.fail("Blocked water prevented working ahead to its upper dry neighbor");return;
+        }
+        helper.setBlock(3,3,3,Blocks.STONE);
+        if(!table.completeBuilderStep(a.getUUID(),4)
+                ||!table.builderWaterNeighborsReady(steps,steps.get(3))
+                ||!table.builderWaterNeighborsPresent(steps,steps.get(3))
+                ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=3){
+            helper.fail("Adjacent bubble column did not unlock after its own neighbor");return;
+        }
+        if(!table.completeBuilderStep(a.getUUID(),3)
+                ||table.claimBuilderZoneStep(b.getUUID(),bz,steps)!=1){
+            helper.fail("Deferred distant rail was lost");return;
+        }
+        System.out.println("[BUILDER WATER NEIGHBORHOOD] PASS adjacent dry prerequisite, live wall check, upper dependency and independent working ahead");
         helper.succeed();
     }
-
 }

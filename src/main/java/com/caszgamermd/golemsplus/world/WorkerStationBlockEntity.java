@@ -1438,7 +1438,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 if(i>=builderCursor&&!builderFinishedSteps.contains(i)){
                     if(builderWaterStepReady(steps,i))return cachedBuilderFrontier=i;
                     // Do not advance past a blocked water index permanently.
-                    // A dry anchor/attachment can be later in dependency or
+                    // An adjacent dry block can be later in dependency or
                     // deferred order. Work on eligible physical tasks first,
                     // then return to the blocked water when its dry Y is done.
                     for(int p=dependencyPointer+1;p<dependencyOrder.length;p++){
@@ -1477,56 +1477,41 @@ public final class WorkerStationBlockEntity extends BlockEntity
         return active<0?Integer.MAX_VALUE:builderSchedulingLayer(steps,active);
     }
 
-    /** Every physical Y has its own crew-wide dry barrier. A postponed
-     * attachment or an anchor shifted to a later scheduling Y is still
-     * unfinished on its original physical layer. A paired block counts
-     * on both occupied heights. Flow/piston verification is not placement. */
-    private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> dryGatePlan;
-    private UUID dryGateJob;
-    private final java.util.Map<Integer,Integer> dryGateRemaining=new java.util.HashMap<>();
-    private boolean[] dryGatePhysical;
+    // Immutable per-plan adjacency index; no full-layer scan or global
+    // dry counter. Reopened dry cells immediately lock only their neighbors.
+    private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> waterNeighborhoodPlan;
+    private com.caszgamermd.golemsplus.builder.BuilderWaterNeighborhood waterNeighborhood;
     private void invalidateBuilderLayerGate(){
-        dryGatePlan=null;
+        waterNeighborhoodPlan=null;
         cachedBuilderFrontier=BUILDER_FRONTIER_UNKNOWN;
     }
-    private void ensureDryLayerCounts(
+    private com.caszgamermd.golemsplus.builder.BuilderWaterNeighborhood waterNeighborhood(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
-        if(dryGatePlan==steps&&java.util.Objects.equals(dryGateJob,activeOrder))return;
-        dryGatePlan=steps;dryGateJob=activeOrder;dryGateRemaining.clear();
-        dryGatePhysical=new boolean[steps.size()];
-        for(int i=builderCursor;i<steps.size();i++){
-            var step=steps.get(i);
-            if(builderFinishedSteps.contains(i)||step.ignorePlant()
-                    ||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(step.encodedState())
-                    ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(step.encodedState()))continue;
-            dryGatePhysical[i]=true;
-            dryGateRemaining.merge(step.y(),1,Integer::sum);
-            if(step.companion()!=null&&step.companion().y()!=step.y())
-                dryGateRemaining.merge(step.companion().y(),1,Integer::sum);
+        if(waterNeighborhoodPlan!=steps){
+            waterNeighborhoodPlan=steps;
+            waterNeighborhood=new com.caszgamermd.golemsplus.builder.BuilderWaterNeighborhood(steps);
         }
+        return waterNeighborhood;
     }
-    private void finishDryLayerStep(int index){
-        cachedBuilderFrontier=BUILDER_FRONTIER_UNKNOWN;
-        if(dryGatePlan==null||!java.util.Objects.equals(dryGateJob,activeOrder)
-                ||index<0||index>=dryGatePhysical.length||!dryGatePhysical[index])return;
-        dryGatePhysical[index]=false;
-        var step=dryGatePlan.get(index);
-        dryGateRemaining.computeIfPresent(step.y(),(y,count)->count>1?count-1:null);
-        if(step.companion()!=null&&step.companion().y()!=step.y())
-            dryGateRemaining.computeIfPresent(step.companion().y(),(y,count)->count>1?count-1:null);
-    }
-    public boolean builderDryLayerComplete(
-            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,int y){
-        ensureDryLayerCounts(steps);
-        return !dryGateRemaining.containsKey(y);
+    private boolean waterNeighborCompleted(int index){
+        return index<builderCursor||builderFinishedSteps.contains(index);
     }
     private boolean builderWaterStepReady(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,int index){
-        var step=steps.get(index);
-        return step.ignorePlant()
-                ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(step.encodedState())
-                ||!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(step.encodedState())
-                ||builderDryLayerComplete(steps,step.y());
+        return !com.caszgamermd.golemsplus.builder.BuilderWaterNeighborhood.releasesWater(steps.get(index))
+                ||waterNeighborhood(steps).ready(index,this::waterNeighborCompleted);
+    }
+    public boolean builderWaterNeighborsReady(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
+            com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step target){
+        return waterNeighborhood(steps).ready(target,this::waterNeighborCompleted);
+    }
+    public boolean builderWaterNeighborsPresent(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
+            com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step target){
+        return level!=null&&waterNeighborhood(steps).physicallyReady(level,target,
+                com.caszgamermd.golemsplus.builder.BuildSite.Rotation.values()[builderRotation()/90],
+                com.caszgamermd.golemsplus.builder.BuildSite.Mirror.values()[builderMirror()]);
     }
     public boolean builderStepInActivePhase(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
@@ -1541,8 +1526,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 &&(!lateFluidSteps.contains(active)||lateRetryRank.getOrDefault(index,0).equals(lateRetryRank.getOrDefault(active,0)))
                 &&builderAnchorsReady(index)
                 &&builderSchedulingLayer(steps,index)==builderSchedulingLayer(steps,active)
-                &&com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
+                &&(com.caszgamermd.golemsplus.builder.BuilderWaterPass.samePhase(
                         steps.get(index).encodedState(),steps.get(active).encodedState())
+                    // During the dry phase, another hat may release local
+                    // water whose own planned neighbors are already done.
+                    ||!com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(steps.get(active).encodedState())
+                        &&com.caszgamermd.golemsplus.builder.BuilderWaterNeighborhood.releasesWater(steps.get(index)))
                 &&builderWaterStepReady(steps,index);
     }
 
@@ -2031,7 +2020,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             }
         }
         builderFinishedSteps.add(index);
-        finishDryLayerStep(index);
+        cachedBuilderFrontier=BUILDER_FRONTIER_UNKNOWN;
         // Real completed placements update the visible total immediately,
         // even when this is the LAST step and the order closes now.
         if(builderWorkTotal>=0&&!builderAutoSkippedPlants.contains(index))

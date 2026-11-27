@@ -1751,12 +1751,12 @@ public final class BuilderBuildService {
                 }
             }
             final var step=effectiveStep;
-            // An effective bubble repair may target a different physical Y
-            // than its claim. Never release water before that dry layer either.
-            if(BuilderWaterPass.isWaterStep(step.encodedState())
-                    &&!table.builderDryLayerComplete(plan.steps(),step.y())){
+            // The effective bubble repair may target a lower cell than
+            // its claim. Check that cell's own local prerequisites too.
+            if(BuilderWaterNeighborhood.releasesWater(step)
+                    &&!table.builderWaterNeighborsReady(plan.steps(),step)){
                 table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
-                table.setProblem("Water waiting for complete dry layer Y="+step.y());
+                table.setProblem("Water waiting for planned adjacent blocks at "+new BlockPos(step.x(),step.y(),step.z()));
                 return;
             }
             final boolean repairingBubbleBase=step!=claimedStep;
@@ -2730,6 +2730,15 @@ public final class BuilderBuildService {
                         return;
                     }
                 }
+            }
+            // Check live neighbors immediately before an actual water
+            // write, not just the saved completion bits at assignment.
+            if(BuilderWaterNeighborhood.releasesWater(step)
+                    &&(!table.builderWaterNeighborsReady(plan.steps(),step)
+                        ||!table.builderWaterNeighborsPresent(plan.steps(),step))){
+                table.waitForBuilderSupport(worker.getUUID(),index,level.getGameTime());
+                table.setProblem("Water waiting for physical adjacent blocks at "+pos);
+                return;
             }
             BuilderSupplyInventory.Receipt payment=freeHalf||reusableFluid?null:
                     BuilderSupplyInventory.consume(worker,state.item());
