@@ -83,6 +83,7 @@ public final class FisherGolem extends PathfinderMob {
                 .add(Attributes.STEP_HEIGHT,.6)
                 .add(Attributes.FOLLOW_RANGE,34);
     }
+    public static final net.minecraft.network.syncher.EntityDataAccessor<net.minecraft.world.item.ItemStack> BREAK_ROOM_SNACK = net.minecraft.network.syncher.SynchedEntityData.defineId(FisherGolem.class, net.minecraft.network.syncher.EntityDataSerializers.ITEM_STACK);
     @Override protected void defineSynchedData(SynchedEntityData.Builder b){
         super.defineSynchedData(b);
         b.define(HAS_ROD,false);b.define(HAS_CATCH,false);
@@ -91,6 +92,8 @@ public final class FisherGolem extends PathfinderMob {
         b.define(CASTING,false);b.define(REELING,false);
         b.define(CAST_TARGET,BlockPos.ZERO);
         b.define(BREAK_ROOM_STATE,0);
+
+        b.define(BREAK_ROOM_SNACK,net.minecraft.world.item.ItemStack.EMPTY);
     }
     @Override protected void registerGoals(){}
     public void assign(BlockPos at,UUID who){home=at.immutable();owner=who;

@@ -6,8 +6,10 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.*;
 import net.minecraft.world.level.block.*;
 import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
+import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 public final class BreakRoomContent {
  public static Block CHAIR,TABLE,SNACK_MACHINE,ARCADE;
+ public static net.minecraft.world.level.block.entity.BlockEntityType<SnackMachineBlockEntity> SNACK_MACHINE_ENTITY;
  private static Block register(String id){
   var key=ResourceKey.create(Registries.BLOCK,GolemsPlus.id(id));
   var block=Registry.register(BuiltInRegistries.BLOCK,key,new BreakRoomBlock(Block.Properties.ofFullCopy(Blocks.OAK_PLANKS).strength(2).noOcclusion().setId(key),id));
@@ -18,6 +20,7 @@ public final class BreakRoomContent {
  public static boolean furniture(Block block){return block instanceof BreakRoomBlock;}
  public static void initialize(){
   CHAIR=register("break_room_chair");TABLE=register("break_room_table");SNACK_MACHINE=register("golem_snack_machine");ARCADE=register("golem_arcade");
+  SNACK_MACHINE_ENTITY=Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE,GolemsPlus.id("snack_machine"),FabricBlockEntityTypeBuilder.create(SnackMachineBlockEntity::new,SNACK_MACHINE).build());
   CreativeModeTabEvents.modifyOutputEvent(ResourceKey.create(Registries.CREATIVE_MODE_TAB,GolemsPlus.id("main"))).register(out->{for(var block:new Block[]{CHAIR,TABLE,SNACK_MACHINE,ARCADE})out.accept(block);});
   GolemBreakService.initialize();
  }
