@@ -146,6 +146,12 @@ public final class BuilderLayerGateGameTest {
                 ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=-1){
             helper.fail("Finished zone released water before crew dry work finished");return;
         }
+        for(int i=0;i<128;i++){
+            if(table.builderDryLayerComplete(steps,y)||table.builderActiveStepIndex(steps)!=1
+                    ||table.builderStepInActivePhase(steps,2)||table.builderStepInActivePhase(steps,3)){
+                helper.fail("Repeated cached queries prematurely unlocked water");return;
+            }
+        }
         if(!table.postponeStalledBuilderLeaf(steps,1)
                 ||table.builderStepInActivePhase(steps,2)||table.builderStepInActivePhase(steps,3)
                 ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=-1
@@ -157,6 +163,13 @@ public final class BuilderLayerGateGameTest {
                 ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=2){
             helper.fail("Water remained locked after every dry step finished");return;
         }
+        for(int i=0;i<128;i++){
+            if(!table.builderDryLayerComplete(steps,y)||!table.builderStepInActivePhase(steps,2)
+                    ||!table.builderStepInActivePhase(steps,3)){
+                helper.fail("Cached dry counter did not stay open");return;
+            }
+        }
+        System.out.println("[BUILDER WATER GATE] PASS cached frontier and crew-wide dry counter");
         helper.succeed();
     }
 

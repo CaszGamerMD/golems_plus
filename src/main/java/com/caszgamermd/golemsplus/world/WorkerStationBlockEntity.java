@@ -693,6 +693,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderMaterialRules.clear();builderMaterialRules.putAll(selected.materialRules());
         builderStartY=selected.startY();builderHeightMode=selected.heightMode();
         builderRuleRevision++;
+        invalidateBuilderLayerGate();
         builderPlaced=true;completedAhead=0;builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
         builderProgressPlan=null;
@@ -729,6 +730,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderRequired.clear();builderRemaining.clear();
             builderWarehouseStock.clear();builderStagedStock.clear();
             builderStockChecked=false;builderWarehouseName="";
+            invalidateBuilderLayerGate();
             builderClaims.clear();completedAhead=0;phase=WorkerPhase.IDLE;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
             builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
             builderProgressPlan=null;
@@ -1105,6 +1107,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
     private final java.util.Map<Integer,Integer> anchorRepairAttempts=new java.util.HashMap<>();
     private UUID dependencyJob;
     private int dependencyPointer,dependencyCursor=-1;
+    // Many workers inspect thousands of candidates against the same
+    // frontier. Resolve it only once per progress/schedule change.
+    private static final int BUILDER_FRONTIER_UNKNOWN=-2;
+    private int cachedBuilderFrontier=BUILDER_FRONTIER_UNKNOWN;
     private UUID lateFluidJob;
     private final java.util.Set<Integer> lateFluidSteps=new java.util.HashSet<>();
     private final java.util.Map<Integer,Integer> lateRetryRank=new java.util.HashMap<>();
@@ -1146,10 +1152,12 @@ public final class WorkerStationBlockEntity extends BlockEntity
             anchorGraphs.clear();anchorGraphJob=activeOrder;dependencyPlan=null;
         }
         if(dependencyPlan==steps&&java.util.Objects.equals(dependencyJob,activeOrder)){
-            if(builderCursor<dependencyCursor){dependencyPointer=0;dependencyCursor=builderCursor;}
+            if(builderCursor<dependencyCursor){dependencyPointer=0;dependencyCursor=builderCursor;
+                cachedBuilderFrontier=BUILDER_FRONTIER_UNKNOWN;}
             return;
         }
         dependencyPlan=steps;dependencyJob=activeOrder;dependencyCursor=builderCursor;dependencyPointer=0;
+        cachedBuilderFrontier=BUILDER_FRONTIER_UNKNOWN;
         dependencyLayers=null;dependencyOrder=null;dependencyAnchors=null;dependencyDemand=null;
         if(steps==null||!(level instanceof net.minecraft.server.level.ServerLevel server))return;
         var graph=anchorGraphs.get(steps);
@@ -1212,6 +1220,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         int restart=reopen.stream().mapToInt(Integer::intValue).min().orElse(previous);
         for(int i=restart;i<previous;i++)if(!reopen.contains(i))builderFinishedSteps.add(i);
         builderCursor=Math.min(previous,restart);
+        invalidateBuilderLayerGate();
         builderFinishedSteps.removeAll(reopen);
         for(int a:reopen)anchorRepairAttempts.merge(a,1,Integer::sum);
         builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderMissingRetries.clear();
@@ -1384,6 +1393,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         int restart=reopen.stream().mapToInt(Integer::intValue).min().orElse(previous);
         for(int i=restart;i<previous;i++)if(!reopen.contains(i))builderFinishedSteps.add(i);
         builderCursor=Math.min(previous,restart);
+        invalidateBuilderLayerGate();
         builderFinishedSteps.removeAll(reopen);
         for(int i:reopen){completedRepairAttempts.merge(i,1,Integer::sum);lateFluidSteps.remove(i);lateRetryRank.remove(i);builderMissingRetries.remove(i);}
         // Keep unrelated stocked batches and live claims. Normal active
@@ -1420,12 +1430,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
         if(steps==null||builderCursor<0||builderCursor>=steps.size())return -1;
         ensureDependencySchedule(steps);
         if(dependencyOrder!=null){
+            if(cachedBuilderFrontier!=BUILDER_FRONTIER_UNKNOWN)return cachedBuilderFrontier;
             if(builderCursor<dependencyCursor)dependencyPointer=0;
             dependencyCursor=builderCursor;
             while(dependencyPointer<dependencyOrder.length){
                 int i=dependencyOrder[dependencyPointer];
                 if(i>=builderCursor&&!builderFinishedSteps.contains(i)){
-                    if(builderWaterStepReady(steps,i))return i;
+                    if(builderWaterStepReady(steps,i))return cachedBuilderFrontier=i;
                     // Do not advance past a blocked water index permanently.
                     // A dry anchor/attachment can be later in dependency or
                     // deferred order. Work on eligible physical tasks first,
@@ -1435,13 +1446,13 @@ public final class WorkerStationBlockEntity extends BlockEntity
                         if(candidate<builderCursor||builderFinishedSteps.contains(candidate)
                                 ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(candidate).encodedState())
                                 ||!builderWaterStepReady(steps,candidate))continue;
-                        return candidate;
+                        return cachedBuilderFrontier=candidate;
                     }
-                    return -1;
+                    return cachedBuilderFrontier=-1;
                 }
                 dependencyPointer++;
             }
-            return -1;
+            return cachedBuilderFrontier=-1;
         }
         if(!com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(
                 steps.get(builderCursor).encodedState()))return builderCursor;
@@ -1471,24 +1482,43 @@ public final class WorkerStationBlockEntity extends BlockEntity
      * unfinished on its original physical layer. A paired block counts
      * on both occupied heights. Flow/piston verification is not placement. */
     private java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> dryGatePlan;
-    private final java.util.Map<Integer,java.util.List<Integer>> dryGateByY=new java.util.HashMap<>();
+    private UUID dryGateJob;
+    private final java.util.Map<Integer,Integer> dryGateRemaining=new java.util.HashMap<>();
+    private boolean[] dryGatePhysical;
+    private void invalidateBuilderLayerGate(){
+        dryGatePlan=null;
+        cachedBuilderFrontier=BUILDER_FRONTIER_UNKNOWN;
+    }
+    private void ensureDryLayerCounts(
+            java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps){
+        if(dryGatePlan==steps&&java.util.Objects.equals(dryGateJob,activeOrder))return;
+        dryGatePlan=steps;dryGateJob=activeOrder;dryGateRemaining.clear();
+        dryGatePhysical=new boolean[steps.size()];
+        for(int i=builderCursor;i<steps.size();i++){
+            var step=steps.get(i);
+            if(builderFinishedSteps.contains(i)||step.ignorePlant()
+                    ||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(step.encodedState())
+                    ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(step.encodedState()))continue;
+            dryGatePhysical[i]=true;
+            dryGateRemaining.merge(step.y(),1,Integer::sum);
+            if(step.companion()!=null&&step.companion().y()!=step.y())
+                dryGateRemaining.merge(step.companion().y(),1,Integer::sum);
+        }
+    }
+    private void finishDryLayerStep(int index){
+        cachedBuilderFrontier=BUILDER_FRONTIER_UNKNOWN;
+        if(dryGatePlan==null||!java.util.Objects.equals(dryGateJob,activeOrder)
+                ||index<0||index>=dryGatePhysical.length||!dryGatePhysical[index])return;
+        dryGatePhysical[index]=false;
+        var step=dryGatePlan.get(index);
+        dryGateRemaining.computeIfPresent(step.y(),(y,count)->count>1?count-1:null);
+        if(step.companion()!=null&&step.companion().y()!=step.y())
+            dryGateRemaining.computeIfPresent(step.companion().y(),(y,count)->count>1?count-1:null);
+    }
     public boolean builderDryLayerComplete(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,int y){
-        if(dryGatePlan!=steps){
-            dryGatePlan=steps;dryGateByY.clear();
-            for(int i=0;i<steps.size();i++){
-                var step=steps.get(i);
-                if(step.ignorePlant()
-                        ||com.caszgamermd.golemsplus.builder.BuilderWaterPass.isWaterStep(step.encodedState())
-                        ||com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(step.encodedState()))continue;
-                dryGateByY.computeIfAbsent(step.y(),k->new java.util.ArrayList<>()).add(i);
-                if(step.companion()!=null&&step.companion().y()!=step.y())
-                    dryGateByY.computeIfAbsent(step.companion().y(),k->new java.util.ArrayList<>()).add(i);
-            }
-        }
-        for(int i:dryGateByY.getOrDefault(y,java.util.List.of()))
-            if(i>=builderCursor&&!builderFinishedSteps.contains(i))return false;
-        return true;
+        ensureDryLayerCounts(steps);
+        return !dryGateRemaining.containsKey(y);
     }
     private boolean builderWaterStepReady(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,int index){
@@ -1501,8 +1531,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public boolean builderStepInActivePhase(
             java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step> steps,
             int index){
+        if(index<builderCursor||index>=steps.size())return false;
         int active=builderActiveStepIndex(steps);
-        if(active>=0&&index>=builderCursor&&index<steps.size()
+        if(active>=0
                 &&com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(active).encodedState()))
             return com.caszgamermd.golemsplus.builder.BuilderDeferredState.verification(steps.get(index).encodedState())&&builderAnchorsReady(index);
         return active>=0&&index>=builderCursor&&index<steps.size()
@@ -1799,6 +1830,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             for(int i=restart;i<oldCursor;i++)
                 if(!reopened.contains(i))builderFinishedSteps.add(i);
             builderCursor=Math.min(builderCursor,restart);
+            invalidateBuilderLayerGate();
             builderFinishedSteps.removeAll(reopened);
             builderAutoSkippedPlants.removeAll(reopened);
             builderClaims.clear();builderWorkOrders.clear();
@@ -1831,6 +1863,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 &&builderFinishedSteps.remove(builderCursor))
             builderCursor++;
         changed|=previousCursor!=builderCursor;
+        if(changed)invalidateBuilderLayerGate();
         int finishedSize=builderFinishedSteps.size();
         if(changed||builderProgressPlan!=steps
                 ||builderProgressCursor!=builderCursor
@@ -1863,6 +1896,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             phase=WorkerPhase.COMPLETE;activeOrder=null;
             if(supplyRequest!=null)builderCancelShipment=true;
             builderClaims.clear();builderWorkOrders.clear();
+            invalidateBuilderLayerGate();
             builderPreparedOrders.clear();builderFinishedSteps.clear();
             changed=true;
         }
@@ -1914,6 +1948,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         int restart=reopen.stream().mapToInt(Integer::intValue).min().orElse(previous);
         for(int i=restart;i<previous;i++)if(!reopen.contains(i))builderFinishedSteps.add(i);
         builderCursor=Math.min(previous,restart);
+        invalidateBuilderLayerGate();
         builderFinishedSteps.removeAll(reopen);
         for(int i:reopen){lateFluidSteps.remove(i);lateRetryRank.remove(i);}
         builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderMissingRetries.clear();
@@ -1973,6 +2008,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         commissioningJob=activeOrder;commissioning=true;
         for(int i:reopen){lateFluidSteps.remove(i);lateRetryRank.remove(i);}
         builderCursor=reopen.stream().mapToInt(Integer::intValue).min().orElse(builderBlocks);
+        invalidateBuilderLayerGate();
         builderFinishedSteps.clear();
         for(int i=builderCursor;i<builderBlocks;i++)if(!reopen.contains(i))builderFinishedSteps.add(i);
         builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderMissingRetries.clear();
@@ -1995,6 +2031,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             }
         }
         builderFinishedSteps.add(index);
+        finishDryLayerStep(index);
         // Real completed placements update the visible total immediately,
         // even when this is the LAST step and the order closes now.
         if(builderWorkTotal>=0&&!builderAutoSkippedPlants.contains(index))
@@ -2005,6 +2042,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             if(supplyRequest!=null)builderCancelShipment=true;
             builderClaims.clear();
             builderWorkOrders.clear();builderPreparedOrders.clear();
+            invalidateBuilderLayerGate();
             builderFinishedSteps.clear();
         }
         // Persist every completed position immediately, but publish the
@@ -2118,6 +2156,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClearClaims.clear();builderClearClaimTick.clear();
         builderClearVerified.clear();
         builderMissingRetries.clear();
+        invalidateBuilderLayerGate();
         builderClaims.clear();builderPlaced=true;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         builderRequired.clear();builderRemaining.clear();
         builderWarehouseStock.clear();builderStockChecked=false;
@@ -2140,6 +2179,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderClearClaims.clear();builderClearClaimTick.clear();
         builderClearVerified.clear();
         builderMissingRetries.clear();
+        invalidateBuilderLayerGate();
         builderClaims.clear();builderRecallRequested=false;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         builderAutoSkippedPlants.clear();builderWorkTotal=-1;builderWorkDone=-1;
         builderProgressPlan=null;
@@ -2147,7 +2187,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     }
     public void advanceBuilder(){
         if(builderCursor<builderBlocks){
-            builderCursor++;setChanged();
+            builderCursor++;invalidateBuilderLayerGate();setChanged();
             if(builderCursor>=builderBlocks){
                 phase=WorkerPhase.COMPLETE;activeOrder=null;
                 if(supplyRequest!=null)builderCancelShipment=true;
@@ -2158,6 +2198,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
     public void setBuilderWorkerId(UUID id){builderWorkerId=id;sync();}
     public boolean cancelBuilder(UUID actor){
         if(!canConfigure(actor)||!isBuilder())return false;
+        invalidateBuilderLayerGate();
         activeOrder=null;builderClaims.clear();completedAhead=0;builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         builderRecallRequested=true;
         builderCancelShipment=supplyRequest!=null;
@@ -2168,6 +2209,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 ||blocks<0||unresolved<0||activeOrder!=null)return false;
         builderFile=filename;builderBlocks=blocks;builderUnresolved=unresolved;
         builderPlaced=false;placedSchematicName="";builderCursor=0;
+        invalidateBuilderLayerGate();
         completedAhead=0;builderClaims.clear();builderWorkOrders.clear();builderPreparedOrders.clear();builderFinishedSteps.clear();
         phase=WorkerPhase.PLANNING;sync();return true;
     }
@@ -2908,6 +2950,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             if(id!=null&&pos!=null&&builderWorkerIds().contains(id))
                 builderLastPositions.put(id,pos.immutable());
         }
+        invalidateBuilderLayerGate();
         builderFinishedSteps.clear();
         for(int d=0,n=Math.clamp(in.getIntOr("builder_done_count",0),0,80);
                 d<n;d++){
