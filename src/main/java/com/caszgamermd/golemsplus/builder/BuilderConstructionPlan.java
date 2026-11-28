@@ -70,6 +70,12 @@ public final class BuilderConstructionPlan {
                 pairedSecondaries.add(where);
             }
         }
+        // Registry/state parsing is identical for repeated palette states.
+        // Cache successes AND unsupported states per immutable transform.
+        var resolvedStates=new HashMap<String,java.util.Optional<BuilderBlockResolver.Resolved>>();
+        java.util.function.Function<String,BuilderBlockResolver.Resolved> resolve=state->
+                resolvedStates.computeIfAbsent(state,key->java.util.Optional.ofNullable(
+                        BuilderBlockResolver.resolve(key,site.rotation(),site.mirror()))).orElse(null);
         for(var b:blocks){
             if(pairedSecondaries.contains(BuilderMultiblock.cell(b)))continue;
             boolean incompletePair=(BuilderMultiblock.isPrimary(b.state())
@@ -85,9 +91,8 @@ public final class BuilderConstructionPlan {
             boolean verifyFlow=BuilderDeferredState.flowing(dry);
             if(pistonBases.contains(BuilderMultiblock.cell(b)))dry=BuilderPistonWork.neutral(dry);
             var resolved=ignored||incompletePair?null:
-                    BuilderBlockResolver.resolve(dry,site.rotation(),site.mirror());
-            if(waterlogged&&BuilderBlockResolver.resolve(b.state(),
-                    site.rotation(),site.mirror())==null)resolved=null;
+                    resolve.apply(dry);
+            if(waterlogged&&resolve.apply(b.state())==null)resolved=null;
             var world=site.locate(new BuilderMaterialPlan.Placement(
                     b.x(),b.y(),b.z(),b.state(),resolved==null?null:
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(resolved.item()).toString()));

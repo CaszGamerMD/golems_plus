@@ -107,6 +107,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
             new java.util.HashSet<>();
     private transient java.util.List<com.caszgamermd.golemsplus.builder.BuilderConstructionPlan.Step>
             builderProgressPlan;
+    private transient long builderProgressScanTick=Long.MIN_VALUE;
     private transient int builderProgressCursor=-1,builderProgressFinished=-1,
             builderProgressIgnored=-1;
     // Separate claims let eight Builders clear different schematic cells
@@ -1773,6 +1774,14 @@ public final class WorkerStationBlockEntity extends BlockEntity
                 &&builderProgressFinished==builderFinishedSteps.size()
                 &&builderProgressIgnored==builderAutoSkippedPlants.size()
                 &&builderWorkTotal>=0)return;
+        // Actual placement increments the visible total immediately. Avoid
+        // scanning hundreds of thousands of cells once per worker tick.
+        long now=level==null?0:level.getGameTime();
+        if(steps.size()>100_000&&builderProgressPlan==steps&&activeOrder!=null
+                &&builderCursor<builderBlocks&&builderWorkTotal>=0
+                &&builderProgressScanTick!=Long.MIN_VALUE
+                &&now>=builderProgressScanTick&&now-builderProgressScanTick<20)return;
+        builderProgressScanTick=now;
         int required=0,completed=0;
         for(int i=0;i<steps.size();i++){
             if(steps.get(i).ignorePlant())continue;
@@ -2605,8 +2614,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         var ignoredBits=new java.util.BitSet();
         for(int index:builderAutoSkippedPlants)
             if(index>=0&&index<builderBlocks)ignoredBits.set(index);
-        out.putString("builder_auto_ignored_bits_v1",
-                java.util.Base64.getEncoder().encodeToString(ignoredBits.toByteArray()));
+        writeBuilderProgressBits(out,"builder_auto_ignored_bits_v1",ignoredBits);
         if(builderWorkerId!=null)out.putString("builder_worker",builderWorkerId.toString());
         out.putInt("trader_extra_workers",Math.min(3,additionalTraderWorkers.size()));
         for(int n=0;n<additionalTraderWorkers.size()&&n<3;n++)
@@ -2637,8 +2645,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
         for(int done:builderFinishedSteps)
             if(done>=builderCursor&&done<builderBlocks)
                 finishedBits.set(done-builderCursor);
-        out.putString("builder_finished_bits_v2",java.util.Base64.getEncoder()
-                .encodeToString(finishedBits.toByteArray()));
+        writeBuilderProgressBits(out,"builder_finished_bits_v2",finishedBits);
         out.putInt("builder_done_count",Math.min(80,builderFinishedSteps.size()));
         int doneIndex=0;
         for(int done:builderFinishedSteps){
@@ -2709,6 +2716,22 @@ public final class WorkerStationBlockEntity extends BlockEntity
             out.putInt("warehouse_z",warehouse.z());
         }
         ContainerHelper.saveAllItems(out,items);
+    }
+    // Old saves contain one base64 string. New large jobs use numbered
+    // chunks, each comfortably below NBT's modified-UTF string limit.
+    private static void writeBuilderProgressBits(ValueOutput out,String key,java.util.BitSet bits){
+        var parts=com.caszgamermd.golemsplus.builder.BuilderProgressBits.encode(bits);
+        out.putInt(key+"_parts",parts.size());
+        for(int i=0;i<parts.size();i++)out.putString(key+"_part_"+i,parts.get(i));
+        if(parts.size()<=1)out.putString(key,parts.isEmpty()?"":parts.get(0));
+    }
+    private static java.util.BitSet readBuilderProgressBits(ValueInput in,String key){
+        int count=in.getIntOr(key+"_parts",-1);
+        if(count<0)return com.caszgamermd.golemsplus.builder.BuilderProgressBits.decodeLegacy(in.getStringOr(key,""));
+        if(count>com.caszgamermd.golemsplus.builder.BuilderProgressBits.MAX_PARTS)return new java.util.BitSet();
+        var parts=new java.util.ArrayList<String>(count);
+        for(int i=0;i<count;i++)parts.add(in.getStringOr(key+"_part_"+i,""));
+        return com.caszgamermd.golemsplus.builder.BuilderProgressBits.decode(parts);
     }
     private static UUID uuid(ValueInput in,String field){
         try{return UUID.fromString(in.getStringOr(field,""));}
@@ -2899,14 +2922,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
         builderWorkDone=in.getIntOr("builder_work_done",-1);
         builderProgressPlan=null;
         builderAutoSkippedPlants.clear();
-        String ignoredEncoded=in.getStringOr("builder_auto_ignored_bits_v1","");
-        if(!ignoredEncoded.isBlank()&&ignoredEncoded.length()<=18000)try{
-            var bits=java.util.BitSet.valueOf(
-                    java.util.Base64.getDecoder().decode(ignoredEncoded));
-            for(int bit=bits.nextSetBit(0);bit>=0&&bit<builderBlocks;
-                    bit=bits.nextSetBit(bit+1))
-                builderAutoSkippedPlants.add(bit);
-        }catch(IllegalArgumentException ignored){}
+        var ignoredBits=readBuilderProgressBits(in,"builder_auto_ignored_bits_v1");
+        for(int bit=ignoredBits.nextSetBit(0);bit>=0&&bit<builderBlocks;
+                bit=ignoredBits.nextSetBit(bit+1))
+            builderAutoSkippedPlants.add(bit);
         builderClearCursor=Math.max(0,in.getIntOr("builder_clear_cursor",
                 builderClearByFile.getOrDefault(builderFile,0)));
         builderClearClaims.clear();builderClearClaimTick.clear();
@@ -2947,14 +2966,10 @@ public final class WorkerStationBlockEntity extends BlockEntity
             if(finished>=builderCursor&&finished<builderCursor+80)
                 builderFinishedSteps.add(finished);
         }
-        String encodedFinished=in.getStringOr("builder_finished_bits_v2","");
-        if(!encodedFinished.isBlank()&&encodedFinished.length()<=18000)try{
-            var bits=java.util.BitSet.valueOf(
-                    java.util.Base64.getDecoder().decode(encodedFinished));
-            for(int bit=bits.nextSetBit(0);bit>=0&&
-                    bit<builderBlocks-builderCursor;bit=bits.nextSetBit(bit+1))
-                builderFinishedSteps.add(builderCursor+bit);
-        }catch(IllegalArgumentException ignored){}
+        var finishedBits=readBuilderProgressBits(in,"builder_finished_bits_v2");
+        for(int bit=finishedBits.nextSetBit(0);bit>=0&&
+                bit<builderBlocks-builderCursor;bit=finishedBits.nextSetBit(bit+1))
+            builderFinishedSteps.add(builderCursor+bit);
         // Migrates saved 0.3.40-era ahead bits without losing completed
         // physical block placements when upgrading an active world.
         long legacyAhead=in.getLongOr("builder_ahead_bits",0L);
