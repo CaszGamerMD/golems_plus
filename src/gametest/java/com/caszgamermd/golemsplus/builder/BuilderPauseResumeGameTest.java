@@ -75,7 +75,8 @@ public final class BuilderPauseResumeGameTest {
                 h.fail("Pause fixture refused start");return;
             }
             UUID job=table.activeOrder();
-            int[] stage={0},pausedBuilt={0},parkTick={-1},pausedCursor={0};
+            int[] stage={0},pausedBuilt={0},pausedCursor={0};
+            long[] parkTick={-1};
             h.onEachTick(()->{
                 int built=(int)targets.stream().filter(p->level.getBlockState(p).is(Blocks.SMOOTH_STONE)).count();
                 int carried=worker.carriedCount(Items.SMOOTH_STONE);
