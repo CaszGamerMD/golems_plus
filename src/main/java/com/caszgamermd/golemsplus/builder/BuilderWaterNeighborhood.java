@@ -8,7 +8,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
 /** A local water barrier, independent of work zones and scheduling Y.
- * Only planned physical dry cells are prerequisites. Planned air,
+ * Only planned physical dry cells on the four sides and below are prerequisites.
+ * Overhead blocks never gate water placement. Planned air,
  * generated piston heads and other fluid actions cannot create cycles.
  * Waterlogged hosts use their separate dry placement step. */
 public final class BuilderWaterNeighborhood {
@@ -36,8 +37,9 @@ public final class BuilderWaterNeighborhood {
     }
     private List<Neighbor> neighbors(BuilderConstructionPlan.Step step){
         BlockPos pos=new BlockPos(step.x(),step.y(),step.z());
-        var result=new ArrayList<Neighbor>(7);
+        var result=new ArrayList<Neighbor>(6);
         for(Direction side:Direction.values()){
+            if(side==Direction.UP)continue;
             BlockPos adjacent=pos.relative(side);
             DryCell cell=dry.get(adjacent);
             if(cell!=null)result.add(new Neighbor(adjacent,cell));
