@@ -19,7 +19,11 @@ assert "footprint.contains(step,workerZone,activeCount)" in station
 assert "step.y()" in station
 assert "order.size()<10" in station
 assert 'builder_finished_bits_v2' in station
-assert 'java.util.BitSet.valueOf(' in station
+progress=(server/"builder/BuilderProgressBits.java").read_text()
+assert 'java.util.BitSet' in station
+assert 'BitSet.valueOf(' in progress
+assert 'readBuilderProgressBits(in,"builder_finished_bits_v2")' in station
+assert 'writeBuilderProgressBits(out,"builder_finished_bits_v2",finishedBits)' in station
 assert "builderCursor+bit" in station
 assert "var assigned=zoneSchedule(table,plan)" in build
 assert "assigned.tasks().steps(worker.getUUID())" in build

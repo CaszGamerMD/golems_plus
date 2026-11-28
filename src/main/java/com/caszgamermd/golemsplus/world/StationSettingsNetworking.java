@@ -252,7 +252,12 @@ public final class StationSettingsNetworking {
                 }
             }
             case "builder_resume" -> {
-                if(table.isBuilder()&&table.activeOrder()!=null){
+                if(table.isBuilder()&&table.activeOrder()!=null&&table.phase()==WorkerPhase.PAUSED){
+                    if(!com.caszgamermd.golemsplus.builder.BuilderBuildService.canResumePausedBuild(
+                            (net.minecraft.server.level.ServerLevel)player.level(),table)){
+                        reply(player,"Still paused: wait for every assigned Builder to return and empty its cargo, "
+                                +"and for the warehouse cancellation to finish. Then Resume again.");return;
+                    }
                     table.setPhase(WorkerPhase.WORKING);done=true;
                 }
             }

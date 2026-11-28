@@ -120,6 +120,11 @@ public final class BuilderWarehouseCoordinator {
     public static Cancellation cancelShipmentDetailed(ServerLevel level,
             WorkerStationBlockEntity table){
         if(table.supplyRequest()==null)return new Cancellation(true,"CANCELLED");
+        // During a pause, an unloaded courier may still own a real shulker.
+        // Do not cancel its ticket before the physical crew is accounted for.
+        if(table.phase()==com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED
+                &&!BuilderBuildService.pausedCrewParked(level,table))
+            return new Cancellation(false,"PAUSED_CREW_RETURNING");
         // A courier with a real shulker must deposit it at OnSite Storage
         // before the warehouse ticket can be forgotten.
         for(UUID id:table.builderWorkerIds())
@@ -148,6 +153,7 @@ public final class BuilderWarehouseCoordinator {
 
     public static String cancellationExplanation(String reason){
         return switch(reason){
+            case "PAUSED_CREW_RETURNING" -> "waiting for all assigned Builders to park and unload";
             case "COURIER_RETURNING_SHULKER" ->
                     "Builder courier is returning a real shulker to OnSite Storage";
             case "WAREHOUSE_LINK_INVALID" ->

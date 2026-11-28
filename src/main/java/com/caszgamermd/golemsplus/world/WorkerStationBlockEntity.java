@@ -2304,6 +2304,9 @@ public final class WorkerStationBlockEntity extends BlockEntity
             builderWorkOrders.clear();
             builderPreparedOrders.clear();
             builderMissingRetries.clear();
+            invalidateBuilderLayerGate();
+            // Let the existing cancellation protocol drain physical cargo.
+            if(supplyRequest!=null)builderCancelShipment=true;
         }
         // Completion must also close the persisted job UUID: returning
         // workers cannot recycle while a phantom activeOrder survives.

@@ -845,6 +845,26 @@ public final class BuilderBuildService {
             return false;
         }
     }
+    /** Recomputed from live entities, not an in-memory or saved acknowledgement. */
+    public static boolean pausedCrewParked(ServerLevel level,WorkerStationBlockEntity table){
+        BlockPos depot=table.builderUnloadingStorage();
+        if(depot==null)depot=table.getBlockPos();
+        for(UUID id:table.builderWorkerIds()){
+            if(!(level.getEntity(id) instanceof BuilderGolem worker)
+                    ||!table.getBlockPos().equals(worker.home())
+                    ||table.owner()==null||!table.owner().equals(worker.owner())
+                    ||!atOnSite(level,worker,depot)||!worker.onGround()||worker.isNoGravity()
+                    ||BuilderGrappleAccess.active(worker)||BuilderScaffolding.isControllingMovement(worker)
+                    ||BuilderScaffoldPlanA.hasPlan(worker)||BuilderFlight.moving(worker)
+                    ||worker.hasSupplyBox()||!worker.isEmpty()||worker.hasRecoveredDrops())return false;
+        }
+        return true;
+    }
+    public static boolean canResumePausedBuild(ServerLevel level,WorkerStationBlockEntity table){
+        return table.phase()==WorkerPhase.PAUSED&&table.activeOrder()!=null
+                &&!table.builderWorkerIds().isEmpty()&&table.supplyRequest()==null
+                &&!table.builderCancelShipment()&&pausedCrewParked(level,table);
+    }
     static boolean parkAtOnSite(ServerLevel level,BuilderGolem worker,
             WorkerStationBlockEntity table){
         BlockPos depot=table.builderUnloadingStorage();
@@ -1086,11 +1106,12 @@ public final class BuilderBuildService {
                 table.updateBuilderWarehouseName("");
             }
         }
-        BuilderWarehouseCoordinator.pollTable(level,table);
+        if(table.phase()!=WorkerPhase.PAUSED)BuilderWarehouseCoordinator.pollTable(level,table);
         // Keep already-queued warehouse work in sync with the real on-site
         // ledger. Cancel only via the warehouse's safe physical cargo
         // contract, never erase existing packing or carried shulkers.
         if(table.isBuilder()&&table.activeOrder()!=null
+                &&table.phase()!=WorkerPhase.PAUSED
                 &&table.supplyRequest()!=null&&!table.builderCancelShipment()
                 &&level.getGameTime()%40==0)
             BuilderWarehouseCoordinator.reconcileTicket(level,table);
@@ -1155,7 +1176,8 @@ public final class BuilderBuildService {
             }catch(Exception recoveryError){
                 table.setProblem("Crew recovery plan unavailable: "+recoveryError.getMessage());
             }
-        }else if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE)
+        }else if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE
+                ||table.phase()==WorkerPhase.PAUSED)
             BuilderCrewRecovery.clear(table);
         if(BuilderFlight.enabled(worker)&&BuilderFlight.moving(worker))return;
         // PAUSED is a recall order, not a freeze wherever the Builder

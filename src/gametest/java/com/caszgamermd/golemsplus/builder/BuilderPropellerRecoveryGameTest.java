@@ -11,6 +11,34 @@ import net.minecraft.world.phys.Vec3;
 
 /** Isolated recovery fixture: no neighboring long test builds. */
 public final class BuilderPropellerRecoveryGameTest {
+    @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=20,skyAccess=true)
+    public void pauseRetainsJobAndRejectsMissingCrew(GameTestHelper h){
+        var level=h.getLevel();
+        h.setBlock(4,2,4,WorksiteContent.BUILDER_TABLE);
+        h.setBlock(5,2,4,Blocks.CHEST);
+        BlockPos station=h.absolutePos(new BlockPos(4,2,4));
+        BlockPos depot=h.absolutePos(new BlockPos(5,2,4));
+        if(!(level.getBlockEntity(station) instanceof com.caszgamermd.golemsplus.world.WorkerStationBlockEntity table)){
+            h.fail("Missing pause Planner");return;
+        }
+        var id=h.makeMockServerPlayerInLevel().getUUID();
+        var absent=java.util.UUID.randomUUID();
+        if(!table.claimIfUnowned(id)||!table.setCrewTarget(id,1)
+                ||!table.setPlacedBuilderPlan(id,"placed-pause-fixture.gpb","Pause",station,0,0,327_441,0)
+                ||!table.setBuilderMaterialStorage(id,depot)||!table.registerBuilderWorker(absent)
+                ||!table.startPlacedBuilder(id)){
+            h.fail("Pause job setup refused");return;
+        }
+        var job=table.activeOrder();
+        table.advanceBuilder();
+        table.setPhase(com.caszgamermd.golemsplus.worker.WorkerPhase.PAUSED);
+        if(!job.equals(table.activeOrder())||table.builderCursor()!=1
+                ||BuilderBuildService.canResumePausedBuild(level,table)
+                ||BuilderBuildService.pausedCrewParked(level,table)){
+            h.fail("Pause lost progress or accepted a missing assigned Builder");return;
+        }
+        h.succeed();
+    }
     @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=200,skyAccess=true)
     public void poweredExitPreservesScaffoldAndReachesSolidLanding(GameTestHelper h){
         var level=h.getLevel();

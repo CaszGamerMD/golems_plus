@@ -72,23 +72,6 @@ public final class BuilderChunkTickets {
             if(counts.isEmpty())holders.remove(level);
         }else counts.put(center,owners-1);
     }
-    private static boolean pausedCrewStillReturning(ServerLevel level,
-            WorkerStationBlockEntity table){
-        BlockPos depot=table.builderUnloadingStorage();
-        if(depot==null)depot=table.getBlockPos();
-        for(UUID id:table.builderWorkerIds()){
-            if(!(level.getEntity(id) instanceof BuilderGolem worker))return true;
-            if(!worker.onGround()||worker.isNoGravity()
-                    ||BuilderGrappleAccess.active(worker)
-                    ||BuilderScaffolding.isControllingMovement(worker)
-                    ||BuilderScaffoldPlanA.hasPlan(worker)
-                    ||worker.hasSupplyBox()||!worker.isEmpty()
-                    ||worker.hasRecoveredDrops()
-                    ||worker.distanceToSqr(depot.getX()+.5,depot.getY(),
-                            depot.getZ()+.5)>10)return true;
-        }
-        return false;
-    }
     private static boolean running(ServerLevel level,
             WorkerStationBlockEntity table){
         if(!table.isBuilder())return false;
@@ -101,7 +84,8 @@ public final class BuilderChunkTickets {
         if(table.activeOrder()==null||table.phase()==WorkerPhase.COMPLETE)
             return false;
         return table.phase()!=WorkerPhase.PAUSED
-                ||pausedCrewStillReturning(level,table);
+                ||table.supplyRequest()!=null||table.builderCancelShipment()
+                ||!BuilderBuildService.pausedCrewParked(level,table);
     }
     private static void add(Set<ChunkPos> chunks,BlockPos center,BlockPos reference){
         if(center==null||reference==null||chunks.size()>=24)return;
