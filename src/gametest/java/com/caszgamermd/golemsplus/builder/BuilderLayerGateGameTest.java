@@ -96,15 +96,34 @@ public final class BuilderLayerGateGameTest {
                 return;
             }
             if(!table.completeBuilderStep(a.getUUID(),2)
-                    ||!table.completeBuilderStep(b.getUUID(),3)
-                    ||table.builderCursor()!=4){
-                helper.fail("Crew did not finish the upper layer");
-                return;
-            }
-            System.out.println("[BUILDER Y GATE] PASS lower Y complete "
-                    +"across both physical workers before advancing, "
-                    +"deferred task retained, upper Y unlocked after retry");
-            helper.succeed();
+                ||!table.builderWaterNeighborsReady(steps,steps.get(3))
+                ||!table.builderWaterNeighborsPresent(steps,steps.get(3))){
+            helper.fail("Unfinished overhead incorrectly blocked bubble column");return;
+        }
+        // Isolate the floor prerequisite: completion and physical presence
+        // must both be checked, while the planned overhead remains absent.
+        var floor=new BuilderConstructionPlan.Step(at.getX()+3,y-1,at.getZ()+3,
+                "minecraft:stone","minecraft:stone");
+        var withFloor=new java.util.ArrayList<>(steps);
+        withFloor.add(floor);
+        var neighborhood=new BuilderWaterNeighborhood(withFloor);
+        if(neighborhood.ready(3,i->false)
+                ||!neighborhood.ready(3,i->i==5)
+                ||!neighborhood.ready(steps.get(3),i->i==5)){
+            helper.fail("Water floor prerequisite missing or overhead still required");return;
+        }
+        var rotation=BuildSite.Rotation.values()[0];
+        var mirror=BuildSite.Mirror.values()[0];
+        if(!neighborhood.physicallyReady(level,steps.get(3),rotation,mirror)){
+            helper.fail("Present floor did not pass live check");return;
+        }
+        helper.setBlock(3,1,3,Blocks.AIR);
+        if(neighborhood.physicallyReady(level,steps.get(3),rotation,mirror)){
+            helper.fail("Missing floor passed live water check");return;
+        }
+        helper.setBlock(3,1,3,Blocks.STONE);
+        System.out.println("[BUILDER WATER NEIGHBORHOOD] PASS side and floor prerequisites, live wall and floor checks, overhead ignored");
+        helper.succeed();
         });
     }
     @GameTest(maxTicks=40,skyAccess=true)
@@ -142,7 +161,8 @@ public final class BuilderLayerGateGameTest {
                 new BuilderConstructionPlan.Step(at.getX()+3,y+1,at.getZ()+3,"minecraft:stone","minecraft:stone"));
         List<Integer> az=List.of(0,2,3,4),bz=List.of(1);
         if(table.builderWaterNeighborsReady(steps,steps.get(2))
-                ||table.builderWaterNeighborsReady(steps,steps.get(3))
+                ||!table.builderWaterNeighborsReady(steps,steps.get(3))
+                ||!table.builderWaterNeighborsPresent(steps,steps.get(3))
                 ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=0){
             helper.fail("Water unlocked before its own planned neighbor");return;
         }
@@ -150,11 +170,11 @@ public final class BuilderLayerGateGameTest {
         if(!table.completeBuilderStep(a.getUUID(),0)
                 ||!table.builderWaterNeighborsReady(steps,steps.get(2))
                 ||!table.builderWaterNeighborsPresent(steps,steps.get(2))
-                ||table.builderWaterNeighborsReady(steps,steps.get(3))
-                ||table.builderStepInActivePhase(steps,3)
+                ||!table.builderWaterNeighborsReady(steps,steps.get(3))
+                ||!table.builderWaterNeighborsPresent(steps,steps.get(3))
                 ||!table.builderStepInActivePhase(steps,2)
                 ||table.claimBuilderZoneStep(a.getUUID(),az,steps)!=2){
-            helper.fail("Distant dry work blocked independent water or upper neighbor was ignored");return;
+            helper.fail("Distant dry work or unfinished overhead blocked independent water");return;
         }
         helper.setBlock(2,2,2,Blocks.AIR);
         if(table.builderWaterNeighborsPresent(steps,steps.get(2))){
