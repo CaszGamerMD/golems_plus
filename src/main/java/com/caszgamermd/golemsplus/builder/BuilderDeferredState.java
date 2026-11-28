@@ -73,6 +73,9 @@ public final class BuilderDeferredState {
     public static boolean matches(ServerLevel level,BlockPos pos,String state,BuildSite.Rotation rotation,BuildSite.Mirror mirror){
         if(!flowVerification(state))return BuilderPistonWork.matches(level,pos,state,rotation,mirror);
         var desired=BuilderBlockResolver.expectedState(state.substring(FLOW.length()),rotation,mirror);
-        return desired!=null&&level.hasChunkAt(pos)&&level.getBlockState(pos).equals(desired);
+        // Keep the saved step index, but immediately finish optional water flow.
+        // Lava verification remains unchanged. Source water is not a flow step.
+        return desired!=null&&level.hasChunkAt(pos)
+                &&(BuilderPlacementState.optionalWaterFlow(desired)||level.getBlockState(pos).equals(desired));
     }
 }

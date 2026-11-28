@@ -37,7 +37,14 @@ public final class BuilderPlacementState {
                 ||shape.equals("south_east")||shape.equals("south_west");
     }
 
+    /** Saved non-source water is an incidental physics result, not a placement. */
+    public static boolean optionalWaterFlow(BlockState schematic){
+        return schematic.is(Blocks.WATER)&&!schematic.getFluidState().isSource();
+    }
     public static boolean matches(BlockState actual,BlockState schematic){
+        // A schematic flow cell has no required block: its presence, level
+        // and absence must never invalidate the construction audit.
+        if(optionalWaterFlow(schematic))return true;
         if(actual.equals(schematic))return true;
         // Bubble activity and drag direction are transient. Construction
         // requires a full source at each planned column cell; flowing

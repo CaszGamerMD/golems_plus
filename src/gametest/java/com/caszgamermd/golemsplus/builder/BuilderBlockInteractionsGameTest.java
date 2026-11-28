@@ -300,19 +300,29 @@ public final class BuilderBlockInteractionsGameTest {
         if(plan.steps().size()!=2||!plan.unsupported().isEmpty()||!BuilderDeferredState.flowVerification(plan.steps().get(1).encodedState())
                 ||plan.steps().get(1).requiredItem()!=null||plan.required().getOrDefault(BuilderWaterPass.WATER_BUCKET,0L)!=1L
                 ||BuilderBlockResolver.resolve(flow,BuildSite.Rotation.NONE,BuildSite.Mirror.NONE)!=null){
-            h.fail("Flowing water must be a pending physics result without an item");return;
+            h.fail("Flowing water must retain a no-item physics marker");return;
         }
         BlockPos target=h.absolutePos(new BlockPos(13,3,12));
         String verify=plan.steps().get(1).encodedState();
-        if(BuilderDeferredState.matches(level,target,verify,BuildSite.Rotation.NONE,BuildSite.Mirror.NONE)){
-            h.fail("Empty cell falsely verified as flowing water");return;
+        var air=Blocks.AIR.defaultBlockState();
+        var wantedFlow=BuilderBlockResolver.expectedState(flow,BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        var wantedSource=BuilderBlockResolver.expectedState(source,BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        var otherFlow=BuilderBlockResolver.expectedState("minecraft:water[level=5]",BuildSite.Rotation.NONE,BuildSite.Mirror.NONE);
+        if(wantedFlow==null||wantedSource==null||otherFlow==null
+                ||!BuilderDeferredState.matches(level,target,verify,BuildSite.Rotation.NONE,BuildSite.Mirror.NONE)
+                ||!BuilderPlacementState.matches(air,wantedFlow)
+                ||!BuilderPistonWork.sourceMatches(air,wantedFlow)
+                ||!BuilderPlacementState.matches(otherFlow,wantedFlow)
+                ||BuilderPlacementState.matches(air,wantedSource)
+                ||BuilderPlacementState.matches(otherFlow,wantedSource)){
+            h.fail("Flow must be optional but a real water source must remain mandatory");return;
         }
-        h.setBlock(12,3,12,Blocks.WATER);
-        h.onEachTick(()->{
-            if(h.getTick()>5&&BuilderDeferredState.matches(level,target,verify,BuildSite.Rotation.NONE,BuildSite.Mirror.NONE)){
-                System.out.println("[BUILDER FLOW PASS] real source produced exact flowing level tick="+h.getTick());h.succeed();
-            }else if(h.getTick()==90)h.fail("Natural source did not yield desired water level: "+level.getBlockState(target));
-        });
+        // No water was manufactured at the optional cell to satisfy the audit.
+        if(!level.getBlockState(target).isAir()){
+            h.fail("Optional water verification unexpectedly placed a block");return;
+        }
+        System.out.println("[BUILDER FLOW PASS] saved flow is optional; real sources remain required");
+        h.succeed();
     }
 
     @GameTest(structure="golems_plus_gametest:dome_arena",maxTicks=80,skyAccess=true)
