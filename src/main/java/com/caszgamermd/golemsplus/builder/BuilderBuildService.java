@@ -853,12 +853,22 @@ public final class BuilderBuildService {
             if(!(level.getEntity(id) instanceof BuilderGolem worker)
                     ||!table.getBlockPos().equals(worker.home())
                     ||table.owner()==null||!table.owner().equals(worker.owner())
-                    ||!atOnSite(level,worker,depot)||!worker.onGround()||worker.isNoGravity()
+                    ||!atOnSite(level,worker,depot)
+                    ||!stablePausedPose(level,worker)
                     ||BuilderGrappleAccess.active(worker)||BuilderScaffolding.isControllingMovement(worker)
                     ||BuilderScaffoldPlanA.hasPlan(worker)||BuilderFlight.moving(worker)
                     ||worker.hasSupplyBox()||!worker.isEmpty()||worker.hasRecoveredDrops())return false;
         }
         return true;
+    }
+    // Flying construction hats are normally gravity-free. A stationary,
+    // collision-free hover within the physical storage reach is parked;
+    // requiring onGround would deadlock every hovering paused hat.
+    private static boolean stablePausedPose(ServerLevel level,BuilderGolem worker){
+        if(BuilderFlight.creative(worker))
+            return worker.isNoGravity()&&worker.getDeltaMovement().lengthSqr()<1e-6
+                    &&BuilderFlight.clear(level,worker,worker.position());
+        return worker.onGround()&&!worker.isNoGravity();
     }
     public static boolean canResumePausedBuild(ServerLevel level,WorkerStationBlockEntity table){
         return table.phase()==WorkerPhase.PAUSED&&table.activeOrder()!=null
@@ -1218,7 +1228,10 @@ public final class BuilderBuildService {
                 return;
             }
             com.caszgamermd.golemsplus.worker.WorkerNavigation.stop(worker);
-            worker.setNoGravity(false);
+            if(BuilderFlight.creative(worker)){
+                BuilderFlight.stop(worker);
+                worker.setNoGravity(true);
+            }else worker.setNoGravity(false);
             return;
         }
         WorkerAction previousAction=workerActions.get(worker);
