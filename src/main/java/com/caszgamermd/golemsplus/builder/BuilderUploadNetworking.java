@@ -24,7 +24,7 @@ import net.minecraft.server.level.ServerPlayer;
  * are bounded, sequential and owner-authenticated on every packet.
  */
 public final class BuilderUploadNetworking {
-    public static final int PART_SIZE=24*1024, MAX_BYTES=2*1024*1024;
+    public static final int PART_SIZE=24*1024, MAX_BYTES=8*1024*1024;
     private static final Map<UUID,Incoming> pending=new HashMap<>();
     private BuilderUploadNetworking(){}
     public record Piece(BlockPos table,UUID token,int index,int total,
@@ -156,6 +156,8 @@ public final class BuilderUploadNetworking {
                     BuilderConstructionPlan.Step::y).min().orElse(0);
             int maxY=plan.steps().stream().mapToInt(
                     BuilderConstructionPlan.Step::y).max().orElse(0);
+            if(schematic.airBlocks().isEmpty())
+                notify(player,"Solid-only placement: schematic air will not be excavated.");
             notify(player,"Exact imported world Y range: "+minY+".."+maxY+
                     ". Lowest non-air layer: Y="+minY+
                     ". Reimport after moving the hologram.");

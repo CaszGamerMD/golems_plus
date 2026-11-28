@@ -196,7 +196,7 @@ public final class LitematicaPlacementClient {
         int minY=bounds.minY(),maxY=bounds.maxY();
         int minZ=bounds.minZ(),maxZ=bounds.maxZ();
         long volume=bounds.volume();
-        if(volume<1||volume>400_000)
+        if(volume<1||volume>BuilderPlacementSnapshot.MAX_GHOST_VOLUME)
             throw new IllegalArgumentException(
                     "Hologram bounding volume "+volume+" is too large for import");
         if(minY< -64||maxY>511)
@@ -204,19 +204,28 @@ public final class LitematicaPlacementClient {
         // Never read the actual game world. The selected ghost is the plan.
         BlockGetter ghost=hologramWorld();
         var solids=new ArrayList<LitematicFileReader.Block>();
+        // Large captures intentionally omit air, rather than allocating millions
+        // of clearing targets. Smaller captures retain existing exact-air behavior.
+        boolean captureAir=volume<=400_000;
+        int expected=LitematicFileReader.readSolids(original).blocks().size();
+        if(expected>BuilderPlacementSnapshot.MAX_NON_AIR)
+            throw new IllegalArgumentException("Hologram exceeds 500,000 occupied blocks");
         var air=new ArrayList<LitematicFileReader.Block>();
+        var encodedStates=new java.util.HashMap<BlockState,String>();
         for(int y=minY;y<=maxY;y++)
             for(int z=minZ;z<=maxZ;z++)
                 for(int x=minX;x<=maxX;x++){
                     BlockState state=ghost.getBlockState(new BlockPos(x,y,z));
-                    if(state.isAir())air.add(new LitematicFileReader.Block(
-                            x,y,z,"minecraft:air"));
-                    else solids.add(new LitematicFileReader.Block(
-                            x,y,z,encodeState(state)));
+                    if(state.isAir()){
+                        if(captureAir)air.add(new LitematicFileReader.Block(x,y,z,"minecraft:air"));
+                    }else{
+                        if(solids.size()>=BuilderPlacementSnapshot.MAX_NON_AIR)
+                            throw new IllegalArgumentException("Hologram exceeds 500,000 occupied blocks");
+                        solids.add(new LitematicFileReader.Block(x,y,z,encodedStates.computeIfAbsent(state,LitematicaPlacementClient::encodeState)));
+                    }
                 }
         // A missing/unpopulated ghost chunk must not silently become AIR.
         // Also catch overlapping other visible schematic placements.
-        int expected=LitematicFileReader.read(original).blocks().size();
         if(solids.size()!=expected)
             throw new IllegalArgumentException(
                     "Hologram is not fully resolved ("+solids.size()+"/"+
@@ -269,7 +278,7 @@ public final class LitematicaPlacementClient {
             throw new IllegalArgumentException("Only .litematic file-backed placements");
         long fileSize=Files.size(path);
         if(fileSize<1||fileSize>BuilderUploadNetworking.MAX_BYTES)
-            throw new IllegalArgumentException("This placement exceeds the 2 MiB upload limit");
+            throw new IllegalArgumentException("This placement exceeds the 8 MiB upload limit");
         BlockPos origin=asPos(firstAvailable(placement,"getOrigin","getPosition"));
         if(origin==null)
             throw new IllegalArgumentException("Could not read Litematica origin");
@@ -295,7 +304,7 @@ public final class LitematicaPlacementClient {
         byte[] data=captureVisibleHologram(placement,path);
         if(data.length>BuilderUploadNetworking.MAX_BYTES)
             throw new IllegalArgumentException(
-                    "Placed hologram snapshot exceeds the 2 MiB upload limit");
+                    "Placed hologram snapshot exceeds the 8 MiB upload limit");
         int parts=(data.length+BuilderUploadNetworking.PART_SIZE-1)
                 /BuilderUploadNetworking.PART_SIZE;
         UUID upload=UUID.randomUUID();

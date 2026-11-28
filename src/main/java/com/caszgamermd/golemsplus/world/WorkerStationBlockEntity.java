@@ -2128,7 +2128,7 @@ public final class WorkerStationBlockEntity extends BlockEntity
                         com.caszgamermd.golemsplus.builder.BuilderPlacementSnapshot.EXTENSION))
                 ||filename.contains("/")||filename.contains("..")||filename.contains("\\")
                 ||origin==null||rotation<0||rotation>3||mirror<0||mirror>2
-                ||blocks<1||blocks>100000||unresolved<0
+                ||blocks<1||blocks>com.caszgamermd.golemsplus.builder.BuilderPlacementSnapshot.MAX_STEPS||unresolved<0
                 ||builderJobs.size()>=12)return false;
         if(activeOrder!=null){
             // Queue a future placement without disturbing the running

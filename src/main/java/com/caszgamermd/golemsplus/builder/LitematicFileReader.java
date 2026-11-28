@@ -39,15 +39,20 @@ public final class LitematicFileReader {
     private LitematicFileReader(){}
 
     public static Schematic read(Path path) throws IOException {
-        return read(path,false);
+        return read(path,false,true);
+    }
+
+    /** Read only occupied cells for large hologram validation; never allocate air objects. */
+    public static Schematic readSolids(Path path)throws IOException {
+        return read(path,false,false);
     }
 
     /** Legacy raw-file jobs persist indices into the original layout. */
     static Schematic readLegacyPlacement(Path path)throws IOException {
-        return read(path,true);
+        return read(path,true,true);
     }
 
-    private static Schematic read(Path path,boolean legacyPlacement)throws IOException {
+    private static Schematic read(Path path,boolean legacyPlacement,boolean captureAir)throws IOException {
         if(!Files.isRegularFile(path)||Files.size(path)>MAX_FILE_BYTES)
             throw new IOException("Missing or oversized schematic");
         byte[] bytes;
@@ -66,6 +71,7 @@ public final class LitematicFileReader {
             List<Block> blocks=new ArrayList<>();
             List<Block> emptyPositions=new ArrayList<>();
             Map<String,Long> counts=new LinkedHashMap<>();
+            long decodedVolume=0;
             for(var entry:regions.entrySet()){
                 var region=asCompound(entry.getValue(),"Region");
                 var position=asCompound(region.get("Position"),"Position");
@@ -73,8 +79,9 @@ public final class LitematicFileReader {
                 int px=integer(position,"x"),py=integer(position,"y"),pz=integer(position,"z");
                 int sx=integer(size,"x"),sy=integer(size,"y"),sz=integer(size,"z");
                 long total=(long)Math.abs((long)sx)*Math.abs((long)sy)*Math.abs((long)sz);
-                if(total<1||total>MAX_BLOCKS||total+blocks.size()>MAX_BLOCKS)
+                if(total<1||total>MAX_BLOCKS||decodedVolume+total>MAX_BLOCKS)
                     throw new IOException("Invalid region volume");
+                decodedVolume+=total;
                 int width=(int)Math.abs((long)sx);
                 int height=(int)Math.abs((long)sy);
                 int depth=(int)Math.abs((long)sz);
@@ -116,11 +123,15 @@ public final class LitematicFileReader {
                 }catch(IllegalArgumentException error){
                     throw new IOException("Invalid palette data for region "+entry.getKey(),error);
                 }
+                boolean[] airPalette=new boolean[palette.size()];
+                for(int i=0;i<palette.size();i++){
+                    String plain=palette.get(i).split("\\[",2)[0];
+                    airPalette[i]=Set.of("minecraft:air","minecraft:cave_air","minecraft:void_air").contains(plain);
+                }
                 for(int i=0;i<indexes.length;i++){
+                    boolean air=airPalette[indexes[i]];
+                    if(air&&!captureAir)continue;
                     String state=palette.get(indexes[i]);
-                    String plain=state.split("\\[",2)[0];
-                    boolean air=Set.of("minecraft:air","minecraft:cave_air",
-                            "minecraft:void_air").contains(plain);
                     int x=i%width,z=(i/width)%depth,y=i/(width*depth);
                     long bx=legacyPlacement?(long)px+(sx<0?-x:x):minX+x;
                     long by=legacyPlacement?(long)py+(sy<0?-y:y):minY+y;

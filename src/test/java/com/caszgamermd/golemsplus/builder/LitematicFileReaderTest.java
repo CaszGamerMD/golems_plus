@@ -69,6 +69,21 @@ class LitematicFileReaderTest {
         assertFalse(plan.ready());
         assertEquals(109,plan.positions().get(2).x());
     }
+    @Test void solidOnlyReadSkipsRecordedAir()throws IOException{
+        Path file=directory.resolve("air.litematic");
+        try(var gzip=new GZIPOutputStream(Files.newOutputStream(file));var out=new DataOutputStream(gzip)){
+            out.writeByte(10);out.writeUTF("");compound(out,"Regions");
+            region(out,"stone",0,2,"minecraft:stone");
+            region(out,"air",2,4,"minecraft:air");
+            out.writeByte(0);out.writeByte(0);
+        }
+        var full=LitematicFileReader.read(file);
+        var sparse=LitematicFileReader.readSolids(file);
+        assertEquals(full.blocks(),sparse.blocks());
+        assertEquals(4,full.airBlocks().size());
+        assertTrue(sparse.airBlocks().isEmpty());
+        assertEquals(full.stateCounts(),sparse.stateCounts());
+    }
     @Test void failsOnWrongHeader()throws IOException {
         var file=directory.resolve("wrong.litematic");
         Files.writeString(file,"this is not a schematic");

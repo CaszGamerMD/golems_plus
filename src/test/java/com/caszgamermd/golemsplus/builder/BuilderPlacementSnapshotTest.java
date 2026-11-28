@@ -35,6 +35,16 @@ final class BuilderPlacementSnapshotTest {
         assertEquals(30,lastWorld.x());
         assertEquals(55,lastWorld.y());
     }
+    @Test void handScaleSolidOnlySnapshotRoundTrips()throws Exception{
+        var solids=new java.util.ArrayList<LitematicFileReader.Block>(327_441);
+        for(int i=0;i<327_441;i++)
+            solids.add(new LitematicFileReader.Block(i%113,64+i/(113*142),(i/113)%142,"minecraft:stone"));
+        var restored=BuilderPlacementSnapshot.decode(BuilderPlacementSnapshot.encode("HAND-scale",solids,List.of()));
+        assertEquals(solids,restored.blocks());
+        assertTrue(restored.airBlocks().isEmpty());
+        assertEquals(327_441L,restored.stateCounts().get("minecraft:stone"));
+        assertEquals(327_441,BuilderSiteClearance.targets(restored,BuilderPlacementSnapshot.worldSpaceSite()).size());
+    }
     @Test void rejectsBadFormatAndDuplicateCoordinates()throws Exception{
         assertThrows(IOException.class,()->BuilderPlacementSnapshot.decode(
                 new byte[]{1,2,3}));

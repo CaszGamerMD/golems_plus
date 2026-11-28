@@ -36,8 +36,8 @@ public final class BuilderConstructionPlan {
     }
     public static Result create(LitematicFileReader.Schematic schematic,
             BuildSite site,boolean ignorePlants){
-        if(schematic.blocks().size()>100_000)
-            throw new IllegalArgumentException("At most 100,000 blocks per build in this version");
+        if(schematic.blocks().size()>BuilderPlacementSnapshot.MAX_NON_AIR)
+            throw new IllegalArgumentException("At most 500,000 occupied blocks per build");
         List<Step> steps=new ArrayList<>();
         Map<String,Long> quantities=new LinkedHashMap<>();
         java.util.Set<String> unsupported=new java.util.LinkedHashSet<>();
@@ -77,7 +77,8 @@ public final class BuilderConstructionPlan {
                     &&!companions.containsKey(BuilderMultiblock.cell(b));
             boolean pistonHead=BuilderMultiblock.blockId(b.state()).equals("minecraft:piston_head");
             // Keep the saved index, but never require a generated head.
-            boolean ignored=pistonHead||ignorePlants&&BuilderVegetation.ignoreSchematicState(b.state());
+            boolean ignored=pistonHead||BuilderMultiblock.blockId(b.state()).equals("minecraft:spawner")
+                    ||ignorePlants&&BuilderVegetation.ignoreSchematicState(b.state());
             boolean waterlogged=!ignored&&BuilderWaterPass.isWaterlogged(b.state());
             String dry=waterlogged?BuilderWaterPass.dryState(b.state()):b.state();
             boolean verifyPiston=pistonHead;
@@ -122,8 +123,8 @@ public final class BuilderConstructionPlan {
         }
         steps.sort(java.util.Comparator.comparingInt(Step::y)
                 .thenComparingInt(s->BuilderWaterPass.isWaterStep(s.encodedState())?1:0));
-        if(steps.size()>100_000)
-            throw new IllegalArgumentException("At most 100,000 construction steps per build");
+        if(steps.size()>BuilderPlacementSnapshot.MAX_STEPS)
+            throw new IllegalArgumentException("At most 750,000 construction steps per build");
         for(String id:java.util.List.copyOf(quantities.keySet()))
             if(BuilderBlockResolver.reusableSupply(id))quantities.put(id,1L);
         return new Result(steps,quantities,unsupported);

@@ -25,7 +25,9 @@ import java.util.zip.GZIPOutputStream;
 public final class BuilderPlacementSnapshot {
     public static final String EXTENSION=".gpb";
     private static final int MAGIC=0x47504231; // GPB1
-    private static final int MAX_NON_AIR=100_000;
+    public static final int MAX_NON_AIR=500_000;
+    public static final int MAX_STEPS=750_000;
+    public static final int MAX_GHOST_VOLUME=5_000_000;
     private static final int MAX_AIR=300_000;
     private static final int MAX_PALETTE=65_536;
     private BuilderPlacementSnapshot(){}
