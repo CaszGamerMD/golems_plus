@@ -84,11 +84,21 @@ public final class BuilderMaterialRules {
             int startY,int mode,BuildSite.Rotation rotation,BuildSite.Mirror mirror){
         if(rules.isEmpty()&&mode==ALL)return source;
         List<BuilderConstructionPlan.Step> result=new ArrayList<>(source.size());
+        // A height-only job should not duplicate every immutable step or
+        // parse the same palette entries hundreds of thousands of times.
+        var originalItems=new java.util.HashMap<String,java.util.Optional<String>>();
         for(var step:source){
+            if(rules.isEmpty()){
+                if(includesY(step.y(),startY,mode)||step.ignorePlant())result.add(step);
+                else result.add(new BuilderConstructionPlan.Step(step.x(),step.y(),step.z(),
+                        step.encodedState(),null,true,step.companion()));
+                continue;
+            }
             boolean waterPass=BuilderWaterPass.isWaterlogPass(step.encodedState());
             boolean outside=!includesY(step.y(),startY,mode);
             String original=rules.isEmpty()?null:
-                    originalItem(step.encodedState(),rotation,mirror);
+                    originalItems.computeIfAbsent(step.encodedState(),key->java.util.Optional.ofNullable(
+                            originalItem(key,rotation,mirror))).orElse(null);
             String rule=original==null?null:rules.get(original);
             boolean ignored=step.ignorePlant()||outside||IGNORE.equals(rule);
             String state=step.encodedState();
@@ -124,7 +134,10 @@ public final class BuilderMaterialRules {
                             companion.x(),companion.y(),companion.z(),second);
                 else companion=null;
             }
-            result.add(new BuilderConstructionPlan.Step(step.x(),step.y(),
+            if(ignored==step.ignorePlant()&&java.util.Objects.equals(state,step.encodedState())
+                    &&java.util.Objects.equals(ignored?null:item,step.requiredItem())
+                    &&java.util.Objects.equals(companion,step.companion()))result.add(step);
+            else result.add(new BuilderConstructionPlan.Step(step.x(),step.y(),
                     step.z(),state,ignored?null:item,ignored,companion));
         }
         // Any downward-only job starts at its uppermost included layer.

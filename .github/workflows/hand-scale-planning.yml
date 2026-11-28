@@ -1,0 +1,47 @@
+name: HAND scale - isolated planning benchmark
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderConstructionPlan.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderPlacementSnapshot.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderMaterialRules.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderZoneWorkPlan.java'
+      - 'src/main/java/com/caszgamermd/golemsplus/builder/BuilderWaterNeighborhood.java'
+      - 'src/gametest/java/com/caszgamermd/golemsplus/builder/BuilderHandScaleGameTest.java'
+      - '.github/workflows/hand-scale-planning.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+      - name: Run isolated HAND-sized planning
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('src/gametest/resources/fabric.mod.json')
+          data=json.loads(path.read_text())
+          data['entrypoints']['fabric-gametest']=['com.caszgamermd.golemsplus.builder.BuilderHandScaleGameTest']
+          path.write_text(json.dumps(data,indent=2)+'\n')
+          PY
+          set -o pipefail
+          gradle --no-daemon runGameTest 2>&1 | tee "$RUNNER_TEMP/hand-scale.log"
+          grep -F '[HAND SCALE PASS]' "$RUNNER_TEMP/hand-scale.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hand-scale-planning-log
+          path: ${{ runner.temp }}/hand-scale.log

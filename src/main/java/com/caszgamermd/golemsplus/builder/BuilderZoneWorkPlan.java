@@ -46,9 +46,15 @@ public final class BuilderZoneWorkPlan {
             throw new IllegalArgumentException("Duplicate builder in crew");
         var data=new LinkedHashMap<UUID,List<Integer>>();
         for(UUID id:activeWorkers)data.put(id,new ArrayList<>());
+        int crew=activeWorkers.size(),columns=footprint.columns(crew),rows=crew/columns;
+        long width=(long)footprint.maxX()-footprint.minX()+1,depth=(long)footprint.maxZ()-footprint.minZ()+1;
         for(int index=0;index<steps.size();index++){
             var step=steps.get(index);
-            int owner=footprint.zone(step.x(),step.z(),activeWorkers.size());
+            // Same rectangular partition as Layout.zone, with geometry
+            // calculated once rather than repeating logarithms per step.
+            int xi=(int)Math.clamp(((long)step.x()-footprint.minX())*columns/width,0,columns-1);
+            int zi=(int)Math.clamp(((long)step.z()-footprint.minZ())*rows/depth,0,rows-1);
+            int owner=zi*columns+xi;
             data.get(activeWorkers.get(owner)).add(index);
         }
         // Minimize travel within each independent Y layer. Build strips
