@@ -12,8 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      SOURCE_SHA: '8167e1448384afea898c942b92ec8f5d5fefdcde'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: '8167e1448384afea898c942b92ec8f5d5fefdcde'
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -37,8 +41,8 @@ jobs:
           mkdir -p dist
           cp "${jars[0]}" dist/golems-plus-0.3.58-dev-live-test.jar
           sha256sum dist/*.jar > dist/SHA256SUMS.txt
-          printf 'Source commit: %s\nFabric Minecraft: 26.2\nLive testing snapshot; automated construction tests are not passing.\n' \
-            "$GITHUB_SHA" > dist/BUILD-INFO.txt
+          printf 'Source commit: %s\nFabric Minecraft: 26.2\nLive testing snapshot; four full Matrix builds passed; broader integration has 17 required failures.\n' \
+            "$SOURCE_SHA" > dist/BUILD-INFO.txt
           jar tf dist/*.jar | grep -q 'com/caszgamermd/golemsplus/world/EnhancedScaffoldingBlock.class'
           jar tf dist/*.jar | grep -q 'data/golems_plus/recipe/enhanced_scaffolding.json'
       - uses: actions/upload-artifact@v4
@@ -52,8 +56,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="live-test-${GITHUB_SHA:0:12}"
+          tag="live-test-${SOURCE_SHA:0:12}"
           gh release create "$tag" dist/*.jar dist/SHA256SUMS.txt dist/BUILD-INFO.txt \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --prerelease \
             --title "Golems Plus — live-test snapshot" \
-            --notes "Fabric 26.2, mod 0.3.58-dev. Exact current behavior snapshot from commit ${GITHUB_SHA}. Includes current flying Builder and piston-displacement changes. Automated construction tests are failing; this is a live-testing snapshot, not a verified stable release."
+            --notes "Fabric 26.2, mod 0.3.58-dev. Exact current behavior snapshot from commit ${SOURCE_SHA}. Includes five-direction water placement and optional flowing-water verification. Four full Matrix builds passed; 17 required broader integration tests remain failing. Live-testing snapshot, not a stable release."
